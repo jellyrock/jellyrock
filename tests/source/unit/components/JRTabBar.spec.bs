@@ -1,0 +1,43 @@
+namespace tests
+
+  @suite("JRTabBar - rebuilds tabs when their configuration changes")
+  class JRTabBarTests extends tests.BaseTestSuite
+
+    private bar as object
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.bar = CreateObject("roSGNode", "JRTabBar")
+    end function
+
+    protected override function afterEach()
+      m.bar = invalid
+      super.afterEach()
+    end function
+
+    private function tab(selectedIcon as string) as object
+      return { id: "home", title: "Home", icon: "pkg:/images/icons/home_outline_$$RES$$.png", selectedIcon: selectedIcon }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("reusing tabs")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps the same tab node for an identical configuration")
+    function _()
+      m.bar.tabs = [m.tab("pkg:/images/icons/home_$$RES$$.png")]
+      first = m.bar.findNode("tabContainer").getChild(0)
+      m.bar.tabs = [m.tab("pkg:/images/icons/home_$$RES$$.png")]
+      m.assertTrue(first.isSameNode(m.bar.findNode("tabContainer").getChild(0)))
+    end function
+
+    @it("takes a new selected glyph when only that changes")
+    function _()
+      m.bar.tabs = [m.tab("pkg:/images/icons/home_$$RES$$.png")]
+      m.bar.tabs = [m.tab("pkg:/images/icons/heart_$$RES$$.png")]
+      m.assertEqual(m.bar.findNode("tabContainer").getChild(0).tabSelectedIcon, "pkg:/images/icons/heart_$$RES$$.png")
+    end function
+
+  end class
+
+end namespace

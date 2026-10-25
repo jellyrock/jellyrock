@@ -105,7 +105,9 @@ function tabsMatchExisting(tabs as object) as boolean
     existing = m.tabContainer.getChild(i)
     icon = ""
     if isValidAndNotEmpty(tabs[i].icon) then icon = tabs[i].icon
-    if existing.tabId <> tabs[i].id or existing.tabTitle <> tabs[i].title or existing.tabIcon <> icon
+    selectedIcon = ""
+    if isValidAndNotEmpty(tabs[i].selectedIcon) then selectedIcon = tabs[i].selectedIcon
+    if existing.tabId <> tabs[i].id or existing.tabTitle <> tabs[i].title or existing.tabIcon <> icon or existing.tabSelectedIcon <> selectedIcon
       return false
     end if
   end for
