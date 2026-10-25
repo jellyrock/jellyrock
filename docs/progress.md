@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-24
+last-updated: 2026-10-25
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-25: docs: Use the org contributing guide and security policy
 - 2026-10-24: feat(syncplay): Follow a group, fix Play on buffering, speed up casts
 - 2026-10-24: test(rta): Pin the `home-failure` spec to the built-in Home layout
 - 2026-10-23: feat(syncplay): Add the pure SyncPlay layer and parse its frames in the receiver
@@ -92,11 +93,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-11: ci(lint): Run language coverage when `people.bs` or a fingerprint changes
 - 2026-10-11: fix(music): Keep the playing track when shuffle is switched on again
 - 2026-10-11: ci(server-upgrade): Run the spec fingerprint drift check in CI
-- 2026-10-10: fix(navigation): Recover from a failed navigation before logging it
-- 2026-10-10: fix: Stop the sign-in screen flashing back after a deep-link sign-in
-- 2026-10-10: fix(locale): Apply the user's language when preferences fail
-- 2026-10-10: fix: Stop a crash on options in a stopped video's playback info
-- 2026-10-10: fix(overhang): Reset the clock when the screensaver ends
 
 ## Open followups
 
