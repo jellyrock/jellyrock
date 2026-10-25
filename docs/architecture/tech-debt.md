@@ -481,7 +481,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 - **issue**: `package.json` sets `"type": "module"`, so new code defaults to ESM, but the tree mixes both:
   - **Top level:** the `.js` scripts are ESM; four are `.cjs` (`agent-telemetry-report.cjs`, `create-package.cjs`, `create-signed-package.cjs`, `ropm-hook.cjs`).
   - **`scripts/lib/`:** `.cjs`, except four ESM files nothing `require()`s (`fixture-probe.js`, `odc-probe.js`, `png-compare.js`, `pr-title.js`).
-  - **`scripts/lint/`:** mostly `.cjs`, with nine ESM files (`ls scripts/lint/*.js`). `floor-coverage-check.js` must be ESM, because it imports named exports from the ESM `findings-candidates.js`.
+  - **`scripts/lint/`:** mostly `.cjs`, the rest ESM (`ls scripts/lint/*.js` lists them). `floor-coverage-check.js` must be ESM, because it imports named exports from the ESM `findings-candidates.js`.
 
   The forward rule for new scripts is ESM `.js` unless something `require()`s it.
 - **direction**: Audit the require graph first. Anything `require()`d by a BSC plugin or another locked CJS file is forced `.cjs`; a CLI script nothing requires can move to ESM. The conversion is mechanical (`require` to `import`, `module.exports` to `export`, `__dirname` to `fileURLToPath(import.meta.url)`), but some scripts that look standalone are required by lint-staged or other CJS callers.
