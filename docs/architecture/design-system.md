@@ -71,10 +71,10 @@ Left and Right walk the row as one and wrap at both ends; Down returns to the sc
 | Context | Glyph | Gutter to the text | Why |
 |---|---|---|---|
 | `TextButton` with the Medium font (details, player controls) | 24 pixels (`iconSize`, the default) | 12 pixels (`iconGutter`, the default) | The sizes the app's buttons were drawn at |
-| A tab with the Large font | 42 pixels | 6 pixels | A 42 pixel poster of a 64/46 asset pads about 6 pixels itself, so 12 pixels stays visible |
+| A tab with the Large font | 42 pixels | 6 pixels | A 42 pixel poster of a 63/45 asset pads exactly 6 pixels itself, so 12 pixels stays visible |
 | An overhang icon button | 42 pixels in a 78 pixel square box | none | The glyph is the content |
 
-**Density.** An overhang glyph is pinned in `icons.json` on a 64 pixel canvas: the tabs' glyphs at 46 pixels (64/46), `search` at 49 and `settings` at 50 (the sizes they were first built at), so the drawn shape fills 72 to 78% of its poster. The pipeline's default 96/54 fills 56%, which draws visibly smaller at the same poster size: measured 2026-10-25, `search` and `settings` on their 64 pixel canvases and `home` at the default were 32 pixels and 22 pixels of ink in the same 42 pixel poster. Pin the density when adding a glyph to the overhang.
+**Density.** Every overhang glyph (the tabs', the cluster's, the avatar fallback `person`) is pinned in `icons.json` at 63/45: a 63 pixel canvas with the glyph's longer side 45 pixels, so the shape fills about 71% of its poster. Both numbers are on the grid, and so is everything that follows from them: the HD copy is 42/30, and a 42 pixel poster draws the canvas at exactly two thirds, a 30 pixel glyph with 6 pixels of padding each side. The pipeline's default 96/54 fills 56%, which draws visibly smaller at the same poster size (measured 2026-10-25: `home` at the default drew 22 pixels of ink in a 42 pixel poster where `search` drew 32). Pin 63/45 when adding a glyph to the overhang.
 
 **Fill.** Outlined by default; the recorded exceptions are the fill rules in the icon README. A navigation destination's glyph follows selection: outlined while not selected, filled while selected, never tied to focus (rule 8 there).
 

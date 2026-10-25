@@ -1,7 +1,7 @@
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/overhangRow.bs"
 
-const TAB_ICON_GUTTER = 6 ' The 64/46 canvas pads about 6 px at the glyph size: 12 px visible to the text
+const TAB_ICON_GUTTER = 6 ' The 63/45 canvas pads exactly 6 px at the glyph size: 12 px visible to the text
 
 sub init()
   ' TextButton.init() has already run: m.buttonBackground, m.buttonBorder, m.buttonText are set
