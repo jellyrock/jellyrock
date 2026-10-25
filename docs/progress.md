@@ -725,18 +725,6 @@ Raised in manual testing of #1217 (2026-10-18). Like a phone's autocomplete, off
 
 Needs its own design: where the words come from (the /Search/Hints names already fetched, or a dedicated query), how many fit, and how Up from the top row fits today's overlay focus loop (decision `search-overlay-horizontal-loop`). Not done in #1217: it is a new feature with its own layout and focus rules.
 
-#### Home's overhang press can be lost to a navigation the router refuses after Back `[fid: home-overhang-press-lost-to-refused-navigation]` `[captured 2026-10-19]` `[pinned]`
-
-After Back from search, Home's `onScreenShown` puts focus on its search icon before sgRouter ends the Back navigation (`navigationInProgress` stays true until `showView`'s `.finally` dispatches `NavigationEnd`). An OK sent then calls `sgrouter.navigateTo("/search")`, which the router refuses with "Navigation already in progress". `Home.handleHomeMenuAction` ignored the rejection, so the press was lost.
-
-Confirmed 2026-10-19 on a Roku Ultra: the `search-navigation` reopen cases (`reopenOnRecentSearches`) failed 5 of 10 runs, 1 of them without the per-read change, and the failing run's console logged `navigation refused /search` (the log added in `11c4852d`).
-
-Options: `retry` (recommended): `JRScene.navigateThenFocus` retries a refused navigation once the router is idle, polling the public `routerState` with a timer (an observer drops `NavigationEnd`) and giving up after a bounded time; Home's actions go through it via `routerNavigate`; the 18 other direct `sgrouter.navigateTo` calls can move to it later; risk: a press takes effect slightly late. `re-press`: the test re-sends the OK with a warning; rejected because a viewer's press can still be lost. Patching sgRouter was ruled out by decision `router-focus-left-notice`. Not now because it needs its own design (the give-up time, then the other call sites) and predates the search redesign.
-
-Not checked: how wide the window is (a probe sampling every 20 to 70 ms never saw focus on the icon before `NavigationEnd`); whether a person pressing OK can hit it; whether it happens on the Stick 4K outside capture mode.
-
-Seen again 2026-10-23 on a Stick 4K (Roku OS 15.3.4) against the demo server: `main` (`34a621e3`) failed 1 of 8 runs and the blocking-spinners phase C branch 4 of 13, always at the step "search reopened on the keyboard" with focus left on `#overhang.#searchIcon`. The run ledger holds 16 such failures since 2026-10-18. Four runs with the debug console attached all passed, so no new console capture. The search redesign shipped in v3.2.0, so a viewer's press may be lost in the released app. Pinned: every full `test:rta` can go red on it.
-
 #### Upstream watch: sgRouter history-depth / `canGoBack()` API `[fid: sgrouter-can-go-back]` `[captured 2026-10-20]`
 
 Watching upstream: @rokucommunity/sgrouter releases for a public history-depth or `canGoBack()` method (none in 0.1.3; pinned)

@@ -7,6 +7,7 @@ import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/loadingStages.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
+import "pkg:/source/utils/refusedNavigation.bs"
 import "pkg:/source/utils/translate.bs"
 ' JRScene is a Scene (not a sgrouter_View), so it does not inherit the router scripts from
 ' sgrouter_View.xml. Import them here so JRScene.bs can call the sgrouter.* / promises.*
@@ -51,6 +52,12 @@ sub init()
   m.loadingStageText = m.top.findNode("loadingStageText")
   m.loadingStageTimer = m.top.findNode("loadingStageTimer")
   m.loadingStageTimer.observeField("fire", "showLoadingStage")
+  m.refusedNavigationTimer = m.top.findNode("refusedNavigationTimer")
+  m.refusedNavigationTimer.observeField("fire", "onRefusedNavigationPoll")
+  m.refusedNavigationTimer.duration = refusedNavigation.POLL_MS / 1000#
+  ' The navigation the router refused that waits for the router to go idle (navigateThenFocus);
+  ' invalid when none does.
+  m.pendingNavigation = invalid
   ' When the scene's own spinner started (loadingStages.nowMs), marked at every start.
   m.sceneWaitStartedMs = loadingStages.nowMs()
   ' The routed view whose loadingWaits the spinner is showing (bindLoadingWaits).
@@ -496,23 +503,83 @@ end function
 ' It ends the same way, once the destination has mounted, so that screen is never shown again
 ' on the way out; a rejected nav fails it, so it gives the remote back.
 sub navigateThenFocus(routePath as dynamic, context = {} as object, clearSpinner = false as boolean, signInWait = invalid as dynamic)
+  startNavigation({ routePath: routePath, context: context, clearSpinner: clearSpinner, signInWait: signInWait, retried: false })
+end sub
+
+' One attempt of a navigation request (the AA navigateThenFocus builds; `retried` is true on the
+' one retry). A refusal because another navigation is still in flight is held in
+' m.pendingNavigation and retried once the router reads idle (onRefusedNavigationPoll): that is
+' how an OK on Home's search icon pressed before the Back navigation ended still opens search.
+sub startNavigation(request as object)
   options = {}
-  if isValidAndNotEmpty(context) then options = { context: context }
-  promises.chain(sgrouter.navigateTo(routePath, options), { routePath: routePath, clearSpinner: clearSpinner, signInWait: signInWait }).then(sub(_result as object, ctx as object)
-    if ctx.clearSpinner then stopLoadingSpinner()
-    appWaits.done(ctx.signInWait)
+  if isValidAndNotEmpty(request.context) then options = { context: request.context }
+  promises.chain(sgrouter.navigateTo(request.routePath, options), request).then(sub(_result as object, request as object)
+    if request.clearSpinner then stopLoadingSpinner()
+    appWaits.done(request.signInWait)
     sgrouter.setFocus({ focus: true })
-  end sub).catch(sub(err as object, ctx as object)
-    ' navigateTo rejects when a nav is already in progress (transient) or the route isn't
-    ' registered (a programming error). Re-assert focus so a rejected nav can't strand the remote,
-    ' and surface the reason instead of dropping it silently. Recover before logging, and log err
-    ' whole: reading `.message` crashes when a rejection is not an AA, which skips the recovery.
-    ' Clear the spinner even on a rejected login nav so a failure can't strand it up.
-    if ctx.clearSpinner then stopLoadingSpinner()
-    appWaits.fail(ctx.signInWait, "navigation rejected")
-    sgrouter.setFocus({ focus: true })
-    m.log.warn("navigateThenFocus failed; re-asserting focus", ctx.routePath, err)
+  end sub).catch(sub(err as object, request as object)
+    ' navigateTo rejects when a nav is already in progress (transient, retried once) or the route
+    ' isn't registered (a programming error, never retried). Log err whole: reading `.message`
+    ' crashes when a rejection is not an AA, which skips the recovery.
+    if refusedNavigation.isTransientRefusal(err) and not request.retried
+      holdRefusedNavigation(request)
+      return
+    end if
+    failNavigation(request, err)
   end sub)
+end sub
+
+' A rejected navigation's tail: re-assert focus so it can't strand the remote, end its waits, and
+' surface the reason instead of dropping it silently. Recover before logging. Clear the spinner
+' even on a rejected login nav so a failure can't strand it up.
+sub failNavigation(request as object, err as dynamic)
+  if request.clearSpinner then stopLoadingSpinner()
+  appWaits.fail(request.signInWait, "navigation rejected")
+  sgrouter.setFocus({ focus: true })
+  m.log.warn("navigateThenFocus failed; re-asserting focus", request.routePath, err)
+end sub
+
+' Hold a refused navigation until the router reads idle. One waits at a time: a newer refusal
+' replaces an older one (the newest press wins), and the replaced one fails as a rejection would.
+sub holdRefusedNavigation(request as object)
+  if isValid(m.pendingNavigation)
+    failNavigation(m.pendingNavigation, "replaced by a newer navigation")
+  end if
+  request.refusedAtMs = loadingStages.nowMs()
+  m.pendingNavigation = request
+  m.log.info("navigation refused while another was in flight; retrying once the router is idle", request.routePath)
+  m.refusedNavigationTimer.control = "start"
+end sub
+
+' Each poll of the refused-navigation Timer. Reads routerState directly, never through an
+' observer (see isRouterNavigating): the field read always holds the latest state.
+sub onRefusedNavigationPoll()
+  request = m.pendingNavigation
+  if not isValid(request)
+    m.refusedNavigationTimer.control = "stop"
+    return
+  end if
+  stateType = invalid
+  router = sgrouter.getRouter()
+  if isValid(router) and isValid(router.routerState) then stateType = router.routerState.type
+  action = refusedNavigation.nextStep(stateType, loadingStages.nowMs() - request.refusedAtMs)
+  if action = "wait" then return
+  m.refusedNavigationTimer.control = "stop"
+  m.pendingNavigation = invalid
+  if action = "retry"
+    request.retried = true
+    startNavigation(request)
+  else
+    failNavigation(request, "navigation refused; the router stayed busy past refusedNavigation.GIVE_UP_MS")
+  end if
+end sub
+
+' Drop a held navigation: the router it waits for is going away.
+sub cancelRefusedNavigation()
+  m.refusedNavigationTimer.control = "stop"
+  if not isValid(m.pendingNavigation) then return
+  failNavigation(m.pendingNavigation, "router reset")
+  m.pendingNavigation = invalid
 end sub
 
 ' Navigate the router to a route, bringing the router up first if needed, then hand
@@ -767,8 +834,9 @@ sub resetRouter()
   m.global.unobserveField("activeRoutedView")
   m.global.unobserveField("playbackLaunchRequest")
   m.global.unobserveField("photoLaunchRequest")
-  ' Cancel an in-flight deep-link resolve (router is being destroyed under it).
+  ' Cancel an in-flight deep-link resolve and a held refused navigation (router is being destroyed under them).
   cancelDeepLinkResolve()
+  cancelRefusedNavigation()
   ' sgrouter.destroy() removes the active + suspended keepAlive view NODES but never runs their
   ' beforeViewClose lifecycle (verified: Router _destroy only removeNodeChildren). Drive teardown
   ' ourselves FIRST so each view's onScreenHidden + onDestroy run: onDestroy abandons in-flight

@@ -21,7 +21,7 @@ related-files:
   - source/utils/appWaits.bs
   - components/AppWaitHost.bs
   - components/AppWaitHost.xml
-last-reviewed: 2026-10-22
+last-reviewed: 2026-10-25
 ---
 
 # Navigation (sgRouter)
@@ -182,7 +182,7 @@ The main thread reaches the ones in `JRScene.xml`'s interface by `callFunc`.
 | Function | What it does | Called from |
 |---|---|---|
 | `routerNavigate(path, context, clearSpinner)` | `initRouter()`, then `navigateThenFocus()` | `loginRouter.routerNav()` (the pre-login routes), `replayAfterLogin()` (Home after sign-in) and the remote-control commands Home, Search and Settings (`remoteDispatch.dispatchRoute()`) |
-| `navigateThenFocus(path, context, clearSpinner)` | `sgrouter.navigateTo()`; when it settles, `sgrouter.setFocus()`; when it fails, logs and takes focus again so the remote is never stranded. With `clearSpinner`, stops the spinner at either end ([spinners](#loading-spinners-across-navigation)) | `routerNavigate`, the last step of `navigateChainStep`, deep-link resolve |
+| `navigateThenFocus(path, context, clearSpinner)` | `sgrouter.navigateTo()`; when it settles, `sgrouter.setFocus()`; when it fails, logs and takes focus again so the remote is never stranded. A refusal because another navigation is still in flight is retried once the router reads idle (`refusedNavigation` decides each poll of a Timer; after `GIVE_UP_MS` it fails like any rejection), which is how an OK on Home's search icon pressed before the Back navigation ended still opens search. A route that is not registered is never retried. With `clearSpinner`, stops the spinner at either end ([spinners](#loading-spinners-across-navigation)) | `routerNavigate`, the last step of `navigateChainStep`, deep-link resolve, Home's search and settings actions |
 | `navigateChainStep(routes, index)` | Navigates one route and, when its promise settles, the next. The last step takes focus | `replayDeepLinkReplacingPlayer` |
 | `resolveDeepLink(args)` | Fetches the item before navigating, then `onDeepLinkResolved` routes to it ([bootstrap.md](bootstrap.md#resolving)). `cancelDeepLinkResolve()` stops the fetch | `replayAfterLogin()`, `replayDeepLinkRuntime()` |
 | `replayDeepLinkReplacingPlayer(targetRoute)` | Replaces a playing player ([below](#replacing-an-active-player)) | `onDeepLinkResolved`, for a playback cast over a player |
