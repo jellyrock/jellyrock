@@ -1,5 +1,6 @@
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/pixelGrid.bs"
+import "pkg:/source/utils/textMetrics.bs"
 
 const TRIGGER_LABEL_MAX_WIDTH = 300 ' A longer name ellipsizes; the row's title keeps its room
 const TRIGGER_PART_GAP = 9 ' Between the avatar, the name and the chevron
@@ -89,15 +90,14 @@ sub sizeTriggerButton()
   if labelWidth > TRIGGER_LABEL_MAX_WIDTH then labelWidth = TRIGGER_LABEL_MAX_WIDTH
   m.triggerLabel.width = labelWidth
 
-  ' Place the parts left to right, each centered on the box's middle. A label centers its
-  ' line box, and the caps sit about 7% of the font size above that box's middle (the rule
-  ' TextButton.layoutIcon uses), so the name drops that far, rounded onto the grid.
+  ' Place the parts left to right, each centered on the box's middle. A label's caps sit
+  ' above its box's middle (capsAboveCenter), so the name drops that far, rounded onto the grid.
   padding = m.top.padding
   contentHeight = m.triggerLabel.height
   if m.triggerIcon.visible and m.triggerIcon.height > contentHeight then contentHeight = m.triggerIcon.height
   buttonHeight = contentHeight + (padding * 2)
   if buttonHeight < m.top.minHeight then buttonHeight = m.top.minHeight
-  textDrop = snapToGrid(int(m.triggerLabel.font.size * 0.07 + 0.5))
+  textDrop = snapToGrid(int(capsAboveCenter(m.triggerLabel.font.size) + 0.5))
 
   x = padding
   if m.triggerIcon.visible

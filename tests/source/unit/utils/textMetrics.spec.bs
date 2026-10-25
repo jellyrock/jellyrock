@@ -1,0 +1,28 @@
+namespace tests
+
+  ' capsAboveCenter is the one statement of where a label's caps sit in its box.
+  ' overhangRow.TEXT_DROP is a const, so it can't call it; this suite holds the two together.
+  @suite("textMetrics - where a label's caps sit in its box")
+  class TextMetricsTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("capsAboveCenter")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("scales with the font size")
+    function _()
+      ' Compared in hundredths: a float product is not exact
+      m.assertEqual(int(capsAboveCenter(42) * 100 + 0.5), 294)
+      m.assertEqual(int(capsAboveCenter(32) * 100 + 0.5), 224)
+      m.assertEqual(capsAboveCenter(0), 0.0)
+    end function
+
+    @it("gives the overhang row's text drop at the Large font, rounded onto the grid")
+    function _()
+      large = m.global.constants.fontSizeLarge
+      m.assertEqual(overhangRow.TEXT_DROP, snapToGrid(int(capsAboveCenter(large) + 0.5)))
+    end function
+
+  end class
+
+end namespace

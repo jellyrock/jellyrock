@@ -19,6 +19,7 @@ related-files:
   - components/ui/dropdown/JRDropdown.bs
   - source/utils/overhangRow.bs
   - source/utils/pixelGrid.bs
+  - source/utils/textMetrics.bs
   - source/utils/iconBarNav.bs
   - resources/icons/icons.json
 last-reviewed: 2026-10-25
@@ -79,6 +80,6 @@ Left and Right walk the row as one and wrap at both ends; Down returns to the sc
 
 ## Where the numbers are enforced
 
-The row's shared numbers live in one file, `source/utils/overhangRow.bs`: three chosen (the row's height, the glyph size, the padding inside a box), the two gaps and the text drop, and the rest derived from them. The components read it; what only one component uses stays there (`CLOCK_SLOT` and `LOGO_Y` in `JROverhang.bs`, the avatar, chevron and part gap in `JRDropdown`). Change a number there and this page, not the other way round.
+The row's shared numbers live in one file, `source/utils/overhangRow.bs`: three chosen (the row's height, the glyph size, the padding inside a box), the two gaps and the text drop, and the rest derived from them. The components read it; what only one component uses stays there (`CLOCK_SLOT` and `LOGO_Y` in `JROverhang.bs`, the avatar, chevron and part gap in `JRDropdown`). Change a number there and this page, not the other way round. Where a label's caps sit in its box is one function, `capsAboveCenter` in `source/utils/textMetrics.bs`, which `TextButton`'s icon and the name in the user dropdown use; `textMetrics.spec.bs` fails if the row's text drop stops matching it.
 
 Three checks hold it. The Rooibos spec `JROverhangLayout.spec.bs` fails on any box the overhang places off the grid, or off the row's edges. On hardware, `tests/rta/lib/ink.js` reports where each element's ink sits in a capture, and each box's grid position, so a layout change is judged by comparing two runs. The RTA specs `search-navigation`, `overhang-clock` and `home-failure` walk the row.
