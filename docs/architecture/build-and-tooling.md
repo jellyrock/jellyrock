@@ -399,6 +399,7 @@ One makes it report more. A name built at runtime from a variable (`setField(nam
 | `lint:docs` | `related-files:` paths, relative links and `tech-debt.md#` anchors across the docs, every `CLAUDE.md` outside dot-directories, and the BSC plugins. Plus the schema of `progress.md`'s frontmatter and the `decisions.md` supersede chain. Run it through `/docs-lint` |
 | `lint:voice` | The house voice and line-number citations in every tracked `.md`, as a per-file ratchet ([writing-style.md](../dev/writing-style.md#what-the-gate-checks)) |
 | `lint:comment-voice` | The house voice in the comments of tracked code, as a per-file ratchet ([writing-style.md](../dev/writing-style.md#what-the-gate-checks)) |
+| `lint:skill-placeholders` | Argument placeholders in `.claude/skills/*/SKILL.md` (`$ARGUMENTS`, `$0` to `$9`, an `arguments:` list), which Claude Code replaces at run time ([the script's header](../../scripts/lint/skill-placeholders-check.js)) |
 | `lint:dictionary` | Identifier-shaped entries in `dictionary.txt`; code names belong in backticks ([code-style.md](../dev/code-style.md#when-to-add-to-dictionarytxt-instead)) |
 | `lint:issue-templates` | `.github/ISSUE_TEMPLATE/*.yml` against GitHub's issue-forms schema. GitHub drops an invalid form from the new-issue page without an error |
 | `lint:json` | jshint over JSON, which catches duplicate keys. Prettier handles the whitespace |
@@ -589,6 +590,7 @@ CI and local work never share a Roku: CI uses its own device, named by an org-le
 | `lint:docs` | | ✓ | Needs every doc loaded |
 | `lint:voice` | ✓ | ✓ | Pre-commit checks the staged `.md`; pre-push runs on every push, so a baseline-only change is checked too |
 | `lint:comment-voice` | | ✓ | Runs on every push, so a baseline-only change is checked too |
+| `lint:skill-placeholders` | ✓ | ✓ | Pre-commit checks the staged skills; pre-push checks every skill |
 | `docs:dev-index:check` | | ✓ | Drift in a generated table |
 | `update-translations` | | ✓ | Regenerates from `en_US.json` |
 | `lint:language-coverage` | | ✓ | Only when its inputs change |

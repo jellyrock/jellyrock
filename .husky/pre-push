@@ -242,6 +242,9 @@ npm run lint:comment-voice
 echo "✍️  Checking the house voice and line citations in markdown..."
 npm run lint:voice
 
+echo "🧩 Checking skills for argument placeholders..."
+npm run lint:skill-placeholders
+
 # Ahead of lint:spelling on purpose: a stale companion dictionary presents as
 # unrelated spelling failures on words that are already in dictionary.txt.
 echo "📖 Checking sentence-final dictionary drift..."
