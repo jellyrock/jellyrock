@@ -96,13 +96,6 @@ namespace tests
       m.assertEqual(m.bar.requestFocusExit, "right")
     end function
 
-    @it("proxies Down as a focus return")
-    function _()
-      m.bar.entries = m.entries()
-      m.bar.findNode("searchIcon").requestFocusReturn = true
-      m.assertTrue(m.bar.requestFocusReturn)
-    end function
-
   end class
 
 end namespace

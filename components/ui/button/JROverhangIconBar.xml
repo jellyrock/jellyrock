@@ -2,8 +2,9 @@
 <!--
   A row of JROverhangIcon buttons laid out by iconBarNav (66 px icons, 24 px gaps): the
   overhang's fixed cluster (Search, Settings). Left and Right walk the row and stop at its
-  ends, where requestFocusExit tells the overhang which edge was left; Down asks the screen
-  to take focus back; OK fires selectedAction with the entry's action.
+  ends, where requestFocusExit tells the overhang which edge was left; OK fires
+  selectedAction with the entry's action. Down is each icon's own requestFocusReturn, which
+  the screen observes (getIcon).
 -->
 <component name="JROverhangIconBar" extends="Group">
   <interface>
@@ -17,8 +18,6 @@
     <field id="selectedAction" type="string" alwaysNotify="true" />
     <!-- Output: "left" or "right", the edge a press walked off. -->
     <field id="requestFocusExit" type="string" alwaysNotify="true" />
-    <!-- Output: Down was pressed; the screen takes focus back. -->
-    <field id="requestFocusReturn" type="boolean" value="false" alwaysNotify="true" />
     <!-- The child icon for an entry id, for focus bookkeeping by the screen. -->
     <function name="getIcon" />
     <!-- Focus the icon at the row's first ("left") or last ("right") position. -->
