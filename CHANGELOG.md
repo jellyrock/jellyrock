@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (navigation) Retry a refused navigation once the router is idle ([#1261](https://github.com/jellyrock/jellyrock/pull/1261))
 - (dialogs) Keep focus on a dialog opened from another dialog ([#1250](https://github.com/jellyrock/jellyrock/pull/1250))
 - Hold keys and let Back cancel a Refresh, photo launch or seek ([#1245](https://github.com/jellyrock/jellyrock/pull/1245))
 - (sign-in) Keep a server re-scan from taking focus from a connect ([#1242](https://github.com/jellyrock/jellyrock/pull/1242))
