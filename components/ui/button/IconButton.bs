@@ -7,7 +7,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/buttonOverflow.bs"
 
 const focusBorderOffset = 6 ' Used for positioning calculations only (matches 6px border in 9-patch image); does not control actual border rendering
-const spinnerSize = 42 ' Spinner rendered smaller than 64px icon frame: icons have transparent padding so this matches the visible icon area
+const spinnerSize = 42 ' Spinner rendered smaller than 63px icon frame: icons have transparent padding so this matches the visible icon area
 
 ' LAYOUT NOTE FOR DEVELOPERS:
 ' IconButton text extends 12px wider than the button (6px on each side) to prevent label wrapping.

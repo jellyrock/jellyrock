@@ -44,7 +44,7 @@ const ICON_BUTTON_TEXT_EXTENSION = 12
 ' the same width.
 '
 ' This is not "the size of the icon asset". It is the LOAD BOX. IconButton.xml
-' declares its icon Poster as `width/loadWidth/height/loadHeight = 64` with
+' declares its icon Poster as `width/loadWidth/height/loadHeight = 63` with
 ' `loadDisplayMode="limitSize"`, so an oversized source is scaled down AS IT
 ' LOADS and `bitmapWidth` reports the scaled figure. That is what makes the
 ' uniform budget below true rather than merely hopeful, and it is worth stating
@@ -61,8 +61,9 @@ const ICON_BUTTON_TEXT_EXTENSION = 12
 '     buttonIcon.loadDisplayMode = "limitsize"   buttonIcon.loadWidth   = 64
 '     buttonIcon.bitmapWidth     = 64            buttonBackground.width = 124
 '
-' 124 is exactly iconButtonBackgroundWidth(64), so the layout footprint is the
-' budgeted 136. The gate for this lives in
+' 124 is exactly iconButtonBackgroundWidth(64), so the layout footprint was the
+' budgeted 136. The box is 63 since 2026-10-25, on the 3 px grid: a 123 plate and
+' a 135 footprint. The gate for this lives in
 ' tests/source/unit/components/ui/IconButtonWidth.spec.bs, which pins the load box
 ' itself: widen it or drop limitSize and every cap in this file silently stops
 ' describing what renders.
@@ -73,12 +74,15 @@ const ICON_BUTTON_TEXT_EXTENSION = 12
 '     would not fit this budget.
 '   - An icon asset LARGER than the load box is safe (it is scaled down); the
 '     load box is the thing that must not move.
+'   - An icon asset SMALLER than the load box is not scaled up: it loads at its
+'     own size and gives a narrower plate than its neighbors. Build an
+'     IconButton icon on the 63 px canvas (resources/icons/icons.json).
 '
 ' Still open, and safe in both directions: whether Roku reports bitmapWidth in
 ' design units or physical pixels on a 720p-UI device (both test devices render
 ' at 1080p). Physical-pixel reporting would yield a NARROWER plate, so more
 ' buttons would fit than the cap allows - conservative, never an overrun.
-const ICON_BUTTON_ICON_SIZE = 64
+const ICON_BUTTON_ICON_SIZE = 63
 
 ' The button's visible background plate.
 function iconButtonBackgroundWidth(iconWidth as integer) as integer

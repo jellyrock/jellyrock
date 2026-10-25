@@ -5,6 +5,7 @@ related-files:
   - components/JROverhang.xml
   - components/Clock.bs
   - components/Clock.xml
+  - components/ui/button/IconButton.xml
   - components/ui/button/JROverhangIcon.bs
   - components/ui/button/JROverhangIcon.xml
   - components/ui/button/JROverhangIconBar.bs
@@ -18,6 +19,7 @@ related-files:
   - components/ui/dropdown/JRDropdown.xml
   - components/ui/dropdown/JRDropdown.bs
   - source/utils/overhangRow.bs
+  - source/utils/buttonOverflow.bs
   - source/utils/pixelGrid.bs
   - source/utils/textMetrics.bs
   - source/utils/iconBarNav.bs
@@ -70,7 +72,8 @@ Left and Right walk the row as one and wrap at both ends; Down returns to the sc
 
 | Context | Glyph | Gutter to the text | Why |
 |---|---|---|---|
-| `TextButton` with the Medium font (details, player controls) | 24 pixels (`iconSize`, the default) | 12 pixels (`iconGutter`, the default) | The sizes the app's buttons were drawn at |
+| `TextButton` with the Medium font (the subtitle panel) | 24 pixels (`iconSize`, the default) | 12 pixels (`iconGutter`, the default) | The sizes the app's buttons were drawn at |
+| `IconButton` (details, the players' controls) | a 63 pixel square load box, drawn 1:1 from a 63 pixel canvas | caption below | The box sets the plate (123 pixels) and the row's overflow budget (`ICON_BUTTON_ICON_SIZE` in `buttonOverflow.bs`). A smaller canvas is not scaled up and gives a narrower plate, so its icons are built at 63 in `icons.json` |
 | A tab with the Large font | 42 pixels | 6 pixels | A 42 pixel poster of a 63/45 asset pads exactly 6 pixels itself, so 12 pixels stays visible |
 | An overhang icon button | 42 pixels in a 78 pixel square box | none | The glyph is the content |
 

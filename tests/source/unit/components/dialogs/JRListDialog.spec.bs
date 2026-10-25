@@ -273,12 +273,13 @@ namespace tests
     @it("draws a leading icon at the button's size, centred on the gutter slot")
     function _()
       rowIcon = m.rowWith({ isSelected: false, icon: "pkg:/images/icons/refresh_$$RES$$.png" }).findNode("rowIcon")
-      m.assertEqual(int(rowIcon.width), 64)
-      m.assertEqual(int(rowIcon.height), 64)
-      ' Slot: x 24..60, centre 42. Poster: x 10..74, centre 42.
-      m.assertEqual(int(rowIcon.translation[0]) + 32, 42)
-      ' Row 60 high: centre 30.
-      m.assertEqual(int(rowIcon.translation[1]) + 32, 30)
+      m.assertEqual(int(rowIcon.width), ICON_BUTTON_ICON_SIZE)
+      m.assertEqual(int(rowIcon.height), ICON_BUTTON_ICON_SIZE)
+      ' Slot: x 24..60, centre 42; the row is 60 high, centre 30. The box is odd (63) and
+      ' the slot even, so a whole-pixel position centres it to within half a pixel.
+      half = ICON_BUTTON_ICON_SIZE / 2
+      m.assertTrue(Abs(rowIcon.translation[0] + half - 42) <= 0.5, "x centre " + (rowIcon.translation[0] + half).toStr())
+      m.assertTrue(Abs(rowIcon.translation[1] + half - 30) <= 0.5, "y centre " + (rowIcon.translation[1] + half).toStr())
     end function
 
     @it("hides the icon poster when a row carries no icon")

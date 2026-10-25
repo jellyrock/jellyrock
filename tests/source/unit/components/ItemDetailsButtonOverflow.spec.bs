@@ -110,7 +110,7 @@ namespace tests
     @describe("the cap is a ceiling, not a quota")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    ' 8 is what the geometry yields (row origin 90, spacing 18, 136-wide buttons,
+    ' 8 is what the geometry yields (row origin 90, spacing 18, 135-wide buttons,
     ' stopping before the logo's leftmost edge at 1824 - 500). Asserted through
     ' behaviour rather than by calling the arithmetic, so this fails if the row's
     ' translation or spacing changes without the cap following.
