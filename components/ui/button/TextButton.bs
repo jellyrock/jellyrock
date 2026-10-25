@@ -12,8 +12,6 @@ import "pkg:/source/utils/misc.bs"
 ' Centering makes the geometry correct at any padding and any minHeight, and
 ' reproduces JRTab's existing pixels exactly at padding 30.
 const TEXT_BUTTON_INDICATOR_HEIGHT = 6
-' Gap between the label's right edge and the icon.
-const TEXT_BUTTON_ICON_GUTTER = 12
 ' The in-flight spinner takes the icon slot (same size, same position, same
 ' gutter) rather than having geometry of its own. That is why there is no
 ' separate spinner-size constant: a leading spinner beside the label is the same
@@ -66,6 +64,7 @@ sub init()
   m.top.observeField("icon", "onIconChanged")
   m.top.observeField("iconSide", "onSizeChanged")
   m.top.observeField("iconSize", "onSizeChanged")
+  m.top.observeField("iconGutter", "onSizeChanged")
   m.top.observeField("showSelectedIndicator", "onSizeChanged")
   ' Named distinctly from JRTab's own isButtonSelected observer so a subclass can
   ' still react to the same field without displacing the indicator's own toggle.
@@ -207,7 +206,7 @@ sub setSizeAndCenterText()
   ' button that already has an icon cost nothing extra to put into a busy state.
   iconSpace = 0
   if hasIconSlot()
-    iconSpace = m.top.iconSize + TEXT_BUTTON_ICON_GUTTER
+    iconSpace = m.top.iconSize + m.top.iconGutter
   end if
 
   ' Calculate button dimensions with padding
@@ -254,7 +253,7 @@ sub setSizeAndCenterText()
   ' assumed to start at `padding`: that only holds with no icon and no binding
   ' minWidth. Getting this wrong is the bug that motivated centralising it here.
   textLeft = int((buttonWidth / 2) + textCenterOffset(iconSpace) - (textWidth / 2))
-  layoutSelectedIndicator(buttonHeight, textLeft, textWidth, visibleTextHeight)
+  layoutSelectedIndicator(buttonHeight, textLeft, textWidth, visibleTextHeight, iconSpace)
 
   setFocusBorderSize()
 
@@ -425,7 +424,7 @@ end sub
 ' The label is vertically centered across the FULL button height, so its bottom
 ' edge follows from that centering. Deriving it from the padding instead is what
 ' broke once a minHeight (or a smaller padding) was in play.
-sub layoutSelectedIndicator(buttonHeight as float, textLeft as float, textWidth as float, visibleTextHeight as float)
+sub layoutSelectedIndicator(buttonHeight as float, textLeft as float, textWidth as float, visibleTextHeight as float, iconSpace as float)
   if not m.top.showSelectedIndicator
     m.buttonIndicator.visible = false
     return
@@ -434,12 +433,21 @@ sub layoutSelectedIndicator(buttonHeight as float, textLeft as float, textWidth 
   textBottom = (buttonHeight + visibleTextHeight) / 2
   gapBelowText = buttonHeight - textBottom
 
-  m.buttonIndicator.width = textWidth
+  ' A leading icon is part of the label, so the underline starts under it; a trailing
+  ' icon is the button's affordance and stays outside the line.
+  lineLeft = textLeft
+  lineWidth = textWidth
+  if iconSpace > 0 and m.top.iconSide = "left"
+    lineLeft = textLeft - iconSpace
+    lineWidth = textWidth + iconSpace
+  end if
+
+  m.buttonIndicator.width = lineWidth
   m.buttonIndicator.height = TEXT_BUTTON_INDICATOR_HEIGHT
   ' Not rounded: the previous implementation passed the raw float here, and
   ' keeping it makes the overhang tab bar's underline bit-identical to what it
   ' rendered before this moved into TextButton.
-  m.buttonIndicator.translation = [textLeft, textBottom + ((gapBelowText - TEXT_BUTTON_INDICATOR_HEIGHT) / 2)]
+  m.buttonIndicator.translation = [lineLeft, textBottom + ((gapBelowText - TEXT_BUTTON_INDICATOR_HEIGHT) / 2)]
   m.buttonIndicator.visible = m.top.isButtonSelected
 end sub
 

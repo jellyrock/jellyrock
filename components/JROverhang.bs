@@ -12,7 +12,7 @@ const OVERHANG_RIGHT = 1824 ' The 5% action-safe right edge: the clock's right e
 ' The clock's slot. Limit with headroom: "8:48" measured 99 px wide at 1080p on a Stick 4K
 ' (2026-10-25); four digits and the separator stay under this.
 const CLOCK_SLOT = 150
-const ELEMENT_GAP = 24 ' Between strip, title, dropdown and cluster
+const ELEMENT_GAP = 12 ' The box gap the whole row uses: between tabs, dropdown and cluster
 const OVERHANG_BASELINE = 54 ' The row's text baseline; buttons sit padding above it
 const TITLE_Y = 51
 const TITLE_MIN_WIDTH = 120 ' The title keeps at least this, whatever the dropdown's width
@@ -135,11 +135,11 @@ sub onCurrentUserChanged()
     if isValidAndNotEmpty(localUser.primaryImageTag)
       m.userDropdown.triggerIconBlendColor = "0xFFFFFFFF"
       if m.global.server.serverUrl <> ""
-        m.userDropdown.triggerIconUri = GetUserAvatarURL(localUser, 36, 36)
+        m.userDropdown.triggerIconUri = GetUserAvatarURL(localUser, 42, 42)
       end if
     else
       m.userDropdown.triggerIconBlendColor = m.global.constants.colorTextSecondary
-      m.userDropdown.triggerIconUri = "pkg:/images/icons/person_36px_$$RES$$.png"
+      m.userDropdown.triggerIconUri = "pkg:/images/icons/person_$$RES$$.png"
     end if
 
     ' Set menu items: user-related actions only
@@ -189,7 +189,8 @@ end sub
 ' FOCUS BRIDGING: TAB BAR <-> DROPDOWN <-> CLUSTER
 ' ============================================
 ' One row, left to right: tab bar, dropdown, cluster. Each hands focus to its visible
-' neighbor and stops at the ends: nothing wraps.
+' neighbor, and the row wraps: Left from its first element lands on its last, Right from
+' its last on its first.
 
 function tabBarShowing() as boolean
   return isValid(m.tabBar) and m.tabBar.visible
@@ -201,31 +202,78 @@ sub focusLastTab()
   m.tabBar.setFocus(true)
 end sub
 
-' Called when the tab bar signals at its boundary: the right end goes on along the row.
-sub onTabBarRequestsUserMenu()
-  if m.tabBar.requestFocusToUserMenu <> "right" then return
-  if m.userDropdown.visible
+sub focusFirstTab()
+  m.tabBar.focusedTabIndex = 0
+  m.tabBar.setFocus(true)
+end sub
+
+' The row's last visible element takes focus (Left off the first element wraps here).
+sub focusRowEnd()
+  if m.cluster.visible
+    m.cluster.callFunc("focusEdge", "right")
+  else if m.userDropdown.visible
+    m.userDropdown.setFocus(true)
+  else if tabBarShowing()
+    focusLastTab()
+  end if
+end sub
+
+' The row's first visible element takes focus (Right off the last element wraps here).
+sub focusRowStart()
+  if tabBarShowing()
+    focusFirstTab()
+  else if m.userDropdown.visible
     m.userDropdown.setFocus(true)
   else if m.cluster.visible
     m.cluster.callFunc("focusEdge", "left")
   end if
 end sub
 
+' Called when the tab bar signals at its boundary: Right goes on along the row, Left wraps.
+sub onTabBarRequestsUserMenu()
+  direction = m.tabBar.requestFocusToUserMenu
+  if direction = "right"
+    if m.userDropdown.visible
+      m.userDropdown.setFocus(true)
+    else if m.cluster.visible
+      m.cluster.callFunc("focusEdge", "left")
+    else
+      focusFirstTab()
+    end if
+  else if direction = "left"
+    focusRowEnd()
+  end if
+end sub
+
 sub onUserDropdownFocusExit()
   direction = m.userDropdown.requestFocusExit
   if direction = "left"
-    if tabBarShowing() then focusLastTab()
+    if tabBarShowing()
+      focusLastTab()
+    else
+      focusRowEnd()
+    end if
   else if direction = "right"
-    if m.cluster.visible then m.cluster.callFunc("focusEdge", "left")
+    if m.cluster.visible
+      m.cluster.callFunc("focusEdge", "left")
+    else
+      focusRowStart()
+    end if
   end if
 end sub
 
 sub onClusterFocusExit()
-  if m.cluster.requestFocusExit <> "left" then return
-  if m.userDropdown.visible
-    m.userDropdown.setFocus(true)
-  else if tabBarShowing()
-    focusLastTab()
+  direction = m.cluster.requestFocusExit
+  if direction = "left"
+    if m.userDropdown.visible
+      m.userDropdown.setFocus(true)
+    else if tabBarShowing()
+      focusLastTab()
+    else
+      focusRowEnd()
+    end if
+  else if direction = "right"
+    focusRowStart()
   end if
 end sub
 

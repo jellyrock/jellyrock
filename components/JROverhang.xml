@@ -4,7 +4,7 @@
   with a glyph, one selected) or the title in its place, then the user dropdown (Home only),
   the fixed cluster (Search, Settings) and the clock. The cluster is the same on every
   screen that shows it; a screen's own controls live on the screen. Left and Right walk tab
-  bar, dropdown and cluster as one row and stop at the ends; Down returns to the screen.
+  bar, dropdown and cluster as one row that wraps at both ends; Down returns to the screen.
 -->
 <component name="JROverhang" extends="Group">
   <children>

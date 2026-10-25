@@ -3,7 +3,10 @@
   <interface>
     <field id="tabTitle" type="string" onChange="onTitleChanged" />
     <field id="tabId" type="string" />
-    <!-- A filled glyph drawn left of the title, tinted with the title's color. -->
+    <!-- The glyphs drawn left of the title, tinted with it: tabIcon (outlined) while the
+         tab is not selected, tabSelectedIcon (filled) while it is. Fill follows selection,
+         never focus. -->
     <field id="tabIcon" type="string" onChange="onTabIconChanged" />
+    <field id="tabSelectedIcon" type="string" onChange="onTabIconChanged" />
   </interface>
 </component>

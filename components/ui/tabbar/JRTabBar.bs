@@ -47,6 +47,7 @@ sub onTabsChanged()
     tabNode.tabTitle = tabData.title
     tabNode.tabId = tabData.id
     if isValidAndNotEmpty(tabData.icon) then tabNode.tabIcon = tabData.icon
+    if isValidAndNotEmpty(tabData.selectedIcon) then tabNode.tabSelectedIcon = tabData.selectedIcon
 
     ' Mark the first tab as selected by default if no selection exists
     if m.top.selectedTabId = "" and tabData.id = tabs[0].id

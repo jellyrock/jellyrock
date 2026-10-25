@@ -36,8 +36,8 @@ namespace tests
       m.assertEqual(search.subtype(), "JROverhangIcon")
       m.assertEqual(search.icon, "pkg:/images/icons/search_$$RES$$.png")
       m.assertEqual(search.translation, [0.0, 0.0])
-      m.assertEqual(settings.translation, [90.0, 0.0])
-      m.assertEqual(m.bar.barWidth, 156)
+      m.assertEqual(settings.translation, [78.0, 0.0])
+      m.assertEqual(m.bar.barWidth, 144)
     end function
 
     @it("rebuilds on a new entry list and drops the old icons")

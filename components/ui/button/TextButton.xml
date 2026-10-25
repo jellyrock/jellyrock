@@ -59,6 +59,10 @@
     <!-- The icon's square size in design pixels. 24 suits the medium font every button
          uses by default; a button with a larger font sets this to match (JRTab: 36). -->
     <field id="iconSize" type="integer" value="24" />
+    <!-- The gap between the icon's canvas and the text. 12 suits a 24 px icon; a larger
+         icon's canvas carries its own transparent padding, so a tab sets 6 to keep 12 px
+         visible between glyph and text. -->
+    <field id="iconGutter" type="integer" value="12" />
     <!-- Draw the 6px colorSecondary underline under the label while
          isButtonSelected is true. Off by default: most buttons are momentary. -->
     <field id="showSelectedIndicator" type="boolean" value="false" />

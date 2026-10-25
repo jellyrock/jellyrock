@@ -10,16 +10,16 @@ namespace tests
     @it("places icons one size plus one gap apart")
     function _()
       m.assertEqual(iconBarNav.iconX(0), 0)
-      m.assertEqual(iconBarNav.iconX(1), 90)
-      m.assertEqual(iconBarNav.iconX(3), 270)
+      m.assertEqual(iconBarNav.iconX(1), 78)
+      m.assertEqual(iconBarNav.iconX(3), 234)
     end function
 
     @it("measures a bar as its icons plus the gaps between them")
     function _()
       m.assertEqual(iconBarNav.barWidth(0), 0)
       m.assertEqual(iconBarNav.barWidth(1), 66)
-      m.assertEqual(iconBarNav.barWidth(2), 156)
-      m.assertEqual(iconBarNav.barWidth(3), 246)
+      m.assertEqual(iconBarNav.barWidth(2), 144)
+      m.assertEqual(iconBarNav.barWidth(3), 222)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

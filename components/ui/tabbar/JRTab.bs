@@ -1,3 +1,5 @@
+import "pkg:/source/utils/misc.bs"
+
 sub init()
   ' TextButton.init() has already run: m.buttonBackground, m.buttonBorder, m.buttonText are set
 
@@ -9,8 +11,9 @@ sub init()
   ' Match TextButton's default padding for consistent styling
   m.top.padding = 30
 
-  ' The glyph scales with the Large font: 24 (TextButton's default) is sized for Medium
-  m.top.iconSize = 36
+  ' The glyph matches the overhang's icon buttons (a 42 px glyph in JROverhangIcon)
+  m.top.iconSize = 42
+  m.top.iconGutter = 6 ' the 64/46 canvas pads about 6 px at this size: 12 px visible to the text
 
   ' Unfocused state: transparent background/border so only text is visible
   m.top.background = "0x00000000"
@@ -38,9 +41,11 @@ sub onTitleChanged()
   m.top.text = m.top.tabTitle
 end sub
 
-' Maps tabIcon to TextButton's icon field (left of the text, tinted with it)
+' Draws the glyph for the selection state: the filled one while selected, else the outlined
 sub onTabIconChanged()
-  m.top.icon = m.top.tabIcon
+  uri = m.top.tabIcon
+  if m.top.isButtonSelected and isValidAndNotEmpty(m.top.tabSelectedIcon) then uri = m.top.tabSelectedIcon
+  if m.top.icon <> uri then m.top.icon = uri
 end sub
 
 ' Overrides TextButton.onFocusChanged to use the virtual isFocused field.
@@ -68,5 +73,6 @@ end sub
 
 ' Called when isFocused or isButtonSelected changes; updates all visual state
 sub onStateChanged()
+  onTabIconChanged()
   onFocusChanged()
 end sub

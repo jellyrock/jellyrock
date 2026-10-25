@@ -2,7 +2,7 @@
 ' drive them without a node. JROverhangIconBar applies them to its JROverhangIcon children.
 namespace iconBarNav
   const ICON_SIZE = 66 ' Must match OVERHANG_ICON_SIZE in JROverhangIcon.bs
-  const ICON_GAP = 24
+  const ICON_GAP = 12 ' The box gap the whole overhang row uses
 
   ' The x of the icon at `index` inside its bar.
   function iconX(index as integer) as integer

@@ -41,10 +41,10 @@ sub init()
   ' Only toggle active on screen show/hide.
   initVoiceBox()
 
-  ' Tab configuration: a filled glyph beside each title
+  ' Tab configuration: a glyph beside each title, outlined until the tab is selected
   m.top.overhangTabs = [
-    { title: translate(translationKeys.LabelHome), id: "home", icon: "pkg:/images/icons/home_$$RES$$.png" },
-    { title: translate(translationKeys.LabelFavorites), id: "favorites", icon: "pkg:/images/icons/heart_$$RES$$.png" }
+    { title: translate(translationKeys.LabelHome), id: "home", icon: "pkg:/images/icons/home_outline_$$RES$$.png", selectedIcon: "pkg:/images/icons/home_$$RES$$.png" },
+    { title: translate(translationKeys.LabelFavorites), id: "favorites", icon: "pkg:/images/icons/heart_outline_$$RES$$.png", selectedIcon: "pkg:/images/icons/heart_$$RES$$.png" }
   ]
   m.top.selectedTabId = "home"
   m.top.observeField("selectedTabId", "onTabChanged")

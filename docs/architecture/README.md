@@ -31,6 +31,7 @@ Each doc's frontmatter lists the source files it describes (`related-files`) and
 | app startup and lifecycle | [bootstrap.md](./bootstrap.md) |
 | routing and navigation | [navigation.md](./navigation.md) |
 | dialogs: the family, the standard and how it is enforced | [dialogs.md](./dialogs.md) |
+| the design system: theme colors, borders, the overhang row, glyph sizes and gaps | [design-system.md](./design-system.md) |
 | `RowList` and grid item layout, and the focus indicator (the `rowHeights` trap) | [list-grid-item-layout.md](./list-grid-item-layout.md) |
 | global state: what hangs off `m.global` | [global-state.md](./global-state.md) |
 | video and audio playback | [playback.md](./playback.md) |
