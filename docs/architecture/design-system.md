@@ -3,14 +3,22 @@ topic: design-system
 related-files:
   - components/JROverhang.bs
   - components/JROverhang.xml
+  - components/Clock.bs
+  - components/Clock.xml
   - components/ui/button/JROverhangIcon.bs
+  - components/ui/button/JROverhangIcon.xml
   - components/ui/button/JROverhangIconBar.bs
+  - components/ui/button/JROverhangIconBar.xml
   - components/ui/button/TextButton.bs
   - components/ui/button/TextButton.xml
   - components/ui/tabbar/JRTab.bs
+  - components/ui/tabbar/JRTab.xml
+  - components/ui/tabbar/JRTabBar.bs
   - components/ui/tabbar/JRTabBar.xml
   - components/ui/dropdown/JRDropdown.xml
   - components/ui/dropdown/JRDropdown.bs
+  - source/utils/overhangRow.bs
+  - source/utils/pixelGrid.bs
   - source/utils/iconBarNav.bs
   - resources/icons/icons.json
 last-reviewed: 2026-10-25
