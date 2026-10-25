@@ -12,7 +12,10 @@
  * Results are in design pixels (1920x1080) at any capture resolution, so a 720p capture
  * reads on the same scale as a 1080p one, to the two-thirds pixel it can resolve.
  *
- * The overhang sits on a black background, which is what makes a plain threshold enough.
+ * Home draws its backdrop image behind the row. Inside an element's small rect that is dim
+ * and colored, so the brightness floor and the gray filter leave it out; a bright, gray
+ * backdrop under an element would read as ink, so check a surprising number against the
+ * capture.
  * It reports and never asserts: a run prints the table, and the operator or the agent
  * compares two runs (before and after a layout change).
  *
@@ -27,7 +30,7 @@ import { getVal } from './steps.js';
 
 const DESIGN_HEIGHT = 1080;
 
-/** Brightest channel at or above this counts as ink (the background is black). */
+/** Brightest channel at or above this counts as ink (the backdrop under the row is dim). */
 const INK_MIN_BRIGHTNESS = 96;
 /** Highest minus lowest channel at or below this counts as gray (text, glyphs). */
 const INK_MAX_CHROMA = 48;
@@ -123,10 +126,10 @@ export async function measureOverhangInk(captureName, targets) {
   }
   const png = await captureRawUI(captureName);
   const rows = await measureInk(png, rects);
-  const table = rows.map((row, i) => ({
-    ...row,
-    box: rects[i].width ? { y: rects[i].y, height: rects[i].height } : null,
-  }));
+  const table = rows.map((row, i) => {
+    const r = rects[i];
+    return { ...row, box: r.width ? { x: r.x, y: r.y, width: r.width, height: r.height } : null };
+  });
   fs.writeFileSync(png.replace(/\.png$/, '.ink.json'), `${JSON.stringify(table, null, 2)}\n`);
   console.log(`[ink] ${captureName}`);
   for (const [i, row] of rows.entries()) {
