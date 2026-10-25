@@ -92,7 +92,7 @@ Read the entry's body for what closes it, and check that:
 
 ### Step 3: Close it
 
-`bash .claude/skills/log/journal.sh close {{fid}}` removes the entry (and its category, when it was the last) and bumps the journal's date line. No confirmation: the check in Step 2 is the gate.
+`bash .claude/skills/log/journal.sh close {{fid}}` removes the entry (and its category, when it was the last) and bumps the journal's date line. It prints an `unblocks:` line for each followup that waited on this one; name each in the closing summary. No confirmation: the check in Step 2 is the gate.
 
 ### Step 4: Check, commit, suggest the follow-on
 

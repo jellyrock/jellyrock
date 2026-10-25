@@ -7,10 +7,10 @@
 # Shared code: maintained upstream and updated in place. A local edit is not overwritten
 # silently: it is reviewed (kept, or taken upstream) at the next update.
 #
-# Usage: bash .claude/skills/start-project/mailbox.sh list [--tsv] [--project <folder>]
+# Usage: bash .claude/skills/start-project/mailbox.sh list [--tsv [--pin]] [--project <folder>]
 #        bash .claude/skills/start-project/mailbox.sh show <id>
-#        bash .claude/skills/start-project/mailbox.sh send <owner/name> --id <id> --title <title> --body-file <file> [--project <folder>] [--commit <rev>]
-#        bash .claude/skills/start-project/mailbox.sh send <owner/name> --from <fid> [--project <folder>]
+#        bash .claude/skills/start-project/mailbox.sh send <owner/name> --id <id> --title <title> --body-file <file> [--project <folder>] [--commit <rev>] [--pinned]
+#        bash .claude/skills/start-project/mailbox.sh send <owner/name> --from <fid> [--project <folder>] [--pinned]
 #        bash .claude/skills/start-project/mailbox.sh close <id> --note <one line> [--commit <rev>]
 # Exit: the script's (0 done, 2 usage, 3 refused, 4 not written: try again); 3 when this machine has
 # no mailbox, except list (0).

@@ -53,10 +53,10 @@ Two repo-owned parts: `gates.tsv` beside the script maps each CI step to a categ
 
 ### Step 1: Which run
 
-A run URL gives its id after `/runs/`. With no arguments, list the newest failures and ask in chat which one:
+A run URL gives its id after `/runs/`. With no arguments, read the branch (`git branch --show-current`), then list the newest failures on it and ask in chat which one:
 
 ```sh
-bash .claude/skills/pr/forge.sh run list --branch "$(git branch --show-current)" --status failure --limit 5
+bash .claude/skills/pr/forge.sh run list --branch {{branch}} --status failure --limit 5
 ```
 
 None on this branch: say so, and offer the same list for the default branch (`bash .claude/skills/pr/forge.sh repo default-branch`).

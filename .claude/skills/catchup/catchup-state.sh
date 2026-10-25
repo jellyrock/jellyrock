@@ -57,9 +57,25 @@
 #   cadence-overdue: overdue      a Recurring cadences row past its next-due date
 #   followups-unreviewed: overdue journal.sh review: followups not re-read within journal.conf's
 #                                 review_days (off without it); the oldest three as details
+#   mail-pinned: pinned (class 2)  an open message its sender pinned; ranked with the pinned followups by date
 #   mail-open: overdue            an open message from another repo about no project, once
 #                                 CATCHUP_MAIL_OVERDUE_DAYS (14) old or undated; debt before that
+#   followup-unblocked: overdue   an unpinned followup whose every waits-on wait is met (a pinned one
+#                                 is a PIN line); its waits-on is then to be dropped or kept on purpose
+#   followup-wait-broken: overdue a followup whose waits-on names nothing found, or an abandoned
+#                                 project; never a PIN line. A followup still waiting is held out of
+#                                 the ranking, pinned or not, and listed under Held followups.
+#   followup-recheck: overdue     an unpinned followup whose only waits left are ones no script can
+#                                 check, and every after: re-check date among them has passed (a
+#                                 pinned one is a PIN line); check on it, then set a new date
+#   project-recheck: overdue      the same for a project: its waits-on and [external-gate:] tags
 #   cadence-unfilled: debt        the cadence table still holds its placeholder row
+#   wait-no-recheck: debt         a followup or project waiting on something no script can check (a
+#                                 person, an outside event, another repo's project outside a projects
+#                                 home) with no after: re-check date; the followup is held meanwhile
+#   wait-in-prose: debt           a followup title that names a date or a time after a wait word
+#                                 (after, until, not before, on or after, at or after) and has no
+#                                 waits-on marker; one line for all, a detail per followup
 #   verify-first-format: debt     a PLAN's Verify first lines not in the `command` prints `value`
 #                                 shape, one line per PLAN (the rest of the PLAN check is
 #                                 plan-contradicts)
@@ -78,6 +94,8 @@
 #
 # Usage: bash .claude/skills/catchup/catchup-state.sh   (from inside the repo)
 # CATCHUP_TODAY=YYYY-MM-DD overrides today's date (tests); dates are UTC, as journal.sh's are.
+# WAITS_NOW=<time> sets the clock the after: waits read (resume-state.sh); a test that moves the
+# date sets both.
 # SKILLS_CONFIG_DIR=<a repo's .claude/skills folder> reads that repo's catchup.conf and journal.conf
 # in place of the ones beside this script: a copy of it reading another repo (/focus-all).
 # Exit: 0 read; 2 no journal to brief from, or not a git repository (the ERROR candidates say which),
@@ -113,9 +131,11 @@ serr() { local s="$1" t="$2"; shift 2; cand 1 1 0 "ERROR$TAB$s$TAB$t" "$@"; } # 
 oerr() { local s="$1" t="$2"; shift 2; cand 1 0 0 "ERROR$TAB$s$TAB$t" "$@"; } # an own error
 declare -A RANK=([fire]=2 [resume]=4 [overdue]=5 [debt]=7)
 # shared ids: "<rank> <position>"; a shared id's class is fixed (catchup.conf cannot move it)
-declare -A SHARED=([dirty-tree]="2 1" [work-running]="4 1" [project-unblocked]="4 2" [mail-project]="4 3"
+declare -A SHARED=([dirty-tree]="2 1" [work-running]="4 1" [project-unblocked]="4 2" [mail-project]="4 3" [mail-pinned]="3 0"
   [journal-stale]="5 1" [wait-unknown]="5 2" [plan-contradicts]="5 3" [project-dormant]="5 4"
-  [cadence-overdue]="5 5" [followups-unreviewed]="5 6" [mail-open]="5 7" [cadence-unfilled]="7 1" [verify-first-format]="7 2"
+  [cadence-overdue]="5 5" [followups-unreviewed]="5 6" [mail-open]="5 7" [followup-unblocked]="5 8" [followup-wait-broken]="5 9"
+  [followup-recheck]="5 10" [project-recheck]="5 11"
+  [cadence-unfilled]="7 1" [verify-first-format]="7 2" [wait-no-recheck]="7 3" [wait-in-prose]="7 4"
   [off-branch]="9 1" [unpushed]="9 2" [gate-missing]="9 3" [journal-shaped]="9 4")
 shared() { # <id> <text> [project slug] [detail...]: a shared check that fired, with its route;
   # AT="<rank> <position>" before the call ranks this one firing elsewhere (a message's age)
@@ -124,8 +144,14 @@ shared() { # <id> <text> [project slug] [detail...]: a shared check that fired, 
   case "$id" in
     dirty-tree) route="look at it first: finish and commit it, or /resume-project {{slug}} if it is a project's" ;;
     work-running) route="check on it" ;;
-    project-unblocked|wait-unknown|plan-contradicts|verify-first-format|project-dormant|mail-project) route="/resume-project $3" ;;
+    project-unblocked|wait-unknown|plan-contradicts|verify-first-format|project-dormant|mail-project|project-recheck) route="/resume-project $3" ;;
     mail-open) route="read it (bash .claude/skills/start-project/mailbox.sh show $3), act on it, then /done message $3" ;;
+    mail-pinned) route="read it (bash .claude/skills/start-project/mailbox.sh show $3), act on it, then /done message $3${MPROJ:+; it is about project $MPROJ: /resume-project $MPROJ}" ;;
+    followup-unblocked) route="act on it (journal.sh show $3); when you keep it, drop its waits: journal.sh replace $3 --waits-on \"\"" ;;
+    followup-wait-broken) route="fix its waits-on: journal.sh replace $3 --waits-on \"{{list}}\"" ;;
+    followup-recheck) route="check on what it waits on (journal.sh show $3), then set a new after: date (journal.sh replace $3 --waits-on \"…\") or close it" ;;
+    wait-no-recheck) route="add a re-check date: for a followup, journal.sh replace {{fid}} --waits-on \"{{list}}, after:YYYY-MM-DD\"; for a project, after:YYYY-MM-DD in its waits-on at its next /end-session" ;;
+    wait-in-prose) route="add the wait: journal.sh replace {{fid}} --waits-on \"after:YYYY-MM-DD\" (a time: after:YYYY-MM-DDTHH:MM with Z or an offset); or reword a title that only tells what happened" ;;
     journal-stale) route="/log what landed, or /done what finished" ;;
     followups-unreviewed) route="re-read each against today's state, then /done followup {{fid}}, or keep it with a dated Re-checked YYYY-MM-DD note (journal.sh replace)" ;;
     cadence-overdue) route="run the command its row names" ;;
@@ -304,14 +330,77 @@ else
     # pinned followups, the oldest captured first, then in journal order (list still lists when check
     # fails: the error above says its counts are n/a, and the pins it does find are not hidden)
     if lst="$(jr list --tsv)"; then
-      # its fields: category, fid, captured, age, prompt, title, pinned; the prompt is often empty,
-      # so split by awk (read would merge the empty field away). The position is the captured date
-      # as a number; an undated pin sorts last.
-      npin=0
-      while IFS="$TAB" read -r pos p; do cand 3 1 "$pos" "PIN$TAB$p"; npin=$((npin+1)); done \
-        < <(awk -F'\t' '$7 == "pinned" { d = $3; gsub(/-/, "", d); if (d !~ /^[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]$/) d = 99999999
-              print d "\t" $2 "\t" $6 }' <<<"$lst")
+      # its fields: category, fid, captured, age, prompt, title, pinned, waits-on; the prompt is
+      # often empty, so the row is split on a separator that is not whitespace (read would merge
+      # the empty field away). The PIN position is the captured date as a number; an undated pin
+      # sorts last.
+      lst="$(tr "$TAB" '\037' <<<"$lst")"
+      # followups with a waits-on list: resolved in one call by /resume-project's reader (the one
+      # resolver), which says free (every wait met), held, broken (a wait names nothing found or
+      # an abandoned project), recheck (only waits no script can check are left, and every after:
+      # date has passed) or unchecked (a wait no script can check, with no after: date) for each
+      declare -A wst=() wdt=()
+      wrows="$(awk -F'\037' '$8 != "" { print $2 "\t" $8 }' <<<"$lst")"
+      if [ -n "$wrows" ]; then
+        wl=""; wrc=0
+        if [ ! -f "$resume_sh" ]; then echo "NOTE: no resume-state.sh beside this skill: followup waits are not resolved"
+        else
+          wl="$(bash "$resume_sh" --waits-list <<<"$wrows" 2>&1)"; wrc=$?
+          [ "$wrc" = 0 ] || { wl=""; echo "NOTE: resume-state.sh --waits-list failed (exit $wrc): update /resume-project's script; followup waits are not resolved"; }
+        fi
+        while IFS=$'\t' read -r wf ws wd; do
+          case "$ws" in free|held|broken|recheck|unchecked) wst[$wf]="$ws"; wdt[$wf]="$wd" ;; esac
+        done <<<"$wl"
+      fi
+      npin=0; nheld=0; held_lines=()
+      while IFS=$'\037' read -r _ wf wcap _ _ wt wp ww; do
+        [ -n "$wf" ] || continue
+        if [ -n "$ww" ] && [ -z "${wst[$wf]:-}" ]; then wst[$wf]=held; wdt[$wf]="not resolved"; fi
+        case "${wst[$wf]:-none}" in
+          held|broken|unchecked)
+            nheld=$((nheld + 1)); held_lines+=("  $wf  ${wst[$wf]}  ${wdt[$wf]}${wp:+  [pinned]}")
+            [ "${wst[$wf]}" = broken ] && shared followup-wait-broken "followup $wf waits on something not found or abandoned: ${wdt[$wf]}" "$wf"
+            [ "${wst[$wf]}" = unchecked ] && shared wait-no-recheck "followup $wf waits on something no script can check, with no re-check date: ${wdt[$wf]}" "$wf" ;;
+          *)
+            if [ -n "$wp" ]; then
+              wd="${wcap//-/}"; [[ $wd =~ ^[0-9]{8}$ ]] || wd=99999999
+              cand 3 1 "$wd" "PIN$TAB$wf$TAB$wt"; npin=$((npin + 1))
+            elif [ "${wst[$wf]:-none}" = free ]; then
+              shared followup-unblocked "followup $wf no longer waits: every wait is met (${wdt[$wf]}): $wt" "$wf"
+            elif [ "${wst[$wf]:-none}" = recheck ]; then
+              shared followup-recheck "followup $wf: its re-check date passed (${wdt[$wf]}): $wt" "$wf"
+            fi ;;
+        esac
+      done <<<"$lst"
       echo "pinned: $npin"
+      echo "--- Held followups ($nheld) ---"
+      if [ "$nheld" -gt 0 ]; then printf '%s\n' "${held_lines[@]}"; else echo "Nothing held."; fi
+      # a title with no waits-on marker that names a time after a wait word: the wait was written in
+      # prose only. A keyword as a whole word, then a date or a time within 30 characters, with no
+      # "." or ";" between (plain tolower/index/substr/match: the same under gawk and mawk)
+      mapfile -t prose_hits < <(awk -F'\037' '
+        function hit(l, kw,   from, p, n, rest) {
+          from = 1
+          while ((p = index(substr(l, from), kw)) > 0) {
+            p += from - 1
+            if (substr(l, p - 1, 1) !~ /[a-z0-9_]/ && substr(l, p + length(kw), 1) !~ /[a-z0-9_]/) {
+              rest = substr(l, p + length(kw), 30)
+              n = index(rest, "."); if (n) rest = substr(rest, 1, n - 1)
+              n = index(rest, ";"); if (n) rest = substr(rest, 1, n - 1)
+              if (match(rest, /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/) || match(rest, /[0-9]:[0-9][0-9]/)) return 1
+            }
+            from = p + length(kw)
+          }
+          return 0
+        }
+        $8 == "" && $2 != "" {
+          l = " " tolower($6)
+          if (hit(l, "after") || hit(l, "until") || hit(l, "not before") || hit(l, "on or after") || hit(l, "at or after"))
+            print "  " $2 ": " $6
+        }' <<<"$lst")
+      if [ "${#prose_hits[@]}" -gt 0 ]; then
+        shared wait-in-prose "${#prose_hits[@]} followup title(s) name a time with no waits-on marker" "" "${prose_hits[@]}"
+      fi
     else serr JOURNAL "pinned followups n/a — journal.sh list failed: ${lst#journal.sh: }"; fi
 
     # followups not re-read within the repo's review bound: journal.sh review's rows (fid, category,
@@ -431,14 +520,20 @@ else
       if [ ! -f "$resume_sh" ]; then
         [ -n "${resume_noted:-}" ] || { lines+=("NOTE: no resume-state.sh beside this skill: waits-on and the PLAN check are not run"); resume_noted=1; }
       else
-        if grep -qE '^waits-on:[[:space:]]*[^#[:space:]]' "$plan"; then
+        # a gate tag in Status is a wait too: read the PLAN when it holds one, with or without a waits-on
+        if grep -qE '^waits-on:[[:space:]]*[^#[:space:]]' "$plan" || grep -qF '[external-gate:' "$plan"; then
           wout="$(bash "$resume_sh" --waits "$plan" 2>&1)"
           waiting="$(grep -cE '^(waiting|not checkable here):' <<<"$wout")"
-          lines+=("$(grep -v '^BANNER:' <<<"$wout" | sed 's/^/    waits-on → /')")
+          wlist="$(grep -vE '^(BANNER:|waits-on: none$)' <<<"$wout")"
+          [ -z "$wlist" ] || lines+=("    waits-on → ${wlist//$'\n'/$'\n'    waits-on → }")
           grep -q '^BANNER: every wait is met' <<<"$wout" \
             && shared project-unblocked "project $name no longer waits: every wait is met — resume it, and drop waits-on at its next /end-session" "$slug"
           grep -q '^BANNER: .*name nothing found here' <<<"$wout" \
             && shared wait-unknown "project $name waits on something not found here — fix its waits-on" "$slug"
+          rb="$(grep -m1 '^BANNER: the re-check date passed: ' <<<"$wout")"
+          [ -z "$rb" ] || shared project-recheck "project $name: its re-check date passed: ${rb#BANNER: the re-check date passed: }" "$slug"
+          nb="$(sed -n 's/^BANNER: \([0-9][0-9]*\) wait(s) no script can check have no re-check date.*/\1/p' <<<"$wout")"
+          [ -z "$nb" ] || shared wait-no-recheck "project $name: $nb wait(s) no script can check have no re-check date" "$slug"
         fi
         # the PLAN check as a resume shows it: a real contradiction only; a kickoff older than the
         # skeleton is the writer's to fix at its next close, not a candidate here
@@ -525,16 +620,27 @@ git log --oneline -10 2>/dev/null || serr "RECENT COMMITS" "git log failed"
 
 # The open messages other repos left this one (the mailbox), through the shared helper: nothing on
 # a machine with no mailbox. One about a project ranks with work to resume, any other as overdue.
-m_out=""; [ -f "$mailbox_sh" ] && m_out="$(bash "$mailbox_sh" list --tsv 2>/dev/null </dev/null)"
+# --pin adds the seventh column (pinned or empty); a backend from before it exits 2, and then the
+# six-column list is read with every message unpinned.
+m_out=""; m_nopin=0
+if [ -f "$mailbox_sh" ]; then
+  m_out="$(bash "$mailbox_sh" list --tsv --pin 2>/dev/null </dev/null)"; m_rc=$?
+  if [ "$m_rc" = 2 ]; then m_nopin=1; m_out="$(bash "$mailbox_sh" list --tsv 2>/dev/null </dev/null)"; fi
+fi
 if [ -n "$m_out" ]; then
   section "MAILBOX"
+  [ "$m_nopin" = 0 ] || echo "NOTE: the mailbox script has no --pin: pinned messages rank as unpinned; update the global setup"
   while IFS= read -r row; do
     # a tab is whitespace to read, which merges empty columns: split on a separator that is not
-    IFS=$'\037' read -r mid mfrom msent mdays mproj mtitle <<<"$(tr "$TAB" '\037' <<<"$row")"
+    IFS=$'\037' read -r mid mfrom msent mdays mproj mtitle mpin <<<"$(tr "$TAB" '\037' <<<"$row")"
     when="sent $msent, $mdays day(s) ago"; age="$mdays day(s) old"
     [ -n "$msent" ] || { when="undated"; age="undated"; }
-    printf 'mail: %s from %s (%s)%s: %s\n' "$mid" "$mfrom" "$when" "${mproj:+, about $mproj}" "$mtitle"
-    if [ -n "$mproj" ]; then
+    printf 'mail: %s from %s (%s)%s: %s%s\n' "$mid" "$mfrom" "$when" "${mproj:+, about $mproj}" "$mtitle" "${mpin:+  [pinned]}"
+    if [ -n "$mpin" ]; then
+      # ranked with the pinned followups: the position is the sent date as a number, undated last
+      md="${msent//-/}"; [[ $md =~ ^[0-9]{8}$ ]] || md=99999999
+      AT="3 $md" MPROJ="${mproj#[0-9][0-9][0-9][0-9]-[0-9][0-9]-}" shared mail-pinned "a pinned message from $mfrom, $age: $mtitle${mproj:+, about $mproj} (mail: $mid)" "$mid"
+    elif [ -n "$mproj" ]; then
       shared mail-project "an open message from $mfrom about $mproj, $age: $mtitle (mail: $mid)" "${mproj#[0-9][0-9][0-9][0-9]-[0-9][0-9]-}"
     elif [ -n "$msent" ] && [[ $mdays =~ ^[0-9]+$ ]] && [ "$mdays" -lt "$mail_days" ]; then
       # younger than the threshold: debt; once it is that old, or undated, overdue

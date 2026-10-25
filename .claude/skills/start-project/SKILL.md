@@ -65,7 +65,7 @@ Run `bash .claude/skills/start-project/scaffold-project.sh --check {{slug}}`. It
 Work through the three Charter fields, Goal (one sentence), Success criteria (bulleted, verifiable) and Out of scope (bulleted), and rough in the Phases, each with an id (`A`, `B`, … or `1`, `2`, …). Draft from what is known, then iterate with the user; ask in chat when unsure, never assume. Also raise, when they apply:
 
 - **Posture.** When [this repo's public posture](../../../AGENTS.md#public-posture) is `public` and the work will touch committed files, say so now: every commit it makes must name no other repository or host, no person, and no secret.
-- **Waits.** Does this project need another project, one of its phases, or a followup to finish first? Those become its `waits-on:` (Step 5). Is it spun off from a project that cannot continue until this one lands? That project's `waits-on:` gets this slug.
+- **Waits.** Does this project need another project (another repo's, as `{{owner}}/{{name}}/{{slug}}`), one of its phases, a followup, or a date (`after:{{date}}`) to pass first? Those become its `waits-on:` (Step 5). Is it spun off from a project that cannot continue until this one lands? That project's `waits-on:` gets this slug. The values are in [waits.md](../log/waits.md).
 
 **Settle the one-line Goal before Step 4**: the script writes it into the README row.
 
@@ -94,7 +94,7 @@ In a projects home (a repo of its own) it commits there and pushes, and prints `
 Write into the scaffolded `PLAN.md`, replacing each placeholder:
 
 - The Charter and Phases from Step 3.
-- `waits-on:` from Step 3 (`{{slug}}`, `{{slug}}:{{phase id}}`, `fid:{{id}}`, `{{repo}}/{{slug}}`), or leave it empty. When this project holds up a parent, add this slug to the parent's `waits-on:` too.
+- `waits-on:` from Step 3 (`{{slug}}`, `{{slug}}:{{phase id}}`, `fid:{{id}}`, `after:{{date}}`, `{{owner}}/{{name}}/{{slug}}`; [waits.md](../log/waits.md)), or leave it empty. When this project holds up a parent, add this slug to the parent's `waits-on:` too.
 - Status: `**Current phase:** A: {{name}}`, Phase progress with the first phase 🚧 and the rest ⬜, and "none" for open questions until there are some. Leave the decisions list's placeholder line as it is: the decision script drops it when the first real decision arrives, and a `- none` line would be kept as a decision. A project that will keep a findings queue gets a `## 📋 Punch-list` section right after Status, one `- [ ]` line per item.
 - The kickoff in the template's skeleton, for a session with no memory of this one: `Starts at` the first phase and its first step, what this session stopped at, questions still unanswered, then Verify first, Next in order, Required reading and Landmines as far as they are known; a part with nothing yet holds the single line `none` (no bullet).
 - The first dated line in the Session log.
