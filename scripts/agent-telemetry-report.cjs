@@ -59,19 +59,7 @@ const STATE_HOME = process.env.XDG_STATE_HOME || path.join(os.homedir(), '.local
 const TELEMETRY_DIR =
   process.env.JELLYROCK_TELEMETRY_DIR || path.join(STATE_HOME, 'jellyrock', 'telemetry');
 const LOG_PATH = path.join(TELEMETRY_DIR, 'tool-use.jsonl');
-// Where the hooks wrote before the log moved to the state folder. A checkout that has not pulled
-// the move still writes here, so the default report reads both logs while this one exists. Remove
-// this read once no checkout writes here: the report prints when the old log last grew.
-const OLD_LOG_PATH = path.join(os.homedir(), '.claude', 'jellyrock-telemetry', 'tool-use.jsonl');
 const logPaths = [LOG_PATH];
-if (!process.env.JELLYROCK_TELEMETRY_DIR && fs.existsSync(OLD_LOG_PATH)) {
-  logPaths.push(OLD_LOG_PATH);
-  const last = fs.statSync(OLD_LOG_PATH).mtime.toISOString().slice(0, 10);
-  console.log(`Also read the old log at ${OLD_LOG_PATH} (last written ${last}).`);
-  console.log(
-    `Once no checkout writes there, retire it: mv "${path.dirname(OLD_LOG_PATH)}" "${TELEMETRY_DIR}"`,
-  );
-}
 const presentLogs = logPaths.filter((p) => fs.existsSync(p));
 
 if (presentLogs.length === 0) {
