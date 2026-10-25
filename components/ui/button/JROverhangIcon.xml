@@ -10,7 +10,7 @@
     <field id="icon" type="string" onChange="onIconChanged" />
     <field id="actionId" type="string" />
     <!-- A disabled icon keeps focus and still fires selectedAction (the press explains
-         why it is disabled); it only draws in the error color. -->
+         why it is disabled); it only draws its glyph in colorTextDisabled. -->
     <field id="isDisabled" type="boolean" value="false" onChange="onIsDisabledChanged" />
 
     <!-- Output -->

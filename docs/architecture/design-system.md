@@ -32,8 +32,7 @@ The palette encodes interaction state, not only hue. Pick by meaning and the cho
 | `colorSecondary` | Highlights nothing can focus: the selected-tab underline, accent rules, emphasis marks, decorative dividers | Anything focusable |
 | `colorBackgroundPrimary` | Panel and surface fills | |
 | `colorBackgroundSecondary` | Structural separators, subtle borders, the fill behind a focused button | |
-| `colorTextPrimary`, `colorTextSecondary`, `colorTextDisabled` | Text by emphasis level; a focused control's text and glyph take primary, a resting one secondary | |
-| `colorError` | A control that cannot act and says so on a press (a disabled overhang icon) | Emphasis |
+| `colorTextPrimary`, `colorTextSecondary`, `colorTextDisabled` | Text by emphasis level; a focused control's text and glyph take primary, a resting one secondary, a control that cannot act disabled (a disabled overhang icon, focused or not) | |
 
 It matters most where two appear in one frame. In a dialog the button focus ring is `colorPrimary` and the accent rule under the title `colorSecondary`; an accent rule in `colorPrimary` would read as focusable. In the overhang the focus ring is `colorPrimary` and the selected tab's underline `colorSecondary`: the underline marks where you are, the ring what you are on.
 
@@ -47,7 +46,7 @@ One row, the same elements in the same order on every screen that shows them (`J
 
 | Element | Size | Rule |
 |---|---|---|
-| Icon button (`JROverhangIcon`) | a 78 pixel square focus box around the 42 pixel glyph; the row lays out by 60 pixel slots 6 apart, so the box overhangs its slot by 9 and overlaps its invisible neighbors | The focus ring is the 6 pixel border; the resting glyph is `colorTextSecondary`, focused `colorTextPrimary`, disabled `colorError` |
+| Icon button (`JROverhangIcon`) | a 78 pixel square focus box around the 42 pixel glyph; the row lays out by 60 pixel slots 6 apart, so the box overhangs its slot by 9 and overlaps its invisible neighbors | The focus ring is the 6 pixel border; the resting glyph is `colorTextSecondary`, focused `colorTextPrimary`, disabled `colorTextDisabled` in both states |
 | Tab (`JRTab`) | the Large font in a 78 pixel box, 9 pixels at the sides, a 42 pixel glyph, a 6 pixel icon gutter | The glyph is outlined until the tab is selected, then filled; the 6 pixel underline under glyph and text is `colorSecondary` |
 | User dropdown (`JRDropdown`) | a 42 pixel avatar, the name, a 24 pixel chevron, 9 pixels apart, in a 78 pixel box with 9 pixels at the sides | The box hugs its content; a name past 300 pixels is cut with an ellipsis |
 | Clock | right-aligned at x 1824 in a 150 pixel slot | Everything else is placed from the slot's left edge |

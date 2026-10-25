@@ -142,6 +142,67 @@ namespace tests
       m.assertEqual(poster.uri, "pkg:/images/icons/search_$$RES$$.png")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Glyph color")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    ' Each case builds its own icon: a field set here must not reach the next case.
+
+    ' A color read back from a node is an RGBA integer; the theme constants are strings.
+    ' Round-trip the expected one through a Poster so both sides read the same way.
+    private function asBlend(color as dynamic) as dynamic
+      p = CreateObject("roSGNode", "Poster")
+      p.blendColor = color
+      return p.blendColor
+    end function
+
+    @it("rests in colorTextSecondary")
+    function _()
+      icon = CreateObject("roSGNode", "JROverhangIcon")
+      m.assertEqual(icon.findNode("buttonIcon").blendColor, m.asBlend(m.global.constants.colorTextSecondary))
+    end function
+
+    @it("takes colorTextPrimary and shows its ring when focused")
+    function _()
+      scene = m.top.getScene()
+      icon = CreateObject("roSGNode", "JROverhangIcon")
+      scene.appendChild(icon)
+      icon.setFocus(true)
+      color = icon.findNode("buttonIcon").blendColor
+      ringShown = icon.findNode("buttonBorder").visible
+      scene.removeChild(icon)
+      m.assertEqual(color, m.asBlend(m.global.constants.colorTextPrimary))
+      m.assertTrue(ringShown)
+    end function
+
+    @it("draws a disabled glyph in colorTextDisabled at rest")
+    function _()
+      icon = CreateObject("roSGNode", "JROverhangIcon")
+      icon.isDisabled = true
+      m.assertEqual(icon.findNode("buttonIcon").blendColor, m.asBlend(m.global.constants.colorTextDisabled))
+    end function
+
+    @it("keeps a disabled glyph in colorTextDisabled when focused, with its ring")
+    function _()
+      scene = m.top.getScene()
+      icon = CreateObject("roSGNode", "JROverhangIcon")
+      icon.isDisabled = true
+      scene.appendChild(icon)
+      icon.setFocus(true)
+      color = icon.findNode("buttonIcon").blendColor
+      ringShown = icon.findNode("buttonBorder").visible
+      scene.removeChild(icon)
+      m.assertEqual(color, m.asBlend(m.global.constants.colorTextDisabled))
+      m.assertTrue(ringShown)
+    end function
+
+    @it("returns to colorTextSecondary when re-enabled")
+    function _()
+      icon = CreateObject("roSGNode", "JROverhangIcon")
+      icon.isDisabled = true
+      icon.isDisabled = false
+      m.assertEqual(icon.findNode("buttonIcon").blendColor, m.asBlend(m.global.constants.colorTextSecondary))
+    end function
+
   end class
 
 end namespace
