@@ -211,74 +211,31 @@ sub focusFirstTab()
   m.tabBar.setFocus(true)
 end sub
 
-' The row's last visible element takes focus (Left off the first element wraps here).
-sub focusRowEnd()
-  if m.cluster.visible
-    m.cluster.callFunc("focusEdge", "right")
-  else if m.userDropdown.visible
+' Moves focus along the row from `from` by a Left or Right press; overhangRow.nextFocus
+' decides where, so a Rooibos spec covers every combination of elements shown.
+sub moveRowFocus(from as string, direction as string)
+  shown = { tabs: tabBarShowing(), dropdown: m.userDropdown.visible, cluster: m.cluster.visible }
+  target = overhangRow.nextFocus(shown, from, direction)
+  if target.element = "tabs"
+    if target.edge = "first" then focusFirstTab() else focusLastTab()
+  else if target.element = "dropdown"
     m.userDropdown.setFocus(true)
-  else if tabBarShowing()
-    focusLastTab()
+  else if target.element = "cluster"
+    if target.edge = "first" then m.cluster.callFunc("focusEdge", "left") else m.cluster.callFunc("focusEdge", "right")
   end if
 end sub
 
-' The row's first visible element takes focus (Right off the last element wraps here).
-sub focusRowStart()
-  if tabBarShowing()
-    focusFirstTab()
-  else if m.userDropdown.visible
-    m.userDropdown.setFocus(true)
-  else if m.cluster.visible
-    m.cluster.callFunc("focusEdge", "left")
-  end if
-end sub
-
-' Called when the tab bar signals at its boundary: Right goes on along the row, Left wraps.
+' The tab bar signals when a press walks off one of its ends
 sub onTabBarRequestsUserMenu()
-  direction = m.tabBar.requestFocusToUserMenu
-  if direction = "right"
-    if m.userDropdown.visible
-      m.userDropdown.setFocus(true)
-    else if m.cluster.visible
-      m.cluster.callFunc("focusEdge", "left")
-    else
-      focusFirstTab()
-    end if
-  else if direction = "left"
-    focusRowEnd()
-  end if
+  moveRowFocus("tabs", m.tabBar.requestFocusToUserMenu)
 end sub
 
 sub onUserDropdownFocusExit()
-  direction = m.userDropdown.requestFocusExit
-  if direction = "left"
-    if tabBarShowing()
-      focusLastTab()
-    else
-      focusRowEnd()
-    end if
-  else if direction = "right"
-    if m.cluster.visible
-      m.cluster.callFunc("focusEdge", "left")
-    else
-      focusRowStart()
-    end if
-  end if
+  moveRowFocus("dropdown", m.userDropdown.requestFocusExit)
 end sub
 
 sub onClusterFocusExit()
-  direction = m.cluster.requestFocusExit
-  if direction = "left"
-    if m.userDropdown.visible
-      m.userDropdown.setFocus(true)
-    else if tabBarShowing()
-      focusLastTab()
-    else
-      focusRowEnd()
-    end if
-  else if direction = "right"
-    focusRowStart()
-  end if
+  moveRowFocus("cluster", m.cluster.requestFocusExit)
 end sub
 
 ' ============================================
