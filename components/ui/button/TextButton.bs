@@ -47,11 +47,7 @@ sub init()
   '
   ' The load-time trio for the same reason applyIconState carries it: 125x125 of
   ' texture to draw 24 is waste, and loadWidth/loadHeight do nothing on their own.
-  m.buttonSpinner.poster.width = m.top.iconSize
-  m.buttonSpinner.poster.height = m.top.iconSize
-  m.buttonSpinner.poster.loadWidth = m.top.iconSize
-  m.buttonSpinner.poster.loadHeight = m.top.iconSize
-  m.buttonSpinner.poster.loadDisplayMode = "limitSize"
+  sizeSpinner()
 
   m.top.observeField("isEnabled", "onEnabledChanged")
   m.top.observeField("background", "onBackgroundChanged")
@@ -64,7 +60,7 @@ sub init()
   m.top.observeField("minHeight", "onSizeChanged")
   m.top.observeField("icon", "onIconChanged")
   m.top.observeField("iconSide", "onSizeChanged")
-  m.top.observeField("iconSize", "onSizeChanged")
+  m.top.observeField("iconSize", "onIconSizeChanged")
   m.top.observeField("iconGutter", "onSizeChanged")
   m.top.observeField("shouldSnapToGrid", "onSizeChanged")
   m.top.observeField("showSelectedIndicator", "onSizeChanged")
@@ -275,6 +271,23 @@ sub setSizeAndCenterText()
 end sub
 
 ' ── Icon ─────────────────────────────────────────────────────────────────────
+
+' A subclass sets iconSize after TextButton.init() has run (JRTab does), so both occupants
+' of the slot take it here, not only at init or on the next icon change
+sub onIconSizeChanged()
+  sizeSpinner()
+  applyIconState()
+  setSizeAndCenterText()
+end sub
+
+' The spinner shares the icon's slot, so it takes the icon's size
+sub sizeSpinner()
+  m.buttonSpinner.poster.width = m.top.iconSize
+  m.buttonSpinner.poster.height = m.top.iconSize
+  m.buttonSpinner.poster.loadWidth = m.top.iconSize
+  m.buttonSpinner.poster.loadHeight = m.top.iconSize
+  m.buttonSpinner.poster.loadDisplayMode = "limitSize"
+end sub
 
 sub onIconChanged()
   applyIconState()
