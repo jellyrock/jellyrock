@@ -830,6 +830,12 @@ A message the server splits into several frames is never posted. The last frame 
 
 Not done there: it changes how every inbound message is handed over and needs its own spec. Closes with: `_decode_frame` passes the first fragment's opcode for a final continuation frame, a spec case delivers a three-fragment text message intact, and the existing cases still pass.
 
+#### The overhang's fixed cluster and its focus plumbing exist on Home only `[fid: overhang-cluster-on-every-screen]` `[captured 2026-10-25]`
+
+The one-row overhang (`JROverhang`, the branch `feat/overhang-one-row`) builds the fixed Search and Settings cluster as a component, but only Home declares `shouldShowIcons`, and only Home wires Up into the row and Down back out. The design (`docs/architecture/design-system.md`, "The overhang row") says the cluster is the same on every screen that shows the overhang, so the SyncPlay icon lands beside it everywhere. Settings already declares the user dropdown with no focus path to it, a pre-existing gap of the same shape.
+
+What closes it: a `JRScreen`-level hook so Up from a screen's top row enters the overhang and Down returns to the screen's own focus (today that logic is `Home.onKeyEvent`, `restoreHomeFocus` and `onIconFocusReturn`); the cluster's actions routed by `JRScene` (`routerNavigate` to `/search` and `/settings`) instead of `Home.handleHomeMenuAction`; every routed screen declaring the cluster; and RTA coverage of the walk on a library screen and `ItemDetails`, which show only a title and the clock today. Its own PR after the overhang one.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
