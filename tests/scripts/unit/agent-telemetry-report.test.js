@@ -90,8 +90,7 @@ describe('agent-telemetry-report', () => {
 
 // Without JELLYROCK_TELEMETRY_DIR, the log lives in the per-user state folder
 // (`$XDG_STATE_HOME/jellyrock/telemetry`, default `~/.local/state/jellyrock/telemetry`), where
-// the hooks write it. Checkouts that have not pulled the move still write the old
-// `~/.claude/jellyrock-telemetry`, so the report reads that log too while it exists.
+// the hooks write it. The report reads only that folder, or the override.
 describe('agent-telemetry-report: where the log is', () => {
   let home;
 
@@ -119,7 +118,7 @@ describe('agent-telemetry-report: where the log is', () => {
     expect(stdout).toMatch(/1 events in window/);
   });
 
-  it('defaults to ~/.local/state/jellyrock/telemetry, and reads the old ~/.claude folder too', () => {
+  it('defaults to ~/.local/state/jellyrock/telemetry, and ignores the old ~/.claude folder', () => {
     home = mkdtempSync(join(tmpdir(), 'jellyrock-telemetry-home-'));
     writeLog(join(home, '.local', 'state', 'jellyrock', 'telemetry'), [
       { timestamp: today, tool: 'Read', file: 'a.bs' },
@@ -132,12 +131,12 @@ describe('agent-telemetry-report: where the log is', () => {
       env: { HOME: home, XDG_STATE_HOME: '', JELLYROCK_TELEMETRY_DIR: '' },
     });
     expect(exitCode).toBe(0);
-    expect(stdout).toMatch(/3 events in window/);
-    expect(stdout).toMatch(/\.claude\/jellyrock-telemetry/);
-    expect(stdout).toMatch(/\bmv\b/);
+    expect(stdout).toMatch(/1 events in window/);
+    expect(stdout).not.toMatch(/\.claude\/jellyrock-telemetry/);
+    expect(stdout).not.toMatch(/\bmv\b/);
   });
 
-  it('reads the old folder alone when the new one has no log yet', () => {
+  it('reports no log when only the old ~/.claude folder has one', () => {
     home = mkdtempSync(join(tmpdir(), 'jellyrock-telemetry-home-'));
     writeLog(join(home, '.claude', 'jellyrock-telemetry'), [
       { timestamp: today, tool: 'Read', file: 'b.bs' },
@@ -146,7 +145,7 @@ describe('agent-telemetry-report: where the log is', () => {
       env: { HOME: home, XDG_STATE_HOME: '', JELLYROCK_TELEMETRY_DIR: '' },
     });
     expect(exitCode).toBe(0);
-    expect(stdout).toMatch(/1 events in window/);
+    expect(stdout).toMatch(/No telemetry log at/);
   });
 
   it('reads only the override folder when JELLYROCK_TELEMETRY_DIR is set', () => {
