@@ -1,0 +1,72 @@
+import "pkg:/source/utils/refusedNavigation.bs"
+
+namespace tests
+
+  @suite("refusedNavigation - retrying a navigation the router refused")
+  class RefusedNavigationTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isTransientRefusal()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("recognizes the router's in-progress rejection")
+    function _()
+      m.assertTrue(refusedNavigation.isTransientRefusal({ message: "Navigation already in progress" }))
+    end function
+
+    @it("does not retry an unregistered route or a non-AA rejection")
+    @params({ message: "Route /nope not found" })
+    @params({ reason: "Navigation already in progress" })
+    @params("Navigation already in progress")
+    @params(invalid)
+    @params(42)
+    function _(err)
+      m.assertFalse(refusedNavigation.isTransientRefusal(err))
+    end function
+
+    @it("matches the text sgRouter builds, so an upgrade that rewords it fails here")
+    function _()
+      source = ReadAsciiFile("pkg:/components/roku_modules/sgrouter/Router.brs")
+      m.assertTrue(source.len() > 0, "the router source ships in the test build")
+      needle = "message: " + chr(34) + refusedNavigation.IN_PROGRESS_MESSAGE + chr(34)
+      m.assertTrue(source.instr(needle) >= 0, "Router.brs rejects with IN_PROGRESS_MESSAGE")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("nextStep()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("retries as soon as the router reads idle")
+    @params("NavigationEnd", 0)
+    @params("NavigationError", 10)
+    @params("NavigationCancel", 2999)
+    @params("", 0)
+    @params(invalid, 5000)
+    @params("NavigationEnd", 99999)
+    function _(stateType, elapsedMs)
+      m.assertEqual(refusedNavigation.nextStep(stateType, elapsedMs), "retry")
+    end function
+
+    @it("waits while a navigation is in flight and the refusal is young")
+    @params("NavigationStart", 0)
+    @params("ResolveStart", 50)
+    @params("ActivationEnd", 2999)
+    function _(stateType, elapsedMs)
+      m.assertEqual(refusedNavigation.nextStep(stateType, elapsedMs), "wait")
+    end function
+
+    @it("gives up once the refusal is GIVE_UP_MS old and the router is still busy")
+    @params("NavigationStart", 3000)
+    @params("ActivationStart", 60000)
+    function _(stateType, elapsedMs)
+      m.assertEqual(refusedNavigation.nextStep(stateType, elapsedMs), "giveUp")
+    end function
+
+    @it("polls more often than it gives up")
+    function _()
+      m.assertTrue(refusedNavigation.POLL_MS < refusedNavigation.GIVE_UP_MS)
+    end function
+
+  end class
+
+end namespace

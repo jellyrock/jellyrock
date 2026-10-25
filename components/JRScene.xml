@@ -18,6 +18,9 @@
          above it stays. Empty and hidden until a kind with stages has waited long enough. -->
     <LabelSecondaryMedium id="loadingStageText" width="1266" horizAlign="center" wrap="true" translation="[327, 640]" visible="false" />
     <Timer id="loadingStageTimer" repeat="false" />
+    <!-- Polls routerState while a navigation the router refused waits to be retried
+         (refusedNavigation, navigateThenFocus). -->
+    <Timer id="refusedNavigationTimer" repeat="true" />
     <Toast id="toast" visible="false" />
     <!-- Used to calculate m.global.user.fontScaleFactor -->
     <Label id="defaultFont" text="" visible="false" />

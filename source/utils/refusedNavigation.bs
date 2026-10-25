@@ -1,0 +1,55 @@
+import "pkg:/source/utils/misc.bs"
+
+' Retrying a navigation sgRouter refused because another was still in flight. Pure: the caller
+' owns the Timer and the clock, so the decision runs on any thread and in a test.
+'
+' After Back from search, Home focuses its search icon before the router dispatches the Back
+' navigation's NavigationEnd. An OK pressed in that window asks the router to navigate while it
+' is still busy, and the router rejects the call. Without a retry the press is lost. The window
+' is narrow (a probe sampling every 20 to 70 ms never saw it, 2026-10-19), so the first poll
+' after a refusal almost always finds the router idle.
+namespace refusedNavigation
+
+  ' How often the caller re-reads routerState while it waits for the router to go idle.
+  const POLL_MS = 50
+
+  ' How long a refused navigation waits for the router before it is dropped. A navigation that
+  ' outlasts this is a different fault; the retry is not the place to wait it out.
+  const GIVE_UP_MS = 3000
+
+  ' The message sgRouter rejects with when a navigation is already in flight: the one place it
+  ' builds that text is `_rejectNavigationInProgress` in roku_modules/sgrouter/Router.brs. A route
+  ' that is not registered rejects with a different message and is a programming error, never
+  ' retried. The spec pins this text against the router's source, so an upgrade that rewords it
+  ' fails a test instead of silently turning the retry off.
+  const IN_PROGRESS_MESSAGE = "Navigation already in progress"
+
+  ' Whether a rejected navigation is the transient refusal worth retrying. `err` is whatever the
+  ' promise rejected with: the router's AA, or anything else from a thrown error.
+  function isTransientRefusal(err as dynamic) as boolean
+    if type(err) <> "roAssociativeArray" then return false
+    message = err.message
+    if type(message) <> "roString" and type(message) <> "String" then return false
+    return message = IN_PROGRESS_MESSAGE
+  end function
+
+  ' Whether a routerState type means the router is idle. A navigation runs from NavigationStart to
+  ' NavigationEnd, NavigationError or NavigationCancel; an empty type is a router that has not
+  ' navigated yet.
+  function isIdleState(stateType as dynamic) as boolean
+    if not isValid(stateType) then return true
+    return stateType = "" or stateType = "NavigationEnd" or stateType = "NavigationError" or stateType = "NavigationCancel"
+  end function
+
+  ' What a pending retry does on this poll: "retry" once the router is idle, "giveUp" once the
+  ' refusal is GIVE_UP_MS old, else "wait" for the next poll.
+  '
+  ' @param stateType - the current routerState.type, or invalid for no router
+  ' @param elapsedMs - milliseconds since the refusal, on the caller's clock
+  function nextStep(stateType as dynamic, elapsedMs as dynamic) as string
+    if isIdleState(stateType) then return "retry"
+    if elapsedMs >= GIVE_UP_MS then return "giveUp"
+    return "wait"
+  end function
+
+end namespace

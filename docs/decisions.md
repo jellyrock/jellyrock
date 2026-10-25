@@ -2286,6 +2286,16 @@ The vendored socket client's `_read_socket_data` takes everything the socket hol
 
 Ruled out: an event-driven loop with the socket on the task's port, which reshapes the client's event routing for no further gain; skipping the 100 ms wait while bytes are pending, which relies on Roku re-posting a readable event after a partial read, not measured. Recheck if a server sends fragmented messages (followup `websocket-fragmented-message-dropped`) or frames near 512 KB.
 
+## decision-id: refused-navigation-retried-on-message
+
+**date**: 2026-10-25
+**status**: accepted
+**related-files**: `components/JRScene.bs`, `components/JRScene.xml`, `components/home/Home.bs`, `source/utils/refusedNavigation.bs`
+
+`JRScene.navigateThenFocus` retries a navigation sgRouter rejected only when the rejection's `message` is the router's "Navigation already in progress" text, held once as `refusedNavigation.IN_PROGRESS_MESSAGE`; any other rejection, such as an unregistered route, fails as before. The retry polls the public `routerState` on a Timer every `POLL_MS` and gives up after `GIVE_UP_MS`, reading the field rather than observing it because the observer drops the terminal `NavigationEnd` (decision `router-focus-left-notice` records the same finding). One refusal waits at a time; a newer one replaces it. A Rooibos case pins the constant against the text `Router.brs` builds, so an sgRouter upgrade that rewords it fails a test instead of silently disabling the retry. Home's search and settings actions go through the scene's `routerNavigate`. Measured 2026-10-25 on the Streaming Stick 4K: `search-navigation.spec.js` passed 10 of 10 runs, and the retry fired in 2 of them, each right after `Home.onScreenShown`.
+
+Ruled out: classifying the rejection by reading `isRouterNavigating()` in the catch, which runs on a later tick by which a short navigation can have ended, so a real refusal would read as a route error and the press would be lost again; retrying every rejection once, which surfaces a programming error one poll loop late with two log lines for one cause; patching sgRouter, already ruled out by `router-focus-left-notice`. The other direct `sgrouter.navigateTo` calls keep their bare calls: tech debt `bare-router-navigate-calls-skip-refusal-retry`. Recheck when an sgRouter upgrade changes `_rejectNavigationInProgress` or exposes a rejection code.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
