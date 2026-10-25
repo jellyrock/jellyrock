@@ -93,6 +93,13 @@ module.exports = {
     return [mdLint, spell, voice].filter(Boolean);
   },
 
+  // Skills: no argument placeholders, which Claude Code replaces at run time
+  // (scripts/lint/skill-placeholders-check.js says which forms and why).
+  '.claude/skills/**/SKILL.md': (files) => {
+    const cmd = cmdWithFiles('node scripts/lint/skill-placeholders-check.js', files);
+    return cmd ? [cmd] : [];
+  },
+
   // JSON: jshint syntax + duplicate-key check (broad set), then Prettier
   // formatting (curated set via .prettierignore). The two tools have
   // complementary scopes: jshint catches semantics Prettier doesn't (duplicate

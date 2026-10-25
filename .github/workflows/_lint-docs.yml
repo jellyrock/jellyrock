@@ -8,6 +8,8 @@ name: lint-docs
 #                              citations in tracked markdown (see
 #                              .claude/rules/derive-dont-duplicate.md and
 #                              docs/dev/writing-style.md)
+#   - lint:skill-placeholders: no argument placeholders in .claude/skills/*/SKILL.md,
+#                              which Claude Code would replace at run time
 #   - docs:dev-index:check:    drift on the auto-generated dev-guides index in
 #                              docs/architecture/README.md
 #   - docs:stale:blocking:     conditional hard gate (only fails if this PR
@@ -88,6 +90,9 @@ jobs:
       - name: House voice
         if: steps.detect.outputs.relevant == 'true'
         run: npm run lint:voice
+      - name: No argument placeholders in skills
+        if: steps.detect.outputs.relevant == 'true'
+        run: npm run lint:skill-placeholders
       - name: Check dev-index drift
         if: steps.detect.outputs.relevant == 'true'
         run: node scripts/generate/dev-index.cjs --check
