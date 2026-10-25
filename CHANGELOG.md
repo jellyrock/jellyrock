@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Add a quality gear, one cap for all codecs, bigger menu icons ([#1246](https://github.com/jellyrock/jellyrock/pull/1246))
 - Show a spinner over details and the TV guide while they load, and let Back leave them ([#1243](https://github.com/jellyrock/jellyrock/pull/1243))
 
+### Changed
+
+- (ui) One aligned overhang row, and icons on the 3 pixel grid ([#1262](https://github.com/jellyrock/jellyrock/pull/1262))
+
 ### Fixed
 
 - (navigation) Retry a refused navigation once the router is idle ([#1261](https://github.com/jellyrock/jellyrock/pull/1261))
