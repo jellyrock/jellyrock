@@ -41,11 +41,10 @@ sub init()
   ' Only toggle active on screen show/hide.
   initVoiceBox()
 
-  ' The view strip: Home's two views as icons, the selected one filled. The overhang title
-  ' shows the selected view's name (onTabChanged keeps it current).
+  ' Tab configuration: a filled glyph beside each title
   m.top.overhangTabs = [
-    { title: translate(translationKeys.LabelHome), id: "home", icon: "pkg:/images/icons/home_outline_$$RES$$.png", selectedIcon: "pkg:/images/icons/home_$$RES$$.png" },
-    { title: translate(translationKeys.LabelFavorites), id: "favorites", icon: "pkg:/images/icons/heart_outline_$$RES$$.png", selectedIcon: "pkg:/images/icons/heart_$$RES$$.png" }
+    { title: translate(translationKeys.LabelHome), id: "home", icon: "pkg:/images/icons/home_$$RES$$.png" },
+    { title: translate(translationKeys.LabelFavorites), id: "favorites", icon: "pkg:/images/icons/heart_$$RES$$.png" }
   ]
   m.top.selectedTabId = "home"
   m.top.observeField("selectedTabId", "onTabChanged")
@@ -167,11 +166,11 @@ sub onScreenShown()
     ' onScreenShown runs on every return (back from Settings, for example),
     ' and calling observeField again would stack duplicate observers, causing
     ' actions to fire N times (1 extra per show).
-    if not isValid(m.viewStrip)
-      viewStrip = overhang.callFunc("getViewStrip")
-      if isValid(viewStrip)
-        m.viewStrip = viewStrip
-        m.viewStrip.observeField("requestFocusReturn", "onViewStripFocusReturn")
+    if not isValid(m.tabBar)
+      tabBar = overhang.callFunc("getTabBar")
+      if isValid(tabBar)
+        m.tabBar = tabBar
+        m.tabBar.observeField("requestFocusReturn", "onTabBarFocusReturn")
       end if
     end if
 
@@ -208,7 +207,7 @@ sub onScreenShown()
     m.voiceBox.active = true
   end if
 
-  ' Reset overhang element tracking so the next UP defaults to the selected view
+  ' Reset overhang element tracking so the next UP defaults to the active tab
   m.lastOverhangElement = invalid
 
   ' Restore focus (overhang-icon-aware: see restoreHomeFocus). Don't clear
@@ -371,9 +370,6 @@ sub onTabChanged()
   destroyActiveContent()
 
   m.activeTabId = tabId
-  for each view in m.top.overhangTabs
-    if view.id = tabId then m.top.overhangTitle = view.title
-  end for
 
   if tabId = "home"
     ' Create HomeRows, add to scene, load data
@@ -471,36 +467,32 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
   ' UP at top of content focuses the overhang.
-  ' First entry after screen show defaults to the view strip (the selected view).
+  ' First entry after screen show defaults to the tab bar (active tab).
   ' Subsequent entries restore the last overhang element the user was on.
   if key = "up"
     activeRows = getActiveRows()
     rowItemFocused = activeRows?.rowItemFocused
     if isValid(activeRows) and type(rowItemFocused) = "roArray" and rowItemFocused.count() >= 2 and rowItemFocused[0] = 0
-      ' Restore last overhang element if the user has visited before. The strip is a bar,
-      ' so it is asked to focus its selected icon rather than focused itself.
+      ' Restore last overhang element if the user has visited before
       if isValid(m.lastOverhangElement)
-        if isValid(m.viewStrip) and m.lastOverhangElement.isSameNode(m.viewStrip)
-          m.viewStrip.callFunc("focusSelected")
-        else
-          m.lastOverhangElement.setFocus(true)
-        end if
+        m.lastOverhangElement.setFocus(true)
         return true
       end if
 
-      ' First visit: default to the selected view.
-      ' Lazy-init: the strip belongs to the shared overhang, not to Home, so it may still
-      ' be uncached here. Grab it from the overhang on first use.
-      if not isValid(m.viewStrip) and isValid(m.overhang)
-        viewStrip = m.overhang.callFunc("getViewStrip")
-        if isValid(viewStrip)
-          m.viewStrip = viewStrip
-          m.viewStrip.observeField("requestFocusReturn", "onViewStripFocusReturn")
+      ' First visit: default to the tab bar (active tab)
+      ' Lazy-init: the tab bar is created by the shared overhang (from JRScene's
+      ' registerOverhangData), not by Home, so m.tabBar may still be uncached here.
+      ' Grab it from the overhang on first use.
+      if not isValid(m.tabBar) and isValid(m.overhang)
+        tabBar = m.overhang.callFunc("getTabBar")
+        if isValid(tabBar)
+          m.tabBar = tabBar
+          m.tabBar.observeField("requestFocusReturn", "onTabBarFocusReturn")
         end if
       end if
 
-      if isValid(m.viewStrip)
-        m.viewStrip.callFunc("focusSelected")
+      if isValid(m.tabBar)
+        m.tabBar.setFocus(true)
         return true
       end if
     end if
@@ -567,9 +559,9 @@ sub onIconFocusReturn(msg as object)
   end if
 end sub
 
-' View strip signals DOWN was pressed: return focus to active content
-sub onViewStripFocusReturn()
-  m.lastOverhangElement = m.viewStrip
+' Tab bar signals DOWN was pressed: return focus to active content
+sub onTabBarFocusReturn()
+  m.lastOverhangElement = m.tabBar
   if isValid(m.activeContent)
     m.activeContent.setFocus(true)
   end if
@@ -627,10 +619,10 @@ sub onDestroy()
     m.voiceBox = invalid
   end if
 
-  ' Release view strip observer
-  if isValid(m.viewStrip)
-    m.viewStrip.unobserveField("requestFocusReturn")
-    m.viewStrip = invalid
+  ' Release tab bar observer
+  if isValid(m.tabBar)
+    m.tabBar.unobserveField("requestFocusReturn")
+    m.tabBar = invalid
   end if
 
   ' Release user dropdown observers

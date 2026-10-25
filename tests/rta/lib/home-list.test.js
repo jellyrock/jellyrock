@@ -60,7 +60,7 @@ describe('focusIsInHomeContent', () => {
 
   it('rejects focus that is somewhere else entirely', () => {
     expect(focusIsInHomeContent({ node: { subtype: 'BaseGridView' } })).toBe(false);
-    expect(focusIsInHomeContent({ node: { subtype: 'JROverhangIconBar' } })).toBe(false);
+    expect(focusIsInHomeContent({ node: { subtype: 'JRTabBar' } })).toBe(false);
   });
 
   it('rejects a FAILED focus read rather than treating it as arrival', () => {

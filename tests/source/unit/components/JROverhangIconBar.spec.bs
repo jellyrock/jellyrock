@@ -1,6 +1,6 @@
 namespace tests
 
-  @suite("JROverhangIconBar - builds, lays out and selects its icons")
+  @suite("JROverhangIconBar - builds and lays out the cluster's icons")
   class JROverhangIconBarTests extends tests.BaseTestSuite
 
     private bar as object
@@ -17,8 +17,8 @@ namespace tests
 
     private function entries() as object
       return [
-        { id: "home", icon: "pkg:/images/icons/home_outline_$$RES$$.png", selectedIcon: "pkg:/images/icons/home_$$RES$$.png" },
-        { id: "favorites", icon: "pkg:/images/icons/heart_outline_$$RES$$.png", selectedIcon: "pkg:/images/icons/heart_$$RES$$.png" }
+        { id: "search", icon: "pkg:/images/icons/search_$$RES$$.png", action: "openSearch" },
+        { id: "settings", icon: "pkg:/images/icons/settings_$$RES$$.png", action: "openSettings" }
       ]
     end function
 
@@ -29,22 +29,23 @@ namespace tests
     @it("creates one JROverhangIcon per entry, named <id>Icon, laid out by iconBarNav")
     function _()
       m.bar.entries = m.entries()
-      home = m.bar.findNode("homeIcon")
-      favorites = m.bar.findNode("favoritesIcon")
-      m.assertNotInvalid(home)
-      m.assertNotInvalid(favorites)
-      m.assertEqual(home.subtype(), "JROverhangIcon")
-      m.assertEqual(home.translation, [0.0, 0.0])
-      m.assertEqual(favorites.translation, [90.0, 0.0])
+      search = m.bar.findNode("searchIcon")
+      settings = m.bar.findNode("settingsIcon")
+      m.assertNotInvalid(search)
+      m.assertNotInvalid(settings)
+      m.assertEqual(search.subtype(), "JROverhangIcon")
+      m.assertEqual(search.icon, "pkg:/images/icons/search_$$RES$$.png")
+      m.assertEqual(search.translation, [0.0, 0.0])
+      m.assertEqual(settings.translation, [90.0, 0.0])
       m.assertEqual(m.bar.barWidth, 156)
     end function
 
     @it("rebuilds on a new entry list and drops the old icons")
     function _()
       m.bar.entries = m.entries()
-      m.bar.entries = [{ id: "search", icon: "pkg:/images/icons/search_$$RES$$.png", action: "openSearch" }]
-      m.assertInvalid(m.bar.findNode("homeIcon"))
-      m.assertNotInvalid(m.bar.findNode("searchIcon"))
+      m.bar.entries = [{ id: "syncplay", icon: "pkg:/images/icons/search_$$RES$$.png" }]
+      m.assertInvalid(m.bar.findNode("searchIcon"))
+      m.assertNotInvalid(m.bar.findNode("syncplayIcon"))
       m.assertEqual(m.bar.barWidth, 66)
     end function
 
@@ -52,75 +53,34 @@ namespace tests
     function _()
       m.bar.entries = []
       m.assertEqual(m.bar.barWidth, 0)
-      m.assertFalse(m.bar.findNode("selectedMarker").visible)
+      m.assertEqual(m.bar.getChildCount(), 0)
     end function
 
     @it("passes disabled through to the icon")
     function _()
-      m.bar.entries = [{ id: "syncplay", icon: "pkg:/images/icons/groups_$$RES$$.png", disabled: true }]
+      m.bar.entries = [{ id: "syncplay", icon: "pkg:/images/icons/search_$$RES$$.png", disabled: true }]
       m.assertTrue(m.bar.findNode("syncplayIcon").isDisabled)
     end function
 
     @it("getIcon returns the child for an id and invalid for a stranger")
     function _()
       m.bar.entries = m.entries()
-      m.assertEqual(m.bar.callFunc("getIcon", "favorites").id, "favoritesIcon")
-      m.assertInvalid(m.bar.callFunc("getIcon", "search"))
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("selection")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("draws the selected entry's filled glyph and the marker under it")
-    function _()
-      m.bar.isSelectable = true
-      m.bar.entries = m.entries()
-      m.bar.selectedId = "favorites"
-      m.assertEqual(m.bar.findNode("favoritesIcon").icon, "pkg:/images/icons/heart_$$RES$$.png")
-      m.assertEqual(m.bar.findNode("homeIcon").icon, "pkg:/images/icons/home_outline_$$RES$$.png")
-      marker = m.bar.findNode("selectedMarker")
-      m.assertTrue(marker.visible)
-      m.assertEqual(marker.translation, [102.0, 68.0])
-    end function
-
-    @it("keeps a selection made before the entries arrive")
-    function _()
-      m.bar.isSelectable = true
-      m.bar.selectedId = "home"
-      m.bar.entries = m.entries()
-      m.assertEqual(m.bar.findNode("homeIcon").icon, "pkg:/images/icons/home_$$RES$$.png")
-      m.assertTrue(m.bar.findNode("selectedMarker").visible)
-    end function
-
-    @it("never marks an entry on a bar that is not selectable")
-    function _()
-      m.bar.entries = m.entries()
-      m.bar.selectedId = "home"
-      m.assertEqual(m.bar.findNode("homeIcon").icon, "pkg:/images/icons/home_outline_$$RES$$.png")
-      m.assertFalse(m.bar.findNode("selectedMarker").visible)
+      m.assertEqual(m.bar.callFunc("getIcon", "settings").id, "settingsIcon")
+      m.assertInvalid(m.bar.callFunc("getIcon", "syncplay"))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("a press")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("selects the pressed entry on a selectable bar and reports its id")
+    @it("reports the entry's action, or its id without one")
     function _()
-      m.bar.isSelectable = true
       m.bar.entries = m.entries()
-      m.bar.selectedId = "home"
-      m.bar.findNode("favoritesIcon").selectedAction = "favorites"
-      m.assertEqual(m.bar.selectedId, "favorites")
-      m.assertEqual(m.bar.selectedAction, "favorites")
-    end function
-
-    @it("reports the entry's action without selecting on a cluster")
-    function _()
-      m.bar.entries = [{ id: "search", icon: "pkg:/images/icons/search_$$RES$$.png", action: "openSearch" }]
       m.bar.findNode("searchIcon").selectedAction = "search"
       m.assertEqual(m.bar.selectedAction, "openSearch")
-      m.assertEqual(m.bar.selectedId, "")
+      m.bar.entries = [{ id: "syncplay", icon: "pkg:/images/icons/search_$$RES$$.png" }]
+      m.bar.findNode("syncplayIcon").selectedAction = "syncplay"
+      m.assertEqual(m.bar.selectedAction, "syncplay")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -130,16 +90,16 @@ namespace tests
     @it("reports the edge a press left the bar by")
     function _()
       m.bar.entries = m.entries()
-      m.bar.findNode("homeIcon").requestFocusExit = "left"
+      m.bar.findNode("searchIcon").requestFocusExit = "left"
       m.assertEqual(m.bar.requestFocusExit, "left")
-      m.bar.findNode("favoritesIcon").requestFocusExit = "right"
+      m.bar.findNode("settingsIcon").requestFocusExit = "right"
       m.assertEqual(m.bar.requestFocusExit, "right")
     end function
 
     @it("proxies Down as a focus return")
     function _()
       m.bar.entries = m.entries()
-      m.bar.findNode("homeIcon").requestFocusReturn = true
+      m.bar.findNode("searchIcon").requestFocusReturn = true
       m.assertTrue(m.bar.requestFocusReturn)
     end function
 

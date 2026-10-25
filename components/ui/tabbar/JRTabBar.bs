@@ -1,0 +1,237 @@
+import "pkg:/source/utils/misc.bs"
+
+sub init()
+  m.tabContainer = m.top.findNode("tabContainer")
+  m.focusedTabIndex = 0
+
+  ' When the tab bar gains focus, highlight the focused tab
+  m.top.observeField("focusedChild", "onFocusChanged")
+
+  ' Interface observers are registered HERE rather than declared as XML onChange
+  ' attributes: this component releases node references in onDestroy and these
+  ' handlers dereference them, so the registrations have to be detachable. An XML
+  ' onChange does not appear to be removable by unobserveField; see the wiring
+  ' rule in components/CLAUDE.md.
+  m.top.observeField("tabs", "onTabsChanged")
+  m.top.observeField("focusedTabIndex", "onFocusedTabIndexChanged")
+end sub
+
+' Rebuilds tab children when the tabs array changes.
+' Skips recreation when the tab configuration is unchanged (for example, returning
+' to the same screen) so already-sized JRTab nodes appear instantly.
+sub onTabsChanged()
+  tabs = m.top.tabs
+  if not isValidAndNotEmpty(tabs)
+    m.tabContainer.removeChildren(m.tabContainer.getChildren(-1, 0))
+    m.focusedTabIndex = 0
+    m.top.isReady = false
+    return
+  end if
+
+  ' Preserve existing tabs if the configuration matches. This avoids the visible
+  ' TextButton render/sizing dance when returning to the same screen
+  if tabsMatchExisting(tabs)
+    syncSelectedTab()
+    return
+  end if
+
+  ' Configuration changed: full rebuild
+  m.top.isReady = false
+  m.tabContainer.removeChildren(m.tabContainer.getChildren(-1, 0))
+
+  matched = false
+  selectedIndex = 0
+  for i = 0 to tabs.count() - 1
+    tabData = tabs[i]
+    tabNode = CreateObject("roSGNode", "JRTab")
+    tabNode.tabTitle = tabData.title
+    tabNode.tabId = tabData.id
+    if isValidAndNotEmpty(tabData.icon) then tabNode.tabIcon = tabData.icon
+
+    ' Mark the first tab as selected by default if no selection exists
+    if m.top.selectedTabId = "" and tabData.id = tabs[0].id
+      tabNode.isButtonSelected = true
+      m.top.selectedTabId = tabData.id
+      selectedIndex = i
+      matched = true
+    else if tabData.id = m.top.selectedTabId
+      tabNode.isButtonSelected = true
+      selectedIndex = i
+      matched = true
+    end if
+
+    m.tabContainer.appendChild(tabNode)
+  end for
+
+  ' Fallback: selectedTabId was stale (not found in new tabs); select and announce the first tab
+  if not matched
+    firstTab = m.tabContainer.getChild(0)
+    if isValid(firstTab)
+      firstTab.isButtonSelected = true
+      m.top.selectedTabId = firstTab.tabId
+    end if
+    selectedIndex = 0
+  end if
+
+  ' Align the focus cursor to the selected tab
+  m.focusedTabIndex = selectedIndex
+
+  ' Observe first tab's ready field to propagate sizing completion
+  firstTab = m.tabContainer.getChild(0)
+  if isValid(firstTab)
+    firstTab.observeField("isReady", "onFirstTabReady")
+  end if
+
+  updateFocusedTabVisuals()
+end sub
+
+' First tab has finished rendering/sizing: signal that the tab bar is ready
+sub onFirstTabReady()
+  firstTab = m.tabContainer.getChild(0)
+  if isValid(firstTab)
+    firstTab.unobserveField("isReady")
+  end if
+  m.top.isReady = true
+end sub
+
+' Returns true if the existing tab children match the new tabs configuration
+function tabsMatchExisting(tabs as object) as boolean
+  if m.tabContainer.getChildCount() <> tabs.count() then return false
+
+  for i = 0 to tabs.count() - 1
+    existing = m.tabContainer.getChild(i)
+    icon = ""
+    if isValidAndNotEmpty(tabs[i].icon) then icon = tabs[i].icon
+    if existing.tabId <> tabs[i].id or existing.tabTitle <> tabs[i].title or existing.tabIcon <> icon
+      return false
+    end if
+  end for
+
+  return true
+end function
+
+' Updates isSelected on existing tabs to match the current selectedTabId
+' without recreating any nodes. Also aligns the focus cursor so it tracks
+' the active tab after an external re-sync (re-login, return from details).
+sub syncSelectedTab()
+  for i = 0 to m.tabContainer.getChildCount() - 1
+    tabNode = m.tabContainer.getChild(i)
+    isSelected = (tabNode.tabId = m.top.selectedTabId)
+    tabNode.isButtonSelected = isSelected
+    if isSelected
+      m.focusedTabIndex = i
+    end if
+  end for
+end sub
+
+' When the tab bar gains or loses focus, update tab visuals
+sub onFocusChanged()
+  hasFocus = m.top.isInFocusChain()
+
+  ' Internal m.focusedTabIndex is already kept in sync by:
+  '   - onTabsChanged / syncSelectedTab (resets to selected tab on rebuild/return)
+  '   - onFocusedTabIndexChanged (external sets, such as a dropdown return)
+  '   - onKeyEvent left/right (user navigation within the tab bar)
+  ' No sync needed here: reading the interface field would clobber the
+  ' remembered position with a stale value.
+
+  updateFocusedTabVisuals()
+
+  ' Clear focus indicator on all tabs when losing focus
+  if not hasFocus
+    for i = 0 to m.tabContainer.getChildCount() - 1
+      m.tabContainer.getChild(i).isFocused = false
+    end for
+  end if
+end sub
+
+' Updates the isFocused visual state on tab children
+sub updateFocusedTabVisuals()
+  if not m.top.isInFocusChain() then return
+
+  for i = 0 to m.tabContainer.getChildCount() - 1
+    tabNode = m.tabContainer.getChild(i)
+    tabNode.isFocused = (i = m.focusedTabIndex)
+  end for
+end sub
+
+' Selects a tab by index: updates isSelected on all children and fires selectedTabId
+sub selectTab(index as integer)
+  for i = 0 to m.tabContainer.getChildCount() - 1
+    tabNode = m.tabContainer.getChild(i)
+    tabNode.isButtonSelected = (i = index)
+  end for
+
+  selectedTab = m.tabContainer.getChild(index)
+  if isValid(selectedTab)
+    m.top.selectedTabId = selectedTab.tabId
+  end if
+end sub
+
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+
+  tabCount = m.tabContainer.getChildCount()
+  if tabCount = 0 then return false
+
+  if key = "right"
+    if m.focusedTabIndex = tabCount - 1
+      ' At last tab: signal focus transfer to user dropdown (wraps right)
+      m.top.requestFocusToUserMenu = "right"
+    else
+      ' Move focus right within tabs
+      m.focusedTabIndex = m.focusedTabIndex + 1
+      updateFocusedTabVisuals()
+    end if
+    return true
+  else if key = "left"
+    if m.focusedTabIndex = 0
+      ' At first tab: signal focus transfer to user dropdown (wraps left)
+      m.top.requestFocusToUserMenu = "left"
+    else
+      ' Move focus left within tabs
+      m.focusedTabIndex = m.focusedTabIndex - 1
+      updateFocusedTabVisuals()
+    end if
+    return true
+  else if key = "OK"
+    selectTab(m.focusedTabIndex)
+    return true
+  else if key = "down"
+    ' Signal the parent screen to take focus back
+    m.top.requestFocusReturn = true
+    return true
+  end if
+
+  ' UP: don't consume; let it bubble (nothing above the tab bar)
+  return false
+end function
+
+' Called when focusedTabIndex is set externally (for example, returning from user dropdown).
+' Syncs internal state and updates visuals.
+sub onFocusedTabIndexChanged()
+  newIndex = m.top.focusedTabIndex
+  tabCount = m.tabContainer.getChildCount()
+  if tabCount = 0 then return
+
+  ' Clamp to valid range
+  if newIndex < 0
+    newIndex = 0
+  else if newIndex >= tabCount
+    newIndex = tabCount - 1
+  end if
+
+  m.focusedTabIndex = newIndex
+  updateFocusedTabVisuals()
+end sub
+
+sub onDestroy()
+  ' Detach the interface observers registered in init(). Must precede every
+  ' reference release below: these handlers dereference them.
+  m.top.unobserveField("tabs")
+  m.top.unobserveField("focusedTabIndex")
+  m.top.unobserveField("focusedChild")
+
+  m.tabContainer.removeChildren(m.tabContainer.getChildren(-1, 0))
+  m.tabContainer = invalid
+end sub

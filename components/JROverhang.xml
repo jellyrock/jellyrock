@@ -1,19 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The top bar, one row: logo (Home only), the view strip (the screen's views as icons, one
-  selected), the title (the selected view's name, or a screen's own title) at a fixed x after
-  the strip, then the user dropdown (Home only), the fixed cluster (Search, Settings) and the
-  clock. The cluster is the same on every screen that shows it; a screen's own controls live
-  on the screen. Left and Right walk strip, dropdown and cluster as one row and stop at the
-  ends; Down returns to the screen.
+  The top bar, one row: logo (Home only), the tab bar (the screen's views as text buttons
+  with a glyph, one selected) or the title in its place, then the user dropdown (Home only),
+  the fixed cluster (Search, Settings) and the clock. The cluster is the same on every
+  screen that shows it; a screen's own controls live on the screen. Left and Right walk tab
+  bar, dropdown and cluster as one row and stop at the ends; Down returns to the screen.
 -->
 <component name="JROverhang" extends="Group">
   <children>
     <!-- Logo -->
     <Poster id="logo" translation="[96, 54]" uri="pkg:/images/branding/logo.png" height="39" width="180" />
-    <!-- Title: placed by layout() after the view strip -->
+    <!-- Title: shown when the screen has no tabs, at the tab bar's place -->
     <ScrollingLabelPrimaryLarge translation="[360, 51]" id="title" vertAlign="center" maxWidth="300" repeatCount="0" />
-    <!-- View strip, user dropdown and cluster are created in init -->
+    <!-- Tab bar, user dropdown and cluster are created programmatically -->
     <!-- Clock -->
     <Clock />
 
@@ -24,10 +23,10 @@
     <field id="isVisible" value="true" type="boolean" onChange="onIsVisibleChanged" />
     <field id="isMoveAnimationDisabled" value="false" type="boolean" />
     <field id="isLogoVisible" value="true" type="boolean" onChange="onIsLogoVisibleChanged" />
-    <!-- The view strip's entries: { id, title, icon, selectedIcon }, projected from the active
-         view's overhangTabs. Empty hides the strip and the title moves to its place. -->
+    <!-- The tab bar's entries: { id, title, icon }, projected from the active view's
+         overhangTabs. Empty hides the tab bar and shows the title in its place. -->
     <field id="tabs" type="array" onChange="onTabsChanged" />
-    <field id="selectedTabId" type="string" alwaysNotify="true" onChange="onSelectedTabIdChanged" />
+    <field id="selectedTabId" type="string" alwaysNotify="true" />
     <!-- Whether the fixed cluster shows (with a signed-in user). -->
     <field id="shouldShowIcons" type="boolean" value="false" onChange="onShouldShowIconsChanged" />
     <!-- A cluster icon was pressed: its HomeAction. -->
@@ -38,7 +37,7 @@
          the old imperative hideClock() function so all overhang element visibility follows
          one field-assignment pattern. -->
     <field id="isClockVisible" value="true" type="boolean" onChange="isClockVisibleChanged" />
-    <function name="getViewStrip" />
+    <function name="getTabBar" />
     <function name="getUserDropdown" />
     <!-- The cluster icon for an entry id ("search", "settings"), for a screen's focus bookkeeping. -->
     <function name="getIcon" />

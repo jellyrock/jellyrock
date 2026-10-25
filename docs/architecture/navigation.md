@@ -58,7 +58,7 @@ Scene
 |---|---|---|
 | `lastFocus` | node | The element that had focus when the view was last suspended |
 | `overhangTitle` | string | Title in the top bar |
-| `overhangTabs` | array | The view strip's entries, `{ id, title, icon, selectedIcon }`: the screen's views as icons, the selected one drawn with `selectedIcon` (its filled glyph) |
+| `overhangTabs` | array | The tab bar's entries, `{ id, title, icon }`: the screen's views as text buttons, each with a filled glyph beside its title |
 | `selectedTabId` | string, `alwaysNotify` | The selected view |
 | `isOverhangVisible` | bool, default true | Show the top bar (false during playback) |
 | `isLogoVisible` | bool, default false | Show the JellyRock logo in the top bar |
@@ -294,7 +294,7 @@ Saving the deepest node, not only `focusedChild`, is what returns the cursor to 
 
 ## Overhang controller
 
-`JROverhang` is the top bar, one row: the logo, the view strip (the screen's views as icons, one selected), the title at a fixed place after the strip, the user dropdown, the fixed cluster (search and settings) and the clock. The cluster is the same on every screen that shows it; a control only one screen has belongs on that screen, next to its state. Both the strip and the cluster are a `JROverhangIconBar`, which lays out `JROverhangIcon` buttons by `iconBarNav` and walks them with Left and Right; the row stops at its ends. It belongs to `JRScene`, not to any view. A view describes what it wants in its `JRGroup` fields, usually in `init()`, and never touches `JROverhang` directly. The controller copies those fields onto the overhang when the active view changes, so the whole bar changes in one frame.
+`JROverhang` is the top bar, one row: the logo, the tab bar (the screen's views as text buttons with a glyph, one selected) or the title in its place, the user dropdown, the fixed cluster (search and settings) and the clock. The cluster is the same on every screen that shows it; a control only one screen has belongs on that screen, next to its state. The cluster is a `JROverhangIconBar`, which lays out `JROverhangIcon` buttons by `iconBarNav`; Left and Right walk tab bar, dropdown and cluster as one row, and the row stops at its ends. It belongs to `JRScene`, not to any view. A view describes what it wants in its `JRGroup` fields, usually in `init()`, and never touches `JROverhang` directly. The controller copies those fields onto the overhang when the active view changes, so the whole bar changes in one frame.
 
 `JRScene.onActiveRoutedViewChanged()` runs whenever `m.global.activeRoutedView` is written:
 
@@ -305,8 +305,8 @@ Saving the deepest node, not only `focusedChild`, is what returns the cursor to 
 
 `registerOverhangData()` keeps four behaviors:
 
-- **Selection, then tabs, then title.** It sets `selectedTabId`, then `overhang.tabs`, then `overhang.title`, so the strip draws its selected glyph as it builds and the title lands after the strip in the same frame. With no tabs the strip hides and the title takes its place.
-- **`selectedTabId` both ways.** When the viewer presses a view in the strip, `JRScene.onOverhangTabSelected()` writes the view's `selectedTabId`, which the view observes to swap its content. Home uses it for its Home and Favorites views, and sets `overhangTitle` to the selected view's name.
+- **Tabs before title.** It sets `overhang.tabs` before `overhang.title`, so `onTabsChanged` can hide the title before it draws, with no flash from title to tabs.
+- **`selectedTabId` both ways.** When the viewer changes tab in the overhang, `JRScene.onOverhangTabSelected()` writes the view's `selectedTabId`, which the view observes to swap its content. Home uses it for its Home and Favorites tabs.
 - **Logo, icons and user dropdown.** `isLogoVisible`, `shouldShowIcons` and `shouldShowUserDropdown` are copied and observed with the tabs and title, so the bar settles in one frame. `shouldShowUserDropdown` is a boolean because the controller takes the name from the signed-in user (`applyOverhangUserDropdown`): a view says only whether the dropdown shows.
 - **Clock.** `isClockVisible` defaults to true on `JRGroup`, and a view sets it false to opt out (the search screen does). The controller shows the clock only when the view allows it and the viewer has not turned on Hide clock (`uiDesignHideClock`), through `resolveClockVisible`. Views don't read that setting, so it holds on every routed screen.
 

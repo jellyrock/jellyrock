@@ -1,5 +1,7 @@
 import "pkg:/source/utils/misc.bs"
 
+const TRIGGER_LABEL_MAX_WIDTH = 300 ' A longer name ellipsizes; the row's title keeps its room
+
 sub init()
   ' Cache node references
   m.buttonBackground = m.top.findNode("buttonBackground")
@@ -7,6 +9,8 @@ sub init()
   m.triggerContent = m.top.findNode("triggerContent")
   m.triggerIcon = m.top.findNode("triggerIcon")
   m.triggerLabel = m.top.findNode("triggerLabel")
+  m.triggerChevron = m.top.findNode("triggerChevron")
+  m.triggerChevron.blendColor = m.global.constants.colorTextSecondary
   m.menuContainer = m.top.findNode("menuContainer")
   m.menuBackground = m.top.findNode("menuBackground")
 
@@ -42,6 +46,7 @@ end sub
 ' ============================================
 
 sub onTriggerTextChanged()
+  m.triggerLabel.width = 0 ' hug the new text; sizeTriggerButton caps it again
   m.triggerLabel.text = m.top.triggerText
   if m.top.renderTracking = "full"
     sizeTriggerButton()
@@ -75,6 +80,10 @@ end sub
 sub sizeTriggerButton()
   if not isValid(m.triggerLabel) then return
 
+  ' Cap a long name before measuring the row around it
+  labelRect = m.triggerLabel.localBoundingRect()
+  if labelRect.width > TRIGGER_LABEL_MAX_WIDTH then m.triggerLabel.width = TRIGGER_LABEL_MAX_WIDTH
+
   ' Measure the trigger content bounding rect
   contentRect = m.triggerContent.localBoundingRect()
   if contentRect.width = 0 then return
@@ -89,8 +98,9 @@ sub sizeTriggerButton()
   m.buttonBorder.width = buttonWidth
   m.buttonBorder.height = buttonHeight
 
-  ' Center the content within the button
-  m.triggerContent.translation = [padding, padding]
+  ' Place the content inside the padding. The group centers its children on its own y
+  ' origin (vertAlignment center), so its rect starts above 0: offset by that top edge.
+  m.triggerContent.translation = [padding, padding - contentRect.y]
 
   ' Publish computed width so parent can reposition if needed (for example, right-aligning)
   m.top.triggerWidth = int(buttonWidth)
@@ -186,10 +196,12 @@ sub onFocusChanged()
       showTriggerFocus()
     end if
     m.triggerLabel.color = m.global.constants.colorTextPrimary
+    m.triggerChevron.blendColor = m.global.constants.colorTextPrimary
   else
     ' Hide all focus visuals and close menu
     hideTriggerFocus()
     m.triggerLabel.color = m.global.constants.colorTextSecondary
+    m.triggerChevron.blendColor = m.global.constants.colorTextSecondary
     closeMenu()
   end if
 end sub
@@ -361,6 +373,7 @@ sub onDestroy()
   m.buttonBorder = invalid
   m.triggerContent = invalid
   m.triggerIcon = invalid
+  m.triggerChevron = invalid
   m.triggerLabel = invalid
   m.menuContainer = invalid
   m.menuBackground = invalid

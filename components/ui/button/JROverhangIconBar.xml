@@ -1,27 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  A row of JROverhangIcon buttons laid out by iconBarNav (66 px icons, 24 px gaps).
-  The overhang uses it twice: the view strip (a screen's views, one selected) and the
-  fixed cluster (Search, SyncPlay, Settings). Left and Right walk the row and stop at its
-  ends, where requestFocusExit tells the overhang which edge was left; Down asks the
-  screen to take focus back; OK fires selectedAction with the entry's id and, on a
-  selectable bar, also selects that entry.
+  A row of JROverhangIcon buttons laid out by iconBarNav (66 px icons, 24 px gaps): the
+  overhang's fixed cluster (Search, Settings). Left and Right walk the row and stop at its
+  ends, where requestFocusExit tells the overhang which edge was left; Down asks the screen
+  to take focus back; OK fires selectedAction with the entry's action.
 -->
 <component name="JROverhangIconBar" extends="Group">
-  <children>
-    <!-- Selected marker: an underline the width of the glyph, drawn under the selected icon. -->
-    <Rectangle id="selectedMarker" width="42" height="4" visible="false" />
-  </children>
   <interface>
-    <!-- Input: array of { id, icon, selectedIcon, action, disabled }. The child for an entry has
-         the id "<id>Icon" (the RTA suite addresses #overhang.#searchIcon). `action` is what
-         selectedAction carries, defaulting to the id; `selectedIcon` is the glyph drawn while
-         selected (the filled variant), defaulting to `icon`. -->
+    <!-- Input: array of { id, icon, action, disabled }. The child for an entry has the id
+         "<id>Icon" (the RTA suite addresses #overhang.#searchIcon). `action` is what
+         selectedAction carries, defaulting to the id. -->
     <field id="entries" type="array" onChange="onEntriesChanged" />
-    <!-- Whether OK selects the pressed entry (the view strip) or only reports it (the cluster). -->
-    <field id="isSelectable" type="boolean" value="false" />
-    <!-- In/out: the selected entry's id. -->
-    <field id="selectedId" type="string" alwaysNotify="true" onChange="onSelectedIdChanged" />
     <!-- Output: the width the laid-out icons take, so the overhang can place what follows. -->
     <field id="barWidth" type="integer" value="0" />
     <!-- Output: the pressed entry's action. -->
@@ -32,8 +21,7 @@
     <field id="requestFocusReturn" type="boolean" value="false" alwaysNotify="true" />
     <!-- The child icon for an entry id, for focus bookkeeping by the screen. -->
     <function name="getIcon" />
-    <!-- Focus the icon at the row's first or last position, or the selected one. -->
+    <!-- Focus the icon at the row's first ("left") or last ("right") position. -->
     <function name="focusEdge" />
-    <function name="focusSelected" />
   </interface>
 </component>

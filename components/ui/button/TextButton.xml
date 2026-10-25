@@ -56,6 +56,9 @@
          They coincide until minWidth forces the button wider than its content;
          after that the difference is the whole point. -->
     <field id="iconSide" type="string" value="left" />
+    <!-- The icon's square size in design pixels. 24 suits the medium font every button
+         uses by default; a button with a larger font sets this to match (JRTab: 36). -->
+    <field id="iconSize" type="integer" value="24" />
     <!-- Draw the 6px colorSecondary underline under the label while
          isButtonSelected is true. Off by default: most buttons are momentary. -->
     <field id="showSelectedIndicator" type="boolean" value="false" />

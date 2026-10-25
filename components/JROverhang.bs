@@ -17,6 +17,7 @@ const OVERHANG_BASELINE = 54 ' The row's text baseline; buttons sit padding abov
 const TITLE_Y = 51
 const TITLE_MIN_WIDTH = 120 ' The title keeps at least this, whatever the dropdown's width
 const DROPDOWN_PROVISIONAL_WIDTH = 200 ' Until the trigger reports its width
+const TAB_PADDING = 30 ' Must match JRTab's padding value
 
 sub init()
   m.top.id = "overhang"
@@ -39,14 +40,9 @@ sub init()
   m.userDropdown.observeField("triggerWidth", "onLayoutInputChanged")
   m.userDropdown.observeField("requestFocusExit", "onUserDropdownFocusExit")
 
-  ' The view strip: the active screen's views, one selected (Home: Home, Favorites)
-  m.viewStrip = CreateObject("roSGNode", "JROverhangIconBar")
-  m.viewStrip.id = "viewStrip"
-  m.viewStrip.isSelectable = true
-  m.viewStrip.visible = false
-  m.viewStrip.observeField("selectedId", "onStripSelectionChanged")
-  m.viewStrip.observeField("requestFocusExit", "onStripFocusExit")
-  m.top.appendChild(m.viewStrip)
+  ' The tab bar (the active screen's views, one selected; Home: Home, Favorites) is created
+  ' on the first non-empty tabs and kept for reuse (onTabsChanged).
+  m.tabBar = invalid
 
   ' The fixed cluster: the same icons on every screen that shows it
   m.cluster = CreateObject("roSGNode", "JROverhangIconBar")
@@ -174,9 +170,9 @@ function getUserDropdown() as object
   return m.userDropdown
 end function
 
-' Returns the view strip, for a screen's focus bookkeeping
-function getViewStrip() as object
-  return m.viewStrip
+' Returns the tab bar node reference for direct focus management by screens
+function getTabBar() as object
+  return m.tabBar
 end function
 
 ' The cluster icon for an entry id, for a screen's focus-return observers
@@ -190,13 +186,24 @@ sub onIconAction()
 end sub
 
 ' ============================================
-' FOCUS BRIDGING: VIEW STRIP <-> DROPDOWN <-> CLUSTER
+' FOCUS BRIDGING: TAB BAR <-> DROPDOWN <-> CLUSTER
 ' ============================================
-' One row, left to right: strip, dropdown, cluster. Each hands focus to its visible
+' One row, left to right: tab bar, dropdown, cluster. Each hands focus to its visible
 ' neighbor and stops at the ends: nothing wraps.
 
-sub onStripFocusExit()
-  if m.viewStrip.requestFocusExit <> "right" then return
+function tabBarShowing() as boolean
+  return isValid(m.tabBar) and m.tabBar.visible
+end function
+
+sub focusLastTab()
+  tabCount = m.tabBar.findNode("tabContainer").getChildCount()
+  m.tabBar.focusedTabIndex = tabCount - 1
+  m.tabBar.setFocus(true)
+end sub
+
+' Called when the tab bar signals at its boundary: the right end goes on along the row.
+sub onTabBarRequestsUserMenu()
+  if m.tabBar.requestFocusToUserMenu <> "right" then return
   if m.userDropdown.visible
     m.userDropdown.setFocus(true)
   else if m.cluster.visible
@@ -207,7 +214,7 @@ end sub
 sub onUserDropdownFocusExit()
   direction = m.userDropdown.requestFocusExit
   if direction = "left"
-    if m.viewStrip.visible then m.viewStrip.callFunc("focusEdge", "right")
+    if tabBarShowing() then focusLastTab()
   else if direction = "right"
     if m.cluster.visible then m.cluster.callFunc("focusEdge", "left")
   end if
@@ -217,8 +224,8 @@ sub onClusterFocusExit()
   if m.cluster.requestFocusExit <> "left" then return
   if m.userDropdown.visible
     m.userDropdown.setFocus(true)
-  else if m.viewStrip.visible
-    m.viewStrip.callFunc("focusEdge", "right")
+  else if tabBarShowing()
+    focusLastTab()
   end if
 end sub
 
@@ -239,19 +246,24 @@ sub onLayoutInputChanged()
   layout()
 end sub
 
-' Places the row from both edges in. From the left: the strip (or the title) at the logo's
-' right, the title after the strip. From the right: the cluster against the clock's slot
-' (or the safe edge with the clock hidden), the dropdown before the cluster. The title takes
-' what is left between, and scrolls when the text is longer.
+' Places the row from both edges in. From the left: the tab bar, or the title in its
+' place, at the logo's right. From the right: the cluster against the clock's slot (or the
+' safe edge with the clock hidden), the dropdown before the cluster. The title takes what
+' is left between, and scrolls when the text is longer.
 sub layout()
-  if not isValid(m.viewStrip) or not isValid(m.cluster) or not isValid(m.userDropdown) then return
+  if not isValid(m.cluster) or not isValid(m.userDropdown) then return
 
   stripX = OVERHANG_LEFT
   if isValid(m.logo) then stripX = STRIP_X_WITH_LOGO
-  m.viewStrip.translation = [stripX, m.rowY]
+  if isValid(m.tabBar)
+    ' Tab text aligns with where the title sits: TextButton pads around the text.
+    fontSize = m.global.constants.fontSizeLarge
+    buttonHeight = int(fontSize * 0.7) + (TAB_PADDING * 2)
+    yOffset = int((buttonHeight - fontSize) / 2.0)
+    m.tabBar.translation = [stripX - TAB_PADDING, TITLE_Y - yOffset]
+  end if
 
   titleX = stripX
-  if m.viewStrip.visible and m.viewStrip.barWidth > 0 then titleX = stripX + m.viewStrip.barWidth + ELEMENT_GAP
 
   rightEdge = OVERHANG_RIGHT - CLOCK_SLOT
   if m.isClockHidden then rightEdge = OVERHANG_RIGHT
@@ -309,41 +321,67 @@ function createLogoPoster()
 end function
 
 ' ============================================
-' VIEW STRIP
+' TAB BAR
 ' ============================================
 
-' The active screen's views. Empty hides the strip, and the title takes its place.
+' onTabsChanged: Swaps between title label and tab bar.
+' Empty/invalid tabs restores the title label; non-empty creates a JRTabBar.
 sub onTabsChanged()
   tabs = m.top.tabs
+
   if not isValidAndNotEmpty(tabs)
-    m.viewStrip.entries = []
-    m.viewStrip.visible = false
+    ' No tabs: hide the tab bar (preserve it for instant reuse on return)
+    ' and restore the title label
+    if isValid(m.tabBar)
+      m.tabBar.unobserveField("isReady") ' cancel any pending ready observer before restoring title
+      m.tabBar.visible = false
+    end if
+    m.title.visible = true
     layout()
     return
   end if
 
-  ' The selection first, so the strip draws the right glyph as it builds
-  if isValidAndNotEmpty(m.top.selectedTabId) and m.viewStrip.selectedId <> m.top.selectedTabId
-    m.viewStrip.selectedId = m.top.selectedTabId
+  if not isValid(m.tabBar)
+    m.tabBar = CreateObject("roSGNode", "JRTabBar")
+    m.tabBar.observeField("selectedTabId", "onTabBarSelectionChanged")
+    m.tabBar.observeField("requestFocusToUserMenu", "onTabBarRequestsUserMenu")
+    m.top.appendChild(m.tabBar)
   end if
-  m.viewStrip.entries = tabs
-  m.viewStrip.visible = true
+
+  m.tabBar.visible = true
   layout()
-end sub
 
-' The controller writes the active view's selection here (and reads a viewer's pick back).
-sub onSelectedTabIdChanged()
-  id = m.top.selectedTabId
-  if isValidAndNotEmpty(id) and m.viewStrip.selectedId <> id
-    m.viewStrip.selectedId = id
+  ' Sync current selection before setting tabs (so the correct tab starts selected)
+  if isValidAndNotEmpty(m.top.selectedTabId)
+    m.tabBar.selectedTabId = m.top.selectedTabId
+  end if
+
+  m.tabBar.tabs = tabs
+
+  ' After setting tabs, check if they were preserved (return path) or rebuilt (init).
+  ' Preserved tabs are already sized, so hide title instantly.
+  ' Rebuilt tabs need render tracking, so keep title visible until ready.
+  if m.tabBar.isReady
+    m.title.visible = false
+  else
+    m.tabBar.unobserveField("isReady") ' prevent stacking duplicate observers on rapid tab changes
+    m.tabBar.observeField("isReady", "onTabBarReady")
   end if
 end sub
 
-' A viewer pressed a view: proxy it to selectedTabId, which JRScene writes back to the view.
-sub onStripSelectionChanged()
-  id = m.viewStrip.selectedId
-  if isValidAndNotEmpty(id) and m.top.selectedTabId <> id
-    m.top.selectedTabId = id
+' Called when newly created tabs finish sizing. Swaps the title for the
+' fully-formed tab bar in a single frame: no blank gap or sizing dance.
+sub onTabBarReady()
+  if isValid(m.tabBar)
+    m.tabBar.unobserveField("isReady")
+  end if
+  m.title.visible = false
+end sub
+
+' Proxy tab bar selection changes to the overhang's selectedTabId field
+sub onTabBarSelectionChanged()
+  if isValid(m.tabBar)
+    m.top.selectedTabId = m.tabBar.selectedTabId
   end if
 end sub
 
