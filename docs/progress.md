@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-25
+last-updated: 2026-10-26
 ---
 
 # Progress
@@ -832,12 +832,6 @@ Not done in that fix: it changes voice and remote behavior outside SyncPlay, and
 A message the server splits into several frames is never posted. The last frame of a fragmented message is a continuation frame (opcode 0); `WebSocketClient._decode_frame` hands it to `_handle_frame` with that opcode after appending the earlier fragments, and `_handle_frame` acts only on close, ping, text and binary, so the reassembled message is dropped. Found on 2026-10-24 while writing `tests/source/unit/remotecontrol/WebSocketClient.spec.bs` (commit `4b725d92`): a fragmented-message case failed on the code before and after that commit, and was left out. Jellyfin sends each session message as one frame, so nothing hits it today.
 
 Not done there: it changes how every inbound message is handed over and needs its own spec. Closes with: `_decode_frame` passes the first fragment's opcode for a final continuation frame, a spec case delivers a three-fragment text message intact, and the existing cases still pass.
-
-#### The overhang's fixed cluster and its focus plumbing exist on Home only `[fid: overhang-cluster-on-every-screen]` `[captured 2026-10-25]`
-
-The one-row overhang (`JROverhang`) builds the fixed Search and Settings cluster as a component, but only Home declares `shouldShowIcons`, and only Home wires Up into the row and Down back out. The design (`docs/architecture/design-system.md`, "The overhang row") says the cluster is the same on every screen that shows the overhang, so the SyncPlay icon lands beside it everywhere. Settings already declares the user dropdown with no focus path to it, a pre-existing gap of the same shape.
-
-What closes it: a `JRScreen`-level hook so Up from a screen's top row enters the overhang and Down returns to the screen's own focus (today that logic is `Home.onKeyEvent`, `restoreHomeFocus` and `onIconFocusReturn`); the cluster's actions routed by `JRScene` (`routerNavigate` to `/search` and `/settings`) instead of `Home.handleHomeMenuAction`; every routed screen declaring the cluster; a decision for screens that hide the clock (`SearchScreen`), where the cluster sits against the action-safe edge at x 1824 and its last icon's focus box overhangs that edge by `iconBarNav.BOX_OVERHANG`; and RTA coverage of the walk on a library screen and `ItemDetails`, which show only a title and the clock today. `overhangRow.nextFocus` already routes Left and Right for every combination of shown elements. Its own PR after the overhang one.
 
 #### Audit every size and drawn position outside the overhang against the 3 pixel grid `[fid: app-wide-3px-grid-audit]` `[captured 2026-10-25]`
 
