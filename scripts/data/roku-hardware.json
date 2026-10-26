@@ -4,13 +4,13 @@
     "source": "rokudev/dev-doc",
     "path": "docs/SPECIFICATIONS/hardware.md",
     "ref": "v2.0",
-    "blobSha": "c196976482b6f5b5c5aed7f5338a0af6729eede1",
-    "upstreamCommit": "c685ceb7f9c8952fd6cafe51e45d94864e5c618a",
-    "upstreamCommittedAt": "2026-05-08T04:14:18Z",
-    "fetchedAt": "2026-08-13",
+    "blobSha": "f4049cedd48e3297dc0a530aba46e896842b6546",
+    "upstreamCommit": "274971e0ee9f4637e291a6b18563262cec136482",
+    "upstreamCommittedAt": "2026-10-24T03:13:13Z",
+    "fetchedAt": "2026-10-26",
     "generator": "scripts/generate/roku-hardware.js"
   },
-  "_checksum": "aaf98428a3c47c6f",
+  "_checksum": "4968d6ce9c893ba1",
   "enums": {
     "resolution": [
       "720p",
@@ -2273,7 +2273,7 @@
         }
       ]
     },
-    "T100X": {
+    "T100000X": {
       "family": "T100",
       "ramMb": 512,
       "ramTier": "512MB",
@@ -3008,7 +3008,7 @@
     },
     "T100": {
       "models": [
-        "T100X"
+        "T100000X"
       ],
       "ramMb": 512,
       "ramTier": "512MB",
