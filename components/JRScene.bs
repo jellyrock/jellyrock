@@ -524,11 +524,13 @@ end function
 sub navigateThenFocus(routePath as dynamic, context = {} as object, clearSpinner = false as boolean, signInWait = invalid as dynamic)
   ' Settings can be opened from any screen now; a theme or language change there reloads
   ' Home, and reloadRoutedHome then returns to this route rather than stranding the viewer
-  ' on Home. Not when Settings is already the screen (the gear pressed there: the router
-  ' reuses the view), or the replay would land on Settings again.
-  if type(routePath) = "roString" and routePath = "/settings"
+  ' on Home. Every opening sets the origin, invalid included, so an earlier visit's never
+  ' replays. Not when Settings is already the screen (the gear pressed there: the router
+  ' reuses the view), or the replay would land on Settings again. A path arrives as a
+  ' "String" or an "roString", and a named route as an AA, which cannot be compared to one.
+  if (type(routePath) = "String" or type(routePath) = "roString") and routePath = "/settings"
     origin = routeOfActiveView()
-    if isValid(origin) and origin.path <> routePath then m.settingsOrigin = origin
+    if not isValid(origin) or origin.path <> routePath then m.settingsOrigin = origin
   end if
   startNavigation({ routePath: routePath, context: context, clearSpinner: clearSpinner, signInWait: signInWait, retried: false })
 end sub
@@ -866,10 +868,13 @@ sub reloadRoutedHome()
   navigateChainStep(["/", origin], 0)
 end sub
 
-' The active view's route as a chain step ({ path, context }), or invalid when it has none.
+' The active view's route as a chain step ({ path, context }), or invalid when it has none
+' or is a player: a player starts its queue when it mounts, and the reload has already
+' closed the one that was playing, so a reload never returns to one.
 function routeOfActiveView() as object
   view = getActiveView()
   if not isValid(view) or not isValid(view.route) or not isValid(view.route.path) then return invalid
+  if appWaits.isPlaybackScreen(view) then return invalid
   context = view.route.context
   if not isValid(context) then context = {}
   return { path: view.route.path, context: context }
