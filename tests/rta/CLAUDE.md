@@ -30,7 +30,7 @@ The references: `waitOsdUp` ([`lib/steps.js`](lib/steps.js)) for input, `findHom
 
 ### Name a dynamically created node by `subtype`, never by `id` or `#name`
 
-RTA builds each keyPath segment from `node.id` when it is set and from the child **index** otherwise, so a node created without an id can be addressed only by position, and a predicate keyed on its name silently falls through to its `else` branch. That regression has no failure of its own: it quietly restores the bug you fixed. `JROverhang` appends its `JRTabBar` with no id, which is why `overhangWalkKey` matches `HOME_ROW_LIST_SUBTYPES` and not `#homeRows`.
+RTA builds each keyPath segment from `node.id` when it is set and from the child **index** otherwise, so a node created without an id can be addressed only by position, and a predicate keyed on its name silently falls through to its `else` branch. That regression has no failure of its own: it quietly restores the bug you fixed. `JROverhang` appended its `JRTabBar` with no id until 2026-10-25, which is why `overhangWalkKey` matches `HOME_ROW_LIST_SUBTYPES` and not `#homeRows`; the bar is `#tabBar` now, and the rule stands for the next node created bare.
 
 Home's row list is the other case: only one list is in the scene at a time, because `Home.onTabChanged` removes the old one before building the new, so under another tab `#homeRows` is absent outright and a read of it resolves to `undefined`, which a scan then reports as "0 rows". The reads resolve the active list instead, and [`lib/home-list.js`](lib/home-list.js) records the mechanism and the measurements.
 

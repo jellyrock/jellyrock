@@ -26,7 +26,7 @@ sub init()
   m.top.vertFocusAnimationStyle = "fixedFocus"
 
   ' Set layout before initTextureManager so it calculates correct visible width.
-  m.top.rowLabelOffset = [96, 21]
+  m.top.rowLabelOffset = [96, searchLayout.RESULTS_LABEL_Y]
   m.top.translation = [0, searchLayout.RESULTS_Y]
   ' itemSize width: full 1920. JRRowList's focusXOffset=[96] provides the
   ' left safe-zone inset so posters don't hug the screen edge.

@@ -61,12 +61,13 @@ One row, the same elements in the same order on every screen that shows them (`J
 | Tab (`JRTab`) | the Large font in a 78 pixel box, 9 pixels at the sides, a 42 pixel glyph, a 6 pixel icon gutter | The glyph is outlined until the tab is selected, then filled; the 6 pixel underline under glyph and text is `colorSecondary` |
 | User dropdown (`JRDropdown`) | a 42 pixel avatar, the name, a 24 pixel chevron, 9 pixels apart, in a 78 pixel box with 9 pixels at the sides | The box hugs its content, the name's width rounded up onto the grid; a name past 300 pixels is cut with an ellipsis. The name drops 3 pixels in its box, as a text box does (below) |
 | Logo | 180 by 39 at y 51 | Its capitals and baseline sit on the tab text's |
+| Title glyph (`JROverhang` `titleIcon`) | the 42 pixel glyph before the title, a 6 pixel gutter, in the title's color | A screen whose title carries its state puts its glyph here: the search screen shows the magnifier before "Search", then before the submitted query |
 | Text box (tabs, the title, the clock) | the row's 78 pixels, 3 pixels below the row's top (y 30 to 108) | A label centers its line box, and caps and digits sit about 7% of the font size above that box's middle, so text in this box centers on the row's line. The title takes the same box as a tab's text, so it sits where the tabs' text does |
 | Clock | right-aligned at x 1824 in a 150 pixel slot, in the text box (`Clock`'s `boxY` and `boxHeight`, whose defaults are the video player's) | Everything else is placed from the slot's left edge |
 | Box gap | 9 pixels between tabs, 6 pixels on the right (before the dropdown, before and inside the cluster) | Text has no air of its own, a glyph's canvas does, so two numbers give one visible rhythm; the row's elements line up from the right edge in, so the cluster sits at the same place on every screen |
 | Row | boxes 78 tall from design y 27 to 105, every static element's ink centered on y 66 (a focus ring may sit above or below that line); content starts at 104 (Home's row label) and near 125 (a grid's tiles) | There is no room for a second row: measured on a Stick 4K (2026-10-25), content starts right under the row's bottom edge. Put a screen's own status text on the screen |
 
-Left and Right walk the row as one and wrap at both ends; Down returns to the screen; Up from a screen's first row enters the row at the element used last, else the selected tab.
+Left and Right walk the row as one and wrap at both ends; Down returns to the screen; Up from a screen's top enters the row at the element used last on that visit, else the first shown (the selected tab on Home, the first cluster icon elsewhere). The cluster shows on every screen once a user is signed in; the dropdown on Home only. A screen's own controls stay on the screen: the search screen's query box lives in its keyboard overlay, and its overhang title carries the submitted query.
 
 ## A glyph beside text, and in a button
 

@@ -1,17 +1,16 @@
-' @fileoverview Layout constants for the SearchScreen (peek chip + pull-down overlay).
-' Values define screen-space geometry and must stay in sync with the corresponding
-' XML attributes / animation keyValues in SearchOverlay.xml, SearchPeekChip.xml, and
-' SearchScreen.xml.
+' @fileoverview Layout constants for the SearchScreen (the pull-down overlay with its query
+' box, keyboard and suggestions, and the results under it). Values define screen-space
+' geometry and must stay in sync with the corresponding XML attributes / animation keyValues
+' in SearchOverlay.xml, SearchQueryBox.xml and SearchScreen.xml.
 
 namespace searchLayout
 
-  ' Peek chip: pinned search bar. Sits directly above the keyboard at the
-  ' same width so the search bar and keyboard form a single visual column.
-  ' Top edge at y=54 = 5% top-safe-area edge. x position aligns with keyboard
-  ' (x=824, the keyboard's left edge) so the bar visually couples to the keys below.
-  ' Its position [824, 54] and 44px height are set in SearchScreen.xml and SearchPeekChip.xml;
-  ' only the width is read in code.
-  const PEEK_CHIP_WIDTH = 1000
+  ' Query box: the typed query, in the overlay's band above the keyboard at the keyboard's
+  ' width, so the box and the keys form one column. Its position [824, 0] inside the overlay
+  ' and 44px height are set in SearchOverlay.xml and SearchQueryBox.xml; only the width is
+  ' read in code. Collapsed, the overhang title carries the submitted query: the overhang row
+  ' holds only what every screen has (docs/architecture/design-system.md).
+  const QUERY_BOX_WIDTH = 1000
 
   ' Two-column layout inside the overlay slideGroup:
   '   Suggestions on the LEFT (left edge x=96 = 5% left safe edge: matches
@@ -25,9 +24,11 @@ namespace searchLayout
   ' of the keyboard.
   const SUGGESTIONS_WIDTH = 684
 
-  ' Results row list (SearchRow) translation when collapsed.
-  ' Sits below the peek chip (peek chip ends at y=98) with breathing room.
-  const RESULTS_Y = 140
+  ' Results row list (SearchRow) translation when collapsed: right under the overhang row,
+  ' where every screen's content starts (overhangRow.ROW_BOTTOM; a grid's tiles, Home's
+  ' first row label). The first row's label sits RESULTS_LABEL_Y below.
+  const RESULTS_Y = 105
+  const RESULTS_LABEL_Y = 21
 
   ' Results row list translation when the overlay is expanded. Positioned
   ' below the overlay's bottom edge (OVERLAY_OPEN_Y + OVERLAY_HEIGHT + 20px
@@ -38,11 +39,11 @@ namespace searchLayout
   const RESULTS_Y_EXPANDED = 550
 
   ' Overlay (keyboard + suggestion panel): slides down from above the viewport.
-  ' OPEN_Y: resting position when expanded. y=130: directly below the peek
-  '         chip (peek chip occupies y=54–98 with a 32px gap before the
-  '         overlay starts). Peek chip stays visible above the overlay.
+  ' OPEN_Y: resting position when expanded. y=130: under the overhang row (it ends at 105),
+  '         which stays visible above the overlay.
   ' CLOSED_Y: placed fully above the viewport.
   ' Height budget:
+  '   Query box at y=0 inside slideGroup, 44 tall, in the keyboard's column.
   '   Keyboard at y=56 inside slideGroup, so its top row lines up with the focus ring
   '     on the first suggestion row, and 344 tall (SearchKeyboardKDF.json keyboardHeightFHD, four
   '     86px rows; hideTextBox puts the key grid at the top of the node), so it

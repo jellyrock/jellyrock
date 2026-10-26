@@ -58,11 +58,11 @@ Scene
 |---|---|---|
 | `lastFocus` | node | The element that had focus when the view was last suspended |
 | `overhangTitle` | string | Title in the top bar |
+| `overhangTitleIcon` | string | A glyph before the title (an image URL): the search screen puts the magnifier before its query |
 | `overhangTabs` | array | The tab bar's entries, `{ id, title, icon, selectedIcon }`: the screen's views as text buttons, each with a glyph beside its title, outlined (`icon`) until the tab is selected, then filled (`selectedIcon`) |
 | `selectedTabId` | string, `alwaysNotify` | The selected view |
 | `isOverhangVisible` | bool, default true | Show the top bar (false during playback) |
 | `isLogoVisible` | bool, default false | Show the JellyRock logo in the top bar |
-| `shouldShowIcons` | bool, default false | Show the search and settings icons (only with a signed-in user) |
 | `shouldShowUserDropdown` | bool, default false | Show the current-user dropdown |
 | `isOptionsAvailable` | bool, default true | Whether the options key opens a panel for this view |
 | `loadingWaits` | `assocarray` | The view's open content waits ([below](#what-kind-of-wait-a-spinner-is)) |
@@ -279,7 +279,7 @@ sgRouter leaves focus to the views. `JRScene` asks a view to take focus through 
 
 Saving the deepest node, not only `focusedChild`, is what returns the cursor to the right row of a list inside a tab inside a screen. It works as long as `lastFocus` still names what the view shows on return, and nothing takes focus it should not. Three facts decide when it fails:
 
-- **The router calls `handleFocus` after `onScreenShown`.** `sgrouter_showView` runs it in the `finally` of the open or resume promise, so the base restores `lastFocus` a second time. A screen that chooses focus on return from anything but `lastFocus` overrides `restoreScreenFocus()`, the function both paths reach, or the second call undoes the first. `Home.restoreHomeFocus()` (focus left on an overhang icon) and `BaseGridView.restoreGridFocus()` (a load that failed or finished while covered) do.
+- **The router calls `handleFocus` after `onScreenShown`.** `sgrouter_showView` runs it in the `finally` of the open or resume promise, so the base restores `lastFocus` a second time. A screen that chooses focus on return from anything but `lastFocus` overrides `restoreScreenFocus()`, the function both paths reach, or the second call undoes the first. `Home.restoreHomeFocus()` and `BaseGridView.restoreGridFocus()` (a load that failed or finished while covered) do, and each calls `restoreOverhangIconFocus` first, as the base does: the cluster icon the screen was left by comes back focused on return ([the overhang row](#the-overhang-row-up-down-and-the-cluster)).
 - **`handleFocus` has four callers, and one is only a notice.**
 
   | Caller | `routerFocused` | Takes focus |
@@ -307,8 +307,19 @@ Saving the deepest node, not only `focusedChild`, is what returns the cursor to 
 
 - **Tabs before title.** It sets `overhang.tabs` before `overhang.title`, so `onTabsChanged` can hide the title before it draws, with no flash from title to tabs.
 - **`selectedTabId` both ways.** When the viewer changes tab in the overhang, `JRScene.onOverhangTabSelected()` writes the view's `selectedTabId`, which the view observes to swap its content. Home uses it for its Home and Favorites tabs.
-- **Logo, icons and user dropdown.** `isLogoVisible`, `shouldShowIcons` and `shouldShowUserDropdown` are copied and observed with the tabs and title, so the bar settles in one frame. `shouldShowUserDropdown` is a boolean because the controller takes the name from the signed-in user (`applyOverhangUserDropdown`): a view says only whether the dropdown shows.
-- **Clock.** `isClockVisible` defaults to true on `JRGroup`, and a view sets it false to opt out (the search screen does). The controller shows the clock only when the view allows it and the viewer has not turned on Hide clock (`uiDesignHideClock`), through `resolveClockVisible`. Views don't read that setting, so it holds on every routed screen.
+- **Logo and user dropdown.** `isLogoVisible` and `shouldShowUserDropdown` are copied and observed with the tabs and title, so the bar settles in one frame. `shouldShowUserDropdown` is a boolean because the controller takes the name from the signed-in user (`applyOverhangUserDropdown`): a view says only whether the dropdown shows. Only Home shows it.
+- **The cluster.** The search and settings icons are not a view's to declare: the controller shows them (`isClusterVisible`) whenever a user is signed in (`user.IsAuthenticated`), so they are on every screen that shows the overhang, and it forgets where the row was last left from (`resetRowMemory`) on each screen change.
+- **Clock.** `isClockVisible` defaults to true on `JRGroup`, and a view sets it false to opt out. The controller shows the clock only when the view allows it and the viewer has not turned on Hide clock (`uiDesignHideClock`), through `resolveClockVisible`. Views don't read that setting, so it holds on every routed screen.
+
+### The overhang row: Up, Down and the cluster
+
+The row's keys and presses are handled once, by the scene, not by each screen:
+
+- **Up from a screen's top** calls `JRScreen.focusOverhang()`, which saves the screen's focus and asks the overhang for `focusRow`: the element Down last left the row from on this visit, else the first shown (tabs, dropdown, cluster), chosen by `overhangRow.entryElement`. Each screen decides what its top is: Home's first row, the grid's first row (or its genre rows, or the retry button), the details description (or the track row or the buttons when nothing sits above them), the first Settings item, the audio player's seek bar, and the search keyboard's top row.
+- **Down on any row element** sets the overhang's `requestFocusReturn`; `JRScene.onOverhangFocusReturn` calls the active screen's `returnFocusFromOverhang`, which is `restoreScreenFocus`.
+- **A cluster press** sets `iconAction` with the entry id. `JRScene.onOverhangIconAction` offers it to the active screen first (`onOverhangAction`: the search screen reopens its keyboard on the search icon), else routes it through `routerNavigate`, never a bare `sgrouter.navigateTo` ([the refused-navigation retry](#navigation-functions-on-jrscene)). The scene remembers `{ view, icon }`, and when that screen returns its `restoreScreenFocus` takes the icon back through `restoreOverhangIconFocus` before its own restore (`JRScene.takeOverhangReturnFocus`: a peek from `onScreenShown` keeps the debt, the resume's restore consumes it).
+- **A dropdown item** sets `userMenuAction`, which the scene relays to its own `userMenuAction` field for `main.bs`.
+- **Settings opened from another screen:** a theme or language change there reloads Home, which clears the stack, so `reloadRoutedHome` navigates on to the route Settings was opened from (`m.settingsOrigin`, a `{ path, context }` step of `navigateChainStep`). The origin mounts fresh, without its scroll position.
 
 ## `SceneManager` is a service node
 

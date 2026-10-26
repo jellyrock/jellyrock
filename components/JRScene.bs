@@ -1009,6 +1009,8 @@ sub registerOverhangData(group as object)
 
     if isValid(group.overhangTitle) then m.overhang.title = group.overhangTitle
     group.observeField("overhangTitle", "updateOverhangTitle")
+    m.overhang.titleIcon = group.overhangTitleIcon
+    group.observeField("overhangTitleIcon", "updateOverhangTitleIcon")
 
     ' Logo / icons / user-dropdown: projected from the view's declared fields so they update in
     ' the SAME frame as tabs/title (no transition flicker). Screens declare these; they never poke
@@ -1035,6 +1037,7 @@ sub unregisterOverhangData(group as object)
   ' so only unobserve for those (keeps register/unregister symmetric).
   if isValid(group) and group.isSubType("JRGroup")
     group.unobserveField("overhangTitle")
+    group.unobserveField("overhangTitleIcon")
     group.unobserveField("overhangTabs")
     group.unobserveField("isOverhangVisible")
     group.unobserveField("isLogoVisible")
@@ -1046,6 +1049,10 @@ end sub
 
 sub updateOverhangTitle(msg)
   m.overhang.title = msg.getData()
+end sub
+
+sub updateOverhangTitleIcon(msg)
+  m.overhang.titleIcon = msg.getData()
 end sub
 
 sub updateOverhangLogo(msg)

@@ -17,6 +17,9 @@
   <interface>
     <field id="lastFocus" type="node" />
     <field id="overhangTitle" type="string" />
+    <!-- A glyph before the title (an image uri, "" for none): the search screen puts the
+         magnifier before its query, as a tab pairs a glyph with its text. -->
+    <field id="overhangTitleIcon" type="string" />
     <field id="isOptionsAvailable" value="true" type="boolean" />
     <field id="isOverhangVisible" value="true" type="boolean" />
     <field id="overhangTabs" type="array" />
