@@ -178,6 +178,12 @@ function restoreOverhangIconFocus(consume as boolean) as boolean
   return true
 end function
 
+' The one way to leave this screen. JRScene calls it on Back from the overhang row, and it
+' returns true when the screen went back. A screen with work to do on leaving overrides it.
+function leaveScreen() as boolean
+  return sgrouter.goBack() = true
+end function
+
 ' True when the overhang row (or a node in it) holds focus.
 function isOverhangRowFocused() as boolean
   overhang = m.top.getScene().findNode("overhang")

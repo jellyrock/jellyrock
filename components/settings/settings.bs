@@ -913,6 +913,13 @@ sub performSettingsExit()
   end if
 end sub
 
+' Leaving Settings applies a theme or language change first, then reloads Home or goes back.
+' JRScene calls this on Back from the overhang row, and the top-level Back below shares it.
+function leaveScreen() as boolean
+  exitSettingsAndReloadHome()
+  return true
+end function
+
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
@@ -924,8 +931,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
     return true
   else if key = "back" and isValid(m.settingsMenu.focusedChild) and m.userLocation.Count() = 1
     ' Exiting Settings - apply theme colors and reload home screen
-    exitSettingsAndReloadHome()
-    return true
+    return leaveScreen()
   end if
 
   if key = "options"

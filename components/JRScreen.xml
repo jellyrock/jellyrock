@@ -22,5 +22,7 @@
          (the search screen reopens its keyboard on the search icon); false lets JRScene route
          it (search and settings open their screens). -->
     <function name="onOverhangAction" />
+    <!-- Back from the overhang row: leave this screen. True when it went back (leaveScreen). -->
+    <function name="leaveScreen" />
   </interface>
 </component>

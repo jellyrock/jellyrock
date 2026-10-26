@@ -360,11 +360,16 @@ function onKeyEvent(key as string, press as boolean) as boolean
     ' Back lands here: cancel the start and show that screen again, as Back from the player
     ' would. Mid-navigation it was swallowed above: the settling navigation mounts the player.
     if m.appWaitHost.callFunc("cancelOnBack") then return true
-    ' Focus in the overhang row: Back undoes the Up and returns focus to the screen, whose own
-    ' Back then applies (a menu level up in Settings, the previous screen elsewhere). The row
-    ' sits outside the outlet, so without this a Back from it reached the exit prompt on
-    ' every screen.
-    if returnFocusFromOverhangRow() then return true
+    ' Focus in the overhang row: the row is the app's chrome, so Back from it leaves the screen,
+    ' one press per screen, through the screen's own leaveScreen. The row sits outside the
+    ' outlet, so the router never saw the key. Focus goes back to the screen first, so the
+    ' screen that resumes (or a Settings that stays open) is not left with focus in the row.
+    ' At the history root, or on a view with no leaveScreen, this falls through to the exit prompt.
+    if m.overhang.isInFocusChain()
+      onOverhangFocusReturn()
+      view = getActiveView()
+      if isValid(view) and view.isSubType("JRScreen") and view.callFunc("leaveScreen") = true then return true
+    end if
     showExitConfirmation()
     return true
   else if key = "options"

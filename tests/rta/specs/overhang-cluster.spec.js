@@ -107,7 +107,7 @@ it('details: Up climbs to the row, the gear round-trips, Down returns to the scr
   await waitFocusInside(viewId, { label: 'details after Down from the row' });
 });
 
-it('Settings: Up enters the row, the gear there does nothing, Back returns to the menu, then Home', async () => {
+it('Settings: Up enters the row, the gear there does nothing, Back from the row leaves for Home', async () => {
   await freshApp('overhang-cluster settings');
   await navSettings();
   await waitFocusInside('#settingsMenu', { label: 'the settings menu' });
@@ -119,8 +119,8 @@ it('Settings: Up enters the row, the gear there does nothing, Back returns to th
   await waitFocusInside('#settingsMenu', { label: 'the settings menu after Down from the row' });
 
   // The gear on Settings is a navigation to the route on screen: the router reuses the view
-  // and the gear keeps focus, so the Backs below still reach Home in two presses (a stacked
-  // Settings would take three).
+  // and the gear keeps focus, so the one Back below still reaches Home (a stacked Settings
+  // would take two).
   await press(ecp.Key.Up);
   await press(ecp.Key.Right);
   await waitFocused(atSettingsIcon, {
@@ -136,9 +136,7 @@ it('Settings: Up enters the row, the gear there does nothing, Back returns to th
   });
   expect(await getActiveVal('id'), 'still the same Settings').toBe(viewId);
 
-  // Back from the row returns focus to the screen; the next Back is the screen's own.
-  await press(ecp.Key.Back);
-  await waitFocusInside('#settingsMenu', { label: 'the settings menu after Back from the row' });
+  // Back from the row leaves the screen through its own leaveScreen: one press, not two.
   await press(ecp.Key.Back);
   await waitHome();
 });
@@ -235,9 +233,7 @@ it('each screen keeps its own icon: library, search icon, search, gear, then Bac
     interval: 250,
     label: 'the gear again, back on search',
   });
-  // Back from the row returns focus to the screen; the next Back leaves search.
-  await press(ecp.Key.Back);
-  await waitFocusInside('#kbd', { label: 'the keyboard after Back from the row' });
+  // Back from the row leaves search in one press, onto the library.
   await press(ecp.Key.Back);
   await waitFocused(atSearchIcon, {
     timeout: 15000,
