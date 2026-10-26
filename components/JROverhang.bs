@@ -5,6 +5,7 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/overhangRow.bs"
+import "pkg:/source/utils/pixelGrid.bs"
 import "pkg:/source/utils/translate.bs"
 
 const OVERHANG_LEFT = 96 ' The 5% action-safe left edge: the logo, or the tabs without one
@@ -23,6 +24,11 @@ sub init()
   m.logo = m.top.findNode("logo")
   m.logoPoster = createLogoPoster() ' save node to memory for faster load time
   m.title = m.top.findNode("title")
+  m.status = m.top.findNode("status")
+  m.status.height = overhangRow.ROW_HEIGHT
+  m.titleMeasure = m.top.findNode("titleMeasure")
+  ' The title's text width is read off titleMeasure once it has rendered (layout)
+  m.top.observeField("renderTracking", "onRenderComplete")
   m.clock = m.top.findNode("clock")
   m.clock.boxY = overhangRow.TEXT_TOP
   m.clock.boxHeight = overhangRow.ROW_HEIGHT
@@ -120,6 +126,19 @@ end sub
 
 sub onTitleChanged()
   m.title.text = m.top.title
+  m.titleMeasure.text = m.top.title
+  layout()
+end sub
+
+sub onStatusChanged()
+  m.status.text = m.top.status
+  layout()
+end sub
+
+' The status waits for the title's measured width, which a label reports only once rendered
+sub onRenderComplete()
+  if m.top.renderTracking <> "full" then return
+  if m.status.text <> "" then layout()
 end sub
 
 
@@ -340,6 +359,21 @@ sub layout()
   titleWidth = leftOfDropdown - titleX
   if titleWidth < TITLE_MIN_WIDTH then titleWidth = TITLE_MIN_WIDTH
   m.title.maxWidth = titleWidth
+
+  ' The status follows the title's text (its measured width, on the grid), a tab gap after, and
+  ' takes what is left; it hides until the title has rendered, or when the title alone fills
+  ' the slot. Its maxWidth is the same shared box, so it sits on the title's line.
+  m.status.visible = false
+  if m.status.text <> "" and m.title.visible
+    textWidth = snapToGrid(-int(-m.titleMeasure.localBoundingRect().width))
+    statusX = titleX + textWidth + overhangRow.TAB_GAP
+    statusWidth = leftOfDropdown - statusX
+    if textWidth > 0 and statusWidth >= TITLE_MIN_WIDTH
+      m.status.translation = [statusX, overhangRow.TEXT_TOP]
+      m.status.maxWidth = statusWidth
+      m.status.visible = true
+    end if
+  end if
 end sub
 
 ' component boolean field isVisible has changed value

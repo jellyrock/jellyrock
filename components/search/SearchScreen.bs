@@ -66,9 +66,12 @@ sub init()
   m.top.isOptionsAvailable = false
 
   ' Page title in the overhang, as Settings declares its own. The logo is hidden here
-  ' (JRGroup's default), so the title starts at x=96. The query itself shows in the box
-  ' under the row, the one search surface in both states.
+  ' (JRGroup's default), so the title starts at x=96. While the keyboard is closed, the
+  ' overhang's status after the title carries the submitted query and its count, the way a
+  ' grid's title carries "Filtered by"; while it is open, the box above the keys does.
   m.top.overhangTitle = translate(translationKeys.ButtonSearch)
+  m.searchStatusQuery = ""
+  m.searchCountText = ""
 
   ' Show the app-wide overhang, so this screen uses the same chrome path as every other
   ' rather than a bypass of its own. Chrome intent is DECLARED on this node; JRScene's
@@ -508,6 +511,7 @@ sub onExpansionChanged()
   m.log.verbose("expansion→" + (expanded ? "true" : "false"))
 
   m.overlay.isExpanded = expanded
+  renderSearchStatus()
 
   ' Slide SearchRow down/up in sync with the overlay so row 0 remains
   ' visible below the overlay's bottom edge while typing. Keeping row 0
@@ -645,6 +649,7 @@ sub onQueryChanged()
     end if
     showHelpText(translate(translationKeys.MessageYouCanSearchForTitlesPeople))
     showResultCount("")
+    showSearchStatus("")
     renderRecentSuggestions()
     return
   end if
@@ -917,6 +922,7 @@ end sub
 ' the overlay so the user can browse results.
 sub submitSearch(query as string)
   m.log.info("submit query=" + query)
+  showSearchStatus(query)
 
   ' Cancel the pending full search: the submit runs its own. The hints debounce is left
   ' running: a pick changes the query, and the column then shows that query's hints, as it
@@ -1048,11 +1054,29 @@ sub onFullSearchResults(event as object)
   end if
 end sub
 
-' The last search's result count (searchOutcome.countText) at the query box's right end, so
-' the viewer sees how much was found whatever rows are on screen. "" clears it.
+' The last search's result count (searchOutcome.countText): at the query box's right end
+' while the keyboard is open, in the overhang status after it closes. "" clears it.
 sub showResultCount(countText as string)
-  if not isValid(m.overlay) then return
-  m.overlay.countText = countText
+  m.searchCountText = countText
+  if isValid(m.overlay) then m.overlay.countText = countText
+  renderSearchStatus()
+end sub
+
+' The submitted query ("" for none), for the overhang status.
+sub showSearchStatus(query as string)
+  m.searchStatusQuery = query
+  renderSearchStatus()
+end sub
+
+' The overhang status: the submitted query and its count while the keyboard is closed
+' (searchOutcome.statusText); nothing while it is open, when the box above the keys shows
+' the query.
+sub renderSearchStatus()
+  if m.top.isExpanded
+    m.top.overhangStatus = ""
+  else
+    m.top.overhangStatus = searchOutcome.statusText(m.searchStatusQuery, m.searchCountText)
+  end if
 end sub
 
 ' ============================================================================
