@@ -1,13 +1,14 @@
 import "pkg:/source/constants/searchLayout.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/pixelGrid.bs"
 import "pkg:/source/utils/translate.bs"
 
 ' SearchQueryBox: the typed query, in the overlay's band above the keyboard at the
 ' keyboard's width (QUERY_BOX_WIDTH), so the box and the keys form one column. Long
 ' queries marquee-scroll within the fixed bounds; the last search's count sits dim at the
-' right end. Collapsed, the overlay takes it away and the overhang's status after the title
-' carries the submitted query instead.
+' right end, as wide as its text, and the query takes the rest. Collapsed, the overlay takes
+' it away and the overhang's status after the title carries the submitted query instead.
 '
 ' Not independently focusable: expansion is initiated from the results list
 ' (UP on row 0), via OK in the empty state, or from the overhang's search icon.
@@ -18,7 +19,7 @@ import "pkg:/source/utils/translate.bs"
 ' and size are set in SearchQueryBox.xml (36px, centered in the 44px box).
 const LABEL_X = 76
 const RIGHT_PADDING = 24 ' breathing room on the right edge
-const COUNT_WIDTH = 300 ' the count's slot at the right end ("132 results" in any language)
+const COUNT_GAP = 24 ' between the query and the count
 
 sub init()
   constants = m.global.constants
@@ -26,8 +27,8 @@ sub init()
   m.queryLabel = m.top.findNode("queryLabel")
   m.searchIcon = m.top.findNode("searchIcon")
   m.resultCount = m.top.findNode("resultCount")
-  m.resultCount.width = COUNT_WIDTH
-  m.resultCount.translation = [searchLayout.QUERY_BOX_WIDTH - RIGHT_PADDING - COUNT_WIDTH, 0]
+  ' The count's text width (layoutCount): a hidden label measures as soon as its text is set
+  m.countMeasure = m.top.findNode("countMeasure")
 
   ' Background: secondary panel tint so the box stands out against the
   ' overlay's primary background, but with enough alpha to feel integrated.
@@ -36,16 +37,36 @@ sub init()
   ' Fixed width: matches the keyboard's width below.
   m.bg.width = searchLayout.QUERY_BOX_WIDTH
 
-  ' Text width = box width minus the icon area on the left, the count's slot and the right
-  ' padding. Past it the ScrollingLabel scrolls on its own.
-  m.queryLabel.maxWidth = searchLayout.QUERY_BOX_WIDTH - LABEL_X - COUNT_WIDTH - RIGHT_PADDING
-
   ' No placeholder text when empty: the magnifying-glass icon on the left is
   ' enough to communicate "this is the search input." A "Search" word in a
   ' wide box above an empty keyboard reads as redundant chrome.
   m.queryLabel.color = m.global.constants.colorTextPrimary
 
   renderLabel()
+  layoutCount()
+end sub
+
+sub onCountTextChanged()
+  layoutCount()
+end sub
+
+' Size the count to its text at the right end, and give the query the rest of the box: the
+' box minus the icon area on the left, the right padding and, with a count, the count and a
+' gap before it. Past that width the query's ScrollingLabel scrolls on its own.
+sub layoutCount()
+  countText = m.top.countText
+  if not isValid(countText) then countText = ""
+  m.resultCount.text = countText
+  m.countMeasure.text = countText
+
+  countWidth = 0
+  if countText <> "" then countWidth = snapToGrid(-int(-m.countMeasure.localBoundingRect().width))
+  m.resultCount.width = countWidth
+  m.resultCount.translation = [searchLayout.QUERY_BOX_WIDTH - RIGHT_PADDING - countWidth, 0]
+
+  queryWidth = searchLayout.QUERY_BOX_WIDTH - LABEL_X - RIGHT_PADDING
+  if countWidth > 0 then queryWidth = queryWidth - countWidth - COUNT_GAP
+  m.queryLabel.maxWidth = queryWidth
 end sub
 
 ' Update label text. Empty when no query (icon alone signals purpose). A long query

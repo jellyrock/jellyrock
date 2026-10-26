@@ -18,15 +18,17 @@
     <ScrollingLabel id="queryLabel" height="44" translation="[76, 0]"
       horizAlign="left" vertAlign="center" />
 
-    <!-- The last search's result count ("132 results"), dim, right-aligned at the box's end;
-         width and x are set in bs. -->
+    <!-- The last search's result count ("132 results"), dim, at the box's right end; width and
+         x are set in bs from the text's measured width (countMeasure, never shown), so the
+         query gets the rest. -->
     <LabelSecondarySmall id="resultCount" height="44" horizAlign="right" vertAlign="center" />
+    <LabelSecondarySmall id="countMeasure" visible="false" />
   </children>
   <interface>
     <!-- Current query text to display. Empty string -> empty box (no
          placeholder; the search icon alone signals purpose). -->
     <field id="queryText" type="string" onChange="renderLabel" />
     <!-- The result count to show at the right end; "" for none. -->
-    <field id="countText" type="string" alias="resultCount.text" />
+    <field id="countText" type="string" onChange="onCountTextChanged" />
   </interface>
 </component>
