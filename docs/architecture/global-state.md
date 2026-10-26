@@ -9,7 +9,7 @@ related-files:
   - components/data/Constants.xml
   - components/data/jellyfin/AppInfo.xml
   - components/data/jellyfin/DeviceInfo.xml
-last-reviewed: 2026-10-23
+last-reviewed: 2026-10-26
 ---
 
 # Global state
@@ -129,12 +129,13 @@ Which theme color means what is in [design-system.md](./design-system.md#theme-c
 
 A theme color reaches the screen through three manual steps, all in `globals.bs` and `SceneManager`:
 
-1. `applyThemeColorOverrides(userSettings)` copies each valid six-digit hex setting onto `m.global.constants`. An invalid value keeps the default.
+1. `applyThemeColorOverrides(userSettings)` copies each valid six-digit hex color onto `m.global.constants`. The colors come from the chosen `uiTheme`'s `presetValues` in `settings/settings.json` (`themePresetValues()`), or from the `uiThemeColor*` settings for Custom, an empty theme or an unknown one. An invalid value keeps the current color.
 2. `sceneManager.callFunc("refreshThemeColors")` sets the scene background and re-colors the overhang.
 3. `sceneManager.callFunc("reloadHome")` tells `main.bs` to navigate back to a new Home, so every Home node is built with the new colors.
 
-Three places run them:
+Four places run them:
 
+- **Choosing a theme or color in Settings** runs step 1 at once. `Settings.onScreenHidden()` runs step 2 when something covers Settings (the overhang opening search, say) or it closes.
 - **Leaving Settings** (`performSettingsExit()`) runs steps 1 and 2 if a theme color changed, then step 3 if a theme color or the language changed.
 - **Signing in** (`user.Login()`) runs steps 1 and 2.
 - **Signing out** (`user.Logout()`) runs `resetThemeColors()`, which reloads the defaults, then step 2.

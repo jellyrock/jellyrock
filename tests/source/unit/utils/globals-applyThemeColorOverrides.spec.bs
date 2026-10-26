@@ -4,6 +4,17 @@ namespace tests
   @suite("globals.bs - applyThemeColorOverrides()")
   class ApplyThemeColorOverridesTests extends tests.BaseTestSuite
 
+    ' Reads a preset's values straight from settings.json, so these cases do not
+    ' depend on the helper the app code uses to look the same thing up.
+    function readPresetFromConfig(themeId as string) as dynamic
+      themeEntry = findConfigTreeKey("uiTheme", GetConfigTree())
+      if not isValid(themeEntry) then return invalid
+      for each option in themeEntry.options
+        if option.id = themeId then return option.presetValues
+      end for
+      return invalid
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("applyThemeColorOverrides(userSettings) - Valid Overrides")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -235,6 +246,122 @@ namespace tests
       m.assertEqual(constants.colorTextPrimary, "0xF0F0F0", "Default preserved for colorTextPrimary")
       m.assertEqual(constants.colorTextSecondary, "0xA8A8A8", "Default preserved for colorTextSecondary")
       m.assertEqual(constants.colorTextDisabled, "0x4A4A4A", "Default preserved for colorTextDisabled")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("applyThemeColorOverrides(userSettings) - Theme Choice Decides the Source")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("applies a preset's values even when the color keys hold other values")
+    function _()
+      loadThemeColorDefaults()
+      constants = m.global.constants
+
+      userSettings = {
+        "uiTheme": "emerald",
+        "uiThemeColorPrimary": "FF5733",
+        "uiThemeColorSecondary": "222222",
+        "uiThemeColorBackgroundPrimary": "111111",
+        "uiThemeColorBackgroundSecondary": "333333",
+        "uiThemeColorTextPrimary": "444444",
+        "uiThemeColorTextSecondary": "555555",
+        "uiThemeColorTextDisabled": "666666"
+      }
+      applyThemeColorOverrides(userSettings)
+
+      preset = m.readPresetFromConfig("emerald")
+      m.assertNotInvalid(preset, "emerald should have preset values in settings.json")
+      m.assertEqual(constants.colorPrimary, "0x" + UCase(preset.uiThemeColorPrimary), "Preset colorPrimary wins over the key")
+      m.assertEqual(constants.colorSecondary, "0x" + UCase(preset.uiThemeColorSecondary), "Preset colorSecondary wins over the key")
+      m.assertEqual(constants.colorBackgroundPrimary, "0x" + UCase(preset.uiThemeColorBackgroundPrimary), "Preset colorBackgroundPrimary wins over the key")
+      m.assertEqual(constants.colorBackgroundSecondary, "0x" + UCase(preset.uiThemeColorBackgroundSecondary), "Preset colorBackgroundSecondary wins over the key")
+      m.assertEqual(constants.colorTextPrimary, "0x" + UCase(preset.uiThemeColorTextPrimary), "Preset colorTextPrimary wins over the key")
+      m.assertEqual(constants.colorTextSecondary, "0x" + UCase(preset.uiThemeColorTextSecondary), "Preset colorTextSecondary wins over the key")
+      m.assertEqual(constants.colorTextDisabled, "0x" + UCase(preset.uiThemeColorTextDisabled), "Preset colorTextDisabled wins over the key")
+      m.assertNotEqual(constants.colorPrimary, "0xFF5733", "The key's value must not be applied under a preset")
+    end function
+
+    @it("applies the color keys when the theme is custom")
+    function _()
+      loadThemeColorDefaults()
+      constants = m.global.constants
+
+      userSettings = {
+        "uiTheme": "custom",
+        "uiThemeColorPrimary": "FF5733",
+        "uiThemeColorTextDisabled": "666666"
+      }
+      applyThemeColorOverrides(userSettings)
+
+      m.assertEqual(constants.colorPrimary, "0xFF5733", "Custom applies the colorPrimary key")
+      m.assertEqual(constants.colorTextDisabled, "0x666666", "Custom applies the colorTextDisabled key")
+    end function
+
+    @it("applies the color keys when uiTheme is missing")
+    function _()
+      loadThemeColorDefaults()
+      constants = m.global.constants
+
+      applyThemeColorOverrides({ "uiThemeColorPrimary": "FF5733" })
+
+      m.assertEqual(constants.colorPrimary, "0xFF5733", "A missing uiTheme falls back to the keys")
+    end function
+
+    @it("applies the color keys when uiTheme is an empty string")
+    function _()
+      loadThemeColorDefaults()
+      constants = m.global.constants
+
+      applyThemeColorOverrides({ "uiTheme": "", "uiThemeColorPrimary": "FF5733" })
+
+      m.assertEqual(constants.colorPrimary, "0xFF5733", "An empty uiTheme falls back to the keys")
+    end function
+
+    @it("applies the color keys when uiTheme is an unknown id")
+    function _()
+      loadThemeColorDefaults()
+      constants = m.global.constants
+
+      applyThemeColorOverrides({ "uiTheme": "no-such-theme", "uiThemeColorPrimary": "FF5733" })
+
+      m.assertEqual(constants.colorPrimary, "0xFF5733", "An unknown uiTheme falls back to the keys")
+    end function
+
+    @it("leaves the userSettings color keys unchanged when a preset is applied")
+    function _()
+      loadThemeColorDefaults()
+
+      userSettings = {
+        "uiTheme": "emerald",
+        "uiThemeColorPrimary": "FF5733",
+        "uiThemeColorSecondary": "222222"
+      }
+      applyThemeColorOverrides(userSettings)
+
+      m.assertEqual(userSettings.uiTheme, "emerald", "uiTheme is untouched")
+      m.assertEqual(userSettings.uiThemeColorPrimary, "FF5733", "The primary key is untouched")
+      m.assertEqual(userSettings.uiThemeColorSecondary, "222222", "The secondary key is untouched")
+      m.assertEqual(userSettings.count(), 3, "No key was added or removed")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("themePresetValues(themeId)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the seven preset colors for a preset id")
+    function _()
+      preset = themePresetValues("emerald")
+
+      m.assertNotInvalid(preset)
+      m.assertEqual(preset.count(), 7, "A preset carries all seven colors")
+      m.assertTrue(isValidHexColor(preset.uiThemeColorPrimary), "The preset colors are valid hex")
+    end function
+
+    @it("returns invalid for custom, an empty id and an unknown id")
+    function _()
+      m.assertInvalid(themePresetValues("custom"), "custom has no presetValues")
+      m.assertInvalid(themePresetValues(""), "an empty id has no preset")
+      m.assertInvalid(themePresetValues("no-such-theme"), "an unknown id has no preset")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

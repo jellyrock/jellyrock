@@ -288,8 +288,32 @@ sub loadThemeColorDefaults()
   end for
 end sub
 
-' Apply theme color overrides from user settings to Constants
-' Only applies valid 6-character hex colors; invalid values are ignored (keeps default)
+' The preset colors of a built-in theme, from settings.json.
+' @param {string} themeId - a uiTheme option id, such as "emerald"
+' @return {object} the seven uiThemeColor* values, or invalid when the id is "custom", empty or unknown
+function themePresetValues(themeId as string) as dynamic
+  if themeId = "" then return invalid
+
+  configTree = GetConfigTree()
+  if not isValid(configTree) then return invalid
+
+  themeEntry = findConfigTreeKey("uiTheme", configTree)
+  if not isValid(themeEntry) or not isValid(themeEntry.options) then return invalid
+
+  for each option in themeEntry.options
+    if option.id = themeId
+      return option.presetValues
+    end if
+  end for
+
+  return invalid
+end function
+
+' Apply the user's theme colors to Constants.
+' A built-in theme (a uiTheme id with presetValues in settings.json) supplies the colors itself.
+' Custom, a missing or empty uiTheme and an unknown id read the uiThemeColor* keys instead.
+' Only valid 6-character hex colors are applied; anything else is ignored (keeps the current color).
+' Never writes to userSettings, so a preset leaves the user's custom colors alone.
 sub applyThemeColorOverrides(userSettings as object)
   if not isValid(userSettings) then return
 
@@ -307,9 +331,17 @@ sub applyThemeColorOverrides(userSettings as object)
     "uiThemeColorTextDisabled": "colorTextDisabled"
   }
 
+  ' The colors come from the chosen preset, or from the user's own keys
+  colorSource = userSettings
+  themeId = userSettings.uiTheme
+  if type(themeId) = "roString" or type(themeId) = "String"
+    presetValues = themePresetValues(themeId)
+    if isValid(presetValues) then colorSource = presetValues
+  end if
+
   for each settingName in colorMap
     constantName = colorMap[settingName]
-    userValue = userSettings[settingName]
+    userValue = colorSource[settingName]
 
     ' Only apply if value exists and is a valid 6-char hex color
     if isValidHexColor(userValue)
