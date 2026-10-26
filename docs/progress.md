@@ -985,6 +985,43 @@ Not now: it is a feature, not a fix, and it puts a download of up to a few megab
 
 Not now: removing a setting needs a registry migration for users who have the toggle off with a number saved (they must end up with 0), and its own PR. Closes when the toggle is gone through `/new-migration`, or a decision note keeps it on purpose.
 
+#### Cast targets on one Roku cannot be told apart: name each the same open and closed, with dev builds marked first `[fid: cast-target-names-per-build]` `[captured 2026-10-26]`
+
+For the repo `jellyrock/jellyfin-plugin-jellyrock` first, then this one. The mailbox refused the message (that repo is not registered on this machine), so it waits here. Step 1: paste everything under "Message for the plugin repo" into a session there. Step 2, once the plugin settles the `/pair` field: in this repo, add one name helper used by the auth header (`source/api/baseRequest.bs`, `Device=`) and `buildPairPayload` (`source/remotecontrol/remoteProtocol.bs`), with a unit spec, so a target has one name open and closed, and a dev build's name starts with "Dev · ".
+
+Message for the plugin repo:
+
+Investigate, then propose a plan (no code until it is approved), for a cast-list naming problem. It spans this repo and jellyrock/jellyrock (the app).
+
+What happened: on one Roku with two JellyRock apps installed (the published channel, app id 819325, and a sideloaded dev build, app id "dev"), the `jellyfin-web` "Play On" list showed two targets, "JellyRock" and "Streaming Stick 4K (3820X)", with nothing saying which was which. "JellyRock" was the published channel's cold-launch phantom; choosing it woke that app over the running dev build. Waking the other build is fine and intended. The problem is that the user cannot tell the targets apart.
+
+Why the names differ (read from both repositories, 2026-10-26; app side at `jellyrock/jellyrock@861f4047`):
+
+- Each app on a Roku gets its own roDeviceInfo.GetChannelClientId(), which JellyRock uses as its Jellyfin `DeviceId`, so the two apps pair as two devices. That part is correct.
+- Open, a target's name comes from the app's auth header: Device="<`GetModelDisplayName()`> (<`GetModel()`>)" (app: source/api/baseRequest.bs, source/utils/globals.bs). It carries no dev marker, and this plugin never rewrites a live session's name.
+- Closed, `PhantomSessionService.RefreshPairingAsync` reuses the existing session's `DeviceName` when one exists, else `DefaultDeviceName(record)`: "JellyRock" or "JellyRock (dev)". So one target's name changes with its state and over time, and only one state marks a dev build.
+- The /pair report (app: `source/remotecontrol/remoteProtocol.bs` `buildPairPayload`) sends the IP addresses, `appId` and `isDev`, but no name.
+
+ECP /query/device-info on three Roku devices (2026-10-26) returns user-device-name (the name set in the Roku's settings: "Roku Ultra", "Streaming Stick 4K", "3600X"), user-device-location ("Living room", "Office", "Office"), friendly-device-name (equal to user-device-name on all three), model-name, model-number and default-device-name ("<model> - <serial>"). Two of them share a location.
+
+Proposed shape, to confirm or replace with something better:
+
+1. One target, one name, the same open and closed.
+2. The name leads with the build marker for a dev build and is unmarked for the published channel: "Dev · <Roku name>" and "<Roku name>". Dev builds are the edge case; the marker goes first so it cannot be missed or cut off.
+3. The app is the single source: it builds the name once and sends it in its auth header and in /pair (a new optional field, additive per the /pair contract). This plugin stores it on `PairingRecord` and uses it for the phantom, falling back to `DefaultDeviceName` only for an older app that does not send it.
+Ruled out: the phantom copying the live session's name from the same `WakeIp` (two identical names); this plugin computing a name from ECP device-info (two sources that drift).
+
+Investigate before planning:
+
+- What the `jellyfin-web` Play On list renders for a session (`DeviceName` only, or also the client name or an icon), on web and mobile, and whether it truncates long names. The official Jellyfin Roku app (592369) was installed on the same Roku and is listed too: decide whether the published name needs "JellyRock" in it to tell it from Jellyfin.
+- Every naming state of a target (never connected, open, closed with a cached live-session name, closed after the session expired) and what each shows today, with a test per state.
+- Which Roku name to use: user-device-name alone, or with user-device-location when two Roku devices share a name; and what `roDeviceInfo.GetFriendlyName()` returns in the app (the app's globals.bs treats it as "<model> - <serial>", while the ECP field friendly-device-name is the user-set name). Check on a real Roku.
+- How a beta or second published channel would be marked, since `roAppInfo.IsDev()` is true only for a sideload.
+- Whether `IncludeDevelopmentBuilds`' default and wording still fit once dev targets are named.
+- The exact /pair field name and version handling on both sides.
+
+The app-side half (one name helper used by the auth header and `buildPairPayload`, plus its unit spec) waits on the /pair field this plugin settles. When the contract is decided, send a message back to jellyrock/jellyrock naming the field and its rules.
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`
