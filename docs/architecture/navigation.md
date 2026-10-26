@@ -21,7 +21,7 @@ related-files:
   - source/utils/appWaits.bs
   - components/AppWaitHost.bs
   - components/AppWaitHost.xml
-last-reviewed: 2026-10-25
+last-reviewed: 2026-10-26
 ---
 
 # Navigation (sgRouter)
@@ -317,9 +317,9 @@ The row's keys and presses are handled once, by the scene, not by each screen:
 
 - **Up from a screen's top** calls `JRScreen.focusOverhang()`, which saves the screen's focus and asks the overhang for `focusRow`: the element Down last left the row from on this visit, else the first shown (tabs, dropdown, cluster), chosen by `overhangRow.entryElement`. Each screen decides what its top is: Home's first row, the grid's first row (or its genre rows, or the retry button), the details description (or the track row or the buttons when nothing sits above them), the first Settings item, the audio player's seek bar, and the search keyboard's top row.
 - **Down on any row element** sets the overhang's `requestFocusReturn`; `JRScene.onOverhangFocusReturn` calls the active screen's `returnFocusFromOverhang`, which is `restoreScreenFocus`. **Back or Options in the row** does the same first (`returnFocusFromOverhangRow`): the row sits outside the outlet, so those keys reach the scene, and Back there once meant the exit prompt on every screen. The next Back is the screen's own; Options goes on to open the screen's panel.
-- **A cluster press** sets `iconAction` with the entry id. `JRScene.onOverhangIconAction` offers it to the active screen first (`onOverhangAction`: the search screen reopens its keyboard on the search icon), else routes it through `routerNavigate` (the gear on Settings is a navigation to the route on screen, which the router answers by reusing the view), never a bare `sgrouter.navigateTo` ([the refused-navigation retry](#navigation-functions-on-jrscene)). The scene remembers `{ view, icon }`, and when that screen returns its `restoreScreenFocus` takes the icon back through `restoreOverhangIconFocus` before its own restore (`JRScene.takeOverhangReturnFocus`: a peek from `onScreenShown` keeps the debt, the resume's restore consumes it).
+- **A cluster press** sets `iconAction` with the entry id. `JRScene.onOverhangIconAction` offers it to the active screen first (`onOverhangAction`: the search screen reopens its keyboard on the search icon), else routes it through `routerNavigate` (the gear on Settings is a navigation to the route on screen, which the router answers by reusing the view), never a bare `sgrouter.navigateTo` ([the refused-navigation retry](#navigation-functions-on-jrscene)). The screen the viewer leaves keeps the icon's id in its own `overhangReturnIcon`, so each screen of a chain (a library, then search, then Settings) keeps its own and the id goes with its screen. When that screen returns, its `restoreScreenFocus` focuses the icon through `restoreOverhangIconFocus` before its own restore: a peek from `onScreenShown` keeps the id, and the resume's restore clears it.
 - **A dropdown item** sets `userMenuAction`, which the scene relays to its own `userMenuAction` field for `main.bs`.
-- **Settings opened from another screen:** a theme or language change there reloads Home, which clears the stack, so `reloadRoutedHome` navigates on to the route Settings was opened from (`m.settingsOrigin`, a `{ path, context }` step of `navigateChainStep`). The origin mounts fresh, without its scroll position.
+- **Settings opened from another screen:** a theme or language change there reloads Home, which clears the stack, so `reloadRoutedHome` navigates on to the route Settings was opened from (`m.settingsOrigin`, a `{ path, context }` step of `navigateChainStep`). The origin mounts fresh, without its scroll position, and with Home under it. A player is never the origin (`appWaits.isPlaybackScreen`): it starts its queue when it mounts, so a reload from Settings over a player lands on Home.
 
 ## `SceneManager` is a service node
 
