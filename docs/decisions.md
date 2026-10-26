@@ -2346,6 +2346,16 @@ Back with focus in the overhang row leaves the screen, one press per screen: `JR
 
 Ruled out: Back from the row acting as the screen's own Back, which would make it go up a Settings level there and leave the screen elsewhere; focusing the screen's content instead of the icon on return, which still takes two presses after a deliberate Up and drops Home's return to the gear.
 
+## decision-id: theme-presets-never-overwrite-custom
+
+**date**: 2026-10-26
+**status**: accepted
+**related-files**: `source/utils/globals.bs`, `components/settings/settings.bs`, `settings/settings.json`
+
+A theme preset never writes the seven `uiThemeColor*` settings. `applyThemeColorOverrides` reads the colors from the chosen `uiTheme`'s `presetValues` in `settings.json` (`themePresetValues`), or from those settings for Custom, an empty or an unknown theme, so the settings hold the user's custom colors and nothing else, and Custom brings them back at any time. A theme or color choice applies when made, and `Settings.onScreenHidden` restyles the background and the overhang when Settings is covered or closed. Before this, a preset wrote its values over the custom colors and kept the old ones only in memory on the Settings screen, behind a "Replace custom colors?" prompt on Settings' own exit, so leaving Settings any other way dropped them. No migration: every saved state resolves to the colors it showed before (Custom users read their settings, preset users get the values the preset wrote, and users with no theme get jellyrock, whose values equal the defaults).
+
+Ruled out: moving the prompt to the moment a preset is picked, which keeps a destructive step and loses the custom colors after Yes; a theme node on `m.global`, which is tech debt `manual-theme-cascade`'s own project.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
