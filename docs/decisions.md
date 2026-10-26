@@ -2306,6 +2306,36 @@ Every icon canvas and icon box is a multiple of 3: 63 pixels, not 64. The app la
 
 Ruled out: keeping 64, off the grid at 720p; pinning `search` and `settings` at 64/46 to match the tabs, consistent but still off the grid. Recheck when adding an `IconButton` icon: one built below 63 pixels makes a narrower button than its neighbors, because `limitSize` scales a large image down but never a small one up. The canvases still off the grid (16, 24, 35, 36 and 48 pixels, and the 96 pixel `hd`, `speed` and `versions`, whose HD copies are 64) are followup `app-wide-3px-grid-audit`.
 
+## decision-id: router-claim-keeps-overhang-focus
+
+**date**: 2026-10-26
+**status**: accepted
+**related-files**: `components/JRScreen.bs`, `components/JRScene.bs`
+
+After a screen's show-time call, `JRScreen.handleFocus` leaves focus on the overhang row when the row holds it, and clears the screen's `overhangReturnIcon`. The router claims focus once a navigation settles (`JRScene.startNavigation` calls `sgrouter.setFocus`, which reaches `handleFocus` with `routerFocused: true`), and a viewer who pressed Up into the row in between was pulled back into the screen. Measured 2026-10-26 on a Stick 4K (Roku OS 15.3.4): on search opened from the cluster, focus went back to the keyboard about 0.2 s after reaching the row, 3 of 3 runs. It adds one exception beside `router-focus-left-notice`, which still governs the focus-left notice.
+
+Ruled out: skipping the settle `setFocus` when the destination already took focus. Every navigation goes through it, and skipping it leaves the router's focus bookkeeping false, which changes when its later focus-left notices fire. Recheck when an sgRouter upgrade changes who calls `handleFocus`.
+
+## decision-id: overhang-return-icon-on-screen
+
+**date**: 2026-10-26
+**status**: accepted
+**related-files**: `components/JRScreen.xml`, `components/JRScreen.bs`, `components/JRScene.bs`
+
+The overhang icon a screen was left by is a field on that screen (`JRScreen.overhangReturnIcon`, the icon's id), written by `JRScene.onOverhangIconAction` and read by `restoreOverhangIconFocus`. Each screen of a chain (a library, then search, then Settings) keeps its own, and it goes with the screen.
+
+Ruled out: one record in the scene, which a second press overwrote and which held a closed screen's node. Measured 2026-10-25 on a Stick 4K: Back out of search to the library focused the grid, not the search icon. Also ruled out: a node reference on the screen, which a string id makes unnecessary.
+
+## decision-id: no-cluster-on-playback-screens
+
+**date**: 2026-10-26
+**status**: accepted
+**related-files**: `components/JRScene.bs`, `components/music/AudioPlayerView.bs`
+
+The overhang cluster shows on every screen once a user is signed in, except a playback screen (`appWaits.isPlaybackScreen`), and a player is never the screen a theme reload returns to (`JRScene.routeOfActiveView`). The app has no now-playing control. Search or Settings opened over the audio player left its music playing with nothing on screen to stop it (measured 2026-10-25 on a Stick 4K: a reload from Settings landed on Home with the song still playing), and a player starts its queue when it mounts.
+
+Ruled out: stopping the music on a cluster press, which surprises a listener; browsing while music plays, which needs a now-playing design (followup `browse-while-music-plays`). Revisit when that followup ships.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
