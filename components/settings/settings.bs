@@ -400,7 +400,31 @@ sub LoadMenu(configSection)
       end if
     end if
   end for
+
+  ' Whose settings these are, as the overhang's status after the title: the signed-in user's,
+  ' or everyone's on the device inside a group of only global settings
+  if isDeviceWideSection(configSection)
+    m.top.overhangStatus = translate(translationKeys.LabelEveryoneOnThisDevice)
+  else
+    m.top.overhangStatus = m.global.user.name
+  end if
 end sub
+
+' True when every setting in the section, at any depth, is saved for everyone on the device
+' (isGlobalSetting): the Global group. The root mixes both, so it is the user's.
+function isDeviceWideSection(section as object) as boolean
+  hasSetting = false
+  for each item in section.children
+    if isValid(item.settingName)
+      if not isGlobalSetting(item.settingName) then return false
+      hasSetting = true
+    else if isValid(item.children)
+      if not isDeviceWideSection(item) then return false
+      hasSetting = true
+    end if
+  end for
+  return hasSetting
+end function
 
 sub settingFocused()
   ' The right panel has landed. Resolved at the TOP because this handler has an early
