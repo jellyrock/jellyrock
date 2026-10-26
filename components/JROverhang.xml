@@ -13,8 +13,8 @@
     <Poster id="logo" uri="pkg:/images/branding/logo.png" height="39" width="180" />
     <!-- Title: shown when the screen has no tabs, at the tab bar's place -->
     <ScrollingLabelPrimaryLarge id="title" vertAlign="center" maxWidth="300" repeatCount="0" />
-    <!-- The screen's status, dim, right after the title (the search screen's submitted query
-         and count); placed by layout() from the title's measured width (titleMeasure, never shown) -->
+    <!-- The screen's status, dim, right after the title (the search screen's submitted query);
+         placed by layout() from the title's measured width (titleMeasure, never shown) -->
     <ScrollingLabelSecondaryLarge id="status" vertAlign="center" maxWidth="300" repeatCount="0" visible="false" />
     <LabelPrimaryLarge id="titleMeasure" visible="false" />
     <!-- Tab bar, user dropdown and cluster are created programmatically -->
@@ -26,7 +26,7 @@
     <field id="currentUser" type="string" onChange="onCurrentUserChanged" />
     <field id="title" type="string" onChange="onTitleChanged" />
     <!-- A screen's status in secondary text after the title, "" for none: the search
-         screen's submitted query and count while its keyboard is closed. -->
+         screen's submitted query while its keyboard is closed. -->
     <field id="status" type="string" onChange="onStatusChanged" />
     <field id="isVisible" value="true" type="boolean" onChange="onIsVisibleChanged" />
     <field id="isMoveAnimationDisabled" value="false" type="boolean" />

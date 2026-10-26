@@ -7,7 +7,7 @@ import "pkg:/source/utils/translate.bs"
 ' keyboard's width (QUERY_BOX_WIDTH), so the box and the keys form one column. Long
 ' queries marquee-scroll within the fixed bounds; the last search's count sits dim at the
 ' right end. Collapsed, the overlay takes it away and the overhang's status after the title
-' carries the submitted query and count instead.
+' carries the submitted query instead.
 '
 ' Not independently focusable: expansion is initiated from the results list
 ' (UP on row 0), via OK in the empty state, or from the overhang's search icon.

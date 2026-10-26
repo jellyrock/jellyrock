@@ -7,8 +7,8 @@ namespace searchLayout
 
   ' Query box: the typed query, in the overlay's band above the keyboard at the keyboard's
   ' width, so the box and the keys form one column. It is in the sliding group, so it comes
-  ' and goes with the keyboard; collapsed, the overhang shows the submitted query and count
-  ' as its status after the title (the overhang row holds only what every screen has,
+  ' and goes with the keyboard; collapsed, the overhang shows the submitted query as its
+  ' status after the title (the overhang row holds only what every screen has,
   ' docs/architecture/design-system.md). Its position [824, 0] inside the overlay and 44px
   ' height are set in SearchOverlay.xml and SearchQueryBox.xml; only the width is read in code.
   const QUERY_BOX_WIDTH = 1000

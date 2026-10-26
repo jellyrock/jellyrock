@@ -76,22 +76,6 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("statusText: the search screen's overhang status")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("is nothing without a submitted query, whatever the count")
-    function _()
-      m.assertEqual(searchOutcome.statusText("", ""), "")
-      m.assertEqual(searchOutcome.statusText("", "3 results"), "")
-    end function
-
-    @it("is the query alone until a count arrives, then the query and the count")
-    function _()
-      m.assertEqual(searchOutcome.statusText("alien", ""), "alien")
-      m.assertEqual(searchOutcome.statusText("alien", "24+ results"), "alien · 24+ results")
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("canSearchLiveTv")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

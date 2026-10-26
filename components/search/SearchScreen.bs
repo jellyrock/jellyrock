@@ -67,11 +67,10 @@ sub init()
 
   ' Page title in the overhang, as Settings declares its own. The logo is hidden here
   ' (JRGroup's default), so the title starts at x=96. While the keyboard is closed, the
-  ' overhang's status after the title carries the submitted query and its count, the way a
-  ' grid's title carries "Filtered by"; while it is open, the box above the keys does.
+  ' overhang's status after the title carries the submitted query, the way a grid's title
+  ' carries "Filtered by"; while it is open, the box above the keys does, with the count.
   m.top.overhangTitle = translate(translationKeys.ButtonSearch)
   m.searchStatusQuery = ""
-  m.searchCountText = ""
 
   ' Show the app-wide overhang, so this screen uses the same chrome path as every other
   ' rather than a bypass of its own. Chrome intent is DECLARED on this node; JRScene's
@@ -1054,12 +1053,11 @@ sub onFullSearchResults(event as object)
   end if
 end sub
 
-' The last search's result count (searchOutcome.countText): at the query box's right end
-' while the keyboard is open, in the overhang status after it closes. "" clears it.
+' The last search's result count (searchOutcome.countText) at the query box's right end, so
+' the viewer typing sees how much a query finds. "" clears it. It goes with the keyboard: the
+' rows on screen carry their own counters once it closes.
 sub showResultCount(countText as string)
-  m.searchCountText = countText
   if isValid(m.overlay) then m.overlay.countText = countText
-  renderSearchStatus()
 end sub
 
 ' The submitted query ("" for none), for the overhang status.
@@ -1068,14 +1066,13 @@ sub showSearchStatus(query as string)
   renderSearchStatus()
 end sub
 
-' The overhang status: the submitted query and its count while the keyboard is closed
-' (searchOutcome.statusText); nothing while it is open, when the box above the keys shows
-' the query.
+' The overhang status: the submitted query while the keyboard is closed; nothing while it
+' is open, when the box above the keys shows the query.
 sub renderSearchStatus()
   if m.top.isExpanded
     m.top.overhangStatus = ""
   else
-    m.top.overhangStatus = searchOutcome.statusText(m.searchStatusQuery, m.searchCountText)
+    m.top.overhangStatus = m.searchStatusQuery
   end if
 end sub
 

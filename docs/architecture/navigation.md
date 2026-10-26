@@ -58,7 +58,7 @@ Scene
 |---|---|---|
 | `lastFocus` | node | The element that had focus when the view was last suspended |
 | `overhangTitle` | string | Title in the top bar |
-| `overhangStatus` | string | Dim text after the title: the screen's state (the search screen's submitted query and count while its keyboard is closed) |
+| `overhangStatus` | string | Dim text after the title: the screen's state (the search screen's submitted query while its keyboard is closed) |
 | `overhangTabs` | array | The tab bar's entries, `{ id, title, icon, selectedIcon }`: the screen's views as text buttons, each with a glyph beside its title, outlined (`icon`) until the tab is selected, then filled (`selectedIcon`) |
 | `selectedTabId` | string, `alwaysNotify` | The selected view |
 | `isOverhangVisible` | bool, default true | Show the top bar (false during playback) |
