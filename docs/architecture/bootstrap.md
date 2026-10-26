@@ -113,7 +113,7 @@ The app has one scene for its whole life, `components/JRScene.xml`, which extend
 | `backgroundImageUri` | string | The backdrop image. `BackdropFader` does the crossfade. |
 | `shouldShowBackdrop` | bool | Whether backdrops show. Worked out from the user's settings on the first backdrop request after sign-in. |
 | `exit` | bool | Set true to close the app. |
-| `userMenuAction` | string | Home's user menu sets it; `main.bs` passes it to `handleMenuAction()`. |
+| `userMenuAction` | string | Set from the overhang's user dropdown (relayed by `JRScene.onOverhangUserMenuAction`) and from Home's options panel; `main.bs` passes it to `handleMenuAction()`. |
 | `preLoginIntent` | string | A sign-in screen sets it; `main.bs` passes it to `handlePreLoginIntent()`. |
 | `contentVersion` | int | Bumped when a view changes server content (an item delete). A grid suspended under it reloads on resume when the number differs. |
 | `testToast` | string | Shows a test toast when set from the console (see [`debug-tools.md`](debug-tools.md)). |
