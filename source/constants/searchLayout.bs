@@ -2,6 +2,7 @@
 ' box, keyboard and suggestions, and the results under it). Values define screen-space
 ' geometry and must stay in sync with the corresponding XML attributes / animation keyValues
 ' in SearchOverlay.xml, SearchQueryBox.xml and SearchScreen.xml.
+import "pkg:/source/utils/overhangRow.bs"
 
 namespace searchLayout
 
@@ -45,9 +46,9 @@ namespace searchLayout
   const OVERLAY_WIDTH = 1920
 
   ' Results row list (SearchRow) translation when collapsed: right under the overhang row,
-  ' where every screen's content starts (overhangRow.ROW_BOTTOM; a grid's tiles, Home's
-  ' first row label). The first row's label sits RESULTS_LABEL_Y below.
-  const RESULTS_Y = 105
+  ' where every screen's content starts (a grid's tiles, Home's first row label). The first
+  ' row's label sits RESULTS_LABEL_Y below.
+  const RESULTS_Y = overhangRow.ROW_BOTTOM
   const RESULTS_LABEL_Y = 21
 
   ' Results row list translation when the overlay is expanded. Positioned
