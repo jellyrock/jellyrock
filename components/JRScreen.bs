@@ -107,12 +107,20 @@ end function
 ' LEFT its outlet (to the overhang, a dialog or AppWaitHost). Taking focus then would steal it
 ' back, so that notice is ignored while another node holds focus. The call right after the view
 ' is shown always takes focus, and a stranded focus (on the bare scene) is still recovered.
+' Any later call leaves focus on the overhang row when it holds it: the router claims focus once a
+' navigation settles, and a viewer who pressed Up meanwhile would be pulled back into the screen.
 ' Screens override restoreScreenFocus, not this.
 function handleFocus(data = {} as object) as boolean
   wasShowPending = m.isShowFocusPending = true
   m.isShowFocusPending = false
   if not wasShowPending and isValid(data) and data.routerFocused = false and isFocusHeldElsewhere()
     return false
+  end if
+  if not wasShowPending and isOverhangRowFocused()
+    ' The icon the viewer is on already holds focus. A leftover return icon would make the next
+    ' Down focus the icon instead of the screen.
+    m.top.overhangReturnIcon = ""
+    return true
   end if
   restoreScreenFocus()
   return true
@@ -168,6 +176,12 @@ function restoreOverhangIconFocus(consume as boolean) as boolean
   if not isValid(icon) or not icon.visible then return false
   icon.setFocus(true)
   return true
+end function
+
+' True when the overhang row (or a node in it) holds focus.
+function isOverhangRowFocused() as boolean
+  overhang = m.top.getScene().findNode("overhang")
+  return isValid(overhang) and overhang.isInFocusChain()
 end function
 
 ' True when a node outside the bare scene holds focus. The scene itself holding it (or nothing)
