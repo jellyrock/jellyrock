@@ -77,6 +77,28 @@ namespace tests
       m.assertMove(m.shown(true, true, true), "tabs", "", "", "")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("overhangRow.entryElement: where Up enters the row")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the element the row was left from while it is still shown")
+    function _()
+      m.assertEqual(overhangRow.entryElement(m.shown(true, true, true), "cluster"), "cluster")
+      m.assertEqual(overhangRow.entryElement(m.shown(false, false, true), "cluster"), "cluster")
+    end function
+
+    @it("falls back to the first shown element when the last one is gone or unknown")
+    function _()
+      m.assertEqual(overhangRow.entryElement(m.shown(true, true, true), ""), "tabs")
+      m.assertEqual(overhangRow.entryElement(m.shown(false, true, true), "tabs"), "dropdown")
+      m.assertEqual(overhangRow.entryElement(m.shown(false, false, true), "dropdown"), "cluster")
+    end function
+
+    @it("returns nothing when the row shows no focusable element")
+    function _()
+      m.assertEqual(overhangRow.entryElement(m.shown(false, false, false), "cluster"), "")
+    end function
+
   end class
 
 end namespace

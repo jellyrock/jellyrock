@@ -55,7 +55,6 @@ sub init()
 
   ' Overhang config: declarative fields projected onto the overhang by JRScene (registerOverhangData).
   m.top.isLogoVisible = true
-  m.top.shouldShowIcons = true
   m.top.shouldShowUserDropdown = true
 
   buildOptionsMenu()
@@ -155,51 +154,7 @@ end sub
 sub onScreenShown()
   m.log.info("onScreenShown")
 
-  ' Configure overhang UI
   scene = m.top.getScene()
-
-  overhang = scene.findNode("overhang")
-  if isValid(overhang)
-    m.overhang = overhang
-
-    ' Cache overhang element references and observe their events ONCE.
-    ' onScreenShown runs on every return (back from Settings, for example),
-    ' and calling observeField again would stack duplicate observers, causing
-    ' actions to fire N times (1 extra per show).
-    if not isValid(m.tabBar)
-      tabBar = overhang.callFunc("getTabBar")
-      if isValid(tabBar)
-        m.tabBar = tabBar
-        m.tabBar.observeField("requestFocusReturn", "onTabBarFocusReturn")
-      end if
-    end if
-
-    if not isValid(m.userDropdown)
-      userDropdown = overhang.callFunc("getUserDropdown")
-      if isValid(userDropdown)
-        m.userDropdown = userDropdown
-        m.userDropdown.observeField("requestFocusReturn", "onUserDropdownFocusReturn")
-        m.userDropdown.observeField("selectedAction", "onUserMenuAction")
-      end if
-    end if
-
-    ' Cache the search/settings icon refs + observe their events once (re-observing stacks).
-    if not isValid(m.searchIcon)
-      overhang.observeField("iconAction", "onOverhangIconAction")
-
-      searchIcon = overhang.callFunc("getIcon", "search")
-      if isValid(searchIcon)
-        m.searchIcon = searchIcon
-        m.searchIcon.observeField("requestFocusReturn", "onIconFocusReturn")
-      end if
-
-      settingsIcon = overhang.callFunc("getIcon", "settings")
-      if isValid(settingsIcon)
-        m.settingsIcon = settingsIcon
-        m.settingsIcon.observeField("requestFocusReturn", "onIconFocusReturn")
-      end if
-    end if
-  end if
 
   ' Re-activate voice capture, matching BaseGridView's onScreenShown pattern.
   ' Only toggle active; voiceEnabled was set once in init() and never changed.
@@ -207,14 +162,10 @@ sub onScreenShown()
     m.voiceBox.active = true
   end if
 
-  ' Reset overhang element tracking so the next UP defaults to the active tab
-  m.lastOverhangElement = invalid
-
-  ' Restore focus (overhang-icon-aware: see restoreHomeFocus). Don't clear
-  ' m.lastOverhangFocus here. The router calls handleFocus() immediately AFTER onScreenShown,
-  ' and its default restoreFocus(m.top) would override the overhang-icon focus with a Home row;
-  ' Home's restoreScreenFocus re-runs restoreHomeFocus and clears the one-shot target once consumed.
-  restoreHomeFocus()
+  ' Restore focus: the cluster icon Home was left by, else Home's own (restoreHomeFocus). A
+  ' peek only: the router calls handleFocus() right after onScreenShown, and Home's
+  ' restoreScreenFocus takes the icon for good there.
+  if not restoreOverhangIconFocus(false) then restoreHomeFocus()
 
   ' First run: load libraries (the router mounts Home now, so this is no longer
   ' triggered externally by main.bs) and post device capabilities to the server via
@@ -265,20 +216,12 @@ function getRokuIps() as object
   return ips
 end function
 
-' Restore Home's focus, OVERHANG-ICON-AWARE. Priority:
-'   1. The overhang element that triggered the last navigation (gear / search / dropdown). These
-'      live in the persistent overhang (a child of JRScene, not of Home), so they can't be reached
-'      via m.top.lastFocus.
-'   2. Home's own lastFocus (normal in-group restoration), skipping the hidden voice box.
-'   3. Active content, then the Home group.
-' Called by BOTH onScreenShown and restoreScreenFocus: the router invokes handleFocus right after
-' onScreenShown, and its base restoreFocus(m.top) would otherwise override the overhang-icon focus
-' with a Home row (the "gear focus removed on return to Home" regression). Does not clear the
-' one-shot m.lastOverhangFocus: restoreScreenFocus clears it once the resume's focus restore is complete.
+' Restore Home's own focus: its lastFocus (normal in-group restoration), skipping the hidden
+' voice box; else the active content, then the Home group. The cluster icon Home was left by
+' is restored before this by the callers (restoreOverhangIconFocus), since it lives in the
+' overhang, a child of JRScene, and cannot be reached through m.top.lastFocus.
 sub restoreHomeFocus()
-  if isValid(m.lastOverhangFocus)
-    m.lastOverhangFocus.setFocus(true)
-  else if isValid(m.top.lastFocus) and m.top.lastFocus.id <> "homeVoiceBox"
+  if isValid(m.top.lastFocus) and m.top.lastFocus.id <> "homeVoiceBox"
     m.top.lastFocus.setFocus(true)
   else if isValid(m.activeContent)
     m.activeContent.setFocus(true)
@@ -288,13 +231,11 @@ sub restoreHomeFocus()
 end sub
 
 ' Focus hook (overrides JRScreen.restoreScreenFocus). The router asks the resuming view to take
-' focus right after onViewResume -> onScreenShown. The base implementation uses restoreFocus(m.top),
-' which focuses a Home row and clobbers the overhang-icon (gear/search) focus onScreenShown has set.
-' Re-run Home's overhang-aware restore so the gear stays focused on return (matching prod), then
-' consume the one-shot overhang target.
+' focus right after onViewResume -> onScreenShown; the base would focus a Home row through
+' restoreFocus(m.top). The cluster icon Home was left by comes first, as in the base.
 sub restoreScreenFocus()
+  if restoreOverhangIconFocus(true) then return
   restoreHomeFocus()
-  m.lastOverhangFocus = invalid
 end sub
 
 ' JRScreen hook called when the screen is hidden by the screen manager
@@ -466,106 +407,18 @@ end sub
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
-  ' UP at top of content focuses the overhang.
-  ' First entry after screen show defaults to the tab bar (active tab).
-  ' Subsequent entries restore the last overhang element the user was on.
+  ' UP at the top of the content enters the overhang row (JRScreen.focusOverhang: the element
+  ' Down last left it from on this visit, else the selected tab).
   if key = "up"
     activeRows = getActiveRows()
     rowItemFocused = activeRows?.rowItemFocused
     if isValid(activeRows) and type(rowItemFocused) = "roArray" and rowItemFocused.count() >= 2 and rowItemFocused[0] = 0
-      ' Restore last overhang element if the user has visited before
-      if isValid(m.lastOverhangElement)
-        m.lastOverhangElement.setFocus(true)
-        return true
-      end if
-
-      ' First visit: default to the tab bar (active tab)
-      ' Lazy-init: the tab bar is created by the shared overhang (from JRScene's
-      ' registerOverhangData), not by Home, so m.tabBar may still be uncached here.
-      ' Grab it from the overhang on first use.
-      if not isValid(m.tabBar) and isValid(m.overhang)
-        tabBar = m.overhang.callFunc("getTabBar")
-        if isValid(tabBar)
-          m.tabBar = tabBar
-          m.tabBar.observeField("requestFocusReturn", "onTabBarFocusReturn")
-        end if
-      end if
-
-      if isValid(m.tabBar)
-        m.tabBar.setFocus(true)
-        return true
-      end if
+      return focusOverhang()
     end if
   end if
 
   return false
 end function
-
-' User dropdown signals DOWN was pressed: return focus to active content
-sub onUserDropdownFocusReturn()
-  m.lastOverhangElement = m.userDropdown
-  if isValid(m.activeContent)
-    m.activeContent.setFocus(true)
-  end if
-end sub
-
-' User dropdown menu item was selected: proxy to Home's interface for Main.bs.
-' Saves the dropdown so onScreenShown can restore focus when the user returns,
-' then moves focus into Home's tree so the router's suspend saves a focus that
-' back-from-route can restore.
-sub onUserMenuAction()
-  if isValid(m.userDropdown)
-    m.lastOverhangFocus = m.userDropdown
-
-    ' Move focus into Home's tree before navigating so back-from-route restores it.
-    m.top.setFocus(true)
-
-    ' Route the action (search/settings navigate; session actions emit userMenuAction up to
-    ' main.bs).
-    handleHomeMenuAction(m.userDropdown.selectedAction)
-  end if
-end sub
-
-' Overhang icon (search/settings) was pressed: proxy to Home's interface for Main.bs.
-' Saves the focused icon for focus restoration on return, then moves focus to
-' Home group BEFORE firing the action. This ensures the router's suspend saves a
-' focus inside Home's tree. We focus m.top (not activeContent) to avoid
-' a visible focus jump to the row list before the screen transition.
-sub onOverhangIconAction()
-  if isValid(m.overhang)
-    ' Determine which icon fired the action and save it for focus restoration.
-    ' Use the action ID rather than hasFocus(): the field observer callback
-    ' may fire after focus has already moved, making hasFocus() unreliable.
-    action = m.overhang.iconAction
-    if action = HomeAction.OPEN_SEARCH and isValid(m.searchIcon)
-      m.lastOverhangFocus = m.searchIcon
-    else if action = HomeAction.OPEN_SETTINGS and isValid(m.settingsIcon)
-      m.lastOverhangFocus = m.settingsIcon
-    end if
-
-    ' Move focus to Home group, not activeContent (avoids visible row highlight)
-    m.top.setFocus(true)
-
-    ' Search/settings icons navigate through the router.
-    handleHomeMenuAction(m.overhang.iconAction)
-  end if
-end sub
-
-' Overhang icon signals DOWN was pressed: return focus to active content
-sub onIconFocusReturn(msg as object)
-  m.lastOverhangElement = msg.getRoSGNode()
-  if isValid(m.activeContent)
-    m.activeContent.setFocus(true)
-  end if
-end sub
-
-' Tab bar signals DOWN was pressed: return focus to active content
-sub onTabBarFocusReturn()
-  m.lastOverhangElement = m.tabBar
-  if isValid(m.activeContent)
-    m.activeContent.setFocus(true)
-  end if
-end sub
 
 ' ============================================
 ' TEARDOWN
@@ -617,34 +470,6 @@ sub onDestroy()
   if isValid(m.voiceBox)
     m.voiceBox.unobserveField("text")
     m.voiceBox = invalid
-  end if
-
-  ' Release tab bar observer
-  if isValid(m.tabBar)
-    m.tabBar.unobserveField("requestFocusReturn")
-    m.tabBar = invalid
-  end if
-
-  ' Release user dropdown observers
-  if isValid(m.userDropdown)
-    m.userDropdown.unobserveField("requestFocusReturn")
-    m.userDropdown.unobserveField("selectedAction")
-    m.userDropdown = invalid
-  end if
-
-  ' Release overhang icon observers
-  m.lastOverhangFocus = invalid
-  m.lastOverhangElement = invalid
-  if isValid(m.overhang)
-    m.overhang.unobserveField("iconAction")
-  end if
-  if isValid(m.searchIcon)
-    m.searchIcon.unobserveField("requestFocusReturn")
-    m.searchIcon = invalid
-  end if
-  if isValid(m.settingsIcon)
-    m.settingsIcon.unobserveField("requestFocusReturn")
-    m.settingsIcon = invalid
   end if
 
   ' Destroy active tab content

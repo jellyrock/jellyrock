@@ -118,11 +118,49 @@ function handleFocus(data = {} as object) as boolean
   return true
 end function
 
-' Where this screen takes focus. Mirrors onScreenShown's focus rule (restore the saved
-' descendant, else focus the view root). Screens that restore focus differently override this.
+' Where this screen takes focus: the cluster icon this screen was left by, if the viewer is
+' coming back from it, else the saved descendant, else the view root (restoreFocus). Screens
+' that restore their own focus differently override this and call restoreOverhangIconFocus
+' first themselves.
 sub restoreScreenFocus()
+  if restoreOverhangIconFocus(true) then return
   restoreFocus(m.top)
 end sub
+
+' ---------------------------------------------------------------------------
+' The overhang row: Up from the screen enters it, Down leaves it, a cluster press
+' leaves the screen and comes back to the icon.
+' ---------------------------------------------------------------------------
+
+' Up from the screen's top: hand focus to the overhang row, at the element Down last left
+' it from on this visit, else its first. The focus is saved first, so Down restores it.
+' Returns false when the overhang is hidden or has nothing to focus, so the screen can keep
+' the press.
+function focusOverhang() as boolean
+  overhang = m.top.getScene().findNode("overhang")
+  if not isValid(overhang) or not overhang.visible then return false
+  saveLastFocus()
+  return overhang.callFunc("focusRow") = true
+end function
+
+' JRScene: Down left the overhang row while this screen is active.
+sub returnFocusFromOverhang()
+  restoreScreenFocus()
+end sub
+
+' JRScene: a cluster icon was pressed while this screen is active. The base handles none;
+' a screen that does overrides this and returns true.
+function onOverhangAction(_id as string) as boolean
+  return false
+end function
+
+' Focus the cluster icon this screen was left by, when the viewer is coming back from it
+' (JRScene remembers it until the return). `consume` forgets it: the resume's
+' restoreScreenFocus does, a peek from onScreenShown does not, since handleFocus follows it
+' and would otherwise find nothing. Returns whether an icon took focus.
+function restoreOverhangIconFocus(consume as boolean) as boolean
+  return m.top.getScene().callFunc("takeOverhangReturnFocus", m.top, consume) = true
+end function
 
 ' True when a node outside the bare scene holds focus. The scene itself holding it (or nothing)
 ' means focus is stranded.

@@ -12,5 +12,11 @@
     <function name="onDestroy" />
     <!-- JRScene's screen swap: hide this view in the step the view covering it opens. -->
     <function name="hideCovered" />
+    <!-- Down left the overhang row: take focus back (restoreScreenFocus). -->
+    <function name="returnFocusFromOverhang" />
+    <!-- A cluster icon was pressed while this screen is active: return true to handle it here
+         (the search screen reopens its keyboard on the search icon); false lets JRScene route
+         it (search and settings open their screens). -->
+    <function name="onOverhangAction" />
   </interface>
 </component>

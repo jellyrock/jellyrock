@@ -45,4 +45,15 @@ namespace overhangRow
     if direction = "right" then return { element: visible[(at + 1) mod visible.count()], edge: "first" }
     return { element: visible[(at - 1 + visible.count()) mod visible.count()], edge: "last" }
   end function
+
+  ' Where Up from a screen enters the row: the element `last` ("tabs", "dropdown" or "cluster")
+  ' the row was left from on this screen visit when it is still shown, else the first element
+  ' shown, else "". Returns the element name; the overhang focuses the node it stands for.
+  function entryElement(shown as object, last as string) as string
+    if last <> "" and shown[last] = true then return last
+    for each element in ["tabs", "dropdown", "cluster"]
+      if shown[element] = true then return element
+    end for
+    return ""
+  end function
 end namespace

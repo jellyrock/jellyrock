@@ -271,6 +271,7 @@ end sub
 ' onScreenShown, and the base restores lastFocus again, undoing a restore that followed what
 ' changed while this view was suspended. Same trap and same fix as Home.restoreHomeFocus.
 sub restoreScreenFocus()
+  if restoreOverhangIconFocus(true) then return
   restoreGridFocus()
 end sub
 

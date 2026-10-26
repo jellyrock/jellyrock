@@ -8,6 +8,7 @@ import "pkg:/source/utils/loadingStages.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/refusedNavigation.bs"
+import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/translate.bs"
 ' JRScene is a Scene (not a sgrouter_View), so it does not inherit the router scripts from
 ' sgrouter_View.xml. Import them here so JRScene.bs can call the sgrouter.* / promises.*
@@ -75,6 +76,13 @@ sub init()
   ' already exists as a child, so cache it now.
   m.overhang = m.top.findNode("overhang")
   m.previousRoutedView = invalid
+  ' The overhang row's presses and exits are handled here, for every screen (overhang row).
+  m.overhang.observeField("iconAction", "onOverhangIconAction")
+  m.overhang.observeField("userMenuAction", "onOverhangUserMenuAction")
+  m.overhang.observeField("requestFocusReturn", "onOverhangFocusReturn")
+  ' The cluster icon a screen was left by: { view, icon }, focused again when that screen
+  ' returns (takeOverhangReturnFocus); invalid when none is owed.
+  m.overhangReturn = invalid
 
   ' Hide backdrop until setting is resolved on first backdrop request (lazy initialization)
   m.imageFader.visible = false
@@ -826,6 +834,7 @@ end sub
 ' re-enters the routed pre-login flow (loginRouter). Without this the routed views would
 ' linger and leak. initRouter() re-initializes a fresh router on the next successful login.
 sub resetRouter()
+  m.overhangReturn = invalid
   if isValid(m.previousRoutedView)
     unregisterOverhangData(m.previousRoutedView)
     m.previousRoutedView = invalid
@@ -978,8 +987,10 @@ sub registerOverhangData(group as object)
     m.overhang.isClockVisible = resolveClockVisible(group.isClockVisible)
     group.observeField("isClockVisible", "updateOverhangClock")
 
-    m.overhang.shouldShowIcons = group.shouldShowIcons
-    group.observeField("shouldShowIcons", "updateOverhangIcons")
+    ' The cluster is the same on every screen: shown once a user is signed in, whatever the
+    ' view. Where the row was last left from is forgotten with the screen.
+    m.overhang.isClusterVisible = user.IsAuthenticated()
+    m.overhang.callFunc("resetRowMemory")
 
     applyOverhangUserDropdown(group.shouldShowUserDropdown)
     group.observeField("shouldShowUserDropdown", "updateOverhangUserDropdown")
@@ -995,7 +1006,6 @@ sub unregisterOverhangData(group as object)
     group.unobserveField("isOverhangVisible")
     group.unobserveField("isLogoVisible")
     group.unobserveField("isClockVisible")
-    group.unobserveField("shouldShowIcons")
     group.unobserveField("shouldShowUserDropdown")
     m.overhang.unobserveField("selectedTabId")
   end if
@@ -1019,10 +1029,6 @@ end sub
 function resolveClockVisible(screenWantsClock as boolean) as boolean
   return screenWantsClock and not m.global.user.settings.uiDesignHideClock
 end function
-
-sub updateOverhangIcons(msg)
-  m.overhang.shouldShowIcons = msg.getData()
-end sub
 
 sub updateOverhangUserDropdown(msg)
   applyOverhangUserDropdown(msg.getData())
@@ -1054,3 +1060,59 @@ sub onOverhangTabSelected()
     group.selectedTabId = m.overhang.selectedTabId
   end if
 end sub
+
+' ---------------------------------------------------------------------------
+' Overhang row: presses and exits, for every screen
+'
+' The row belongs to the scene, so its keys are handled once here rather than by each
+' screen. A screen says only when Up leaves its top (JRScreen.focusOverhang) and, if it
+' wants, handles a cluster press itself (onOverhangAction).
+' ---------------------------------------------------------------------------
+
+' A cluster icon was pressed. The active screen gets it first; else search and settings
+' open through the router, and the icon is remembered so the screen the viewer left gets
+' it focused again on return (takeOverhangReturnFocus). Through routerNavigate, never a
+' bare sgrouter.navigateTo: a press right after Back can be refused while that navigation
+' is still in flight, and routerNavigate retries it.
+sub onOverhangIconAction()
+  id = m.overhang.iconAction
+  view = getActiveView()
+  if isValid(view) and view.isSubType("JRScreen") and view.callFunc("onOverhangAction", id) = true then return
+  path = ""
+  if id = "search"
+    path = "/search"
+  else if id = "settings"
+    path = "/settings"
+  end if
+  if path = ""
+    m.log.warn("overhang icon with no route", id)
+    return
+  end if
+  m.overhangReturn = { view: view, icon: m.overhang.callFunc("getIcon", id) }
+  routerNavigate(path)
+end sub
+
+' A user dropdown item was chosen: relay it to main.bs, which observes this scene field
+' (change user, change server, sign out).
+sub onOverhangUserMenuAction()
+  m.top.userMenuAction = m.overhang.userMenuAction
+end sub
+
+' Down left the row: the active screen takes focus back where it left it.
+sub onOverhangFocusReturn()
+  view = getActiveView()
+  if isValid(view) and view.isSubType("JRScreen") then view.callFunc("returnFocusFromOverhang")
+end sub
+
+' Focus the cluster icon `view` was left by, if one is owed to it and the row still shows it.
+' `consume` forgets the debt; a peek keeps it for the restore that follows. Returns whether
+' the icon took focus.
+function takeOverhangReturnFocus(view as object, consume as boolean) as boolean
+  owed = m.overhangReturn
+  if not isValid(owed) or not isValid(view) or not owed.view.isSameNode(view) then return false
+  if consume then m.overhangReturn = invalid
+  icon = owed.icon
+  if not isValid(icon) or not m.overhang.visible or not icon.visible then return false
+  icon.setFocus(true)
+  return true
+end function

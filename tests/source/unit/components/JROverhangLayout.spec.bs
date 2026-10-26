@@ -14,7 +14,7 @@ namespace tests
       m.global.user.settings.uiDesignHideClock = false
       m.overhang = CreateObject("roSGNode", "JROverhang")
       m.overhang.currentUser = "demo"
-      m.overhang.shouldShowIcons = true
+      m.overhang.isClusterVisible = true
       m.overhang.tabs = [{ id: "home", title: "Home" }, { id: "favorites", title: "Favorites" }]
     end function
 
@@ -57,8 +57,8 @@ namespace tests
     @it("put the logo, the tabs, the dropdown, the cluster and the clock on the grid")
     function _()
       logo = m.overhang.findNode("logo")
-      tabBar = m.overhang.callFunc("getTabBar")
-      dropdown = m.overhang.callFunc("getUserDropdown")
+      tabBar = m.overhang.findNode("tabBar")
+      dropdown = m.overhang.findNode("userDropdown")
       cluster = m.overhang.findNode("cluster")
       clockGroup = m.overhang.findNode("clockGroup")
       m.assertOnGrid({
@@ -81,7 +81,7 @@ namespace tests
     function _()
       m.overhang.isClockVisible = false
       cluster = m.overhang.findNode("cluster")
-      m.assertOnGrid({ "cluster x": cluster.translation[0], "dropdown x": m.overhang.callFunc("getUserDropdown").translation[0] })
+      m.assertOnGrid({ "cluster x": cluster.translation[0], "dropdown x": m.overhang.findNode("userDropdown").translation[0] })
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -91,8 +91,8 @@ namespace tests
     @it("start every box at the row's top, and every text box at the text top")
     function _()
       m.assertEqual(m.overhang.findNode("cluster").translation[1], overhangRow.ROW_TOP * 1.0)
-      m.assertEqual(m.overhang.callFunc("getUserDropdown").translation[1], overhangRow.ROW_TOP * 1.0)
-      m.assertEqual(m.overhang.callFunc("getTabBar").translation[1], overhangRow.TEXT_TOP * 1.0)
+      m.assertEqual(m.overhang.findNode("userDropdown").translation[1], overhangRow.ROW_TOP * 1.0)
+      m.assertEqual(m.overhang.findNode("tabBar").translation[1], overhangRow.TEXT_TOP * 1.0)
       m.assertEqual(m.overhang.findNode("clockGroup").translation[1], overhangRow.TEXT_TOP * 1.0)
       m.overhang.tabs = []
       m.assertEqual(m.overhang.findNode("title").translation[1], overhangRow.TEXT_TOP * 1.0)

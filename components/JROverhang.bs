@@ -43,6 +43,8 @@ sub init()
   ' Reposition everything when the trigger button width changes (a username change, say)
   m.userDropdown.observeField("triggerWidth", "onLayoutInputChanged")
   m.userDropdown.observeField("requestFocusExit", "onUserDropdownFocusExit")
+  m.userDropdown.observeField("requestFocusReturn", "onUserDropdownFocusReturn")
+  m.userDropdown.observeField("selectedAction", "onUserMenuAction")
 
   ' The tab bar (the active screen's views, one selected; Home: Home, Favorites) is created
   ' on the first non-empty tabs and kept for reuse (onTabsChanged).
@@ -52,13 +54,18 @@ sub init()
   m.cluster = CreateObject("roSGNode", "JROverhangIconBar")
   m.cluster.id = "cluster"
   m.cluster.entries = [
-    { id: "search", icon: "pkg:/images/icons/search_$$RES$$.png", action: HomeAction.OPEN_SEARCH },
-    { id: "settings", icon: "pkg:/images/icons/settings_$$RES$$.png", action: HomeAction.OPEN_SETTINGS }
+    { id: "search", icon: "pkg:/images/icons/search_$$RES$$.png" },
+    { id: "settings", icon: "pkg:/images/icons/settings_$$RES$$.png" }
   ]
   m.cluster.visible = false
   m.cluster.observeField("selectedAction", "onIconAction")
   m.cluster.observeField("requestFocusExit", "onClusterFocusExit")
+  m.cluster.observeField("requestFocusReturn", "onClusterFocusReturn")
   m.top.appendChild(m.cluster)
+
+  ' Where Down last left the row on this screen visit (focusRow, resetRowMemory)
+  m.lastRowElement = ""
+  m.lastRowIconId = ""
 
   layout()
 
@@ -154,39 +161,76 @@ sub onCurrentUserChanged()
     ]
   end if
 
-  ' Refresh cluster visibility: depends on both currentUser and shouldShowIcons
-  updateIconVisibility()
-end sub
-
-' The cluster shows only when the active screen asks for it (shouldShowIcons) AND a user is
-' signed in, so it never appears on a screen that only sets currentUser.
-sub onShouldShowIconsChanged()
-  updateIconVisibility()
-end sub
-
-sub updateIconVisibility()
-  m.cluster.visible = m.top.shouldShowIcons and m.top.currentUser <> ""
   layout()
 end sub
 
-' Returns the user dropdown reference for direct focus management by screens
-function getUserDropdown() as object
-  return m.userDropdown
-end function
-
-' Returns the tab bar node reference for direct focus management by screens
-function getTabBar() as object
-  return m.tabBar
-end function
+' The cluster is the same on every screen: JRScene shows it while a user is signed in.
+sub onIsClusterVisibleChanged()
+  m.cluster.visible = m.top.isClusterVisible
+  layout()
+end sub
 
 ' The cluster icon for an entry id, for a screen's focus-return observers
 function getIcon(id as string) as object
   return m.cluster.callFunc("getIcon", id)
 end function
 
-' Proxies a cluster press to the overhang-level iconAction field
+' Proxies a cluster press (the entry id) to the overhang-level iconAction field
 sub onIconAction()
   m.top.iconAction = m.cluster.selectedAction
+end sub
+
+sub onUserMenuAction()
+  m.top.userMenuAction = m.userDropdown.selectedAction
+end sub
+
+' ============================================
+' UP INTO THE ROW, DOWN OUT OF IT
+' ============================================
+' A screen's Up enters the row through focusRow; Down on any element leaves it through
+' requestFocusReturn, which also records the element so the next Up lands there. The
+' controller forgets it on a screen change.
+
+function focusRow() as boolean
+  shown = { tabs: tabBarShowing(), dropdown: m.userDropdown.visible, cluster: m.cluster.visible }
+  element = overhangRow.entryElement(shown, m.lastRowElement)
+  if element = "tabs"
+    m.tabBar.setFocus(true)
+  else if element = "dropdown"
+    m.userDropdown.setFocus(true)
+  else if element = "cluster"
+    icon = invalid
+    if m.lastRowIconId <> "" then icon = m.cluster.callFunc("getIcon", m.lastRowIconId)
+    if isValid(icon)
+      icon.setFocus(true)
+    else
+      m.cluster.callFunc("focusEdge", "left")
+    end if
+  else
+    return false
+  end if
+  return true
+end function
+
+sub resetRowMemory()
+  m.lastRowElement = ""
+  m.lastRowIconId = ""
+end sub
+
+sub onTabBarFocusReturn()
+  m.lastRowElement = "tabs"
+  m.top.requestFocusReturn = "tabs"
+end sub
+
+sub onUserDropdownFocusReturn()
+  m.lastRowElement = "dropdown"
+  m.top.requestFocusReturn = "dropdown"
+end sub
+
+sub onClusterFocusReturn()
+  m.lastRowElement = "cluster"
+  m.lastRowIconId = m.cluster.requestFocusReturn
+  m.top.requestFocusReturn = "cluster"
 end sub
 
 ' ============================================
@@ -350,8 +394,10 @@ sub onTabsChanged()
 
   if not isValid(m.tabBar)
     m.tabBar = CreateObject("roSGNode", "JRTabBar")
+    m.tabBar.id = "tabBar"
     m.tabBar.observeField("selectedTabId", "onTabBarSelectionChanged")
     m.tabBar.observeField("requestFocusToUserMenu", "onTabBarRequestsUserMenu")
+    m.tabBar.observeField("requestFocusReturn", "onTabBarFocusReturn")
     m.top.appendChild(m.tabBar)
   end if
 
