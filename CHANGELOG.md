@@ -31,6 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Dependencies
 
 - Update dotenv from v18.0.8 to v18.0.9 ([#1240](https://github.com/jellyrock/jellyrock/pull/1240))
+- Sync Roku hardware dictionary ([#1268](https://github.com/jellyrock/jellyrock/pull/1268))
 
 ## [3.2.0](https://github.com/jellyrock/jellyrock/compare/v3.1.0...v3.2.0) - 2026-10-21
 
