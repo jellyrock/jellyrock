@@ -5,12 +5,14 @@
 
 namespace searchLayout
 
-  ' Query box: the typed query, in the overlay's band above the keyboard at the keyboard's
-  ' width, so the box and the keys form one column. Its position [824, 0] inside the overlay
-  ' and 44px height are set in SearchOverlay.xml and SearchQueryBox.xml; only the width is
-  ' read in code. Collapsed, the overhang title carries the submitted query: the overhang row
-  ' holds only what every screen has (docs/architecture/design-system.md).
+  ' Query box: the one search surface, under the overhang row in both states (the overhang
+  ' row holds only what every screen has, docs/architecture/design-system.md). It never
+  ' moves: the keyboard and suggestions unfold below it. At the keyboard's width and x, so the
+  ' box and the keys form one column. Its position [824, QUERY_BOX_Y] is set in
+  ' SearchOverlay.xml, its 44px height in SearchQueryBox.xml.
   const QUERY_BOX_WIDTH = 1000
+  const QUERY_BOX_Y = 114 ' overhangRow.ROW_BOTTOM (105) + 9
+  const QUERY_BOX_HEIGHT = 44
 
   ' Two-column layout inside the overlay slideGroup:
   '   Suggestions on the LEFT (left edge x=96 = 5% left safe edge: matches
@@ -24,26 +26,11 @@ namespace searchLayout
   ' of the keyboard.
   const SUGGESTIONS_WIDTH = 684
 
-  ' Results row list (SearchRow) translation when collapsed: right under the overhang row,
-  ' where every screen's content starts (overhangRow.ROW_BOTTOM; a grid's tiles, Home's
-  ' first row label). The first row's label sits RESULTS_LABEL_Y below.
-  const RESULTS_Y = 105
-  const RESULTS_LABEL_Y = 21
-
-  ' Results row list translation when the overlay is expanded. Positioned
-  ' below the overlay's bottom edge (OVERLAY_OPEN_Y + OVERLAY_HEIGHT + 20px
-  ' margin) so row 0 remains partially visible as live-typing results populate.
-  ' Also prevents the texture-reload flash that happens when content is fully
-  ' occluded by an opaque rectangle and then revealed: keeping at least
-  ' part of row 0 on-screen means its textures never unload.
-  const RESULTS_Y_EXPANDED = 550
-
   ' Overlay (keyboard + suggestion panel): slides down from above the viewport.
-  ' OPEN_Y: resting position when expanded. y=130: under the overhang row (it ends at 105),
-  '         which stays visible above the overlay.
+  ' OPEN_Y: resting position when expanded: under the query box (it ends at 158) with a 6px
+  '         gap; the box and the overhang row stay visible above the overlay.
   ' CLOSED_Y: placed fully above the viewport.
   ' Height budget:
-  '   Query box at y=0 inside slideGroup, 44 tall, in the keyboard's column.
   '   Keyboard at y=56 inside slideGroup, so its top row lines up with the focus ring
   '     on the first suggestion row, and 344 tall (SearchKeyboardKDF.json keyboardHeightFHD, four
   '     86px rows; hideTextBox puts the key grid at the top of the node), so it
@@ -52,10 +39,23 @@ namespace searchLayout
   '     57px rows 9px apart (y=66: five end at 387, four at 321 above Clear
   '     History), pinned Clear button 56 (y=344, ends at y=400).
   '   Both columns end at exactly 400: overlay height matches.
-  const OVERLAY_OPEN_Y = 130
+  const OVERLAY_OPEN_Y = QUERY_BOX_Y + QUERY_BOX_HEIGHT + 6
   const OVERLAY_CLOSED_Y = -400
   const OVERLAY_HEIGHT = 400
   const OVERLAY_WIDTH = 1920
+
+  ' Results row list (SearchRow) translation when collapsed: under the query box with
+  ' breathing room. The first row's label sits RESULTS_LABEL_Y below.
+  const RESULTS_Y = QUERY_BOX_Y + QUERY_BOX_HEIGHT + 12
+  const RESULTS_LABEL_Y = 21
+
+  ' Results row list translation when the overlay is expanded. Positioned
+  ' below the overlay's bottom edge (OVERLAY_OPEN_Y + OVERLAY_HEIGHT + 20px
+  ' margin, computed below) so row 0 remains partially visible as live-typing results populate.
+  ' Also prevents the texture-reload flash that happens when content is fully
+  ' occluded by an opaque rectangle and then revealed: keeping at least
+  ' part of row 0 on-screen means its textures never unload.
+  const RESULTS_Y_EXPANDED = OVERLAY_OPEN_Y + OVERLAY_HEIGHT + 20
 
   ' Empty-state help text, and the failure state that takes its place. 1394 wide, so x=263
   ' centers it on the 1920 screen. Collapsed it sits mid-screen; expanded, midway between

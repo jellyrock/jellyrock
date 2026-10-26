@@ -19,6 +19,7 @@ import {
   waitFocused,
   waitFocusInside,
   waitFor,
+  waitHome,
   walkFocusUntil,
 } from '../lib/steps.js';
 
@@ -95,16 +96,40 @@ it('details: Up climbs to the row, the gear round-trips, Down returns to the scr
   await waitFocusInside(viewId, { label: 'details after Down from the row' });
 });
 
-it('Settings: Up from the first item enters the row, Down returns to the menu', async () => {
+it('Settings: Up enters the row, the gear there does nothing, Back returns to the menu, then Home', async () => {
   await freshApp('overhang-cluster settings');
   await navSettings();
   await waitFocusInside('#settingsMenu', { label: 'the settings menu' });
+  const viewId = await getActiveVal('id');
 
   await press(ecp.Key.Up);
   await waitFocused(atSearchIcon, { timeout: 8000, interval: 250, label: 'the row from Settings' });
-
   await press(ecp.Key.Down);
   await waitFocusInside('#settingsMenu', { label: 'the settings menu after Down from the row' });
+
+  // The gear on Settings is a navigation to the route on screen: the router reuses the view
+  // and the gear keeps focus, so the Backs below still reach Home in two presses (a stacked
+  // Settings would take three).
+  await press(ecp.Key.Up);
+  await press(ecp.Key.Right);
+  await waitFocused(atSettingsIcon, {
+    timeout: 8000,
+    interval: 250,
+    label: 'the gear on Settings',
+  });
+  await press(ecp.Key.Ok);
+  await waitFocused(atSettingsIcon, {
+    timeout: 8000,
+    interval: 250,
+    label: 'the gear, the view reused',
+  });
+  expect(await getActiveVal('id'), 'still the same Settings').toBe(viewId);
+
+  // Back from the row returns focus to the screen; the next Back is the screen's own.
+  await press(ecp.Key.Back);
+  await waitFocusInside('#settingsMenu', { label: 'the settings menu after Back from the row' });
+  await press(ecp.Key.Back);
+  await waitHome();
 });
 
 it('search: Up from the keyboard enters the row, and the search icon reopens the keyboard', async () => {

@@ -65,14 +65,10 @@ sub init()
 
   m.top.isOptionsAvailable = false
 
-  ' The overhang title carries this screen's state, as a grid's does ("Movies (Favorites)"):
-  ' "Search" until a query is submitted, then the query, with the magnifier before it. The
-  ' logo is hidden here (JRGroup's default), so the title starts at x=96. The typed query
-  ' itself shows in the overlay's box above the keyboard while the keyboard is open.
-  m.top.overhangTitleIcon = "pkg:/images/icons/search_$$RES$$.png"
-  m.searchTitleQuery = ""
-  m.searchCountText = ""
-  renderSearchTitle()
+  ' Page title in the overhang, as Settings declares its own. The logo is hidden here
+  ' (JRGroup's default), so the title starts at x=96. The query itself shows in the box
+  ' under the row, the one search surface in both states.
+  m.top.overhangTitle = translate(translationKeys.ButtonSearch)
 
   ' Show the app-wide overhang, so this screen uses the same chrome path as every other
   ' rather than a bypass of its own. Chrome intent is DECLARED on this node; JRScene's
@@ -649,7 +645,6 @@ sub onQueryChanged()
     end if
     showHelpText(translate(translationKeys.MessageYouCanSearchForTitlesPeople))
     showResultCount("")
-    showSearchTitle("")
     renderRecentSuggestions()
     return
   end if
@@ -922,7 +917,6 @@ end sub
 ' the overlay so the user can browse results.
 sub submitSearch(query as string)
   m.log.info("submit query=" + query)
-  showSearchTitle(query)
 
   ' Cancel the pending full search: the submit runs its own. The hints debounce is left
   ' running: a pick changes the query, and the column then shows that query's hints, as it
@@ -1054,25 +1048,11 @@ sub onFullSearchResults(event as object)
   end if
 end sub
 
-' The last search's result count (searchOutcome.countText) on the title's line, so the viewer
-' sees how much was found whatever rows are on screen. "" clears it.
-' The last search's result count ("132 results", "" for none) joins the overhang title.
+' The last search's result count (searchOutcome.countText) at the query box's right end, so
+' the viewer sees how much was found whatever rows are on screen. "" clears it.
 sub showResultCount(countText as string)
-  m.searchCountText = countText
-  renderSearchTitle()
-end sub
-
-' The overhang title carries the submitted query ("" for none).
-sub showSearchTitle(query as string)
-  m.searchTitleQuery = query
-  renderSearchTitle()
-end sub
-
-' The overhang title: "Search" with no query, else the query and the count after it
-' (searchOutcome.titleText). The count has no line of its own under the row: the first
-' result row's label line carries that row's own "1 of 10".
-sub renderSearchTitle()
-  m.top.overhangTitle = searchOutcome.titleText(m.searchTitleQuery, m.searchCountText, translate(translationKeys.ButtonSearch))
+  if not isValid(m.overlay) then return
+  m.overlay.countText = countText
 end sub
 
 ' ============================================================================

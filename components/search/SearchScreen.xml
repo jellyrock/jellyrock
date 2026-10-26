@@ -41,7 +41,7 @@
          so searchLayout constants are the single source of truth. -->
     <Animation id="resultsSlideAnim" duration="0.3" repeat="false" easeFunction="outCubic">
       <Vector2DFieldInterpolator id="resultsSlideInterp" key="[0.0, 1.0]"
-        keyValue="[[0, 105],[0, 550]]"
+        keyValue="[[0, 170],[0, 584]]"
         fieldToInterp="searchSelect.translation" />
     </Animation>
   </children>

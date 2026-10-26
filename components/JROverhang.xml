@@ -11,9 +11,7 @@
     <!-- Logo -->
     <!-- Logo, title: placed by JROverhang.bs (LOGO_Y, layout()) -->
     <Poster id="logo" uri="pkg:/images/branding/logo.png" height="39" width="180" />
-    <!-- Title: shown when the screen has no tabs, at the tab bar's place, with an optional
-         glyph before it (titleIcon), the row's glyph size, placed by layout() -->
-    <Poster id="titleGlyph" visible="false" />
+    <!-- Title: shown when the screen has no tabs, at the tab bar's place -->
     <ScrollingLabelPrimaryLarge id="title" vertAlign="center" maxWidth="300" repeatCount="0" />
     <!-- Tab bar, user dropdown and cluster are created programmatically -->
     <!-- Clock -->
@@ -23,8 +21,6 @@
   <interface>
     <field id="currentUser" type="string" onChange="onCurrentUserChanged" />
     <field id="title" type="string" onChange="onTitleChanged" />
-    <!-- A glyph before the title (an image uri, "" for none), drawn in the title's color -->
-    <field id="titleIcon" type="string" onChange="onTitleIconChanged" />
     <field id="isVisible" value="true" type="boolean" onChange="onIsVisibleChanged" />
     <field id="isMoveAnimationDisabled" value="false" type="boolean" />
     <field id="isLogoVisible" value="true" type="boolean" onChange="onIsLogoVisibleChanged" />

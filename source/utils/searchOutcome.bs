@@ -88,14 +88,6 @@ namespace searchOutcome
     return translatePlural(translationKeys.LabelSearchResultCount, itemCount, [itemCount.toStr()])
   end function
 
-  ' The search screen's overhang title: `searchLabel` ("Search") with no submitted query, else
-  ' the query, and the count after a middle dot when there is one ("a · 24+ results").
-  function titleText(query as string, countText as string, searchLabel as string) as string
-    if query = "" then return searchLabel
-    if countText = "" then return query
-    return query + " · " + countText
-  end function
-
   ' Whether a search sends its Live TV program read. Jellyfin refuses that read to a user
   ' without Live TV access (its LiveTvAccess policy), so asking would count every one of that
   ' user's searches as partial. A policy, or a field, that is missing reads as allowed, as

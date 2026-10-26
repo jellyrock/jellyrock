@@ -363,9 +363,17 @@ function onKeyEvent(key as string, press as boolean) as boolean
     ' Back lands here: cancel the start and show that screen again, as Back from the player
     ' would. Mid-navigation it was swallowed above: the settling navigation mounts the player.
     if m.appWaitHost.callFunc("cancelOnBack") then return true
+    ' Focus in the overhang row: Back undoes the Up and returns focus to the screen, whose own
+    ' Back then applies (a menu level up in Settings, the previous screen elsewhere). The row
+    ' sits outside the outlet, so without this a Back from it reached the exit prompt on
+    ' every screen.
+    if returnFocusFromOverhangRow() then return true
     showExitConfirmation()
     return true
   else if key = "options"
+    ' From the row, the screen takes focus back first: its panel opens below as usual, and a
+    ' screen that handles the key itself (Settings closes on it) gets the next press.
+    returnFocusFromOverhangRow()
     group = getActiveView()
     if isValid(group) and isValid(group.isOptionsAvailable) and group.isOptionsAvailable
       ' A view can report isOptionsAvailable without owning a panel (PlayerHostView), and the
@@ -516,8 +524,12 @@ end function
 sub navigateThenFocus(routePath as dynamic, context = {} as object, clearSpinner = false as boolean, signInWait = invalid as dynamic)
   ' Settings can be opened from any screen now; a theme or language change there reloads
   ' Home, and reloadRoutedHome then returns to this route rather than stranding the viewer
-  ' on Home.
-  if type(routePath) = "roString" and routePath = "/settings" then m.settingsOrigin = routeOfActiveView()
+  ' on Home. Not when Settings is already the screen (the gear pressed there: the router
+  ' reuses the view), or the replay would land on Settings again.
+  if type(routePath) = "roString" and routePath = "/settings"
+    origin = routeOfActiveView()
+    if isValid(origin) and origin.path <> routePath then m.settingsOrigin = origin
+  end if
   startNavigation({ routePath: routePath, context: context, clearSpinner: clearSpinner, signInWait: signInWait, retried: false })
 end sub
 
@@ -1009,8 +1021,6 @@ sub registerOverhangData(group as object)
 
     if isValid(group.overhangTitle) then m.overhang.title = group.overhangTitle
     group.observeField("overhangTitle", "updateOverhangTitle")
-    m.overhang.titleIcon = group.overhangTitleIcon
-    group.observeField("overhangTitleIcon", "updateOverhangTitleIcon")
 
     ' Logo / icons / user-dropdown: projected from the view's declared fields so they update in
     ' the SAME frame as tabs/title (no transition flicker). Screens declare these; they never poke
@@ -1037,7 +1047,6 @@ sub unregisterOverhangData(group as object)
   ' so only unobserve for those (keeps register/unregister symmetric).
   if isValid(group) and group.isSubType("JRGroup")
     group.unobserveField("overhangTitle")
-    group.unobserveField("overhangTitleIcon")
     group.unobserveField("overhangTabs")
     group.unobserveField("isOverhangVisible")
     group.unobserveField("isLogoVisible")
@@ -1049,10 +1058,6 @@ end sub
 
 sub updateOverhangTitle(msg)
   m.overhang.title = msg.getData()
-end sub
-
-sub updateOverhangTitleIcon(msg)
-  m.overhang.titleIcon = msg.getData()
 end sub
 
 sub updateOverhangLogo(msg)
@@ -1143,6 +1148,14 @@ sub onOverhangFocusReturn()
   view = getActiveView()
   if isValid(view) and view.isSubType("JRScreen") then view.callFunc("returnFocusFromOverhang")
 end sub
+
+' Back or Options pressed while the row holds focus: give it back to the screen. Returns
+' whether the row had it.
+function returnFocusFromOverhangRow() as boolean
+  if not m.overhang.isInFocusChain() then return false
+  onOverhangFocusReturn()
+  return true
+end function
 
 ' Focus the cluster icon `view` was left by, if one is owed to it and the row still shows it.
 ' `consume` forgets the debt; a peek keeps it for the restore that follows. Returns whether

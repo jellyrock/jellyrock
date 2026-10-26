@@ -15,24 +15,28 @@
            SUGGESTIONS on the LEFT (left edge at x=96 = 5% left safe edge,
            matching result row items), KEYBOARD on the RIGHT (right edge
            at x=1824 = 5% right safe edge). 44px gap between columns.
-           The query box sits in the band above the keyboard at the same width, so the
-           box and the keys form a single visual column on the right.
+           The query box (below, outside this sliding group) sits above the keyboard at the
+           same width, so the box and the keys form a single visual column on the right.
            Focus opens on A (the keyboard's top row starts with Space); LEFT
            from any left-edge key (Space, H, R, 1) reaches the suggestion
            list in a single press, as does RIGHT from any right-edge key. The keyboard starts at y=56 so its
            top row lines up with the first suggestion row, and ends with the
            Clear History button at y=400 (see searchLayout.OVERLAY_HEIGHT). -->
       <SearchSuggestionList id="suggestions" translation="[96, 0]" />
-      <SearchQueryBox id="queryBox" translation="[824, 0]" />
       <SearchKeyboard id="kbd" translation="[824, 56]" />
     </Group>
+
+    <!-- The query box: the one search surface, fixed under the overhang row in both states;
+         the keyboard unfolds beneath it. After the sliding group, so the keys pass behind it
+         mid-slide. y = searchLayout.QUERY_BOX_Y. -->
+    <SearchQueryBox id="queryBox" translation="[824, 114]" />
 
     <!-- Slide-in/out animation. keyValue overridden in bs from searchLayout
          so a single source of truth drives both initial position and the
          animation range. -->
     <Animation id="slideAnim" duration="0.3" repeat="false" easeFunction="outCubic">
       <Vector2DFieldInterpolator id="slideInterp" key="[0.0, 1.0]"
-        keyValue="[[0, -400],[0, 130]]"
+        keyValue="[[0, -400],[0, 164]]"
         fieldToInterp="slideGroup.translation" />
     </Animation>
   </children>
@@ -47,5 +51,7 @@
     <field id="suggestionMode" type="string" alias="suggestions.mode" alwaysNotify="true" />
     <!-- The typed query, shown in the box above the keyboard (proxied to child). -->
     <field id="queryText" type="string" alias="queryBox.queryText" />
+    <!-- The last search's result count, at the box's right end (proxied to child). -->
+    <field id="countText" type="string" alias="queryBox.countText" />
   </interface>
 </component>

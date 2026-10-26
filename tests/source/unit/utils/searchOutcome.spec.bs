@@ -76,22 +76,6 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("titleText: the search screen's overhang title")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("is the search label with no submitted query, whatever the count")
-    function _()
-      m.assertEqual(searchOutcome.titleText("", "", "Search"), "Search")
-      m.assertEqual(searchOutcome.titleText("", "3 results", "Search"), "Search")
-    end function
-
-    @it("is the query alone until a count arrives, then the query and the count")
-    function _()
-      m.assertEqual(searchOutcome.titleText("alien", "", "Search"), "alien")
-      m.assertEqual(searchOutcome.titleText("alien", "24+ results", "Search"), "alien · 24+ results")
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("canSearchLiveTv")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

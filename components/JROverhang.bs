@@ -23,10 +23,6 @@ sub init()
   m.logo = m.top.findNode("logo")
   m.logoPoster = createLogoPoster() ' save node to memory for faster load time
   m.title = m.top.findNode("title")
-  m.titleGlyph = m.top.findNode("titleGlyph")
-  m.titleGlyph.width = overhangRow.GLYPH_SIZE
-  m.titleGlyph.height = overhangRow.GLYPH_SIZE
-  m.titleGlyph.blendColor = m.global.constants.colorTextPrimary
   m.clock = m.top.findNode("clock")
   m.clock.boxY = overhangRow.TEXT_TOP
   m.clock.boxHeight = overhangRow.ROW_HEIGHT
@@ -126,16 +122,6 @@ sub onTitleChanged()
   m.title.text = m.top.title
 end sub
 
-sub onTitleIconChanged()
-  m.titleGlyph.uri = m.top.titleIcon
-  updateTitleGlyph()
-  layout()
-end sub
-
-' The glyph shows with the title: never with the tabs, never without a uri
-sub updateTitleGlyph()
-  m.titleGlyph.visible = m.title.visible and m.top.titleIcon <> ""
-end sub
 
 ' ============================================
 ' USER DROPDOWN
@@ -350,11 +336,6 @@ sub layout()
     leftOfDropdown = dropdownX - overhangRow.ELEMENT_GAP
   end if
 
-  if m.titleGlyph.visible
-    ' Centered on the row's line, as the cluster's glyphs are; the title follows a gutter later
-    m.titleGlyph.translation = [titleX, overhangRow.ROW_TOP + overhangRow.ICON_PADDING]
-    titleX = titleX + overhangRow.GLYPH_SIZE + overhangRow.ELEMENT_GAP
-  end if
   m.title.translation = [titleX, overhangRow.TEXT_TOP]
   titleWidth = leftOfDropdown - titleX
   if titleWidth < TITLE_MIN_WIDTH then titleWidth = TITLE_MIN_WIDTH
@@ -408,7 +389,6 @@ sub onTabsChanged()
       m.tabBar.visible = false
     end if
     m.title.visible = true
-    updateTitleGlyph()
     layout()
     return
   end if
@@ -437,7 +417,6 @@ sub onTabsChanged()
   ' Rebuilt tabs need render tracking, so keep title visible until ready.
   if m.tabBar.isReady
     m.title.visible = false
-    updateTitleGlyph()
   else
     m.tabBar.unobserveField("isReady") ' prevent stacking duplicate observers on rapid tab changes
     m.tabBar.observeField("isReady", "onTabBarReady")
@@ -451,7 +430,6 @@ sub onTabBarReady()
     m.tabBar.unobserveField("isReady")
   end if
   m.title.visible = false
-  updateTitleGlyph()
 end sub
 
 ' Proxy tab bar selection changes to the overhang's selectedTabId field

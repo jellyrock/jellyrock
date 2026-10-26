@@ -17,10 +17,16 @@
          within the box instead of being cut off; one that fits is drawn still. -->
     <ScrollingLabel id="queryLabel" height="44" translation="[76, 0]"
       horizAlign="left" vertAlign="center" />
+
+    <!-- The last search's result count ("132 results"), dim, right-aligned at the box's end;
+         width and x are set in bs. -->
+    <LabelSecondarySmall id="resultCount" height="44" horizAlign="right" vertAlign="center" />
   </children>
   <interface>
     <!-- Current query text to display. Empty string -> empty box (no
          placeholder; the search icon alone signals purpose). -->
     <field id="queryText" type="string" onChange="renderLabel" />
+    <!-- The result count to show at the right end; "" for none. -->
+    <field id="countText" type="string" alias="resultCount.text" />
   </interface>
 </component>

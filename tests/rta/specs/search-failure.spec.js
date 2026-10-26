@@ -149,7 +149,7 @@ it('a search that finds nothing says so', async () => {
   expect(await getActiveVal('#searchFailed.visible'), 'not the failure state').toBe(false);
 });
 
-it('a live search that finds nothing says so below the keyboard, with no count yet', async () => {
+it('a live search that finds nothing says so below the keyboard, and counts 0', async () => {
   await freshSearch();
   await failRequests([{ prefix: 'search', kind: 'empty' }]);
   await ecp.sendText(RTA_CONFIG.searchQuery);
@@ -162,13 +162,11 @@ it('a live search that finds nothing says so below the keyboard, with no count y
   const [visible, expanded, count] = await getActiveVals([
     '#SearchHelpText.visible',
     'isExpanded',
-    'overhangTitle',
+    '#resultCount.text',
   ]);
   expect(visible, 'the message shows').toBe(true);
   expect(expanded, 'the keyboard is still open').toBe(true);
-  // The count rides in the overhang title after the SUBMITTED query (searchOutcome.titleText);
-  // a live search has not been submitted, so the title still reads the screen's name.
-  expect(count, 'no count before a submit').toBe('Search');
+  expect(count, 'the count says 0').toBe('0 results');
 });
 
 it('emptying the query brings the help text back', async () => {
@@ -188,9 +186,9 @@ it('emptying the query brings the help text back', async () => {
     interval: 250,
     label: 'the help text once the query is empty',
   });
-  const [visible, title] = await getActiveVals(['#SearchHelpText.visible', 'overhangTitle']);
+  const [visible, count] = await getActiveVals(['#SearchHelpText.visible', '#resultCount.text']);
   expect(visible, 'the help text shows').toBe(true);
-  expect(title, 'no query and no count in the title').toBe('Search');
+  expect(count, 'no count for an empty query').toBe('');
 });
 
 it('typing on after a failed search clears the failure', async () => {
