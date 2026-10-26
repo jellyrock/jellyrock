@@ -839,6 +839,12 @@ The operator's rule (2026-10-25): every size and every drawn position is a multi
 
 Not done now: it touches every screen, so it needs its own captures at 720p. What closes it: a pass over each screen's static layout (constants, XML translations and sizes, computed boxes) and every icon canvas against the grid, fixing or recording each exception in `docs/architecture/design-system.md`, with 720p captures on the low-end Stick before and after.
 
+#### Browse while music plays: bring the overhang cluster back to playback screens `[fid: browse-while-music-plays]` `[captured 2026-10-26]`
+
+The overhang cluster is hidden on playback screens (`JRScene.registerOverhangData`, `appWaits.isPlaybackScreen`) because the app has no now-playing control. Leaving the audio player through search or Settings left the music playing with no screen to stop it from: measured on a Stick 4K (Roku OS 15.3.4, 2026-10-25), a theme reload from Settings opened over the audio player landed on Home with the song still playing.
+
+What closes it: a now-playing control outside the player that returns to it; a rule for starting other media while a player is suspended under another screen (untested: two `AudioPlayerView`s observing the shared `m.global.audioPlayer`); then the cluster on playback screens again. Not now: it needs its own design.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`

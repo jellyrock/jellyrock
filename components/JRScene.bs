@@ -1035,9 +1035,11 @@ sub registerOverhangData(group as object)
     m.overhang.isClockVisible = resolveClockVisible(group.isClockVisible)
     group.observeField("isClockVisible", "updateOverhangClock")
 
-    ' The cluster is the same on every screen: shown once a user is signed in, whatever the
-    ' view. Where the row was last left from is forgotten with the screen.
-    m.overhang.isClusterVisible = user.IsAuthenticated()
+    ' The cluster is the same on every screen once a user is signed in, except a player
+    ' (isPlaybackScreen): the app has no now-playing control, so a press there would leave
+    ' its media playing with no screen to stop it from. Where the row was last left from is
+    ' forgotten with the screen.
+    m.overhang.isClusterVisible = user.IsAuthenticated() and not appWaits.isPlaybackScreen(group)
     m.overhang.callFunc("resetRowMemory")
 
     applyOverhangUserDropdown(group.shouldShowUserDropdown)

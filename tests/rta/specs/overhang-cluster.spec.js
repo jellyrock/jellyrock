@@ -6,12 +6,12 @@
  * top row enters the row and the search icon reopens the keyboard instead of navigating.
  * Each screen of a chain keeps its own icon to come back to, a theme reload from Settings
  * returns to the screen Settings was opened from, and the search screen's submitted query
- * shows as the overhang's status.
+ * shows as the overhang's status. A player shows no cluster.
  */
 import { beforeAll, it, expect } from 'vitest';
 import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
-import { authenticate, getLibraries } from '../lib/jellyfin.js';
+import { authenticate, getJson, getLibraries, tokenHeader } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
 import {
@@ -299,5 +299,39 @@ it('Settings: the status names the signed-in user, and everyone on the device in
   await press(ecp.Key.Back);
   await waitFor('#overhang.#status.text', (t) => t === userName, {
     label: "the user's name again at the top",
+  });
+});
+
+it('the audio player shows no cluster: leaving a player through it would strand the music', async () => {
+  const res = await getJson(
+    `${RTA_CONFIG.server.url}/Users/${session.userId}/Items?IncludeItemTypes=Audio&Recursive=true&Limit=1`,
+    tokenHeader(session.token),
+  );
+  const song = res.Items?.[0];
+  expect(song?.Id, 'the demo server has a song to play').toBeTruthy();
+
+  await freshApp('overhang-cluster audio player');
+  await ecp.sendInput({ params: { contentId: `id=${song.Id}|action=play` } });
+  await waitFor('subtype()', (v) => v === 'AudioPlayerView', {
+    read: getActiveVal,
+    timeout: 30000,
+    interval: 250,
+    label: 'the audio player opened',
+  });
+  await waitFor('audioPlayer.state', (v) => v === 'playing', {
+    read: getGlobalVal,
+    timeout: 30000,
+    interval: 250,
+    label: 'the song playing',
+  });
+  expect(await getVal('#overhang.#cluster.visible'), 'no cluster on the audio player').toBe(false);
+
+  // Back stops the music and leaves the player, the one way out.
+  await press(ecp.Key.Back);
+  await waitFor('subtype()', (v) => v !== 'AudioPlayerView', {
+    read: getActiveVal,
+    timeout: 20000,
+    interval: 250,
+    label: 'the player closed on Back',
   });
 });

@@ -987,9 +987,6 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
     ' Key Event handler when m.thumb is in focus
     if m.thumb.hasFocus()
-      ' UP from the seek bar, the top of the screen: the overhang row
-      if key = "up" then return focusOverhang()
-
       if key = "right"
         m.isInScrubMode = true
         processScrubAction(10)

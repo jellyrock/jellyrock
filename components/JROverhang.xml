@@ -36,7 +36,8 @@
     <field id="tabs" type="array" onChange="onTabsChanged" />
     <field id="selectedTabId" type="string" alwaysNotify="true" />
     <!-- Whether the fixed cluster shows: JRScene sets it from the signed-in state, so the
-         cluster is on every screen that shows the overhang once a user is signed in. -->
+         cluster is on every screen that shows the overhang once a user is signed in, except
+         a player (JRScene.registerOverhangData says why). -->
     <field id="isClusterVisible" type="boolean" value="false" onChange="onIsClusterVisibleChanged" />
     <!-- A cluster icon was pressed: its entry id ("search", "settings"). JRScene routes it. -->
     <field id="iconAction" type="string" alwaysNotify="true" />
