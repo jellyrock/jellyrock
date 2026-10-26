@@ -2336,6 +2336,16 @@ The overhang cluster shows on every screen once a user is signed in, except a pl
 
 Ruled out: stopping the music on a cluster press, which surprises a listener; browsing while music plays, which needs a now-playing design (followup `browse-while-music-plays`). Revisit when that followup ships.
 
+## decision-id: back-from-row-leaves-screen
+
+**date**: 2026-10-26
+**status**: accepted
+**related-files**: `components/JRScene.bs`, `components/JRScreen.bs`, `components/settings/settings.bs`
+
+Back with focus in the overhang row leaves the screen, one press per screen: `JRScene` returns focus to the screen, then calls its `JRScreen.leaveScreen` (the router's `goBack` by default; the exit prompt at the history root). The row is the app's chrome and sits outside the router's outlet, so the key never reaches the screen. Settings overrides `leaveScreen` with its existing exit, which applies a theme or language change first, and its own top-level Back shares it, so no way out skips that. Back inside a screen still closes its innermost layer first (a Settings level, the grid's options panel). Before this, Back from the row only returned focus to the screen, and since a screen comes back with focus on the icon it was left by, a chain of screens took two presses each (reported on a Stick 4K, 2026-10-26).
+
+Ruled out: Back from the row acting as the screen's own Back, which would make it go up a Settings level there and leave the screen elsewhere; focusing the screen's content instead of the icon on return, which still takes two presses after a deliberate Up and drops Home's return to the gear.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
