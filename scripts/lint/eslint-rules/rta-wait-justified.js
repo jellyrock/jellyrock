@@ -133,6 +133,13 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // `uiDesignHideClock`). Nothing writes it between those, so it holds until the next view
   // change: terminal, not a pulse. Read against the app source 2026-10-19, both write sites.
   '#overhang.isClockVisible',
+  // The status label's text: `JROverhang.onStatusChanged` copies the overhang's `status` into
+  // it, and JRScene writes that only from the active view's `overhangStatus` (on every view
+  // change, and when the view changes it). The search screen sets it on a submit, an emptied
+  // query and the keyboard opening or closing; Settings on a menu change. Each value holds
+  // until the viewer acts or the screen changes: terminal, not a pulse. Read against the app
+  // source 2026-10-26, every write site.
+  '#overhang.#status.text',
   // `SearchScreen.init` sets the help text, `showHelpText` replaces it with "No results for …"
   // for an answered empty search (submitted, or live while the keyboard is open), and
   // `onQueryChanged` writes the help text back only when the viewer empties the query. Each
