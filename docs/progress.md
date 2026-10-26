@@ -987,7 +987,7 @@ Not now: removing a setting needs a registry migration for users who have the to
 
 #### Cast targets on one Roku cannot be told apart: name each the same open and closed, with dev builds marked first `[fid: cast-target-names-per-build]` `[captured 2026-10-26]`
 
-For the repo `jellyrock/jellyfin-plugin-jellyrock` first, then this one. The mailbox refused the message (that repo is not registered on this machine), so it waits here. Step 1: paste everything under "Message for the plugin repo" into a session there. Step 2, once the plugin settles the `/pair` field: in this repo, add one name helper used by the auth header (`source/api/baseRequest.bs`, `Device=`) and `buildPairPayload` (`source/remotecontrol/remoteProtocol.bs`), with a unit spec, so a target has one name open and closed, and a dev build's name starts with "Dev · ".
+For the repo `jellyrock/jellyfin-plugin-jellyrock` first, then this one. The mailbox refused the message (that repo is not registered on this machine), so it waits here. The playbook repo has a pinned message (`onboard-jellyfin-plugin-jellyrock`, sent 2026-10-26) to onboard and register the plugin repo and reply when done. Step 1: once that reply arrives, move this entry across with `mailbox.sh send jellyrock/jellyfin-plugin-jellyrock --from cast-target-names-per-build`; before then, paste everything under "Message for the plugin repo" into a session there. Step 2, once the plugin settles the `/pair` field: in this repo, add one name helper used by the auth header (`source/api/baseRequest.bs`, `Device=`) and `buildPairPayload` (`source/remotecontrol/remoteProtocol.bs`), with a unit spec, so a target has one name open and closed, and a dev build's name starts with "Dev · ".
 
 Message for the plugin repo:
 
