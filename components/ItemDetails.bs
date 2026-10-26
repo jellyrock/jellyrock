@@ -5130,6 +5130,9 @@ sub onDropdownRequestUp()
   if m.itemDescriptionInLayout
     m.top.lastFocus = m.itemDescription
     m.itemDescription.setFocus(true)
+  else
+    ' Nothing above the track row: the overhang row
+    focusOverhang()
   end if
 end sub
 
@@ -5376,6 +5379,9 @@ end sub
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
+  ' UP from the description, the top of the ladder: the overhang row.
+  if key = "up" and m.itemDescription.isInFocusChain() then return focusOverhang()
+
   ' DOWN: itemDescription -> track row dropdown (if any interactive), else buttonGrp.
   ' Uses the "remember last focused" picker so returning to the row after coming back
   ' from buttons/extras lands the user on the same slot. Falls through to the button
@@ -5470,6 +5476,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
       m.itemDescription.setFocus(true)
       return true
     end if
+    ' Nothing above the buttons: the overhang row
+    return focusOverhang()
   end if
 
   if key = "play" and m.extrasGrid.hasFocus()
