@@ -67,8 +67,6 @@
     <function name="reloadRoutedHome" />
     <function name="resetRouter" />
     <function name="routerGoBack" />
-    <!-- A JRScreen asks, on return, for the cluster icon it was left by (restoreOverhangIconFocus). -->
-    <function name="takeOverhangReturnFocus" />
     <!-- Test hook, in every build: set from BrightScript console to test toasts. Format: "type|message"
          Example: m.top.getScene().testToast = "error|Something went wrong" -->
     <field id="testToast" type="string" value="" alwaysNotify="true" />

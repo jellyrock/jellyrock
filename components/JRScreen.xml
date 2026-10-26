@@ -4,6 +4,10 @@
     <!-- A screen that plays (the video host, the audio player): reaching it is where a playback
          start is meant to go, so it does not count as leaving the start (appWaits.leftBehind). -->
     <field id="isPlaybackScreen" type="boolean" value="false" />
+    <!-- The overhang cluster icon this screen was left by ("search", "settings"), "" for none:
+         JRScene writes it on the press, and the screen focuses that icon again when the viewer
+         comes back (restoreOverhangIconFocus). -->
+    <field id="overhangReturnIcon" type="string" value="" />
     <!-- Remembers the focused descendant in lastFocus, as the router's suspend does. Also
          AppWaitHost's, before it holds the focus of a screen a playback start hides. -->
     <function name="saveLastFocus" />

@@ -154,12 +154,20 @@ function onOverhangAction(_id as string) as boolean
   return false
 end function
 
-' Focus the cluster icon this screen was left by, when the viewer is coming back from it
-' (JRScene remembers it until the return). `consume` forgets it: the resume's
+' Focus the cluster icon this screen was left by (overhangReturnIcon), when the viewer is
+' coming back from it and the row still shows it. `consume` forgets it: the resume's
 ' restoreScreenFocus does, a peek from onScreenShown does not, since handleFocus follows it
 ' and would otherwise find nothing. Returns whether an icon took focus.
 function restoreOverhangIconFocus(consume as boolean) as boolean
-  return m.top.getScene().callFunc("takeOverhangReturnFocus", m.top, consume) = true
+  id = m.top.overhangReturnIcon
+  if id = "" then return false
+  if consume then m.top.overhangReturnIcon = ""
+  overhang = m.top.getScene().findNode("overhang")
+  if not isValid(overhang) or not overhang.visible then return false
+  icon = overhang.callFunc("getIcon", id)
+  if not isValid(icon) or not icon.visible then return false
+  icon.setFocus(true)
+  return true
 end function
 
 ' True when a node outside the bare scene holds focus. The scene itself holding it (or nothing)

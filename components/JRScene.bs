@@ -80,11 +80,8 @@ sub init()
   m.overhang.observeField("iconAction", "onOverhangIconAction")
   m.overhang.observeField("userMenuAction", "onOverhangUserMenuAction")
   m.overhang.observeField("requestFocusReturn", "onOverhangFocusReturn")
-  ' The cluster icon a screen was left by: { view, icon }, focused again when that screen
-  ' returns (takeOverhangReturnFocus); invalid when none is owed.
-  m.overhangReturn = invalid
-  ' The route Settings was opened from ({ path, context }), for reloadRoutedHome; invalid
-  ' when Settings is not open or was opened from Home.
+  ' The route Settings was last opened from ({ path, context }), for reloadRoutedHome; invalid
+  ' when that opening had no route to return to (a player).
   m.settingsOrigin = invalid
 
   ' Hide backdrop until setting is resolved on first backdrop request (lazy initialization)
@@ -884,7 +881,6 @@ end function
 ' re-enters the routed pre-login flow (loginRouter). Without this the routed views would
 ' linger and leak. initRouter() re-initializes a fresh router on the next successful login.
 sub resetRouter()
-  m.overhangReturn = invalid
   if isValid(m.previousRoutedView)
     unregisterOverhangData(m.previousRoutedView)
     m.previousRoutedView = invalid
@@ -1127,10 +1123,12 @@ end sub
 ' ---------------------------------------------------------------------------
 
 ' A cluster icon was pressed. The active screen gets it first; else search and settings
-' open through the router, and the icon is remembered so the screen the viewer left gets
-' it focused again on return (takeOverhangReturnFocus). Through routerNavigate, never a
-' bare sgrouter.navigateTo: a press right after Back can be refused while that navigation
-' is still in flight, and routerNavigate retries it.
+' open through the router, and the screen the viewer leaves keeps the icon's id
+' (overhangReturnIcon), so it focuses that icon again on return. The id lives on the screen,
+' not here: each screen of a chain (a library, then search, then Settings) keeps its own,
+' and it goes when the screen does. Through routerNavigate, never a bare
+' sgrouter.navigateTo: a press right after Back can be refused while that navigation is
+' still in flight, and routerNavigate retries it.
 sub onOverhangIconAction()
   id = m.overhang.iconAction
   view = getActiveView()
@@ -1145,7 +1143,7 @@ sub onOverhangIconAction()
     m.log.warn("overhang icon with no route", id)
     return
   end if
-  m.overhangReturn = { view: view, icon: m.overhang.callFunc("getIcon", id) }
+  if isValid(view) and view.isSubType("JRScreen") then view.overhangReturnIcon = id
   routerNavigate(path)
 end sub
 
@@ -1166,18 +1164,5 @@ end sub
 function returnFocusFromOverhangRow() as boolean
   if not m.overhang.isInFocusChain() then return false
   onOverhangFocusReturn()
-  return true
-end function
-
-' Focus the cluster icon `view` was left by, if one is owed to it and the row still shows it.
-' `consume` forgets the debt; a peek keeps it for the restore that follows. Returns whether
-' the icon took focus.
-function takeOverhangReturnFocus(view as object, consume as boolean) as boolean
-  owed = m.overhangReturn
-  if not isValid(owed) or not isValid(view) or not owed.view.isSameNode(view) then return false
-  if consume then m.overhangReturn = invalid
-  icon = owed.icon
-  if not isValid(icon) or not m.overhang.visible or not icon.visible then return false
-  icon.setFocus(true)
   return true
 end function
