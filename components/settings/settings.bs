@@ -880,10 +880,11 @@ sub performSettingsExit()
       m.global.sceneManager.callFunc("refreshThemeColors")
     end if
     ' reloadHome signals main.bs to re-navigate the router to "/" for a fresh,
-    ' re-themed/re-translated Home (see JRScene.reloadRoutedHome).
+    ' re-themed/re-translated Home, and on to the screen Settings was opened from
+    ' (JRScene.reloadRoutedHome).
     m.global.sceneManager.callFunc("reloadHome")
   else
-    ' Settings is a routed view: pop it via the router (back to Home).
+    ' Settings is a routed view: pop it via the router (back to the screen it was opened from).
     sgrouter.goBack()
   end if
 end sub

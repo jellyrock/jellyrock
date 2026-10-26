@@ -83,6 +83,9 @@ sub init()
   ' The cluster icon a screen was left by: { view, icon }, focused again when that screen
   ' returns (takeOverhangReturnFocus); invalid when none is owed.
   m.overhangReturn = invalid
+  ' The route Settings was opened from ({ path, context }), for reloadRoutedHome; invalid
+  ' when Settings is not open or was opened from Home.
+  m.settingsOrigin = invalid
 
   ' Hide backdrop until setting is resolved on first backdrop request (lazy initialization)
   m.imageFader.visible = false
@@ -511,6 +514,10 @@ end function
 ' It ends the same way, once the destination has mounted, so that screen is never shown again
 ' on the way out; a rejected nav fails it, so it gives the remote back.
 sub navigateThenFocus(routePath as dynamic, context = {} as object, clearSpinner = false as boolean, signInWait = invalid as dynamic)
+  ' Settings can be opened from any screen now; a theme or language change there reloads
+  ' Home, and reloadRoutedHome then returns to this route rather than stranding the viewer
+  ' on Home.
+  if type(routePath) = "roString" and routePath = "/settings" then m.settingsOrigin = routeOfActiveView()
   startNavigation({ routePath: routePath, context: context, clearSpinner: clearSpinner, signInWait: signInWait, retried: false })
 end sub
 
@@ -602,24 +609,33 @@ end sub
 ' Navigate routes[index], then chain to the next step once it settles (sgRouter's
 ' navigateTo promise resolves at NavigationEnd, so each .then() defers until the previous
 ' route is fully mounted). The final step takes remote focus. Context carries routes/index
-' (BrightScript closures can't capture locals). The runtime-cast caller
-' (replayDeepLinkReplacingPlayer) is the one user.
+' (BrightScript closures can't capture locals). A step is a path, a named-route AA, or a
+' view's route as { path, context } (routeOfActiveView). The runtime-cast caller
+' (replayDeepLinkReplacingPlayer) and the Settings reload (reloadRoutedHome) use it.
 sub navigateChainStep(routes as object, index as integer)
   if index >= routes.count() then return
-  ' Final step: navigate + take focus + catch is exactly the shared settle tail.
+  entry = routes[index]
+  context = {}
+  if type(entry) = "roAssociativeArray" and isValid(entry.path) and not isValid(entry.name)
+    context = entry.context
+    entry = entry.path
+  end if
+  ' Final entry: navigate + take focus + catch is exactly the shared settle tail.
   if index = routes.count() - 1
-    navigateThenFocus(routes[index])
+    navigateThenFocus(entry, context)
     return
   end if
-  ' Intermediate step: navigate, then chain to the next once it settles. A rejection stops the
-  ' chain (a later step would build on a route that never mounted) and takes focus on whatever IS
+  ' Intermediate entry: navigate, then chain to the next once it settles. A rejection stops the
+  ' chain (a later entry would build on a route that never mounted) and takes focus on whatever IS
   ' mounted, so a failed deep-link replay can't strand the remote.
-  promises.chain(sgrouter.navigateTo(routes[index]), { routes: routes, index: index }).then(sub(_result as object, ctx as object)
+  options = {}
+  if isValidAndNotEmpty(context) then options = { context: context }
+  promises.chain(sgrouter.navigateTo(entry, options), { routes: routes, index: index }).then(sub(_result as object, ctx as object)
     navigateChainStep(ctx.routes, ctx.index + 1)
   end sub).catch(sub(err as object, ctx as object)
     ' Recover before logging, and log err whole (`.message` crashes on a non-AA rejection).
     sgrouter.setFocus({ focus: true })
-    m.log.warn("deep-link route chain step failed; stopping chain", ctx.routes[ctx.index], err)
+    m.log.warn("deep-link route chain entry failed; stopping chain", ctx.routes[ctx.index], err)
   end sub)
 end sub
 
@@ -825,10 +841,27 @@ end sub
 ' main.bs's reloadHomeRequested handler (replaces the old clearScenes +
 ' createAndShowHomeGroup). Navigating to "/" from Settings (the active routed view)
 ' is a component change, so clearStackOnResolve rebuilds Home from scratch: it
-' picks up the new theme constants / reloaded translations.
+' picks up the new theme constants / reloaded translations. Settings opened from another
+' screen (m.settingsOrigin) then navigates on to that route, so the viewer lands where they
+' were, on a fresh instance (its scroll position is not kept) with Home under it.
 sub reloadRoutedHome()
-  sgrouter.navigateTo("/")
+  origin = m.settingsOrigin
+  m.settingsOrigin = invalid
+  if not isValid(origin) or origin.path = "/"
+    sgrouter.navigateTo("/")
+    return
+  end if
+  navigateChainStep(["/", origin], 0)
 end sub
+
+' The active view's route as a chain step ({ path, context }), or invalid when it has none.
+function routeOfActiveView() as object
+  view = getActiveView()
+  if not isValid(view) or not isValid(view.route) or not isValid(view.route.path) then return invalid
+  context = view.route.context
+  if not isValid(context) then context = {}
+  return { path: view.route.path, context: context }
+end function
 
 ' Sign-out / change-user / change-server: tear down the whole routed stack before main.bs
 ' re-enters the routed pre-login flow (loginRouter). Without this the routed views would
