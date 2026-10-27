@@ -474,6 +474,7 @@
   "LabelSubtitles": "Subtitles",
   "LabelSuggestions": "Suggestions",
   "LabelSyncPlay": "SyncPlay",
+  "LabelSyncPlayDefaultGroupName": "{0}'s group",
   "LabelSyncPlayGroupRow": "{0} ({1})",
   "LabelSyncPlayNewGroup": "New group",
   "LabelSyncPlayNoGroups": "No groups available",

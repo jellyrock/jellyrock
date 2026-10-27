@@ -103,8 +103,8 @@ function join(groupId as string) as boolean
   return post("Join", syncPlayRequests.join(groupId))
 end function
 
-' Create a group and join it: the server answers with GroupJoined. The name is the user's, as
-' jellyfin-web sends it (a custom name is a phase F addition).
+' Create a group and join it: the server answers with GroupJoined. JRScene names it as
+' jellyfin-web does, "{0}'s group" (a custom name is a phase F addition).
 function newGroup(groupName as string) as boolean
   ensureReady()
   if not isValidAndNotEmpty(groupName) then return false

@@ -229,6 +229,11 @@ LabelSubtitles:
     jellyfin-androidtv: { key: pref_subtitles, en: Subtitles }
     jellyfin-roku: { key: Subtitles, en: Subtitles }
 
+LabelSyncPlayDefaultGroupName:
+  en: "{0}'s group"
+  from:
+    jellyfin-web: { key: SyncPlayGroupDefaultTitle, en: "{0}'s group" }
+
 LabelTotalBitrate:
   en: Total Bitrate
   from:

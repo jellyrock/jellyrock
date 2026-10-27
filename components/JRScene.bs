@@ -1270,7 +1270,7 @@ sub onSyncPlayListResult()
   row = rows[result.optionIndex]
   manager = m.global.syncPlayManager
   if row.action = syncPlayMenu.ACTION_NEW
-    manager.callFunc("newGroup", m.global.user.name)
+    manager.callFunc("newGroup", translate(translationKeys.LabelSyncPlayDefaultGroupName, [m.global.user.name]))
   else
     manager.callFunc("join", row.groupId)
   end if
