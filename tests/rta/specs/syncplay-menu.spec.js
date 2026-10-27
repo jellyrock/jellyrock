@@ -6,6 +6,8 @@
  * creates the group the Roku joins, so the row's text is checked against a known name.
  * While in a group, Play on a movie goes to the group (decision B): the Roku posts the queue,
  * the server answers every member with it, and the Roku's player mounts from that answer.
+ * A membership the app exit left behind is remembered in the registry and ended at the next
+ * launch (decision C).
  */
 import { afterAll, beforeAll, it, expect } from 'vitest';
 import { ecp, odc } from 'roku-test-automation';
@@ -34,6 +36,7 @@ import {
   waitFocused,
   waitFocusInHomeContent,
   waitFor,
+  waitHome,
   waitMediaPlaying,
   waitToast,
 } from '../lib/steps.js';
@@ -241,4 +244,35 @@ it('Play on a movie while in a group goes to the group, whose answer starts the 
   });
   expect(await getGlobalVal('syncPlayManager.inGroup')).toBe(true);
   expect(await getGlobalVal('syncPlayManager.following')).toBe(false);
+});
+
+it('a membership the app exit left behind is remembered, and ended at the next launch', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  await syncPlay(member, 'Leave').catch(() => {});
+  await syncPlay(member, 'New', { GroupName: GROUP_NAME });
+  const group = (await listGroups(member)).find((g) => g.GroupName === GROUP_NAME);
+  expect(group, 'the member created the group').toBeTruthy();
+  await odc.callFunc(
+    { base: 'global', keyPath: 'syncPlayManager', funcName: 'join', funcParams: [group.GroupId] },
+    { timeout: 10000 },
+  );
+  await waitFor('#overhang.#cluster.#syncplayIcon.icon', isFilled, {
+    label: 'the icon fills on the join',
+    timeout: 20000,
+  });
+  const before = (await odc.readRegistry())?.values?.[session.userId] ?? {};
+  expect(before.syncPlayGroup, 'the registry remembers the group while in it').toContain(
+    GROUP_NAME,
+  );
+
+  // The app exit: nothing posts Leave. Home's first run then leaves whatever the registry
+  // remembers, before Home finishes mounting, and forgets it.
+  await hardRelaunch();
+  await waitHome();
+  const after = (await odc.readRegistry())?.values?.[session.userId] ?? {};
+  expect(after.syncPlayGroup, 'the registry forgets the group at the next launch').toBeUndefined();
+  expect(await getGlobalVal('syncPlayManager.inGroup'), 'no membership in memory').toBe(false);
 });
