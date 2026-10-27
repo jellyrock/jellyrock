@@ -1291,9 +1291,10 @@ sub onSyncPlayLeaveResult()
 end sub
 
 ' A SyncPlay notice from the manager: a toast, translated here (the manager is on m.global,
-' outside the scene, and holds no translation).
-sub onSyncPlayNotice()
-  toast = syncPlayMenu.toastFor(m.global.syncPlayManager.notice)
+' outside the scene, and holds no translation). The event's own payload, never the field: a
+' second notice written before this runs would otherwise be read twice and the first lost.
+sub onSyncPlayNotice(event as object)
+  toast = syncPlayMenu.toastFor(event.getData())
   if not isValid(toast) then return
   showToast(translate(toast.key, [toast.arg]), toast.toastType)
 end sub
