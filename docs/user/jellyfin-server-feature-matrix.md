@@ -15,6 +15,7 @@ Features that need a server plugin are in [Jellyfin server plugins](jellyfin-ser
 | Collections row | ❌ | ❌ | ❌ | ❌ | ✅ | The collections an item is in, on its details page |
 | Collections view | ❌ | ❌ | ❌ | ❌ | ✅ | Browse one library's collections from its **View** menu |
 | Language filters | ❌ | ❌ | ❌ | ❌ | ✅ | Filter a library by audio or subtitle language |
+| SyncPlay | ✅ | ✅ | ✅ | ✅ | ✅ | Watch together: join a group from the **SyncPlay** icon and play in step with its members |
 
 ✅ means the feature works on that version. ❌ means it is not available.
 

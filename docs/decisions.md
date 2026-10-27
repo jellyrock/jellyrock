@@ -2356,6 +2356,26 @@ A theme preset never writes the seven `uiThemeColor*` settings. `applyThemeColor
 
 Ruled out: moving the prompt to the moment a preset is picked, which keeps a destructive step and loses the custom colors after Yes; a theme node on `m.global`, which is tech debt `manual-theme-cascade`'s own project.
 
+## decision-id: syncplay-play-handed-to-group
+
+**date**: 2026-10-27
+**status**: accepted
+**related-files**: `components/manager/QueueManager.bs`, `components/syncplay/SyncPlayManager.bs`, `source/syncplay/syncPlayQueue.bs`
+
+A video play pressed while in a SyncPlay group is the group's, decided at `QueueManager.playQueue` (decision B of the SyncPlay project): `SyncPlayManager.claimPlay` posts `SetPlaylistItem` for a current item already in the group's playlist and `SetNewQueue` for anything else (`syncPlayQueue.handoff`), and the group's `PlayQueue` answer loads it for every member. The manager's own group load is told apart by the playlist id stamped on its current item (`syncPlayQueue.isGroupItem`), never by a flag: every launcher clears the queue, so a stamp means the manager built it. The frame that answers a claimed play owes a load even when the group's item did not change (`syncPlayQueue.owedLoadForClaimedPlay`). The start the press opened stays open across the round trip, replaced by the load's own; a refusal, the membership ending or a halt ends it, and the playback-start limit stays the only net. A halted member follows again on its own play and on any member's `NewPlaylist`, as jellyfin-web does, and stays halted on a jump, an append or a removal. A queue the video player could not follow (music, Live TV, one such item among videos) plays locally.
+
+Ruled out: a `performingGroupLoad` flag around the manager's own call (new state to keep in step with every load path, and a leak if the call ever became asynchronous); a manager timer failing the pending start a few seconds after the claim (a slow HTTPS long poll trips it on a good answer); failing the start at the claim and opening another at the load (a spinner flicker). Measured on the Stick 4K against a local 12.2.0 server on 2026-10-27: the phase C device check's halted-cast step loaded nothing until the claimed-play load rule, because `SetPlaylistItem` for the group's current item answers with the same playing item and `owedLoadAfter` saw no change; 14 of 14 after it.
+
+## decision-id: syncplay-stale-membership-at-launch
+
+**date**: 2026-10-27
+**status**: accepted
+**related-files**: `components/syncplay/SyncPlayManager.bs`, `components/home/Home.bs`
+
+A SyncPlay membership the app exit leaves behind is ended at the next launch, from the app side (decision C of the SyncPlay project, app half). Home on the remote ends the app with no `Leave`, and on HTTPS through the companion plugin the session outlives the long poll, so the server keeps the member in its group. The manager writes the group as `groupId|groupName` to the user-scoped registry key `syncPlayGroup` on `GroupJoined`, removes it on `GroupLeft`, `NotInGroup` and `reset()` (which runs before sign-out clears the user), and `Home`'s first run calls `leaveStaleMembership` right after it launches the receiver, so the server's `GroupLeft` can reach the viewer as a toast naming the group. A `NotInGroup` answer (on HTTP the socket drop ended it already) says nothing. The plugin half, leaving a long-poll session whose polls went stale, is followup `syncplay-plugin-leave-stale-session` for the plugin repo.
+
+Ruled out: relying on the socket drop alone (true on HTTP only); posting `Leave` before the receiver starts (the answer would be lost, and the toast with it). Checked on the Stick 4K against a local HTTP 12.2.0 server on 2026-10-27: after a hard relaunch while in a group, Home's first run posted the Leave and the key was gone.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

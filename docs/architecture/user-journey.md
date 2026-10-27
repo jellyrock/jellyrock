@@ -10,7 +10,7 @@ related-files:
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
   - source/utils/playKind.bs
-last-reviewed: 2026-10-22
+last-reviewed: 2026-10-27
 ---
 
 # The user journey
@@ -208,7 +208,7 @@ m.global.queueManager.callFunc("push", queueItem)
 m.global.queueManager.callFunc("playQueue")
 ```
 
-`playQueue()` picks the player from the item's type ([below](#queuemanagerplayqueue)), so a song opens the audio player from here as it does from anywhere else. Don't navigate to a player route from the details screen: it can't tell which player an item needs, and a song once opened the video player that way. The version preference is recorded only when the user picked one in the Video menu, and the items the queue reaches next keep to it ([playback.md](playback.md#items-a-queue-arrives-at)).
+`playQueue()` picks the player from the item's type ([below](#queuemanagerplayqueue)), so a song opens the audio player from here as it does from anywhere else. While in a SyncPlay group a video play goes to the group first (`SyncPlayManager.claimPlay`), and the group's answer comes back through the same call ([playback.md](playback.md#syncplay-the-player-follows-the-group)). Don't navigate to a player route from the details screen: it can't tell which player an item needs, and a song once opened the video player that way. The version preference is recorded only when the user picked one in the Video menu, and the items the queue reaches next keep to it ([playback.md](playback.md#items-a-queue-arrives-at)).
 
 **Several items** (Play on a type `isPlayAllType()` accepts) go to `QueueManager.launchQuickPlayAction` with a `playAll` action, and its `QuickPlayTask` builds the queue. Shuffle uses `launchShuffle`, or `launchPhotoAlbum` for a photo album. **Trailer** uses `launchQuickPlayAction` with `loadTrailers`.
 

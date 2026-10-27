@@ -9,7 +9,7 @@ related-files:
   - components/data/Constants.xml
   - components/data/jellyfin/AppInfo.xml
   - components/data/jellyfin/DeviceInfo.xml
-last-reviewed: 2026-10-26
+last-reviewed: 2026-10-27
 ---
 
 # Global state
@@ -167,7 +167,7 @@ m.global.audioPlayer.control = "play"
 
 - **`sceneManager`** no longer moves between screens; the router does that ([`navigation.md`](navigation.md)). It keeps the theme refresh, `reloadHome`, the background image, the clock reset and the `isDialogOpen` query.
 - **`queueManager`** owns the play queue and starts playback ([`playback.md`](playback.md)).
-- **`syncPlayManager`** (`components/syncplay/`) coordinates a SyncPlay group: `remoteDispatch.dispatchSyncPlay` writes each parsed frame to its `frame` field, it schedules the group's commands on a Timer against the clock offset its `TimeSyncTask` measures, and drives the player through `PlayerHostView.handleTransport`. `PlayerHostView` and `VideoPlayerView` read its `following` field and send it their events through `playerEvent`, so it never observes the player ([`playback.md`](playback.md#syncplay-the-player-follows-the-group)). `userAuth.SignOut` resets it, which leaves the group.
+- **`syncPlayManager`** (`components/syncplay/`) coordinates a SyncPlay group: `remoteDispatch.dispatchSyncPlay` writes each parsed frame to its `frame` field, it schedules the group's commands on a Timer against the clock offset its `TimeSyncTask` measures, and drives the player through `PlayerHostView.handleTransport`. `PlayerHostView` and `VideoPlayerView` read its `following` field and send it their events through `playerEvent`, so it never observes the player ([`playback.md`](playback.md#syncplay-the-player-follows-the-group)). `userAuth.SignOut` resets it, which leaves the group. `QueueManager.playQueue` asks it `claimPlay` while in a group, so a video play goes to the group and its answer loads it. Its `notice` field is what the viewer is told (`JRScene` turns it into a toast through `syncPlayMenu.toastFor`), and the user's registry remembers the group while in one, so the next launch can end a membership the app exit left behind (`leaveStaleMembership`).
 - **`audioPlayer`** is the one audio player. It sits on `m.global` and not on a screen, so the stream outlives the `/audio` view's own node, but every way out of that view stops it (Back, `AudioPlayerView.exitAudioPlayback()`, a deep link, a move to a video in a mixed queue). `AudioPlayerView` reads it from `m.global.audioPlayer` and observes its `state` and `position`.
 
 ## Debug flags: `m.global.debug`
