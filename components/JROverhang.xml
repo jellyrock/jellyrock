@@ -55,8 +55,8 @@
     <field id="isClockVisible" value="true" type="boolean" onChange="isClockVisibleChanged" />
     <!-- The cluster icon for an entry id ("syncplay", "search", "settings"), for a screen's focus bookkeeping. -->
     <function name="getIcon" />
-    <!-- The SyncPlay icon's state from JRScene: { shown, icon }. Shown first in the cluster when
-         the account may use SyncPlay; its glyph follows the membership. -->
+    <!-- The SyncPlay icon's state from JRScene: { shown, active }. Shown first in the cluster when
+         the account may use SyncPlay; active (drawn in colorSecondary) while in a group. -->
     <function name="applySyncPlayIcon" />
     <!-- Up from a screen: focus the element Down last left the row from, else the first shown
          (tabs, dropdown, cluster). Returns false when the row has nothing to focus. -->

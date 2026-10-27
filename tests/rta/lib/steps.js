@@ -1202,9 +1202,9 @@ export async function walkHomeToFirstRow({ timeout = 10000, interval = 400 } = {
  *
  * `focusOverhangIcon` pressed Up exactly ONCE and then spent its whole timeout pressing
  * Right. Right is the correct key only AFTER the escape succeeded: it walks the overhang's
- * TabBar -> Search -> Settings chain. While focus is still inside Home's rows, Right walks
- * the ROW instead, and no number of Rights can ever leave Home. So a single lost Up was
- * unrecoverable by construction, and it presented as "the screen never loaded".
+ * TabBar -> SyncPlay -> Search -> Settings chain. While focus is still inside Home's rows,
+ * Right walks the ROW instead, and no number of Rights can ever leave Home. So a single lost Up
+ * was unrecoverable by construction, and it presented as "the screen never loaded".
  *
  * That is not hypothetical. Two failure records, `.176` 2026-08-16 and `.177` 2026-08-18
  * (this suite, current `main`), carry the same signature: focus still on `#homeRows`,

@@ -55,10 +55,10 @@ import {
  *
  * Two preconditions, in order. Home's active list must be resting on row 0, or Up does not
  * leave Home at all (`walkHomeToFirstRow`). Only then does Up move focus into the overhang,
- * whose focus chain is tab bar -> user dropdown -> Search -> Settings (left to right, see
- * overhangRow.nextFocus), so the row is walked until the icon is focused (`walkOverhangRowTo`,
- * which picks each key from where focus is and stops on arrival, so the wrap at the row's ends
- * never overshoots).
+ * whose focus chain is tab bar -> user dropdown -> SyncPlay (for an account that may use it) ->
+ * Search -> Settings (left to right, see overhangRow.nextFocus), so the row is walked until the
+ * icon is focused (`walkOverhangRowTo`, which picks each key from where focus is and stops on
+ * arrival, so the wrap at the row's ends never overshoots).
  */
 export async function focusOverhangIcon(iconId) {
   await waitHome();
