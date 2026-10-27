@@ -221,9 +221,9 @@ sub playQueue()
   end if
 
   kind = playKind.of(nextItemMediaType)
-  ' In a SyncPlay group a video play is the group's (decision B): the manager posts it and the
-  ' group's answer comes back through this same call, for every member. The pending start
-  ' stays open across the round trip; the manager ends it if the group refuses.
+  ' In a SyncPlay group a video play is the group's (decision `syncplay-play-handed-to-group`): the
+  ' manager posts it and the group's answer comes back through this same call, for every member. The
+  ' pending start stays open across the round trip; the manager ends it if the group refuses.
   if kind = playKind.VIDEO and groupClaimsPlay() then return
   if kind = playKind.AUDIO
     m.global.playbackLaunchRequest = { type: nextItem.type, id: nextItem.id, media: "audio" }

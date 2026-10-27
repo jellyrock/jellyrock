@@ -4,10 +4,11 @@
  * it and the icon turns active (colorSecondary); the icon then opens a confirm naming the group,
  * whose Leave Group leaves and puts the icon back to rest. A second member of the same account, over REST,
  * creates the group the Roku joins, so the row's text is checked against a known name.
- * While in a group, Play on a movie goes to the group (decision B): the Roku posts the queue,
- * the server answers every member with it, and the Roku's player mounts from that answer.
+ * While in a group, Play on a movie goes to the group (decision `syncplay-play-handed-to-group`):
+ * the Roku posts the queue, the server answers every member with it, and the Roku's player
+ * mounts from that answer.
  * A membership the app exit left behind is remembered in the registry and ended at the next
- * launch (decision C).
+ * launch (decision `syncplay-stale-membership-at-launch`).
  */
 import { afterAll, beforeAll, it, expect } from 'vitest';
 import { ecp, odc } from 'roku-test-automation';

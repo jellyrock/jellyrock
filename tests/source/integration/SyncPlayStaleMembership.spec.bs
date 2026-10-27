@@ -3,10 +3,10 @@ import "pkg:/source/utils/config.bs"
 
 namespace tests
 
-  ' The membership a Home exit left behind (decision C, the app half): the manager keeps the
-  ' group in the user's registry while in one, forgets it on a leave or a reset, and at the
-  ' next launch posts Leave for it and names it when the server's GroupLeft answers. A real
-  ' registry section, under a test- user id the base class deletes after each test.
+  ' The membership a Home exit left behind (decision `syncplay-stale-membership-at-launch`, the app
+  ' half): the manager keeps the group in the user's registry while in one, forgets it on a leave or
+  ' a reset, and at the next launch posts Leave for it and names it when the server's GroupLeft
+  ' answers. A real registry section, under a test- user id the base class deletes after each test.
   @suite("SyncPlayManager - the membership a Home exit left behind")
   class SyncPlayStaleMembershipTests extends tests.BaseTestSuite
 

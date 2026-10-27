@@ -23,7 +23,8 @@ import "pkg:/source/utils/tasks.bs"
 const FIRST_SYNC_ROUNDS = 8
 const SYNC_ROUNDS = 3
 ' The user-scoped registry key that remembers a membership across a launch: "groupId|groupName".
-' A Home exit ends the app without a Leave, and on HTTPS the session outlives it (decision C).
+' A Home exit ends the app without a Leave, and on HTTPS the session outlives it
+' (decision `syncplay-stale-membership-at-launch`).
 const STALE_GROUP_KEY = "syncPlayGroup"
 
 sub init()
@@ -133,12 +134,12 @@ function reset() as boolean
   return true
 end function
 
-' Ends the membership a Home exit left behind (decision C, the app half): the registry
-' remembers the group of the last session, and nothing in memory does. Called once per launch
-' from Home's first run, after the receiver is up so the server's GroupLeft can reach the
-' viewer as a toast naming the group. Answers true when a Leave was posted. On HTTP the socket
-' drop ended the membership already and the server answers NotInGroup, which says nothing;
-' the plugin's reaper does the same for a long-poll session that went stale.
+' Ends the membership a Home exit left behind (decision `syncplay-stale-membership-at-launch`, the
+' app half): the registry remembers the group of the last session, and nothing in memory does.
+' Called once per launch from Home's first run, after the receiver is up so the server's GroupLeft
+' can reach the viewer as a toast naming the group. Answers true when a Leave was posted. On HTTP
+' the socket drop ended the membership already and the server answers NotInGroup, which says
+' nothing; the plugin's reaper does the same for a long-poll session that went stale.
 function leaveStaleMembership() as boolean
   ensureReady()
   if m.state.inGroup then return false
