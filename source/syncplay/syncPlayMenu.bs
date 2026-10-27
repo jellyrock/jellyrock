@@ -91,6 +91,7 @@ namespace syncPlayMenu
     if isValidAndNotEmpty(notice.userName) then userName = notice.userName
     if kind = "joined" then return { key: translationKeys.MessageSyncPlayJoinedGroup, toastType: "success", arg: groupName }
     if kind = "left" then return { key: translationKeys.MessageSyncPlayLeftGroup, toastType: "info", arg: groupName }
+    if kind = "leftStale" then return { key: translationKeys.MessageSyncPlayLeftStaleGroup, toastType: "info", arg: groupName }
     if kind = "userJoined" then return { key: translationKeys.MessageSyncPlayUserJoined, toastType: "info", arg: userName }
     if kind = "userLeft" then return { key: translationKeys.MessageSyncPlayUserLeft, toastType: "info", arg: userName }
     if kind = "groupStarted" then return { key: translationKeys.MessageSyncPlayGroupStarted, toastType: "info", arg: groupName }

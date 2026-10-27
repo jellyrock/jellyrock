@@ -12,6 +12,7 @@ import "pkg:/source/syncplay/syncPlayQueue.bs"
 import "pkg:/source/syncplay/syncPlayRequests.bs"
 import "pkg:/source/syncplay/syncPlayState.bs"
 import "pkg:/source/syncplay/syncPlayTime.bs"
+import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/tasks.bs"
@@ -20,6 +21,9 @@ import "pkg:/source/utils/tasks.bs"
 ' next burst runs is syncPlayOffset.nextBurstSeconds.
 const FIRST_SYNC_ROUNDS = 8
 const SYNC_ROUNDS = 3
+' The user-scoped registry key that remembers a membership across a launch: "groupId|groupName".
+' A Home exit ends the app without a Leave, and on HTTPS the session outlives it (decision C).
+const STALE_GROUP_KEY = "syncPlayGroup"
 
 sub init()
   m.log = new log.Logger("SyncPlayManager")
@@ -82,6 +86,9 @@ sub ensureReady()
   ' the player, a refusal ends the start the press opened, and the load it causes needs no
   ' "group started" toast.
   m.claimedPlay = false
+  ' The name of the group a Leave at launch is ending (leaveStaleMembership), so the GroupLeft
+  ' that answers it can say which, since the membership is not in memory.
+  m.staleGroupName = ""
   publish()
 end sub
 
@@ -116,8 +123,27 @@ function reset() as boolean
   m.log.info("reset")
   ensureReady()
   if m.state.inGroup then post("Leave", invalid, true)
+  unsetUserSetting(STALE_GROUP_KEY)
   leaveLocally()
   return true
+end function
+
+' Ends the membership a Home exit left behind (decision C, the app half): the registry
+' remembers the group of the last session, and nothing in memory does. Called once per launch
+' from Home's first run, after the receiver is up so the server's GroupLeft can reach the
+' viewer as a toast naming the group. Answers true when a Leave was posted. On HTTP the socket
+' drop ended the membership already and the server answers NotInGroup, which says nothing;
+' the plugin's reaper does the same for a long-poll session that went stale.
+function leaveStaleMembership() as boolean
+  ensureReady()
+  if m.state.inGroup then return false
+  stale = getUserSetting(STALE_GROUP_KEY)
+  if not isValidAndNotEmpty(stale) then return false
+  unsetUserSetting(STALE_GROUP_KEY)
+  parts = stale.split("|")
+  if parts.count() > 1 then m.staleGroupName = parts[1]
+  m.log.info("leaving the group of the last session", "group", stale)
+  return post("Leave", invalid)
 end function
 
 ' @returns an AA with `following`: whether the caller should defer to the group (a `finished` the host
@@ -287,6 +313,8 @@ sub onGroupUpdate(update as object)
 
   if updateType = "GroupJoined"
     notify("joined", m.state.groupName, "")
+    setUserSetting(STALE_GROUP_KEY, m.state.groupId + "|" + m.state.groupName)
+    m.staleGroupName = ""
     m.owedLoad = invalid
     syncPlayOffset.reset(m.estimator)
     m.heldCommand = invalid
@@ -296,8 +324,15 @@ sub onGroupUpdate(update as object)
     m.failedBursts = 0
     startTimeSync(FIRST_SYNC_ROUNDS)
   else if updateType = "GroupLeft" or updateType = "NotInGroup"
-    ' NotInGroup also answers a request made outside any group: nothing to tell then.
-    if wasInGroup then notify("left", previousGroupName, "")
+    ' NotInGroup also answers a request made outside any group: nothing to tell then. A
+    ' GroupLeft for a membership a Home exit left behind names the group from the registry.
+    if wasInGroup
+      notify("left", previousGroupName, "")
+    else if updateType = "GroupLeft" and m.staleGroupName <> ""
+      notify("leftStale", m.staleGroupName, "")
+    end if
+    m.staleGroupName = ""
+    unsetUserSetting(STALE_GROUP_KEY)
     dropClaimedPlay("left the group")
     leaveLocally()
     return

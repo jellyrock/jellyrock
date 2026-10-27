@@ -720,6 +720,7 @@
   "MessageSyncPlayJoinGroupDenied": "Can't join that group.",
   "MessageSyncPlayJoinedGroup": "Joined {0}.",
   "MessageSyncPlayLeftGroup": "Left {0}.",
+  "MessageSyncPlayLeftStaleGroup": "Left {0} from your last session.",
   "MessageSyncPlayLibraryAccessDenied": "Access to this content is restricted.",
   "MessageSyncPlayMembers": "Watching with {0}.",
   "MessageSyncPlayPlayedToGroup": "Playing this for {0}.",

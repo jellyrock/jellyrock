@@ -190,6 +190,9 @@ sub onScreenShown()
     ' SignOut is the only STOP, and a relaunch from a later callback restarts it (TaskRelaunch.spec).
     ' bsc-disable-next-line no-same-node-relaunch app-wide receiver, never replaced (reason above)
     launchTask(m.global.remoteControlTask)
+    ' A SyncPlay membership a Home exit left behind is ended now, after the receiver is up so
+    ' its GroupLeft reaches the viewer (decision C).
+    m.global.syncPlayManager.callFunc("leaveStaleMembership")
   else
     ' Subsequent visits: refresh the active tab's data in place
     refresh()
