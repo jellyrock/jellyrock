@@ -137,6 +137,57 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Notices")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("GroupJoined tells the viewer the group they joined")
+    function _()
+      m.assertInvalid(m.manager.notice)
+      m.joinGroup()
+      m.assertEqual(m.manager.notice.kind, "joined")
+      m.assertEqual(m.manager.notice.groupName, "Movie night")
+    end function
+
+    @it("GroupLeft names the group just left; NotInGroup outside any group says nothing")
+    function _()
+      m.manager.frame = m.update("NotInGroup", invalid)
+      m.assertInvalid(m.manager.notice)
+      m.joinGroup()
+      m.manager.frame = m.update("GroupLeft", invalid)
+      m.assertEqual(m.manager.notice.kind, "left")
+      m.assertEqual(m.manager.notice.groupName, "Movie night")
+    end function
+
+    @it("UserJoined and UserLeft carry the member's name")
+    function _()
+      m.joinGroup()
+      m.manager.frame = m.update("UserJoined", "bob")
+      m.assertEqual(m.manager.notice.kind, "userJoined")
+      m.assertEqual(m.manager.notice.userName, "bob")
+      m.manager.frame = m.update("UserLeft", "bob")
+      m.assertEqual(m.manager.notice.kind, "userLeft")
+    end function
+
+    @it("a refusal is passed on by its update type")
+    function _()
+      m.manager.frame = m.update("JoinGroupDenied", invalid)
+      m.assertEqual(m.manager.notice.kind, "JoinGroupDenied")
+      m.manager.frame = m.update("GroupDoesNotExist", invalid)
+      m.assertEqual(m.manager.notice.kind, "GroupDoesNotExist")
+    end function
+
+    @it("a halt while following says so once; a halt while already halted says nothing more")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.assertEqual(m.manager.notice.kind, "halted")
+      m.manager.notice = invalid
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.assertInvalid(m.manager.notice)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Commands")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

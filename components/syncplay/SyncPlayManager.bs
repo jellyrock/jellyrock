@@ -184,6 +184,7 @@ end function
 ' server before 12.1 has no group-wait timeout). Resuming is phase E.
 sub haltFollowing(reason as string)
   m.log.info("halting", "reason", reason, "groupId", m.state.groupId)
+  if isFollowing() then notify("halted", m.state.groupName, "")
   syncPlayState.halt(m.state)
   m.pendingPlan = invalid
   m.owedLoad = invalid
@@ -219,6 +220,8 @@ sub onGroupUpdate(update as object)
     return
   end if
   previousPlayingItemId = m.state.playingItemId
+  wasInGroup = m.state.inGroup
+  previousGroupName = m.state.groupName
   m.state = syncPlayState.applyGroupUpdate(m.state, update)
   if updateType = "PlayQueue"
     m.owedLoad = syncPlayQueue.owedLoadAfter(m.owedLoad, update.reason, previousPlayingItemId, m.state.playingItemId)
@@ -226,6 +229,7 @@ sub onGroupUpdate(update as object)
   m.log.info("group update", "type", updateType, "groupId", m.state.groupId, "state", m.state.groupState)
 
   if updateType = "GroupJoined"
+    notify("joined", m.state.groupName, "")
     m.owedLoad = invalid
     syncPlayOffset.reset(m.estimator)
     m.heldCommand = invalid
@@ -235,12 +239,25 @@ sub onGroupUpdate(update as object)
     m.failedBursts = 0
     startTimeSync(FIRST_SYNC_ROUNDS)
   else if updateType = "GroupLeft" or updateType = "NotInGroup"
+    ' NotInGroup also answers a request made outside any group: nothing to tell then.
+    if wasInGroup then notify("left", previousGroupName, "")
     leaveLocally()
     return
+  else if updateType = "UserJoined"
+    notify("userJoined", m.state.groupName, update.userName)
+  else if updateType = "UserLeft"
+    notify("userLeft", m.state.groupName, update.userName)
+  else if updateType = "GroupDoesNotExist" or updateType = "LibraryAccessDenied" or updateType = "CreateGroupDenied" or updateType = "JoinGroupDenied"
+    notify(updateType, "", "")
   else if updateType = "PlayQueue"
     onQueueUpdate(update)
   end if
   publish()
+end sub
+
+' Tell the viewer something (the `notice` field; JRScene shows the toast).
+sub notify(kind as string, groupName as string, userName as string)
+  m.top.notice = { kind: kind, groupName: groupName, userName: userName }
 end sub
 
 sub onCommand(command as object)
@@ -421,6 +438,9 @@ sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteg
     host.callFunc("skipToCurrentQueueItem")
   else
     if not newPlaylist then queueManager.callFunc("startCurrentFresh")
+    ' The group started something while this viewer was elsewhere: the player opens on its own,
+    ' so say why.
+    notify("groupStarted", m.state.groupName, "")
     queueManager.callFunc("beginPlaybackStart", "")
     queueManager.callFunc("playQueue")
   end if

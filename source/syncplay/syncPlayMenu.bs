@@ -1,3 +1,4 @@
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 ' The SyncPlay menu's decisions, pure: no node, no m.global. JRScene asks here what the cluster's
 ' SyncPlay icon shows and what the group menu offers, so a Rooibos spec covers every access value
@@ -75,6 +76,30 @@ namespace syncPlayMenu
     icon = ICON_NOT_IN_GROUP
     if inGroup then icon = ICON_IN_GROUP
     return { icon: icon, disabled: not canJoin(access) }
+  end function
+
+  ' The toast for a manager notice ({ kind, groupName, userName }): the translation key, the
+  ' toast type and the one placeholder, or invalid for a kind that shows nothing. The types
+  ' follow the settled table: success for the viewer's own join, info for membership and the
+  ' group start, warning for a halt, error for a refusal.
+  function toastFor(notice as dynamic) as dynamic
+    if type(notice) <> "roAssociativeArray" or not isValidAndNotEmpty(notice.kind) then return invalid
+    kind = notice.kind
+    groupName = ""
+    if isValidAndNotEmpty(notice.groupName) then groupName = notice.groupName
+    userName = ""
+    if isValidAndNotEmpty(notice.userName) then userName = notice.userName
+    if kind = "joined" then return { key: translationKeys.MessageSyncPlayJoinedGroup, toastType: "success", arg: groupName }
+    if kind = "left" then return { key: translationKeys.MessageSyncPlayLeftGroup, toastType: "info", arg: groupName }
+    if kind = "userJoined" then return { key: translationKeys.MessageSyncPlayUserJoined, toastType: "info", arg: userName }
+    if kind = "userLeft" then return { key: translationKeys.MessageSyncPlayUserLeft, toastType: "info", arg: userName }
+    if kind = "groupStarted" then return { key: translationKeys.MessageSyncPlayGroupStarted, toastType: "info", arg: groupName }
+    if kind = "halted" then return { key: translationKeys.MessageSyncPlayStoppedFollowing, toastType: "warning", arg: groupName }
+    if kind = "GroupDoesNotExist" then return { key: translationKeys.MessageSyncPlayGroupDoesNotExist, toastType: "error", arg: "" }
+    if kind = "LibraryAccessDenied" then return { key: translationKeys.MessageSyncPlayLibraryAccessDenied, toastType: "error", arg: "" }
+    if kind = "CreateGroupDenied" then return { key: translationKeys.MessageSyncPlayCreateGroupDenied, toastType: "error", arg: "" }
+    if kind = "JoinGroupDenied" then return { key: translationKeys.MessageSyncPlayJoinGroupDenied, toastType: "error", arg: "" }
+    return invalid
   end function
 
   function isAccess(access as dynamic, value as string) as boolean

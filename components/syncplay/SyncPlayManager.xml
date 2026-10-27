@@ -24,6 +24,12 @@
     <field id="groupState" type="string" value="" />
     <!-- { offsetMs, delayMs, hasEstimate, lastCommand, trackerPhase, playingItemId } -->
     <field id="sync" type="assocarray" />
+    <!-- Something the viewer is told: { kind, groupName, userName }. kind is joined, left,
+         userJoined, userLeft, groupStarted, halted, or a refusal's update type
+         (GroupDoesNotExist, LibraryAccessDenied, CreateGroupDenied, JoinGroupDenied). JRScene
+         turns it into a toast; the manager holds no translation. alwaysNotify: two notices of
+         one kind in a row are two. -->
+    <field id="notice" type="assocarray" alwaysNotify="true" />
 
     <!-- POST /SyncPlay/Join { GroupId }: the GroupJoined frame confirms it. -->
     <function name="join" />

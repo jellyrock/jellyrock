@@ -99,6 +99,36 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the toast for a notice")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the viewer's own join is a success toast naming the group")
+    function _()
+      toast = syncPlayMenu.toastFor({ kind: "joined", groupName: "Movie night", userName: "" })
+      m.assertEqual(toast.key, translationKeys.MessageSyncPlayJoinedGroup)
+      m.assertEqual(toast.toastType, "success")
+      m.assertEqual(toast.arg, "Movie night")
+    end function
+
+    @it("membership and the group start are info, a halt a warning, a refusal an error")
+    function _()
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "userJoined", userName: "bob" }).toastType, "info")
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "userJoined", userName: "bob" }).arg, "bob")
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "left", groupName: "g" }).toastType, "info")
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "groupStarted", groupName: "g" }).toastType, "info")
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "halted", groupName: "g" }).toastType, "warning")
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "JoinGroupDenied" }).toastType, "error")
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "LibraryAccessDenied" }).key, translationKeys.MessageSyncPlayLibraryAccessDenied)
+    end function
+
+    @it("an unknown kind, or no notice, shows nothing")
+    function _()
+      m.assertInvalid(syncPlayMenu.toastFor({ kind: "StateUpdate" }))
+      m.assertInvalid(syncPlayMenu.toastFor(invalid))
+      m.assertInvalid(syncPlayMenu.toastFor({}))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("the cluster icon")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

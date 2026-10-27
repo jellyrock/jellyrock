@@ -445,6 +445,8 @@ sub initRouter()
   ' group. The manager is a render-thread node on m.global, so observing it costs no crossing.
   m.global.syncPlayManager.unobserveField("inGroup")
   m.global.syncPlayManager.observeField("inGroup", "applySyncPlayIcon")
+  m.global.syncPlayManager.unobserveField("notice")
+  m.global.syncPlayManager.observeField("notice", "onSyncPlayNotice")
 
   ' The auth guard. The SAME node we put on m.global in setGlobalNodes, registered by NODE
   ' REFERENCE. Added to every POST-login route below; the pre-login routes carry no guard
@@ -1278,6 +1280,14 @@ sub onSyncPlayLeaveResult()
   result = dialog.result
   if result.externallyCancelled = true or result.confirmed <> true then return
   m.global.syncPlayManager.callFunc("leave")
+end sub
+
+' A SyncPlay notice from the manager: a toast, translated here (the manager is on m.global,
+' outside the scene, and holds no translation).
+sub onSyncPlayNotice()
+  toast = syncPlayMenu.toastFor(m.global.syncPlayManager.notice)
+  if not isValid(toast) then return
+  showToast(translate(toast.key, [toast.arg]), toast.toastType)
 end sub
 
 ' The SyncPlay icon shows the membership and the policy: filled while in a group, disabled when
