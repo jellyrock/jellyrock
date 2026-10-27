@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "취소",
   "ButtonDelete": "제거",
+  "ButtonLeaveGroup": "그룹 탈퇴",
   "ButtonManualLogin": "수동 로그인",
   "ButtonOk": "확인",
   "ButtonPlay": "재생",
@@ -131,6 +132,10 @@
   "LabelSports": "스포츠",
   "LabelStudios": "스튜디오",
   "LabelSubtitles": "자막",
+  "LabelSyncPlayDefaultGroupName": "{0}의 그룹",
+  "LabelSyncPlayNewGroup": "새 그룹",
+  "LabelSyncPlayNoGroups": "그룹을 찾을 수 없습니다",
+  "LabelSyncPlaySelectGroup": "그룹에 추가",
   "LabelTheme": "테마",
   "LabelTrack": "트랙",
   "LabelTranscoding": "트랜스코딩",
@@ -233,5 +238,9 @@
   "MessageEndsAt1": "{0}에 종료",
   "MessageMoreFrom1": "{0} 에서 더 자세히",
   "MessageSearchNoResults": "결과가 없습니다.",
-  "MessageSetTheMaximumAmountOfDays": "에피소드를 시청하지 않고 '다음' 목록에 머무르는 최대 일 수를 설정합니다."
+  "MessageSetTheMaximumAmountOfDays": "에피소드를 시청하지 않고 '다음' 목록에 머무르는 최대 일 수를 설정합니다.",
+  "MessageSyncPlayCreateGroupDenied": "그룹을 생성하려면 권한이 필요합니다.",
+  "MessageSyncPlayLibraryAccessDenied": "이 콘텐츠에 대한 액세스가 제한됩니다.",
+  "MessageSyncPlayUserJoined": "{0}이(가) 그룹에 가입했습니다.",
+  "MessageSyncPlayUserLeft": "{0}이(가) 그룹에서 나갔습니다."
 }

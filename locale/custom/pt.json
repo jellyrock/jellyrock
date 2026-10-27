@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Cancelar",
   "ButtonDelete": "Eliminar",
+  "ButtonLeaveGroup": "Sair do grupo",
   "ButtonManualLogin": "Início de sessão manual",
   "ButtonOk": "OK",
   "ButtonPlay": "Reproduzir",
@@ -134,6 +135,10 @@
   "LabelSports": "Desporto",
   "LabelStudios": "Estúdios",
   "LabelSubtitles": "Legendas",
+  "LabelSyncPlayDefaultGroupName": "Grupo {0}",
+  "LabelSyncPlayNewGroup": "Novo grupo",
+  "LabelSyncPlayNoGroups": "Não há grupos disponíveis",
+  "LabelSyncPlaySelectGroup": "Entrar num grupo",
   "LabelTheme": "Tema",
   "LabelTrack": "Faixa",
   "LabelTranscoding": "Transcodificação",
@@ -236,5 +241,9 @@
   "MessageEndsAt1": "Termina às {0}",
   "MessageMoreFrom1": "Mais de {0}",
   "MessageSearchNoResults": "Sem resultados.",
-  "MessageSetTheMaximumAmountOfDays": "Defina a quantidade máxima de dias que um programa deve permanecer na lista 'Próximo' sem o assistir."
+  "MessageSetTheMaximumAmountOfDays": "Defina a quantidade máxima de dias que um programa deve permanecer na lista 'Próximo' sem o assistir.",
+  "MessageSyncPlayCreateGroupDenied": "É necessária permissão para criar um grupo.",
+  "MessageSyncPlayLibraryAccessDenied": "Conteúdo de acesso restrito.",
+  "MessageSyncPlayUserJoined": "{0} juntou-se ao grupo.",
+  "MessageSyncPlayUserLeft": "{0} saiu do grupo."
 }

@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "בטל",
   "ButtonDelete": "מחק",
+  "ButtonLeaveGroup": "עזוב קבוצה",
   "ButtonManualLogin": "התחברות ידנית",
   "ButtonOk": "בסדר",
   "ButtonPlay": "נגן",
@@ -135,6 +136,11 @@
   "LabelSports": "ספורט",
   "LabelStudios": "אולפני",
   "LabelSubtitles": "כתוביות",
+  "LabelSyncPlay": "צפייה מסונכרנת",
+  "LabelSyncPlayDefaultGroupName": "הקבוצה של {0}",
+  "LabelSyncPlayNewGroup": "קבוצה חדשה",
+  "LabelSyncPlayNoGroups": "אין קבוצות זמינות",
+  "LabelSyncPlaySelectGroup": "הצטרף לקבוצה",
   "LabelTheme": "ערכת נושא",
   "LabelTrack": "רצועה",
   "LabelTranscoding": "התמרה",
@@ -238,5 +244,9 @@
   "MessageEndsAt1": "מסתיים ב {0}",
   "MessageMoreFrom1": "עוד מ{0}",
   "MessageSearchNoResults": "אין תוצאות.",
-  "MessageSetTheMaximumAmountOfDays": "הגדר את מספר הימים המקסימלי שתכנית צריכה להישאר ברשימת 'הבא בתור' מבלי לצפות בה."
+  "MessageSetTheMaximumAmountOfDays": "הגדר את מספר הימים המקסימלי שתכנית צריכה להישאר ברשימת 'הבא בתור' מבלי לצפות בה.",
+  "MessageSyncPlayCreateGroupDenied": "יצירת קבוצה דורשת הרשאות.",
+  "MessageSyncPlayLibraryAccessDenied": "הגישה לתוכן זה מוגבלת.",
+  "MessageSyncPlayUserJoined": "{0} הצטרף/ה לקבוצה.",
+  "MessageSyncPlayUserLeft": "{0} עזב/ה את הקבוצה."
 }

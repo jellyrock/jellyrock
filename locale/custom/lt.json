@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Atšaukti",
   "ButtonDelete": "Ištrinti",
+  "ButtonLeaveGroup": "Palikti grupę",
   "ButtonManualLogin": "Rankinis prisijungimas",
   "ButtonOk": "Gerai",
   "ButtonPlay": "Leisti",
@@ -134,6 +135,9 @@
   "LabelSports": "Sportas",
   "LabelStudios": "Studijos",
   "LabelSubtitles": "Subtitrai",
+  "LabelSyncPlayNewGroup": "Nauja grupė",
+  "LabelSyncPlayNoGroups": "Grupių nėra",
+  "LabelSyncPlaySelectGroup": "Prisijungti prie grupės",
   "LabelTheme": "Tema",
   "LabelTrack": "Takelis",
   "LabelTranscoding": "Transkodavimas",
@@ -236,5 +240,9 @@
   "MessageDisc1": "Diskas {0}",
   "MessageEndsAt1": "Baigiasi {0}",
   "MessageMoreFrom1": "Daugiau iš {0}",
-  "MessageSetTheMaximumAmountOfDays": "Nustatyti maksimalų dienų kiekį kiek TV Laida liks \"Toliau\" eilėje jos neperžiūrėjus."
+  "MessageSetTheMaximumAmountOfDays": "Nustatyti maksimalų dienų kiekį kiek TV Laida liks \"Toliau\" eilėje jos neperžiūrėjus.",
+  "MessageSyncPlayCreateGroupDenied": "Norint sukurti grupę, reikalingas leidimas.",
+  "MessageSyncPlayLibraryAccessDenied": "Prieiga prie šio turinio ribojama.",
+  "MessageSyncPlayUserJoined": "{0} prisijungė prie grupės.",
+  "MessageSyncPlayUserLeft": "{0} paliko grupę."
 }

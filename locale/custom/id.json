@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Batal",
   "ButtonDelete": "Hapus",
+  "ButtonLeaveGroup": "Meninggalkan grup",
   "ButtonManualLogin": "Masuk Manual",
   "ButtonOk": "OK",
   "ButtonPlay": "Putar",
@@ -129,6 +130,10 @@
   "LabelSports": "Olahraga",
   "LabelStudios": "Studio",
   "LabelSubtitles": "Subtitle",
+  "LabelSyncPlayDefaultGroupName": "grup {0}",
+  "LabelSyncPlayNewGroup": "Grup baru",
+  "LabelSyncPlayNoGroups": "Tidak ada grup yang tersedia",
+  "LabelSyncPlaySelectGroup": "Bergabung dengan grup",
   "LabelTheme": "Tema",
   "LabelTrack": "Trek",
   "LabelTranscoding": "Transkode",
@@ -206,5 +211,9 @@
   "MessageEndsAt1": "Berakhir pada {0}",
   "MessageMoreFrom1": "Lebih Dari {0}",
   "MessageSearchNoResults": "Tidak ada Hasil.",
-  "MessageSetTheMaximumAmountOfDays": "Tetapkan jumlah hari maksimum acara harus tetap berada di daftar 'Berikutnya' tanpa menontonnya."
+  "MessageSetTheMaximumAmountOfDays": "Tetapkan jumlah hari maksimum acara harus tetap berada di daftar 'Berikutnya' tanpa menontonnya.",
+  "MessageSyncPlayCreateGroupDenied": "ijin diperlukan untuk membuat grup.",
+  "MessageSyncPlayLibraryAccessDenied": "Akses konten ini Dibatasi.",
+  "MessageSyncPlayUserJoined": "{0} telah bergabung dengan grup.",
+  "MessageSyncPlayUserLeft": "{0} Meninggalkan grup."
 }

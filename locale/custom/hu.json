@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Mégse",
   "ButtonDelete": "Törlés",
+  "ButtonLeaveGroup": "Csoport elhagyása",
   "ButtonManualLogin": "Kézi belépés",
   "ButtonOk": "OK",
   "ButtonPlay": "Lejátszás",
@@ -205,6 +206,11 @@
   "LabelStartsAt": "Kezdődik ekkor",
   "LabelStudios": "Stúdiók",
   "LabelSubtitles": "Feliratok",
+  "LabelSyncPlay": "Szinkronizált lejátszás",
+  "LabelSyncPlayDefaultGroupName": "{0} csoportja",
+  "LabelSyncPlayNewGroup": "Új csoport",
+  "LabelSyncPlayNoGroups": "Nincsenek elérhető csoportok",
+  "LabelSyncPlaySelectGroup": "Csatlakozás egy csoporthoz",
   "LabelTextSubtitlesOnly": "Csak szöveges feliratok",
   "LabelTheme": "Téma",
   "LabelTitle": "Név",
@@ -332,6 +338,10 @@
   "MessageSettingsRelatingToTheAppearanceOf4": "A kezdőképernyő és általában a program megjelenésével kapcsolatos beállítások.",
   "MessageShowItemCountInTheLibrary": "Elemszám megjelenítése a könyvtárban és a kiválasztott elem indexében.",
   "MessageSupportDirectPlayOfMpeg4Content": "Támogatja az MPEG-4 tartalom közvetlen lejátszását. Lehet, hogy ezt ki kell kapcsolni a DIVX kódolású videofájlok lejátszásához.",
+  "MessageSyncPlayCreateGroupDenied": "Jogosultság szükséges a csoportok létrehozásához.",
+  "MessageSyncPlayLibraryAccessDenied": "A tartalomhoz való hozzáférés korlátozva van.",
+  "MessageSyncPlayUserJoined": "{0} csatlakozott a csoporthoz.",
+  "MessageSyncPlayUserLeft": "{0} elhagyta a csoportot.",
   "MessageUseTheReplayButtonToSlowly": "A visszajátszás gombbal lassan animálhat a mappa első eleméhez. (Ha kikapcsolja, a mappa azonnal visszaáll az első elemre).",
   "MessageYouCanSearchForTitlesPeople": "Kereshet Címekre, Személyekre, Élő TV-csatornákra és egyebekre"
 }

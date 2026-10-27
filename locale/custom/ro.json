@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Anulează",
   "ButtonDelete": "Șterge",
+  "ButtonLeaveGroup": "Parăsește grup",
   "ButtonManualLogin": "Conectare manuală",
   "ButtonOk": "OK",
   "ButtonPlay": "Rulează",
@@ -187,6 +188,10 @@
   "LabelStartsAt": "Începe la",
   "LabelStudios": "Studiouri",
   "LabelSubtitles": "Subtitrări",
+  "LabelSyncPlayDefaultGroupName": "Grupul lui {0}",
+  "LabelSyncPlayNewGroup": "Grup nou",
+  "LabelSyncPlayNoGroups": "Niciun grup disponibil",
+  "LabelSyncPlaySelectGroup": "Alăturați-vă unui grup",
   "LabelTextSubtitlesOnly": "Numai subtitrări de text",
   "LabelTheme": "Tema",
   "LabelTitle": "Nume",
@@ -305,6 +310,10 @@
   "MessageSettingsRelatingToPlaybackAndSupported": "Setări referitoare la redare și tipuri de codecuri suportate si acceptate.",
   "MessageShowItemCountInTheLibrary": "Afișați numărul de elemente din bibliotecă și indexul elementului selectat.",
   "MessageSupportDirectPlayOfMpeg4Content": "Suport Direct Play de conținut MPEG-4. Acest lucru poate fi necesar să fie dezactivat pentru redarea fișierelor video codificate DIVX.",
+  "MessageSyncPlayCreateGroupDenied": "Permisiune necesară pentru crearea unui grup.",
+  "MessageSyncPlayLibraryAccessDenied": "Accesul la acest conținut este restricționat.",
+  "MessageSyncPlayUserJoined": "{0} s-a alăturat grupului.",
+  "MessageSyncPlayUserLeft": "{0} a părăsit grupul.",
   "MessageUseTheReplayButtonToSlowly": "Utilizați butonul de reluare pentru a anima încet la primul element din folder. (Dacă este dezactivat, folderul se va reseta imediat la primul element).",
   "MessageYouCanSearchForTitlesPeople": "Puteți căuta titluri, persoane, canale TV în direct și multe altele"
 }

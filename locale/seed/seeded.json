@@ -20,9 +20,12 @@
     "LabelPersonKindIllustrator": "jellyfin-web@fae41f33eb7c",
     "LabelPersonKindWriter": "jellyfin-web@fae41f33eb7c",
     "LabelPersonRoleAs": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
   },
   "ar": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -70,15 +73,25 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTotalBitrate": "jellyfin-roku@9636e28ebd40",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "as": {
     "LabelExternalSubtitle": "jellyfin-server@ee91c75e777d",
     "LabelPersonKindActor": "jellyfin-web@fae41f33eb7c"
   },
   "be": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -123,9 +136,19 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "bg": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -170,7 +193,16 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "bn": {
     "LabelExternalSubtitle": "jellyfin-server@ee91c75e777d",
@@ -187,6 +219,7 @@
     "LabelPersonKindDirector": "jellyfin-web@fae41f33eb7c",
     "LabelPersonKindEngineer": "jellyfin-web@fae41f33eb7c",
     "LabelPersonKindGuestStar": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
     "LabelYes": "jellyfin-androidtv@984181a3d6ab"
   },
   "br": {
@@ -215,10 +248,12 @@
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSize": "jellyfin-web@fae41f33eb7c",
     "LabelSubtitles": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
     "LabelYes": "jellyfin-web@fae41f33eb7c"
   },
   "ca": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -261,8 +296,17 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTotalBitrate": "jellyfin-roku@9636e28ebd40",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "ckb": {
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
@@ -287,9 +331,11 @@
     "LabelPersonKindEngineer": "jellyfin-web@fae41f33eb7c",
     "LabelPersonKindGuestStar": "jellyfin-web@fae41f33eb7c",
     "LabelPersonKindLetterer": "jellyfin-web@fae41f33eb7c",
-    "LabelPersonKindLyricist": "jellyfin-web@fae41f33eb7c"
+    "LabelPersonKindLyricist": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c"
   },
   "cs": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -331,8 +377,16 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "cy": {
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
@@ -358,9 +412,12 @@
     "LabelPersonKindWriter": "jellyfin-web@fae41f33eb7c",
     "LabelProfile": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
   },
   "da": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -403,10 +460,19 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "de": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -448,8 +514,17 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "dv": {
     "LabelPersonKindActor": "jellyfin-web@fae41f33eb7c",
@@ -462,9 +537,11 @@
     "LabelPersonKindConductor": "jellyfin-web@fae41f33eb7c",
     "LabelPersonKindCoverArtist": "jellyfin-web@fae41f33eb7c",
     "LabelPersonKindCreator": "jellyfin-web@fae41f33eb7c",
-    "LabelPersonKindDirector": "jellyfin-web@fae41f33eb7c"
+    "LabelPersonKindDirector": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c"
   },
   "el": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -510,13 +587,23 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "en_GB": {
     "LabelPersonKindColorist": "jellyfin-web@fae41f33eb7c"
   },
   "eo": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -548,10 +635,18 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "es": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -593,8 +688,17 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "es_419": {
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -607,16 +711,23 @@
     "LabelReasons": "jellyfin-web@fae41f33eb7c",
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c"
   },
   "es_AR": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelDirectStreaming": "jellyfin-web@fae41f33eb7c",
     "LabelPersonKindConductor": "jellyfin-web@fae41f33eb7c",
     "LabelPersonKindCoverArtist": "jellyfin-web@fae41f33eb7c",
     "LabelPersonKindInker": "jellyfin-web@fae41f33eb7c",
     "LabelPersonKindPenciller": "jellyfin-web@fae41f33eb7c",
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "es_MX": {
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -630,9 +741,12 @@
     "LabelReasons": "jellyfin-web@fae41f33eb7c",
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c"
   },
   "et": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -677,9 +791,18 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "eu": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -724,9 +847,18 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "fa": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -766,9 +898,17 @@
     "LabelProfile": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "fi": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -813,9 +953,18 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "fil": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelCodecTag": "jellyfin-web@fae41f33eb7c",
     "LabelDirectStreaming": "jellyfin-web@fae41f33eb7c",
@@ -830,9 +979,17 @@
     "LabelPersonKindEngineer": "jellyfin-web@fae41f33eb7c",
     "LabelPersonKindWriter": "jellyfin-web@fae41f33eb7c",
     "LabelPersonRoleAs": "jellyfin-web@fae41f33eb7c",
-    "LabelResolution": "jellyfin-web@fae41f33eb7c"
+    "LabelResolution": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "fo": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAudio": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -880,12 +1037,21 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSize": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
     "LabelVideo": "jellyfin-web@fae41f33eb7c",
     "LabelYes": "jellyfin-web@fae41f33eb7c",
-    "MessageDirectedBy1": "jellyfin-web@fae41f33eb7c"
+    "MessageDirectedBy1": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "fr": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -929,8 +1095,16 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "fr_CA": {
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -944,9 +1118,13 @@
     "LabelPersonKindEngineer": "jellyfin-web@fae41f33eb7c",
     "LabelPersonKindGuestStar": "jellyfin-web@fae41f33eb7c",
     "LabelPersonRoleAs": "jellyfin-web@fae41f33eb7c",
-    "LabelSampleRate": "jellyfin-web@fae41f33eb7c"
+    "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "ga": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -991,9 +1169,19 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "gl": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
     "LabelBitRate": "jellyfin-web@fae41f33eb7c",
     "LabelCodecTag": "jellyfin-web@fae41f33eb7c",
@@ -1021,7 +1209,11 @@
     "LabelPersonRoleAs": "jellyfin-web@fae41f33eb7c",
     "LabelProfile": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
-    "LabelSampleRate": "jellyfin-web@fae41f33eb7c"
+    "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "gsw": {
     "LabelExternalSubtitle": "jellyfin-server@ee91c75e777d",
@@ -1036,6 +1228,7 @@
     "LabelPersonKindAuthor": "jellyfin-web@fae41f33eb7c"
   },
   "he": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -1080,8 +1273,17 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "he_IL": {
     "LabelExternalSubtitle": "jellyfin-server@ee91c75e777d",
@@ -1107,6 +1309,7 @@
     "LabelYes": "jellyfin-androidtv@984181a3d6ab"
   },
   "hr": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -1151,9 +1354,18 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
     "LabelYes": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "ht": {
     "LabelExternalSubtitle": "jellyfin-server@ee91c75e777d",
@@ -1163,6 +1375,7 @@
     "LabelPersonKindAuthor": "jellyfin-web@fae41f33eb7c"
   },
   "hu": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -1206,16 +1419,29 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "hy": {
     "LabelExternalSubtitle": "jellyfin-server@ee91c75e777d",
     "LabelPersonKindActor": "jellyfin-web@fae41f33eb7c",
     "LabelPersonKindAlbumArtist": "jellyfin-web@fae41f33eb7c",
-    "LabelPersonKindWriter": "jellyfin-web@fae41f33eb7c"
+    "LabelPersonKindWriter": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "id": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -1254,10 +1480,19 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "is": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
     "LabelBitRate": "jellyfin-web@fae41f33eb7c",
@@ -1304,10 +1539,19 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSize": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "LabelVideo": "jellyfin-web@fae41f33eb7c"
+    "LabelVideo": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "it": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -1348,10 +1592,20 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "ja": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -1393,8 +1647,16 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "jbo": {
     "LabelPersonKindActor": "jellyfin-web@fae41f33eb7c",
@@ -1402,6 +1664,7 @@
     "LabelPersonKindArtist": "jellyfin-web@fae41f33eb7c"
   },
   "ka": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -1450,16 +1713,25 @@
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSize": "jellyfin-web@fae41f33eb7c",
     "LabelSubtitles": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTotalBitrate": "jellyfin-roku@9636e28ebd40",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
     "LabelVideo": "jellyfin-web@fae41f33eb7c",
     "LabelYes": "jellyfin-web@fae41f33eb7c",
-    "MessageDirectedBy1": "jellyfin-web@fae41f33eb7c"
+    "MessageDirectedBy1": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "kab": {
     "LabelExternalSubtitle": "jellyfin-server@ee91c75e777d"
   },
   "kk": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -1491,8 +1763,15 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "kn": {
     "LabelExternalSubtitle": "jellyfin-server@ee91c75e777d",
@@ -1500,6 +1779,7 @@
     "LabelPersonKindAlbumArtist": "jellyfin-web@fae41f33eb7c"
   },
   "ko": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -1540,8 +1820,16 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "kw": {
     "LabelExternalSubtitle": "jellyfin-server@ee91c75e777d",
@@ -1550,6 +1838,7 @@
     "LabelPersonKindAuthor": "jellyfin-web@fae41f33eb7c"
   },
   "lb": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -1587,9 +1876,17 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "lt": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -1633,9 +1930,17 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "lv": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -1680,7 +1985,15 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "mg": {
     "LabelPersonKindActor": "jellyfin-web@fae41f33eb7c",
@@ -1717,6 +2030,7 @@
     "LabelYes": "jellyfin-androidtv@984181a3d6ab"
   },
   "ml": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -1748,9 +2062,18 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "mn": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -1792,7 +2115,16 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "mr": {
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
@@ -1818,6 +2150,7 @@
     "LabelPersonRoleAs": "jellyfin-web@fae41f33eb7c",
     "LabelProfile": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
   },
   "ms": {
@@ -1831,7 +2164,8 @@
     "LabelPersonKindComposer": "jellyfin-web@fae41f33eb7c",
     "LabelPersonKindConductor": "jellyfin-web@fae41f33eb7c",
     "LabelPersonKindDirector": "jellyfin-web@fae41f33eb7c",
-    "LabelPersonKindProducer": "jellyfin-web@fae41f33eb7c"
+    "LabelPersonKindProducer": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c"
   },
   "mt": {
     "LabelExternalSubtitle": "jellyfin-server@ee91c75e777d",
@@ -1851,6 +2185,7 @@
     "LabelPersonKindEngineer": "jellyfin-web@fae41f33eb7c"
   },
   "nb": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -1894,8 +2229,17 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "ne": {
     "LabelExternalSubtitle": "jellyfin-server@ee91c75e777d",
@@ -1905,6 +2249,7 @@
     "LabelPersonKindLyricist": "jellyfin-web@fae41f33eb7c"
   },
   "nl": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -1947,10 +2292,19 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "nn": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -1993,7 +2347,15 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "pa": {
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
@@ -2006,6 +2368,7 @@
     "LabelPersonKindDirector": "jellyfin-web@fae41f33eb7c"
   },
   "pl": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -2050,11 +2413,20 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTotalBitrate": "jellyfin-roku@9636e28ebd40",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "pt": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -2098,10 +2470,19 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "pt_BR": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelDirectStreaming": "jellyfin-web@fae41f33eb7c",
     "LabelExternalSubtitle": "jellyfin-web@fae41f33eb7c",
     "LabelFile": "jellyfin-web@fae41f33eb7c",
@@ -2119,12 +2500,20 @@
     "LabelPersonKindWriter": "jellyfin-web@fae41f33eb7c",
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
-    "LabelSpeed": "streamyfin@ad708bcd7a4b"
+    "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "pt_PT": {
     "LabelSpeed": "streamyfin@ad708bcd7a4b"
   },
   "ro": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -2163,10 +2552,19 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "ru": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -2214,8 +2612,16 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "si": {
     "LabelExternalSubtitle": "jellyfin-server@ee91c75e777d",
@@ -2223,6 +2629,7 @@
     "LabelPersonKindAlbumArtist": "jellyfin-web@fae41f33eb7c"
   },
   "sk": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -2264,10 +2671,19 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "sl": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -2308,8 +2724,16 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "so": {
     "LabelPersonKindActor": "jellyfin-web@fae41f33eb7c",
@@ -2335,9 +2759,12 @@
     "LabelPersonKindGuestStar": "jellyfin-web@fae41f33eb7c",
     "LabelPersonKindIllustrator": "jellyfin-web@fae41f33eb7c",
     "LabelPersonKindInker": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelYes": "jellyfin-androidtv@984181a3d6ab"
   },
   "sr": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -2384,9 +2811,17 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c"
   },
   "sv": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -2429,10 +2864,19 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "ta": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -2473,10 +2917,20 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "te": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -2519,7 +2973,14 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c"
   },
   "th": {
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
@@ -2535,6 +2996,7 @@
     "LabelYes": "jellyfin-androidtv@984181a3d6ab"
   },
   "tr": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -2580,8 +3042,16 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "ug": {
     "LabelExternalSubtitle": "jellyfin-server@ee91c75e777d",
@@ -2589,6 +3059,7 @@
     "LabelYes": "jellyfin-androidtv@984181a3d6ab"
   },
   "uk": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -2636,10 +3107,20 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "ur_PK": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -2679,7 +3160,15 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "uz": {
     "LabelDirectStreaming": "jellyfin-web@fae41f33eb7c",
@@ -2694,9 +3183,12 @@
     "LabelPersonKindConductor": "jellyfin-web@fae41f33eb7c",
     "LabelPersonKindDirector": "jellyfin-web@fae41f33eb7c",
     "LabelPersonKindEngineer": "jellyfin-web@fae41f33eb7c",
-    "LabelPersonKindGuestStar": "jellyfin-web@fae41f33eb7c"
+    "LabelPersonKindGuestStar": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c"
   },
   "vi": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -2742,8 +3234,17 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "x-pirate": {
     "LabelExternalSubtitle": "jellyfin-server@ee91c75e777d",
@@ -2753,6 +3254,7 @@
     "LabelPersonKindAuthor": "jellyfin-web@fae41f33eb7c"
   },
   "zh_Hans": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -2800,11 +3302,20 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTotalBitrate": "jellyfin-roku@9636e28ebd40",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "zh_Hant": {
+    "ButtonLeaveGroup": "jellyfin-web@fae41f33eb7c",
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
     "LabelAudioChannels": "jellyfin-web@fae41f33eb7c",
     "LabelBitDepth": "jellyfin-web@fae41f33eb7c",
@@ -2851,8 +3362,17 @@
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
     "LabelSpeed": "streamyfin@ad708bcd7a4b",
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNewGroup": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlaySelectGroup": "jellyfin-web@fae41f33eb7c",
     "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
-    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71"
+    "MessageSearchNoResults": "swiftfin@e5f3ab9a0c71",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "zh_Hant_HK": {
     "LabelAnamorphic": "jellyfin-web@fae41f33eb7c",
@@ -2870,7 +3390,14 @@
     "LabelRefFrames": "jellyfin-web@fae41f33eb7c",
     "LabelResolution": "jellyfin-web@fae41f33eb7c",
     "LabelSampleRate": "jellyfin-web@fae41f33eb7c",
-    "LabelTranscoding": "jellyfin-web@fae41f33eb7c"
+    "LabelSyncPlay": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayDefaultGroupName": "jellyfin-web@fae41f33eb7c",
+    "LabelSyncPlayNoGroups": "jellyfin-web@fae41f33eb7c",
+    "LabelTranscoding": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayCreateGroupDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayLibraryAccessDenied": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserJoined": "jellyfin-web@fae41f33eb7c",
+    "MessageSyncPlayUserLeft": "jellyfin-web@fae41f33eb7c"
   },
   "zu": {
     "LabelExternalSubtitle": "jellyfin-server@ee91c75e777d",

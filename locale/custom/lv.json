@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Atcelt",
   "ButtonDelete": "Izdzēst",
+  "ButtonLeaveGroup": "Pamest grupu",
   "ButtonManualLogin": "Manuāla pieteikšanās",
   "ButtonOk": "Labi",
   "ButtonPlay": "Atskaņot",
@@ -152,6 +153,10 @@
   "LabelSports": "Sports",
   "LabelStudios": "Studijas",
   "LabelSubtitles": "Subtitri",
+  "LabelSyncPlayDefaultGroupName": "{0} grupa",
+  "LabelSyncPlayNewGroup": "Jauna grupa",
+  "LabelSyncPlayNoGroups": "Neviena grupa nav pieejama",
+  "LabelSyncPlaySelectGroup": "Pievienoties grupai",
   "LabelTheme": "Tēma",
   "LabelTitle": "Nosaukums",
   "LabelTrack": "Celiņš",
@@ -256,5 +261,9 @@
   "MessageMoreFrom1": "Vairāk no {0}",
   "MessageSaveCredentials": "Saglabāt Piekļuves Datus?",
   "MessageServerNotFoundIsItOnline": "Serveris nav atrasts, vai tas ir tiešsaistē?",
-  "MessageSetTheMaximumAmountOfDays": "Iestatiet maksimālo dienu skaitu, cik ilgi šovam, kurš nav skatīšanās procesā, jārādās sarakstā \"Nākamais\"."
+  "MessageSetTheMaximumAmountOfDays": "Iestatiet maksimālo dienu skaitu, cik ilgi šovam, kurš nav skatīšanās procesā, jārādās sarakstā \"Nākamais\".",
+  "MessageSyncPlayCreateGroupDenied": "Nepieciešama atļauja, lai izveidotu grupu.",
+  "MessageSyncPlayLibraryAccessDenied": "Piekļuve šim saturam ir liegta.",
+  "MessageSyncPlayUserJoined": "{0} pievienojās grupai.",
+  "MessageSyncPlayUserLeft": "{0} pameta grupu."
 }

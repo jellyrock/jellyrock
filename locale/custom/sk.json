@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Zrušiť",
   "ButtonDelete": "Zmazať",
+  "ButtonLeaveGroup": "Opustiť skupinu",
   "ButtonManualLogin": "Manuálne prihlásenie",
   "ButtonOk": "OK",
   "ButtonPlay": "Prehrať",
@@ -168,6 +169,10 @@
   "LabelStartsAt": "Začne",
   "LabelStudios": "Štúdiá",
   "LabelSubtitles": "Titulky",
+  "LabelSyncPlayDefaultGroupName": "Skupina používateľa {0}",
+  "LabelSyncPlayNewGroup": "Nová skupina",
+  "LabelSyncPlayNoGroups": "Nie sú k dispozícii žiadne skupiny",
+  "LabelSyncPlaySelectGroup": "Pripojiť sa k skupine",
   "LabelTheme": "Téma",
   "LabelTitle": "Meno",
   "LabelTrack": "Stopa",
@@ -279,5 +284,9 @@
   "MessageSetTheMaximumAmountOfDays": "Určuje maximálny počet dní, po ktoré zostane seriál v sekcií \"Nasleduje\" bez pozretia.",
   "MessageShowItemCountInTheLibrary": "Zobraziť počet položiek v knižnici a poradnie zvolenej položky.",
   "MessageSupportDirectPlayOfMpeg4Content": "Podpora Priameho prehrávania MPEG-4 obsahu. Toto by malo byť zakázané pri prehrávaní videa s DIVX enkódovaním.",
+  "MessageSyncPlayCreateGroupDenied": "K vytvoreniu skupiny je požadované povolenie.",
+  "MessageSyncPlayLibraryAccessDenied": "Prístup k tomuto obsahuje je obmedzený.",
+  "MessageSyncPlayUserJoined": "Používateľ {0} sa pripojil k skupine.",
+  "MessageSyncPlayUserLeft": "Používateľ {0} opustil skupinu.",
   "MessageYouCanSearchForTitlesPeople": "Vyhľadávanie pomocou Názvu, Osoby, Kanálov a iných"
 }
