@@ -132,25 +132,23 @@ namespace tests
     @describe("the cluster icon")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("is outlined and enabled while not in a group")
+    @it("is shown and outlined while not in a group")
     function _()
-      patch = syncPlayMenu.iconFor(false, "CreateAndJoinGroups")
-      m.assertEqual(patch.icon, "pkg:/images/icons/groups_outline_$$RES$$.png")
-      m.assertFalse(patch.disabled)
+      state = syncPlayMenu.iconFor(false, "CreateAndJoinGroups")
+      m.assertEqual(state.icon, "pkg:/images/icons/groups_outline_$$RES$$.png")
+      m.assertTrue(state.shown)
     end function
 
     @it("is filled while in a group")
     function _()
-      patch = syncPlayMenu.iconFor(true, "JoinGroups")
-      m.assertEqual(patch.icon, "pkg:/images/icons/groups_$$RES$$.png")
-      m.assertFalse(patch.disabled)
+      state = syncPlayMenu.iconFor(true, "JoinGroups")
+      m.assertEqual(state.icon, "pkg:/images/icons/groups_$$RES$$.png")
+      m.assertTrue(state.shown)
     end function
 
-    @it("is disabled with access None, and stays in the row")
+    @it("is not shown with access None")
     function _()
-      patch = syncPlayMenu.iconFor(false, "None")
-      m.assertEqual(patch.icon, "pkg:/images/icons/groups_outline_$$RES$$.png")
-      m.assertTrue(patch.disabled)
+      m.assertFalse(syncPlayMenu.iconFor(false, "None").shown)
     end function
 
   end class

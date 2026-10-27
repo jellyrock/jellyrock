@@ -70,12 +70,12 @@ namespace syncPlayMenu
     return invalid
   end function
 
-  ' The cluster entry patch for the SyncPlay icon: which glyph, and whether the icon is disabled
-  ' (access None: it stays in the row so the viewer learns the feature exists, and a press explains).
+  ' The cluster's SyncPlay icon: whether it shows at all (an account with access None never sees
+  ' it: a control the viewer can never use is not shown), and which glyph while it does.
   function iconFor(inGroup as boolean, access as dynamic) as object
     icon = ICON_NOT_IN_GROUP
     if inGroup then icon = ICON_IN_GROUP
-    return { icon: icon, disabled: not canJoin(access) }
+    return { shown: canJoin(access), icon: icon }
   end function
 
   ' The toast for a manager notice ({ kind, groupName, userName }): the translation key, the

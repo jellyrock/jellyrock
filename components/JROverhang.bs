@@ -60,11 +60,8 @@ sub init()
   ' The fixed cluster: the same icons on every screen that shows it
   m.cluster = CreateObject("roSGNode", "JROverhangIconBar")
   m.cluster.id = "cluster"
-  m.cluster.entries = [
-    { id: "search", icon: "pkg:/images/icons/search_$$RES$$.png" },
-    { id: "syncplay", icon: syncPlayMenu.ICON_NOT_IN_GROUP },
-    { id: "settings", icon: "pkg:/images/icons/settings_$$RES$$.png" }
-  ]
+  m.clusterHasSyncPlay = false
+  m.cluster.entries = clusterEntries(false, "")
   m.cluster.visible = false
   m.cluster.observeField("selectedAction", "onIconAction")
   m.cluster.observeField("requestFocusExit", "onClusterFocusExit")
@@ -190,10 +187,28 @@ function getIcon(id as string) as object
   return m.cluster.callFunc("getIcon", id)
 end function
 
-' Change a cluster entry in place ({ icon, disabled }): JRScene projects the SyncPlay icon's state
-function updateClusterEntry(id as string, patch as object) as boolean
-  return m.cluster.callFunc("updateEntry", id, patch)
+' The cluster's entries: SyncPlay first when the account may use it, then Search and Settings,
+' which keep their place at the right whatever sits before them.
+function clusterEntries(withSyncPlay as boolean, syncPlayIcon as string) as object
+  entries = []
+  if withSyncPlay then entries.push({ id: "syncplay", icon: syncPlayIcon })
+  entries.push({ id: "search", icon: "pkg:/images/icons/search_$$RES$$.png" })
+  entries.push({ id: "settings", icon: "pkg:/images/icons/settings_$$RES$$.png" })
+  return entries
 end function
+
+' JRScene projects the SyncPlay icon's state ({ shown, icon }): the bar is rebuilt only when the
+' icon comes or goes (sign-in, a screen change), so a glyph change never moves focus.
+sub applySyncPlayIcon(state as object)
+  shown = state.shown = true
+  if shown <> m.clusterHasSyncPlay
+    m.clusterHasSyncPlay = shown
+    m.cluster.entries = clusterEntries(shown, state.icon)
+    layout()
+  else if shown
+    m.cluster.callFunc("updateEntry", "syncplay", { icon: state.icon })
+  end if
+end sub
 
 ' Proxies a cluster press (the entry id) to the overhang-level iconAction field
 sub onIconAction()

@@ -1185,10 +1185,7 @@ end sub
 ' ---------------------------------------------------------------------------
 sub openSyncPlayMenu()
   if isValid(m.syncPlayDialog) then return
-  if not syncPlayMenu.canJoin(syncPlayAccess())
-    m.syncPlayDialog = showAlertDialog(translate(translationKeys.LabelSyncPlay), translate(translationKeys.MessageSyncPlayAccessNone), "onSyncPlayAlertResult")
-    return
-  end if
+  if not syncPlayMenu.canJoin(syncPlayAccess()) then return ' the icon is not shown then; a stale press
   req = GetApi().BuildGetSyncPlayGroupsRequest()
   if not isValid(req)
     showToast(translate(translationKeys.MessageSyncPlayGroupsFailed), "error")
@@ -1290,14 +1287,14 @@ sub onSyncPlayNotice()
   showToast(translate(toast.key, [toast.arg]), toast.toastType)
 end sub
 
-' The SyncPlay icon shows the membership and the policy: filled while in a group, disabled when
+' The SyncPlay icon shows the membership and the policy: filled while in a group, absent when
 ' the user's SyncPlayAccess is None. Applied on each screen change (the user, and so the policy,
 ' can change) and whenever the manager's inGroup changes.
 sub applySyncPlayIcon()
   access = invalid
   user = m.global.user
   if isValid(user) and isValid(user.policy) then access = user.policy.syncPlayAccess
-  m.overhang.callFunc("updateClusterEntry", "syncplay", syncPlayMenu.iconFor(m.global.syncPlayManager.inGroup = true, access))
+  m.overhang.callFunc("applySyncPlayIcon", syncPlayMenu.iconFor(m.global.syncPlayManager.inGroup = true, access))
 end sub
 
 ' A user dropdown item was chosen: relay it to main.bs, which observes this scene field

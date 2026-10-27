@@ -53,12 +53,12 @@ The 9-patch borders encode the same state. `border-3px.9.png` is for static pane
 
 ## The overhang row
 
-One row, the same elements in the same order on every screen that shows them (`JROverhang`): the logo, the screen's tabs or its title in their place, the user dropdown, the fixed cluster (Search, SyncPlay, Settings), the clock. What rides in the overhang is decided by one rule: **the overhang holds what every screen has; a screen holds what only it has.** A control one screen alone has (a library's layout, sort and filter) belongs on that screen, next to the state it changes.
+One row, the same elements in the same order on every screen that shows them (`JROverhang`): the logo, the screen's tabs or its title in their place, the user dropdown, the fixed cluster (SyncPlay, Search, Settings), the clock. What rides in the overhang is decided by one rule: **the overhang holds what every screen has; a screen holds what only it has.** A control one screen alone has (a library's layout, sort and filter) belongs on that screen, next to the state it changes.
 
 | Element | Size | Rule |
 |---|---|---|
 | Icon button (`JROverhangIcon`) | a 78 pixel square focus box around the 42 pixel glyph; the row lays out by 60 pixel slots 6 apart, so the box overhangs its slot by 9 and overlaps its invisible neighbors | The focus ring is the 6 pixel border; the resting glyph is `colorTextSecondary`, focused `colorTextPrimary`, disabled `colorTextDisabled` in both states |
-| SyncPlay icon (the cluster's middle entry) | the same box | One icon is the membership's state and its control: the `groups` glyph outlined while the viewer is in no group, filled while in one (the fill convention's toggle pair), disabled when the user's SyncPlay access is None. A press opens a dialog, never a route |
+| SyncPlay icon (the cluster's first entry) | the same box | One icon is the membership's state and its control: the `groups` glyph outlined while the viewer is in no group, filled while in one (the fill convention's toggle pair). An account whose SyncPlay access is None never sees it: Search and Settings keep their place at the right. A press opens a dialog, never a route |
 | Tab (`JRTab`) | the Large font in a 78 pixel box, 9 pixels at the sides, a 42 pixel glyph, a 6 pixel icon gutter | The glyph is outlined until the tab is selected, then filled; the 6 pixel underline under glyph and text is `colorSecondary` |
 | User dropdown (`JRDropdown`) | a 42 pixel avatar, the name, a 24 pixel chevron, 9 pixels apart, in a 78 pixel box with 9 pixels at the sides | The box hugs its content, the name's width rounded up onto the grid; a name past 300 pixels is cut with an ellipsis. The name drops 3 pixels in its box, as a text box does (below) |
 | Logo | 180 by 39 at y 51 | Its capitals and baseline sit on the tab text's |
