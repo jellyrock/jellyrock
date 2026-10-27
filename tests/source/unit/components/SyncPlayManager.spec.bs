@@ -405,6 +405,31 @@ namespace tests
       m.assertEqual(m.manager.notice.kind, "playedToGroup")
     end function
 
+    @it("a halted member is waited on again before its play reaches the group")
+    function _()
+      ' The server marks every member buffering on a new queue, but its wait skips a member
+      ' still ignoring it: SetIgnoreWait(false) has to land first. Posts leave in order
+      ' (SideEffectTask is FIFO), so the order they are submitted in is the order sent.
+      if not m.global.doesExist("sideEffectTask") then m.global.addField("sideEffectTask", "node", false)
+      previousTask = m.global.sideEffectTask
+      ' A plain Node: a ContentNode counts an ApiResultNode child but getChild() returns invalid.
+      posts = CreateObject("roSGNode", "Node")
+      posts.addField("enqueue", "string", true)
+      m.global.sideEffectTask = posts
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.enableServer()
+      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.manager.callFunc("claimPlay", promises.create())
+      m.global.sideEffectTask = previousTask
+      count = posts.getChildCount()
+      m.assertEqual(count, 2)
+      m.assertTrue(posts.getChild(0).request.url.instr("/SyncPlay/SetIgnoreWait") >= 0, "first: SetIgnoreWait")
+      m.assertTrue(posts.getChild(1).request.url.instr("/SyncPlay/SetNewQueue") >= 0, "then: SetNewQueue")
+    end function
+
     @it("the group's answer to a handed play is loaded without a group-started notice")
     function _()
       m.joinGroupWithServer()
@@ -446,10 +471,10 @@ namespace tests
       m.assertEqual(halted.promiseState, "rejected")
 
       m.pressPlay([{ id: "i-9", type: "Movie" }])
-      left = promises.create()
-      m.manager.callFunc("claimPlay", left)
+      leaving = promises.create()
+      m.manager.callFunc("claimPlay", leaving)
       m.manager.frame = m.update("GroupLeft", invalid)
-      m.assertEqual(left.promiseState, "rejected")
+      m.assertEqual(leaving.promiseState, "rejected")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

@@ -236,7 +236,9 @@ end sub
 ' the queue is the manager's own group load (its current item carries the group's playing
 ' playlist id: syncPlayQueue.isGroupItem), when the queue holds something the player could
 ' not follow, or when nothing could be posted: those play locally. A halted member's own play
-' follows the group again first, so the answer applies (syncPlayQueue.appliesFetchedQueue).
+' follows the group again first: locally, so the answer applies (syncPlayQueue.appliesFetchedQueue),
+' and on the wire, so the group waits on it (a new queue marks every member buffering, but the
+' server's wait skips a member still ignoring it).
 ' @param start - the playback start the press opened (QueueManager.beginPlaybackStart), which
 '   the claim lives as long as; invalid when none is pending
 function claimPlay(start = invalid as dynamic) as boolean
@@ -250,14 +252,16 @@ function claimPlay(start = invalid as dynamic) as boolean
   handoff = syncPlayQueue.handoff(queueItems, position, m.state)
   if not isValid(handoff) then return false
   if handoff.action = "setPlaylistItem"
-    posted = post("SetPlaylistItem", syncPlayRequests.setPlaylistItem(handoff.playlistItemId))
+    req = syncPlayRequest("SetPlaylistItem", syncPlayRequests.setPlaylistItem(handoff.playlistItemId))
   else
-    posted = post("SetNewQueue", syncPlayRequests.setNewQueue(handoff.itemIds, handoff.position, handoff.startPositionTicks))
+    req = syncPlayRequest("SetNewQueue", syncPlayRequests.setNewQueue(handoff.itemIds, handoff.position, handoff.startPositionTicks))
   end if
-  if not posted then return false
+  if not isValid(req) then return false
+  ' Built before anything is sent, so a play that will run locally re-follows nothing.
+  if not isFollowing() then followAgain(false)
+  SubmitSideEffect(req)
   m.log.info("play handed to the group", "action", handoff.action, "groupId", m.state.groupId)
   m.claimedStart = start
-  if not isFollowing() then followAgain(false)
   notify("playedToGroup", m.state.groupName, "")
   return true
 end function
@@ -689,21 +693,29 @@ function playerHost() as dynamic
 end function
 
 ' A SyncPlay POST nobody reads the answer to: the server's reply is a frame on the receiver.
+' False when no request could be built (syncPlayRequest).
+function post(action as string, body as dynamic, isLastForSession = false as boolean) as boolean
+  req = syncPlayRequest(action, body, isLastForSession)
+  if not isValid(req) then return false
+  SubmitSideEffect(req)
+  return true
+end function
+
+' The request for a SyncPlay action, or invalid when none can be built (no server).
 ' @param isLastForSession - true for a post made as the session ends: the side-effect thread
 '   builds Authorization when it sends, after SignOut has cleared the user, so the header is
 '   taken now (a request's own headers win over the one it builds)
-function post(action as string, body as dynamic, isLastForSession = false as boolean) as boolean
+function syncPlayRequest(action as string, body as dynamic, isLastForSession = false as boolean) as dynamic
   req = GetApi().BuildSyncPlayRequest(action, body)
   if not isValid(req)
     m.log.warn("no request for SyncPlay action", "action", action)
-    return false
+    return invalid
   end if
   if isLastForSession
     if not isValid(req.headers) then req.headers = {}
     req.headers.Authorization = buildAuthHeader()
   end if
-  SubmitSideEffect(req)
-  return true
+  return req
 end function
 
 sub leaveLocally()
