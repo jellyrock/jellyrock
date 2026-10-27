@@ -568,13 +568,12 @@ sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteg
   end if
   if action = "remount"
     ' The play route over a mounted player reloads nothing for the same item and stacks a second
-    ' player for another, so the player reloads in place. No playback-start wait opens: a
-    ' remount takes none.
+    ' player for another, so the player reloads in place. No playback-start wait opens here.
     m.expectingRemount = true
     if not newPlaylist then queueManager.callFunc("advanceTo", index)
     host.callFunc("skipToCurrentQueueItem")
-    ' A play this viewer handed over is answered here, and the reload takes no start of its own.
-    appWaits.done(m.claimedStart)
+    ' A play this viewer handed over is answered here. The reloaded player took the start the
+    ' press opened (takePlaybackStart) and ends it once its stream holds, so the claim only ends.
     m.claimedStart = invalid
   else
     if not newPlaylist then queueManager.callFunc("startCurrentFresh")
