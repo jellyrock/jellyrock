@@ -795,12 +795,6 @@ Not checked: whether 300 is the last seek target or the previous load's start po
 
 Closes when an RTA case with the viewer playing past the start point (OSD re-shown with Up before the gear) first separates one pick from two, confirming the cause, and then fails before `keep` and passes after it.
 
-#### The SyncPlay group menu must show members from GET /SyncPlay/List, not from join and leave updates `[fid: syncplay-group-menu-members-from-list]` `[captured 2026-10-23]`
-
-The SyncPlay membership state (`source/syncplay/syncPlayState.bs`) keeps no member list, on purpose (PR #1253 review). The server sends `UserJoined` and `UserLeft` once per session with only a user name, so one account on two devices makes any list kept from them wrong: `["ann","ann"]`, then empty while one device is still in the group. The server's own list is exact: `GET /SyncPlay/List` returns each group's `Participants` with duplicate names removed (`Group.GetInfo`).
-
-Closes when phase D's group menu (the overhang icon's `showListDialog`) fetches `GetApi().BuildGetSyncPlayGroupsRequest()` each time it opens and shows the members from it: each group's members in the join list, and the current group's members in the in-group menu's header (match on `GroupId`). The in-group header in jellyfin-web reads the list from `GroupJoined` only, so it goes stale; this does better. Decide in phase D whether the menu waits for the fetch or fills the members line in when it arrives, and what it shows when the fetch fails (the group and its actions, no members).
-
 #### `handleTransport`'s `playpause` still writes `control = "play"` to a node that is buffering `[fid: playpause-plays-buffering-node]` `[captured 2026-10-24]`
 
 `VideoPlayerView.handleTransport` routes `play` and `resume` through `voiceTransport.playControl()` since commit `4f9c48cd`, which writes nothing to a buffering node. Its `playpause` branch was left as it was: any state that is not playing or paused still gets `control = "play"`. A device probe (Streaming Stick 4K, Roku OS 15.3.4, 2026-10-23) showed that a `control = "play"` written while a seek buffers leaves the node at `buffering` for good, so a remote or voice play/pause pressed during a seek's buffering likely wedges playback the same way. Not checked on a device.
@@ -1434,6 +1428,12 @@ The `dialogs` gear test (`osd gear caps the bitrate for this playback…`) faile
 Seen a second time the same day, in a draft case making two gear picks 0.5 s apart: `nav timed out waiting for player settled after two gear picks (last="stopped")`, focus again on `#jrDialog.#buttonRow.0`. A temporary capture of the dialog's text was in place for a later run, which passed.
 
 Closes when the dump in `tests/rta/lib/diagnostics.js` includes an open dialog's `title` and `message`, and a failing run shows whether the dialog is the playback error (the server's transcode failing) or something the app raised. Not now: it needs a run that fails, and two runs with a temporary capture in place both passed.
+
+#### The SyncPlay group-playback device check is not a tracked spec, so it cannot be rerun `[fid: syncplay-group-playback-device-check]` `[captured 2026-10-27]`
+
+PR #1270 (SyncPlay phase D) cites a 14-step device check of group playback (pause, seek, next item, Stop, Back, casts while halted and while following, a failing queue fetch, reset) that exists only as a throwaway RTA script outside the repo, so no reviewer or later session can run it again. Its fixed `sleep` reads also make one step depend on timing: the halted-cast step asserts the last group command is `Seek` six seconds after a seek, but the server's `Unpause` can already have arrived by then (a rerun on 2026-10-27 read `Unpause`; playback was past the seek target in both runs).
+
+Closes when the check is a tracked spec under `tests/rta/specs/` (or folded into `syncplay-menu.spec.js`), with each `sleep` replaced by a wait on the state it means (the RTA lint gates require that), the two-member setup shared with `syncplay-menu` through `tests/rta/lib/jellyfin.js`, and a step that casts while the group's item plays and checks `#appWaitHost.openWaits` is empty: the remount path the claim fix in #1270 covers, which no tracked test reaches. Not done in #1270: it needs a local HTTP server and a design for the waits.
 
 ### docs
 
