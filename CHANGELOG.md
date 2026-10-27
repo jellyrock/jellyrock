@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- (ui) Search and settings icons on every screen, and safer themes ([#1265](https://github.com/jellyrock/jellyrock/pull/1265))
 - (syncplay) Follow a group, fix Play on buffering, speed up casts ([#1257](https://github.com/jellyrock/jellyrock/pull/1257))
 - (syncplay) Add the pure SyncPlay layer and parse its frames in the receiver ([#1253](https://github.com/jellyrock/jellyrock/pull/1253))
 - Add a quality gear, one cap for all codecs, bigger menu icons ([#1246](https://github.com/jellyrock/jellyrock/pull/1246))
