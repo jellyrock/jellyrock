@@ -356,7 +356,6 @@ JavaScript
 jellyfin
 Jellyfin
 Jellyfin's
-jellyfin-mpv-shim
 Jellyfin-pool
 jellyfin-roku
 jellyfin-roku-legacy

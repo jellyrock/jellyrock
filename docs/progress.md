@@ -821,9 +821,9 @@ What closes it: a now-playing control outside the player that returns to it; a r
 
 #### A halted SyncPlay member's play replaces the group's with no prompt; phase F decides whether it asks first `[fid: syncplay-halted-play-asks-first]` `[captured 2026-10-27]`
 
-A halted SyncPlay member's play goes to the whole group (decision `syncplay-play-handed-to-group`), as in jellyfin-web and jellyfin-mpv-shim, so a member who pressed Back and then plays something else, a trailer included, replaces what every member is watching, with only the "Playing this for {group}." toast as warning. Raised in the PR #1270 review on 2026-10-27.
+A halted SyncPlay member's play goes to the whole group (decision `syncplay-play-handed-to-group`), so a member who pressed Back and then plays something else, a trailer included, replaces what every member is watching, with only the "Playing this for {group}." toast as warning. Raised in the PR #1270 review on 2026-10-27.
 
-The candidate: while halted, a play asks **Play for everyone** or **Only for me** first; Only for me leaves the group's playback alone and plays locally. Neither reference client asks, so this goes beyond both. It changes decision B for every play by a halted member, so it is designed with phase F's in-group controls (the in-player state glyph, Leave, resume), not on its own.
+The candidate: while halted, a play asks **Play for everyone** or **Only for me** first; Only for me leaves the group's playback alone and plays locally. It changes decision B for every play by a halted member, so it is designed with phase F's in-group controls (the in-player state glyph, Leave, resume), not on its own.
 
 Closes when phase F's plan decides it: built with its strings and specs, or recorded as declined in that decision.
 
