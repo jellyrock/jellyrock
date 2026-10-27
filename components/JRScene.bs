@@ -90,6 +90,8 @@ sub init()
   ' The SyncPlay menu's open dialog and its rows (openSyncPlayMenu); one at a time.
   m.syncPlayDialog = invalid
   m.syncPlayRows = invalid
+  ' Whether initRouter has registered the SyncPlay manager's observers (once per app run).
+  m.isObservingSyncPlay = false
 
   ' Hide backdrop until setting is resolved on first backdrop request (lazy initialization)
   m.imageFader.visible = false
@@ -443,10 +445,13 @@ sub initRouter()
 
   ' The cluster's SyncPlay icon is the membership's state on every screen: filled while in a
   ' group. The manager is a render-thread node on m.global, so observing it costs no crossing.
-  m.global.syncPlayManager.unobserveField("inGroup")
-  m.global.syncPlayManager.observeField("inGroup", "applySyncPlayIcon")
-  m.global.syncPlayManager.unobserveField("notice")
-  m.global.syncPlayManager.observeField("notice", "onSyncPlayNotice")
+  ' Registered once, never unobserved: setGlobalNodes creates the manager once, after init(),
+  ' and an unobserve here would drop any other component's observer of the same field (#898).
+  if not m.isObservingSyncPlay
+    m.global.syncPlayManager.observeField("inGroup", "applySyncPlayIcon")
+    m.global.syncPlayManager.observeField("notice", "onSyncPlayNotice")
+    m.isObservingSyncPlay = true
+  end if
 
   ' The auth guard. The SAME node we put on m.global in setGlobalNodes, registered by NODE
   ' REFERENCE. Added to every POST-login route below; the pre-login routes carry no guard
