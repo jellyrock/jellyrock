@@ -26,6 +26,7 @@ import {
   waitDialogClosed,
   waitFocused,
   waitFor,
+  waitToast,
 } from '../lib/steps.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
@@ -136,6 +137,7 @@ it('OK on a group joins it and fills the icon; the icon then offers Leave Group,
     label: 'the icon fills on the join',
     timeout: 20000,
   });
+  await waitToast(`Joined ${GROUP_NAME}.`, { label: 'the joined toast' });
   expect(await getGlobalVal('syncPlayManager.inGroup')).toBe(true);
   expect(await getGlobalVal('syncPlayManager.groupName')).toBe(GROUP_NAME);
 
@@ -169,5 +171,6 @@ it('OK on a group joins it and fills the icon; the icon then offers Leave Group,
     label: 'the icon outlines on the leave',
     timeout: 20000,
   });
+  await waitToast(`Left ${GROUP_NAME}.`, { label: 'the left toast' });
   expect(await getGlobalVal('syncPlayManager.inGroup')).toBe(false);
 });
