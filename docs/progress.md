@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-26
+last-updated: 2026-10-27
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-27: feat(ui): Search and settings icons on every screen, and safer themes
 - 2026-10-25: chore(telemetry): Stop reading the old ~/.claude telemetry log
 - 2026-10-25: feat(ui): One aligned overhang row, and icons on the 3 pixel grid
 - 2026-10-25: chore(skills): Reject argument placeholders in skills
@@ -76,27 +77,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-13: docs(voice): Rewrite the `tests/source` comments
 - 2026-10-13: docs(voice): Rewrite the `tests/scripts` comments
 - 2026-10-13: test(scripts): Stop `test:scripts` emptying and writing `out/`
-- 2026-10-12: docs(voice): Rewrite the remaining `components` comments
-- 2026-10-12: ci(lint): Stop the voice gate skipping `components/tasks`
-- 2026-10-12: docs(voice): Rewrite the UI, dialog, home, grid and API comments
-- 2026-10-12: fix(grid): Stop asking for `MediaSourceCount` on the music grids
-- 2026-10-12: docs(voice): Rewrite the `components/video` and `subtitles` comments
-- 2026-10-12: docs(voice): Rewrite the `source` comments outside `source/utils`
-- 2026-10-12: docs(voice): Rewrite the `source/utils` comments
-- 2026-10-12: fix(playback): Direct-play `.strm` and DASH; fall back if unreachable
-- 2026-10-12: docs(voice): Rewrite the root config and workflow comments
-- 2026-10-12: ci(hooks): Keep untracked files out of the pre-push auto-fix commit
-- 2026-10-12: docs(voice): Rewrite the device and measurement script comments
-- 2026-10-12: ci(rta): Keep the device lock state in the run ledger CI uploads
-- 2026-10-12: docs(voice): Rewrite the generator, lib and top-level script comments
-- 2026-10-12: ci(server-upgrade): Record the `ImageURL` endpoint in the API manifest
-- 2026-10-11: docs(voice): Rewrite the lint and BSC plugin comments
-- 2026-10-11: docs(voice): Rewrite the remaining agent files
-- 2026-10-11: docs(voice): Rewrite the user, dev, architecture and agent docs
-- 2026-10-11: ci(lint): Check markdown link anchors against GitHub's heading slugs
-- 2026-10-11: ci(lint): Run language coverage when `people.bs` or a fingerprint changes
-- 2026-10-11: fix(music): Keep the playing track when shuffle is switched on again
-- 2026-10-11: ci(server-upgrade): Run the spec fingerprint drift check in CI
 
 ## Open followups
 
