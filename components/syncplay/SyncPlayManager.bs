@@ -88,6 +88,9 @@ sub ensureReady()
   ' a refusal, a leave or a halt ends it, and Back, its time limit or a newer press end it with
   ' nothing to clear here.
   m.claimedStart = invalid
+  ' A halted member's claim followed the group again at the press, so the group would wait on
+  ' it. That follow holds only until the group's load answers it (endUnansweredRefollow).
+  m.claimRefollowed = false
   ' The name of the group a Leave at launch is ending (leaveStaleMembership), so the GroupLeft
   ' that answers it can say which, since the membership is not in memory.
   m.staleGroupName = ""
@@ -154,6 +157,7 @@ end function
 function playerEvent(evt as object) as object
   ensureReady()
   if not isValid(evt) or not syncPlayTime.isText(evt.kind) then return { following: isFollowing() }
+  endUnansweredRefollow()
   kind = evt.kind
   if isValid(evt.position) then m.playerPositionTicks = syncPlayPlayback.secondsToTicks(evt.position)
   if kind = "state" and syncPlayTime.isText(evt.state) then m.playerState = evt.state
@@ -215,9 +219,10 @@ end function
 
 ' This member stops following but stays in the group, and tells the server not to wait on it (a
 ' server before 12.1 has no group-wait timeout). Resuming is phase E.
-sub haltFollowing(reason as string)
+' @param tell - whether the viewer is told; false when what they did already says it
+sub haltFollowing(reason as string, tell = true as boolean)
   m.log.info("halting", "reason", reason, "groupId", m.state.groupId)
-  if isFollowing() then notify("halted", m.state.groupName, "")
+  if tell and isFollowing() then notify("halted", m.state.groupName, "")
   syncPlayState.halt(m.state)
   m.pendingPlan = invalid
   m.owedLoad = invalid
@@ -239,7 +244,8 @@ end sub
 ' not follow, or when nothing could be posted: those play locally. A halted member's own play
 ' follows the group again first: locally, so the answer applies (syncPlayQueue.appliesFetchedQueue),
 ' and on the wire, so the group waits on it (a new queue marks every member buffering, but the
-' server's wait skips a member still ignoring it).
+' server's wait skips a member still ignoring it). It halts again if the group never loads the
+' play (endUnansweredRefollow).
 ' @param start - the playback start the press opened (QueueManager.beginPlaybackStart), which
 '   the claim lives as long as; invalid when none is pending
 function claimPlay(start = invalid as dynamic) as boolean
@@ -259,7 +265,10 @@ function claimPlay(start = invalid as dynamic) as boolean
   end if
   if not isValid(req) then return false
   ' Built before anything is sent, so a play that will run locally re-follows nothing.
-  if not isFollowing() then followAgain(false)
+  if not isFollowing()
+    followAgain(false)
+    m.claimRefollowed = true
+  end if
   SubmitSideEffect(req)
   m.log.info("play handed to the group", "action", handoff.action, "groupId", m.state.groupId)
   m.claimedStart = start
@@ -293,6 +302,17 @@ sub dropClaimedPlay(reason as string)
   m.claimedStart = invalid
 end sub
 
+' A claim that re-followed and ended with no load from the group (a refusal, Back, the start's
+' time limit, a lost post) leaves this member following with no player. It never posts Ready,
+' so the group's next wait would stall on it: it halts again, quietly, since the refusal or the
+' viewer's own action already says what happened. Called at each frame and player event: every
+' wait the group starts begins with a frame to every member.
+sub endUnansweredRefollow()
+  if not m.claimRefollowed or hasOpenClaim() then return
+  m.claimRefollowed = false
+  if isFollowing() then haltFollowing("the group did not load the play that followed it again", false)
+end sub
+
 ' --- frames ---
 
 ' The event's own payload, never m.top.frame: the main thread writes frames back to back
@@ -302,6 +322,7 @@ sub onFrame(event as object)
   ensureReady()
   frame = event.getData()
   if not isValid(frame) or not syncPlayTime.isText(frame.kind) then return
+  endUnansweredRefollow()
   if frame.kind = "syncplayupdate"
     onGroupUpdate(frame)
   else if frame.kind = "syncplaycommand"
@@ -357,6 +378,7 @@ sub onGroupUpdate(update as object)
   else if updateType = "GroupDoesNotExist" or updateType = "LibraryAccessDenied" or updateType = "CreateGroupDenied" or updateType = "JoinGroupDenied"
     notify(updateType, "", "")
     dropClaimedPlay(updateType)
+    endUnansweredRefollow()
   else if updateType = "PlayQueue"
     onQueueUpdate(update)
   end if
@@ -535,6 +557,8 @@ sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteg
   if action = "" then return
   ' The load is performed from here. The early return above kept the record for its retry.
   m.owedLoad = invalid
+  ' The group answered: a follow made at a claim is real from here, whichever branch loads it.
+  m.claimRefollowed = false
   if newPlaylist
     startTicks& = syncPlayPlayback.startPositionTicks({ lastUpdateMs: m.state.lastUpdateMs, startPositionTicks: m.state.startPositionTicks }, m.lastCommand, m.estimator, syncPlayTime.nowMs())
     queueManager.callFunc("setCurrentStartingPoint", startTicks&, true)
@@ -735,6 +759,7 @@ sub leaveLocally()
   m.owedLoad = invalid
   m.expectingRemount = false
   m.claimedStart = invalid
+  m.claimRefollowed = false
   m.loadStartTicks = 0&
   m.failedBursts = 0
   publish()

@@ -13,6 +13,8 @@ namespace tests
     private previousView as object
     private previousServerUrl as string
     private previousQueue as object
+    private previousSideEffectTask as object
+    private isCapturingPosts as boolean
 
     ' beforeEach, not setup: every test moves the node's state (tests/CLAUDE.md).
     protected override function beforeEach()
@@ -28,11 +30,15 @@ namespace tests
       m.previousQueue = m.global.queueManager
       m.global.queueManager = CreateObject("roSGNode", "QueueManager")
       m.manager = CreateObject("roSGNode", "SyncPlayManager")
+      m.isCapturingPosts = false
     end function
 
     protected override function afterEach()
       m.manager.callFunc("reset")
       m.manager = invalid
+      ' Here rather than in the test, so a failed assertion cannot leave the capture in place.
+      if m.isCapturingPosts then m.global.sideEffectTask = m.previousSideEffectTask
+      m.previousSideEffectTask = invalid
       m.global.queueManager = m.previousQueue
       m.previousQueue = invalid
       m.global.server.serverUrl = m.previousServerUrl
@@ -332,6 +338,32 @@ namespace tests
       m.enableServer()
     end sub
 
+    ' A member that left the group's item: halted, and so ignoring the group's wait.
+    private sub haltWithServer()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.enableServer()
+    end sub
+
+    ' Stands in for SideEffectTask, so the posts the manager submits can be read in the order
+    ' they would be sent (the task is FIFO). afterEach puts the real one back.
+    private function capturePosts() as object
+      if not m.global.doesExist("sideEffectTask") then m.global.addField("sideEffectTask", "node", false)
+      m.previousSideEffectTask = m.global.sideEffectTask
+      m.isCapturingPosts = true
+      ' A plain Node: a ContentNode counts an ApiResultNode child but getChild() returns invalid.
+      posts = CreateObject("roSGNode", "Node")
+      posts.addField("enqueue", "string", true)
+      m.global.sideEffectTask = posts
+      return posts
+    end function
+
+    private function lastPost(posts as object) as object
+      return posts.getChild(posts.getChildCount() - 1).request
+    end function
+
     ' The viewer's own queue: fresh items, no playlist stamp (every launcher clears the queue).
     private sub pressPlay(queueItems as object)
       m.global.queueManager.callFunc("set", queueItems)
@@ -410,20 +442,10 @@ namespace tests
       ' The server marks every member buffering on a new queue, but its wait skips a member
       ' still ignoring it: SetIgnoreWait(false) has to land first. Posts leave in order
       ' (SideEffectTask is FIFO), so the order they are submitted in is the order sent.
-      if not m.global.doesExist("sideEffectTask") then m.global.addField("sideEffectTask", "node", false)
-      previousTask = m.global.sideEffectTask
-      ' A plain Node: a ContentNode counts an ApiResultNode child but getChild() returns invalid.
-      posts = CreateObject("roSGNode", "Node")
-      posts.addField("enqueue", "string", true)
-      m.global.sideEffectTask = posts
-      m.joinGroup()
-      m.playGroupItem()
-      m.manager.callFunc("playerEvent", { kind: "mounted" })
-      m.manager.callFunc("playerEvent", { kind: "unmounted" })
-      m.enableServer()
+      posts = m.capturePosts()
+      m.haltWithServer()
       m.pressPlay([{ id: "i-9", type: "Movie" }])
       m.manager.callFunc("claimPlay", promises.create())
-      m.global.sideEffectTask = previousTask
       count = posts.getChildCount()
       m.assertEqual(count, 2)
       m.assertTrue(posts.getChild(0).request.url.instr("/SyncPlay/SetIgnoreWait") >= 0, "first: SetIgnoreWait")
@@ -475,6 +497,72 @@ namespace tests
       m.manager.callFunc("claimPlay", leaving)
       m.manager.frame = m.update("GroupLeft", invalid)
       m.assertEqual(leaving.promiseState, "rejected")
+    end function
+
+    @it("a halted member's refused play halts it again, so the group stops waiting on it")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.manager.callFunc("claimPlay", promises.create())
+      m.assertTrue(m.manager.following, "the press follows again, so the group waits on it")
+      m.manager.frame = m.update("LibraryAccessDenied", invalid)
+      m.assertFalse(m.manager.following)
+      m.assertEqual(m.manager.notice.kind, "LibraryAccessDenied", "the refusal is what the viewer is told")
+      last = m.lastPost(posts)
+      m.assertTrue(last.url.instr("/SyncPlay/SetIgnoreWait") >= 0)
+      m.assertEqual(last.body, FormatJson({ "IgnoreWait": true }))
+    end function
+
+    @it("a halted member's play whose start ended unanswered halts again at the next frame")
+    function _()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      start = promises.create()
+      m.manager.callFunc("claimPlay", start)
+      ' Back, or the start's time limit: the manager is not told, and nothing is owed yet.
+      promises.reject({ message: "cancelled" }, start)
+      m.assertTrue(m.manager.following)
+      ' Every wait the group starts begins with a frame to every member.
+      m.manager.frame = m.update("StateUpdate", { State: "Waiting", Reason: "Seek" })
+      m.assertFalse(m.manager.following)
+    end function
+
+    @it("a local play after an unanswered start halts quietly, before its mount")
+    function _()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      start = promises.create()
+      m.manager.callFunc("claimPlay", start)
+      promises.reject({ message: "replaced by a newer start" }, start)
+      m.manager.notice = invalid
+      m.pressPlay([{ id: "a-1", type: "Audio" }])
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.assertFalse(m.manager.following)
+      m.assertInvalid(m.manager.notice, "the viewer chose what plays: no halt toast")
+    end function
+
+    @it("a newer claim still open keeps the follow its predecessor made")
+    function _()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      first = promises.create()
+      m.manager.callFunc("claimPlay", first)
+      m.pressPlay([{ id: "i-8", type: "Movie" }])
+      second = promises.create()
+      m.manager.callFunc("claimPlay", second)
+      promises.reject({ message: "replaced by a newer start" }, first)
+      m.manager.frame = m.update("StateUpdate", { State: "Waiting", Reason: "Seek" })
+      m.assertTrue(m.manager.following, "the second play's answer is still due")
+    end function
+
+    @it("a following member's refused play leaves it following")
+    function _()
+      m.joinGroupWithServer()
+      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.manager.callFunc("claimPlay", promises.create())
+      m.manager.frame = m.update("LibraryAccessDenied", invalid)
+      m.assertTrue(m.manager.following)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
