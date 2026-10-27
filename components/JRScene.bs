@@ -1215,7 +1215,13 @@ function syncPlayAccess() as dynamic
   return invalid
 end function
 
+' Leaving needs nothing from the list, which only names the members: a viewer in a group still
+' gets the leave confirm, without its member line.
 sub onSyncPlayGroupsFailed()
+  if m.global.syncPlayManager.inGroup
+    showSyncPlayMenu(invalid)
+    return
+  end if
   m.syncPlayDialog = showAlertDialog(translate(translationKeys.LabelSyncPlay), translate(translationKeys.MessageSyncPlayGroupsFailed), "onSyncPlayAlertResult")
 end sub
 
