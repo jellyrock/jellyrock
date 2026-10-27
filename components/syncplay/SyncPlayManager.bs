@@ -12,6 +12,7 @@ import "pkg:/source/syncplay/syncPlayQueue.bs"
 import "pkg:/source/syncplay/syncPlayRequests.bs"
 import "pkg:/source/syncplay/syncPlayState.bs"
 import "pkg:/source/syncplay/syncPlayTime.bs"
+import "pkg:/source/utils/appWaits.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
@@ -82,10 +83,11 @@ sub ensureReady()
   m.pauseGaveUp = false
   ' The load a PlayQueue frame owes the player (syncPlayQueue.owedLoadAfter), kept until performed.
   m.owedLoad = invalid
-  ' A play this viewer pressed was handed to the group (claimPlay): the group's answer starts
-  ' the player, a refusal ends the start the press opened, and the load it causes needs no
-  ' "group started" toast.
-  m.claimedPlay = false
+  ' The playback start a press opened when its play was handed to the group (claimPlay). The
+  ' claim lasts exactly as long as that start (hasOpenClaim): the group's answer takes it over,
+  ' a refusal, a leave or a halt ends it, and Back, its time limit or a newer press end it with
+  ' nothing to clear here.
+  m.claimedStart = invalid
   ' The name of the group a Leave at launch is ending (leaveStaleMembership), so the GroupLeft
   ' that answers it can say which, since the membership is not in memory.
   m.staleGroupName = ""
@@ -189,7 +191,6 @@ function playerEvent(evt as object) as object
       host = playerHost()
       if syncPlayQueue.isLastItem(m.state) and isValid(host)
         m.expectingRemount = true
-        dropClaimedPlay("reloaded in place")
         host.callFunc("exitPlayback")
       end if
     end if
@@ -236,7 +237,9 @@ end sub
 ' playlist id: syncPlayQueue.isGroupItem), when the queue holds something the player could
 ' not follow, or when nothing could be posted: those play locally. A halted member's own play
 ' follows the group again first, so the answer applies (syncPlayQueue.appliesFetchedQueue).
-function claimPlay() as boolean
+' @param start - the playback start the press opened (QueueManager.beginPlaybackStart), which
+'   the claim lives as long as; invalid when none is pending
+function claimPlay(start = invalid as dynamic) as boolean
   ensureReady()
   if not m.state.inGroup then return false
   queueManager = m.global.queueManager
@@ -253,7 +256,7 @@ function claimPlay() as boolean
   end if
   if not posted then return false
   m.log.info("play handed to the group", "action", handoff.action, "groupId", m.state.groupId)
-  m.claimedPlay = true
+  m.claimedStart = start
   if not isFollowing() then followAgain(false)
   notify("playedToGroup", m.state.groupName, "")
   return true
@@ -271,12 +274,18 @@ sub followAgain(tell as boolean)
   publish()
 end sub
 
+' Whether a play this viewer handed to the group still waits on the group's answer: the start
+' its press opened is still open. Back, the start's time limit or a newer press ended it.
+function hasOpenClaim() as boolean
+  return appWaits.isOpen(m.claimedStart)
+end function
+
 ' The group will not answer a handed play with a load (a refusal, the membership ended, a
-' halt): the start the press opened ends, or the spinner would run to its limit.
+' halt): the start the press opened ends, or the spinner would run to its limit. Only that
+' start: a newer press's start is not this claim's to end.
 sub dropClaimedPlay(reason as string)
-  if not m.claimedPlay then return
-  m.claimedPlay = false
-  m.global.queueManager.callFunc("failPendingPlaybackStart", "the group did not play it (" + reason + ")")
+  appWaits.fail(m.claimedStart, "the group did not play it (" + reason + ")")
+  m.claimedStart = invalid
 end sub
 
 ' --- frames ---
@@ -307,7 +316,7 @@ sub onGroupUpdate(update as object)
   m.state = syncPlayState.applyGroupUpdate(m.state, update)
   if updateType = "PlayQueue"
     m.owedLoad = syncPlayQueue.owedLoadAfter(m.owedLoad, update.reason, previousPlayingItemId, m.state.playingItemId)
-    if m.claimedPlay then m.owedLoad = syncPlayQueue.owedLoadForClaimedPlay(m.owedLoad, update.reason, m.state.playingItemId)
+    if hasOpenClaim() then m.owedLoad = syncPlayQueue.owedLoadForClaimedPlay(m.owedLoad, update.reason, m.state.playingItemId)
   end if
   m.log.info("group update", "type", updateType, "groupId", m.state.groupId, "state", m.state.groupState)
 
@@ -535,15 +544,16 @@ sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteg
     m.expectingRemount = true
     if not newPlaylist then queueManager.callFunc("advanceTo", index)
     host.callFunc("skipToCurrentQueueItem")
+    ' A play this viewer handed over is answered here, and the reload takes no start of its own.
+    appWaits.done(m.claimedStart)
+    m.claimedStart = invalid
   else
     if not newPlaylist then queueManager.callFunc("startCurrentFresh")
     ' The group started something while this viewer was elsewhere: the player opens on its own,
     ' so say why. A load this viewer's own press caused was announced at the claim.
-    if m.claimedPlay
-      m.claimedPlay = false
-    else
-      notify("groupStarted", m.state.groupName, "")
-    end if
+    if not hasOpenClaim() then notify("groupStarted", m.state.groupName, "")
+    ' The start opened below replaces the claim's, as for any newer press.
+    m.claimedStart = invalid
     queueManager.callFunc("beginPlaybackStart", "")
     queueManager.callFunc("playQueue")
   end if
@@ -711,7 +721,7 @@ sub leaveLocally()
   m.pendingPlan = invalid
   m.owedLoad = invalid
   m.expectingRemount = false
-  m.claimedPlay = false
+  m.claimedStart = invalid
   m.loadStartTicks = 0&
   m.failedBursts = 0
   publish()

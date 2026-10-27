@@ -1,4 +1,5 @@
 import "pkg:/source/remotecontrol/remoteCommand.bs"
+import "pkg:/source/utils/appWaits.bs"
 
 namespace tests
 
@@ -422,12 +423,33 @@ namespace tests
     function _()
       m.joinGroupWithServer()
       m.pressPlay([{ id: "i-9", type: "Movie" }])
-      m.manager.callFunc("claimPlay")
-      ' Without a scene the queue has no app wait to open; the fail is a no-op on it, so the
-      ' refusal's path is proven by the notice and by claimPlay being a fresh ask afterwards.
+      start = promises.create()
+      m.assertTrue(m.manager.callFunc("claimPlay", start))
+      m.assertTrue(appWaits.isOpen(start), "the start stays open across the round trip")
       m.manager.frame = m.update("LibraryAccessDenied", invalid)
       m.assertEqual(m.manager.notice.kind, "LibraryAccessDenied")
       m.assertTrue(m.manager.inGroup)
+      m.assertEqual(start.promiseState, "rejected")
+    end function
+
+    @it("a halt or a leave after a handed play ends the start the press opened")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.enableServer()
+      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      halted = promises.create()
+      m.manager.callFunc("claimPlay", halted)
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.assertFalse(m.manager.following)
+      m.assertEqual(halted.promiseState, "rejected")
+
+      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      left = promises.create()
+      m.manager.callFunc("claimPlay", left)
+      m.manager.frame = m.update("GroupLeft", invalid)
+      m.assertEqual(left.promiseState, "rejected")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

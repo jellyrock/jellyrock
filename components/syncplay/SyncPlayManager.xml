@@ -37,9 +37,10 @@
     <function name="newGroup" />
     <!-- POST /SyncPlay/Leave: the GroupLeft frame confirms it. -->
     <function name="leave" />
-    <!-- claimPlay(): QueueManager.playQueue asks, while in a group, whether the group takes the
-         play. True when it was posted (SetNewQueue or SetPlaylistItem) and no local player
-         should start; false when it plays locally. -->
+    <!-- claimPlay(start): QueueManager.playQueue asks, while in a group, whether the group takes
+         the play, passing the playback start the press opened. True when it was posted
+         (SetNewQueue or SetPlaylistItem) and no local player should start; false when it plays
+         locally. The claim lasts as long as that start. -->
     <function name="claimPlay" />
     <!-- Sign-out and server switch: POST /SyncPlay/Leave while in a group, then forget it and
          stop every timer and task. -->
