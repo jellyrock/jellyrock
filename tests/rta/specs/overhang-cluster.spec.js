@@ -26,7 +26,7 @@ import {
   getActiveVal,
   getGlobalVal,
   getVal,
-  overhangWalkKey,
+  walkOverhangRowTo,
   press,
   waitFocused,
   waitFocusInside,
@@ -65,23 +65,8 @@ async function enterRow(label) {
   });
 }
 
-/** Along the row until the icon with `iconId` holds focus, the key chosen from where focus is
- * (`overhangWalkKey`, as `focusOverhangIcon` walks), so the icons between are never counted
- * here. `walkFocusUntil` would decline: its origin gate presses only inside the routed view,
- * and the row sits outside it. */
-async function walkRowTo(iconId, label) {
-  await waitFocused((f) => f?.node?.id === iconId, {
-    timeout: 8000,
-    interval: 250,
-    action: async () => {
-      const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
-      const key = overhangWalkKey(f, iconId);
-      if (key) await press(key);
-    },
-    label: `${iconId} on ${label}`,
-  });
-}
-
+/** Along the row to an icon (`walkOverhangRowTo`), named for the step's failure message. */
+const walkRowTo = (iconId, label) => walkOverhangRowTo(iconId, { label: `${iconId} on ${label}` });
 const walkToGear = (label) => walkRowTo('settingsIcon', label);
 
 /** Right to the gear, OK, Settings up, Back: the gear holds focus again on the screen left. */

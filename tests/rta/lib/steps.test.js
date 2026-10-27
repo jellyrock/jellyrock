@@ -80,6 +80,7 @@ const {
   walkFocusInto,
   walkHomeToFirstRow,
   overhangWalkKey,
+  walkOverhangRowTo,
   waitHome,
   waitLandingSettled,
   scrollFocus,
@@ -697,6 +698,69 @@ describe('overhangWalkKey — the key is chosen from where focus IS', () => {
         'settingsIcon',
       ),
     ).toBe('Right');
+  });
+});
+
+describe('walkOverhangRowTo — the one row walk, key per tick from where focus is', () => {
+  const icon = (id) => ({
+    node: { subtype: 'JROverhangIcon', id },
+    keyPath: `#overhang.#cluster.#${id}`,
+  });
+  const inHomeRows = {
+    node: { subtype: 'HomeRows', id: 'homeRows', rowItemFocused: [0, 0] },
+    keyPath: '#routerOutlet.#viewTarget.#abc.#homeRows',
+  };
+
+  beforeEach(() => {
+    getFocusedNode.mockReset();
+    sendKeypress.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('sends nothing when the icon already has focus', async () => {
+    getFocusedNode.mockResolvedValue(icon('settingsIcon'));
+    await expect(walkOverhangRowTo('settingsIcon')).resolves.toEqual({ upPresses: 0 });
+    expect(sendKeypress).not.toHaveBeenCalled();
+  });
+
+  it('walks Right past the icons between, however many, and stops on arrival', async () => {
+    // The row's set changes with the account (SyncPlay first only for one that may use it),
+    // so a caller that counted presses would be wrong for the other account.
+    const row = ['syncplayIcon', 'searchIcon', 'settingsIcon'];
+    let at = 0;
+    getFocusedNode.mockImplementation(async () => icon(row[at]));
+    sendKeypress.mockImplementation(async () => {
+      at = Math.min(at + 1, row.length - 1);
+    });
+    await expect(walkOverhangRowTo('settingsIcon', { interval: 1 })).resolves.toEqual({
+      upPresses: 0,
+    });
+    expect(sendKeypress).toHaveBeenCalledTimes(2);
+    expect(sendKeypress).toHaveBeenNthCalledWith(1, 'Right');
+    expect(sendKeypress).toHaveBeenNthCalledWith(2, 'Right');
+  });
+
+  it('re-sends Up while focus is still in Home rows, and reports how many it took', async () => {
+    const states = [inHomeRows, inHomeRows, icon('syncplayIcon'), icon('searchIcon')];
+    let i = 0;
+    getFocusedNode.mockImplementation(async () => states[Math.min(i, states.length - 1)]);
+    sendKeypress.mockImplementation(async () => {
+      i += 1;
+    });
+    await expect(walkOverhangRowTo('searchIcon', { interval: 1 })).resolves.toEqual({
+      upPresses: 2,
+    });
+    expect(sendKeypress.mock.calls.map(([k]) => k)).toEqual(['Up', 'Up', 'Right']);
+  });
+
+  it('times out under its label when the icon never arrives', async () => {
+    getFocusedNode.mockResolvedValue(icon('searchIcon'));
+    await expect(
+      walkOverhangRowTo('syncplayIcon', {
+        timeout: 30,
+        interval: 10,
+        label: 'the first icon on Settings',
+      }),
+    ).rejects.toThrow(/the first icon on Settings/);
   });
 });
 

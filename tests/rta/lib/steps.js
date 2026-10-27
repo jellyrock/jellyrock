@@ -1263,6 +1263,41 @@ export function overhangWalkKey(focused, iconId) {
   return ecp.Key.Right;
 }
 
+/**
+ * Walk the overhang row until the icon with id `iconId` holds focus.
+ *
+ * The one row walk the suite has, shared because `walkFocusUntil` cannot do it: its origin
+ * gate presses only while focus is inside the routed view, and the row sits outside it (the
+ * reason a key pressed there reaches the scene, not the screen). Each tick picks the key from
+ * where focus IS (`overhangWalkKey`): Up while focus is still in Home's rows, Right along the
+ * row, nothing once arrived, so the walk never counts the icons between (the row's set changes
+ * with the account: SyncPlay shows only for one that may use it) and never overshoots.
+ *
+ * @param {string} iconId the overhang icon to reach
+ * @param {{timeout?: number, interval?: number, label?: string}} [opts] `waitFocused`'s
+ * @returns {Promise<{upPresses: number}>} how many Up keys were sent, counted only once a
+ * press resolved: `focusOverhangIcon` reports an Up re-sent after its own as a lost escape.
+ */
+export async function walkOverhangRowTo(
+  iconId,
+  { timeout = 8000, interval = 250, label = `overhang ${iconId}` } = {},
+) {
+  let upPresses = 0;
+  await waitFocused((f) => f?.node?.id === iconId, {
+    timeout,
+    interval,
+    action: async () => {
+      const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+      const key = overhangWalkKey(f, iconId);
+      if (!key) return;
+      await press(key);
+      if (key === ecp.Key.Up) upPresses++;
+    },
+    label,
+  });
+  return { upPresses };
+}
+
 /** Roku media-player states that mean playback is live. Frozen: it is a shared registry now. */
 export const PLAYING_STATES = Object.freeze(['startup', 'buffer', 'play', 'pause']);
 
