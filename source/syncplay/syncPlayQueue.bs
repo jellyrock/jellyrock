@@ -161,6 +161,18 @@ namespace syncPlayQueue
     return { newPlaylist: newPlaylist }
   end function
 
+  ' The load owed once the frame answers a play this member handed to the group (claimPlay): a
+  ' load whether or not the playing item changed, since the viewer asked for this item even
+  ' when it is the one the group was already on (a halted member casting it back; a member
+  ' whose player a Stop closed). Nothing more when a load is owed already, or when the group
+  ' plays nothing.
+  ' @param owedLoad - owedLoadAfter's record for this frame
+  ' @param playlistItemId - the group's playing playlist id after this frame
+  function owedLoadForClaimedPlay(owedLoad as dynamic, reason as string, playlistItemId as string) as dynamic
+    if isValid(owedLoad) or playlistItemId = "" then return owedLoad
+    return { newPlaylist: reason = "NewPlaylist" }
+  end function
+
   ' What applying the owed load does to the player: "" when nothing is owed, "remount" to reload the
   ' mounted player in place, or "launch" to open the play route. Never the route over a mounted
   ' PlayerHostView: sgRouter reuses it for the same item and covers it, still playing, for another.

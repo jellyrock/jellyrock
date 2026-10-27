@@ -406,5 +406,24 @@ namespace tests
       m.assertInvalid(syncPlayQueue.handoff(invalid, 0, state))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("owedLoadForClaimedPlay()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a frame that kept the playing item still owes the load the viewer asked for")
+    function _()
+      owed = syncPlayQueue.owedLoadForClaimedPlay(invalid, "SetCurrentItem", "p-1")
+      m.assertNotInvalid(owed)
+      m.assertFalse(owed.newPlaylist)
+      m.assertTrue(syncPlayQueue.owedLoadForClaimedPlay(invalid, "NewPlaylist", "p-9").newPlaylist)
+    end function
+
+    @it("a load already owed, or a group playing nothing, is left as it is")
+    function _()
+      owed = { newPlaylist: true }
+      m.assertEqual(syncPlayQueue.owedLoadForClaimedPlay(owed, "SetCurrentItem", "p-1"), owed)
+      m.assertInvalid(syncPlayQueue.owedLoadForClaimedPlay(invalid, "RemoveItems", ""))
+    end function
+
   end class
 end namespace
