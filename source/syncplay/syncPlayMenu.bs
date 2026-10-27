@@ -6,7 +6,12 @@ namespace syncPlayMenu
 
   ' The user policy's SyncPlayAccess values (the server's SyncPlayUserAccessType, unchanged from
   ' 10.7.0 to master, read 2026-10-27).
+  const ACCESS_CREATE_AND_JOIN = "CreateAndJoinGroups"
   const ACCESS_NONE = "None"
+
+  ' A row's action in the group menu: join the row's group, or create a new one.
+  const ACTION_JOIN = "join"
+  const ACTION_NEW = "new"
 
   ' The cluster's SyncPlay glyphs: filled while in a group, outlined while not, the toggle pair
   ' of resources/icons/README.md's fill convention (rule 7).
@@ -17,6 +22,51 @@ namespace syncPlayMenu
   ' the server's default (CreateAndJoinGroups), the way SessionDataTransformer fills it.
   function canJoin(access as dynamic) as boolean
     return not isAccess(access, ACCESS_NONE)
+  end function
+
+  ' Whether the policy lets this user create a group.
+  function canCreate(access as dynamic) as boolean
+    if not isValidAndNotEmpty(access) then return true
+    return isAccess(access, ACCESS_CREATE_AND_JOIN)
+  end function
+
+  ' The group menu's rows from the /SyncPlay/List answer (an array of GroupInfoDto: GroupId,
+  ' GroupName, Participants): one per group, in the server's order, then a New group row when
+  ' the policy allows. Each row is { action, groupId, name, members }, members the participants'
+  ' names joined for display (the server already lists each user once). A group with no usable
+  ' id is skipped: a row the viewer cannot join is worse than none.
+  function rowsFor(groups as dynamic, access as dynamic) as object
+    rows = []
+    if type(groups) = "roArray"
+      for each group in groups
+        if type(group) = "roAssociativeArray" and isValidAndNotEmpty(group.GroupId)
+          name = ""
+          if isValidAndNotEmpty(group.GroupName) then name = group.GroupName
+          rows.push({ action: ACTION_JOIN, groupId: group.GroupId, name: name, members: memberLine(group) })
+        end if
+      end for
+    end if
+    if canCreate(access) then rows.push({ action: ACTION_NEW, groupId: "", name: "", members: "" })
+    return rows
+  end function
+
+  ' The members of a GroupInfoDto as one line: "ann, bob". Empty with no participants.
+  function memberLine(group as dynamic) as string
+    if type(group) <> "roAssociativeArray" or type(group.Participants) <> "roArray" then return ""
+    names = []
+    for each participant in group.Participants
+      if isValidAndNotEmpty(participant) then names.push(participant)
+    end for
+    return names.join(", ")
+  end function
+
+  ' The group the viewer is in, out of the List answer, by id; invalid when the list lacks it.
+  function groupById(groups as dynamic, groupId as string) as dynamic
+    if type(groups) <> "roArray" then return invalid
+    for each group in groups
+      if type(group) = "roAssociativeArray" and isValid(group.GroupId) and group.GroupId = groupId then return group
+    end for
+    return invalid
   end function
 
   ' The cluster entry patch for the SyncPlay icon: which glyph, and whether the icon is disabled

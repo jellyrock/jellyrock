@@ -27,6 +27,8 @@
 
     <!-- POST /SyncPlay/Join { GroupId }: the GroupJoined frame confirms it. -->
     <function name="join" />
+    <!-- newGroup(groupName): create a group named so and join it. -->
+    <function name="newGroup" />
     <!-- POST /SyncPlay/Leave: the GroupLeft frame confirms it. -->
     <function name="leave" />
     <!-- Sign-out and server switch: POST /SyncPlay/Leave while in a group, then forget it and

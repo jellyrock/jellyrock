@@ -121,6 +121,22 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("The interface")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("newGroup refuses an empty name, and leave() outside a group does nothing")
+    function _()
+      m.assertFalse(m.manager.callFunc("newGroup", ""))
+      m.assertFalse(m.manager.callFunc("leave"))
+    end function
+
+    @it("with no server there is no request to post, so newGroup and join return false")
+    function _()
+      m.assertFalse(m.manager.callFunc("newGroup", "ann"))
+      m.assertFalse(m.manager.callFunc("join", "g-1"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Commands")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

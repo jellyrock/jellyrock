@@ -1,3 +1,6 @@
+' bsc-disable-file auto-abandon-promises: the scene is the app's root and lives as long as the
+' app, so no fetchAsync() started here (the SyncPlay group list) can outlive it.
+import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/enums/LoadingKind.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/syncplay/syncPlayMenu.bs"
@@ -84,6 +87,9 @@ sub init()
   ' The route Settings was last opened from ({ path, context }), for reloadRoutedHome; invalid
   ' when that opening had no route to return to (a player).
   m.settingsOrigin = invalid
+  ' The SyncPlay menu's open dialog and its rows (openSyncPlayMenu); one at a time.
+  m.syncPlayDialog = invalid
+  m.syncPlayRows = invalid
 
   ' Hide backdrop until setting is resolved on first backdrop request (lazy initialization)
   m.imageFader.visible = false
@@ -1147,6 +1153,10 @@ sub onOverhangIconAction()
   id = m.overhang.iconAction
   view = getActiveView()
   if isValid(view) and view.isSubType("JRScreen") and view.callFunc("onOverhangAction", id) = true then return
+  if id = "syncplay"
+    openSyncPlayMenu()
+    return
+  end if
   path = ""
   if id = "search"
     path = "/search"
@@ -1159,6 +1169,115 @@ sub onOverhangIconAction()
   end if
   if isValid(view) and view.isSubType("JRScreen") then view.overhangReturnIcon = id
   routerNavigate(path)
+end sub
+
+' ---------------------------------------------------------------------------
+' SyncPlay: the cluster icon's menu
+'
+' One icon is the membership's state and its control. Not in a group: the groups the server
+' lists, each a row to join, then New group when the policy allows. In a group: a confirm
+' dialog naming the members, with Leave. Both start from one /SyncPlay/List fetch under a
+' pressed-action wait (LoadingKind.ACTION), so a dialog never opens half-built: a list dialog
+' does not re-lay out after it mounts. The manager posts the Join, New and Leave; the server's
+' answer arrives as frames the manager publishes, never as this fetch's result.
+' ---------------------------------------------------------------------------
+sub openSyncPlayMenu()
+  if isValid(m.syncPlayDialog) then return
+  if not syncPlayMenu.canJoin(syncPlayAccess())
+    m.syncPlayDialog = showAlertDialog(translate(translationKeys.LabelSyncPlay), translate(translationKeys.MessageSyncPlayAccessNone), "onSyncPlayAlertResult")
+    return
+  end if
+  req = GetApi().BuildGetSyncPlayGroupsRequest()
+  if not isValid(req)
+    showToast(translate(translationKeys.MessageSyncPlayGroupsFailed), "error")
+    return
+  end if
+  wait = appWaits.begin(LoadingKind.ACTION)
+  promises.chain(fetchAsync(req, "syncPlayGroups"), { wait: wait }).then(sub(res as object, ctx as object)
+    if isValid(ctx.wait) and not appWaits.isOpen(ctx.wait) then return ' Back ended it: the viewer moved on
+    appWaits.done(ctx.wait)
+    if res.ok
+      showSyncPlayMenu(res.json)
+    else
+      m.log.warn("SyncPlay group list failed", "statusCode", res.statusCode)
+      onSyncPlayGroupsFailed()
+    end if
+  end sub).catch(sub(err as object, ctx as object)
+    if isValid(ctx.wait) and not appWaits.isOpen(ctx.wait) then return
+    appWaits.fail(ctx.wait, "SyncPlay group list failed")
+    m.log.warn("SyncPlay group list unreachable", "reason", err.reason, "statusCode", err.statusCode)
+    onSyncPlayGroupsFailed()
+  end sub)
+end sub
+
+function syncPlayAccess() as dynamic
+  user = m.global.user
+  if isValid(user) and isValid(user.policy) then return user.policy.syncPlayAccess
+  return invalid
+end function
+
+sub onSyncPlayGroupsFailed()
+  m.syncPlayDialog = showAlertDialog(translate(translationKeys.LabelSyncPlay), translate(translationKeys.MessageSyncPlayGroupsFailed), "onSyncPlayAlertResult")
+end sub
+
+' The list arrived: the leave dialog while in a group, else the groups to join.
+sub showSyncPlayMenu(groups as dynamic)
+  manager = m.global.syncPlayManager
+  if manager.inGroup
+    members = syncPlayMenu.memberLine(syncPlayMenu.groupById(groups, manager.groupId))
+    message = ""
+    if members <> "" then message = translate(translationKeys.MessageSyncPlayMembers, [members])
+    m.syncPlayDialog = showConfirmDialog(manager.groupName, message, "onSyncPlayLeaveResult", translate(translationKeys.ButtonLeaveGroup), translate(translationKeys.ButtonCancel))
+    return
+  end if
+  rows = syncPlayMenu.rowsFor(groups, syncPlayAccess())
+  if rows.count() = 0
+    m.syncPlayDialog = showAlertDialog(translate(translationKeys.LabelSyncPlay), translate(translationKeys.LabelSyncPlayNoGroups), "onSyncPlayAlertResult")
+    return
+  end if
+  labels = []
+  for each row in rows
+    if row.action = syncPlayMenu.ACTION_NEW
+      labels.push(translate(translationKeys.LabelSyncPlayNewGroup))
+    else if row.members = ""
+      labels.push(row.name)
+    else
+      labels.push(translate(translationKeys.LabelSyncPlayGroupRow, [row.name, row.members]))
+    end if
+  end for
+  m.syncPlayRows = rows
+  m.syncPlayDialog = showListDialog(translate(translationKeys.LabelSyncPlaySelectGroup), labels, "onSyncPlayListResult")
+end sub
+
+sub onSyncPlayAlertResult()
+  m.syncPlayDialog = invalid
+end sub
+
+sub onSyncPlayListResult()
+  dialog = m.syncPlayDialog
+  rows = m.syncPlayRows
+  m.syncPlayDialog = invalid
+  m.syncPlayRows = invalid
+  if not isValid(dialog) or not isValid(dialog.result) then return
+  result = dialog.result
+  if result.cancelled = true or result.externallyCancelled = true then return
+  if not isValid(rows) or result.optionIndex < 0 or result.optionIndex >= rows.count() then return
+  row = rows[result.optionIndex]
+  manager = m.global.syncPlayManager
+  if row.action = syncPlayMenu.ACTION_NEW
+    manager.callFunc("newGroup", m.global.user.name)
+  else
+    manager.callFunc("join", row.groupId)
+  end if
+end sub
+
+sub onSyncPlayLeaveResult()
+  dialog = m.syncPlayDialog
+  m.syncPlayDialog = invalid
+  if not isValid(dialog) or not isValid(dialog.result) then return
+  result = dialog.result
+  if result.externallyCancelled = true or result.confirmed <> true then return
+  m.global.syncPlayManager.callFunc("leave")
 end sub
 
 ' The SyncPlay icon shows the membership and the policy: filled while in a group, disabled when
