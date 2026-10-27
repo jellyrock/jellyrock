@@ -194,6 +194,25 @@ namespace tests
       m.assertInvalid(m.manager.notice)
     end function
 
+    @it("the queue that answers a join to a playing group is the join's: its load says nothing more")
+    function _()
+      ' A 12.2 server answers a join to a playing or paused group with the queue before any
+      ' command (WaitingGroupState.SessionJoined), so Joined is the one toast.
+      m.joinGroup()
+      m.playGroupItem()
+      m.assertEqual(m.manager.notice.kind, "joined")
+      m.assertEqual(m.manager.sync.loadNotice, "")
+    end function
+
+    @it("a queue after an idle group's Stop is the group starting something")
+    function _()
+      ' An idle group answers a join with a Stop and no queue: a later queue is another member's.
+      m.joinGroup()
+      m.manager.frame = m.command("Stop")
+      m.playGroupItem()
+      m.assertEqual(m.manager.sync.loadNotice, "groupStarted")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Commands")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -569,18 +588,43 @@ namespace tests
     @describe("Following again")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("a new playlist brings a halted member back, and says so")
-    function _()
+    ' A member that left the group's item: halted, with no notice left over from getting there.
+    private sub halt()
       m.joinGroup()
       m.playGroupItem()
       m.manager.callFunc("playerEvent", { kind: "mounted" })
       m.manager.callFunc("playerEvent", { kind: "unmounted" })
-      m.assertFalse(m.manager.following)
       m.manager.notice = invalid
+    end sub
+
+    @it("a new playlist brings a halted member back, and its load says so")
+    function _()
+      m.halt()
+      m.assertFalse(m.manager.following)
       m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:26.000Z", Playlist: [{ ItemId: "i-5", PlaylistItemId: "p-5" }], PlayingItemIndex: 0, StartPositionTicks: 0 })
       m.assertTrue(m.manager.following)
-      m.assertEqual(m.manager.notice.kind, "followingAgain")
       m.assertEqual(m.manager.sync.playingItemId, "p-5")
+      ' One toast for the follow and the group's start, when the load runs.
+      m.assertInvalid(m.manager.notice)
+      m.assertEqual(m.manager.sync.loadNotice, "followingAgain")
+    end function
+
+    @it("a halted member brought back by a playlist with nothing to load is told at once")
+    function _()
+      m.halt()
+      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:26.000Z", Playlist: [], PlayingItemIndex: -1, StartPositionTicks: 0 })
+      m.assertTrue(m.manager.following)
+      m.assertEqual(m.manager.notice.kind, "followingAgain")
+    end function
+
+    @it("a halt before the follow was told stays quiet: the viewer never saw it resume")
+    function _()
+      m.halt()
+      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:26.000Z", Playlist: [{ ItemId: "i-5", PlaylistItemId: "p-5" }], PlayingItemIndex: 0, StartPositionTicks: 0 })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.assertFalse(m.manager.following)
+      m.assertInvalid(m.manager.notice)
+      m.assertInvalid(m.manager.sync.loadNotice)
     end function
 
     @it("a jump, an append or a removal within the playlist leaves a halted member halted")

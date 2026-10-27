@@ -323,6 +323,56 @@ it('a cast while halted follows the group again, and a cast over its player ends
   await stopPlayback();
 });
 
+it('joining a group that is already playing opens its item with the joined toast alone', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  // Out of the group the cases above left it in, so this join is a fresh one.
+  await odc.callFunc(
+    { base: 'global', keyPath: 'syncPlayManager', funcName: 'leave' },
+    { timeout: 10000 },
+  );
+  await waitFor('#overhang.#cluster.#syncplayIcon.isActive', isInactive, {
+    label: 'the icon at rest before the join',
+    timeout: 20000,
+  });
+  await syncPlay(member, 'Leave').catch(() => {});
+  await syncPlay(member, 'New', { GroupName: GROUP_NAME });
+  await syncPlay(member, 'SetIgnoreWait', { IgnoreWait: true });
+  const [movie] = await moviesOtherThanHero(1);
+  await syncPlay(member, 'SetNewQueue', {
+    PlayingQueue: [movie],
+    PlayingItemPosition: 0,
+    StartPositionTicks: 0,
+  });
+  const group = (await listGroups(member)).find((g) => g.GroupName === GROUP_NAME);
+  expect(group?.State, 'the group plays something before the Roku joins').not.toBe('Idle');
+
+  // The server answers this join with GroupJoined and then the group's queue, before any
+  // command (WaitingGroupState.SessionJoined): the queue's load is the join's, so Joined is
+  // the one toast for it.
+  await odc.callFunc(
+    { base: 'global', keyPath: 'syncPlayManager', funcName: 'join', funcParams: [group.GroupId] },
+    { timeout: 10000 },
+  );
+  await waitToast(`Joined ${GROUP_NAME}.`, { label: 'the joined toast' });
+  await waitFor('subtype()', (v) => v === 'PlayerHostView', {
+    read: getActiveVal,
+    timeout: 30000,
+    interval: 250,
+    label: "the player mounted from the group's queue",
+  });
+  await waitMediaPlaying("the group's item after the join", 60000);
+  // The load's notice is written before the player opens, so by now any second toast would
+  // have replaced the message.
+  expect(await getVal('#toast.message'), 'no second toast after Joined').toBe(
+    `Joined ${GROUP_NAME}.`,
+  );
+
+  await stopPlayback();
+});
+
 it('a membership the app exit left behind is remembered, and ended at the next launch', async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(

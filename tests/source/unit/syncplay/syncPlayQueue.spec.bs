@@ -425,5 +425,59 @@ namespace tests
       m.assertInvalid(syncPlayQueue.owedLoadForClaimedPlay(invalid, "RemoveItems", ""))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("noticeForQueueFrame()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a frame that brought a halted member back is told as following again")
+    function _()
+      m.assertEqual(syncPlayQueue.noticeForQueueFrame(invalid, true, false), "followingAgain")
+      m.assertEqual(syncPlayQueue.noticeForQueueFrame(invalid, true, true), "followingAgain")
+    end function
+
+    @it("a follow not yet told survives a newer frame before its load")
+    function _()
+      m.assertEqual(syncPlayQueue.noticeForQueueFrame("followingAgain", false, false), "followingAgain")
+    end function
+
+    @it("the queue that answers the viewer's own join says nothing more")
+    function _()
+      m.assertEqual(syncPlayQueue.noticeForQueueFrame(invalid, false, true), "")
+    end function
+
+    @it("anything else is the group starting something")
+    function _()
+      m.assertEqual(syncPlayQueue.noticeForQueueFrame(invalid, false, false), "groupStarted")
+      m.assertEqual(syncPlayQueue.noticeForQueueFrame("", false, false), "groupStarted")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("noticeAtLoad()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a play this viewer handed over was told at the claim")
+    function _()
+      m.assertEqual(syncPlayQueue.noticeAtLoad("groupStarted", "launch", true), "")
+      m.assertEqual(syncPlayQueue.noticeAtLoad("followingAgain", "remount", true), "")
+    end function
+
+    @it("a launch tells what its frame decided")
+    function _()
+      m.assertEqual(syncPlayQueue.noticeAtLoad("groupStarted", "launch", false), "groupStarted")
+      m.assertEqual(syncPlayQueue.noticeAtLoad("followingAgain", "launch", false), "followingAgain")
+      m.assertEqual(syncPlayQueue.noticeAtLoad("", "launch", false), "")
+    end function
+
+    @it("a reload in place tells only a follow made again: the viewer is already watching with the group")
+    function _()
+      m.assertEqual(syncPlayQueue.noticeAtLoad("followingAgain", "remount", false), "followingAgain")
+      m.assertEqual(syncPlayQueue.noticeAtLoad("groupStarted", "remount", false), "")
+    end function
+
+    @it("a load no frame decided is the group starting something")
+    function _()
+      m.assertEqual(syncPlayQueue.noticeAtLoad(invalid, "launch", false), "groupStarted")
+    end function
+
   end class
 end namespace

@@ -173,6 +173,34 @@ namespace syncPlayQueue
     return { newPlaylist: reason = "NewPlaylist" }
   end function
 
+  ' What the viewer is told when the load a queue frame owes runs, decided as the frame arrives,
+  ' so one thing that happened is one toast. "followingAgain" when the frame brought a halted
+  ' member back, or one brought back earlier is still untold; "" for the queue that answers the
+  ' viewer's own join (a server answers a join to a playing or paused group with its queue before
+  ' any command, and Joined said it); "groupStarted" otherwise.
+  ' @param pending - the notice an earlier frame decided for a load not yet run, or invalid
+  ' @param refollowed - whether this frame brought a halted member back
+  ' @param answersJoin - whether no command arrived since the join
+  function noticeForQueueFrame(pending as dynamic, refollowed as boolean, answersJoin as boolean) as string
+    if refollowed or (syncPlayTime.isText(pending) and pending = "followingAgain") then return "followingAgain"
+    if answersJoin then return ""
+    return "groupStarted"
+  end function
+
+  ' The notice the load runs with: none for a play this viewer handed over (told at the claim),
+  ' and none for a reload in place unless the member follows again, since the viewer is already
+  ' watching with the group. A load no frame decided is the group starting something.
+  ' @param frameNotice - noticeForQueueFrame's answer, or invalid
+  ' @param action - loadAction's answer
+  ' @param claimed - whether a play this viewer handed to the group is still waiting
+  function noticeAtLoad(frameNotice as dynamic, action as string, claimed as boolean) as string
+    if claimed then return ""
+    notice = "groupStarted"
+    if syncPlayTime.isText(frameNotice) then notice = frameNotice
+    if notice = "followingAgain" or action = "launch" then return notice
+    return ""
+  end function
+
   ' What applying the owed load does to the player: "" when nothing is owed, "remount" to reload the
   ' mounted player in place, or "launch" to open the play route. Never the route over a mounted
   ' PlayerHostView: sgRouter reuses it for the same item and covers it, still playing, for another.

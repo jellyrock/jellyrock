@@ -2376,6 +2376,16 @@ A SyncPlay membership the app exit leaves behind is ended at the next launch, fr
 
 Ruled out: relying on the socket drop alone (true on HTTP only); posting `Leave` before the receiver starts (the answer would be lost, and the toast with it). Checked on the Stick 4K against a local HTTP 12.2.0 server on 2026-10-27: after a hard relaunch while in a group, Home's first run posted the Leave and the key was gone.
 
+## decision-id: syncplay-one-toast-per-load
+
+**date**: 2026-10-27
+**status**: accepted
+**related-files**: `components/syncplay/SyncPlayManager.bs`, `source/syncplay/syncPlayQueue.bs`
+
+Each SyncPlay group load tells the viewer one thing, decided as its `PlayQueue` frame arrives (`syncPlayQueue.noticeForQueueFrame`) and said when the load runs (`noticeAtLoad`), because `Toast` has one slot and a second message replaces the first. The queue that answers the viewer's own join says nothing past Joined: the server sends a join to a playing or paused group its queue before any command (`WaitingGroupState.SessionJoined`), and an idle group a `Stop` first. A halted member brought back by another member's new playlist is told once, at the load, and a halt before that load stays quiet.
+
+Ruled out: a queue in `Toast` (late, out-of-date toasts, and an app-wide timing change), severity-based replacement (both doubles were info then info), and keeping both toasts. Measured on a Stick 4K against a local 12.2.0 server on 2026-10-27: before the change, joining a playing group never showed Joined, since the RTA poll read the group-start toast within 250 ms.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

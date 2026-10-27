@@ -95,6 +95,12 @@ sub ensureReady()
   ' The name of the group a Leave at launch is ending (leaveStaleMembership), so the GroupLeft
   ' that answers it can say which, since the membership is not in memory.
   m.staleGroupName = ""
+  ' Whether no command has arrived since the join: the queue frame that comes first answers the
+  ' join, and its load says nothing past Joined (syncPlayQueue.noticeForQueueFrame).
+  m.joinAwaitsQueue = false
+  ' What the owed load tells the viewer when it runs, decided as its queue frame arrived
+  ' (syncPlayQueue.noticeForQueueFrame); invalid when no frame decided one.
+  m.loadNotice = invalid
   publish()
 end sub
 
@@ -223,10 +229,13 @@ end function
 ' @param tell - whether the viewer is told; false when what they did already says it
 sub haltFollowing(reason as string, tell = true as boolean)
   m.log.info("halting", "reason", reason, "groupId", m.state.groupId)
+  ' A follow the viewer was never told of (its load had not run) ends as quietly as it began.
+  if syncPlayTime.isText(m.loadNotice) and m.loadNotice = "followingAgain" then tell = false
   if tell and isFollowing() then notify("halted", m.state.groupName, "")
   syncPlayState.halt(m.state)
   m.pendingPlan = invalid
   m.owedLoad = invalid
+  m.loadNotice = invalid
   m.groupPaused = false
   m.commandTimer.control = "stop"
   m.readyTimer.control = "stop"
@@ -267,7 +276,7 @@ function claimPlay(start = invalid as dynamic) as boolean
   if not isValid(req) then return false
   ' Built before anything is sent, so a play that will run locally re-follows nothing.
   if not isFollowing()
-    followAgain(false)
+    followAgain()
     m.claimRefollowed = true
   end if
   SubmitSideEffect(req)
@@ -278,14 +287,13 @@ function claimPlay(start = invalid as dynamic) as boolean
 end function
 
 ' A halted member follows the group again: its own play, or another member's new playlist
-' (as jellyfin-web does), brings it back. The server is told to wait on it again.
-' @param tell - whether the viewer is told; false when another notice covers it
-sub followAgain(tell as boolean)
+' (as jellyfin-web does), brings it back. The server is told to wait on it again. The caller
+' tells the viewer: the claim's notice, or the load's (syncPlayQueue.noticeForQueueFrame).
+sub followAgain()
   m.log.info("following again", "groupId", m.state.groupId)
   syncPlayState.resume(m.state)
   m.tracker = syncPlayPlayback.newReadyTracker()
   post("SetIgnoreWait", syncPlayRequests.setIgnoreWait(false))
-  if tell then notify("followingAgain", m.state.groupName, "")
   publish()
 end sub
 
@@ -327,6 +335,8 @@ sub onFrame(event as object)
   if frame.kind = "syncplayupdate"
     onGroupUpdate(frame)
   else if frame.kind = "syncplaycommand"
+    ' An idle group answers a join with a Stop and no queue: a queue after it is not the join's.
+    m.joinAwaitsQueue = false
     onCommand(frame)
   end if
 end sub
@@ -351,7 +361,9 @@ sub onGroupUpdate(update as object)
     notify("joined", m.state.groupName, "")
     setUserSetting(STALE_GROUP_KEY, m.state.groupId + "|" + m.state.groupName)
     m.staleGroupName = ""
+    m.joinAwaitsQueue = true
     m.owedLoad = invalid
+    m.loadNotice = invalid
     syncPlayOffset.reset(m.estimator)
     m.heldCommand = invalid
     m.lastCommand = invalid
@@ -469,13 +481,22 @@ end sub
 sub onQueueUpdate(update as object)
   ' A halted member is brought back by a new playlist, and by nothing less: an append, a move
   ' or a jump within the playlist it stopped following stays recorded (onCommand).
+  refollowed = false
   if not m.state.following
     if update.reason <> "NewPlaylist" then return
-    followAgain(true)
+    followAgain()
+    refollowed = true
   end if
+  answersJoin = m.joinAwaitsQueue
+  m.joinAwaitsQueue = false
   ' A group that plays nothing waits on no Ready and has no item to load. The update that
-  ' picks an item owes the load (syncPlayQueue.owedLoadAfter).
-  if m.state.playingItemId = "" then return
+  ' picks an item owes the load (syncPlayQueue.owedLoadAfter). With no load to say it, a follow
+  ' made again is told now.
+  if m.state.playingItemId = ""
+    if refollowed then notify("followingAgain", m.state.groupName, "")
+    return
+  end if
+  m.loadNotice = syncPlayQueue.noticeForQueueFrame(m.loadNotice, refollowed, answersJoin)
   fetchQueue(update.reason, m.state.lastUpdateMs, false)
 end sub
 
@@ -558,6 +579,11 @@ sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteg
   if action = "" then return
   ' The load is performed from here. The early return above kept the record for its retry.
   m.owedLoad = invalid
+  ' One toast for what this load is: the claim said it already, a reload in place says only a
+  ' follow made again, and a launch says what its frame decided (syncPlayQueue.noticeAtLoad).
+  notice = syncPlayQueue.noticeAtLoad(m.loadNotice, action, hasOpenClaim())
+  m.loadNotice = invalid
+  if notice <> "" then notify(notice, m.state.groupName, "")
   ' The group answered: a follow made at a claim is real from here, whichever branch loads it.
   m.claimRefollowed = false
   if newPlaylist
@@ -578,9 +604,6 @@ sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteg
     m.claimedStart = invalid
   else
     if not newPlaylist then queueManager.callFunc("startCurrentFresh")
-    ' The group started something while this viewer was elsewhere: the player opens on its own,
-    ' so say why. A load this viewer's own press caused was announced at the claim.
-    if not hasOpenClaim() then notify("groupStarted", m.state.groupName, "")
     ' The start opened below replaces the claim's, as for any newer press.
     m.claimedStart = invalid
     queueManager.callFunc("beginPlaybackStart", "")
@@ -760,6 +783,8 @@ sub leaveLocally()
   m.expectingRemount = false
   m.claimedStart = invalid
   m.claimRefollowed = false
+  m.joinAwaitsQueue = false
+  m.loadNotice = invalid
   m.loadStartTicks = 0&
   m.failedBursts = 0
   publish()
@@ -778,7 +803,8 @@ sub publish()
       hasEstimate: m.estimator.hasEstimate,
       lastCommand: m.lastCommand,
       trackerPhase: m.tracker.phase,
-      playingItemId: m.state.playingItemId
+      playingItemId: m.state.playingItemId,
+      loadNotice: m.loadNotice
     }
   })
 end sub
