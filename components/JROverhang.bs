@@ -61,7 +61,7 @@ sub init()
   m.cluster = CreateObject("roSGNode", "JROverhangIconBar")
   m.cluster.id = "cluster"
   m.clusterHasSyncPlay = false
-  m.cluster.entries = clusterEntries(false, "")
+  m.cluster.entries = clusterEntries(false, false)
   m.cluster.visible = false
   m.cluster.observeField("selectedAction", "onIconAction")
   m.cluster.observeField("requestFocusExit", "onClusterFocusExit")
@@ -189,24 +189,24 @@ end function
 
 ' The cluster's entries: SyncPlay first when the account may use it, then Search and Settings,
 ' which keep their place at the right whatever sits before them.
-function clusterEntries(withSyncPlay as boolean, syncPlayIcon as string) as object
+function clusterEntries(withSyncPlay as boolean, syncPlayActive as boolean) as object
   entries = []
-  if withSyncPlay then entries.push({ id: "syncplay", icon: syncPlayIcon })
+  if withSyncPlay then entries.push({ id: "syncplay", icon: syncPlayMenu.ICON, active: syncPlayActive })
   entries.push({ id: "search", icon: "pkg:/images/icons/search_$$RES$$.png" })
   entries.push({ id: "settings", icon: "pkg:/images/icons/settings_$$RES$$.png" })
   return entries
 end function
 
-' JRScene projects the SyncPlay icon's state ({ shown, icon }): the bar is rebuilt only when the
-' icon comes or goes (sign-in, a screen change), so a glyph change never moves focus.
+' JRScene projects the SyncPlay icon's state ({ shown, active }): the bar is rebuilt only when
+' the icon comes or goes (sign-in, a screen change), so a membership change never moves focus.
 sub applySyncPlayIcon(state as object)
   shown = state.shown = true
   if shown <> m.clusterHasSyncPlay
     m.clusterHasSyncPlay = shown
-    m.cluster.entries = clusterEntries(shown, state.icon)
+    m.cluster.entries = clusterEntries(shown, state.active = true)
     layout()
   else if shown
-    m.cluster.callFunc("updateEntry", "syncplay", { icon: state.icon })
+    m.cluster.callFunc("updateEntry", "syncplay", { active: state.active = true })
   end if
 end sub
 

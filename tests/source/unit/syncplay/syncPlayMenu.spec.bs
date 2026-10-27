@@ -135,17 +135,17 @@ namespace tests
     @describe("the cluster icon")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("is shown and outlined while not in a group")
+    @it("is shown and not active while not in a group")
     function _()
       state = syncPlayMenu.iconFor(false, "CreateAndJoinGroups")
-      m.assertEqual(state.icon, "pkg:/images/icons/groups_outline_$$RES$$.png")
+      m.assertFalse(state.active)
       m.assertTrue(state.shown)
     end function
 
-    @it("is filled while in a group")
+    @it("is active while in a group")
     function _()
       state = syncPlayMenu.iconFor(true, "JoinGroups")
-      m.assertEqual(state.icon, "pkg:/images/icons/groups_$$RES$$.png")
+      m.assertTrue(state.active)
       m.assertTrue(state.shown)
     end function
 

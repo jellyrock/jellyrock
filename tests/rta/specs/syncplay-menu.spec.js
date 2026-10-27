@@ -1,8 +1,8 @@
 /**
  * The cluster's SyncPlay icon is the membership's state and its control. Outside a group it
- * is outlined and opens the groups to join (a New group row last); OK on a group's row joins
- * it and the icon fills; the icon then opens a confirm naming the group, whose Leave Group
- * leaves and outlines the icon again. A second member of the same account, over REST,
+ * is at rest and opens the groups to join (a New group row last); OK on a group's row joins
+ * it and the icon turns active (colorSecondary); the icon then opens a confirm naming the group,
+ * whose Leave Group leaves and puts the icon back to rest. A second member of the same account, over REST,
  * creates the group the Roku joins, so the row's text is checked against a known name.
  * While in a group, Play on a movie goes to the group (decision B): the Roku posts the queue,
  * the server answers every member with it, and the Roku's player mounts from that answer.
@@ -46,9 +46,11 @@ import {
 const LOCALE = RTA_CONFIG.languages[0];
 const GROUP_NAME = 'RTA watch party';
 const atSyncPlayIcon = (f) => f?.node?.id === 'syncplayIcon';
-const isOutlined = (uri) => typeof uri === 'string' && uri.includes('groups_outline');
-// The field holds the uri as written, `$$RES$$` unresolved: the glyph name is what tells the two apart.
-const isFilled = (uri) => typeof uri === 'string' && uri.includes('groups_') && !isOutlined(uri);
+// The icon's on-state (`JROverhangIcon.isActive`, read at `#overhang.#cluster.#syncplayIcon.isActive`):
+// its glyph is drawn in colorSecondary while in a group. The waits spell the keyPath out, so the
+// wait-justified lint can check it.
+const isActive = (v) => v === true;
+const isInactive = (v) => v === false;
 
 let session;
 let member;
@@ -117,11 +119,11 @@ async function waitMenuRows(count, label) {
   return getVals(Array.from({ length: count }, (_, i) => `#optionList.content.${i}.title`));
 }
 
-it('outside a group the icon is outlined and the menu ends with New group; Back returns to the icon', async () => {
+it('outside a group the icon is at rest and the menu ends with New group; Back returns to the icon', async () => {
   await focusOverhangIcon('syncplayIcon');
   expect(
-    isOutlined(await getVal('#overhang.#cluster.#syncplayIcon.icon')),
-    'the icon is outlined outside a group',
+    isInactive(await getVal('#overhang.#cluster.#syncplayIcon.isActive')),
+    'the icon is not active outside a group',
   ).toBe(true);
   expect(await getGlobalVal('syncPlayManager.inGroup')).toBe(false);
 
@@ -139,7 +141,7 @@ it('outside a group the icon is outlined and the menu ends with New group; Back 
   });
 });
 
-it('OK on a group joins it and fills the icon; the icon then offers Leave Group, which leaves', async (testCtx) => {
+it('OK on a group joins it and makes the icon active; the icon then offers Leave Group, which leaves', async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(
       'the server has no command channel to this Roku (https without the companion plugin)',
@@ -171,8 +173,8 @@ it('OK on a group joins it and fills the icon; the icon then offers Leave Group,
   });
   await press(ecp.Key.Ok);
   await waitDialogClosed('join menu closed', { timeout: 10000 });
-  await waitFor('#overhang.#cluster.#syncplayIcon.icon', isFilled, {
-    label: 'the icon fills on the join',
+  await waitFor('#overhang.#cluster.#syncplayIcon.isActive', isActive, {
+    label: 'the icon turns active on the join',
     timeout: 20000,
   });
   await waitToast(`Joined ${GROUP_NAME}.`, { label: 'the joined toast' });
@@ -205,8 +207,8 @@ it('OK on a group joins it and fills the icon; the icon then offers Leave Group,
   });
   await press(ecp.Key.Ok);
   await waitDialogClosed('leave dialog closed', { timeout: 10000 });
-  await waitFor('#overhang.#cluster.#syncplayIcon.icon', isOutlined, {
-    label: 'the icon outlines on the leave',
+  await waitFor('#overhang.#cluster.#syncplayIcon.isActive', isInactive, {
+    label: 'the icon goes back to rest on the leave',
     timeout: 20000,
   });
   await waitToast(`Left ${GROUP_NAME}.`, { label: 'the left toast' });
@@ -230,8 +232,8 @@ it('Play on a movie while in a group goes to the group, whose answer starts the 
     { base: 'global', keyPath: 'syncPlayManager', funcName: 'join', funcParams: [group.GroupId] },
     { timeout: 10000 },
   );
-  await waitFor('#overhang.#cluster.#syncplayIcon.icon', isFilled, {
-    label: 'the icon fills on the direct join',
+  await waitFor('#overhang.#cluster.#syncplayIcon.isActive', isActive, {
+    label: 'the icon turns active on the direct join',
     timeout: 20000,
   });
 
@@ -333,8 +335,8 @@ it('a membership the app exit left behind is remembered, and ended at the next l
     { base: 'global', keyPath: 'syncPlayManager', funcName: 'join', funcParams: [group.GroupId] },
     { timeout: 10000 },
   );
-  await waitFor('#overhang.#cluster.#syncplayIcon.icon', isFilled, {
-    label: 'the icon fills on the join',
+  await waitFor('#overhang.#cluster.#syncplayIcon.isActive', isActive, {
+    label: 'the icon turns active on the join',
     timeout: 20000,
   });
   const before = (await odc.readRegistry())?.values?.[session.userId] ?? {};

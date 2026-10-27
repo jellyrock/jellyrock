@@ -113,10 +113,11 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // gate is `navSubtitlePanel`, which only runs on a fixture whose user can manage
   // subtitles (see `subtitlePanel` in tests/rta/screens.js).
   '#subtitlePanel.visible',
-  // `JRScene.applySyncPlayIcon` writes the cluster icon's uri on each inGroup change and screen
-  // change (through `JROverhangIconBar.updateEntry`): terminal, held until the membership
-  // changes again. `syncplay-menu.spec.js` waits on it for a join and a leave.
-  '#overhang.#cluster.#syncplayIcon.icon',
+  // `JROverhangIconBar` writes the cluster icon's `isActive` when it builds the entry and in
+  // `updateEntry`, both from `JRScene.applySyncPlayIcon` on each inGroup change and screen
+  // change: terminal, held until the membership changes again. `syncplay-menu.spec.js` waits
+  // on it for a join and a leave.
+  '#overhang.#cluster.#syncplayIcon.isActive',
   // `SyncPlayManager.publish` writes `sync.playingItemId` from the membership state, which only
   // a PlayQueue frame (`syncPlayState.applyGroupUpdate`) or leaving the group changes: held until
   // the group's queue moves again. `syncplay-menu.spec.js` waits on it for a cast's answer.

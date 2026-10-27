@@ -42,9 +42,15 @@ sub onIsDisabledChanged()
   onFocusChanged()
 end sub
 
+sub onIsActiveChanged()
+  onFocusChanged()
+end sub
+
 ' Toggle visual state between unfocused (transparent) and focused (backdrop + border).
 ' A disabled glyph keeps the disabled text color in both states, so it reads as unavailable
-' before the press; the focus ring still shows, because the press explains why.
+' before the press; the focus ring still shows, because the press explains why. An active one
+' keeps colorSecondary in both states, as IconButton's selected state does, so the state shows
+' while the viewer is on it.
 sub onFocusChanged()
   constants = m.global.constants
   if m.top.hasFocus()
@@ -58,7 +64,11 @@ sub onFocusChanged()
     m.buttonBorder.visible = false
     m.buttonIcon.blendColor = constants.colorTextSecondary
   end if
-  if m.top.isDisabled then m.buttonIcon.blendColor = constants.colorTextDisabled
+  if m.top.isDisabled
+    m.buttonIcon.blendColor = constants.colorTextDisabled
+  else if m.top.isActive
+    m.buttonIcon.blendColor = constants.colorSecondary
+  end if
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean

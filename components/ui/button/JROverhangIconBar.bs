@@ -27,6 +27,7 @@ sub onEntriesChanged()
       icon.icon = entry.icon
       icon.actionId = entry.id
       icon.isDisabled = entry.disabled = true
+      icon.isActive = entry.active = true
       icon.translation = [iconBarNav.iconX(i), 0]
       icon.observeField("selectedAction", "onIconPressed")
       icon.observeField("requestFocusExit", "onIconFocusExit")
@@ -76,17 +77,17 @@ sub onIconFocusReturn(msg as object)
   m.top.requestFocusReturn = m.entries[i].id
 end sub
 
-' Change one entry's icon in place without rebuilding the bar, so a state change never moves
-' focus. The input field is left as written: the applied copy is
-' patched. Returns false for an id the bar does not have.
+' Change one entry's on-state in place without rebuilding the bar, so a state change never
+' moves focus. The input field is left as written: the applied copy is patched. Returns false
+' for an id the bar does not have.
 function updateEntry(id as string, patch as object) as boolean
   i = iconBarNav.indexOf(m.entries, id)
   if i < 0 then return false
   entry = m.entries[i]
   icon = m.icons[i]
-  if isValidAndNotEmpty(patch.icon)
-    entry.icon = patch.icon
-    icon.icon = patch.icon
+  if isValid(patch.active)
+    entry.active = patch.active = true
+    icon.isActive = entry.active
   end if
   return true
 end function

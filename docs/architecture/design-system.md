@@ -40,7 +40,7 @@ The palette encodes interaction state, not only hue. Pick by meaning and the cho
 | Constant | Use for | Never |
 |---|---|---|
 | `colorPrimary` | What the viewer can focus or act on: focus rings, active-state chrome | Static decoration |
-| `colorSecondary` | Highlights nothing can focus: the selected-tab underline, accent rules, emphasis marks, decorative dividers | Anything focusable |
+| `colorSecondary` | Highlights nothing can focus: the selected-tab underline, accent rules, emphasis marks, decorative dividers. Also a toggle's on-state glyph, focused or not: `IconButton`'s selected state (Watched, Favorite) and the SyncPlay icon | A focusable control's focus or resting chrome |
 | `colorBackgroundPrimary` | Panel and surface fills | |
 | `colorBackgroundSecondary` | Structural separators, subtle borders, the fill behind a focused button | |
 | `colorTextPrimary`, `colorTextSecondary`, `colorTextDisabled` | Text by emphasis level; a focused control's text and glyph take primary, a resting one secondary, a control that cannot act disabled (a disabled overhang icon, focused or not) | |
@@ -58,7 +58,7 @@ One row, the same elements in the same order on every screen that shows them (`J
 | Element | Size | Rule |
 |---|---|---|
 | Icon button (`JROverhangIcon`) | a 78 pixel square focus box around the 42 pixel glyph; the row lays out by 60 pixel slots 6 apart, so the box overhangs its slot by 9 and overlaps its invisible neighbors | The focus ring is the 6 pixel border; the resting glyph is `colorTextSecondary`, focused `colorTextPrimary`, disabled `colorTextDisabled` in both states |
-| SyncPlay icon (the cluster's first entry) | the same box | One icon is the membership's state and its control: the `groups` glyph outlined while the viewer is in no group, filled while in one (the fill convention's toggle pair). An account whose SyncPlay access is None never sees it: Search and Settings keep their place at the right. A press opens a dialog, never a route |
+| SyncPlay icon (the cluster's first entry) | the same box | One icon is the membership's state and its control: the filled `groups` glyph, drawn in `colorSecondary` while the viewer is in a group, focused or not. Its outlined variant differs from the filled one only by two small holes, which nobody tells apart at ten feet, so the state is its color. An account whose SyncPlay access is None never sees it: Search and Settings keep their place at the right. A press opens a dialog, never a route |
 | Tab (`JRTab`) | the Large font in a 78 pixel box, 9 pixels at the sides, a 42 pixel glyph, a 6 pixel icon gutter | The glyph is outlined until the tab is selected, then filled; the 6 pixel underline under glyph and text is `colorSecondary` |
 | User dropdown (`JRDropdown`) | a 42 pixel avatar, the name, a 24 pixel chevron, 9 pixels apart, in a 78 pixel box with 9 pixels at the sides | The box hugs its content, the name's width rounded up onto the grid; a name past 300 pixels is cut with an ellipsis. The name drops 3 pixels in its box, as a text box does (below) |
 | Logo | 180 by 39 at y 51 | Its capitals and baseline sit on the tab text's |

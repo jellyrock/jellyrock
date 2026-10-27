@@ -443,7 +443,7 @@ sub initRouter()
   m.global.unobserveField("photoLaunchRequest")
   m.global.observeField("photoLaunchRequest", "onPhotoLaunchRequested")
 
-  ' The cluster's SyncPlay icon is the membership's state on every screen: filled while in a
+  ' The cluster's SyncPlay icon is the membership's state on every screen: active while in a
   ' group. The manager is a render-thread node on m.global, so observing it costs no crossing.
   ' Registered once, never unobserved: setGlobalNodes creates the manager once, after init(),
   ' and an unobserve here would drop any other component's observer of the same field (#898).
@@ -1298,7 +1298,7 @@ sub onSyncPlayNotice()
   showToast(translate(toast.key, [toast.arg]), toast.toastType)
 end sub
 
-' The SyncPlay icon shows the membership and the policy: filled while in a group, absent when
+' The SyncPlay icon shows the membership and the policy: active while in a group, absent when
 ' the user's SyncPlayAccess is None. Applied on each screen change (the user, and so the policy,
 ' can change) and whenever the manager's inGroup changes.
 sub applySyncPlayIcon()
