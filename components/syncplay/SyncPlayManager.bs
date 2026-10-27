@@ -142,8 +142,9 @@ function leaveStaleMembership() as boolean
   stale = getUserSetting(STALE_GROUP_KEY)
   if not isValidAndNotEmpty(stale) then return false
   unsetUserSetting(STALE_GROUP_KEY)
-  parts = stale.split("|")
-  if parts.count() > 1 then m.staleGroupName = parts[1]
+  ' Split at the first bar only: the id (a GUID) has none, and the name may.
+  bar = stale.instr("|")
+  if bar >= 0 then m.staleGroupName = stale.mid(bar + 1)
   m.log.info("leaving the group of the last session", "group", stale)
   return post("Leave", invalid)
 end function

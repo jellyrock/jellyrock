@@ -225,7 +225,6 @@ sub playQueue()
   ' group's answer comes back through this same call, for every member. The pending start
   ' stays open across the round trip; the manager ends it if the group refuses.
   if kind = playKind.VIDEO and groupClaimsPlay() then return
-  kind = playKind.of(nextItemMediaType)
   if kind = playKind.AUDIO
     m.global.playbackLaunchRequest = { type: nextItem.type, id: nextItem.id, media: "audio" }
   else if kind = playKind.VIDEO or kind = playKind.LIVE

@@ -1210,8 +1210,8 @@ sub openSyncPlayMenu()
 end sub
 
 function syncPlayAccess() as dynamic
-  user = m.global.user
-  if isValid(user) and isValid(user.policy) then return user.policy.syncPlayAccess
+  globalUser = m.global.user
+  if isValid(globalUser) and isValid(globalUser.policy) then return globalUser.policy.syncPlayAccess
   return invalid
 end function
 
@@ -1297,10 +1297,7 @@ end sub
 ' the user's SyncPlayAccess is None. Applied on each screen change (the user, and so the policy,
 ' can change) and whenever the manager's inGroup changes.
 sub applySyncPlayIcon()
-  access = invalid
-  user = m.global.user
-  if isValid(user) and isValid(user.policy) then access = user.policy.syncPlayAccess
-  m.overhang.callFunc("applySyncPlayIcon", syncPlayMenu.iconFor(m.global.syncPlayManager.inGroup = true, access))
+  m.overhang.callFunc("applySyncPlayIcon", syncPlayMenu.iconFor(m.global.syncPlayManager.inGroup = true, syncPlayAccess()))
 end sub
 
 ' A user dropdown item was chosen: relay it to main.bs, which observes this scene field

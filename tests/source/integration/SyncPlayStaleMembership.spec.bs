@@ -89,6 +89,15 @@ namespace tests
       m.assertEqual(m.manager.notice.groupName, "Movie night")
     end function
 
+    @it("a group name with a bar in it is named whole")
+    function _()
+      registryWrite("syncPlayGroup", "g-1|Movie | night", m.userId)
+      m.global.server.serverUrl = "http://localhost:8096"
+      m.manager.callFunc("leaveStaleMembership")
+      m.manager.frame = m.update("GroupLeft", invalid)
+      m.assertEqual(m.manager.notice.groupName, "Movie | night")
+    end function
+
     @it("a NotInGroup answer (the membership had ended already) says nothing")
     function _()
       registryWrite("syncPlayGroup", "g-1|Movie night", m.userId)
