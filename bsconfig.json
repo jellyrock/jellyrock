@@ -65,14 +65,8 @@
       {
         "kind": "planned",
         "files": ["source/syncplay/syncPlayRequests.bs"],
-        "names": ["setNewQueue", "seek", "previousItem", "setPlaylistItem"],
-        "reason": "#1251: SyncPlay request bodies local control (phase E) first posts."
-      },
-      {
-        "kind": "planned",
-        "files": ["source/syncplay/syncPlayState.bs"],
-        "names": ["resume"],
-        "reason": "#1251: phase E resumes a halted SyncPlay member."
+        "names": ["seek", "previousItem"],
+        "reason": "#1251: SyncPlay request bodies phase E's local controls first post."
       }
     ]
   }

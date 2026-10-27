@@ -78,6 +78,10 @@ sub ensureReady()
   m.pauseGaveUp = false
   ' The load a PlayQueue frame owes the player (syncPlayQueue.owedLoadAfter), kept until performed.
   m.owedLoad = invalid
+  ' A play this viewer pressed was handed to the group (claimPlay): the group's answer starts
+  ' the player, a refusal ends the start the press opened, and the load it causes needs no
+  ' "group started" toast.
+  m.claimedPlay = false
   publish()
 end sub
 
@@ -159,6 +163,7 @@ function playerEvent(evt as object) as object
       host = playerHost()
       if syncPlayQueue.isLastItem(m.state) and isValid(host)
         m.expectingRemount = true
+        dropClaimedPlay("reloaded in place")
         host.callFunc("exitPlayback")
       end if
     end if
@@ -193,8 +198,59 @@ sub haltFollowing(reason as string)
   m.readyTimer.control = "stop"
   m.pauseTimer.control = "stop"
   m.tracker = syncPlayPlayback.newReadyTracker()
+  dropClaimedPlay("stopped following")
   post("SetIgnoreWait", syncPlayRequests.setIgnoreWait(true))
   publish()
+end sub
+
+' A play QueueManager.playQueue is about to launch, while in a group: hand it to the group
+' (syncPlayQueue.handoff) and answer true, so no local player starts; the group's PlayQueue
+' frame then loads it for every member, this one included. False when outside a group, when
+' the queue is the manager's own group load (its current item carries the group's playing
+' playlist id: syncPlayQueue.isGroupItem), when the queue holds something the player could
+' not follow, or when nothing could be posted: those play locally. A halted member's own play
+' follows the group again first, so the answer applies (syncPlayQueue.appliesFetchedQueue).
+function claimPlay() as boolean
+  ensureReady()
+  if not m.state.inGroup then return false
+  queueManager = m.global.queueManager
+  queueItems = queueManager.callFunc("getQueue")
+  position = queueManager.callFunc("getPosition")
+  if type(queueItems) <> "roArray" or position < 0 or position >= queueItems.count() then return false
+  if syncPlayQueue.isGroupItem(queueItems[position], m.state.playingItemId) then return false
+  handoff = syncPlayQueue.handoff(queueItems, position, m.state)
+  if not isValid(handoff) then return false
+  if handoff.action = "setPlaylistItem"
+    posted = post("SetPlaylistItem", syncPlayRequests.setPlaylistItem(handoff.playlistItemId))
+  else
+    posted = post("SetNewQueue", syncPlayRequests.setNewQueue(handoff.itemIds, handoff.position, handoff.startPositionTicks))
+  end if
+  if not posted then return false
+  m.log.info("play handed to the group", "action", handoff.action, "groupId", m.state.groupId)
+  m.claimedPlay = true
+  if not isFollowing() then followAgain(false)
+  notify("playedToGroup", m.state.groupName, "")
+  return true
+end function
+
+' A halted member follows the group again: its own play, or another member's new playlist
+' (as jellyfin-web does), brings it back. The server is told to wait on it again.
+' @param tell - whether the viewer is told; false when another notice covers it
+sub followAgain(tell as boolean)
+  m.log.info("following again", "groupId", m.state.groupId)
+  syncPlayState.resume(m.state)
+  m.tracker = syncPlayPlayback.newReadyTracker()
+  post("SetIgnoreWait", syncPlayRequests.setIgnoreWait(false))
+  if tell then notify("followingAgain", m.state.groupName, "")
+  publish()
+end sub
+
+' The group will not answer a handed play with a load (a refusal, the membership ended, a
+' halt): the start the press opened ends, or the spinner would run to its limit.
+sub dropClaimedPlay(reason as string)
+  if not m.claimedPlay then return
+  m.claimedPlay = false
+  m.global.queueManager.callFunc("failPendingPlaybackStart", "the group did not play it (" + reason + ")")
 end sub
 
 ' --- frames ---
@@ -241,6 +297,7 @@ sub onGroupUpdate(update as object)
   else if updateType = "GroupLeft" or updateType = "NotInGroup"
     ' NotInGroup also answers a request made outside any group: nothing to tell then.
     if wasInGroup then notify("left", previousGroupName, "")
+    dropClaimedPlay("left the group")
     leaveLocally()
     return
   else if updateType = "UserJoined"
@@ -249,6 +306,7 @@ sub onGroupUpdate(update as object)
     notify("userLeft", m.state.groupName, update.userName)
   else if updateType = "GroupDoesNotExist" or updateType = "LibraryAccessDenied" or updateType = "CreateGroupDenied" or updateType = "JoinGroupDenied"
     notify(updateType, "", "")
+    dropClaimedPlay(updateType)
   else if updateType = "PlayQueue"
     onQueueUpdate(update)
   end if
@@ -336,7 +394,12 @@ end sub
 ' --- the queue ---
 
 sub onQueueUpdate(update as object)
-  if not m.state.following then return
+  ' A halted member is brought back by a new playlist, and by nothing less: an append, a move
+  ' or a jump within the playlist it stopped following stays recorded (onCommand).
+  if not m.state.following
+    if update.reason <> "NewPlaylist" then return
+    followAgain(true)
+  end if
   ' A group that plays nothing waits on no Ready and has no item to load. The update that
   ' picks an item owes the load (syncPlayQueue.owedLoadAfter).
   if m.state.playingItemId = "" then return
@@ -439,8 +502,12 @@ sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteg
   else
     if not newPlaylist then queueManager.callFunc("startCurrentFresh")
     ' The group started something while this viewer was elsewhere: the player opens on its own,
-    ' so say why.
-    notify("groupStarted", m.state.groupName, "")
+    ' so say why. A load this viewer's own press caused was announced at the claim.
+    if m.claimedPlay
+      m.claimedPlay = false
+    else
+      notify("groupStarted", m.state.groupName, "")
+    end if
     queueManager.callFunc("beginPlaybackStart", "")
     queueManager.callFunc("playQueue")
   end if
@@ -608,6 +675,7 @@ sub leaveLocally()
   m.pendingPlan = invalid
   m.owedLoad = invalid
   m.expectingRemount = false
+  m.claimedPlay = false
   m.loadStartTicks = 0&
   m.failedBursts = 0
   publish()

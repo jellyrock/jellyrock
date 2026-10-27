@@ -221,6 +221,11 @@ sub playQueue()
   end if
 
   kind = playKind.of(nextItemMediaType)
+  ' In a SyncPlay group a video play is the group's (decision B): the manager posts it and the
+  ' group's answer comes back through this same call, for every member. The pending start
+  ' stays open across the round trip; the manager ends it if the group refuses.
+  if kind = playKind.VIDEO and groupClaimsPlay() then return
+  kind = playKind.of(nextItemMediaType)
   if kind = playKind.AUDIO
     m.global.playbackLaunchRequest = { type: nextItem.type, id: nextItem.id, media: "audio" }
   else if kind = playKind.VIDEO or kind = playKind.LIVE
@@ -649,4 +654,12 @@ function getItemType(item) as string
   end if
 
   return ""
+end function
+
+' Whether the SyncPlay group takes this play instead of a local start (SyncPlayManager.claimPlay).
+' The membership is read first: outside a group there is nothing to ask.
+function groupClaimsPlay() as boolean
+  manager = m.global.syncPlayManager
+  if not isValid(manager) or manager.inGroup <> true then return false
+  return manager.callFunc("claimPlay") = true
 end function

@@ -94,6 +94,8 @@ namespace syncPlayMenu
     if kind = "userJoined" then return { key: translationKeys.MessageSyncPlayUserJoined, toastType: "info", arg: userName }
     if kind = "userLeft" then return { key: translationKeys.MessageSyncPlayUserLeft, toastType: "info", arg: userName }
     if kind = "groupStarted" then return { key: translationKeys.MessageSyncPlayGroupStarted, toastType: "info", arg: groupName }
+    if kind = "playedToGroup" then return { key: translationKeys.MessageSyncPlayPlayedToGroup, toastType: "info", arg: groupName }
+    if kind = "followingAgain" then return { key: translationKeys.MessageSyncPlayFollowingAgain, toastType: "info", arg: groupName }
     if kind = "halted" then return { key: translationKeys.MessageSyncPlayStoppedFollowing, toastType: "warning", arg: groupName }
     if kind = "GroupDoesNotExist" then return { key: translationKeys.MessageSyncPlayGroupDoesNotExist, toastType: "error", arg: "" }
     if kind = "LibraryAccessDenied" then return { key: translationKeys.MessageSyncPlayLibraryAccessDenied, toastType: "error", arg: "" }

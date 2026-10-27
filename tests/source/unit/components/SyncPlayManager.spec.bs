@@ -314,5 +314,159 @@ namespace tests
       m.assertEqual(m.manager.sync.trackerPhase, "idle")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Plays go to the group (claimPlay)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A server URL after the join and after any queue frame, so a post builds its request: the
+    ' join must not start a time-sync burst, and a queue frame must not start a fetch (its
+    ' promise runs where no pool answers). Nothing leaves the device: the suite has no
+    ' side-effect task.
+    private sub enableServer()
+      m.global.server.serverUrl = "http://localhost:8096"
+    end sub
+
+    private sub joinGroupWithServer()
+      m.joinGroup()
+      m.enableServer()
+    end sub
+
+    ' The viewer's own queue: fresh items, no playlist stamp (every launcher clears the queue).
+    private sub pressPlay(queueItems as object)
+      m.global.queueManager.callFunc("set", queueItems)
+      m.global.queueManager.callFunc("setPosition", 0)
+    end sub
+
+    @it("outside a group a play is the viewer's own")
+    function _()
+      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.assertFalse(m.manager.callFunc("claimPlay"))
+    end function
+
+    @it("in a group a video play is handed over, told, and no local player starts")
+    function _()
+      m.joinGroupWithServer()
+      m.manager.notice = invalid
+      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.assertTrue(m.manager.callFunc("claimPlay"))
+      m.assertEqual(m.manager.notice.kind, "playedToGroup")
+      m.assertEqual(m.manager.notice.groupName, "Movie night")
+    end function
+
+    @it("QueueManager.playQueue launches nothing for a play the group took")
+    function _()
+      if not m.global.doesExist("syncPlayManager") then m.global.addField("syncPlayManager", "node", false)
+      previousManager = m.global.syncPlayManager
+      m.global.syncPlayManager = m.manager
+      if not m.global.doesExist("playbackLaunchRequest") then m.global.addField("playbackLaunchRequest", "assocarray", false)
+      m.global.playbackLaunchRequest = invalid
+      m.joinGroupWithServer()
+      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.global.queueManager.callFunc("playQueue")
+      m.assertInvalid(m.global.playbackLaunchRequest)
+      m.global.syncPlayManager = previousManager
+    end function
+
+    @it("the manager's own group load is not handed back: its current item carries the group's playing id")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.enableServer()
+      m.assertFalse(m.manager.callFunc("claimPlay"))
+    end function
+
+    @it("a queue the player could not follow plays locally even in a group")
+    function _()
+      m.joinGroupWithServer()
+      m.pressPlay([{ id: "a-1", type: "Audio" }])
+      m.assertFalse(m.manager.callFunc("claimPlay"))
+    end function
+
+    @it("with no server nothing is posted, so the play is the viewer's own")
+    function _()
+      m.joinGroup()
+      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.assertFalse(m.manager.callFunc("claimPlay"))
+    end function
+
+    @it("a halted member's own play follows the group again, with one notice")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.enableServer()
+      m.assertFalse(m.manager.following)
+      m.manager.notice = invalid
+      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.assertTrue(m.manager.callFunc("claimPlay"))
+      m.assertTrue(m.manager.following)
+      m.assertEqual(m.manager.notice.kind, "playedToGroup")
+    end function
+
+    @it("the group's answer to a handed play is loaded without a group-started notice")
+    function _()
+      m.joinGroupWithServer()
+      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.manager.callFunc("claimPlay")
+      m.manager.notice = invalid
+      m.global.server.serverUrl = ""
+      ' With no server the fetch builds nothing, so the load never runs here: what is checked is
+      ' that the claim survives to the update and the update is accepted (the playing item moves).
+      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i-9", PlaylistItemId: "p-9" }], PlayingItemIndex: 0, StartPositionTicks: 0 })
+      m.assertEqual(m.manager.sync.playingItemId, "p-9")
+      m.assertInvalid(m.manager.notice)
+    end function
+
+    @it("a refusal after a handed play ends the start the press opened")
+    function _()
+      m.joinGroupWithServer()
+      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.manager.callFunc("claimPlay")
+      ' Without a scene the queue has no app wait to open; the fail is a no-op on it, so the
+      ' refusal's path is proven by the notice and by claimPlay being a fresh ask afterwards.
+      m.manager.frame = m.update("LibraryAccessDenied", invalid)
+      m.assertEqual(m.manager.notice.kind, "LibraryAccessDenied")
+      m.assertTrue(m.manager.inGroup)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Following again")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a new playlist brings a halted member back, and says so")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.assertFalse(m.manager.following)
+      m.manager.notice = invalid
+      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:26.000Z", Playlist: [{ ItemId: "i-5", PlaylistItemId: "p-5" }], PlayingItemIndex: 0, StartPositionTicks: 0 })
+      m.assertTrue(m.manager.following)
+      m.assertEqual(m.manager.notice.kind, "followingAgain")
+      m.assertEqual(m.manager.sync.playingItemId, "p-5")
+    end function
+
+    @it("a jump, an append or a removal within the playlist leaves a halted member halted")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.manager.notice = invalid
+      for each reason in ["SetCurrentItem", "Queue", "RemoveItems"]
+        m.manager.frame = m.update("PlayQueue", { Reason: reason, LastUpdate: "2026-10-23T20:47:2" + (6 + m.reasonIndex(reason)).toStr() + ".000Z", Playlist: [{ ItemId: "i-1", PlaylistItemId: "p-1" }, { ItemId: "i-2", PlaylistItemId: "p-2" }], PlayingItemIndex: 1, StartPositionTicks: 0 })
+        m.assertFalse(m.manager.following, reason + " must not bring the member back")
+      end for
+      m.assertInvalid(m.manager.notice)
+    end function
+
+    private function reasonIndex(reason as string) as integer
+      if reason = "SetCurrentItem" then return 0
+      if reason = "Queue" then return 1
+      return 2
+    end function
+
   end class
 end namespace

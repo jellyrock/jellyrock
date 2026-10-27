@@ -103,6 +103,35 @@ namespace syncPlayQueue
     return syncPlayTime.isText(playlistItemId) and playlistItemId = playingItemId
   end function
 
+  ' What a play pressed while in a group asks of the group in place of a local start (decision
+  ' B). A current item already in the group's playlist is a jump to it (SetPlaylistItem);
+  ' anything else replaces the group's queue with this one (SetNewQueue), from the queue's
+  ' position and the current item's starting point. invalid for an empty queue, or one holding
+  ' an item this player could not follow (music, Live TV): that queue plays locally, and its
+  ' mount halts the member.
+  ' @param queueItems - QueueManager's queue
+  ' @param position - the queue's current index
+  ' @param state - syncPlayState
+  function handoff(queueItems as object, position as integer, state as object) as dynamic
+    if type(queueItems) <> "roArray" or position < 0 or position >= queueItems.count() then return invalid
+    for each queueItem in queueItems
+      if not followsItem(queueItem) or not syncPlayTime.isText(queueItem.id) then return invalid
+    end for
+    current = queueItems[position]
+    if type(state.playlist) = "roArray"
+      for each entry in state.playlist
+        if entry.itemId = current.id then return { action: "setPlaylistItem", playlistItemId: entry.playlistItemId }
+      end for
+    end if
+    itemIds = []
+    for each queueItem in queueItems
+      itemIds.push(queueItem.id)
+    end for
+    startTicks& = 0&
+    if syncPlayTime.isWholeNumber(current.startingPoint) then startTicks& = syncPlayTime.asLong(current.startingPoint)
+    return { action: "setNewQueue", itemIds: itemIds, position: position, startPositionTicks: startTicks& }
+  end function
+
   ' Whether a queue update moves this member to another item (a new playlist, the server's
   ' current-item change, or a removal that took the playing item with it).
   function changesPlayingItem(reason as string, previousPlaylistItemId as string, playlistItemId as string) as boolean

@@ -352,5 +352,59 @@ namespace tests
       m.assertEqual(syncPlayQueue.loadFailureAction(true, "missing"), "halt")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("handoff()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    private function groupState() as object
+      state = syncPlayState.newState()
+      state.inGroup = true
+      state.playlist = m.playlist
+      state.playingItemId = "p-1"
+      return state
+    end function
+
+    @it("a current item the group already queues is a jump to it")
+    function _()
+      handoff = syncPlayQueue.handoff([{ id: "i-2", type: "Movie" }], 0, m.groupState())
+      m.assertEqual(handoff.action, "setPlaylistItem")
+      m.assertEqual(handoff.playlistItemId, "p-2")
+    end function
+
+    @it("an item the group does not queue replaces the group's queue with this one, at its position")
+    function _()
+      queueItems = [{ id: "i-9", type: "Episode" }, { id: "i-8", type: "Episode" }]
+      handoff = syncPlayQueue.handoff(queueItems, 1, m.groupState())
+      m.assertEqual(handoff.action, "setNewQueue")
+      m.assertEqual(handoff.itemIds, ["i-9", "i-8"])
+      m.assertEqual(handoff.position, 1)
+      m.assertEqual(handoff.startPositionTicks, 0&)
+    end function
+
+    @it("the current item's starting point is where the group starts, as a LongInteger")
+    function _()
+      queueItem = { id: "i-9", type: "Movie", startingPoint: 123456789012& }
+      handoff = syncPlayQueue.handoff([queueItem], 0, m.groupState())
+      m.assertEqual(handoff.startPositionTicks, 123456789012&)
+      queueItem.startingPoint = 50000000
+      m.assertEqual(syncPlayQueue.handoff([queueItem], 0, m.groupState()).startPositionTicks, 50000000&)
+    end function
+
+    @it("a queue the player could not follow plays locally: music, Live TV, or one such item among videos")
+    function _()
+      state = m.groupState()
+      m.assertInvalid(syncPlayQueue.handoff([{ id: "a-1", type: "Audio" }], 0, state))
+      m.assertInvalid(syncPlayQueue.handoff([{ id: "c-1", type: "TvChannel" }], 0, state))
+      m.assertInvalid(syncPlayQueue.handoff([{ id: "i-9", type: "Movie" }, { id: "a-1", type: "Audio" }], 0, state))
+    end function
+
+    @it("an empty queue, or a position outside it, hands nothing over")
+    function _()
+      state = m.groupState()
+      m.assertInvalid(syncPlayQueue.handoff([], 0, state))
+      m.assertInvalid(syncPlayQueue.handoff([{ id: "i-9", type: "Movie" }], 1, state))
+      m.assertInvalid(syncPlayQueue.handoff(invalid, 0, state))
+    end function
+
   end class
 end namespace

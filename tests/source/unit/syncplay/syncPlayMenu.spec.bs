@@ -116,6 +116,8 @@ namespace tests
       m.assertEqual(syncPlayMenu.toastFor({ kind: "userJoined", userName: "bob" }).arg, "bob")
       m.assertEqual(syncPlayMenu.toastFor({ kind: "left", groupName: "g" }).toastType, "info")
       m.assertEqual(syncPlayMenu.toastFor({ kind: "groupStarted", groupName: "g" }).toastType, "info")
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "playedToGroup", groupName: "g" }).key, translationKeys.MessageSyncPlayPlayedToGroup)
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "followingAgain", groupName: "g" }).arg, "g")
       m.assertEqual(syncPlayMenu.toastFor({ kind: "halted", groupName: "g" }).toastType, "warning")
       m.assertEqual(syncPlayMenu.toastFor({ kind: "JoinGroupDenied" }).toastType, "error")
       m.assertEqual(syncPlayMenu.toastFor({ kind: "LibraryAccessDenied" }).key, translationKeys.MessageSyncPlayLibraryAccessDenied)
