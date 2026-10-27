@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update markdownlint-cli2 from v0.23.3 to v0.24.0 ([#1232](https://github.com/jellyrock/jellyrock/pull/1232))
 - Update dotenv from v18.0.8 to v18.0.9 ([#1240](https://github.com/jellyrock/jellyrock/pull/1240))
 - Sync Roku hardware dictionary ([#1268](https://github.com/jellyrock/jellyrock/pull/1268))
 
