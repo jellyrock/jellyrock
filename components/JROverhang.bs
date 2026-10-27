@@ -1,6 +1,7 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/imageHelpers.bs"
 import "pkg:/source/enums/HomeAction.bs"
+import "pkg:/source/syncplay/syncPlayMenu.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
@@ -61,6 +62,7 @@ sub init()
   m.cluster.id = "cluster"
   m.cluster.entries = [
     { id: "search", icon: "pkg:/images/icons/search_$$RES$$.png" },
+    { id: "syncplay", icon: syncPlayMenu.ICON_NOT_IN_GROUP },
     { id: "settings", icon: "pkg:/images/icons/settings_$$RES$$.png" }
   ]
   m.cluster.visible = false
@@ -186,6 +188,11 @@ end sub
 ' The cluster icon for an entry id, for a screen focusing the icon it was left by
 function getIcon(id as string) as object
   return m.cluster.callFunc("getIcon", id)
+end function
+
+' Change a cluster entry in place ({ icon, disabled }): JRScene projects the SyncPlay icon's state
+function updateClusterEntry(id as string, patch as object) as boolean
+  return m.cluster.callFunc("updateEntry", id, patch)
 end function
 
 ' Proxies a cluster press (the entry id) to the overhang-level iconAction field

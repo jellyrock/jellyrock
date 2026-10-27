@@ -15,6 +15,8 @@
   "album": { "sizeFhd": 63, "glyphSize": 46 },
   "search": { "sizeFhd": 63, "glyphSize": 45 },
   "settings": { "sizeFhd": 63, "glyphSize": 45 },
+  "groups": { "sizeFhd": 63, "glyphSize": 45 },
+  "groups_outline": { "sizeFhd": 63, "glyphSize": 45 },
   "heart": { "sizeFhd": 63, "glyphSize": 45 },
   "heart_outline": { "sizeFhd": 63, "glyphSize": 45 },
   "home": { "sizeFhd": 63, "glyphSize": 45 },

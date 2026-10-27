@@ -39,7 +39,7 @@
          cluster is on every screen that shows the overhang once a user is signed in, except
          a player (JRScene.registerOverhangData says why). -->
     <field id="isClusterVisible" type="boolean" value="false" onChange="onIsClusterVisibleChanged" />
-    <!-- A cluster icon was pressed: its entry id ("search", "settings"). JRScene routes it. -->
+    <!-- A cluster icon was pressed: its entry id ("search", "syncplay", "settings"). JRScene routes it. -->
     <field id="iconAction" type="string" alwaysNotify="true" />
     <!-- A user dropdown item was chosen: its HomeAction. JRScene relays it to main.bs. -->
     <field id="userMenuAction" type="string" alwaysNotify="true" />
@@ -53,8 +53,10 @@
          the old imperative hideClock() function so all overhang element visibility follows
          one field-assignment pattern. -->
     <field id="isClockVisible" value="true" type="boolean" onChange="isClockVisibleChanged" />
-    <!-- The cluster icon for an entry id ("search", "settings"), for a screen's focus bookkeeping. -->
+    <!-- The cluster icon for an entry id ("search", "syncplay", "settings"), for a screen's focus bookkeeping. -->
     <function name="getIcon" />
+    <!-- Change a cluster entry's icon or disabled state in place: { icon, disabled }. -->
+    <function name="updateClusterEntry" />
     <!-- Up from a screen: focus the element Down last left the row from, else the first shown
          (tabs, dropdown, cluster). Returns false when the row has nothing to focus. -->
     <function name="focusRow" />

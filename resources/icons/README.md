@@ -31,7 +31,7 @@ Pass `--filled` to `npm run icons:add` (or store an `_filled.svg` variant) only 
 | 4 | Placeholder content | Lives in `images/placeholders/` | The placeholders (`movie`, `album`, `folder` and others), as in the file pickers of Apple Finder, Google Drive and Material 3. One exception: the `livetv` placeholder reuses the outlined `liveTV.svg`. |
 | 5 | Rating glyph | Inline rating display | `star`: filled is the industry standard for ratings |
 | 6 | Playback action button | Composes the filled `play` | `resume` (an arc plus the play triangle), to match the standalone `play` |
-| 7 | Toggle on-state | Paired with an outlined off-state | `heart` (the on-state of the `ItemDetails` Favorite button), `favorite_selected` (the on-state in the `ItemGridOptions` favorite menu: outlined geometry, marked by a hard-coded red) |
+| 7 | Toggle on-state | Paired with an outlined off-state | `heart` (the on-state of the `ItemDetails` Favorite button), `groups` (with `groups_outline`: the cluster's SyncPlay icon is filled while the viewer is in a group), `favorite_selected` (the on-state in the `ItemGridOptions` favorite menu: outlined geometry, marked by a hard-coded red) |
 | 8 | Selected overhang tab | A tab's glyph is outlined while the tab is not selected and filled while it is; fill follows selection, never focus (the navigation convention, JellyRock's choice 2026-10-25) | `home` (with `home_outline`), `heart` (with `heart_outline`) |
 
 **Choosing the fill for a new icon:**
@@ -218,3 +218,5 @@ this table automatically.
 | `versions.svg` | `content_copy` | Rounded | 500 | 0 | `24px` | 2026-09-20 |
 | `speed.svg` | `speed` | Rounded | 500 | 0 | `24px` | 2026-10-23 |
 | `hd.svg` | `hd` | Rounded | 500 | 0 | `24px` | 2026-10-23 |
+| `groups.svg` | `groups` | Rounded | 500 | 1 | `24px` | 2026-10-27 |
+| `groups_outline.svg` | `groups` | Rounded | 500 | 0 | `24px` | 2026-10-27 |

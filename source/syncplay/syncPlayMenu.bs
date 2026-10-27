@@ -1,0 +1,35 @@
+import "pkg:/source/utils/misc.bs"
+' The SyncPlay menu's decisions, pure: no node, no m.global. JRScene asks here what the cluster's
+' SyncPlay icon shows and what the group menu offers, so a Rooibos spec covers every access value
+' and every membership state without a scene.
+namespace syncPlayMenu
+
+  ' The user policy's SyncPlayAccess values (the server's SyncPlayUserAccessType, unchanged from
+  ' 10.7.0 to master, read 2026-10-27).
+  const ACCESS_NONE = "None"
+
+  ' The cluster's SyncPlay glyphs: filled while in a group, outlined while not, the toggle pair
+  ' of resources/icons/README.md's fill convention (rule 7).
+  const ICON_IN_GROUP = "pkg:/images/icons/groups_$$RES$$.png"
+  const ICON_NOT_IN_GROUP = "pkg:/images/icons/groups_outline_$$RES$$.png"
+
+  ' Whether the policy lets this user join a group. An unknown or missing value is treated as
+  ' the server's default (CreateAndJoinGroups), the way SessionDataTransformer fills it.
+  function canJoin(access as dynamic) as boolean
+    return not isAccess(access, ACCESS_NONE)
+  end function
+
+  ' The cluster entry patch for the SyncPlay icon: which glyph, and whether the icon is disabled
+  ' (access None: it stays in the row so the viewer learns the feature exists, and a press explains).
+  function iconFor(inGroup as boolean, access as dynamic) as object
+    icon = ICON_NOT_IN_GROUP
+    if inGroup then icon = ICON_IN_GROUP
+    return { icon: icon, disabled: not canJoin(access) }
+  end function
+
+  function isAccess(access as dynamic, value as string) as boolean
+    if not isValidAndNotEmpty(access) then return false
+    return lCase(access) = lCase(value)
+  end function
+
+end namespace

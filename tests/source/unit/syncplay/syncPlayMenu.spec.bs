@@ -1,0 +1,62 @@
+import "pkg:/source/syncplay/syncPlayMenu.bs"
+
+namespace tests
+
+  ' What the cluster's SyncPlay icon shows per membership and access, and what the policy allows.
+  @suite("syncPlayMenu — access and the cluster icon")
+  class SyncPlayMenuTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("access")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("CreateAndJoinGroups and JoinGroups may join")
+    function _()
+      m.assertTrue(syncPlayMenu.canJoin("CreateAndJoinGroups"))
+      m.assertTrue(syncPlayMenu.canJoin("JoinGroups"))
+    end function
+
+    @it("None may not")
+    function _()
+      m.assertFalse(syncPlayMenu.canJoin("None"))
+    end function
+
+    @it("a missing value is the server's default, which may join")
+    function _()
+      m.assertTrue(syncPlayMenu.canJoin(invalid))
+      m.assertTrue(syncPlayMenu.canJoin(""))
+    end function
+
+    @it("compares the value case-insensitively, as the server's binder does")
+    function _()
+      m.assertFalse(syncPlayMenu.canJoin("none"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the cluster icon")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is outlined and enabled while not in a group")
+    function _()
+      patch = syncPlayMenu.iconFor(false, "CreateAndJoinGroups")
+      m.assertEqual(patch.icon, "pkg:/images/icons/groups_outline_$$RES$$.png")
+      m.assertFalse(patch.disabled)
+    end function
+
+    @it("is filled while in a group")
+    function _()
+      patch = syncPlayMenu.iconFor(true, "JoinGroups")
+      m.assertEqual(patch.icon, "pkg:/images/icons/groups_$$RES$$.png")
+      m.assertFalse(patch.disabled)
+    end function
+
+    @it("is disabled with access None, and stays in the row")
+    function _()
+      patch = syncPlayMenu.iconFor(false, "None")
+      m.assertEqual(patch.icon, "pkg:/images/icons/groups_outline_$$RES$$.png")
+      m.assertTrue(patch.disabled)
+    end function
+
+  end class
+
+end namespace
