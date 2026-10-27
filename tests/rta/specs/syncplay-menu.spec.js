@@ -28,6 +28,7 @@ import {
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
 import { focusOverhangIcon, startPlayback } from '../lib/nav.js';
+import { failRequests } from '../lib/failRequests.js';
 import {
   getActiveVal,
   getGlobalVal,
@@ -140,6 +141,41 @@ it('outside a group the icon is at rest and the menu ends with New group; Back r
     interval: 250,
     label: 'the icon again after Back',
   });
+});
+
+it('a second OK while the group list loads is ignored: one wait, and the screen comes back', async () => {
+  // The case above ends on the icon; walking up from Home again would fail there, so walk only
+  // when the spec is not coming from it.
+  if (!atSyncPlayIcon(await odc.getFocusedNode({ includeNode: true }))) {
+    await focusOverhangIcon('syncplayIcon');
+  }
+  const groupsBefore = await listGroups(session);
+  // The list answers late, so the second press lands while the first one's fetch is in flight.
+  await failRequests([{ prefix: 'syncPlayGroups', kind: 'slow', ms: 2000 }]);
+  try {
+    await press(ecp.Key.Ok);
+    await press(ecp.Key.Ok);
+    await waitFor('#appWaitHost.openWaits', (v) => v && Object.keys(v).length >= 1, {
+      read: getVal,
+      timeout: 5000,
+      label: 'the list fetch holds a wait',
+    });
+    const waits = await getVal('#appWaitHost.openWaits');
+    expect(Object.keys(waits), 'one wait for two presses').toHaveLength(1);
+
+    await waitMenuRows(groupsBefore.length + 1, 'the list after the slow answer');
+  } finally {
+    await failRequests([]);
+  }
+  await press(ecp.Key.Back);
+  await waitDialogClosed('SyncPlay menu dismissed', { timeout: 10000 });
+  await waitFor('#appWaitHost.openWaits', (v) => v && Object.keys(v).length === 0, {
+    read: getVal,
+    // Far inside the wait's own time limit, so the limit cannot be what ended it.
+    timeout: 10000,
+    label: 'no wait left open after the menu closed',
+  });
+  expect(await getActiveVal('opacity'), 'the screen is not left hidden by a wait').toBe(1);
 });
 
 it('OK on a group joins it and makes the icon active; the icon then offers Leave Group, which leaves', async (testCtx) => {

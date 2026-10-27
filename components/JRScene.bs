@@ -90,6 +90,9 @@ sub init()
   ' The SyncPlay menu's open dialog and its rows (openSyncPlayMenu); one at a time.
   m.syncPlayDialog = invalid
   m.syncPlayRows = invalid
+  ' The pressed-action wait of the menu's group-list fetch, and the count that names each fetch.
+  m.syncPlayWait = invalid
+  m.syncPlayFetchCount = 0
   ' Whether initRouter has registered the SyncPlay manager's observers (once per app run).
   m.isObservingSyncPlay = false
 
@@ -1190,6 +1193,8 @@ end sub
 ' ---------------------------------------------------------------------------
 sub openSyncPlayMenu()
   if isValid(m.syncPlayDialog) then return
+  ' The overhang keeps the focus during the fetch, so a second press arrives here: it is ignored.
+  if appWaits.isOpen(m.syncPlayWait) then return
   if not syncPlayMenu.canJoin(syncPlayAccess()) then return ' the icon is not shown then; a stale press
   req = GetApi().BuildGetSyncPlayGroupsRequest()
   if not isValid(req)
@@ -1197,7 +1202,11 @@ sub openSyncPlayMenu()
     return
   end if
   wait = appWaits.begin(LoadingKind.ACTION)
-  promises.chain(fetchAsync(req, "syncPlayGroups"), { wait: wait }).then(sub(res as object, ctx as object)
+  m.syncPlayWait = wait
+  ' Each fetch has its own id: fetchAsync keys its pending requests by id, and a repeated id
+  ' would replace the earlier fetch, which would then never settle.
+  m.syncPlayFetchCount++
+  promises.chain(fetchAsync(req, "syncPlayGroups-" + m.syncPlayFetchCount.toStr().trim()), { wait: wait }).then(sub(res as object, ctx as object)
     if isValid(ctx.wait) and not appWaits.isOpen(ctx.wait) then return ' Back ended it: the viewer moved on
     appWaits.done(ctx.wait)
     if res.ok
