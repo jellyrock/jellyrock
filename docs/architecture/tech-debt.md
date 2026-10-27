@@ -173,8 +173,8 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 #### `manual-theme-cascade`
 
-- **area**: `source/utils/globals.bs` (`applyThemeColorOverrides`), `components/data/SceneManager.bs` (`refreshThemeColors`, `reloadHome`), callers in `components/settings/settings.bs` (`performSettingsExit()`) and `source/utils/session.bs` (`Login()`, `Logout()`)
-- **issue**: A theme change is a manual chain. `applyThemeColorOverrides` writes `m.global.constants`, `refreshThemeColors` restyles the scene background and the overhang, and `reloadHome` rebuilds the whole Home route. Each caller runs its own subset: `performSettingsExit` runs all three, `Login()` runs the first two, and `Logout()` resets the colors and refreshes. A component that caches theme colors at construction misses the change until it is rebuilt.
+- **area**: `source/utils/globals.bs` (`applyThemeColorOverrides`), `components/data/SceneManager.bs` (`refreshThemeColors`, `reloadHome`), callers in `components/settings/settings.bs` (`radioSettingChanged()`, `onScreenHidden()`, `performSettingsExit()`) and `source/utils/session.bs` (`Login()`, `Logout()`)
+- **issue**: A theme change is a manual chain. `applyThemeColorOverrides` writes `m.global.constants`, `refreshThemeColors` restyles the scene background and the overhang, and `reloadHome` rebuilds the whole Home route. Each caller runs its own subset: Settings applies a theme choice at once in `radioSettingChanged` (the first step, setting `m.themeColorsChanged`), restyles in `onScreenHidden` (the second step, when that flag is set), and `performSettingsExit` runs all three on the way out. `Login()` runs the first two, and `Logout()` resets the colors and refreshes. A component that caches theme colors at construction misses the change until it is rebuilt.
 - **direction**: Either (a) components read colors from `m.global.constants` in their handlers, not in `init`, or (b) a "theme" node on `m.global` that components observe, replacing `reloadHome` as a blunt rebuild.
 
 #### `backdrop-ownership-guard`
@@ -675,8 +675,8 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 #### `bare-router-navigate-calls-skip-refusal-retry`
 
 - **area**: `components/ItemDetails.bs`, `components/ItemGrid/BaseGridView.bs`, `components/search/SearchScreen.bs`, `components/home/Home.bs` (the voice-search and item-open `sgrouter.navigateTo` calls)
-- **issue**: `JRScene.navigateThenFocus` retries a navigation the router refused as "already in progress" (decision `refused-navigation-retried-on-message`). Home's search and settings actions use it through `routerNavigate`. The other direct `sgrouter.navigateTo` calls do not, so a press that lands before the previous navigation ends can still be lost, and most of those calls do not log the rejection either.
-- **direction**: Route them through `routerNavigate`, or give them a shared wrapper. Check first whether any of those screens can be pressed in the window after Back: only Home's overhang has been seen to hit it.
+- **issue**: `JRScene.navigateThenFocus` retries a navigation the router refused as "already in progress" (decision `refused-navigation-retried-on-message`). The overhang cluster's search and settings actions on every screen use it through `routerNavigate` (`JRScene.onOverhangIconAction`), as do Home's options-panel actions. The remaining direct `sgrouter.navigateTo` calls, the item-open and link calls, do not, so a press that lands before the previous navigation ends can still be lost, and most of those calls do not log the rejection either.
+- **direction**: Route the remaining item-open and link calls (`ItemDetails`, `BaseGridView`, `SearchScreen`, Home's voice search) through `routerNavigate`, or give them a shared wrapper. Check first whether any of those screens can be pressed in the window after Back: only the overhang has been seen to hit it.
 
 ## Recently removed: don't go searching for these
 

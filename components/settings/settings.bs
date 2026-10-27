@@ -28,12 +28,10 @@ sub init()
 
   ' Overhang config: declarative fields projected onto the overhang by JRScene (registerOverhangData).
   m.top.isLogoVisible = true
-  m.top.shouldShowUserDropdown = true
 
   m.userLocation = []
   m.themeColorsChanged = false
   m.languageChanged = false
-  m.customColorBackup = invalid
 
   ' Load available languages for the language picker
   languagesJson = ReadAsciiFile("pkg:/locale/languages.json")
@@ -207,13 +205,14 @@ sub onHexKeyGridSubmit()
     return
   end if
 
-  ' Track if theme color changed (requires UI refresh on exit)
-  if selectedSetting.settingName.left(12) = "uiThemeColor"
-    m.themeColorsChanged = true
-  end if
-
   ' Update node field - observer handles registry persistence
   user.settings.Save(selectedSetting.settingName, newValue)
+
+  ' A theme color applies when chosen; the screens built after this one use it
+  if selectedSetting.settingName.left(12) = "uiThemeColor"
+    m.themeColorsChanged = true
+    applyThemeColorOverrides(m.global.user.settings)
+  end if
 
   m.settingsMenu.setFocus(true)
 end sub
@@ -253,13 +252,14 @@ sub onResetDialogResponse()
 
   defaultValue = configEntry.default
 
-  ' Track if theme color changed (requires UI refresh on exit)
-  if selectedSetting.settingName.left(12) = "uiThemeColor"
-    m.themeColorsChanged = true
-  end if
-
   ' Update node field - observer handles registry persistence
   user.settings.Save(selectedSetting.settingName, defaultValue)
+
+  ' A theme color applies when chosen; the screens built after this one use it
+  if selectedSetting.settingName.left(12) = "uiThemeColor"
+    m.themeColorsChanged = true
+    applyThemeColorOverrides(m.global.user.settings)
+  end if
 
   ' Update the UI
   m.hexSetting.text = defaultValue
@@ -401,7 +401,31 @@ sub LoadMenu(configSection)
       end if
     end if
   end for
+
+  ' Whose settings these are, as the overhang's status after the title: the signed-in user's,
+  ' or everyone's on the device inside a group of only global settings
+  if isDeviceWideSection(configSection)
+    m.top.overhangStatus = translate(translationKeys.LabelEveryoneOnThisDevice)
+  else
+    m.top.overhangStatus = m.global.user.name
+  end if
 end sub
+
+' True when every setting in the section, at any depth, is saved for everyone on the device
+' (isGlobalSetting): the Global group. The root mixes both, so it is the user's.
+function isDeviceWideSection(section as object) as boolean
+  hasSetting = false
+  for each item in section.children
+    if isValid(item.settingName)
+      if not isGlobalSetting(item.settingName) then return false
+      hasSetting = true
+    else if isValid(item.children)
+      if not isDeviceWideSection(item) then return false
+      hasSetting = true
+    end if
+  end for
+  return hasSetting
+end function
 
 sub settingFocused()
   ' The right panel has landed. Resolved at the TOP because this handler has an early
@@ -570,26 +594,15 @@ sub radioSettingChanged()
   selectedOption = selectedSetting.options[m.radioSetting.checkedItem]
   newValue = selectedOption.id
 
-  ' Backup custom colors before applying a preset (so user can switch back)
-  if isValid(selectedOption.presetValues)
-    currentTheme = m.global.user.settings.uiTheme
-    if currentTheme = "custom" or currentTheme = ""
-      backupCustomColors()
-    end if
-  else if newValue = "custom" and isValid(m.customColorBackup)
-    ' Switching to Custom - restore backed up colors
-    restoreCustomColors()
-  end if
-
   ' Update node field - observer handles registry persistence
   user.settings.Save(selectedSetting.settingName, newValue)
 
-  ' Apply preset values if the selected option has them
-  if isValid(selectedOption.presetValues)
-    for each presetKey in selectedOption.presetValues
-      user.settings.Save(presetKey, selectedOption.presetValues[presetKey])
-    end for
+  ' A theme choice applies when made. A preset never writes the color keys, so the custom
+  ' colors stay saved for the day the user picks Custom again. Choosing Custom changes the
+  ' colors too, so any uiTheme change counts.
+  if selectedSetting.settingName = "uiTheme"
     m.themeColorsChanged = true
+    applyThemeColorOverrides(m.global.user.settings)
   end if
 
   ' Refresh menu if sibling items have visibleWhen referencing this setting
@@ -673,42 +686,6 @@ sub refreshCurrentMenu()
   end if
 end sub
 
-' Backup current custom color values before applying a preset
-sub backupCustomColors()
-  userSettings = m.global.user.settings
-  m.customColorBackup = {
-    uiThemeColorPrimary: userSettings.uiThemeColorPrimary,
-    uiThemeColorSecondary: userSettings.uiThemeColorSecondary,
-    uiThemeColorBackgroundPrimary: userSettings.uiThemeColorBackgroundPrimary,
-    uiThemeColorBackgroundSecondary: userSettings.uiThemeColorBackgroundSecondary,
-    uiThemeColorTextPrimary: userSettings.uiThemeColorTextPrimary,
-    uiThemeColorTextSecondary: userSettings.uiThemeColorTextSecondary,
-    uiThemeColorTextDisabled: userSettings.uiThemeColorTextDisabled
-  }
-end sub
-
-' Restore custom color values from backup
-sub restoreCustomColors()
-  if not isValid(m.customColorBackup) then return
-  for each key in m.customColorBackup
-    user.settings.Save(key, m.customColorBackup[key])
-  end for
-  m.themeColorsChanged = true
-end sub
-
-' Check if the current color values differ from the backed-up custom colors
-' @return {boolean} - true if any color has changed from the backup
-function hasCustomColorsChanged() as boolean
-  if not isValid(m.customColorBackup) then return false
-  userSettings = m.global.user.settings
-  for each key in m.customColorBackup
-    if userSettings[key] <> m.customColorBackup[key]
-      return true
-    end if
-  end for
-  return false
-end function
-
 ' Show confirmation dialog before resetting all user settings
 sub confirmResetUserSettings()
   m.resetConfirmDialog = showConfirmDialog(translate(translationKeys.LabelResetUserSettings), translate(translationKeys.MessageAreYouSureYouWantTo2), "onResetUserSettingsResponse", translate(translationKeys.ButtonReset), translate(translationKeys.ButtonCancel))
@@ -791,9 +768,16 @@ sub onScreenShown()
 end sub
 
 ' JRScreen hook that gets ran as needed.
+' Runs when Settings is covered (search opened from the overhang, say) and when it closes.
+' A theme change applied while Settings was open restyles the background and the overhang now,
+' so the screen that covers Settings does not start in the old colors.
 ' Assumes settings were changed and they affect the device profile.
 ' Posts a new device profile to the server via fire-and-forget side effect.
 sub onScreenHidden()
+  if m.themeColorsChanged
+    m.global.sceneManager.callFunc("refreshThemeColors")
+  end if
+
   SubmitSideEffect(GetApi().BuildPostSessionCapabilitiesRequest(getDeviceCapabilities()))
 end sub
 
@@ -804,39 +788,6 @@ function isFormInFocus() as boolean
   end if
   return false
 end function
-
-' Exit settings screen, refreshing theme colors only if they changed
-' Shows confirmation dialog if custom colors would be permanently lost
-sub exitSettingsAndReloadHome()
-  ' Check if custom colors will be lost (user switched from Custom to a preset)
-  if isValid(m.customColorBackup) and m.global.user.settings.uiTheme <> "custom" and hasCustomColorsChanged()
-    ' Yes = replace the custom colors. The helper puts the affirmative on the
-    ' RIGHT (cancel-left convention), so this reads [No, Yes] rather than the
-    ' [Yes, No] the legacy call used, consistent with every other confirm now.
-    m.exitConfirmDialog = showConfirmDialog(translate(translationKeys.LabelReplaceCustomColors), translate(translationKeys.MessageYourCustomColorsWillBeReplaced), "onExitConfirmResponse", translate(translationKeys.LabelYes), translate(translationKeys.LabelNo))
-    return
-  end if
-
-  performSettingsExit()
-end sub
-
-' Handle user response from exit confirmation dialog
-sub onExitConfirmResponse()
-  dialog = m.exitConfirmDialog
-  m.exitConfirmDialog = invalid
-  if not isValid(dialog) or not isValid(dialog.result) or not dialog.result.confirmed
-    ' User selected "No" or closed dialog - restore custom colors and stay
-    restoreCustomColors()
-    user.settings.Save("uiTheme", "custom")
-    refreshCurrentMenu()
-    m.settingsMenu.setFocus(true)
-    return
-  end if
-
-  ' User confirmed - clear backup and exit
-  m.customColorBackup = invalid
-  performSettingsExit()
-end sub
 
 ' Handle language selection from LanguagePicker component
 sub onLanguagePickerSelected()
@@ -873,7 +824,7 @@ sub onLanguagePickerSelected()
   end if
 end sub
 
-' Perform the actual settings exit (apply theme changes and navigate)
+' Perform the settings exit: reload Home when a theme or language changed, go back otherwise
 sub performSettingsExit()
   if m.themeColorsChanged or m.languageChanged
     if m.themeColorsChanged
@@ -881,13 +832,21 @@ sub performSettingsExit()
       m.global.sceneManager.callFunc("refreshThemeColors")
     end if
     ' reloadHome signals main.bs to re-navigate the router to "/" for a fresh,
-    ' re-themed/re-translated Home (see JRScene.reloadRoutedHome).
+    ' re-themed/re-translated Home, and on to the screen Settings was opened from
+    ' (JRScene.reloadRoutedHome).
     m.global.sceneManager.callFunc("reloadHome")
   else
-    ' Settings is a routed view: pop it via the router (back to Home).
+    ' Settings is a routed view: pop it via the router (back to the screen it was opened from).
     sgrouter.goBack()
   end if
 end sub
+
+' Leaving Settings reloads Home when a theme or language changed, and goes back otherwise.
+' JRScene calls this on Back from the overhang row, and the top-level Back and the Options key share it.
+function leaveScreen() as boolean
+  performSettingsExit()
+  return true
+end function
 
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
@@ -899,24 +858,22 @@ function onKeyEvent(key as string, press as boolean) as boolean
     m.settingsMenu.setFocus(true)
     return true
   else if key = "back" and isValid(m.settingsMenu.focusedChild) and m.userLocation.Count() = 1
-    ' Exiting Settings - apply theme colors and reload home screen
-    exitSettingsAndReloadHome()
-    return true
+    ' Exiting Settings from the top menu
+    return leaveScreen()
   end if
 
   if key = "options"
-    exitSettingsAndReloadHome()
-    return true
+    return leaveScreen()
   end if
 
   if key = "right"
     settingSelected()
   end if
 
+  ' UP from the first menu item enters the overhang row, as on every screen (it used to wrap
+  ' to the last item; DOWN from the last still wraps to the first).
   if key = "up" and isValid(m.settingsMenu.focusedChild) and m.settingsMenu.itemFocused = 0
-    m.settingsMenu.jumpToItem = m.settingsMenu.content.getChildCount() - 1
-
-    return true
+    return focusOverhang()
   end if
 
   if key = "down" and isValid(m.settingsMenu.focusedChild)
@@ -953,10 +910,8 @@ sub onDestroy()
   ' Drop any confirmation still on screen. It is a scene child, so it would
   ' otherwise outlive this view (see abandonDialog in source/utils/dialogs.bs)
   abandonDialog(m.resetConfirmDialog)
-  abandonDialog(m.exitConfirmDialog)
   abandonDialog(m.rangeConfirmDialog)
   m.resetConfirmDialog = invalid
-  m.exitConfirmDialog = invalid
   m.rangeConfirmDialog = invalid
   ' Cleared with their dialog, not only alongside it (see onIntegerRangeDialogResponse).
   m.rangeConfirmSettingName = invalid
@@ -977,5 +932,4 @@ sub onDestroy()
   ' Clear data structures
   m.userLocation = invalid
   m.configTree = invalid
-  m.customColorBackup = invalid
 end sub

@@ -271,6 +271,7 @@ end sub
 ' onScreenShown, and the base restores lastFocus again, undoing a restore that followed what
 ' changed while this view was suspended. Same trap and same fix as Home.restoreHomeFocus.
 sub restoreScreenFocus()
+  if restoreOverhangIconFocus(true) then return
   restoreGridFocus()
 end sub
 
@@ -1618,6 +1619,21 @@ function onKeyEvent(key as string, press as boolean) as boolean
   if key = "left" and m.voiceBox.isinFocusChain()
     focusContent()
     m.voiceBox.setFocus(false)
+  end if
+
+  ' UP from the content's top enters the overhang row: the grid's first row, the genre rows'
+  ' first row, or the retry button of a failed load. The alpha menu and the TV guide keep Up.
+  if key = "up"
+    atTop = false
+    if m.itemGrid.isInFocusChain()
+      atTop = m.itemGrid.itemFocused >= 0 and m.itemGrid.itemFocused < m.itemGrid.numColumns
+    else if m.genreList.isInFocusChain()
+      rowItemFocused = m.genreList.rowItemFocused
+      atTop = type(rowItemFocused) = "roArray" and rowItemFocused.count() >= 2 and rowItemFocused[0] = 0
+    else if m.retryButton.hasFocus()
+      atTop = true
+    end if
+    if atTop then return focusOverhang()
   end if
 
   ' Photos go to ItemDetails like any other item (OK, then itemSelected, then onItemSelected).

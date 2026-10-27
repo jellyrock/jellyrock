@@ -107,6 +107,8 @@ end function
 ' LEFT its outlet (to the overhang, a dialog or AppWaitHost). Taking focus then would steal it
 ' back, so that notice is ignored while another node holds focus. The call right after the view
 ' is shown always takes focus, and a stranded focus (on the bare scene) is still recovered.
+' Any later call leaves focus on the overhang row when it holds it: the router claims focus once a
+' navigation settles, and a viewer who pressed Up meanwhile would be pulled back into the screen.
 ' Screens override restoreScreenFocus, not this.
 function handleFocus(data = {} as object) as boolean
   wasShowPending = m.isShowFocusPending = true
@@ -114,15 +116,79 @@ function handleFocus(data = {} as object) as boolean
   if not wasShowPending and isValid(data) and data.routerFocused = false and isFocusHeldElsewhere()
     return false
   end if
+  if not wasShowPending and isOverhangRowFocused()
+    ' The icon the viewer is on already holds focus. A leftover return icon would make the next
+    ' Down focus the icon instead of the screen.
+    m.top.overhangReturnIcon = ""
+    return true
+  end if
   restoreScreenFocus()
   return true
 end function
 
-' Where this screen takes focus. Mirrors onScreenShown's focus rule (restore the saved
-' descendant, else focus the view root). Screens that restore focus differently override this.
+' Where this screen takes focus: the cluster icon this screen was left by, if the viewer is
+' coming back from it, else the saved descendant, else the view root (restoreFocus). Screens
+' that restore their own focus differently override this and call restoreOverhangIconFocus
+' first themselves.
 sub restoreScreenFocus()
+  if restoreOverhangIconFocus(true) then return
   restoreFocus(m.top)
 end sub
+
+' ---------------------------------------------------------------------------
+' The overhang row: Up from the screen enters it, Down leaves it, a cluster press
+' leaves the screen and comes back to the icon.
+' ---------------------------------------------------------------------------
+
+' Up from the screen's top: hand focus to the overhang row, at the element Down last left
+' it from on this visit, else its first. The focus is saved first, so Down restores it.
+' Returns false when the overhang is hidden or has nothing to focus, so the screen can keep
+' the press.
+function focusOverhang() as boolean
+  overhang = m.top.getScene().findNode("overhang")
+  if not isValid(overhang) or not overhang.visible then return false
+  saveLastFocus()
+  return overhang.callFunc("focusRow") = true
+end function
+
+' JRScene: Down left the overhang row while this screen is active.
+sub returnFocusFromOverhang()
+  restoreScreenFocus()
+end sub
+
+' JRScene: a cluster icon was pressed while this screen is active. The base handles none;
+' a screen that does overrides this and returns true.
+function onOverhangAction(_id as string) as boolean
+  return false
+end function
+
+' Focus the cluster icon this screen was left by (overhangReturnIcon), when the viewer is
+' coming back from it and the row still shows it. `consume` forgets it: the resume's
+' restoreScreenFocus does, a peek from onScreenShown does not, since handleFocus follows it
+' and would otherwise find nothing. Returns whether an icon took focus.
+function restoreOverhangIconFocus(consume as boolean) as boolean
+  id = m.top.overhangReturnIcon
+  if id = "" then return false
+  if consume then m.top.overhangReturnIcon = ""
+  overhang = m.top.getScene().findNode("overhang")
+  if not isValid(overhang) or not overhang.visible then return false
+  icon = overhang.callFunc("getIcon", id)
+  if not isValid(icon) or not icon.visible then return false
+  icon.setFocus(true)
+  return true
+end function
+
+' The one way to leave this screen. JRScene calls it on Back from the overhang row, and it
+' returns true when the screen went back. A screen with work to do on leaving overrides it.
+function leaveScreen() as boolean
+  return sgrouter.goBack() = true
+end function
+
+' True when the overhang row (or a node in it) holds focus.
+function isOverhangRowFocused() as boolean
+  overhang = m.top.getScene().findNode("overhang")
+  return isValid(overhang) and overhang.isInFocusChain()
+end function
 
 ' True when a node outside the bare scene holds focus. The scene itself holding it (or nothing)
 ' means focus is stranded.

@@ -73,7 +73,7 @@ The types the Settings screen handles:
 Two optional keys:
 
 - **`visibleWhen`** shows an entry only while another setting has a value, with no code. The **Custom Theme Colors** group uses `"visibleWhen": { "settingName": "uiTheme", "value": "custom" }`. `LoadMenu()` in `components/settings/settings.bs` filters the menu with `isSettingVisible()`, and the menu redraws when the controlling setting changes.
-- **`presetValues`**, on a radio option, sets several settings at once when the user picks it. Each `uiTheme` option sets the theme's colors; options without it set only the radio's value.
+- **`presetValues`**, on a radio option, holds values the app reads while that option is chosen. Each `uiTheme` option lists the theme's colors, and `applyThemeColorOverrides()` reads them from there; picking a theme saves only `uiTheme` and never writes the `uiThemeColor*` settings, so the Custom colors stay as the user set them.
 
 **An override of a web client setting** uses three options: `webclient` (the default: use the server's value), `enabled` and `disabled`.
 

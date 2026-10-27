@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-25
+last-updated: 2026-10-26
 ---
 
 # Progress
@@ -833,17 +833,17 @@ A message the server splits into several frames is never posted. The last frame 
 
 Not done there: it changes how every inbound message is handed over and needs its own spec. Closes with: `_decode_frame` passes the first fragment's opcode for a final continuation frame, a spec case delivers a three-fragment text message intact, and the existing cases still pass.
 
-#### The overhang's fixed cluster and its focus plumbing exist on Home only `[fid: overhang-cluster-on-every-screen]` `[captured 2026-10-25]`
-
-The one-row overhang (`JROverhang`) builds the fixed Search and Settings cluster as a component, but only Home declares `shouldShowIcons`, and only Home wires Up into the row and Down back out. The design (`docs/architecture/design-system.md`, "The overhang row") says the cluster is the same on every screen that shows the overhang, so the SyncPlay icon lands beside it everywhere. Settings already declares the user dropdown with no focus path to it, a pre-existing gap of the same shape.
-
-What closes it: a `JRScreen`-level hook so Up from a screen's top row enters the overhang and Down returns to the screen's own focus (today that logic is `Home.onKeyEvent`, `restoreHomeFocus` and `onIconFocusReturn`); the cluster's actions routed by `JRScene` (`routerNavigate` to `/search` and `/settings`) instead of `Home.handleHomeMenuAction`; every routed screen declaring the cluster; a decision for screens that hide the clock (`SearchScreen`), where the cluster sits against the action-safe edge at x 1824 and its last icon's focus box overhangs that edge by `iconBarNav.BOX_OVERHANG`; and RTA coverage of the walk on a library screen and `ItemDetails`, which show only a title and the clock today. `overhangRow.nextFocus` already routes Left and Right for every combination of shown elements. Its own PR after the overhang one.
-
 #### Audit every size and drawn position outside the overhang against the 3 pixel grid `[fid: app-wide-3px-grid-audit]` `[captured 2026-10-25]`
 
 The operator's rule (2026-10-25): every size and every drawn position is a multiple of 3, the position counted as the sum of the translations above it, because the app lays out at 1080p (`ui_resolutions=fhd`) and a 720p device scales by two thirds. The overhang now meets it, gated by `JROverhangLayout.spec.bs` and measured on device with `tests/rta/lib/ink.js`; the dialogs already round onto it (`snapToGrid` in `source/utils/pixelGrid.bs`). The overhang's glyphs and every `IconButton` icon are on it too (63 pixel canvases in a 63 pixel load box). Icons still off it: the canvases at 16, 24, 35, 36 and 48 pixels, and the 96 pixel `hd`, `speed` and `versions`, whose HD copies are 64. One case to check first: a `TextButton` box's height is the font size × 0.7 plus twice its padding, which need not be a multiple of 3 (`shouldSnapToGrid` covers widths only), and the clock in the video player keeps its 64 pixel label boxes.
 
 Not done now: it touches every screen, so it needs its own captures at 720p. What closes it: a pass over each screen's static layout (constants, XML translations and sizes, computed boxes) and every icon canvas against the grid, fixing or recording each exception in `docs/architecture/design-system.md`, with 720p captures on the low-end Stick before and after.
+
+#### Browse while music plays: bring the overhang cluster back to playback screens `[fid: browse-while-music-plays]` `[captured 2026-10-26]`
+
+The overhang cluster is hidden on playback screens (`JRScene.registerOverhangData`, `appWaits.isPlaybackScreen`) because the app has no now-playing control. Leaving the audio player through search or Settings left the music playing with no screen to stop it from: measured on a Stick 4K (Roku OS 15.3.4, 2026-10-25), a theme reload from Settings opened over the audio player landed on Home with the song still playing.
+
+What closes it: a now-playing control outside the player that returns to it; a rule for starting other media while a player is suspended under another screen (untested: two `AudioPlayerView`s observing the shared `m.global.audioPlayer`); then the cluster on playback screens again. Not now: it needs its own design.
 
 ### source
 
@@ -984,6 +984,43 @@ Not now: it is a feature, not a fix, and it puts a download of up to a few megab
 **Settings → Playback → Bitrate Limit** has two settings, the Enable limit toggle (`playbackBitrateMaxLimited`) and the Maximum Bitrate number (`playbackBitrateLimit`). Since 0 stopped meaning Roku's per-codec ceilings (decision `bitrate-zero-means-no-limit`), "on with 0" and "off" behave the same, so the toggle adds a step and no choice: a number alone, 0 for no limit, says everything. `playbackCaps.settingsBitrateMbps()` is the one reader of the pair.
 
 Not now: removing a setting needs a registry migration for users who have the toggle off with a number saved (they must end up with 0), and its own PR. Closes when the toggle is gone through `/new-migration`, or a decision note keeps it on purpose.
+
+#### Cast targets on one Roku cannot be told apart: name each the same open and closed, with dev builds marked first `[fid: cast-target-names-per-build]` `[captured 2026-10-26]`
+
+For the repo `jellyrock/jellyfin-plugin-jellyrock` first, then this one. The mailbox refused the message (that repo is not registered on this machine), so it waits here. The playbook repo has a pinned message (`onboard-jellyfin-plugin-jellyrock`, sent 2026-10-26) to onboard and register the plugin repo and reply when done. Step 1: once that reply arrives, move this entry across with `mailbox.sh send jellyrock/jellyfin-plugin-jellyrock --from cast-target-names-per-build`; before then, paste everything under "Message for the plugin repo" into a session there. Step 2, once the plugin settles the `/pair` field: in this repo, add one name helper used by the auth header (`source/api/baseRequest.bs`, `Device=`) and `buildPairPayload` (`source/remotecontrol/remoteProtocol.bs`), with a unit spec, so a target has one name open and closed, and a dev build's name starts with "Dev · ".
+
+Message for the plugin repo:
+
+Investigate, then propose a plan (no code until it is approved), for a cast-list naming problem. It spans this repo and jellyrock/jellyrock (the app).
+
+What happened: on one Roku with two JellyRock apps installed (the published channel, app id 819325, and a sideloaded dev build, app id "dev"), the `jellyfin-web` "Play On" list showed two targets, "JellyRock" and "Streaming Stick 4K (3820X)", with nothing saying which was which. "JellyRock" was the published channel's cold-launch phantom; choosing it woke that app over the running dev build. Waking the other build is fine and intended. The problem is that the user cannot tell the targets apart.
+
+Why the names differ (read from both repositories, 2026-10-26; app side at `jellyrock/jellyrock@861f4047`):
+
+- Each app on a Roku gets its own roDeviceInfo.GetChannelClientId(), which JellyRock uses as its Jellyfin `DeviceId`, so the two apps pair as two devices. That part is correct.
+- Open, a target's name comes from the app's auth header: Device="<`GetModelDisplayName()`> (<`GetModel()`>)" (app: source/api/baseRequest.bs, source/utils/globals.bs). It carries no dev marker, and this plugin never rewrites a live session's name.
+- Closed, `PhantomSessionService.RefreshPairingAsync` reuses the existing session's `DeviceName` when one exists, else `DefaultDeviceName(record)`: "JellyRock" or "JellyRock (dev)". So one target's name changes with its state and over time, and only one state marks a dev build.
+- The /pair report (app: `source/remotecontrol/remoteProtocol.bs` `buildPairPayload`) sends the IP addresses, `appId` and `isDev`, but no name.
+
+ECP /query/device-info on three Roku devices (2026-10-26) returns user-device-name (the name set in the Roku's settings: "Roku Ultra", "Streaming Stick 4K", "3600X"), user-device-location ("Living room", "Office", "Office"), friendly-device-name (equal to user-device-name on all three), model-name, model-number and default-device-name ("<model> - <serial>"). Two of them share a location.
+
+Proposed shape, to confirm or replace with something better:
+
+1. One target, one name, the same open and closed.
+2. The name leads with the build marker for a dev build and is unmarked for the published channel: "Dev · <Roku name>" and "<Roku name>". Dev builds are the edge case; the marker goes first so it cannot be missed or cut off.
+3. The app is the single source: it builds the name once and sends it in its auth header and in /pair (a new optional field, additive per the /pair contract). This plugin stores it on `PairingRecord` and uses it for the phantom, falling back to `DefaultDeviceName` only for an older app that does not send it.
+Ruled out: the phantom copying the live session's name from the same `WakeIp` (two identical names); this plugin computing a name from ECP device-info (two sources that drift).
+
+Investigate before planning:
+
+- What the `jellyfin-web` Play On list renders for a session (`DeviceName` only, or also the client name or an icon), on web and mobile, and whether it truncates long names. The official Jellyfin Roku app (592369) was installed on the same Roku and is listed too: decide whether the published name needs "JellyRock" in it to tell it from Jellyfin.
+- Every naming state of a target (never connected, open, closed with a cached live-session name, closed after the session expired) and what each shows today, with a test per state.
+- Which Roku name to use: user-device-name alone, or with user-device-location when two Roku devices share a name; and what `roDeviceInfo.GetFriendlyName()` returns in the app (the app's globals.bs treats it as "<model> - <serial>", while the ECP field friendly-device-name is the user-set name). Check on a real Roku.
+- How a beta or second published channel would be marked, since `roAppInfo.IsDev()` is true only for a sideload.
+- Whether `IncludeDevelopmentBuilds`' default and wording still fit once dev targets are named.
+- The exact /pair field name and version handling on both sides.
+
+The app-side half (one name helper used by the auth header and `buildPairPayload`, plus its unit spec) waits on the /pair field this plugin settles. When the contract is decided, send a message back to jellyrock/jellyrock naming the field and its rules.
 
 ### api
 

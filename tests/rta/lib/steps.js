@@ -1231,8 +1231,8 @@ export async function walkHomeToFirstRow({ timeout = 10000, interval = 400 } = {
  * reinstated and invisible. `subtype` is set by the component rather than by the call site,
  * so it cannot be lost that way.
  *
- * The app does create such nodes: `JROverhang` appends its `JRTabBar` with `CreateObject` and
- * assigns no id (`components/JROverhang.bs`), which is on this very walk's path. Home's
+ * The app did create such a node: `JROverhang` appended its `JRTabBar` with `CreateObject` and
+ * no id until 2026-10-25 (it is `#tabBar` now), on this very walk's path. Home's
  * row lists are the other example and a sharper one, for a different reason: #864
  * (2026-08-26) made `onTabChanged` assign both ids, so a tab ROUND TRIP no longer loses
  * them, but only one list is in the scene at a time, so under the other tab the id is not

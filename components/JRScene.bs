@@ -8,6 +8,7 @@ import "pkg:/source/utils/loadingStages.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/refusedNavigation.bs"
+import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/translate.bs"
 ' JRScene is a Scene (not a sgrouter_View), so it does not inherit the router scripts from
 ' sgrouter_View.xml. Import them here so JRScene.bs can call the sgrouter.* / promises.*
@@ -75,6 +76,13 @@ sub init()
   ' already exists as a child, so cache it now.
   m.overhang = m.top.findNode("overhang")
   m.previousRoutedView = invalid
+  ' The overhang row's presses and exits are handled here, for every screen (overhang row).
+  m.overhang.observeField("iconAction", "onOverhangIconAction")
+  m.overhang.observeField("userMenuAction", "onOverhangUserMenuAction")
+  m.overhang.observeField("requestFocusReturn", "onOverhangFocusReturn")
+  ' The route Settings was last opened from ({ path, context }), for reloadRoutedHome; invalid
+  ' when that opening had no route to return to (a player).
+  m.settingsOrigin = invalid
 
   ' Hide backdrop until setting is resolved on first backdrop request (lazy initialization)
   m.imageFader.visible = false
@@ -352,9 +360,22 @@ function onKeyEvent(key as string, press as boolean) as boolean
     ' Back lands here: cancel the start and show that screen again, as Back from the player
     ' would. Mid-navigation it was swallowed above: the settling navigation mounts the player.
     if m.appWaitHost.callFunc("cancelOnBack") then return true
+    ' Focus in the overhang row: the row is the app's chrome, so Back from it leaves the screen,
+    ' one press per screen, through the screen's own leaveScreen. The row sits outside the
+    ' outlet, so the router never saw the key. Focus goes back to the screen first, so the
+    ' screen that resumes (or a Settings that stays open) is not left with focus in the row.
+    ' At the history root, or on a view with no leaveScreen, this falls through to the exit prompt.
+    if m.overhang.isInFocusChain()
+      onOverhangFocusReturn()
+      view = getActiveView()
+      if isValid(view) and view.isSubType("JRScreen") and view.callFunc("leaveScreen") = true then return true
+    end if
     showExitConfirmation()
     return true
   else if key = "options"
+    ' From the row, the screen takes focus back first: its panel opens below as usual, and a
+    ' screen that handles the key itself (Settings closes on it) gets the next press.
+    returnFocusFromOverhangRow()
     group = getActiveView()
     if isValid(group) and isValid(group.isOptionsAvailable) and group.isOptionsAvailable
       ' A view can report isOptionsAvailable without owning a panel (PlayerHostView), and the
@@ -503,6 +524,16 @@ end function
 ' It ends the same way, once the destination has mounted, so that screen is never shown again
 ' on the way out; a rejected nav fails it, so it gives the remote back.
 sub navigateThenFocus(routePath as dynamic, context = {} as object, clearSpinner = false as boolean, signInWait = invalid as dynamic)
+  ' Settings can be opened from any screen now; a theme or language change there reloads
+  ' Home, and reloadRoutedHome then returns to this route rather than stranding the viewer
+  ' on Home. Every opening sets the origin, invalid included, so an earlier visit's never
+  ' replays. Not when Settings is already the screen (the gear pressed there: the router
+  ' reuses the view), or the replay would land on Settings again. A path arrives as a
+  ' "String" or an "roString", and a named route as an AA, which cannot be compared to one.
+  if (type(routePath) = "String" or type(routePath) = "roString") and routePath = "/settings"
+    origin = routeOfActiveView()
+    if not isValid(origin) or origin.path <> routePath then m.settingsOrigin = origin
+  end if
   startNavigation({ routePath: routePath, context: context, clearSpinner: clearSpinner, signInWait: signInWait, retried: false })
 end sub
 
@@ -594,24 +625,33 @@ end sub
 ' Navigate routes[index], then chain to the next step once it settles (sgRouter's
 ' navigateTo promise resolves at NavigationEnd, so each .then() defers until the previous
 ' route is fully mounted). The final step takes remote focus. Context carries routes/index
-' (BrightScript closures can't capture locals). The runtime-cast caller
-' (replayDeepLinkReplacingPlayer) is the one user.
+' (BrightScript closures can't capture locals). A step is a path, a named-route AA, or a
+' view's route as { path, context } (routeOfActiveView). The runtime-cast caller
+' (replayDeepLinkReplacingPlayer) and the Settings reload (reloadRoutedHome) use it.
 sub navigateChainStep(routes as object, index as integer)
   if index >= routes.count() then return
-  ' Final step: navigate + take focus + catch is exactly the shared settle tail.
+  entry = routes[index]
+  context = {}
+  if type(entry) = "roAssociativeArray" and isValid(entry.path) and not isValid(entry.name)
+    context = entry.context
+    entry = entry.path
+  end if
+  ' Final entry: navigate + take focus + catch is exactly the shared settle tail.
   if index = routes.count() - 1
-    navigateThenFocus(routes[index])
+    navigateThenFocus(entry, context)
     return
   end if
-  ' Intermediate step: navigate, then chain to the next once it settles. A rejection stops the
-  ' chain (a later step would build on a route that never mounted) and takes focus on whatever IS
+  ' Intermediate entry: navigate, then chain to the next once it settles. A rejection stops the
+  ' chain (a later entry would build on a route that never mounted) and takes focus on whatever IS
   ' mounted, so a failed deep-link replay can't strand the remote.
-  promises.chain(sgrouter.navigateTo(routes[index]), { routes: routes, index: index }).then(sub(_result as object, ctx as object)
+  options = {}
+  if isValidAndNotEmpty(context) then options = { context: context }
+  promises.chain(sgrouter.navigateTo(entry, options), { routes: routes, index: index }).then(sub(_result as object, ctx as object)
     navigateChainStep(ctx.routes, ctx.index + 1)
   end sub).catch(sub(err as object, ctx as object)
     ' Recover before logging, and log err whole (`.message` crashes on a non-AA rejection).
     sgrouter.setFocus({ focus: true })
-    m.log.warn("deep-link route chain step failed; stopping chain", ctx.routes[ctx.index], err)
+    m.log.warn("deep-link route chain entry failed; stopping chain", ctx.routes[ctx.index], err)
   end sub)
 end sub
 
@@ -817,10 +857,30 @@ end sub
 ' main.bs's reloadHomeRequested handler (replaces the old clearScenes +
 ' createAndShowHomeGroup). Navigating to "/" from Settings (the active routed view)
 ' is a component change, so clearStackOnResolve rebuilds Home from scratch: it
-' picks up the new theme constants / reloaded translations.
+' picks up the new theme constants / reloaded translations. Settings opened from another
+' screen (m.settingsOrigin) then navigates on to that route, so the viewer lands where they
+' were, on a fresh instance (its scroll position is not kept) with Home under it.
 sub reloadRoutedHome()
-  sgrouter.navigateTo("/")
+  origin = m.settingsOrigin
+  m.settingsOrigin = invalid
+  if not isValid(origin) or origin.path = "/"
+    sgrouter.navigateTo("/")
+    return
+  end if
+  navigateChainStep(["/", origin], 0)
 end sub
+
+' The active view's route as a chain step ({ path, context }), or invalid when it has none
+' or is a player: a player starts its queue when it mounts, and the reload has already
+' closed the one that was playing, so a reload never returns to one.
+function routeOfActiveView() as object
+  view = getActiveView()
+  if not isValid(view) or not isValid(view.route) or not isValid(view.route.path) then return invalid
+  if appWaits.isPlaybackScreen(view) then return invalid
+  context = view.route.context
+  if not isValid(context) then context = {}
+  return { path: view.route.path, context: context }
+end function
 
 ' Sign-out / change-user / change-server: tear down the whole routed stack before main.bs
 ' re-enters the routed pre-login flow (loginRouter). Without this the routed views would
@@ -967,6 +1027,8 @@ sub registerOverhangData(group as object)
 
     if isValid(group.overhangTitle) then m.overhang.title = group.overhangTitle
     group.observeField("overhangTitle", "updateOverhangTitle")
+    m.overhang.status = group.overhangStatus
+    group.observeField("overhangStatus", "updateOverhangStatus")
 
     ' Logo / icons / user-dropdown: projected from the view's declared fields so they update in
     ' the SAME frame as tabs/title (no transition flicker). Screens declare these; they never poke
@@ -978,8 +1040,12 @@ sub registerOverhangData(group as object)
     m.overhang.isClockVisible = resolveClockVisible(group.isClockVisible)
     group.observeField("isClockVisible", "updateOverhangClock")
 
-    m.overhang.shouldShowIcons = group.shouldShowIcons
-    group.observeField("shouldShowIcons", "updateOverhangIcons")
+    ' The cluster is the same on every screen once a user is signed in, except a player
+    ' (isPlaybackScreen): the app has no now-playing control, so a press there would leave
+    ' its media playing with no screen to stop it from. Where the row was last left from is
+    ' forgotten with the screen.
+    m.overhang.isClusterVisible = user.IsAuthenticated() and not appWaits.isPlaybackScreen(group)
+    m.overhang.callFunc("resetRowMemory")
 
     applyOverhangUserDropdown(group.shouldShowUserDropdown)
     group.observeField("shouldShowUserDropdown", "updateOverhangUserDropdown")
@@ -991,11 +1057,11 @@ sub unregisterOverhangData(group as object)
   ' so only unobserve for those (keeps register/unregister symmetric).
   if isValid(group) and group.isSubType("JRGroup")
     group.unobserveField("overhangTitle")
+    group.unobserveField("overhangStatus")
     group.unobserveField("overhangTabs")
     group.unobserveField("isOverhangVisible")
     group.unobserveField("isLogoVisible")
     group.unobserveField("isClockVisible")
-    group.unobserveField("shouldShowIcons")
     group.unobserveField("shouldShowUserDropdown")
     m.overhang.unobserveField("selectedTabId")
   end if
@@ -1003,6 +1069,10 @@ end sub
 
 sub updateOverhangTitle(msg)
   m.overhang.title = msg.getData()
+end sub
+
+sub updateOverhangStatus(msg)
+  m.overhang.status = msg.getData()
 end sub
 
 sub updateOverhangLogo(msg)
@@ -1019,10 +1089,6 @@ end sub
 function resolveClockVisible(screenWantsClock as boolean) as boolean
   return screenWantsClock and not m.global.user.settings.uiDesignHideClock
 end function
-
-sub updateOverhangIcons(msg)
-  m.overhang.shouldShowIcons = msg.getData()
-end sub
 
 sub updateOverhangUserDropdown(msg)
   applyOverhangUserDropdown(msg.getData())
@@ -1054,3 +1120,56 @@ sub onOverhangTabSelected()
     group.selectedTabId = m.overhang.selectedTabId
   end if
 end sub
+
+' ---------------------------------------------------------------------------
+' Overhang row: presses and exits, for every screen
+'
+' The row belongs to the scene, so its keys are handled once here rather than by each
+' screen. A screen says only when Up leaves its top (JRScreen.focusOverhang) and, if it
+' wants, handles a cluster press itself (onOverhangAction).
+' ---------------------------------------------------------------------------
+
+' A cluster icon was pressed. The active screen gets it first; else search and settings
+' open through the router, and the screen the viewer leaves keeps the icon's id
+' (overhangReturnIcon), so it focuses that icon again on return. The id lives on the screen,
+' not here: each screen of a chain (a library, then search, then Settings) keeps its own,
+' and it goes when the screen does. Through routerNavigate, never a bare
+' sgrouter.navigateTo: a press right after Back can be refused while that navigation is
+' still in flight, and routerNavigate retries it.
+sub onOverhangIconAction()
+  id = m.overhang.iconAction
+  view = getActiveView()
+  if isValid(view) and view.isSubType("JRScreen") and view.callFunc("onOverhangAction", id) = true then return
+  path = ""
+  if id = "search"
+    path = "/search"
+  else if id = "settings"
+    path = "/settings"
+  end if
+  if path = ""
+    m.log.warn("overhang icon with no route", id)
+    return
+  end if
+  if isValid(view) and view.isSubType("JRScreen") then view.overhangReturnIcon = id
+  routerNavigate(path)
+end sub
+
+' A user dropdown item was chosen: relay it to main.bs, which observes this scene field
+' (change user, change server, sign out).
+sub onOverhangUserMenuAction()
+  m.top.userMenuAction = m.overhang.userMenuAction
+end sub
+
+' Down left the row: the active screen takes focus back where it left it.
+sub onOverhangFocusReturn()
+  view = getActiveView()
+  if isValid(view) and view.isSubType("JRScreen") then view.callFunc("returnFocusFromOverhang")
+end sub
+
+' Back or Options pressed while the row holds focus: give it back to the screen. Returns
+' whether the row had it.
+function returnFocusFromOverhangRow() as boolean
+  if not m.overhang.isInFocusChain() then return false
+  onOverhangFocusReturn()
+  return true
+end function

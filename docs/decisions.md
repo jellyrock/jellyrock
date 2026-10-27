@@ -2306,6 +2306,56 @@ Every icon canvas and icon box is a multiple of 3: 63 pixels, not 64. The app la
 
 Ruled out: keeping 64, off the grid at 720p; pinning `search` and `settings` at 64/46 to match the tabs, consistent but still off the grid. Recheck when adding an `IconButton` icon: one built below 63 pixels makes a narrower button than its neighbors, because `limitSize` scales a large image down but never a small one up. The canvases still off the grid (16, 24, 35, 36 and 48 pixels, and the 96 pixel `hd`, `speed` and `versions`, whose HD copies are 64) are followup `app-wide-3px-grid-audit`.
 
+## decision-id: router-claim-keeps-overhang-focus
+
+**date**: 2026-10-26
+**status**: accepted
+**related-files**: `components/JRScreen.bs`, `components/JRScene.bs`
+
+After a screen's show-time call, `JRScreen.handleFocus` leaves focus on the overhang row when the row holds it, and clears the screen's `overhangReturnIcon`. The router claims focus once a navigation settles (`JRScene.startNavigation` calls `sgrouter.setFocus`, which reaches `handleFocus` with `routerFocused: true`), and a viewer who pressed Up into the row in between was pulled back into the screen. Measured 2026-10-26 on a Stick 4K (Roku OS 15.3.4): on search opened from the cluster, focus went back to the keyboard about 0.2 s after reaching the row, 3 of 3 runs. It adds one exception beside `router-focus-left-notice`, which still governs the focus-left notice.
+
+Ruled out: skipping the settle `setFocus` when the destination already took focus. Every navigation goes through it, and skipping it leaves the router's focus bookkeeping false, which changes when its later focus-left notices fire. Recheck when an sgRouter upgrade changes who calls `handleFocus`.
+
+## decision-id: overhang-return-icon-on-screen
+
+**date**: 2026-10-26
+**status**: accepted
+**related-files**: `components/JRScreen.xml`, `components/JRScreen.bs`, `components/JRScene.bs`
+
+The overhang icon a screen was left by is a field on that screen (`JRScreen.overhangReturnIcon`, the icon's id), written by `JRScene.onOverhangIconAction` and read by `restoreOverhangIconFocus`. Each screen of a chain (a library, then search, then Settings) keeps its own, and it goes with the screen.
+
+Ruled out: one record in the scene, which a second press overwrote and which held a closed screen's node. Measured 2026-10-25 on a Stick 4K: Back out of search to the library focused the grid, not the search icon. Also ruled out: a node reference on the screen, which a string id makes unnecessary.
+
+## decision-id: no-cluster-on-playback-screens
+
+**date**: 2026-10-26
+**status**: accepted
+**related-files**: `components/JRScene.bs`, `components/music/AudioPlayerView.bs`
+
+The overhang cluster shows on every screen once a user is signed in, except a playback screen (`appWaits.isPlaybackScreen`), and a player is never the screen a theme reload returns to (`JRScene.routeOfActiveView`). The app has no now-playing control. Search or Settings opened over the audio player left its music playing with nothing on screen to stop it (measured 2026-10-25 on a Stick 4K: a reload from Settings landed on Home with the song still playing), and a player starts its queue when it mounts.
+
+Ruled out: stopping the music on a cluster press, which surprises a listener; browsing while music plays, which needs a now-playing design (followup `browse-while-music-plays`). Revisit when that followup ships.
+
+## decision-id: back-from-row-leaves-screen
+
+**date**: 2026-10-26
+**status**: accepted
+**related-files**: `components/JRScene.bs`, `components/JRScreen.bs`, `components/settings/settings.bs`
+
+Back with focus in the overhang row leaves the screen, one press per screen: `JRScene` returns focus to the screen, then calls its `JRScreen.leaveScreen` (the router's `goBack` by default; the exit prompt at the history root). The row is the app's chrome and sits outside the router's outlet, so the key never reaches the screen. Settings overrides `leaveScreen` with its existing exit, which applies a theme or language change first, and its own top-level Back shares it, so no way out skips that. Back inside a screen still closes its innermost layer first (a Settings level, the grid's options panel). Before this, Back from the row only returned focus to the screen, and since a screen comes back with focus on the icon it was left by, a chain of screens took two presses each (reported on a Stick 4K, 2026-10-26).
+
+Ruled out: Back from the row acting as the screen's own Back, which would make it go up a Settings level there and leave the screen elsewhere; focusing the screen's content instead of the icon on return, which still takes two presses after a deliberate Up and drops Home's return to the gear.
+
+## decision-id: theme-presets-never-overwrite-custom
+
+**date**: 2026-10-26
+**status**: accepted
+**related-files**: `source/utils/globals.bs`, `components/settings/settings.bs`, `settings/settings.json`
+
+A theme preset never writes the seven `uiThemeColor*` settings. `applyThemeColorOverrides` reads the colors from the chosen `uiTheme`'s `presetValues` in `settings.json` (`themePresetValues`), or from those settings for Custom, an empty or an unknown theme, so the settings hold the user's custom colors and nothing else, and Custom brings them back at any time. A theme or color choice applies when made, and `Settings.onScreenHidden` restyles the background and the overhang when Settings is covered or closed. Before this, a preset wrote its values over the custom colors and kept the old ones only in memory on the Settings screen, behind a "Replace custom colors?" prompt on Settings' own exit, so leaving Settings any other way dropped them. No migration: every saved state resolves to the colors it showed before (Custom users read their settings, preset users get the values the preset wrote, and users with no theme get jellyrock, whose values equal the defaults).
+
+Ruled out: moving the prompt to the moment a preset is picked, which keeps a destructive step and loses the custom colors after Yes; a theme node on `m.global`, which is tech debt `manual-theme-cascade`'s own project.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

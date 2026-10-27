@@ -11,6 +11,7 @@ sub onEntriesChanged()
   for each icon in m.icons
     icon.unobserveField("selectedAction")
     icon.unobserveField("requestFocusExit")
+    icon.unobserveField("requestFocusReturn")
     m.top.removeChild(icon)
   end for
   m.icons = []
@@ -27,6 +28,7 @@ sub onEntriesChanged()
       icon.translation = [iconBarNav.iconX(i), 0]
       icon.observeField("selectedAction", "onIconPressed")
       icon.observeField("requestFocusExit", "onIconFocusExit")
+      icon.observeField("requestFocusReturn", "onIconFocusReturn")
       m.top.appendChild(icon)
       m.icons.push(icon)
     end for
@@ -62,6 +64,13 @@ sub onIconFocusExit(msg as object)
   else
     m.top.requestFocusExit = target.exit
   end if
+end sub
+
+' Down on an icon leaves the bar for the screen: report which entry it was.
+sub onIconFocusReturn(msg as object)
+  i = indexOfIcon(msg.getRoSGNode())
+  if i < 0 then return
+  m.top.requestFocusReturn = m.top.entries[i].id
 end sub
 
 function getIcon(id as string) as object

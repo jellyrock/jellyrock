@@ -66,32 +66,24 @@ sub init()
   m.top.isOptionsAvailable = false
 
   ' Page title in the overhang, as Settings declares its own. The logo is hidden here
-  ' (JRGroup's default), so the overhang draws the title at x=96, above the suggestions
-  ' column, with the search pill above the keyboard.
+  ' (JRGroup's default), so the title starts at x=96. While the keyboard is closed, the
+  ' overhang's status after the title carries the submitted query, the way a grid's title
+  ' carries "Filtered by"; while it is open, the box above the keys does, with the count.
   m.top.overhangTitle = translate(translationKeys.ButtonSearch)
+  m.searchStatusQuery = ""
 
   ' Show the app-wide overhang, so this screen uses the same chrome path as every other
-  ' rather than a bypass of its own. What it shows is declared below.
+  ' rather than a bypass of its own. Chrome intent is DECLARED on this node; JRScene's
+  ' overhang controller projects it (JRScene.registerOverhangData: "screens declare these;
+  ' they never poke the overhang node directly"). The clock and the cluster show as on
+  ' every screen; JRGroup's defaults hide the logo and the user dropdown.
   m.top.isOverhangVisible = true
-
-  ' Chrome intent is DECLARED on this node; JRScene's overhang controller projects it
-  ' (JRScene.registerOverhangData: "screens declare these; they never poke the overhang
-  ' node directly"). Only the clock needs saying: JRGroup already defaults isLogoVisible,
-  ' shouldShowIcons and shouldShowUserDropdown to false, which is exactly what this screen
-  ' wants. The clock defaults true and has to be opted out of, because its top-right
-  ' position at [1824, 39] sits behind the peek chip's right edge: a no-overlap layout
-  ' would force either a narrower search bar (mismatched with the keyboard below it) or a
-  ' per-screen clock relocation.
-  m.top.isClockVisible = false
 
   m.global.sceneManager.callFunc("setBackgroundImage", "")
 
   m.searchSelect = m.top.findNode("searchSelect")
-  m.peekChip = m.top.findNode("peekChip")
   m.overlay = m.top.findNode("overlay")
   m.searchHelpText = m.top.findNode("SearchHelpText")
-  m.resultCount = m.top.findNode("resultCount")
-  m.resultCount.width = searchLayout.SUGGESTIONS_WIDTH
   m.voiceBox = m.top.findNode("searchVoiceBox")
   ' A spoken query held until dictation ends (onVoiceText).
   m.pendingVoiceText = ""
@@ -211,8 +203,8 @@ sub init()
   ' Voice: screen owns the voiceEnabled slot. Initialize once, release in onDestroy.
   initVoiceBox()
 
-  ' Peek chip starts empty (no placeholder text: icon alone).
-  m.peekChip.queryText = ""
+  ' The query box starts empty (no placeholder text: icon alone).
+  m.overlay.queryText = ""
 
   ' Seed the suggestion panel with the recent list so opening the overlay
   ' feels instantaneous (nothing to fetch).
@@ -391,13 +383,11 @@ sub onDestroy()
   m.removeDialog = invalid
   m.clearHistoryDialog = invalid
   m.searchSelect = invalid
-  m.peekChip = invalid
   m.overlay = invalid
   m.kbd = invalid
   m.suggestions = invalid
   m.suggestionList = invalid
   m.searchHelpText = invalid
-  m.resultCount = invalid
   m.searchFailed = invalid
   m.searchFailedText = invalid
   m.searchRetryButton = invalid
@@ -520,6 +510,7 @@ sub onExpansionChanged()
   m.log.verbose("expansion→" + (expanded ? "true" : "false"))
 
   m.overlay.isExpanded = expanded
+  renderSearchStatus()
 
   ' Slide SearchRow down/up in sync with the overlay so row 0 remains
   ' visible below the overlay's bottom edge while typing. Keeping row 0
@@ -530,10 +521,6 @@ sub onExpansionChanged()
     m.resultsSlideInterp.reverse = not expanded
     m.resultsSlideAnim.control = "start"
   end if
-
-  ' Peek chip is the single search-bar surface: stays visible in both
-  ' states. The overlay's solid background already hides anything behind it
-  ' so there's no double-bar bleed-through to worry about.
 
   ' Empty-state help label: below the overlay while it is open, mid-screen while it is
   ' closed (searchLayout.HELP_TEXT_Y_EXPANDED and HELP_TEXT_Y).
@@ -630,8 +617,8 @@ sub onQueryChanged()
   query = m.top.query
   if not isValid(query) then query = ""
 
-  ' Peek chip is the single search-bar surface; it auto-resizes on text change.
-  m.peekChip.queryText = query
+  ' The box above the keyboard shows what is typed.
+  m.overlay.queryText = query
 
   ' Reset both debounce timers for every keystroke.
   m.debounceTimer.control = "stop"
@@ -661,6 +648,7 @@ sub onQueryChanged()
     end if
     showHelpText(translate(translationKeys.MessageYouCanSearchForTitlesPeople))
     showResultCount("")
+    showSearchStatus("")
     renderRecentSuggestions()
     return
   end if
@@ -933,6 +921,7 @@ end sub
 ' the overlay so the user can browse results.
 sub submitSearch(query as string)
   m.log.info("submit query=" + query)
+  showSearchStatus(query)
 
   ' Cancel the pending full search: the submit runs its own. The hints debounce is left
   ' running: a pick changes the query, and the column then shows that query's hints, as it
@@ -1064,11 +1053,27 @@ sub onFullSearchResults(event as object)
   end if
 end sub
 
-' The last search's result count (searchOutcome.countText) on the title's line, so the viewer
-' sees how much was found whatever rows are on screen. "" clears it.
+' The last search's result count (searchOutcome.countText) at the query box's right end, so
+' the viewer typing sees how much a query finds. "" clears it. It goes with the keyboard: the
+' rows on screen carry their own counters once it closes.
 sub showResultCount(countText as string)
-  if not isValid(m.resultCount) then return
-  m.resultCount.text = countText
+  if isValid(m.overlay) then m.overlay.countText = countText
+end sub
+
+' The submitted query ("" for none), for the overhang status.
+sub showSearchStatus(query as string)
+  m.searchStatusQuery = query
+  renderSearchStatus()
+end sub
+
+' The overhang status: the submitted query while the keyboard is closed; nothing while it
+' is open, when the box above the keys shows the query.
+sub renderSearchStatus()
+  if m.top.isExpanded
+    m.top.overhangStatus = ""
+  else
+    m.top.overhangStatus = m.searchStatusQuery
+  end if
 end sub
 
 ' ============================================================================
@@ -1157,6 +1162,14 @@ sub onFailureNarrationDue()
   narrateDialogOpening("", m.searchFailedText.text, m.searchRetryButton.text)
 end sub
 
+' JRScreen hook: the overhang's search icon, pressed on the search screen, reopens the
+' keyboard instead of navigating to search again. The gear is left to the scene.
+function onOverhangAction(id as string) as boolean
+  if id <> "search" then return false
+  m.top.isExpanded = true
+  return true
+end function
+
 ' ============================================================================
 ' KEYBOARD EDGE ESCAPES
 ' ============================================================================
@@ -1189,8 +1202,9 @@ sub onKeyboardEscape()
       m.kbd.callFunc("focusEdge", row, "left")
     end if
   else if direction = "up"
-    ' No content above the keyboard within the overlay (peek chip is screen-
-    ' level, not focusable): stay put rather than looping focus.
+    ' Nothing above the keyboard in the overlay (the query box is not focusable): the
+    ' overhang row, as Up from the top of every screen.
+    focusOverhang()
   end if
 end sub
 

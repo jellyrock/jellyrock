@@ -10,6 +10,7 @@ namespace tests
     private screen as object
     private child as object
     private overlay as object
+    private overhang as object
     private previousView as object
 
     ' beforeEach, not setup: every test moves focus (tests/CLAUDE.md).
@@ -29,6 +30,8 @@ namespace tests
 
     protected override sub afterEach()
       m.mountedIn.removeChildren([m.screen, m.overlay])
+      if isValid(m.overhang) then m.mountedIn.removeChild(m.overhang)
+      m.overhang = invalid
       m.global.activeRoutedView = m.previousView
       m.previousView = invalid
       m.screen = invalid
@@ -99,6 +102,27 @@ namespace tests
       m.overlay.setFocus(true)
       m.assertTrue(m.screen.callFunc("handleFocus", { routerFocused: true }))
       m.assertTrue(m.screen.isInFocusChain())
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("handleFocus — the overhang row holds focus")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves the focus on the overhang row and forgets the return icon (the router's setFocus after a navigation)")
+    function _()
+      m.overhang = CreateObject("roSGNode", "Group")
+      m.overhang.id = "overhang"
+      m.overhang.focusable = true
+      m.mountedIn.appendChild(m.overhang)
+      m.overhang.setFocus(true)
+      m.screen.overhangReturnIcon = "settings"
+
+      taken = m.screen.callFunc("handleFocus", { routerFocused: true })
+
+      m.assertTrue(taken)
+      m.assertTrue(m.overhang.hasFocus())
+      m.assertFalse(m.screen.isInFocusChain())
+      m.assertEqual(m.screen.overhangReturnIcon, "")
     end function
 
   end class

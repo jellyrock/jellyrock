@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="SearchQueryBox" extends="Group">
+  <children>
+    <!-- Box background, 44 tall, in the overlay's band above the keyboard. Width is fixed at
+         QUERY_BOX_WIDTH in bs so it matches the keyboard's width: the box and the keys form
+         one column. -->
+    <Rectangle id="boxBg" height="44" />
+
+    <!-- Magnifying-glass icon: always visible on the left of the box. -->
+    <Poster id="searchIcon"
+      translation="[24, 4]"
+      width="36"
+      height="36"
+      uri="pkg:/images/icons/search_$$RES$$.png" />
+
+    <!-- Query text. A ScrollingLabel, so a query wider than maxWidth (set in bs) scrolls
+         within the box instead of being cut off; one that fits is drawn still. -->
+    <ScrollingLabel id="queryLabel" height="44" translation="[76, 0]"
+      horizAlign="left" vertAlign="center" />
+
+    <!-- The last search's result count ("132 results"), dim, at the box's right end; width and
+         x are set in bs from the text's measured width (countMeasure, never shown), so the
+         query gets the rest. -->
+    <LabelSecondarySmall id="resultCount" height="44" horizAlign="right" vertAlign="center" />
+    <LabelSecondarySmall id="countMeasure" visible="false" />
+  </children>
+  <interface>
+    <!-- Current query text to display. Empty string -> empty box (no
+         placeholder; the search icon alone signals purpose). -->
+    <field id="queryText" type="string" onChange="renderLabel" />
+    <!-- The result count to show at the right end; "" for none. -->
+    <field id="countText" type="string" onChange="onCountTextChanged" />
+  </interface>
+</component>

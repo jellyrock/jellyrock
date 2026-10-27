@@ -87,6 +87,13 @@ namespace tests
     @describe("walking off an end")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+    @it("reports the entry id Down was pressed on")
+    function _()
+      m.bar.entries = [{ id: "search", icon: "" }, { id: "settings", icon: "" }]
+      m.bar.getChild(1).requestFocusReturn = true
+      m.assertEqual(m.bar.requestFocusReturn, "settings")
+    end function
+
     @it("reports the edge a press left the bar by")
     function _()
       m.bar.entries = m.entries()

@@ -13,6 +13,10 @@
     <Poster id="logo" uri="pkg:/images/branding/logo.png" height="39" width="180" />
     <!-- Title: shown when the screen has no tabs, at the tab bar's place -->
     <ScrollingLabelPrimaryLarge id="title" vertAlign="center" maxWidth="300" repeatCount="0" />
+    <!-- The screen's status, dim, right after the title (the search screen's submitted query);
+         placed by layout() from the title's measured width (titleMeasure, never shown) -->
+    <ScrollingLabelSecondaryLarge id="status" vertAlign="center" maxWidth="300" repeatCount="0" visible="false" />
+    <LabelPrimaryLarge id="titleMeasure" visible="false" />
     <!-- Tab bar, user dropdown and cluster are created programmatically -->
     <!-- Clock -->
     <Clock />
@@ -21,6 +25,9 @@
   <interface>
     <field id="currentUser" type="string" onChange="onCurrentUserChanged" />
     <field id="title" type="string" onChange="onTitleChanged" />
+    <!-- A screen's status in secondary text after the title, "" for none: the search
+         screen's submitted query while its keyboard is closed. -->
+    <field id="status" type="string" onChange="onStatusChanged" />
     <field id="isVisible" value="true" type="boolean" onChange="onIsVisibleChanged" />
     <field id="isMoveAnimationDisabled" value="false" type="boolean" />
     <field id="isLogoVisible" value="true" type="boolean" onChange="onIsLogoVisibleChanged" />
@@ -28,20 +35,31 @@
          overhangTabs. Empty hides the tab bar and shows the title in its place. -->
     <field id="tabs" type="array" onChange="onTabsChanged" />
     <field id="selectedTabId" type="string" alwaysNotify="true" />
-    <!-- Whether the fixed cluster shows (with a signed-in user). -->
-    <field id="shouldShowIcons" type="boolean" value="false" onChange="onShouldShowIconsChanged" />
-    <!-- A cluster icon was pressed: its HomeAction. -->
+    <!-- Whether the fixed cluster shows: JRScene sets it from the signed-in state, so the
+         cluster is on every screen that shows the overhang once a user is signed in, except
+         a player (JRScene.registerOverhangData says why). -->
+    <field id="isClusterVisible" type="boolean" value="false" onChange="onIsClusterVisibleChanged" />
+    <!-- A cluster icon was pressed: its entry id ("search", "settings"). JRScene routes it. -->
     <field id="iconAction" type="string" alwaysNotify="true" />
+    <!-- A user dropdown item was chosen: its HomeAction. JRScene relays it to main.bs. -->
+    <field id="userMenuAction" type="string" alwaysNotify="true" />
+    <!-- Down left the row: the element it was pressed on ("tabs", "dropdown" or "cluster").
+         JRScene hands focus back to the active screen; the overhang remembers the element,
+         so the next Up on this screen visit lands there (focusRow). -->
+    <field id="requestFocusReturn" type="string" alwaysNotify="true" />
     <!-- Clock visibility: default true. Projected here from the active routed view's
          own isClockVisible field by JRScene's overhang controller, which also applies the
          user's Hide clock setting; screens declare, they do not write this node. Replaces
          the old imperative hideClock() function so all overhang element visibility follows
          one field-assignment pattern. -->
     <field id="isClockVisible" value="true" type="boolean" onChange="isClockVisibleChanged" />
-    <function name="getTabBar" />
-    <function name="getUserDropdown" />
     <!-- The cluster icon for an entry id ("search", "settings"), for a screen's focus bookkeeping. -->
     <function name="getIcon" />
+    <!-- Up from a screen: focus the element Down last left the row from, else the first shown
+         (tabs, dropdown, cluster). Returns false when the row has nothing to focus. -->
+    <function name="focusRow" />
+    <!-- Forget where the row was left from: the controller calls it on every screen change. -->
+    <function name="resetRowMemory" />
     <function name="resetTime" />
   </interface>
 </component>

@@ -17,6 +17,9 @@
   <interface>
     <field id="lastFocus" type="node" />
     <field id="overhangTitle" type="string" />
+    <!-- Dim text after the title, "" for none: a screen's state (the search screen's submitted
+         query while its keyboard is closed). -->
+    <field id="overhangStatus" type="string" />
     <field id="isOptionsAvailable" value="true" type="boolean" />
     <field id="isOverhangVisible" value="true" type="boolean" />
     <field id="overhangTabs" type="array" />
@@ -32,7 +35,6 @@
          on top of this field for every screen. -->
     <field id="isClockVisible" type="boolean" value="true" />
     <field id="isLogoVisible" type="boolean" value="false" />
-    <field id="shouldShowIcons" type="boolean" value="false" />
     <field id="shouldShowUserDropdown" type="boolean" value="false" />
     <!-- The named waits this screen has open (name -> { kind, startedMs }). Written only through
          screenWaits.begin / finish; JRScene shows them as the loading spinner while this is the
