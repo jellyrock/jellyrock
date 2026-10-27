@@ -819,6 +819,14 @@ The overhang cluster is hidden on playback screens (`JRScene.registerOverhangDat
 
 What closes it: a now-playing control outside the player that returns to it; a rule for starting other media while a player is suspended under another screen (untested: two `AudioPlayerView`s observing the shared `m.global.audioPlayer`); then the cluster on playback screens again. Not now: it needs its own design.
 
+#### A halted SyncPlay member's play replaces the group's with no prompt; phase F decides whether it asks first `[fid: syncplay-halted-play-asks-first]` `[captured 2026-10-27]`
+
+A halted SyncPlay member's play goes to the whole group (decision `syncplay-play-handed-to-group`), as in jellyfin-web and jellyfin-mpv-shim, so a member who pressed Back and then plays something else, a trailer included, replaces what every member is watching, with only the "Playing this for {group}." toast as warning. Raised in the PR #1270 review on 2026-10-27.
+
+The candidate: while halted, a play asks **Play for everyone** or **Only for me** first; Only for me leaves the group's playback alone and plays locally. Neither reference client asks, so this goes beyond both. It changes decision B for every play by a halted member, so it is designed with phase F's in-group controls (the in-player state glyph, Leave, resume), not on its own.
+
+Closes when phase F's plan decides it: built with its strings and specs, or recorded as declined in that decision.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -1433,7 +1441,9 @@ Closes when the dump in `tests/rta/lib/diagnostics.js` includes an open dialog's
 
 PR #1270 (SyncPlay phase D) cites a 14-step device check of group playback (pause, seek, next item, Stop, Back, casts while halted and while following, a failing queue fetch, reset) that exists only as a throwaway RTA script outside the repo, so no reviewer or later session can run it again. Its fixed `sleep` reads also make one step depend on timing: the halted-cast step asserts the last group command is `Seek` six seconds after a seek, but the server's `Unpause` can already have arrived by then (a rerun on 2026-10-27 read `Unpause`; playback was past the seek target in both runs).
 
-Closes when the check is a tracked spec under `tests/rta/specs/` (or folded into `syncplay-menu.spec.js`), with each `sleep` replaced by a wait on the state it means (the RTA lint gates require that), the two-member setup shared with `syncplay-menu` through `tests/rta/lib/jellyfin.js`, and a step that casts while the group's item plays and checks `#appWaitHost.openWaits` is empty: the remount path the claim fix in #1270 covers, which no tracked test reaches. Not done in #1270: it needs a local HTTP server and a design for the waits.
+The two casts are covered since #1270: `syncplay-menu.spec.js` casts to the Roku while halted and again over its player, through `appSession` and `playOnSession` in `tests/rta/lib/jellyfin.js`, and checks no wait outlives the reload. Still untracked: pause, seek, next item, Stop, Back during group playback, a failing queue fetch and reset.
+
+Closes when those steps are tracked specs under `tests/rta/specs/` (or folded into `syncplay-menu.spec.js`), with each `sleep` replaced by a wait on the state it means (the RTA lint gates require that) and the two-member setup shared with `syncplay-menu`. Not done in #1270: it needs a design for the waits on group commands.
 
 ### docs
 
