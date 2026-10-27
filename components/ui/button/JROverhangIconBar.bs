@@ -76,8 +76,8 @@ sub onIconFocusReturn(msg as object)
   m.top.requestFocusReturn = m.entries[i].id
 end sub
 
-' Change one entry in place (its icon, its disabled state) without rebuilding the bar, so a
-' state change never moves focus. The input field is left as written: the applied copy is
+' Change one entry's icon in place without rebuilding the bar, so a state change never moves
+' focus. The input field is left as written: the applied copy is
 ' patched. Returns false for an id the bar does not have.
 function updateEntry(id as string, patch as object) as boolean
   i = iconBarNav.indexOf(m.entries, id)
@@ -87,10 +87,6 @@ function updateEntry(id as string, patch as object) as boolean
   if isValidAndNotEmpty(patch.icon)
     entry.icon = patch.icon
     icon.icon = patch.icon
-  end if
-  if isValid(patch.disabled)
-    entry.disabled = patch.disabled = true
-    icon.isDisabled = entry.disabled
   end if
   return true
 end function

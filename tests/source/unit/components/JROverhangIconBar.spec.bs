@@ -69,28 +69,23 @@ namespace tests
       m.assertInvalid(m.bar.callFunc("getIcon", "syncplay"))
     end function
 
-    @it("updateEntry changes the icon and disabled state in place, keeping the children")
+    @it("updateEntry changes the icon in place, keeping the children")
     function _()
       m.bar.entries = m.entries()
       before = m.bar.findNode("settingsIcon")
-      m.assertTrue(m.bar.callFunc("updateEntry", "settings", { icon: "pkg:/images/icons/groups_$$RES$$.png", disabled: true }))
+      m.assertTrue(m.bar.callFunc("updateEntry", "settings", { icon: "pkg:/images/icons/groups_$$RES$$.png" }))
       after = m.bar.findNode("settingsIcon")
       m.assertTrue(before.isSameNode(after))
       m.assertEqual(after.icon, "pkg:/images/icons/groups_$$RES$$.png")
-      m.assertTrue(after.isDisabled)
       m.assertEqual(m.bar.getChildCount(), 2)
-      ' a later patch of the other field keeps the first
-      m.assertTrue(m.bar.callFunc("updateEntry", "settings", { disabled: false }))
-      m.assertEqual(after.icon, "pkg:/images/icons/groups_$$RES$$.png")
-      m.assertFalse(after.isDisabled)
     end function
 
-    @it("updateEntry leaves a field out of the patch alone, and refuses a stranger")
+    @it("updateEntry keeps the icon for a patch without one, and refuses a stranger")
     function _()
       m.bar.entries = m.entries()
-      m.assertTrue(m.bar.callFunc("updateEntry", "search", { disabled: true }))
+      m.assertTrue(m.bar.callFunc("updateEntry", "search", {}))
       m.assertEqual(m.bar.findNode("searchIcon").icon, "pkg:/images/icons/search_$$RES$$.png")
-      m.assertFalse(m.bar.callFunc("updateEntry", "syncplay", { disabled: true }))
+      m.assertFalse(m.bar.callFunc("updateEntry", "syncplay", { icon: "pkg:/images/icons/groups_$$RES$$.png" }))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

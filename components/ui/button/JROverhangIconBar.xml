@@ -24,7 +24,7 @@
     <field id="requestFocusReturn" type="string" alwaysNotify="true" />
     <!-- The child icon for an entry id, for focus bookkeeping by the screen. -->
     <function name="getIcon" />
-    <!-- Change one entry's icon or disabled state in place: { icon, disabled }, each optional. -->
+    <!-- Change one entry's icon in place: { icon }. -->
     <function name="updateEntry" />
     <!-- Focus the icon at the row's first ("left") or last ("right") position. -->
     <function name="focusEdge" />
