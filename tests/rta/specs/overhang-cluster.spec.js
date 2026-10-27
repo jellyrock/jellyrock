@@ -1,5 +1,5 @@
 /**
- * The overhang cluster (Search, Settings) is on every screen, and the row's keys are the
+ * The overhang cluster (Search, SyncPlay, Settings) is on every screen, and the row's keys are the
  * scene's, not Home's: Up from a screen's top enters the row, Right walks it, OK on the gear
  * opens Settings, and Back lands on the gear again, on a library screen and on details as
  * on Home. Settings' own Up enters the row too. On the search screen, Up from the keyboard's
@@ -26,6 +26,7 @@ import {
   getActiveVal,
   getGlobalVal,
   getVal,
+  overhangWalkKey,
   press,
   waitFocused,
   waitFocusInside,
@@ -62,14 +63,26 @@ async function enterRow(label) {
   });
 }
 
-/** Right to the gear, OK, Settings up, Back: the gear holds focus again on the screen left. */
-async function roundTripThroughSettings(label) {
-  await press(ecp.Key.Right);
+/** Right along the row until the gear holds focus, the key chosen from where focus is
+ * (`overhangWalkKey`, as `focusOverhangIcon` walks), so the icons between the search icon and
+ * the gear (SyncPlay today) are never counted here. `walkFocusUntil` would decline: its origin
+ * gate presses only inside the routed view, and the row sits outside it. */
+async function walkToGear(label) {
   await waitFocused(atSettingsIcon, {
     timeout: 8000,
     interval: 250,
+    action: async () => {
+      const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+      const key = overhangWalkKey(f, 'settingsIcon');
+      if (key) await press(key);
+    },
     label: `the gear on ${label}`,
   });
+}
+
+/** Right to the gear, OK, Settings up, Back: the gear holds focus again on the screen left. */
+async function roundTripThroughSettings(label) {
+  await walkToGear(label);
   await press(ecp.Key.Ok);
   await waitFor('#versionLabel.text', (t) => typeof t === 'string' && /^v/.test(t), {
     label: 'settings version label',
@@ -122,12 +135,7 @@ it('Settings: Up enters the row, the gear there does nothing, Back from the row 
   // and the gear keeps focus, so the one Back below still reaches Home (a stacked Settings
   // would take two).
   await press(ecp.Key.Up);
-  await press(ecp.Key.Right);
-  await waitFocused(atSettingsIcon, {
-    timeout: 8000,
-    interval: 250,
-    label: 'the gear on Settings',
-  });
+  await walkToGear('Settings');
   await press(ecp.Key.Ok);
   await waitFocused(atSettingsIcon, {
     timeout: 8000,
@@ -180,12 +188,7 @@ it('a theme reload from Settings opened on a library returns to the library, wit
   const path = await getActiveVal('route.path');
 
   await enterRow('the grid');
-  await press(ecp.Key.Right);
-  await waitFocused(atSettingsIcon, {
-    timeout: 8000,
-    interval: 250,
-    label: 'the gear on the library',
-  });
+  await walkToGear('the library');
   await press(ecp.Key.Ok);
   await waitFor('#versionLabel.text', (t) => typeof t === 'string' && /^v/.test(t), {
     label: 'settings version label',
@@ -219,8 +222,7 @@ it('each screen keeps its own icon: library, search icon, search, gear, then Bac
   await waitFocusInside('#kbd', { label: 'the search keyboard' });
 
   await enterRow('the keyboard');
-  await press(ecp.Key.Right);
-  await waitFocused(atSettingsIcon, { timeout: 8000, interval: 250, label: 'the gear on search' });
+  await walkToGear('search');
   await press(ecp.Key.Ok);
   await waitFor('#versionLabel.text', (t) => typeof t === 'string' && /^v/.test(t), {
     label: 'settings version label',

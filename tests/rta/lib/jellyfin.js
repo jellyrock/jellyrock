@@ -113,8 +113,12 @@ export function postJson(urlStr, headers, bodyObj) {
         let data = '';
         res.on('data', (c) => (data += c));
         res.on('end', () => {
-          if (res.statusCode >= 200 && res.statusCode < 300) resolve(JSON.parse(data));
-          else
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            // A 204 (the SyncPlay routes) has no body: `null`, not a JSON.parse throw inside
+            // this handler, which no caller's catch can reach and which leaves the promise
+            // pending for good.
+            resolve(data.trim() === '' ? null : JSON.parse(data));
+          } else
             reject(
               fail(new JellyfinRequestError('POST', urlStr, res.statusCode, res.statusMessage)),
             );
@@ -125,6 +129,23 @@ export function postJson(urlStr, headers, bodyObj) {
     req.write(body);
     req.end();
   });
+}
+
+/**
+ * Whether the server can push a command (a SyncPlay group update, a remote-control
+ * command) to the Roku. Over http:// the app opens the session socket; over https:// Roku
+ * has no socket TLS, so the app needs the companion plugin's long poll, probed at its
+ * /JellyRock/RemoteControl/info route (`remoteProtocol.buildProbeUrl`). The public demo is
+ * https:// without the plugin, so a spec that waits for a pushed update skips there, visibly.
+ */
+export async function commandChannelAvailable(session) {
+  if (new URL(session.serverUrl).protocol === 'http:') return true;
+  try {
+    await getJson(`${session.serverUrl}/JellyRock/RemoteControl/info`, tokenHeader(session.token));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** JSON GET over node http/https. */

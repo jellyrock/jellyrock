@@ -113,6 +113,10 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // gate is `navSubtitlePanel`, which only runs on a fixture whose user can manage
   // subtitles (see `subtitlePanel` in tests/rta/screens.js).
   '#subtitlePanel.visible',
+  // `JRScene.applySyncPlayIcon` writes the cluster icon's uri on each inGroup change and screen
+  // change (through `JROverhangIconBar.updateEntry`): terminal, held until the membership
+  // changes again. `syncplay-menu.spec.js` waits on it for a join and a leave.
+  '#overhang.#cluster.#syncplayIcon.icon',
   // `SubtitlePanel.setStatus` writes it. A search's reply sets the failed or the empty text
   // (`renderResults`), and the only write back to "" is `showResultsSpinner` when the next
   // search starts, which takes a Search press, a language pick or a reopen. Held until the
