@@ -13,12 +13,14 @@ import { afterAll, beforeAll, it, expect } from 'vitest';
 import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import {
+  appSession,
   authenticate,
   commandChannelAvailable,
   getHero,
   getJson,
   getLibraries,
   libraryIdFor,
+  playOnSession,
   postJson,
   tokenHeader,
 } from '../lib/jellyfin.js';
@@ -86,6 +88,25 @@ afterAll(async () => {
     .catch(() => {});
   await syncPlay(member, 'Leave').catch(() => {});
 });
+
+/** `count` movies of the movies library other than the hero, in the grid's order. */
+async function moviesOtherThanHero(count) {
+  const query = new URLSearchParams({
+    userId: session.userId,
+    ParentId: libraryIdFor(ctx.libraries, 'movies'),
+    IncludeItemTypes: 'Movie',
+    Recursive: 'true',
+    SortBy: 'SortName',
+    Limit: String(count + 1),
+  });
+  const res = await getJson(`${session.serverUrl}/Items?${query}`, tokenHeader(session.token));
+  const ids = res.Items.map((i) => i.Id).filter((id) => id !== ctx.heroId);
+  expect(
+    ids.length,
+    `the movies library holds ${count} movies besides the hero`,
+  ).toBeGreaterThanOrEqual(count);
+  return ids.slice(0, count);
+}
 
 /** The list dialog's rows, once it holds `count` of them. */
 async function waitMenuRows(count, label) {
@@ -244,6 +265,59 @@ it('Play on a movie while in a group goes to the group, whose answer starts the 
   });
   expect(await getGlobalVal('syncPlayManager.inGroup')).toBe(true);
   expect(await getGlobalVal('syncPlayManager.following')).toBe(false);
+});
+
+it('a cast while halted follows the group again, and a cast over its player ends the start it opened', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  // The case above leaves the Roku halted in the group, its player closed.
+  expect(await getGlobalVal('syncPlayManager.inGroup'), 'in the group from the case above').toBe(
+    true,
+  );
+  expect(await getGlobalVal('syncPlayManager.following'), 'halted by its Back').toBe(false);
+  const [first, second] = await moviesOtherThanHero(2);
+  const roku = await appSession(member, await getGlobalVal('device.serverDeviceName'));
+
+  // Halted: the cast follows the group again and goes to it as a new queue. The group's answer
+  // opens the player (applyQueue's launch branch), and the follow the cast made holds after it.
+  await playOnSession(member, roku.Id, [first]);
+  await waitToast(`Playing this for ${GROUP_NAME}.`, { label: 'the first cast handed over' });
+  await waitFor('subtype()', (v) => v === 'PlayerHostView', {
+    read: getActiveVal,
+    timeout: 30000,
+    interval: 250,
+    label: "the player mounted from the group's answer to the first cast",
+  });
+  await waitMediaPlaying('the first cast', 60000);
+  expect(
+    await getGlobalVal('syncPlayManager.following'),
+    'the answered cast keeps it following',
+  ).toBe(true);
+
+  // Over the mounted player: the group's answer reloads it in place (the remount branch), and no
+  // wait may outlive the reload. playingItemId moves when that answer arrives and holds, so it
+  // proves the cast was handled before openWaits is read; the reloaded player takes the start
+  // the cast opened (takePlaybackStart) and ends it once its stream holds.
+  const before = await getGlobalVal('syncPlayManager.sync.playingItemId');
+  await playOnSession(member, roku.Id, [second]);
+  await waitFor('syncPlayManager.sync.playingItemId', (v) => Boolean(v) && v !== before, {
+    read: getGlobalVal,
+    timeout: 30000,
+    label: "the group's answer to the cast over the player",
+  });
+  await waitFor('#appWaitHost.openWaits', (v) => v && Object.keys(v).length === 0, {
+    read: getVal,
+    // Far inside the start's own time limit, so the limit cannot be what ended it.
+    timeout: 20000,
+    label: 'no wait left open after the reload in place',
+  });
+  await waitMediaPlaying('the cast over the player', 60000);
+  expect(await getActiveVal('subtype()'), 'the player reloaded in place').toBe('PlayerHostView');
+  expect(await getGlobalVal('syncPlayManager.following')).toBe(true);
+
+  await stopPlayback();
 });
 
 it('a membership the app exit left behind is remembered, and ended at the next launch', async (testCtx) => {

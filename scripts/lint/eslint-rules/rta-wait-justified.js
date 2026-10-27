@@ -117,6 +117,14 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // change (through `JROverhangIconBar.updateEntry`): terminal, held until the membership
   // changes again. `syncplay-menu.spec.js` waits on it for a join and a leave.
   '#overhang.#cluster.#syncplayIcon.icon',
+  // `SyncPlayManager.publish` writes `sync.playingItemId` from the membership state, which only
+  // a PlayQueue frame (`syncPlayState.applyGroupUpdate`) or leaving the group changes: held until
+  // the group's queue moves again. `syncplay-menu.spec.js` waits on it for a cast's answer.
+  'syncPlayManager.sync.playingItemId',
+  // `AppWaitHost.publish` rewrites the whole map on each wait's begin and end, and nothing else
+  // writes it: an empty map holds until the next wait begins. `syncplay-menu.spec.js` waits on
+  // it after a cast over the player, once the cast's answer has arrived.
+  '#appWaitHost.openWaits',
   // `SubtitlePanel.setStatus` writes it. A search's reply sets the failed or the empty text
   // (`renderResults`), and the only write back to "" is `showResultsSpinner` when the next
   // search starts, which takes a Search press, a language pick or a reopen. Held until the

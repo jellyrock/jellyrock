@@ -148,6 +148,36 @@ export async function commandChannelAvailable(session) {
   }
 }
 
+/**
+ * The Roku app's own session, found by the DeviceId the app signs in with
+ * (`m.global.device.serverDeviceName`, which `buildAuthHeader` sends), so a cast never
+ * reaches another Roku signed in to the same server. A REST caller of the same account can
+ * then send it a remote command, as a cast from another client does. Throws when no such
+ * session takes remote commands: a cast that reaches nothing would prove nothing.
+ */
+export async function appSession(session, deviceId) {
+  const query = new URLSearchParams({ controllableByUserId: session.userId, deviceId });
+  const sessions = await getJson(
+    `${session.serverUrl}/Sessions?${query}`,
+    tokenHeader(session.token),
+  );
+  const app = (sessions || []).find(
+    (s) => s.DeviceId === deviceId && s.SupportsRemoteControl === true,
+  );
+  if (!app) throw new Error(`no session takes remote commands for DeviceId ${deviceId}`);
+  return app;
+}
+
+/** What a cast from another client sends: POST /Sessions/{id}/Playing with PlayNow. */
+export function playOnSession(session, sessionId, itemIds) {
+  const query = new URLSearchParams({ playCommand: 'PlayNow', itemIds: itemIds.join(',') });
+  return postJson(
+    `${session.serverUrl}/Sessions/${sessionId}/Playing?${query}`,
+    { ...tokenHeader(session.token), 'Content-Type': 'application/json' },
+    {},
+  );
+}
+
 /** JSON GET over node http/https. */
 export function getJson(urlStr, headers) {
   const url = new URL(urlStr);
