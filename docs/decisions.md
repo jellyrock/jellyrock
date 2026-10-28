@@ -2416,6 +2416,36 @@ SyncPlay is offered only where the server has a push channel to the Roku, becaus
 
 Ruled out: hiding the icon without a channel, as for access None, because a viewer on two servers would see SyncPlay vanish on one with no reason; posting `Leave` when no `GroupJoined` arrives in time, because it offers the feature and takes it back and leaves the member stranded until the timer fires; and `roku-requests`' `retryCount` for the probe, because it retries at once with no delay.
 
+## decision-id: syncplay-controls-go-to-group
+
+**date**: 2026-10-28
+**status**: accepted
+**related-files**: `components/syncplay/SyncPlayManager.bs`, `source/syncplay/syncPlayHooks.bs`, `components/video/VideoPlayerView.bs`
+
+While following a SyncPlay group, the viewer's own controls go to the server, not the node: the Play key, the OSD play-pause button, trickplay, replay, chapter skips, the media-segment button, voice and remote transport, and the OSD buttons for previous and next post `Pause`, `Unpause`, `Seek`, `NextItem` or `PreviousItem` through `SyncPlayManager.control`, and the server's command moves every member, this one included. A pause is also written locally at once (the one exception jellyfin-web makes too); a resume or a seek waits for the server. The manager's own verbs reach the player marked `fromGroup` and are applied as they are, never posted again: without the mark a group `Seek` came back as a new request and went round for good, and the load's first-frame pause paused the whole group (Stick 4K, 2026-10-28). The OK on the trick-play bar leaves trick mode through a seek to the node's own position, the one write that closes the bar without moving (a bare swallow leaves it up for good, a resume plays on under it, a play wedges the node; Stick 4K, 2026-10-28), then posts the scrubbed target. A segment auto-skip stands down in a group, since one member's setting would move everyone, but the skip button stays and seeks the group.
+
+Ruled out: routing transport alone and keeping scrubs, chapters and the segment button local, because a member then drifts with nothing told to the server; and waiting for the server on a pause too, which reads as lag over HTTPS when the pause hold already exists.
+
+## decision-id: syncplay-one-item-group-queue
+
+**date**: 2026-10-28
+**status**: accepted
+**related-files**: `components/syncplay/SyncPlayManager.bs`, `source/syncplay/syncPlayQueue.bs`, `components/video/OSD.bs`, `components/ItemGrid/LoadVideoContentTask.bs`
+
+While following, the local queue holds the group's playing item alone: a queue update fetches that one item (`syncPlayQueue.playingEntry`), never the playlist, and the group's playlist length and playing index published by the manager give the previous and next buttons of the OSD their enabled state (`syncPlayQueue.stepBounds`). In a group the next item is the server's answer to `NextItem`, never a local advance, so the other items' metadata has no reader. The whole-playlist build cost about 1.1 s at 300 entries against 0.4 s at two (Stick 4K, 2026-10-24), and a one-item queue of an episode grew to 50 items through the following-episode append until the load skipped a stamped group item (Stick 4K, 2026-10-28).
+
+Ruled out: fetching the rest of the playlist during playback, because nothing reads it and the queue manager has no insert-before, so items ahead of the playing one would move the position on every update.
+
+## decision-id: syncplay-resume-from-menu
+
+**date**: 2026-10-28
+**status**: accepted
+**related-files**: `components/JRScene.bs`, `source/syncplay/syncPlayMenu.bs`, `components/syncplay/SyncPlayManager.bs`, `source/syncplay/syncPlayPlayback.bs`
+
+A halted SyncPlay member (its player left the group's item on Back) follows the group again from the SyncPlay menu, which in a group is one list in every state: **Resume with Group** while halted, then **Leave Group**, titled with the group's name and its members in the parenthetical the join rows use. `SyncPlayManager.resumeFollowing` follows again first, so the fetched queue applies, then loads the group's item as a new queue at the position the state kept while halted; `syncPlayPlayback.startPositionTicks` takes a newer `Pause` or `Seek` at its own position and estimates an `Unpause` forward, so a resume into a paused group lands where the group waits.
+
+Ruled out: a toast-only path, which leaves a halted member with no way back short of leaving or a play of its own; deferring the control to phase F's in-player surface, since a halted member has no player on screen; and keeping the confirm dialog while following, so the menu's shape would change with the member's state.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
