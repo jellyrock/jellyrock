@@ -16,6 +16,19 @@ namespace tests
       m.assertTrue(syncPlayMenu.canCreate("CreateAndJoinGroups"))
     end function
 
+    @it("nobody may join while SyncPlay is switched off, whatever the policy")
+    function _()
+      m.assertFalse(syncPlayMenu.joinAllowed("CreateAndJoinGroups", false))
+      m.assertFalse(syncPlayMenu.joinAllowed(invalid, false))
+      m.assertTrue(syncPlayMenu.joinAllowed("JoinGroups", true))
+      m.assertFalse(syncPlayMenu.joinAllowed("None", true))
+    end function
+
+    @it("ships switched on")
+    function _()
+      m.assertTrue(syncPlayMenu.IS_ENABLED)
+    end function
+
     @it("JoinGroups may join, not create")
     function _()
       m.assertTrue(syncPlayMenu.canJoin("JoinGroups"))

@@ -1004,6 +1004,12 @@ Investigate before planning:
 
 The app-side half (one name helper used by the auth header and `buildPairPayload`, plus its unit spec) waits on the /pair field this plugin settles. When the contract is decided, send a message back to jellyrock/jellyrock naming the field and its rules.
 
+#### Remove the SyncPlay on-off switch once phase F ships `[fid: syncplay-remove-enabled-switch]` `[captured 2026-10-28]`
+
+`syncPlayMenu.IS_ENABLED` is a switch added in PR #1270 so a release could ship with SyncPlay hidden if phases E and F were not ready: set to `false`, `canJoin` refuses every user, so the cluster icon (the one way into a group), its menu and the badge's group-list reads all go away. It ships `true`. It is a temporary carve-out, not a setting.
+
+Closes when the in-player SyncPlay surface (phase F of epic #1251) ships: delete the constant, fold `joinAllowed` back into `canJoin`, and drop the two `syncPlayMenu.spec.bs` cases that drive the switch.
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`
