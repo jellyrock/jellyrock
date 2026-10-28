@@ -4,6 +4,7 @@
     <Poster id="buttonBackground" uri="pkg:/images/9patch/filled-rounded.9.png" visible="false" />
     <Poster id="buttonBorder" uri="pkg:/images/9patch/border-6px.9.png" visible="false" />
     <Poster id="buttonIcon" width="42" height="42" loadWidth="42" loadHeight="42" loadDisplayMode="limitSize" />
+    <Poster id="badge" uri="pkg:/images/icons/circle_$$RES$$.png" loadDisplayMode="limitSize" visible="false" />
   </children>
   <interface>
     <!-- Input -->
@@ -15,6 +16,9 @@
     <!-- A toggle's on-state (the SyncPlay icon in a group): the glyph is drawn in colorSecondary,
          focused or not. isDisabled wins over it. -->
     <field id="isActive" type="boolean" value="false" onChange="onIsActiveChanged" />
+    <!-- Something waits behind the icon (the SyncPlay icon: groups to join): a colorSecondary
+         dot on the glyph's top-right, focused or not. isActive and isDisabled hide it. -->
+    <field id="hasBadge" type="boolean" value="false" onChange="onHasBadgeChanged" />
 
     <!-- Output -->
     <field id="selectedAction" type="string" alwaysNotify="true" />

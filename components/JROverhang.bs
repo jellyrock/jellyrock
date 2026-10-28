@@ -189,24 +189,25 @@ end function
 
 ' The cluster's entries: SyncPlay first when the account may use it, then Search and Settings,
 ' which keep their place at the right whatever sits before them.
-function clusterEntries(withSyncPlay as boolean, syncPlayActive as boolean) as object
+function clusterEntries(withSyncPlay as boolean, syncPlayActive as boolean, syncPlayBadge = false as boolean) as object
   entries = []
-  if withSyncPlay then entries.push({ id: "syncplay", icon: syncPlayMenu.ICON, active: syncPlayActive })
+  if withSyncPlay then entries.push({ id: "syncplay", icon: syncPlayMenu.ICON, active: syncPlayActive, badge: syncPlayBadge })
   entries.push({ id: "search", icon: "pkg:/images/icons/search_$$RES$$.png" })
   entries.push({ id: "settings", icon: "pkg:/images/icons/settings_$$RES$$.png" })
   return entries
 end function
 
-' JRScene projects the SyncPlay icon's state ({ shown, active }): the bar is rebuilt only when
-' the icon comes or goes (sign-in, a screen change), so a membership change never moves focus.
+' JRScene projects the SyncPlay icon's state ({ shown, active, badge }): the bar is rebuilt only
+' when the icon comes or goes (sign-in, a screen change), so a membership or badge change never
+' moves focus.
 sub applySyncPlayIcon(state as object)
   shown = state.shown = true
   if shown <> m.clusterHasSyncPlay
     m.clusterHasSyncPlay = shown
-    m.cluster.entries = clusterEntries(shown, state.active = true)
+    m.cluster.entries = clusterEntries(shown, state.active = true, state.badge = true)
     layout()
   else if shown
-    m.cluster.callFunc("updateEntry", "syncplay", { active: state.active = true })
+    m.cluster.callFunc("updateEntry", "syncplay", { active: state.active = true, badge: state.badge = true })
   end if
 end sub
 

@@ -53,6 +53,10 @@ const atSyncPlayIcon = (f) => f?.node?.id === 'syncplayIcon';
 // wait-justified lint can check it.
 const isActive = (v) => v === true;
 const isInactive = (v) => v === false;
+// The icon's badge (`JROverhangIcon.hasBadge`, read at `#overhang.#cluster.#syncplayIcon.hasBadge`):
+// a colorSecondary dot while a group exists to join and the Roku is in none.
+const hasBadge = (v) => v === true;
+const noBadge = (v) => v === false;
 
 let session;
 let member;
@@ -259,6 +263,11 @@ it('OK on a group joins it and makes the icon active; the icon then offers Leave
   const titles = await waitMenuRows(groups.length + 1, 'one group to join');
   expect(titles[index], 'the row names the group and its member').toContain(GROUP_NAME);
   expect(titles[index]).toContain(RTA_CONFIG.server.username);
+  // The menu's own read of the list feeds the badge too, so it shows under the dialog.
+  await waitFor('#overhang.#cluster.#syncplayIcon.hasBadge', hasBadge, {
+    label: 'the icon carries the dot once the list names a group',
+    timeout: 10000,
+  });
 
   // The list opens on row 0: Down until the group's row holds focus. The re-press each tick
   // is the mechanism (a dropped Down is re-sent), guarded so an arrived walk never overshoots.
@@ -279,6 +288,10 @@ it('OK on a group joins it and makes the icon active; the icon then offers Leave
   await waitToast(`Joined ${GROUP_NAME}.`, { label: 'the joined toast' });
   expect(await getGlobalVal('syncPlayManager.inGroup')).toBe(true);
   expect(await getGlobalVal('syncPlayManager.groupName')).toBe(GROUP_NAME);
+  expect(
+    noBadge(await getVal('#overhang.#cluster.#syncplayIcon.hasBadge')),
+    'in a group the tint replaces the dot',
+  ).toBe(true);
 
   await waitFocused(atSyncPlayIcon, {
     timeout: 8000,
@@ -312,6 +325,35 @@ it('OK on a group joins it and makes the icon active; the icon then offers Leave
   });
   await waitToast(`Left ${GROUP_NAME}.`, { label: 'the left toast' });
   expect(await getGlobalVal('syncPlayManager.inGroup')).toBe(false);
+  // Leaving reads the list again, and the member's group is still there to join.
+  await waitFor('#overhang.#cluster.#syncplayIcon.hasBadge', hasBadge, {
+    label: 'the dot comes back on the leave: the member still holds the group',
+    timeout: 10000,
+  });
+});
+
+it('the dot clears once the list has no group left to join', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  await syncPlay(member, 'Leave');
+  const remaining = await listGroups(session);
+  await waitFocused(atSyncPlayIcon, {
+    timeout: 8000,
+    interval: 250,
+    label: 'the icon before the menu',
+  });
+  await press(ecp.Key.Ok);
+  await waitMenuRows(remaining.length + 1, 'the groups left, then New group');
+  await press(ecp.Key.Back);
+  await waitDialogClosed('SyncPlay menu dismissed', { timeout: 10000 });
+  // Another client's group on a shared server keeps the dot, rightly.
+  const expected = remaining.length > 0 ? hasBadge : noBadge;
+  await waitFor('#overhang.#cluster.#syncplayIcon.hasBadge', expected, {
+    label: `the dot matches the ${remaining.length} group(s) left`,
+    timeout: 10000,
+  });
 });
 
 it('Play on a movie while in a group goes to the group, whose answer starts the player', async (testCtx) => {

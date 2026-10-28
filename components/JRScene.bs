@@ -60,6 +60,9 @@ sub init()
   m.refusedNavigationTimer = m.top.findNode("refusedNavigationTimer")
   m.refusedNavigationTimer.observeField("fire", "onRefusedNavigationPoll")
   m.refusedNavigationTimer.duration = refusedNavigation.POLL_MS / 1000#
+  m.syncPlayGroupsTimer = m.top.findNode("syncPlayGroupsTimer")
+  m.syncPlayGroupsTimer.observeField("fire", "pollSyncPlayGroups")
+  m.syncPlayGroupsTimer.duration = syncPlayMenu.GROUPS_POLL_MS / 1000#
   ' The navigation the router refused that waits for the router to go idle (navigateThenFocus);
   ' invalid when none does.
   m.pendingNavigation = invalid
@@ -93,6 +96,11 @@ sub init()
   ' The pressed-action wait of the menu's group-list fetch, and the count that names each fetch.
   m.syncPlayWait = invalid
   m.syncPlayFetchCount = 0
+  ' The icon's badge: whether the last group list read had a group to join, whether the list is
+  ' being read for it (syncPlayMenu.pollsGroups), and whether a read is in flight.
+  m.syncPlayGroupsAvailable = false
+  m.isPollingSyncPlayGroups = false
+  m.isSyncPlayPollInFlight = false
   ' Whether initRouter has registered the SyncPlay manager's observers (once per app run).
   m.isObservingSyncPlay = false
 
@@ -1212,6 +1220,7 @@ sub openSyncPlayMenu()
     if isValid(ctx.wait) and not appWaits.isOpen(ctx.wait) then return ' Back ended it: the viewer moved on
     appWaits.done(ctx.wait)
     if res.ok
+      onSyncPlayGroupsRead(res.json)
       showSyncPlayMenu(res.json)
     else
       m.log.warn("SyncPlay group list failed", "statusCode", res.statusCode)
@@ -1311,10 +1320,62 @@ sub onSyncPlayNotice(event as object)
 end sub
 
 ' The SyncPlay icon shows the membership and the policy: active while in a group, absent when
-' the user's SyncPlayAccess is None. Applied on each screen change (the user, and so the policy,
-' can change) and whenever the manager's inGroup changes.
+' the user's SyncPlayAccess is None, and badged while a group exists to join. Applied on each
+' screen change (the user, and so the policy, can change) and whenever the manager's inGroup
+' changes. Each of those also reads the group list again while the badge could show, so a screen
+' change shows a new group without waiting for the Timer; a hidden cluster or a membership stops
+' the reads and clears the badge.
 sub applySyncPlayIcon()
-  m.overhang.callFunc("applySyncPlayIcon", syncPlayMenu.iconFor(m.global.syncPlayManager.inGroup = true, syncPlayAccess()))
+  polls = syncPlayMenu.pollsGroups(m.overhang.isClusterVisible = true, m.global.syncPlayManager.inGroup = true, syncPlayAccess())
+  if polls
+    if not m.isPollingSyncPlayGroups then m.syncPlayGroupsTimer.control = "start"
+    m.isPollingSyncPlayGroups = true
+    pollSyncPlayGroups()
+  else
+    m.syncPlayGroupsTimer.control = "stop"
+    m.isPollingSyncPlayGroups = false
+    m.syncPlayGroupsAvailable = false
+  end if
+  renderSyncPlayIcon()
+end sub
+
+sub renderSyncPlayIcon()
+  m.overhang.callFunc("applySyncPlayIcon", syncPlayMenu.iconFor(m.global.syncPlayManager.inGroup = true, syncPlayAccess(), m.syncPlayGroupsAvailable))
+end sub
+
+' One read of the group list for the badge, never two at once: a screen change while one is out
+' waits for its answer. No wait and no toast: the badge is a hint, and a failed read clears it
+' rather than show groups the server did not confirm.
+sub pollSyncPlayGroups()
+  if not m.isPollingSyncPlayGroups or m.isSyncPlayPollInFlight then return
+  req = GetApi().BuildGetSyncPlayGroupsRequest()
+  if not isValid(req) then return
+  m.isSyncPlayPollInFlight = true
+  ' Its own id per read, as openSyncPlayMenu's: fetchAsync keys its pending requests by id.
+  m.syncPlayFetchCount++
+  promises.chain(fetchAsync(req, "syncPlayGroupsPoll-" + m.syncPlayFetchCount.toStr().trim()), {}).then(sub(res as object, _ctx as object)
+    m.isSyncPlayPollInFlight = false
+    if res.ok
+      onSyncPlayGroupsRead(res.json)
+    else
+      m.log.debug("SyncPlay group poll failed", "statusCode", res.statusCode)
+      onSyncPlayGroupsRead(invalid)
+    end if
+  end sub).catch(sub(err as object, _ctx as object)
+    m.isSyncPlayPollInFlight = false
+    m.log.debug("SyncPlay group poll unreachable", "reason", err.reason)
+    onSyncPlayGroupsRead(invalid)
+  end sub)
+end sub
+
+' A group list arrived, from the poll or the menu. An answer that lands after the reads stopped
+' (a join, a player, sign-out) is dropped, so it cannot bring a cleared badge back.
+sub onSyncPlayGroupsRead(groups as dynamic)
+  if not m.isPollingSyncPlayGroups then return
+  available = syncPlayMenu.hasGroups(groups)
+  if available = m.syncPlayGroupsAvailable then return
+  m.syncPlayGroupsAvailable = available
+  renderSyncPlayIcon()
 end sub
 
 ' A user dropdown item was chosen: relay it to main.bs, which observes this scene field

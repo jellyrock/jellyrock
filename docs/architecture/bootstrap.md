@@ -97,6 +97,8 @@ The app has one scene for its whole life, `components/JRScene.xml`, which extend
   <Spinner id="spinner" />
   <LabelSecondaryMedium id="loadingStageText" />  <!-- how a long wait is going -->
   <Timer id="loadingStageTimer" />
+  <Timer id="refusedNavigationTimer" />       <!-- retries a navigation the router refused -->
+  <Timer id="syncPlayGroupsTimer" />          <!-- reads the SyncPlay group list for the icon's badge -->
   <Toast id="toast" />
   <Label id="defaultFont" /> <Label id="fallbackFont" />  <!-- measured for fontScaleFactor -->
 </JRScene>

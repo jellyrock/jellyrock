@@ -98,6 +98,18 @@ namespace tests
       m.assertFalse(m.bar.callFunc("updateEntry", "syncplay", { active: true }))
     end function
 
+    @it("an entry's badge is built from the entry and patched in place")
+    function _()
+      m.bar.entries = [{ id: "search", icon: "pkg:/images/icons/search_$$RES$$.png", badge: true }]
+      icon = m.bar.findNode("searchIcon")
+      m.assertTrue(icon.hasBadge, "an entry can start with a badge")
+      m.assertTrue(m.bar.callFunc("updateEntry", "search", { badge: false }))
+      m.assertTrue(icon.isSameNode(m.bar.findNode("searchIcon")))
+      m.assertFalse(icon.hasBadge)
+      m.assertTrue(m.bar.callFunc("updateEntry", "search", { active: true }))
+      m.assertFalse(icon.hasBadge, "a patch without a badge leaves it alone")
+    end function
+
     @it("an active glyph is colorSecondary at rest; disabled wins over it")
     function _()
       m.bar.entries = m.entries()

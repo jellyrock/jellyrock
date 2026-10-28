@@ -18,6 +18,11 @@ namespace syncPlayMenu
   ' (iconFor's active), since the outlined groups glyph is barely told from the filled one.
   const ICON = "pkg:/images/icons/groups_$$RES$$.png"
 
+  ' How often the group list is read for the icon's badge, while pollsGroups holds. The server
+  ' tells a session about a group only once it is a member, so outside one the list is the only
+  ' way to know a group exists. jellyfin-web reads it as often.
+  const GROUPS_POLL_MS = 60000
+
   ' Whether the policy lets this user join a group. An unknown or missing value is treated as
   ' the server's default (CreateAndJoinGroups), the way SessionDataTransformer fills it.
   function canJoin(access as dynamic) as boolean
@@ -70,10 +75,28 @@ namespace syncPlayMenu
   end function
 
   ' The cluster's SyncPlay icon: whether it shows at all (an account with access None never sees
-  ' it: a control the viewer can never use is not shown), and whether it is active: drawn in
-  ' colorSecondary while in a group (JROverhangIcon.isActive).
-  function iconFor(inGroup as boolean, access as dynamic) as object
-    return { shown: canJoin(access), active: inGroup }
+  ' it: a control the viewer can never use is not shown), whether it is active: drawn in
+  ' colorSecondary while in a group (JROverhangIcon.isActive), and whether it carries the badge:
+  ' a group exists to join and the viewer is in none (JROverhangIcon.hasBadge). The two are told
+  ' apart by shape, a tinted glyph or a dot, so neither rests on color alone.
+  function iconFor(inGroup as boolean, access as dynamic, groupsAvailable = false as boolean) as object
+    shown = canJoin(access)
+    return { shown: shown, active: inGroup, badge: shown and not inGroup and groupsAvailable }
+  end function
+
+  ' Whether a /SyncPlay/List answer holds a group the viewer could join: one with an id.
+  function hasGroups(groups as dynamic) as boolean
+    if type(groups) <> "roArray" then return false
+    for each group in groups
+      if type(group) = "roAssociativeArray" and isValidAndNotEmpty(group.GroupId) then return true
+    end for
+    return false
+  end function
+
+  ' Whether the group list is worth reading for the badge: the cluster is on screen (signed in,
+  ' not a player), the icon is shown, and the viewer is in no group, where the badge never shows.
+  function pollsGroups(clusterVisible as boolean, inGroup as boolean, access as dynamic) as boolean
+    return clusterVisible and not inGroup and canJoin(access)
   end function
 
   ' The toast for a manager notice ({ kind, groupName, userName }): the translation key, the

@@ -2396,6 +2396,16 @@ An app wait records the screen it hides apart from the screen whose keys it hold
 
 Ruled out: ending the hiding wait after the dialog shows (the page still blanks during the fetch), and a screen wait (it holds no keys, and Back on it leaves the screen). Measured on a Stick 4K on 2026-10-27: under the hiding kind the screen and overhang read opacity 0 for 90 to 430 ms while the focus stayed on the overhang icon, and a second press orphaned a wait that blanked the screen for about 64 s.
 
+## decision-id: syncplay-icon-badge-by-shape
+
+**date**: 2026-10-27
+**status**: accepted
+**related-files**: `source/syncplay/syncPlayMenu.bs`, `components/ui/button/JROverhangIcon.bs`, `components/JRScene.bs`, `source/utils/overhangRow.bs`
+
+The cluster's SyncPlay icon tells its two states apart by shape. In a group the glyph is tinted `colorSecondary` (`JROverhangIcon.isActive`); outside one, while a group exists to join, an 18 pixel `colorSecondary` dot sits on the white glyph's top-right (`JROverhangIcon.hasBadge`, `overhangRow.BADGE_SIZE`). The server tells a session about a group only once it is a member (every `SyncPlayBroadcastType` is group-scoped, read on Jellyfin master 2026-10-27), so `JRScene` reads `/SyncPlay/List` every `syncPlayMenu.GROUPS_POLL_MS` (the interval jellyfin-web uses), on each screen and membership change and from the menu's own fetch, one read at a time and only while `syncPlayMenu.pollsGroups` holds; a failed read clears the dot. The size came from captures on a Streaming Stick 4K at 1080p on 2026-10-27 at 12, 15, 18 and 21 pixels: 12 read as a speck, 21 crowded the glyph and its focus ring.
+
+Ruled out: the two dots jellyfin-web draws (green for groups to join, blue `primary` for in a group), because the themes have no green, a fixed color falls outside the palette a viewer can recolor, `colorPrimary` means focusable here, and two dots told apart by color alone fail WCAG 1.4.1 and merge for a viewer whose `colorSecondary` is green. A group-name chip (the epic's original status chip), because a variable-width entry in the cluster's fixed slots reopens the row alignment of #1262. The tint alone, because it cannot show groups to join.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

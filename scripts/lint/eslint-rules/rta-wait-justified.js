@@ -118,6 +118,11 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // change: terminal, held until the membership changes again. `syncplay-menu.spec.js` waits
   // on it for a join and a leave.
   '#overhang.#cluster.#syncplayIcon.isActive',
+  // The same bar writes the icon's `hasBadge` when it builds the entry and in `updateEntry`,
+  // both from `JRScene.renderSyncPlayIcon` after a group-list read, a membership change or a
+  // screen change: terminal, held until the next read finds a different answer.
+  // `syncplay-menu.spec.js` waits on it around a join, a leave and an emptied list.
+  '#overhang.#cluster.#syncplayIcon.hasBadge',
   // `SyncPlayManager.publish` writes `sync.playingItemId` from the membership state, which only
   // a PlayQueue frame (`syncPlayState.applyGroupUpdate`) or leaving the group changes: held until
   // the group's queue moves again. `syncplay-menu.spec.js` waits on it for a cast's answer.

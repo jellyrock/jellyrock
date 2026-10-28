@@ -12,6 +12,7 @@ sub init()
   m.buttonBackground = m.top.findNode("buttonBackground")
   m.buttonBorder = m.top.findNode("buttonBorder")
   m.buttonIcon = m.top.findNode("buttonIcon")
+  m.badge = m.top.findNode("badge")
 
   ' Size button background and border to the square focus box
   m.buttonBackground.width = OVERHANG_ICON_SIZE
@@ -25,6 +26,12 @@ sub init()
   m.buttonIcon.loadWidth = OVERHANG_ICON_POSTER_SIZE
   m.buttonIcon.loadHeight = OVERHANG_ICON_POSTER_SIZE
   m.buttonIcon.translation = [OVERHANG_ICON_PADDING, OVERHANG_ICON_PADDING]
+
+  m.badge.width = overhangRow.BADGE_SIZE
+  m.badge.height = overhangRow.BADGE_SIZE
+  m.badge.loadWidth = overhangRow.BADGE_SIZE
+  m.badge.loadHeight = overhangRow.BADGE_SIZE
+  m.badge.translation = [overhangRow.BADGE_X, overhangRow.BADGE_Y]
 
   ' Unfocused state: transparent (matches JRDropdown trigger / JRTab pattern)
   m.buttonBackground.visible = false
@@ -46,11 +53,16 @@ sub onIsActiveChanged()
   onFocusChanged()
 end sub
 
+sub onHasBadgeChanged()
+  onFocusChanged()
+end sub
+
 ' Toggle visual state between unfocused (transparent) and focused (backdrop + border).
 ' A disabled glyph keeps the disabled text color in both states, so it reads as unavailable
 ' before the press; the focus ring still shows, because the press explains why. An active one
 ' keeps colorSecondary in both states, as IconButton's selected state does, so the state shows
-' while the viewer is on it.
+' while the viewer is on it. The badge shows in both states too, and only on a glyph that is
+' neither: the tint already says the icon is on, and a disabled icon offers nothing.
 sub onFocusChanged()
   constants = m.global.constants
   if m.top.hasFocus()
@@ -69,6 +81,8 @@ sub onFocusChanged()
   else if m.top.isActive
     m.buttonIcon.blendColor = constants.colorSecondary
   end if
+  m.badge.blendColor = constants.colorSecondary
+  m.badge.visible = m.top.hasBadge and not m.top.isActive and not m.top.isDisabled
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean

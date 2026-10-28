@@ -154,6 +154,50 @@ namespace tests
       m.assertFalse(syncPlayMenu.iconFor(false, "None").shown)
     end function
 
+    @it("carries a badge while a group exists to join and the viewer is in none")
+    function _()
+      m.assertTrue(syncPlayMenu.iconFor(false, "JoinGroups", true).badge)
+      m.assertFalse(syncPlayMenu.iconFor(false, "JoinGroups", false).badge)
+      m.assertFalse(syncPlayMenu.iconFor(false, "JoinGroups").badge, "no group list means no badge")
+    end function
+
+    @it("drops the badge in a group: the tint says it")
+    function _()
+      state = syncPlayMenu.iconFor(true, "JoinGroups", true)
+      m.assertTrue(state.active)
+      m.assertFalse(state.badge)
+    end function
+
+    @it("carries no badge when not shown")
+    function _()
+      m.assertFalse(syncPlayMenu.iconFor(false, "None", true).badge)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("groups to join")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a list with a joinable group has groups")
+    function _()
+      m.assertTrue(syncPlayMenu.hasGroups([{ GroupId: "g1", GroupName: "Movie night", Participants: ["ann"] }]))
+    end function
+
+    @it("an empty list, a group with no id, or no list has none")
+    function _()
+      m.assertFalse(syncPlayMenu.hasGroups([]))
+      m.assertFalse(syncPlayMenu.hasGroups([{ GroupName: "no id" }, { GroupId: "" }]))
+      m.assertFalse(syncPlayMenu.hasGroups(invalid))
+      m.assertFalse(syncPlayMenu.hasGroups({ GroupId: "g1" }))
+    end function
+
+    @it("polls only while the icon could show a badge")
+    function _()
+      m.assertTrue(syncPlayMenu.pollsGroups(true, false, "JoinGroups"))
+      m.assertFalse(syncPlayMenu.pollsGroups(false, false, "JoinGroups"), "the cluster is hidden: signed out or a player")
+      m.assertFalse(syncPlayMenu.pollsGroups(true, true, "JoinGroups"), "in a group the badge never shows")
+      m.assertFalse(syncPlayMenu.pollsGroups(true, false, "None"), "the icon is not shown")
+    end function
+
   end class
 
 end namespace

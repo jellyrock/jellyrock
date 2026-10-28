@@ -203,6 +203,61 @@ namespace tests
       m.assertEqual(icon.findNode("buttonIcon").blendColor, m.asBlend(m.global.constants.colorTextSecondary))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Badge")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is hidden by default")
+    function _()
+      icon = CreateObject("roSGNode", "JROverhangIcon")
+      m.assertFalse(icon.hasBadge)
+      m.assertFalse(icon.findNode("badge").visible)
+    end function
+
+    @it("is a colorSecondary dot at the glyph's top-right, on the grid")
+    function _()
+      icon = CreateObject("roSGNode", "JROverhangIcon")
+      icon.hasBadge = true
+      badge = icon.findNode("badge")
+      m.assertTrue(badge.visible)
+      m.assertEqual(badge.width, 18.0)
+      m.assertEqual(badge.height, 18.0)
+      m.assertEqual(badge.translation, [48.0, 12.0])
+      m.assertEqual(badge.blendColor, m.asBlend(m.global.constants.colorSecondary))
+    end function
+
+    @it("stays shown when focused")
+    function _()
+      scene = m.top.getScene()
+      icon = CreateObject("roSGNode", "JROverhangIcon")
+      icon.hasBadge = true
+      scene.appendChild(icon)
+      icon.setFocus(true)
+      shown = icon.findNode("badge").visible
+      scene.removeChild(icon)
+      m.assertTrue(shown)
+    end function
+
+    @it("is hidden while active (the tint says it) or disabled")
+    function _()
+      active = CreateObject("roSGNode", "JROverhangIcon")
+      active.hasBadge = true
+      active.isActive = true
+      m.assertFalse(active.findNode("badge").visible)
+      disabled = CreateObject("roSGNode", "JROverhangIcon")
+      disabled.hasBadge = true
+      disabled.isDisabled = true
+      m.assertFalse(disabled.findNode("badge").visible)
+    end function
+
+    @it("hides again when the badge is cleared")
+    function _()
+      icon = CreateObject("roSGNode", "JROverhangIcon")
+      icon.hasBadge = true
+      icon.hasBadge = false
+      m.assertFalse(icon.findNode("badge").visible)
+    end function
+
   end class
 
 end namespace
