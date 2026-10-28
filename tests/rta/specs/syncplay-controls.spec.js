@@ -41,6 +41,7 @@ let member;
 let pushAvailable;
 let groupId;
 let heroId;
+let nextId;
 
 const syncPlay = (who, action, body = {}) =>
   postJson(
@@ -48,8 +49,8 @@ const syncPlay = (who, action, body = {}) =>
     { ...tokenHeader(who.token), 'Content-Type': 'application/json' },
     body,
   );
-/** The first movie by SortName that runs ten minutes or more, or '' when the server has none. */
-async function longMovieId(who) {
+/** The movies that run ten minutes or more, by SortName. */
+async function longMovieIds(who) {
   const query = new URLSearchParams({
     UserId: who.userId,
     IncludeItemTypes: 'Movie',
@@ -61,7 +62,9 @@ async function longMovieId(who) {
   });
   const data = await getJson(`${who.serverUrl}/Items?${query}`, tokenHeader(who.token));
   const tenMinutesTicks = 10 * 60 * 10_000_000;
-  return data?.Items?.find((i) => (i.RunTimeTicks ?? 0) >= tenMinutesTicks)?.Id ?? '';
+  return (data?.Items ?? [])
+    .filter((i) => (i.RunTimeTicks ?? 0) >= tenMinutesTicks)
+    .map((i) => i.Id);
 }
 const listGroups = (who) => getJson(`${who.serverUrl}/SyncPlay/List`, tokenHeader(who.token));
 const managerCall = (funcName, ...funcParams) =>
@@ -73,6 +76,23 @@ const managerCall = (funcName, ...funcParams) =>
 const player = () => readPlayer(heroId);
 const playerState = () => player()('state');
 const playerPosition = () => player()('position');
+const playerCall = (itemId, command) =>
+  odc.callFunc(
+    {
+      base: 'scene',
+      keyPath: `#${itemId}`,
+      funcName: 'handleTransport',
+      funcParams: [{ command }],
+    },
+    { timeout: 10000 },
+  );
+const localQueueCount = async () =>
+  (
+    await odc.callFunc(
+      { base: 'global', keyPath: 'queueManager', funcName: 'getCount' },
+      { timeout: 10000 },
+    )
+  ).value;
 const osdVisible = () => player()('#osd.visible');
 const barVisible = () => player()('trickPlayBar.visible');
 
@@ -82,7 +102,7 @@ beforeAll(async () => {
   pushAvailable = await commandChannelAvailable(session);
   // A movie at least ten minutes long, found by order, never by name: the seek case scrubs
   // 30 s ahead, and `seekToWithBounds` clamps a target to 30 s short of the end.
-  heroId = await longMovieId(session);
+  [heroId = '', nextId = ''] = await longMovieIds(session);
   expect(heroId, 'a movie of ten minutes or more to play').toBeTruthy();
   await syncPlay(member, 'Leave').catch(() => {});
   const expectedServer = await seedHome(session, LOCALE);
@@ -244,6 +264,53 @@ it("the remote's Replay key seeks the whole group back, not this Roku alone", as
     read: playerState,
     timeout: 15000,
     label: "playing again after the group's Seek and Unpause",
+  });
+  expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+});
+
+it("next and previous from the remote step the whole group, with one item in this Roku's queue", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  expect(nextId, 'a second movie of ten minutes or more to queue').toBeTruthy();
+  await syncPlay(member, 'Queue', { ItemIds: [nextId], Mode: 'Queue' });
+  await waitFor('syncPlayManager.sync.playlistCount', (v) => v === 2, {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: "the second movie in the group's playlist",
+  });
+  // One item locally, whatever the group's playlist holds: the following-episode append and the
+  // whole-playlist fetch are both gone while following.
+  expect(await localQueueCount(), "this Roku's queue while following").toBe(1);
+
+  const first = await getGlobalVal('syncPlayManager.sync.playingItemId');
+  await playerCall(heroId, 'next');
+  await waitFor('syncPlayManager.sync.playingItemId', (v) => Boolean(v) && v !== first, {
+    read: getGlobalVal,
+    timeout: 20000,
+    label: "the group's NextItem moved its playing item",
+  });
+  expect(await getGlobalVal('syncPlayManager.sync.playingItemIndex'), 'the second item').toBe(1);
+  await waitFor('state', (s) => s === 'playing', {
+    read: readPlayer(nextId),
+    timeout: 90000,
+    label: 'the second movie playing on this Roku',
+  });
+  expect(await localQueueCount(), "this Roku's queue after the step").toBe(1);
+
+  const second = await getGlobalVal('syncPlayManager.sync.playingItemId');
+  await playerCall(nextId, 'previous');
+  await waitFor('syncPlayManager.sync.playingItemId', (v) => Boolean(v) && v !== second, {
+    read: getGlobalVal,
+    timeout: 20000,
+    label: "the group's PreviousItem moved its playing item back",
+  });
+  expect(await getGlobalVal('syncPlayManager.sync.playingItemIndex'), 'the first item').toBe(0);
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 90000,
+    label: 'the first movie playing again on this Roku',
   });
   expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
 });
