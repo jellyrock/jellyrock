@@ -827,14 +827,11 @@ The candidate: while halted, a play asks **Play for everyone** or **Only for me*
 
 Closes when phase F's plan decides it: built with its strings and specs, or recorded as declined in that decision.
 
-#### The remote channel status stays where it first settled, so the SyncPlay icon can be wrong for a session `[fid: remote-channel-status-not-live]` `[captured 2026-10-28]`
+#### The remote channel status stays available after the session socket dies, so the SyncPlay icon can stay enabled `[fid: remote-channel-status-not-live]` `[captured 2026-10-28]`
 
-`RemoteControlTask` publishes `server.remoteChannelStatus` once per run (PR #1270), and the SyncPlay icon follows it: hidden while unknown, disabled while unavailable. The status then stays where it first settled, in two cases read from the code, neither measured:
+`RemoteControlTask` publishes `server.remoteChannelStatus` (PR #1270), and the SyncPlay icon follows it: hidden while unknown, disabled while unavailable. The HTTPS path keeps probing the companion plugin, so its status follows the plugin. The HTTP path does not: once the session socket has opened, the status stays `available` while `runWsReceiver` reconnects with backoff. A socket that never comes back leaves the icon enabled, and a join would strand the Roku in a group it cannot follow. Read from the code, not measured.
 
-- **HTTPS:** `runLongPollReceiver` probes the companion plugin once and returns on a failure. A transport failure at launch leaves the status unknown (icon hidden) and an HTTP error leaves it unavailable (icon disabled) until the next sign-in, even after the network or the plugin comes back.
-- **HTTP:** once the session socket has opened, the status stays `available` while `runWsReceiver` reconnects. A socket that never comes back leaves the icon enabled, and a join would strand the Roku in a group it cannot follow, the flaw this status exists to prevent.
-
-Closes when the status follows the channel: the long-poll path re-probes (on reconnect or a backoff) and the socket path drops the status on a terminal close that does not stabilize, each with a spec, or when a device check shows neither case occurs in practice.
+Closes when the socket path drops the status on a close that does not recover (for example, unknown after the socket has been down longer than its reconnect backoff cap), with a spec and without hiding the icon on a brief blip, or when a device check shows a dead socket does not happen in practice.
 
 ### source
 
@@ -1128,15 +1125,19 @@ The FLAC seek workaround (#662, ADR 0052) marks a stream `isFlac` only when its 
 
 Close it on a device: seek to 50% in an Ogg file holding FLAC whose last frame is shorter than its frame size. If it stalls before the end like a `.flac` does, extend the check to the audio codec and cover it in `audio-seek.spec.js`; if it ends cleanly, record that here and drop the entry. Why not now: it needs such a fixture, which the demo server does not have.
 
-#### The companion plugin must leave the SyncPlay group of a JellyRock long-poll session whose polls went stale `[fid: syncplay-plugin-leave-stale-session]` `[captured 2026-10-24]`
+#### The companion plugin must leave the SyncPlay group of a stale long-poll session, and its install notes must say SyncPlay on HTTPS needs it `[fid: syncplay-plugin-leave-stale-session]` `[captured 2026-10-24]`
 
-For the companion plugin repo (`jellyrock/jellyfin-plugin-jellyrock`), which this machine's repo registry does not list, so `/log message` refused it on 2026-10-24 (exit 3, nothing written). Once the plugin repo is registered, move this entry there with `bash .claude/skills/start-project/mailbox.sh send jellyrock/jellyfin-plugin-jellyrock --from syncplay-plugin-leave-stale-session`; until then the text below is the message.
+For the companion plugin repo (`jellyrock/jellyfin-plugin-jellyrock`). Move this entry there with `bash .claude/skills/start-project/mailbox.sh send jellyrock/jellyfin-plugin-jellyrock --from syncplay-plugin-leave-stale-session` once PR #1270 merges: the mailbox refuses it until its capturing commit is on `origin/main`. It carries two requests for the plugin; take them as one piece of work.
+
+**1. Leave the SyncPlay group of a stale long-poll session.**
 
 JellyRock's SyncPlay work (epic #1251, phase C merged as `6deec979`) ends a SyncPlay membership that a Roku **Home** exit left behind twice over: the app sends `Leave` at its next launch (phase D), and the plugin removes the stale session from its SyncPlay group. The operator settled this on 2026-10-23 (decision C, `both`).
 
 Why the plugin: on HTTPS the Roku's session never drops a socket, so the server's `SyncPlayManager.OnSessionEnded` never fires for it. The plugin's `PlaybackReaperService` already detects a JellyRock session whose long poll went stale (the freshness its `QueueingSessionController.IsSessionActive` computes) and calls `OnPlaybackStopped`, which does not end the session, so the group keeps a member that never answers `Ready`. Servers before 12.1 have no group-wait timeout and wait for good; from 12.1 the group waits 30 s at every item change. Read 2026-10-23 from the plugin's source and the server's master branch.
 
 What to do there: on the reaper's sweep, when a JellyRock long-poll session is stale, remove it from its SyncPlay group through the server's `ISyncPlayManager`, the same `LeaveGroup` path `OnSessionEnded` takes. Leave only the group; never end the session, because the phantom-session wake for ECP relies on it. Ship alongside JellyRock's phase D. Open question for that plan: which staleness threshold the reaper uses today, and whether a group member should be dropped sooner than a session is reaped, since the whole group waits on it.
+
+**2. Say in the plugin's install notes that SyncPlay on HTTPS needs it.** From PR #1270, JellyRock offers SyncPlay on an HTTPS server only when this plugin answers its probe: without it the Roku has no push channel, so it could join a group on the server but never learn it had, and never follow the group. The cluster's SyncPlay icon then shows disabled, and a press explains "SyncPlay on an HTTPS server needs the JellyRock plugin installed on that server." The plugin's README (or install page) should say the same from the admin's side: SyncPlay from JellyRock on an `https://` server needs this plugin, and on an `http://` server it does not. No restart of the Roku app is needed after installing it: the app checks for the plugin again every few minutes after a "not installed" answer (`remoteProtocol.PLUGIN_RECHECK_MS`).
 
 #### `fetchAsync` overwrites a pending request that reuses its `requestId`, so the first promise never settles and the second can settle early `[fid: fetchasync-reused-requestid-orphans-promise]` `[captured 2026-10-28]` `[pinned]`
 
