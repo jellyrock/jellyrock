@@ -61,7 +61,16 @@
       "Bash(grep:*)",
       "Bash(date:*)",
       "Bash(ls:*)",
-      "Bash(find .claude/handoffs:*)"
+      "Bash(find .claude/handoffs:*)",
+      "Bash(bash .claude/skills/resume-project/resume-state.sh:*)",
+      "Bash(bash .claude/skills/catchup/catchup-state.sh:*)",
+      "Bash(bash .claude/skills/end-session/move-old-decisions.sh:*)",
+      "Bash(bash .claude/skills/sonnet/plan-run.sh:*)",
+      "Bash(bash .claude/skills/second-opinion/review-run.sh:*)",
+      "Bash(bash .claude/skills/log/journal.sh show:*)",
+      "Bash(bash .claude/skills/log/journal.sh list:*)",
+      "Bash(bash .claude/skills/log/journal.sh check:*)",
+      "Bash(bash .claude/skills/log/journal.sh stats:*)"
     ],
     "ask": [
       "Bash(git worktree add *)",
