@@ -12,6 +12,9 @@
 #       its own item. The brief is Markdown: `## Items` (each item a `### Item: <label>` with its
 #       text below), then `## Audience`, `## Decision`, `## Constraints`, `## Evidence`, and last
 #       `## Standards`, which runs to the end of the file (pasted rules keep their own headings).
+#       A file a field cites (a path, with or without `:<line>`; relative to the current directory,
+#       absolute or `~/`) is read whole: a line there pairing a withheld phrase with an item's label
+#       is a problem too, since the reviewer can open that file.
 #   … split <brief> <out folder>
 #       a brief that passes check, into the reviewer's two turns and the parent's key:
 #         criteria.md  turn 1: the context fields and the Standards, no item, inside <brief>…</brief>
@@ -69,6 +72,32 @@ brief_awk() {
       }
       return 0
     }
+    # does the path name a readable regular file?
+    function isfile(t) { return system("test -f " t " && test -r " t) == 0 }
+    # the files a line cites: a token of path characters, "~/" for the home folder; a ":12" or "#L12"
+    # suffix falls away because ":" and "#" end a token. Whole file read; each (file, line, label) once.
+    function cited(s,   n, k, t, p, ln, c, i, w) {
+      gsub(/[^A-Za-z0-9_.\/~+@%-]/, " ", s)
+      n = split(s, T, " ")
+      for (k = 1; k <= n; k++) {
+        t = T[k]; sub(/[.]+$/, "", t)
+        if (t == "" || t ~ /^-/ || (t ~ /~/ && t !~ /^~\//)) continue
+        p = t; if (p ~ /^~\//) p = ENVIRON["HOME"] substr(p, 2)
+        if (!(p in isf)) isf[p] = isfile(p)
+        if (!isf[p]) continue
+        c = 0
+        while ((getline ln < p) > 0) {
+          c++; w = withheld(ln)
+          if (w == "") continue
+          for (i = 1; i <= n1; i++)
+            if (hasword(ln, lab1[i]) && !((p SUBSEP c SUBSEP i) in said)) {
+              said[p SUBSEP c SUBSEP i] = 1
+              problem("cited file " t " (line " c ") pairs " w " with label " lab1[i] ": quote what the reviewer needs with the leaning cut, instead of citing the file")
+            }
+        }
+        close(p)
+      }
+    }
     BEGIN {
       nf = split("Items Audience Decision Constraints Evidence Standards", F, " ")
       for (i = 1; i <= nf; i++) field[F[i]] = 1
@@ -119,6 +148,7 @@ brief_awk() {
       for (i = 1; i <= n1; i++)
         if (!(sec == "Items" && lab1[i] == tolower(label[cur])) && hasword($0, lab1[i]))
           problem("label " lab1[i] " appears in " where() " (line " FNR ")")
+      cited($0)
     }
     END {
       if (mode == "items") {

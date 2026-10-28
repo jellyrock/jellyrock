@@ -791,7 +791,7 @@ case "$cmd" in
       tracked=0; git -C "$top" ls-files --error-unmatch -- "$FILE" >/dev/null 2>&1 && tracked=1
       printf 'n\tcategory\tcaptured\tfid\ttitle\tnote\n'
       tail -n +2 "$res" | while IFS=$'\037' read -r k c key f t nt; do
-        d=""; [ "$tracked" = 1 ] && d="$(git -C "$top" log --reverse --format=%cs -S"$key" -- "$FILE" | head -1)"
+        d=""; [ "$tracked" = 1 ] && d="$(git -C "$top" log --reverse --format=%cs -S"$key" -- "$FILE" | sed -n 1p)"
         [ -n "$d" ] || nt="${nt:+$nt; }no date found in git: fill in captured"
         printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$k" "$c" "$d" "$f" "$t" "$nt"
       done

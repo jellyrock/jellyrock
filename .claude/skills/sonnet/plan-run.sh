@@ -17,12 +17,13 @@
 #       after the run: every file changed in <base>..HEAD with its lines added and removed, and
 #       any left uncommitted, against the plan's Critical files (a row ending in / covers every file
 #       under it; the project PLAN's landing record is expected, not out of plan); and where a push
-#       goes: the branch, its upstream, and how far ahead and behind it is as of the last fetch
-#       (this script never fetches)
+#       goes: the branch, its upstream (with none, origin's default branch), and how far ahead and
+#       behind it is, after one bounded fetch (PLAN_RUN_FETCH_SECONDS, default 10; a NOTE when it fails)
 #   … gate <plan> <base>
 #       after a supervised run's review: whether it may push without asking. Only when the Landing
 #       section of the repo's AGENTS.md gives level `gated`, the plan's Landing & closeout says
-#       **Always ask:** none, and scope matches the plan; every reason to stop is listed
+#       **Always ask:** none, scope matches the plan, the branch is not behind, and the fetch ran;
+#       every reason to stop is listed
 #   … land <plan> [--commit <rev>] [--dry-run] [--floor '<command>'] [--base <starting commit>]
 #       the landing line in the Session log of the plan's project, last-updated bumped, committed
 #       alone (a local edit where the projects folder is gitignored; pushed by projects-write.sh where
@@ -32,6 +33,16 @@
 #       a NOTE naming each line shaped like this script's own) and records nothing when it fails;
 #       --base then prints scope against that commit, as `scope <plan> <base>` does, and the exit is
 #       scope's. One call, so the order floor, landing, scope never rests on the caller.
+#   … mutate <table> --suite '<command>'
+#       proves each new test guards: a plan's mutation table in one plain command, which a
+#       worktree-isolated session's checks accept (they refuse a loop typed in the shell). One row per
+#       line, tab-separated: a name, a file (relative to the repo root), the exact text to find, its
+#       replacement, then each case that must fail. No regex and no escapes; the text must occur once
+#       in the file. Lines starting # and blank lines are skipped. Each row runs the suite in a scratch
+#       copy of the working tree (tracked, edited and untracked files, not ignored ones), made into a
+#       one-commit repository with the mutation committed on top. The real tree is never written. The
+#       suite runs once on an unchanged copy first. A row counts only when the suite fails, every
+#       listed case is in a line starting FAIL, and no FAIL line is outside the list.
 # Exit: check  0 LOCAL; 2 no plan named (--list printed the candidates); 3 the plan cannot be read;
 #              4 locality FOREIGN, MIXED or UNKNOWN: confirm before any edit
 #       scope  0 matches the plan; 1 differs; 3 an unreadable plan, or no base
@@ -40,6 +51,8 @@
 #       land   0 recorded, already recorded, nothing to record, or left to /end-session (with --base: scope's
 #              exit, 0 matches the plan, 1 differs); 2 cannot record (the message says the fix);
 #              3 an unreadable plan, or a --base that is not a commit; 4 the --floor failed, nothing recorded
+#       mutate 0 every mutation killed as expected; 1 a row was refused, survived, or failed other cases than
+#              listed; 3 no --suite, or an unreadable or empty table; 4 the suite fails on the unchanged tree
 # Any command: exit 3 when the log skill's md-skip.awk is missing beside this skill (the rule for what is not a heading).
 # Judgment stays with the caller: BANNER lines are what to raise, NOTE lines inform.
 # PLAN_RUN_TODAY (YYYY-MM-DD) dates the landing line in tests.
@@ -231,6 +244,38 @@ do_check() {
   exit 4
 }
 
+# branch_state: where a push goes and how far behind it is. It fetches first, since a clone whose
+# last fetch predates the remote's work would read as current: bounded, never prompting, once per
+# call of this script. A fetch that fails or cannot be bounded is said (FETCH_OK=0), never a stop
+# here. Sets BR, UP (the upstream; with none, origin's default branch; empty when neither),
+# UP_IS_UPSTREAM, AHEAD, BEHIND, FETCH_OK and FETCH_NOTE.
+FETCHED=0 FETCH_OK=1 FETCH_NOTE=""
+branch_state() {
+  local remote ref b secs
+  BR="$(git -C "$root" symbolic-ref --short -q HEAD)"
+  UP="$(git -C "$root" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)"; UP_IS_UPSTREAM=1
+  if [ -n "$UP" ]; then remote="$(git -C "$root" config "branch.$BR.remote" 2>/dev/null)"
+  else
+    UP_IS_UPSTREAM=0; remote=origin
+    git -C "$root" remote get-url origin >/dev/null 2>&1 || remote=""
+  fi
+  if [ "$FETCHED" = 0 ] && [ -n "$remote" ] && [ "$remote" != . ]; then
+    FETCHED=1; secs="${PLAN_RUN_FETCH_SECONDS:-10}"
+    if ! command -v timeout >/dev/null; then
+      FETCH_OK=0; FETCH_NOTE="NOTE: no timeout command here: not fetched, so the counts are as of the last fetch"
+    elif GIT_TERMINAL_PROMPT=0 timeout "$secs" git -C "$root" fetch -q "$remote" >/dev/null 2>&1 </dev/null; then
+      FETCH_NOTE="fetched $remote"
+    else FETCH_OK=0; FETCH_NOTE="NOTE: could not fetch $remote within $secs s: the counts are as of the last fetch"; fi
+  fi
+  if [ -z "$UP" ]; then
+    if ref="$(git -C "$root" symbolic-ref -q --short refs/remotes/origin/HEAD)"; then UP="$ref"
+    else for b in main master; do git -C "$root" show-ref -q --verify "refs/remotes/origin/$b" && { UP="origin/$b"; break; }; done; fi
+  fi
+  AHEAD="" BEHIND=""
+  [ -n "$UP" ] && read -r BEHIND AHEAD < <(git -C "$root" rev-list --left-right --count "$UP...HEAD")
+  return 0
+}
+
 # --- scope -------------------------------------------------------------------------------------
 
 do_scope() {
@@ -248,15 +293,12 @@ do_scope() {
   done <<<"$rows"
 
   section "BRANCH"
-  local br up counts
-  br="$(git -C "$root" symbolic-ref --short -q HEAD)"
-  up="$(git -C "$root" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)"
-  if [ -z "$br" ]; then echo "branch: none (a detached HEAD): a push needs a branch"
-  elif [ -z "$up" ]; then echo "branch: $br has no upstream: the first push sets one (git push -u)"
-  else
-    counts="$(git -C "$root" rev-list --left-right --count "$up...HEAD")"
-    echo "branch: $br → $up: ${counts##*[[:space:]]} ahead, ${counts%%[[:space:]]*} behind (as of the last fetch)"
-  fi
+  branch_state
+  [ -z "$FETCH_NOTE" ] || echo "$FETCH_NOTE"
+  if [ -z "$BR" ]; then echo "branch: none (a detached HEAD): a push needs a branch"
+  elif [ "$UP_IS_UPSTREAM" = 1 ]; then echo "branch: $BR → $UP: $AHEAD ahead, $BEHIND behind (as of the last fetch)"
+  elif [ -n "$UP" ]; then echo "branch: $BR has no upstream: the first push sets one (git push -u); against $UP: $AHEAD ahead, $BEHIND behind (as of the last fetch)"
+  else echo "branch: $BR has no upstream: the first push sets one (git push -u)"; fi
 
   section "COMMITTED SINCE $(git -C "$root" rev-parse --short "$base")"
   local add del size
@@ -333,11 +375,21 @@ do_gate() {
   ask="$(always_ask "$plan")"
   if [ -z "$ask" ]; then
     echo "always ask: missing"; stops+=("the plan has no **Always ask:** line in its Landing & closeout (a plan written before the line existed)")
-  elif printf '%s' "$ask" | grep -qiE '^none([^[:alnum:]]|$)'; then
+  elif grep -qiE '^none([^[:alnum:]]|$)' <<<"$ask"; then
     echo "always ask: none"
   else
     echo "always ask: $ask"; stops+=("the plan names an Always ask item")
   fi
+
+  section "BRANCH"
+  branch_state
+  [ -z "$FETCH_NOTE" ] || echo "$FETCH_NOTE"
+  if [ -z "$UP" ]; then echo "behind: not counted (no upstream and no origin default branch)"
+  else
+    echo "behind: $BEHIND (on $UP, not in this branch)"
+    [ "$BEHIND" = 0 ] || stops+=("$UP has $BEHIND commit(s) this branch lacks: rebase onto it and run the checks again")
+  fi
+  [ "$FETCH_OK" = 1 ] || stops+=("could not fetch: the behind count may be stale (fetch, then run the gate again)")
 
   section "SCOPE"
   if (do_scope "$plan" "$base") >/dev/null 2>&1; then echo "scope: matches the plan"
@@ -423,6 +475,136 @@ do_land() {
   echo "recorded \`$sha\` in $rel as $(git -C "$root" rev-parse --short HEAD)"
 }
 
+# --- mutate ------------------------------------------------------------------------------------
+
+# mut_count <file> / mut_replace <file>: the find text (M_FIND) in the file, literally. awk reads
+# both strings from the environment, never -v (which turns backslash escapes into characters), and
+# cuts with index() and substr() (never sub(), which reads a regex and treats & as the match). One
+# record holds the whole file (RS is a control character no text file holds), so its newlines stay.
+mut_count() {
+  awk 'BEGIN { RS = "\001" } { s = $0 } END {
+    f = ENVIRON["M_FIND"]; n = 0
+    while ((i = index(s, f)) > 0) { n++; s = substr(s, i + length(f)) }
+    print n }' "$1"
+}
+mut_replace() {
+  awk 'BEGIN { RS = "\001" } { s = $0 } END {
+    f = ENVIRON["M_FIND"]; r = ENVIRON["M_REPL"]; i = index(s, f)
+    printf "%s%s%s", substr(s, 1, i - 1), r, substr(s, i + length(f)) }' "$1"
+}
+
+# split_row <line>: ROW holds the tab-separated fields, empty ones kept (a read with a tab in IFS
+# would collapse an empty replacement)
+split_row() {
+  local rest="$1"; ROW=()
+  while [[ "$rest" == *$'\t'* ]]; do ROW+=("${rest%%$'\t'*}"); rest="${rest#*$'\t'}"; done
+  ROW+=("$rest")
+}
+
+# quote_lines <max> <line>...: the lines, each indented, at most <max> of them, then a count of the rest
+quote_lines() {
+  local max="$1" n=0 l; shift
+  for l in "$@"; do
+    n=$((n+1)); [ "$n" -le "$max" ] && printf '    %s\n' "$l"
+  done
+  [ "$n" -le "$max" ] || printf '    … and %d more\n' $((n-max))
+}
+
+do_mutate() {
+  local table="$1" suite="$2" tmp base run out line n=0 killed=0 v
+  local name file find repl cases c rc cnt lines fl hit missing unexpected
+  [ -n "$suite" ] || die 3 "mutate needs --suite '<command>': the suite to run on each mutated copy"
+  [ -f "$table" ] && [ -r "$table" ] || die 3 "cannot read the mutation table: $table"
+  local rows=()
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -z "${line//[[:space:]]/}" ] && continue
+    case "$line" in '#'*) continue ;; esac
+    rows+=("$line")
+  done <"$table"
+  [ "${#rows[@]}" -gt 0 ] || die 3 "the mutation table has no rows: $table"
+
+  # no caller GIT_ variable (a hook's GIT_DIR or GIT_INDEX_FILE) reaches the copies or the suites
+  while IFS= read -r v; do unset "$v"; done < <(env | sed -n 's/^\(GIT_[A-Za-z_]*\)=.*/\1/p')
+  # plan-run's own git calls in the copies run with no git or user setting and a fixed identity; the suites do not get these
+  cgit() {
+    GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME=plan-run GIT_AUTHOR_EMAIL=plan-run@example.invalid \
+      GIT_COMMITTER_NAME=plan-run GIT_COMMITTER_EMAIL=plan-run@example.invalid git "$@"
+  }
+
+  tmp="$(mktemp -d)" || die 3 "cannot make a scratch folder"
+  trap 'rm -rf "$tmp"' EXIT
+  base="$tmp/base"; out="$tmp/out"; mkdir "$base"
+
+  # the snapshot: what the working tree holds now (tracked, edited, untracked, not ignored), as a one-commit repo
+  : >"$tmp/list"
+  while IFS= read -r -d '' f; do
+    { [ -e "$root/$f" ] || [ -L "$root/$f" ]; } && printf '%s\0' "$f" >>"$tmp/list"
+  done < <(cd "$root" && git ls-files -z -co --exclude-standard)
+  tar -C "$root" --null -T "$tmp/list" -cf - | tar -C "$base" -xf - || die 3 "cannot copy the working tree"
+  (cd "$base" && cgit init -q && cgit add -A && cgit commit -q --allow-empty -m "plan-run mutate: the unchanged tree") >/dev/null 2>&1 || die 3 "cannot make the scratch repository"
+
+  run="$tmp/run"; cp -a "$base" "$run"
+  (cd "$run" && bash -c "$suite") >"$out" 2>&1; rc=$?
+  if [ "$rc" -ne 0 ]; then
+    section BASELINE
+    tail -n 20 "$out"
+    echo "RESULT: the suite fails on the unchanged tree: nothing was mutated"
+    exit 4
+  fi
+
+  section "MUTATIONS"
+  for line in "${rows[@]}"; do
+    split_row "$line"
+    name="${ROW[0]:-?}"
+    n=$((n+1))
+    if [ "${#ROW[@]}" -lt 4 ] || [ -z "${ROW[0]}" ] || [ -z "${ROW[1]}" ] || [ -z "${ROW[2]}" ]; then
+      echo "REFUSED $name: malformed row (needs name, file, text to find, replacement, then the cases that must fail)"; continue
+    fi
+    file="${ROW[1]}"; find="${ROW[2]}"; repl="${ROW[3]}"; cases=()
+    for c in "${ROW[@]:4}"; do [ -n "$c" ] && cases+=("$c"); done
+    case "$file" in
+      /*|..|../*|*/../*|*/..) echo "REFUSED $name: $file leaves the repository"; continue ;;
+    esac
+    [ -f "$base/$file" ] || { echo "REFUSED $name: $file is not a file in the working tree"; continue; }
+    cnt="$(M_FIND="$find" mut_count "$base/$file")"
+    [ "$cnt" = 1 ] || { echo "REFUSED $name: the text to find occurs $cnt times in $file, not once"; continue; }
+    run="$tmp/run"; rm -rf "$run"; cp -a "$base" "$run"
+    M_FIND="$find" M_REPL="$repl" mut_replace "$base/$file" >"$tmp/mutated"
+    cat "$tmp/mutated" >"$run/$file"
+    if cmp -s "$base/$file" "$run/$file"; then echo "REFUSED $name: the replacement leaves $file unchanged"; continue; fi
+    # committed in the copy, so a suite that clones the repository root sees the mutation too
+    (cd "$run" && cgit add -A && cgit commit -q -m "plan-run mutate: $name") >/dev/null 2>&1 || { echo "REFUSED $name: cannot commit the mutation in the copy"; continue; }
+    (cd "$run" && bash -c "$suite") >"$out" 2>&1; rc=$?
+    if [ "$rc" -eq 0 ]; then
+      echo "SURVIVED $name: $(tail -n 1 "$out")"; rm -rf "$run"; continue
+    fi
+    mapfile -t lines < <(sed -n 's/^[[:space:]]*\(FAIL .*\)$/\1/p' "$out")
+    missing=(); unexpected=()
+    for c in "${cases[@]}"; do
+      hit=0; for fl in "${lines[@]}"; do [[ "$fl" == *"$c"* ]] && hit=1; done
+      [ "$hit" = 1 ] || missing+=("$c")
+    done
+    if [ "${#cases[@]}" -gt 0 ]; then
+      for fl in "${lines[@]}"; do
+        hit=0; for c in "${cases[@]}"; do [[ "$fl" == *"$c"* ]] && hit=1; done
+        [ "$hit" = 1 ] || unexpected+=("$fl")
+      done
+    fi
+    if [ "${#missing[@]}" -eq 0 ] && [ "${#unexpected[@]}" -eq 0 ]; then
+      echo "KILLED $name: $(tail -n 1 "$out")"; killed=$((killed+1))
+    else
+      if [ "${#missing[@]}" -gt 0 ]; then echo "MISSING $name: ${#missing[@]} listed case(s) did not fail"; quote_lines 20 "${missing[@]}"; fi
+      if [ "${#unexpected[@]}" -gt 0 ]; then echo "UNEXPECTED $name: ${#unexpected[@]} FAIL line(s) outside the list"; quote_lines 20 "${unexpected[@]}"; fi
+    fi
+    rm -rf "$run"
+  done
+
+  section "END"
+  echo "RESULT: $killed of $n mutations killed as expected"
+  [ "$killed" -eq "$n" ] && exit 0
+  exit 1
+}
+
 # --- dispatch ----------------------------------------------------------------------------------
 
 cmd="${1:-}"; [ $# -gt 0 ] && shift
@@ -468,5 +650,16 @@ case "$cmd" in
       (do_scope "$plan" "$base"); exit $?
     fi
     exit "$lrc" ;;
-  *) die 3 "usage: plan-run.sh check <plan> | check --list <folder> | scope <plan> <base> | gate <plan> <base> | land <plan> [--commit <rev>] [--dry-run] [--floor '<command>'] [--base <starting commit>]" ;;
+  mutate)
+    usage="usage: plan-run.sh mutate <table> --suite '<command>'"
+    table="${1:-}"; [ -n "$table" ] || die 3 "$usage"; shift
+    suite=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --suite) [ -n "${2:-}" ] || die 3 "--suite needs a command"; suite="$2"; shift 2 ;;
+        *) die 3 "unknown option: $1" ;;
+      esac
+    done
+    do_mutate "$(abs "$table")" "$suite" ;;
+  *) die 3 "usage: plan-run.sh check <plan> | check --list <folder> | scope <plan> <base> | gate <plan> <base> | land <plan> [--commit <rev>] [--dry-run] [--floor '<command>'] [--base <starting commit>] | mutate <table> --suite '<command>'" ;;
 esac

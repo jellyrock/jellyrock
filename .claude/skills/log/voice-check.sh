@@ -226,7 +226,7 @@ ignore_notes() { # a NOTE on stderr for each .voice-ignore pattern that matches 
     pat="${pat%$'\r'}"
     case "$pat" in '#'*|'!'*) continue ;; esac
     [[ "$pat" =~ ^[[:space:]]*$ ]] && continue
-    [ -n "$(git -C "$root" ls-files -c -i --exclude="$pat" -- '*.md' | head -n 1)" ] && continue
+    [ -n "$(git -C "$root" ls-files -c -i --exclude="$pat" -- '*.md' | sed -n 1p)" ] && continue
     printf "voice-check: NOTE: %s pattern '%s' matches no tracked Markdown file: fix it or remove it\n" \
       "$IGNORE_NAME" "$pat" >&2
   done <"$ignorefile"

@@ -75,14 +75,15 @@ if [ -z "$run_json" ]; then
   echo "BANNER: read forge.sh's message above before assuming a bad run id: a missing ### Forge slot, a rejected field or an expired token looks nothing like a missing run"
   exit 3
 fi
-if ! parsed="$(printf '%s' "$run_json" | jq -r '[.status,.conclusion,.name,.event,.headBranch,.url]|map(. // "")|@tsv' 2>"$err")"; then
+if ! parsed="$(printf '%s' "$run_json" | jq -r '[.status,.conclusion,.name,.event,.headBranch,.url,.headSha]|map(. // "")|join("\u001f")' 2>"$err")"; then
   echo "ERROR: could not parse the run payload"
   [ -s "$err" ] && { echo "jq said:"; sed 's/^/  /' "$err"; }
   echo "BANNER: the fetch worked but its JSON did not parse: do NOT read this as a run that is fine"
   exit 3
 fi
-IFS=$'\t' read -r status conclusion name event branch url <<<"$parsed"
+IFS=$'\037' read -r status conclusion name event branch url sha <<<"$parsed"
 printf 'run:    %s (%s on %s)\n' "$name" "$event" "$branch"
+printf 'commit: %s\n' "${sha:-(not reported)}"
 printf 'status: %s / %s\n' "$status" "$conclusion"
 printf 'url:    %s\n' "$url"
 

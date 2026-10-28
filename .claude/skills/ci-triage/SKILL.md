@@ -38,6 +38,7 @@ allowed-tools: Bash(bash .claude/skills/pr/forge.sh run view:*), Bash(bash .clau
 - **Stopping at the first failed job.** A second failure hides behind the first and is the next red run.
 - **Reading cleanup as the failure.** A job's last lines are mostly post-job cleanup; the diagnosis is at its `##[error]` lines, which is the region the script prints.
 - **Forcing a category.** A step `gates.tsv` does not know is `unknown`: classify it from the tail and propose its line, never guess one of the known categories.
+- **Reaching past `forge.sh`.** A raw `gh` call for a field the state read lacks (the run's commit, a branch's PR state) skips the forge set's error handling and breaks on a non-GitHub forge. A field it lacks is a change to `forge.sh`, never a direct `gh` call.
 - **Re-running, or pushing, on the user's behalf.** A re-run spends CI and a push lands work; both are the user's to run.
 - **Re-running a failure that points at code, or theorizing about one that is transient.** Decide which it is from the tail first.
 
@@ -95,7 +96,7 @@ Run the gate's local command from this skill's `## This repo`; with none there, 
 
 ### Step 6: Root cause
 
-Read the file and line the tail names, and the change that brought it in:
+Read the file and line the tail names, and the change that brought it in (the state read's `commit:` line is the commit the run tested):
 
 ```sh
 git log --oneline -10 -- {{path}}

@@ -33,17 +33,19 @@
 #   - It writes only its claim, outside the repo (under $XDG_STATE_HOME/project-claims): no project
 #     state, no commits. /end-session owns project state. A resume fetches the branch's remote
 #     first (remote-tracking refs only, under a timeout, RESUME_FETCH_SECONDS, default 10), unlike
-#     /catchup and /sonnet's readers: it loads the PLAN a session works from, and a checkout behind
+#     /sonnet's reader: it loads the PLAN a session works from, and a checkout behind
 #     its remote loads an old one. No timeout command, or a failed fetch: a NOTE, then the last fetch.
 #
 # Usage (from inside the repo):
 #   bash .claude/skills/resume-project/resume-state.sh [<slug> [<starting point>…]]
 #       the resume read. <slug> is a project's short slug (hub) or its whole folder name (2026-10-hub), which picks that folder alone. Words after the slug are where this session starts instead of the
-#       kickoff's Starts at: one open followup's fid (optionally fid:<fid>) is shown in full;
-#       anything else is the operator's words.
+#       kickoff's Starts at: one open followup's fid (optionally fid:<fid>), or one open work request
+#       part's id naming this repo (optionally request:<id>), is shown in full; an id that is both is
+#       said, to ask which; anything else is the operator's words.
 #   … --check [<slug>]     the PLAN check alone: FAIL lines exit 1; REVIEW lines ask the writer to
 #                          justify something (a landmine dropped since the last commit); NOTEs inform
-#   … --release [<slug>]   remove this session's claim (another session's is left alone)
+#   … --release [<slug>]   remove this session's claim (another session's is left alone). Like a
+#                          resume, it acts on the project's worktree when run in the main checkout
 #   … --holder [<slug>]    which session holds the project; only reads (a sub-agent asks as its
 #                          parent session, so "this session" means /end-session will close it)
 #   … --waits <PLAN path>  only what that PLAN waits on, resolved (for other readers)
@@ -86,6 +88,7 @@ esac
 # A Verify first command that runs --check again would recurse without end: verify_first marks its commands.
 [ "$mode" = check ] && [ -n "${RESUME_STATE_IN_CHECK:-}" ] && { echo "ERROR: a Verify first command runs the PLAN check itself"; exit 2; }
 slug="${1:-}"; [ $# -gt 0 ] && shift
+start_words=("$@") # kept as given: a redirect passes them on
 start="$*"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 journal="$here/../log/journal.sh"
@@ -248,7 +251,7 @@ plan_check() {
     [ "$has_starts" = 1 ] || fail "the kickoff has no **Starts at:** line (write the kickoff in the template's skeleton)"
     grep -q '^\*\*Last session stopped:\*\*' <<<"$kick" || fail "the kickoff has no **Last session stopped:** line"
     grep -q '^\*\*Unanswered:\*\*' <<<"$kick" || fail "the kickoff has no **Unanswered:** line"
-    sub_section "Next, in order" <<<"$kick" | grep -q '^[0-9][0-9]*\. ' \
+    grep -q '^[0-9][0-9]*\. ' <<<"$(sub_section "Next, in order" <<<"$kick")" \
       || fail "the kickoff has no ### Next, in order section with a numbered step"
     while IFS= read -r k; do
       [[ "$k" =~ ^-\ \`[^\`]+\`\ prints\ .+ ]] || { fail "a Verify first line is not \`command\` prints \`value\`: $k"; continue; }
@@ -329,7 +332,7 @@ resolve_project() {
   elif [ "$pst" = completed ]; then echo "met: $r (completed)"; return 0
   elif [ -z "$ph" ]; then echo "waiting: $r (${pst:-no status})"; return 1
   fi
-  mk="$(plan_section "$p" "Status" | phase_marks | awk -F'\t' -v c="$ph" '$1 == c "" { print ($2 == "" "" ? "no mark" : $2); f=1; exit } END { if (!f) print "?" }')"
+  mk="$(plan_section "$p" "Status" | phase_marks | awk -F'\t' -v c="$ph" '$1 == c "" && !f { print ($2 == "" "" ? "no mark" : $2); f=1 } END { if (!f) print "?" }')"
   if [ "$mk" = "?" ]; then echo "UNKNOWN: $r (no phase $ph in $s's Phase progress)"; return 2
   elif [ "$mk" = "✅" ]; then echo "met: $r (✅)"; return 0
   else echo "waiting: $r ($mk)"; return 1; fi
@@ -450,9 +453,9 @@ waits_list() {
 # --- claims: which session holds a project (per machine) ---
 claims_dir="${XDG_STATE_HOME:-$HOME/.local/state}/project-claims"
 sessions_dir="${CLAIMS_SESSIONS_DIR:-$HOME/.claude/sessions}"
-json_str() { grep -o "\"$2\":\"[^\"]*\"" "$1" 2>/dev/null | head -1 | sed 's/^"[^"]*":"//; s/"$//'; }
-json_num() { grep -o "\"$2\":[0-9]*" "$1" 2>/dev/null | head -1 | sed 's/^"[^"]*"://'; }
-session_file() { grep -l "\"sessionId\":\"$1\"" "$sessions_dir"/*.json 2>/dev/null | head -1; }
+json_str() { grep -o "\"$2\":\"[^\"]*\"" "$1" 2>/dev/null | sed -n 1p | sed 's/^"[^"]*":"//; s/"$//'; }
+json_num() { grep -o "\"$2\":[0-9]*" "$1" 2>/dev/null | sed -n 1p | sed 's/^"[^"]*"://'; }
+session_file() { grep -l "\"sessionId\":\"$1\"" "$sessions_dir"/*.json 2>/dev/null | sed -n 1p; }
 claim_file() { printf '%s/%s' "$claims_dir" "$(readlink -m "$1" | sed 's#/#%#g')"; }
 my_name() { local n=""; [ -n "${CLAUDE_PID:-}" ] && n="$(json_str "$sessions_dir/$CLAUDE_PID.json" name)"; printf '%s' "${n:-this session}"; }
 
@@ -613,6 +616,38 @@ if [ ! -r "$plan" ]; then echo "ERROR: $plan is not readable"; exit 3; fi
 
 name="$(basename "$(dirname "$plan")")"; pslug="${name#[0-9][0-9][0-9][0-9]-[0-9][0-9]-}"
 st="$(frontmatter "$plan" status)"; lu="$(frontmatter "$plan" last-updated)"
+
+# A resume, --release or --holder run in the repo's main checkout acts on the project's worktree:
+# the worktree holds the newer PLAN, and the claim and every check belong to the folder the work
+# happens in, so a release or a holder question must look where the resume recorded the claim. The
+# script runs again there, with the picked folder's name so an auto-pick picks the same project
+# (a re-exec rather than a swapped path: every later line then reads one folder, whole).
+# RESUME_STATE_REDIRECTED names the worktree it was sent to: it stops a second hop and lets that run
+# say where it came from. The other modes returned above or never get here.
+main_checkout=""
+if [ "$(cd "$(git rev-parse --git-dir)" && pwd -P)" = "$(cd "$(git rev-parse --git-common-dir)" && pwd -P)" ]; then main_checkout=1; fi
+
+# project_worktree: prints the picked project's worktree and returns 0 when this run should go there:
+# the main checkout, a status of active, paused or draft, and .claude/worktrees/<slug> a real worktree
+# of this repo (it shares the common git dir and has a git dir of its own), not the one already sent to.
+project_worktree() {
+  local wt common
+  common="$(cd "$(git rev-parse --git-common-dir)" && pwd -P)"
+  [ -n "$main_checkout" ] || return 1
+  case "$st" in active|paused|draft) ;; *) return 1 ;; esac
+  wt="$top/.claude/worktrees/$pslug"; [ -d "$wt" ] || return 1
+  [ "$(cd "$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P)" = "$common" ] || return 1
+  [ "$(cd "$(git -C "$wt" rev-parse --path-format=absolute --git-dir 2>/dev/null)" 2>/dev/null && pwd -P)" != "$common" ] || return 1
+  wt="$(cd "$wt" && pwd -P)"
+  [ "${RESUME_STATE_REDIRECTED:-}" != "$wt" ] || return 1
+  printf '%s\n' "$wt"
+}
+case "$mode" in resume|release|holder)
+  if wt="$(project_worktree)"; then
+    flag=""; [ "$mode" = resume ] || flag="--$mode"
+    cd "$wt" && RESUME_STATE_REDIRECTED="$wt" exec bash "${BASH_SOURCE[0]}" ${flag:+"$flag"} "$name" ${start_words[@]+"${start_words[@]}"}
+  fi ;;
+esac
 age=""; e="$(date -d "$lu" +%s 2>/dev/null)" && age="$(( ($(date +%s) - e) / 86400 )) days ago"
 echo "project: $name"
 echo "plan: $plan"
@@ -642,12 +677,14 @@ else echo "clean"; fi
 # A project works in its own worktree under .claude/worktrees, not in the repo's main checkout: a
 # resume that runs in the main checkout (git dir and common dir are the same folder) says so.
 case "$st" in active|paused|draft)
-  if [ "$(cd "$(git rev-parse --git-dir)" && pwd -P)" = "$(cd "$(git rev-parse --git-common-dir)" && pwd -P)" ]; then
+  if [ "$main_checkout" = 1 ]; then
     if [ -d "$top/.claude/worktrees/$pslug" ]; then
       echo "BANNER: this resume runs in the repo's main checkout, and project $pslug's work belongs in its worktree: $top/.claude/worktrees/$pslug — tell the user to continue there"
     else
       echo "BANNER: this resume runs in the repo's main checkout, and project $pslug has no worktree yet: its work belongs in .claude/worktrees/$pslug, created on branch worktree-$pslug (claude --worktree $pslug) — tell the user before building here"
     fi
+  elif [ "${RESUME_STATE_REDIRECTED:-}" = "$top" ]; then
+    echo "NOTE: this resume ran in the repo's main checkout, so it was read from the project's worktree ($top): work continues there"
   fi ;;
 esac
 case "$plan" in
@@ -762,7 +799,7 @@ if [ "$n" -gt 0 ]; then
   fi
   if [ "$((n-k))" -gt 0 ]; then
     echo "other work since: $((n-k)) commit(s)"
-    grep -vxF -f <(printf '%s\n' "$mine") <<<"$after" | head -10 | sed 's/^/  /'
+    grep -vxF -f <(printf '%s\n' "$mine") <<<"$after" | sed -n 1,10p | sed 's/^/  /'
     [ "$((n-k))" -gt 10 ] && echo "  … and $((n-k-10)) more"
     kickoff_overlap
   fi
@@ -787,6 +824,23 @@ if [ -n "$m_out" ]; then
   tagged mailbox "$m_out"
 fi
 
+# The work request parts naming this repo about this project (ADR 0012 item 3): another repo decided
+# each change, so the banner says to make it or decline it, not to weigh it as a message. A backend
+# from before `requests` exits 2: one NOTE.
+r_out=""; r_none=0
+if [ -f "$here/../start-project/mailbox.sh" ]; then
+  r_out="$(bash "$here/../start-project/mailbox.sh" requests --project "$name" 2>/dev/null </dev/null)" \
+    || { [ $? != 2 ] || r_none=1; r_out=""; }
+fi
+if [ -n "$r_out" ] || [ "$r_none" = 1 ]; then
+  section "REQUESTS"
+  [ "$r_none" = 0 ] || echo "NOTE: the mailbox script has no requests: work requests are not listed; update the global setup"
+  if [ -n "$r_out" ]; then
+    echo "BANNER: $(grep -c . <<<"$r_out") open work request part(s) from other repos about this project: another repo decided each change. Read each (bash .claude/skills/start-project/mailbox.sh requests show {{id}}) before starting; make the change, or decline it with a reason, and close it with /done request {{id}}"
+    tagged request "$r_out"
+  fi
+fi
+
 section "PLAN — STATUS"
 # Printed in full whatever its size (its blockers are at the end), but an overgrown one is flagged:
 # past about 15KB it costs every resume more than the rest of the read does.
@@ -808,15 +862,27 @@ fi
 
 if [ -n "$start" ]; then
   section "START (from the arguments: this session starts here; the kickoff below is context)"
-  if [[ "$start" =~ ^(fid:)?[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
-    f="${start#fid:}"
-    if [ ! -f "$journal" ]; then echo "NOTE: no journal.sh beside this skill: '$start' is taken as words"; tagged operator_words "$start"
-    elif msg="$(bash "$journal" show "$f" 2>&1)"; then echo "fid: $f"; tagged followup "$msg"
+  if [[ "$start" =~ ^(fid:|request:)?[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+    # one id: an open followup, or an open work request part naming this repo (ADR 0012 item 5);
+    # fid: or request: picks one kind, and a bare id that is both is said and asked about
+    f="${start#fid:}"; f="${f#request:}"; want=both
+    case "$start" in fid:*) want=fid ;; request:*) want=request ;; esac
+    mbox="$here/../start-project/mailbox.sh"; isreq=0; fok=1; msg=""
+    if [ "$want" != fid ] && [ -f "$mbox" ] && bash "$mbox" requests --tsv 2>/dev/null </dev/null \
+      | awk -F'\t' -v id="$f" '$1 == id "" { found = 1 } END { exit !found }'; then isreq=1; fi
+    if [ "$want" != request ] && [ -f "$journal" ]; then msg="$(bash "$journal" show "$f" 2>&1)"; fok=$?; fi
+    if [ "$isreq" = 1 ] && [ "$fok" = 0 ]; then
+      echo "NOTE: '$f' is both an open followup and an open work request part for this repo: ask the operator which they meant (fid:$f or request:$f)"
+      tagged operator_words "$start"
+    elif [ "$isreq" = 1 ]; then echo "request: $f"; tagged request "$(bash "$mbox" requests show "$f" 2>/dev/null </dev/null)"
+    elif [ "$want" = request ]; then echo "NOTE: '$f' is no open work request part for this repo: taken as the operator's words"; tagged operator_words "$start"
+    elif [ ! -f "$journal" ]; then echo "NOTE: no journal.sh beside this skill: '$start' is taken as words"; tagged operator_words "$start"
+    elif [ "$fok" = 0 ]; then echo "fid: $f"; tagged followup "$msg"
     elif [[ "$msg" == *"is not open"* ]]; then
       echo "NOTE: followup '$f' is closed: ${msg#*: }"
       c="${msg##* commit }"; c="${c%% *}"; git log -1 --format='  %h %s' "$c" 2>/dev/null
       tagged operator_words "$start"
-    else echo "NOTE: '$start' is not an open followup: taken as the operator's words"; tagged operator_words "$start"; fi
+    else echo "NOTE: '$start' is not an open followup, nor an open work request part for this repo: taken as the operator's words"; tagged operator_words "$start"; fi
   else tagged operator_words "$start"; fi
 fi
 
