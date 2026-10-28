@@ -127,7 +127,8 @@ sub init()
   ' the authoritative seek position and sync our carousel to it
   m.isTrackingSeek = false
   m.carouselHiddenForSeek = false ' Track when carousel is hidden during seek confirmation
-  m.trickSeekTarget = -1 ' The scrub's target in seconds while the bar is up, for a group seek  m.lastSentThumbnailIndex = -1 ' Dedup thumbnail index updates to prevent double-rendering at tile boundaries
+  m.trickSeekTarget = -1 ' The scrub's target in seconds while the bar is up, for a group seek
+  m.lastSentThumbnailIndex = -1 ' Dedup thumbnail index updates to prevent double-rendering at tile boundaries
 
   m.playbackTimer = m.top.findNode("playbackTimer")
   m.bufferCheckTimer = m.top.findNode("bufferCheckTimer")
