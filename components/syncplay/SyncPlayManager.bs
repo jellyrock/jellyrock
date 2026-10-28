@@ -100,6 +100,9 @@ sub ensureReady()
   ' What the owed load tells the viewer when it runs, decided as its queue frame arrived
   ' (syncPlayQueue.noticeForQueueFrame); invalid when no frame decided one.
   m.loadNotice = invalid
+  ' Whether the follow under way is a Resume with Group the viewer chose, so a load that fails
+  ' before it runs says so (haltFollowing); false once the load runs.
+  m.resumeAsked = false
   publish()
 end sub
 
@@ -228,6 +231,13 @@ end function
 ' @param tell - whether the viewer is told; false when what they did already says it
 sub haltFollowing(reason as string, tell = true as boolean)
   m.log.info("halting", "reason", reason, "groupId", m.state.groupId)
+  ' A resume the viewer chose from the menu that never loaded says so. The quiet rule below is
+  ' for a follow they were never told of.
+  if tell and m.resumeAsked and isFollowing()
+    notify("resumeFailed", m.state.groupName, "")
+    tell = false
+  end if
+  m.resumeAsked = false
   ' A follow the viewer was never told of (its load had not run) ends as quietly as it began.
   if syncPlayTime.isText(m.loadNotice) and m.loadNotice = "followingAgain" then tell = false
   if tell and isFollowing() then notify("halted", m.state.groupName, "")
@@ -311,6 +321,7 @@ function resumeFollowing() as boolean
   end if
   m.owedLoad = { newPlaylist: true }
   m.loadNotice = "followingAgain"
+  m.resumeAsked = true
   fetchQueue("Resume", m.state.lastUpdateMs, false, "-resume")
   return true
 end function
@@ -596,6 +607,7 @@ sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteg
   ' follow made again, and a launch says what its frame decided (syncPlayQueue.noticeAtLoad).
   notice = syncPlayQueue.noticeAtLoad(m.loadNotice, action, hasOpenClaim())
   m.loadNotice = invalid
+  m.resumeAsked = false
   if notice <> "" then notify(notice, m.state.groupName, "")
   ' The group answered: a follow made at a claim is real from here, whichever branch loads it.
   m.claimRefollowed = false
@@ -810,6 +822,7 @@ sub leaveLocally()
   m.claimRefollowed = false
   m.joinAwaitsQueue = false
   m.loadNotice = invalid
+  m.resumeAsked = false
   m.loadStartTicks = 0&
   m.failedBursts = 0
   publish()
