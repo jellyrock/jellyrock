@@ -2536,11 +2536,10 @@ function onKeyEvent(key as string, press as boolean) as boolean
     ' In a SyncPlay group the scrub's target goes to the group, and the group's Seek moves every
     ' member. The node leaves trick mode where it was through a seek to its own position: the one
     ' write that closes the bar without moving (a bare swallow leaves the bar up for good, a
-    ' resume plays on under it; measured on a Stick 4K, 2026-10-28).
-    if syncPlayHooks.following() and m.trickSeekTarget >= 0
-      target = m.trickSeekTarget
+    ' resume plays on under it; measured on a Stick 4K, 2026-10-28). A seek the group did not take
+    ' falls through to Roku's own, so the scrub is never lost.
+    if m.trickSeekTarget >= 0 and syncPlayHooks.control({ kind: "seek", position: m.trickSeekTarget })
       m.top.seek = m.top.position
-      syncPlayHooks.control({ kind: "seek", position: target })
       return true
     end if
     ' Return false to let Roku handle the seek and close the trickPlayBar
