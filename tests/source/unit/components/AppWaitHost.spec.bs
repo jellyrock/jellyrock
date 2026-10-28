@@ -347,6 +347,138 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("an overlay action (LoadingKind.OVERLAY) — holds the keys, keeps the screen in view")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A focusable child of the overhang stand-in, focused: where a press on a cluster icon starts.
+    private function focusOverhangIcon() as object
+      icon = m.overhang.createChild("Group")
+      icon.focusable = true
+      icon.setFocus(true)
+      return icon
+    end function
+
+    @it("leaves the screen and the overhang shown but holds the remote focus")
+    function _()
+      appWait = m.host.callFunc("begin", LoadingKind.OVERLAY, "")
+      m.assertTrue(m.launcher.opacity = 1)
+      m.assertTrue(m.overhang.opacity = 1)
+      m.assertTrue(m.host.hasFocus())
+      m.assertTrue(m.launcher.lastFocus.isSameNode(m.button))
+      m.assertTrue(appWaits.isOpen(appWait))
+    end function
+
+    @it("is canceled by Back, which is spent here, and the focus comes back")
+    function _()
+      appWait = m.host.callFunc("begin", LoadingKind.OVERLAY, "")
+      m.assertTrue(m.host.callFunc("cancelOnBack"))
+      m.assertEqual(appWait.promiseState, "rejected")
+      m.assertTrue(m.launcher.opacity = 1)
+      m.assertTrue(m.overhang.opacity = 1)
+      m.assertTrue(m.button.hasFocus())
+    end function
+
+    @it("gives the focus back when done")
+    function _()
+      appWait = m.host.callFunc("begin", LoadingKind.OVERLAY, "")
+      appWaits.done(appWait)
+      m.assertTrue(m.button.hasFocus())
+      m.assertEqual(m.host.openWaits.count(), 0)
+    end function
+
+    @it("holds the focus from a node outside the screen (the overhang), and gives it back there")
+    function _()
+      icon = m.focusOverhangIcon()
+      appWait = m.host.callFunc("begin", LoadingKind.OVERLAY, "")
+      m.assertTrue(m.host.hasFocus())
+      m.assertFalse(icon.hasFocus())
+      appWaits.done(appWait)
+      m.assertTrue(icon.hasFocus())
+      m.assertFalse(m.host.hasFocus())
+    end function
+
+    @it("gives the focus back to the overhang's node when Back cancels")
+    function _()
+      icon = m.focusOverhangIcon()
+      m.host.callFunc("begin", LoadingKind.OVERLAY, "")
+      m.assertTrue(m.host.callFunc("cancelOnBack"))
+      m.assertTrue(icon.hasFocus())
+      m.assertTrue(m.overhang.opacity = 1)
+    end function
+
+    @it("remembers the deepest focused node under the overhang")
+    function _()
+      group = m.overhang.createChild("Group")
+      icon = group.createChild("Group")
+      icon.focusable = true
+      icon.setFocus(true)
+      appWait = m.host.callFunc("begin", LoadingKind.OVERLAY, "")
+      m.assertTrue(m.host.hasFocus())
+      appWaits.done(appWait)
+      m.assertTrue(icon.hasFocus())
+    end function
+
+    @it("falls back to the screen's focus when the overhang's node has left the scene")
+    function _()
+      icon = m.focusOverhangIcon()
+      appWait = m.host.callFunc("begin", LoadingKind.OVERLAY, "")
+      m.assertTrue(m.host.hasFocus())
+      m.overhang.removeChild(icon)
+      appWaits.done(appWait)
+      m.assertFalse(m.host.hasFocus())
+    end function
+
+    @it("hands a dialog opened while it held the overhang's focus that node to give back")
+    function _()
+      icon = m.focusOverhangIcon()
+      appWait = m.host.callFunc("begin", LoadingKind.OVERLAY, "")
+      dialog = CreateObject("roSGNode", "Group")
+      dialog.id = "jrDialog"
+      dialog.focusable = true
+      dialog.addField("returnFocusTo", "node", false)
+      dialog.returnFocusTo = m.host
+      m.mountedIn.appendChild(dialog)
+      dialog.setFocus(true)
+
+      appWaits.done(appWait)
+      m.assertTrue(dialog.returnFocusTo.isSameNode(icon))
+      m.assertTrue(dialog.hasFocus())
+      m.mountedIn.removeChild(dialog)
+    end function
+
+    @it("keeps the focus held while a second wait still holds the keys")
+    function _()
+      first = m.host.callFunc("begin", LoadingKind.OVERLAY, "")
+      second = m.host.callFunc("begin", LoadingKind.OVERLAY, "")
+      appWaits.fail(first, "replaced")
+      m.assertTrue(m.host.hasFocus())
+      appWaits.done(second)
+      m.assertTrue(m.button.hasFocus())
+    end function
+
+    @it("shows the screen and overhang when the hiding wait ends, though an overlay still holds the keys")
+    function _()
+      overlay = m.host.callFunc("begin", LoadingKind.OVERLAY, "")
+      hiding = m.begin()
+      m.assertTrue(m.overhang.opacity = 0)
+      appWaits.done(hiding)
+      m.assertTrue(m.launcher.opacity = 1)
+      m.assertTrue(m.overhang.opacity = 1)
+      m.assertTrue(m.host.hasFocus())
+      appWaits.done(overlay)
+      m.assertTrue(m.button.hasFocus())
+    end function
+
+    @it("leaves a player shown and its focus alone (a channel switch)")
+    function _()
+      m.player.setFocus(true)
+      m.global.activeRoutedView = m.player
+      m.host.callFunc("begin", LoadingKind.OVERLAY, "")
+      m.assertTrue(m.player.hasFocus())
+      m.assertFalse(m.host.callFunc("cancelOnBack"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("failLeftBehind() — the viewer left before a player took the start")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

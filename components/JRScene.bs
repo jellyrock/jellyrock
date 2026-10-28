@@ -1186,14 +1186,16 @@ end sub
 '
 ' One icon is the membership's state and its control. Not in a group: the groups the server
 ' lists, each a row to join, then New group when the policy allows. In a group: a confirm
-' dialog naming the members, with Leave. Both start from one /SyncPlay/List fetch under a
-' pressed-action wait (LoadingKind.ACTION), so a dialog never opens half-built: a list dialog
-' does not re-lay out after it mounts. The manager posts the Join, New and Leave; the server's
-' answer arrives as frames the manager publishes, never as this fetch's result.
+' dialog naming the members, with Leave. Both start from one /SyncPlay/List fetch under an
+' overlay wait (LoadingKind.OVERLAY), so a dialog never opens half-built: a list dialog
+' does not re-lay out after it mounts. The wait holds the keys and leaves the screen in view.
+' The manager posts the Join, New and Leave; the server's answer arrives as frames the manager
+' publishes, never as this fetch's result.
 ' ---------------------------------------------------------------------------
 sub openSyncPlayMenu()
   if isValid(m.syncPlayDialog) then return
-  ' The overhang keeps the focus during the fetch, so a second press arrives here: it is ignored.
+  ' One fetch at a time. The wait holds the keys, so a second press should not reach here;
+  ' this guard is the backstop.
   if appWaits.isOpen(m.syncPlayWait) then return
   if not syncPlayMenu.canJoin(syncPlayAccess()) then return ' the icon is not shown then; a stale press
   req = GetApi().BuildGetSyncPlayGroupsRequest()
@@ -1201,7 +1203,7 @@ sub openSyncPlayMenu()
     showToast(translate(translationKeys.MessageSyncPlayGroupsFailed), "error")
     return
   end if
-  wait = appWaits.begin(LoadingKind.ACTION)
+  wait = appWaits.begin(LoadingKind.OVERLAY)
   m.syncPlayWait = wait
   ' Each fetch has its own id: fetchAsync keys its pending requests by id, and a repeated id
   ' would replace the earlier fetch, which would then never settle.

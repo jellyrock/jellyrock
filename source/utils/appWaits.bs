@@ -64,23 +64,32 @@ namespace appWaits
 
   ' ---- AppWaitHost's rules for its open waits. Pure, so they are the same in a test. ----
   ' `entries` is the host's registry: key -> { kind, label, startedMs, deadlineMs, launchedFrom,
-  ' hidden }, `hidden` being the screen a wait hides, or invalid.
+  ' hidden, held, committed }. `hidden` is the screen a wait hides and `held` the screen whose keys
+  ' it holds, each invalid when the wait does neither. A hiding wait holds the keys too; an
+  ' overlay action only holds them.
 
   ' How long a wait of `kind` may stay open before its time limit ends it. 0 for a kind that is
   ' not an app wait, which the scene ends at once: an app-wait kind without a limit is a bug.
   function limitMs(kind as string) as dynamic
     if kind = LoadingKind.PLAYBACK_START then return timeouts.PLAYBACK_START_LIMIT_MS
     if kind = LoadingKind.SESSION then return timeouts.SESSION_WAIT_LIMIT_MS
-    if kind = LoadingKind.ACTION then return timeouts.ACTION_WAIT_LIMIT_MS
+    if kind = LoadingKind.ACTION or kind = LoadingKind.OVERLAY then return timeouts.ACTION_WAIT_LIMIT_MS
     return 0
   end function
 
   ' Whether a wait of `kind` hides the screen it was started from while it is open. A playback
   ' start does, so the viewer sees the item's backdrop and the spinner rather than the screen
   ' they pressed Play on, unless that screen is itself a player (a channel switch). A sign-in
-  ' step and a pressed action do, so the screen they were pressed on takes no keys.
+  ' step and a pressed action do, so the screen they were pressed on takes no keys (an overlay
+  ' action holds the keys without hiding: holdsKeys).
   function hidesLaunchingScreen(kind as string) as boolean
     return kind = LoadingKind.PLAYBACK_START or kind = LoadingKind.SESSION or kind = LoadingKind.ACTION
+  end function
+
+  ' Whether a wait of `kind` holds the keys of the screen it was started from while it is open:
+  ' every kind that hides it, and an overlay action, whose answer is a dialog over that screen.
+  function holdsKeys(kind as string) as boolean
+    return hidesLaunchingScreen(kind) or kind = LoadingKind.OVERLAY
   end function
 
   ' Whether `view` is a screen that plays: reaching it is where a playback start is meant to go.
@@ -134,12 +143,21 @@ namespace appWaits
     return keys
   end function
 
-  ' The keys of the open waits Back cancels: those that hide a screen and have not committed.
+  ' The keys of the open waits that hold the keys of the screen they were started from.
+  function holding(entries as object) as object
+    keys = []
+    for each key in entries
+      if isValid(entries[key].held) then keys.push(key)
+    end for
+    return keys
+  end function
+
+  ' The keys of the open waits Back cancels: those that hold a screen's keys and have not committed.
   function cancellable(entries as object) as object
     keys = []
     for each key in entries
       entry = entries[key]
-      if isValid(entry.hidden) and entry.committed <> true then keys.push(key)
+      if isValid(entry.held) and entry.committed <> true then keys.push(key)
     end for
     return keys
   end function

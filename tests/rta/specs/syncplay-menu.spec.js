@@ -178,6 +178,68 @@ it('a second OK while the group list loads is ignored: one wait, and the screen 
   expect(await getActiveVal('opacity'), 'the screen is not left hidden by a wait').toBe(1);
 });
 
+it('while the group list loads the screen stays in view and the wait holds the keys; Back cancels it and no menu opens', async () => {
+  if (!atSyncPlayIcon(await odc.getFocusedNode({ includeNode: true }))) {
+    await focusOverhangIcon('syncplayIcon');
+  }
+  // The list answers late, so the wait is open long enough to read the screen and press Back.
+  await failRequests([{ prefix: 'syncPlayGroups', kind: 'slow', ms: 2000 }]);
+  try {
+    await press(ecp.Key.Ok);
+    await waitFor('#appWaitHost.openWaits', (v) => v && Object.keys(v).length === 1, {
+      read: getVal,
+      timeout: 5000,
+      label: 'the list fetch holds one wait',
+    });
+    // The slowed answer is on a pool slot now, so it is still ahead when Back lands.
+    await waitFor('rtaHeldRequests', (v) => v === 1, {
+      read: getGlobalVal,
+      timeout: 5000,
+      interval: 100,
+      label: 'the slowed list answer is held',
+    });
+
+    // One batch: the wait neither hides the screen nor the overhang, and it holds the focus.
+    const [screenOpacity, overhangOpacity] = await Promise.all([
+      getActiveVal('opacity'),
+      getVal('#overhang.opacity'),
+    ]);
+    const focused = await odc.getFocusedNode({ includeNode: true });
+    expect(screenOpacity, 'the screen stays in view during the fetch').toBe(1);
+    expect(overhangOpacity, 'the overhang stays in view during the fetch').toBe(1);
+    expect(focused?.node?.id, 'the wait host holds the keys, not the icon').toBe('appWaitHost');
+
+    await press(ecp.Key.Back);
+    await waitFor('#appWaitHost.openWaits', (v) => v && Object.keys(v).length === 0, {
+      read: getVal,
+      // Far inside the wait's own time limit, so the limit cannot be what ended it.
+      timeout: 5000,
+      label: 'Back ended the wait',
+    });
+    await waitFocused(atSyncPlayIcon, {
+      timeout: 5000,
+      interval: 250,
+      label: 'the icon again after Back cancelled the wait',
+    });
+
+    // The late answer is delivered once the slot is given back; it must open nothing.
+    await waitFor('rtaHeldRequests', (v) => v === 0, {
+      read: getGlobalVal,
+      timeout: 10000,
+      interval: 250,
+      label: 'the late list answer arrived',
+    });
+    expect(await getVal('#jrDialog.id'), 'the cancelled fetch opened no menu').toBeUndefined();
+  } finally {
+    await failRequests([]);
+  }
+  expect(await getActiveVal('opacity'), 'the screen is in view').toBe(1);
+  expect(
+    atSyncPlayIcon(await odc.getFocusedNode({ includeNode: true })),
+    'the icon still holds the focus',
+  ).toBe(true);
+});
+
 it('OK on a group joins it and makes the icon active; the icon then offers Leave Group, which leaves', async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(

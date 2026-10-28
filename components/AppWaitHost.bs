@@ -9,7 +9,7 @@ sub init()
   m.log = new log.Logger("AppWaitHost")
   m.top.focusable = true
   ' The open waits: key -> { kind, label, startedMs, deadlineMs, promise, launchedFrom, hidden,
-  ' committed }.
+  ' held, committed }, `hidden` the screen a wait hides and `held` the one whose keys it holds.
   ' Each ends when its Promise settles (endWait).
   m.waits = {}
   m.waitCount = 0
@@ -17,7 +17,7 @@ sub init()
   m.limitTimer.observeField("fire", "onLimit")
 end sub
 
-' While a wait hides the screen it was started from, keys come here instead of to that screen.
+' While a wait holds the keys of the screen it was started from, keys come here instead.
 ' Back goes on to JRScene's Back arbiter, which cancels the wait (cancelOnBack) or leaves a
 ' navigation in flight alone; every other key is ignored until the wait ends.
 function onKeyEvent(key as string, _press as boolean) as boolean
@@ -39,16 +39,19 @@ function begin(kind as string, label as string) as object
   m.waitCount++
   key = "w" + m.waitCount.toStr()
   launchedFrom = m.global.activeRoutedView
-  entry = { kind: kind, label: label, startedMs: now, deadlineMs: now + appWaits.limitMs(kind), promise: promise, launchedFrom: launchedFrom, hidden: invalid, committed: false }
-  if appWaits.hidesLaunchingScreen(kind) and isValid(launchedFrom) and not appWaits.isPlaybackScreen(launchedFrom)
-    ' opacity, not visible: the router owns a screen's `visible` (it hides one it suspends and
-    ' shows it on return), so hiding by opacity can never undo, or be undone by, the router.
-    launchedFrom.opacity = 0
-    entry.hidden = launchedFrom
+  entry = { kind: kind, label: label, startedMs: now, deadlineMs: now + appWaits.limitMs(kind), promise: promise, launchedFrom: launchedFrom, hidden: invalid, held: invalid, committed: false }
+  if appWaits.holdsKeys(kind) and isValid(launchedFrom) and not appWaits.isPlaybackScreen(launchedFrom)
+    entry.held = launchedFrom
     holdFocus(launchedFrom)
-    ' The overhang goes with the screen, in the same render pass: it shows the screen's parts,
-    ' and the player this start goes to hides it anyway.
-    setOverhangShown(false)
+    if appWaits.hidesLaunchingScreen(kind)
+      ' opacity, not visible: the router owns a screen's `visible` (it hides one it suspends and
+      ' shows it on return), so hiding by opacity can never undo, or be undone by, the router.
+      launchedFrom.opacity = 0
+      entry.hidden = launchedFrom
+      ' The overhang goes with the screen, in the same render pass: it shows the screen's parts,
+      ' and the player this start goes to hides it anyway.
+      setOverhangShown(false)
+    end if
   end if
   m.waits[key] = entry
   promises.onFinally(promise, sub(ctx as object)
@@ -59,15 +62,29 @@ function begin(kind as string, label as string) as object
   return promise
 end function
 
-' A hidden screen must take no keys: a second OK would start a second launch, and arrows would
-' move a focus nobody can see. So remember where its focus was, the way the router's suspend
-' does (JRScreen.saveLastFocus), and hold the focus here until no wait hides a screen
-' (releaseFocus). A wait pressed from a dialog finds the dialog still holding the focus, and
-' closing it would hand the focus back into the hidden screen, so the dialog hands it here
-' instead. A screen outside the focus chain for any other reason is left alone.
+' A screen whose keys are held must take none: a second OK would start a second launch, and
+' arrows would move a focus nobody can see. So remember where its focus was, the way the router's
+' suspend does (JRScreen.saveLastFocus), and hold the focus here until no wait holds a screen's
+' keys (releaseFocus). A press from the scene's overhang, outside the screen, is held the same
+' way, remembering the overhang's node. A wait pressed from a dialog finds the dialog still
+' holding the focus, and closing it would hand the focus back into the held screen, so the
+' dialog hands it here instead. A screen outside the focus chain for any other reason is left
+' alone.
 sub holdFocus(screen as object)
   if screen.isInFocusChain()
     screen.callFunc("saveLastFocus")
+    m.top.setFocus(true)
+    return
+  end if
+  overhang = findOverhang()
+  if isValid(overhang) and overhang.isInFocusChain()
+    node = overhang
+    child = node.focusedChild
+    while isValid(child) and not child.isSameNode(node)
+      node = child
+      child = node.focusedChild
+    end while
+    m.heldFocus = node
     m.top.setFocus(true)
     return
   end if
@@ -88,21 +105,32 @@ function isInside(node as dynamic, screen as object) as boolean
   return false
 end function
 
-' No wait hides a screen any more. If the focus is still held here, the active screen takes it
-' back and restores its own (the router's handleFocus, which restores lastFocus). A player that mounted, or a
-' screen the viewer went to, has taken it already. A dialog that opened while the focus was
-' held here (a wait ended by an answer that opens one) would give it back here when it closes,
-' so it gives it back to the screen's saved focus instead.
+' No wait holds a screen's keys any more. If the focus is still held here, it goes back to the
+' overhang's node it was taken from (holdFocus), else the active screen takes it back and
+' restores its own (the router's handleFocus, which restores lastFocus). A player that mounted,
+' or a screen the viewer went to, has taken it already. A dialog that opened while the focus
+' was held here (a wait ended by an answer that opens one) would give it back here when it
+' closes, so it gives it back to that node or the screen's saved focus instead.
 sub releaseFocus()
   view = m.global.activeRoutedView
+  heldFocus = m.heldFocus
+  m.heldFocus = invalid
   if not m.top.hasFocus()
     dialog = openOverlayDialog()
-    if isValid(view) and isValid(dialog) and dialog.hasField("returnFocusTo") and isValid(dialog.returnFocusTo) and dialog.returnFocusTo.isSameNode(m.top)
-      target = view.lastFocus
-      if not isValid(target) then target = view
-      dialog.returnFocusTo = target
+    if isValid(dialog) and dialog.hasField("returnFocusTo") and isValid(dialog.returnFocusTo) and dialog.returnFocusTo.isSameNode(m.top)
+      target = heldFocus
+      if not isValid(target) and isValid(view)
+        target = view.lastFocus
+        if not isValid(target) then target = view
+      end if
+      if isValid(target) then dialog.returnFocusTo = target
     end if
     return
+  end if
+  if isValid(heldFocus)
+    heldFocus.setFocus(true)
+    ' The node left the scene while the wait ran: the screen takes the focus instead.
+    if not m.top.hasFocus() then return
   end if
   if isValid(view) then view.callFunc("handleFocus", {})
 end sub
@@ -114,10 +142,8 @@ sub endWait(key as string)
   if not isValid(entry) then return
   m.waits.delete(key)
   if isValid(entry.hidden) and not appWaits.hides(m.waits, entry.hidden) then entry.hidden.opacity = 1
-  if appWaits.hiding(m.waits).count() = 0
-    setOverhangShown(true)
-    releaseFocus()
-  end if
+  if appWaits.hiding(m.waits).count() = 0 then setOverhangShown(true)
+  if appWaits.holding(m.waits).count() = 0 then releaseFocus()
   if entry.promise.promiseState = "rejected"
     reason = ""
     result = entry.promise.promiseResult
@@ -133,27 +159,33 @@ end sub
 ' so neither can undo the other. Looked up when first needed: the overhang is declared after
 ' this host in JRScene.xml.
 sub setOverhangShown(shown as boolean)
-  if not isValid(m.overhang) then m.overhang = m.top.getScene().findNode("overhang")
-  if not isValid(m.overhang) then return
+  overhang = findOverhang()
+  if not isValid(overhang) then return
   if shown
-    m.overhang.opacity = 1
+    overhang.opacity = 1
   else
-    m.overhang.opacity = 0
+    overhang.opacity = 0
   end if
 end sub
 
-' Back reached JRScene's arbiter with no navigation in flight: cancel every wait that hides the
-' screen it was started from and has not committed, so the viewer is back where they pressed:
-' the same place Back from the player returns them to. A committed wait has only local work
-' left and ignores Back (ADR 0053).
+' The scene's overhang, or invalid.
+function findOverhang() as dynamic
+  if not isValid(m.overhang) then m.overhang = m.top.getScene().findNode("overhang")
+  return m.overhang
+end function
+
+' Back reached JRScene's arbiter with no navigation in flight: cancel every wait that holds the
+' keys of the screen it was started from and has not committed, so the viewer is back where they
+' pressed: the same place Back from the player returns them to. A committed wait has only local
+' work left and ignores Back (ADR 0053).
 '
-' @return {boolean} whether a wait hides a screen, so this Back is spent here
+' @return {boolean} whether a wait holds a screen's keys, so this Back is spent here
 function cancelOnBack() as boolean
   for each key in appWaits.cancellable(m.waits)
     entry = m.waits[key]
     if isValid(entry) then appWaits.fail(entry.promise, "cancelled with Back")
   end for
-  return appWaits.hiding(m.waits).count() > 0
+  return appWaits.holding(m.waits).count() > 0
 end function
 
 ' The wait `promise` commits (appWaits.commit): Back no longer cancels it. Only through
