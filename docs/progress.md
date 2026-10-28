@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-28: feat(syncplay): See, join and play with groups from the SyncPlay icon
 - 2026-10-28: chore(skills): Name the projects folder in project skill descriptions
 - 2026-10-27: feat(ui): Search and settings icons on every screen, and safer themes
 - 2026-10-25: chore(telemetry): Stop reading the old ~/.claude telemetry log
