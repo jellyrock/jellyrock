@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-27
+last-updated: 2026-10-28
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-28: chore(skills): Name the projects folder in project skill descriptions
 - 2026-10-27: feat(ui): Search and settings icons on every screen, and safer themes
 - 2026-10-25: chore(telemetry): Stop reading the old ~/.claude telemetry log
 - 2026-10-25: feat(ui): One aligned overhang row, and icons on the 3 pixel grid
@@ -61,22 +62,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-17: fix: Treat the 512 MB Roku Express `3900X`, `3910X` and `3930X` as low memory
 - 2026-10-14: fix(subtitles): Stop Perfect match showing old results mid-search
 - 2026-10-14: feat(subtitles): Show and announce a failed or empty subtitle search
-- 2026-10-13: ci: Re-check open PRs for merge conflicts when main moves
-- 2026-10-13: feat(search): Show and announce when a search failed or found nothing
-- 2026-10-13: fix(playback): Play the last track or version picked, and every retry
-- 2026-10-13: feat: Say why a quick play found nothing, and never guess an episode
-- 2026-10-13: test: Silence four unit-test build warnings
-- 2026-10-13: fix: Keep music artists out of search and Favorites people on 12.0+
-- 2026-10-13: docs(voice): Close the Charter review and route its held findings
-- 2026-10-13: refactor(playback): Test the Dolby Vision remux decision itself
-- 2026-10-13: docs(voice): Fix the comments phase G found and left
-- 2026-10-13: docs(voice): Rewrite the `tests/rta` comments
-- 2026-10-13: fix(playback): Pick `.strm` tracks on first play; fill Playback Info
-- 2026-10-13: test(device-lock): Replace real device IDs with fixtures
-- 2026-10-13: chore(tooling): Keep agent telemetry in the `XDG` state folder
-- 2026-10-13: docs(voice): Rewrite the `tests/source` comments
-- 2026-10-13: docs(voice): Rewrite the `tests/scripts` comments
-- 2026-10-13: test(scripts): Stop `test:scripts` emptying and writing `out/`
 
 ## Open followups
 
