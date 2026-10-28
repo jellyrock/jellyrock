@@ -1,6 +1,5 @@
 ' bsc-disable-file auto-abandon-promises: one instance for the app's life on m.global, never destroyed, so no request outlives it
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/apiIds.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/api/baseRequest.bs"
@@ -500,37 +499,29 @@ sub onQueueUpdate(update as object)
   fetchQueue(update.reason, m.state.lastUpdateMs, false)
 end sub
 
-' Fetches the group's items and applies the queue. The ids go out in apiIds runs, one request
-' each, so a long playlist stays under the request-line limit. A failed load goes to
+' Fetches the item the group plays and applies it as the queue: one item, one request, whatever
+' the playlist's length (syncPlayQueue's header says why). A failed load goes to
 ' onQueueLoadFailed: the server waits on this member's Ready, so a silent exit would hold the
 ' whole group.
 sub fetchQueue(reason as string, lastUpdateMs as longinteger, isRetry as boolean)
-  ids = syncPlayQueue.itemIds(m.state.playlist)
-  if ids.count() = 0 then return
-  requests = []
-  for each chunk in apiIds.chunks(ids)
-    req = GetApi().BuildGetItemsByQueryRequest({ ids: chunk.join(",") })
-    if not isValid(req) then return
-    requests.push(req)
-  end for
-  pages = []
-  for pageIndex = 0 to requests.count() - 1
-    requestId = "syncplay-queue-" + lastUpdateMs.toStr() + "-" + pageIndex.toStr()
-    if isRetry then requestId = requestId + "-retry"
-    pages.push(fetchAsync(requests[pageIndex], requestId))
-  end for
-  promises.chain(promises.all(pages), { reason: reason, lastUpdateMs: lastUpdateMs, isRetry: isRetry }).then(sub(results as object, ctx as object)
-    ' A newer update arrived while this one's items were in flight: it will apply its own.
-    ' A member that stopped following while the items were in flight applies nothing, as onCommand
+  entry = syncPlayQueue.playingEntry(m.state)
+  if not isValid(entry) then return
+  req = GetApi().BuildGetItemsByQueryRequest({ ids: entry.itemId })
+  if not isValid(req) then return
+  requestId = "syncplay-queue-" + lastUpdateMs.toStr()
+  if isRetry then requestId = requestId + "-retry"
+  promises.chain(fetchAsync(req, requestId), { reason: reason, lastUpdateMs: lastUpdateMs, isRetry: isRetry, entry: entry }).then(sub(res as object, ctx as object)
+    ' A newer update arrived while this one's item was in flight: it will apply its own.
+    ' A member that stopped following while the item was in flight applies nothing, as onCommand
     ' does for a halted member.
     if not syncPlayQueue.appliesFetchedQueue(m.state, ctx.lastUpdateMs) then return
-    items = syncPlayQueue.pagedItems(results)
+    items = syncPlayQueue.pagedItems([res])
     if not isValid(items)
-      m.log.warn("the group's items could not be read", "reason", ctx.reason)
+      m.log.warn("the group's item could not be read", "reason", ctx.reason)
       onQueueLoadFailed(ctx.reason, ctx.lastUpdateMs, ctx.isRetry, "missing")
       return
     end if
-    applyQueue(ctx.reason, syncPlayQueue.queueItemsFor(m.state.playlist, items), ctx.lastUpdateMs, ctx.isRetry)
+    applyQueue(ctx.reason, syncPlayQueue.queueItemsFor([ctx.entry], items), ctx.lastUpdateMs, ctx.isRetry)
   end sub).catch(sub(err as object, ctx as object)
     ' err whole: a timeout rejects with the pool's result, which has no `reason`.
     m.log.warn("the group's items could not be fetched", err)
@@ -804,7 +795,21 @@ sub publish()
       lastCommand: m.lastCommand,
       trackerPhase: m.tracker.phase,
       playingItemId: m.state.playingItemId,
+      playingItemIndex: m.state.playingItemIndex,
+      playlistCount: m.state.playlist.count(),
       loadNotice: m.loadNotice
     }
   })
 end sub
+
+' --- the viewer's controls ---
+
+' A control the viewer pressed while following, asked of the group in place of the player:
+' { kind: "next" | "previous" }. True when it was posted. Nothing is posted while halted, or
+' while the group plays nothing: the player then keeps its own behavior.
+function control(request as object) as boolean
+  if not isValid(request) or not isFollowing() or m.state.playingItemId = "" then return false
+  if request.kind = "next" then return post("NextItem", syncPlayRequests.nextItem(m.state.playingItemId))
+  if request.kind = "previous" then return post("PreviousItem", syncPlayRequests.previousItem(m.state.playingItemId))
+  return false
+end function

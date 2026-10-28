@@ -1,24 +1,23 @@
+import "pkg:/source/syncplay/syncPlayTime.bs"
+import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/playKind.bs"
 
 ' Turning a SyncPlay play queue into QueueManager items, pure. The server's PlayQueue update
-' names items by id only; SyncPlayManager fetches them (GET /Items?ids=…) and hands the raw
-' items here with the parsed playlist.
+' names items by id only; SyncPlayManager fetches the one it plays (GET /Items?ids=…) and hands
+' the raw item here with that playlist entry. The local queue holds the group's playing item
+' alone: while following, the next item is the server's answer to NextItem, never a local
+' advance, so the other items' metadata has no reader, and the group's playlist (ids and the
+' playing index, in syncPlayState) is what the OSD's previous and next read.
 namespace syncPlayQueue
 
-  ' The item ids a playlist names, each once, in the order they first appear. A group playlist can
-  ' repeat an item, and queueItemsFor maps by id, so one fetched copy serves every repeat.
-  ' @param playlist - syncPlayMessage's [{ itemId, playlistItemId }]
-  function itemIds(playlist as object) as object
-    ids = []
-    if type(playlist) <> "roArray" then return ids
-    seen = {}
-    for each entry in playlist
-      if not seen.doesExist(entry.itemId)
-        seen[entry.itemId] = true
-        ids.push(entry.itemId)
-      end if
+  ' The playlist entry the group is playing, or invalid while it plays nothing.
+  ' @param state - syncPlayState
+  function playingEntry(state as object) as dynamic
+    if not isValid(state) or type(state.playlist) <> "roArray" or state.playingItemId = "" then return invalid
+    for each entry in state.playlist
+      if entry.playlistItemId = state.playingItemId then return entry
     end for
-    return ids
+    return invalid
   end function
 
   ' The items of every page of a fetched queue, in page order, or invalid when any page is not
@@ -101,6 +100,24 @@ namespace syncPlayQueue
     if not isValid(queueItem) or playingItemId = "" then return false
     playlistItemId = queueItem.syncPlayPlaylistItemId
     return syncPlayTime.isText(playlistItemId) and playlistItemId = playingItemId
+  end function
+
+  ' Whether a QueueManager item came from a group's playlist, whatever the group plays now: the
+  ' load of such an item queues nothing after it (the following episodes), since the group's
+  ' playlist is the queue and the server names what follows.
+  function isGroupQueueItem(queueItem as dynamic) as boolean
+    if not isValid(queueItem) then return false
+    playlistItemId = queueItem.syncPlayPlaylistItemId
+    return syncPlayTime.isText(playlistItemId) and playlistItemId <> ""
+  end function
+
+  ' What the OSD's previous and next may ask of the group, from the group's playlist: a step
+  ' past either end has no item to go to. Repeat modes are the server's: it answers NextItem
+  ' on the last item by its own mode, which this does not predict.
+  ' @param index - the group's playing index
+  ' @param count - the group's playlist length
+  function stepBounds(index as integer, count as integer) as object
+    return { hasPrevious: index > 0 and index < count, hasNext: index >= 0 and index < count - 1 }
   end function
 
   ' What a play pressed while in a group asks of the group in place of a local start (decision

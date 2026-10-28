@@ -65,7 +65,7 @@
       {
         "kind": "planned",
         "files": ["source/syncplay/syncPlayRequests.bs"],
-        "names": ["seek", "previousItem"],
+        "names": ["seek"],
         "reason": "#1251: SyncPlay request bodies phase E's local controls first post."
       }
     ]

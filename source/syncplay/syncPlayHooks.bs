@@ -1,4 +1,6 @@
-' The player's side of SyncPlay: what PlayerHostView and VideoPlayerView call. Both run on the
+import "pkg:/source/syncplay/syncPlayQueue.bs"
+
+' The player's side of SyncPlay: what PlayerHostView, VideoPlayerView and the OSD call. All run on the
 ' render thread, where an m.global read took 2.0 µs on a Stick 4K (2026-08-23, threading.md),
 ' so `following()` is cheap enough for a position tick. The manager is created in
 ' setGlobalNodes(); a test scene may have none, so every call tolerates its absence.
@@ -18,5 +20,25 @@ namespace syncPlayHooks
     if not isValid(manager) or manager.following <> true then return
     manager.callFunc("playerEvent", evt)
   end sub
+
+  ' The group's playlist as the player's previous and next read it while following: its playing
+  ' index, its length and the two steps it allows (syncPlayQueue.stepBounds). invalid while not
+  ' following, so the caller keeps the local queue's behavior.
+  function groupQueue() as dynamic
+    manager = m.global.syncPlayManager
+    if not isValid(manager) or manager.following <> true then return invalid
+    sync = manager.sync
+    if not isValid(sync) or not isValid(sync.playingItemIndex) or not isValid(sync.playlistCount) then return invalid
+    bounds = syncPlayQueue.stepBounds(sync.playingItemIndex, sync.playlistCount)
+    return { index: sync.playingItemIndex, count: sync.playlistCount, hasPrevious: bounds.hasPrevious, hasNext: bounds.hasNext }
+  end function
+
+  ' Ask the group for a control the viewer pressed (SyncPlayManager.control): true when the group
+  ' took it, false when the player should act on its own.
+  function control(request as object) as boolean
+    manager = m.global.syncPlayManager
+    if not isValid(manager) or manager.following <> true then return false
+    return manager.callFunc("control", request) = true
+  end function
 
 end namespace

@@ -1,5 +1,6 @@
 import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/syncplay/syncPlayHooks.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/buttonOverflow.bs"
 import "pkg:/source/utils/config.bs"
@@ -205,15 +206,24 @@ sub setButtonStates()
   queueCount = m.global.queueManager.callFunc("getCount")
   queueIndex = m.global.queueManager.callFunc("getPosition")
   isTvChannel = m.itemData.type = "TvChannel"
+  hasPrevious = queueCount > 1 and queueIndex > 0
+  hasNext = queueIndex + 1 < queueCount
+  ' In a SyncPlay group the local queue holds the playing item alone: previous and next read the
+  ' group's playlist, and a press asks the group (VideoPlayerView.handleItemSkipAction).
+  group = syncPlayHooks.groupQueue()
+  if isValid(group)
+    hasPrevious = group.hasPrevious
+    hasNext = group.hasNext
+  end if
 
   ' Disable these buttons as needed
 
   ' Keep prev/next enabled for TvChannel: channel list loads async after init
-  if not isTvChannel and (queueCount = 1 or queueIndex = 0)
+  if not isTvChannel and not hasPrevious
     itemPrevious = m.buttonMenuLeft.findNode("itemBack")
     itemPrevious.isEnabled = false
   end if
-  if not isTvChannel and (queueIndex + 1 >= queueCount)
+  if not isTvChannel and not hasNext
     itemNext = m.buttonMenuLeft.findNode("itemNext")
     itemNext.isEnabled = false
   end if

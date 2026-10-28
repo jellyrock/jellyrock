@@ -51,6 +51,9 @@
     <!-- { kind: "mounted" | "state" | "position" | "finished" | "unmounted", state, position }
          from the host and the player, position in the Video node's float seconds. -->
     <function name="playerEvent" />
+    <!-- control({ kind: "next" | "previous" }): a control the viewer pressed while following,
+         posted to the group in place of the player. True when posted. -->
+    <function name="control" />
   </interface>
   <children>
     <!-- The one scheduled command: a new command replaces a pending one. -->

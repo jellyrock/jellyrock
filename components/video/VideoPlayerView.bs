@@ -295,6 +295,14 @@ end sub
 '
 ' @param {string} action - skip action to take
 sub handleItemSkipAction(action as string)
+  ' In a SyncPlay group the step is the group's: the server's queue update moves every member.
+  group = syncPlayHooks.groupQueue()
+  if isValid(group)
+    if action = "itemnext" and group.hasNext then syncPlayHooks.control({ kind: "next" })
+    if action = "itemback" and group.hasPrevious then syncPlayHooks.control({ kind: "previous" })
+    return
+  end if
+
   queueManager = m.global.queueManager
   queueCount = queueManager.callFunc("getCount")
   queuePosition = queueManager.callFunc("getPosition")
@@ -2871,6 +2879,11 @@ end function
 ' Reuse the OSD itemNext code path so Live-TV channel advance, queue advance, and
 ' Episode-to-next-Episode all behave identically to pressing the on-screen Next button.
 function handleVoiceNextItem() as object
+  group = syncPlayHooks.groupQueue()
+  if isValid(group)
+    if group.hasNext and syncPlayHooks.control({ kind: "next" }) then return { status: "success" }
+    return { status: "error.generic" }
+  end if
   queueManager = m.global.queueManager
   if not isValid(queueManager) then return { status: "error.generic" }
   queueCount = queueManager.callFunc("getCount")
@@ -2892,6 +2905,11 @@ end function
 ' Remote "PreviousTrack": step back one queue item, symmetric with handleVoiceNextItem.
 ' error.generic at the head of the queue (no previous item): no chapter-back concept here.
 function handleVideoPreviousItem() as object
+  group = syncPlayHooks.groupQueue()
+  if isValid(group)
+    if group.hasPrevious and syncPlayHooks.control({ kind: "previous" }) then return { status: "success" }
+    return { status: "error.generic" }
+  end if
   queueManager = m.global.queueManager
   if not isValid(queueManager) then return { status: "error.generic" }
   queuePosition = queueManager.callFunc("getPosition")

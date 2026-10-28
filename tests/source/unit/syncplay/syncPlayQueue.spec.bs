@@ -71,25 +71,50 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("itemIds()")
+    @describe("playingEntry()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("lists the item ids in playlist order")
+    @it("the playlist entry the group plays, found by playlist id, with its item id")
     function _()
-      m.assertEqual(syncPlayQueue.itemIds(m.playlist), ["i-1", "i-2", "i-3"])
+      state = syncPlayState.newState()
+      state.playlist = m.playlist
+      state.playingItemId = "p-2"
+      entry = syncPlayQueue.playingEntry(state)
+      m.assertEqual(entry.itemId, "i-2")
+      m.assertEqual(entry.playlistItemId, "p-2")
     end function
 
-    @it("names an item once when the playlist repeats it, at its first place")
+    @it("invalid while the group plays nothing, or names an entry the playlist lacks")
     function _()
-      playlist = [{ itemId: "i-2", playlistItemId: "p-1" }, { itemId: "i-1", playlistItemId: "p-2" }, { itemId: "i-2", playlistItemId: "p-3" }]
-      m.assertEqual(syncPlayQueue.itemIds(playlist), ["i-2", "i-1"])
+      state = syncPlayState.newState()
+      state.playlist = m.playlist
+      m.assertInvalid(syncPlayQueue.playingEntry(state))
+      state.playingItemId = "p-9"
+      m.assertInvalid(syncPlayQueue.playingEntry(state))
+      m.assertInvalid(syncPlayQueue.playingEntry(invalid))
     end function
 
-    @it("returns no ids for an empty or missing playlist")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("stepBounds()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a middle item steps both ways; the ends step one way; an empty or unknown playlist steps nowhere")
     function _()
-      m.assertEqual(syncPlayQueue.itemIds([]).count(), 0)
-      m.assertEqual(syncPlayQueue.itemIds(invalid).count(), 0)
-      m.assertEqual(syncPlayQueue.itemIds("not a playlist").count(), 0)
+      middle = syncPlayQueue.stepBounds(1, 3)
+      m.assertTrue(middle.hasPrevious)
+      m.assertTrue(middle.hasNext)
+      first = syncPlayQueue.stepBounds(0, 3)
+      m.assertFalse(first.hasPrevious)
+      m.assertTrue(first.hasNext)
+      last = syncPlayQueue.stepBounds(2, 3)
+      m.assertTrue(last.hasPrevious)
+      m.assertFalse(last.hasNext)
+      only = syncPlayQueue.stepBounds(0, 1)
+      m.assertFalse(only.hasPrevious)
+      m.assertFalse(only.hasNext)
+      none = syncPlayQueue.stepBounds(-1, 0)
+      m.assertFalse(none.hasPrevious)
+      m.assertFalse(none.hasNext)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -220,6 +245,23 @@ namespace tests
       m.assertFalse(syncPlayQueue.isGroupItem({ id: "i-1", syncPlayPlaylistItemId: "" }, ""))
       m.assertFalse(syncPlayQueue.isGroupItem({ id: "i-1" }, ""))
       m.assertFalse(syncPlayQueue.isGroupItem(invalid, "p-1"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isGroupQueueItem()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("any item a group's playlist stamped, whatever the group plays now")
+    function _()
+      m.assertTrue(syncPlayQueue.isGroupQueueItem({ id: "i-1", syncPlayPlaylistItemId: "p-1" }))
+      m.assertTrue(syncPlayQueue.isGroupQueueItem({ id: "i-2", syncPlayPlaylistItemId: "p-2" }))
+    end function
+
+    @it("not the viewer's own item: no stamp, an empty one, or no item")
+    function _()
+      m.assertFalse(syncPlayQueue.isGroupQueueItem({ id: "i-1" }))
+      m.assertFalse(syncPlayQueue.isGroupQueueItem({ id: "i-1", syncPlayPlaylistItemId: "" }))
+      m.assertFalse(syncPlayQueue.isGroupQueueItem(invalid))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

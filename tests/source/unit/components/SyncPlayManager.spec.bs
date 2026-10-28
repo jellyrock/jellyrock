@@ -585,6 +585,57 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("The viewer's controls go to the group (control)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the group's playlist length and playing index are published for the OSD's previous and next")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.assertEqual(m.manager.sync.playlistCount, 2)
+      m.assertEqual(m.manager.sync.playingItemIndex, 0)
+    end function
+
+    @it("next and previous while following post NextItem and PreviousItem for the playing item")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.enableServer()
+      posts = m.capturePosts()
+      m.assertTrue(m.manager.callFunc("control", { kind: "next" }))
+      last = m.lastPost(posts)
+      m.assertTrue(last.url.instr("/SyncPlay/NextItem") >= 0)
+      m.assertEqual(last.body, FormatJson({ "PlaylistItemId": "p1" }))
+      m.assertTrue(m.manager.callFunc("control", { kind: "previous" }))
+      last = m.lastPost(posts)
+      m.assertTrue(last.url.instr("/SyncPlay/PreviousItem") >= 0)
+      m.assertEqual(last.body, FormatJson({ "PlaylistItemId": "p1" }))
+      m.assertEqual(posts.getChildCount(), 2)
+    end function
+
+    @it("nothing is posted while halted")
+    function _()
+      m.haltWithServer()
+      posts = m.capturePosts()
+      m.assertFalse(m.manager.callFunc("control", { kind: "next" }))
+      m.assertFalse(m.manager.callFunc("control", { kind: "previous" }))
+      m.assertEqual(posts.getChildCount(), 0)
+    end function
+
+    ' No reset() between the two halves: a state rebuilt through callFunc from the test thread
+    ' loses its LongInteger entries on the render thread (the app resets from the render thread).
+    @it("nothing is posted while the group plays nothing, or for a kind the group has no verb for")
+    function _()
+      m.joinGroupWithServer()
+      posts = m.capturePosts()
+      m.assertFalse(m.manager.callFunc("control", { kind: "next" }))
+      m.playGroupItem()
+      m.assertFalse(m.manager.callFunc("control", { kind: "shuffle" }))
+      m.assertFalse(m.manager.callFunc("control", invalid))
+      m.assertEqual(posts.getChildCount(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Following again")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
