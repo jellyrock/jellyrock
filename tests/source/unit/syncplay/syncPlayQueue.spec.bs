@@ -39,6 +39,24 @@ namespace tests
       m.assertEqual(queueItems[2].syncPlayPlaylistItemId, "p-3")
     end function
 
+    @it("matches a parsed dashed long-poll playlist to the dash-free items the REST fetch returns")
+    function _()
+      inner = {
+        Reason: "NewPlaylist",
+        LastUpdate: "2026-10-23T20:47:25.000Z",
+        Playlist: [{ ItemId: "08A5F1F3-D54D-4E48-8A1B-AAAAAAAAAAAA", PlaylistItemId: "9C295A4A-760F-4B3C-9D0E-BBBBBBBBBBBB" }],
+        PlayingItemIndex: 0,
+        StartPositionTicks: 0
+      }
+      update = remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "27067FA4-3DE4-4A1B-9C2D-0123456789AB", Type: "PlayQueue", Data: inner } })
+      fetched = [{ Id: "08a5f1f3d54d4e488a1baaaaaaaaaaaa", Type: "Movie", Name: "One", RunTimeTicks: 10000000& }]
+      queueItems = syncPlayQueue.queueItemsFor(update.playlist, fetched)
+      m.assertEqual(queueItems.count(), 1)
+      m.assertEqual(queueItems[0].id, "08a5f1f3d54d4e488a1baaaaaaaaaaaa")
+      m.assertEqual(queueItems[0].syncPlayPlaylistItemId, "9c295a4a760f4b3c9d0ebbbbbbbbbbbb")
+      m.assertEqual(syncPlayQueue.positionOf(queueItems, "9c295a4a760f4b3c9d0ebbbbbbbbbbbb"), 0)
+    end function
+
     @it("drops an entry the server returned no item for")
     function _()
       queueItems = syncPlayQueue.queueItemsFor(m.playlist, [m.items()[1]])

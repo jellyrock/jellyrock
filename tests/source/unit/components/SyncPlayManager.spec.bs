@@ -48,23 +48,23 @@ namespace tests
     end function
 
     private function update(updateType as string, inner as dynamic) as object
-      return remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g-1", Type: updateType, Data: inner } })
+      return remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g1", Type: updateType, Data: inner } })
     end function
 
-    private function command(name as string, playlistItemId = "p-1" as string) as object
-      data = { GroupId: "g-1", PlaylistItemId: playlistItemId, When: "2026-10-23T20:47:40.000Z", Command: name, PositionTicks: 0, EmittedAt: "2026-10-23T20:47:30.000Z" }
+    private function command(name as string, playlistItemId = "p1" as string) as object
+      data = { GroupId: "g1", PlaylistItemId: playlistItemId, When: "2026-10-23T20:47:40.000Z", Command: name, PositionTicks: 0, EmittedAt: "2026-10-23T20:47:30.000Z" }
       return remoteCommand.parseMessage({ MessageType: "SyncPlayCommand", Data: data })
     end function
 
     private sub joinGroup()
-      m.manager.frame = m.update("GroupJoined", { GroupId: "g-1", GroupName: "Movie night", State: "Idle", Participants: ["ann"], LastUpdatedAt: "2026-10-23T20:47:20.500Z" })
+      m.manager.frame = m.update("GroupJoined", { GroupId: "g1", GroupName: "Movie night", State: "Idle", Participants: ["ann"], LastUpdatedAt: "2026-10-23T20:47:20.500Z" })
     end sub
 
     ' The group plays p-1, and the local queue's current item is p-1 (what applyQueue builds; with
     ' no server the manager's own fetch builds nothing).
-    private sub playGroupItem(localPlaylistItemId = "p-1" as string)
-      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i-1", PlaylistItemId: "p-1" }, { ItemId: "i-2", PlaylistItemId: "p-2" }], PlayingItemIndex: 0, StartPositionTicks: 0 })
-      queueItem = { id: "i-1", type: "Movie" }
+    private sub playGroupItem(localPlaylistItemId = "p1" as string)
+      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }, { ItemId: "i2", PlaylistItemId: "p2" }], PlayingItemIndex: 0, StartPositionTicks: 0 })
+      queueItem = { id: "i1", type: "Movie" }
       if localPlaylistItemId <> "" then queueItem.syncPlayPlaylistItemId = localPlaylistItemId
       m.global.queueManager.callFunc("set", [queueItem])
     end sub
@@ -86,7 +86,7 @@ namespace tests
       m.joinGroup()
       m.assertTrue(m.manager.inGroup)
       m.assertTrue(m.manager.following)
-      m.assertEqual(m.manager.groupId, "g-1")
+      m.assertEqual(m.manager.groupId, "g1")
       m.assertEqual(m.manager.groupName, "Movie night")
       m.assertEqual(m.manager.groupState, "Idle")
     end function
@@ -140,7 +140,7 @@ namespace tests
     @it("with no server there is no request to post, so newGroup and join return false")
     function _()
       m.assertFalse(m.manager.callFunc("newGroup", "ann"))
-      m.assertFalse(m.manager.callFunc("join", "g-1"))
+      m.assertFalse(m.manager.callFunc("join", "g1"))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -220,7 +220,7 @@ namespace tests
     @it("a command before the clock offset is known is held, not applied")
     function _()
       m.joinGroup()
-      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i-1", PlaylistItemId: "p-1" }], PlayingItemIndex: 0, StartPositionTicks: 0 })
+      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }], PlayingItemIndex: 0, StartPositionTicks: 0 })
       m.manager.frame = m.command("Pause")
       m.assertInvalid(m.manager.sync.lastCommand)
     end function
@@ -228,11 +228,11 @@ namespace tests
     @it("the join sequence the 12.2 server sends (GroupJoined, a Stop, then the new queue) makes the queue's item the playing one")
     function _()
       ' Recorded over the session socket against a 12.2.0 server, 2026-10-23.
-      m.manager.frame = remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g-1", Data: { GroupId: "g-1", GroupName: "capture", State: "Idle", Participants: ["jellyrock"], LastUpdatedAt: "2026-10-24T01:17:33.6881879Z" }, Type: "GroupJoined" } })
-      m.manager.frame = remoteCommand.parseMessage({ MessageType: "SyncPlayCommand", Data: { GroupId: "g-1", PlaylistItemId: "00000000000000000000000000000000", When: "2026-10-24T01:17:33.6085654Z", PositionTicks: 0, Command: "Stop", EmittedAt: "2026-10-24T01:17:33.6883144Z" } })
-      m.manager.frame = remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g-1", Data: { Reason: "NewPlaylist", LastUpdate: "2026-10-24T01:17:35.3172014Z", Playlist: [{ ItemId: "i-1", PlaylistItemId: "p-1" }], PlayingItemIndex: 0, StartPositionTicks: 0, IsPlaying: false, ShuffleMode: "Sorted", RepeatMode: "RepeatNone" }, Type: "PlayQueue" } })
+      m.manager.frame = remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g1", Data: { GroupId: "g1", GroupName: "capture", State: "Idle", Participants: ["jellyrock"], LastUpdatedAt: "2026-10-24T01:17:33.6881879Z" }, Type: "GroupJoined" } })
+      m.manager.frame = remoteCommand.parseMessage({ MessageType: "SyncPlayCommand", Data: { GroupId: "g1", PlaylistItemId: "00000000000000000000000000000000", When: "2026-10-24T01:17:33.6085654Z", PositionTicks: 0, Command: "Stop", EmittedAt: "2026-10-24T01:17:33.6883144Z" } })
+      m.manager.frame = remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g1", Data: { Reason: "NewPlaylist", LastUpdate: "2026-10-24T01:17:35.3172014Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }], PlayingItemIndex: 0, StartPositionTicks: 0, IsPlaying: false, ShuffleMode: "Sorted", RepeatMode: "RepeatNone" }, Type: "PlayQueue" } })
       m.assertTrue(m.manager.inGroup)
-      m.assertEqual(m.manager.sync.playingItemId, "p-1")
+      m.assertEqual(m.manager.sync.playingItemId, "p1")
     end function
 
     @it("a command outside any group is dropped")
@@ -305,7 +305,7 @@ namespace tests
     @it("a mount while the group plays nothing halts too")
     function _()
       m.joinGroup()
-      m.global.queueManager.callFunc("set", [{ id: "i-9", type: "Movie" }])
+      m.global.queueManager.callFunc("set", [{ id: "i9", type: "Movie" }])
       m.manager.callFunc("playerEvent", { kind: "mounted" })
       m.assertFalse(m.manager.following)
     end function
@@ -391,7 +391,7 @@ namespace tests
 
     @it("outside a group a play is the viewer's own")
     function _()
-      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.pressPlay([{ id: "i9", type: "Movie" }])
       m.assertFalse(m.manager.callFunc("claimPlay"))
     end function
 
@@ -399,7 +399,7 @@ namespace tests
     function _()
       m.joinGroupWithServer()
       m.manager.notice = invalid
-      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.pressPlay([{ id: "i9", type: "Movie" }])
       m.assertTrue(m.manager.callFunc("claimPlay"))
       m.assertEqual(m.manager.notice.kind, "playedToGroup")
       m.assertEqual(m.manager.notice.groupName, "Movie night")
@@ -413,7 +413,7 @@ namespace tests
       if not m.global.doesExist("playbackLaunchRequest") then m.global.addField("playbackLaunchRequest", "assocarray", false)
       m.global.playbackLaunchRequest = invalid
       m.joinGroupWithServer()
-      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.pressPlay([{ id: "i9", type: "Movie" }])
       m.global.queueManager.callFunc("playQueue")
       m.assertInvalid(m.global.playbackLaunchRequest)
       m.global.syncPlayManager = previousManager
@@ -437,7 +437,7 @@ namespace tests
     @it("with no server nothing is posted, so the play is the viewer's own")
     function _()
       m.joinGroup()
-      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.pressPlay([{ id: "i9", type: "Movie" }])
       m.assertFalse(m.manager.callFunc("claimPlay"))
     end function
 
@@ -450,7 +450,7 @@ namespace tests
       m.enableServer()
       m.assertFalse(m.manager.following)
       m.manager.notice = invalid
-      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.pressPlay([{ id: "i9", type: "Movie" }])
       m.assertTrue(m.manager.callFunc("claimPlay"))
       m.assertTrue(m.manager.following)
       m.assertEqual(m.manager.notice.kind, "playedToGroup")
@@ -463,7 +463,7 @@ namespace tests
       ' (SideEffectTask is FIFO), so the order they are submitted in is the order sent.
       posts = m.capturePosts()
       m.haltWithServer()
-      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.pressPlay([{ id: "i9", type: "Movie" }])
       m.manager.callFunc("claimPlay", promises.create())
       count = posts.getChildCount()
       m.assertEqual(count, 2)
@@ -474,21 +474,21 @@ namespace tests
     @it("the group's answer to a handed play is loaded without a group-started notice")
     function _()
       m.joinGroupWithServer()
-      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.pressPlay([{ id: "i9", type: "Movie" }])
       m.manager.callFunc("claimPlay")
       m.manager.notice = invalid
       m.global.server.serverUrl = ""
       ' With no server the fetch builds nothing, so the load never runs here: what is checked is
       ' that the claim survives to the update and the update is accepted (the playing item moves).
-      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i-9", PlaylistItemId: "p-9" }], PlayingItemIndex: 0, StartPositionTicks: 0 })
-      m.assertEqual(m.manager.sync.playingItemId, "p-9")
+      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i9", PlaylistItemId: "p9" }], PlayingItemIndex: 0, StartPositionTicks: 0 })
+      m.assertEqual(m.manager.sync.playingItemId, "p9")
       m.assertInvalid(m.manager.notice)
     end function
 
     @it("a refusal after a handed play ends the start the press opened")
     function _()
       m.joinGroupWithServer()
-      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.pressPlay([{ id: "i9", type: "Movie" }])
       start = promises.create()
       m.assertTrue(m.manager.callFunc("claimPlay", start))
       m.assertTrue(appWaits.isOpen(start), "the start stays open across the round trip")
@@ -504,14 +504,14 @@ namespace tests
       m.playGroupItem()
       m.manager.callFunc("playerEvent", { kind: "mounted" })
       m.enableServer()
-      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.pressPlay([{ id: "i9", type: "Movie" }])
       halted = promises.create()
       m.manager.callFunc("claimPlay", halted)
       m.manager.callFunc("playerEvent", { kind: "unmounted" })
       m.assertFalse(m.manager.following)
       m.assertEqual(halted.promiseState, "rejected")
 
-      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.pressPlay([{ id: "i9", type: "Movie" }])
       leaving = promises.create()
       m.manager.callFunc("claimPlay", leaving)
       m.manager.frame = m.update("GroupLeft", invalid)
@@ -522,7 +522,7 @@ namespace tests
     function _()
       posts = m.capturePosts()
       m.haltWithServer()
-      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.pressPlay([{ id: "i9", type: "Movie" }])
       m.manager.callFunc("claimPlay", promises.create())
       m.assertTrue(m.manager.following, "the press follows again, so the group waits on it")
       m.manager.frame = m.update("LibraryAccessDenied", invalid)
@@ -536,7 +536,7 @@ namespace tests
     @it("a halted member's play whose start ended unanswered halts again at the next frame")
     function _()
       m.haltWithServer()
-      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.pressPlay([{ id: "i9", type: "Movie" }])
       start = promises.create()
       m.manager.callFunc("claimPlay", start)
       ' Back, or the start's time limit: the manager is not told, and nothing is owed yet.
@@ -550,7 +550,7 @@ namespace tests
     @it("a local play after an unanswered start halts quietly, before its mount")
     function _()
       m.haltWithServer()
-      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.pressPlay([{ id: "i9", type: "Movie" }])
       start = promises.create()
       m.manager.callFunc("claimPlay", start)
       promises.reject({ message: "replaced by a newer start" }, start)
@@ -564,10 +564,10 @@ namespace tests
     @it("a newer claim still open keeps the follow its predecessor made")
     function _()
       m.haltWithServer()
-      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.pressPlay([{ id: "i9", type: "Movie" }])
       first = promises.create()
       m.manager.callFunc("claimPlay", first)
-      m.pressPlay([{ id: "i-8", type: "Movie" }])
+      m.pressPlay([{ id: "i8", type: "Movie" }])
       second = promises.create()
       m.manager.callFunc("claimPlay", second)
       promises.reject({ message: "replaced by a newer start" }, first)
@@ -578,7 +578,7 @@ namespace tests
     @it("a following member's refused play leaves it following")
     function _()
       m.joinGroupWithServer()
-      m.pressPlay([{ id: "i-9", type: "Movie" }])
+      m.pressPlay([{ id: "i9", type: "Movie" }])
       m.manager.callFunc("claimPlay", promises.create())
       m.manager.frame = m.update("LibraryAccessDenied", invalid)
       m.assertTrue(m.manager.following)
@@ -601,9 +601,9 @@ namespace tests
     function _()
       m.halt()
       m.assertFalse(m.manager.following)
-      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:26.000Z", Playlist: [{ ItemId: "i-5", PlaylistItemId: "p-5" }], PlayingItemIndex: 0, StartPositionTicks: 0 })
+      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:26.000Z", Playlist: [{ ItemId: "i5", PlaylistItemId: "p5" }], PlayingItemIndex: 0, StartPositionTicks: 0 })
       m.assertTrue(m.manager.following)
-      m.assertEqual(m.manager.sync.playingItemId, "p-5")
+      m.assertEqual(m.manager.sync.playingItemId, "p5")
       ' One toast for the follow and the group's start, when the load runs.
       m.assertInvalid(m.manager.notice)
       m.assertEqual(m.manager.sync.loadNotice, "followingAgain")
@@ -620,7 +620,7 @@ namespace tests
     @it("a halt before the follow was told stays quiet: the viewer never saw it resume")
     function _()
       m.halt()
-      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:26.000Z", Playlist: [{ ItemId: "i-5", PlaylistItemId: "p-5" }], PlayingItemIndex: 0, StartPositionTicks: 0 })
+      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:26.000Z", Playlist: [{ ItemId: "i5", PlaylistItemId: "p5" }], PlayingItemIndex: 0, StartPositionTicks: 0 })
       m.manager.callFunc("playerEvent", { kind: "unmounted" })
       m.assertFalse(m.manager.following)
       m.assertInvalid(m.manager.notice)
@@ -635,7 +635,7 @@ namespace tests
       m.manager.callFunc("playerEvent", { kind: "unmounted" })
       m.manager.notice = invalid
       for each reason in ["SetCurrentItem", "Queue", "RemoveItems"]
-        m.manager.frame = m.update("PlayQueue", { Reason: reason, LastUpdate: "2026-10-23T20:47:2" + (6 + m.reasonIndex(reason)).toStr() + ".000Z", Playlist: [{ ItemId: "i-1", PlaylistItemId: "p-1" }, { ItemId: "i-2", PlaylistItemId: "p-2" }], PlayingItemIndex: 1, StartPositionTicks: 0 })
+        m.manager.frame = m.update("PlayQueue", { Reason: reason, LastUpdate: "2026-10-23T20:47:2" + (6 + m.reasonIndex(reason)).toStr() + ".000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }, { ItemId: "i2", PlaylistItemId: "p2" }], PlayingItemIndex: 1, StartPositionTicks: 0 })
         m.assertFalse(m.manager.following, reason + " must not bring the member back")
       end for
       m.assertInvalid(m.manager.notice)
