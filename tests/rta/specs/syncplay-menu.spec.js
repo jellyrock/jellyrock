@@ -110,10 +110,19 @@ async function moviesOtherThanHero(count) {
     ParentId: libraryIdFor(ctx.libraries, 'movies'),
     IncludeItemTypes: 'Movie',
     Recursive: 'true',
+    // A library that groups movies into collections answers with the BoxSet itself, which the
+    // group cannot follow, so ask for the movies inside collections.
+    CollapseBoxSetItems: 'false',
     SortBy: 'SortName',
     Limit: String(count + 1),
   });
   const res = await getJson(`${session.serverUrl}/Items?${query}`, tokenHeader(session.token));
+  for (const item of res.Items) {
+    expect(
+      item.Type,
+      `the server returned "${item.Name}" (${item.Id}) as a ${item.Type}, not a Movie: the group cannot follow it`,
+    ).toBe('Movie');
+  }
   const ids = res.Items.map((i) => i.Id).filter((id) => id !== ctx.heroId);
   expect(
     ids.length,
