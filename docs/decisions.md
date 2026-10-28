@@ -2406,6 +2406,16 @@ The cluster's SyncPlay icon tells its two states apart by shape. In a group the 
 
 Ruled out: the two dots jellyfin-web draws (green for groups to join, blue `primary` for in a group), because the themes have no green, a fixed color falls outside the palette a viewer can recolor, `colorPrimary` means focusable here, and two dots told apart by color alone fail WCAG 1.4.1 and merge for a viewer whose `colorSecondary` is green. A group-name chip (the epic's original status chip), because a variable-width entry in the cluster's fixed slots reopens the row alignment of #1262. The tint alone, because it cannot show groups to join.
 
+## decision-id: syncplay-icon-follows-push-channel
+
+**date**: 2026-10-28
+**status**: accepted
+**related-files**: `components/remotecontrol/RemoteControlTask.bs`, `source/syncplay/syncPlayMenu.bs`, `source/remotecontrol/remoteProtocol.bs`
+
+SyncPlay is offered only where the server has a push channel to the Roku, because membership, commands and queue updates arrive only as pushed messages (the session socket on an HTTP server, the companion plugin's long poll on HTTPS). `RemoteControlTask` publishes `server.remoteChannelStatus`. The icon is hidden while it is unknown, so a server with a channel never flashes a disabled icon, and shown disabled when it is unavailable; a press explains that an HTTPS server needs the plugin. Measured on the public demo on 2026-10-28: a join there put the Roku in the group on the server (`GET /SyncPlay/List` listed it, and the Roku's session read `SupportsRemoteControl: false`) while the app never learned of it. The HTTPS probe retries with backoff after a transport failure or a server error, and checks again every 5 minutes after a "no plugin" answer.
+
+Ruled out: hiding the icon without a channel, as for access None, because a viewer on two servers would see SyncPlay vanish on one with no reason; posting `Leave` when no `GroupJoined` arrives in time, because it offers the feature and takes it back and leaves the member stranded until the timer fires; and `roku-requests`' `retryCount` for the probe, because it retries at once with no delay.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
