@@ -465,7 +465,7 @@ sub applyPendingPlan()
       m.expectingRemount = true
       host.callFunc("exitPlayback")
     else
-      host.callFunc("handleTransport", verb)
+      tellPlayer(host, verb)
       if verb.command = "pause"
         m.pauseAttempts++
         armPauseTimer()
@@ -617,7 +617,7 @@ sub track(evt as object)
     ' A load's first frame: hold here and tell the server where we are. Its Unpause starts
     ' everyone together (web pauses at playbackstart the same way).
     host = playerHost()
-    if isValid(host) then host.callFunc("handleTransport", { command: "pause" })
+    if isValid(host) then tellPlayer(host, { command: "pause" })
     isPlaying = false
   end if
   if result.report <> ""
@@ -647,15 +647,18 @@ sub onPauseTimer()
   if not isFollowing() then return
   if not syncPlayPlayback.owesPause(m.groupPaused, m.playerState, m.tracker.phase) then return
   if m.pauseAttempts >= syncPlayPlayback.PAUSE_ATTEMPTS
+    ' The viewer's own Play goes to the group (control), so a node that plays on through three
+    ' pauses is a device fault: the member halts rather than drift out of sync unannounced.
     if not m.pauseGaveUp
       m.pauseGaveUp = true
       m.log.warn("the player would not stay paused", "state", m.playerState, "attempts", m.pauseAttempts)
+      haltFollowing("the player would not stay paused")
     end if
     return
   end if
   host = playerHost()
   if not isValid(host) then return
-  host.callFunc("handleTransport", { command: "pause" })
+  tellPlayer(host, { command: "pause" })
   m.pauseAttempts++
   armPauseTimer()
 end sub
@@ -725,6 +728,15 @@ function isFollowing() as boolean
 end function
 
 ' The routed play host, when the viewer is on the play route.
+' Hands the group's own verb to the player, marked fromGroup: the player applies it as it is
+' instead of asking the group for it again (VideoPlayerView.handleTransport). Without the mark a
+' group Seek came back as a new Seek request and went round for good, and the load's first-frame
+' pause paused the whole group (Stick 4K, 2026-10-28).
+sub tellPlayer(host as object, verb as object)
+  verb.fromGroup = true
+  host.callFunc("handleTransport", verb)
+end sub
+
 function playerHost() as dynamic
   view = m.global.activeRoutedView
   if isValid(view) and view.subtype() = "PlayerHostView" then return view
@@ -805,10 +817,19 @@ end sub
 ' --- the viewer's controls ---
 
 ' A control the viewer pressed while following, asked of the group in place of the player:
-' { kind: "next" | "previous" }. True when it was posted. Nothing is posted while halted, or
-' while the group plays nothing: the player then keeps its own behavior.
+' { kind: "pause" | "unpause" | "seek" | "next" | "previous", position }, the seek's position in
+' the Video node's float seconds. True when it was posted; the server's command then moves every
+' member, this one included (a pause is also written locally by the player, as web does, so the
+' viewer sees it land at once). Nothing is posted while halted, or while the group plays nothing:
+' the player then keeps its own behavior.
 function control(request as object) as boolean
   if not isValid(request) or not isFollowing() or m.state.playingItemId = "" then return false
+  if request.kind = "pause" then return post("Pause", invalid)
+  if request.kind = "unpause" then return post("Unpause", invalid)
+  if request.kind = "seek"
+    if not isValid(request.position) then return false
+    return post("Seek", syncPlayRequests.seek(syncPlayPlayback.secondsToTicks(request.position)))
+  end if
   if request.kind = "next" then return post("NextItem", syncPlayRequests.nextItem(m.state.playingItemId))
   if request.kind = "previous" then return post("PreviousItem", syncPlayRequests.previousItem(m.state.playingItemId))
   return false

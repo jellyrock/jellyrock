@@ -51,8 +51,9 @@
     <!-- { kind: "mounted" | "state" | "position" | "finished" | "unmounted", state, position }
          from the host and the player, position in the Video node's float seconds. -->
     <function name="playerEvent" />
-    <!-- control({ kind: "next" | "previous" }): a control the viewer pressed while following,
-         posted to the group in place of the player. True when posted. -->
+    <!-- control({ kind: "pause" | "unpause" | "seek" | "next" | "previous", position }): a control
+         the viewer pressed while following, posted to the group in place of the player; a seek's
+         position in the Video node's float seconds. True when posted. -->
     <function name="control" />
   </interface>
   <children>

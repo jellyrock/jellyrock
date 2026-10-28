@@ -613,12 +613,42 @@ namespace tests
       m.assertEqual(posts.getChildCount(), 2)
     end function
 
+    @it("pause and unpause while following post Pause and Unpause with no body")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.enableServer()
+      posts = m.capturePosts()
+      m.assertTrue(m.manager.callFunc("control", { kind: "pause" }))
+      m.assertTrue(m.lastPost(posts).url.instr("/SyncPlay/Pause") >= 0)
+      m.assertTrue(m.manager.callFunc("control", { kind: "unpause" }))
+      m.assertTrue(m.lastPost(posts).url.instr("/SyncPlay/Unpause") >= 0)
+      m.assertEqual(posts.getChildCount(), 2)
+    end function
+
+    @it("a seek while following posts Seek with the position in ticks, as a LongInteger")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.enableServer()
+      posts = m.capturePosts()
+      m.assertTrue(m.manager.callFunc("control", { kind: "seek", position: 90.5 }))
+      last = m.lastPost(posts)
+      m.assertTrue(last.url.instr("/SyncPlay/Seek") >= 0)
+      m.assertEqual(last.body, FormatJson({ "PositionTicks": 905000000& }))
+      m.assertFalse(m.manager.callFunc("control", { kind: "seek" }))
+      m.assertEqual(posts.getChildCount(), 1)
+    end function
+
     @it("nothing is posted while halted")
     function _()
       m.haltWithServer()
       posts = m.capturePosts()
       m.assertFalse(m.manager.callFunc("control", { kind: "next" }))
       m.assertFalse(m.manager.callFunc("control", { kind: "previous" }))
+      m.assertFalse(m.manager.callFunc("control", { kind: "pause" }))
+      m.assertFalse(m.manager.callFunc("control", { kind: "unpause" }))
+      m.assertFalse(m.manager.callFunc("control", { kind: "seek", position: 10 }))
       m.assertEqual(posts.getChildCount(), 0)
     end function
 

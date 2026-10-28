@@ -33,8 +33,9 @@ namespace syncPlayHooks
     return { index: sync.playingItemIndex, count: sync.playlistCount, hasPrevious: bounds.hasPrevious, hasNext: bounds.hasNext }
   end function
 
-  ' Ask the group for a control the viewer pressed (SyncPlayManager.control): true when the group
-  ' took it, false when the player should act on its own.
+  ' Ask the group for a control the viewer pressed (SyncPlayManager.control has the shapes): true
+  ' when the group took it, so the server's command will move every member, false when the
+  ' player should act on its own. A pause is the one control the player also applies at once.
   function control(request as object) as boolean
     manager = m.global.syncPlayManager
     if not isValid(manager) or manager.following <> true then return false

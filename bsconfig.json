@@ -61,12 +61,6 @@
         "kind": "test-infra",
         "files": ["components/testing/**"],
         "reason": "Probe components the RTA suite creates by name against the dev build and the Rooibos suite drives."
-      },
-      {
-        "kind": "planned",
-        "files": ["source/syncplay/syncPlayRequests.bs"],
-        "names": ["seek"],
-        "reason": "#1251: SyncPlay request bodies phase E's local controls first post."
       }
     ]
   }
