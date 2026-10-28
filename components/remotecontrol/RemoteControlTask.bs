@@ -4,6 +4,7 @@ import "pkg:/source/remotecontrol/remoteProtocol.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/backoff.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/serverCapabilities.bs"
 
 ' Remote-control receiver (#666): the ws:// "Cast to JellyRock" listener. See RemoteControlTask.xml
 ' for the lifecycle/threading overview. This task owns the vendored WebSocketClient node and runs the
@@ -23,6 +24,9 @@ end sub
 sub runReceiver()
   serverUrl = m.global.server.serverUrl
 
+  ' The channel's state starts unknown for each run; the transport below settles it.
+  setChannelStatus(serverCapabilities.STATUS_UNKNOWN)
+
   ' NOTE: the cold-launch cast pairing report (#668) is not sent here. It fires as a fire-and-forget
   ' SubmitSideEffect from Home.onScreenShown's first run (alongside the capabilities POST), so it can
   ' never delay this command channel. See remoteProtocol.buildPairRequest + docs/architecture/remote-control.md.
@@ -31,6 +35,14 @@ sub runReceiver()
   else
     runLongPollReceiver(serverUrl)
   end if
+end sub
+
+' Publish whether this server has a push channel to the Roku (server.remoteChannelStatus, which
+' SyncPlay reads). Written only on a change: this is a Task thread writing m.global, a rendezvous
+' with the render thread, and the status settles once per run.
+sub setChannelStatus(status as string)
+  if m.global.server.remoteChannelStatus = status then return
+  m.global.server.remoteChannelStatus = status
 end sub
 
 ' ws:// transport (#666): build the session-socket url and run the connect/reconnect loop until the
@@ -128,6 +140,7 @@ function connectAndPump(url as string) as boolean
         handleFrame(msg.getData())
       else if field = "on_open"
         m.log.info("socket open")
+        setChannelStatus(serverCapabilities.STATUS_AVAILABLE)
         sessionTimer = CreateObject("roTimespan")
       else if isTerminalSocketEvent(field, msg, isValid(sessionTimer))
         m.log.info("socket", field)
@@ -242,6 +255,9 @@ sub runLongPollReceiver(serverUrl as string)
   probe = httpGet(probeUrl, PROBE_TIMEOUT_MS)
   if probe.code <> 200
     m.log.info("long-poll receiver disabled: plugin probe returned", probe.code)
+    ' An HTTP status is the server's answer (no plugin); code 0 is a transport failure, which
+    ' says nothing about the plugin, so the status stays unknown.
+    if probe.code > 0 then setChannelStatus(serverCapabilities.STATUS_UNAVAILABLE)
     return
   end if
 
@@ -251,8 +267,10 @@ sub runLongPollReceiver(serverUrl as string)
   version = remoteProtocol.parseContractVersion(probe.body)
   if version <> remoteProtocol.CONTRACT_VERSION
     m.log.info("long-poll receiver disabled: unsupported contract version", version)
+    setChannelStatus(serverCapabilities.STATUS_UNAVAILABLE)
     return
   end if
+  setChannelStatus(serverCapabilities.STATUS_AVAILABLE)
   m.log.info("long-poll plugin present; starting poll loop")
 
   if remoteProtocol.buildLongPollUrl(serverUrl, POLL_WAIT_MS) = "" then return

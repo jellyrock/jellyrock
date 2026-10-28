@@ -724,6 +724,7 @@
   "MessageSyncPlayLeftStaleGroup": "Left {0} from your last session.",
   "MessageSyncPlayLibraryAccessDenied": "Access to this content is restricted.",
   "MessageSyncPlayMembers": "Watching with {0}.",
+  "MessageSyncPlayNeedsPlugin": "SyncPlay on an HTTPS server needs the JellyRock plugin installed on that server.",
   "MessageSyncPlayPlayedToGroup": "Playing this for {0}.",
   "MessageSyncPlayStoppedFollowing": "No longer following {0}. What plays now is your own.",
   "MessageSyncPlayUserJoined": "{0} has joined the group.",

@@ -150,40 +150,69 @@ namespace tests
 
     @it("is shown and not active while not in a group")
     function _()
-      state = syncPlayMenu.iconFor(false, "CreateAndJoinGroups")
+      state = syncPlayMenu.iconFor(false, "CreateAndJoinGroups", "available")
       m.assertFalse(state.active)
       m.assertTrue(state.shown)
     end function
 
     @it("is active while in a group")
     function _()
-      state = syncPlayMenu.iconFor(true, "JoinGroups")
+      state = syncPlayMenu.iconFor(true, "JoinGroups", "available")
       m.assertTrue(state.active)
       m.assertTrue(state.shown)
     end function
 
     @it("is not shown with access None")
     function _()
-      m.assertFalse(syncPlayMenu.iconFor(false, "None").shown)
+      m.assertFalse(syncPlayMenu.iconFor(false, "None", "available").shown)
     end function
 
     @it("carries a badge while a group exists to join and the viewer is in none")
     function _()
-      m.assertTrue(syncPlayMenu.iconFor(false, "JoinGroups", true).badge)
-      m.assertFalse(syncPlayMenu.iconFor(false, "JoinGroups", false).badge)
-      m.assertFalse(syncPlayMenu.iconFor(false, "JoinGroups").badge, "no group list means no badge")
+      m.assertTrue(syncPlayMenu.iconFor(false, "JoinGroups", "available", true).badge)
+      m.assertFalse(syncPlayMenu.iconFor(false, "JoinGroups", "available", false).badge)
+      m.assertFalse(syncPlayMenu.iconFor(false, "JoinGroups", "available").badge, "no group list means no badge")
     end function
 
     @it("drops the badge in a group: the tint says it")
     function _()
-      state = syncPlayMenu.iconFor(true, "JoinGroups", true)
+      state = syncPlayMenu.iconFor(true, "JoinGroups", "available", true)
       m.assertTrue(state.active)
       m.assertFalse(state.badge)
     end function
 
     @it("carries no badge when not shown")
     function _()
-      m.assertFalse(syncPlayMenu.iconFor(false, "None", true).badge)
+      m.assertFalse(syncPlayMenu.iconFor(false, "None", "available", true).badge)
+    end function
+
+    @it("is hidden while the push channel is unknown: no flash of a disabled icon")
+    function _()
+      m.assertFalse(syncPlayMenu.iconFor(false, "JoinGroups", "").shown)
+      m.assertFalse(syncPlayMenu.iconFor(false, "JoinGroups", "", true).badge)
+      m.assertFalse(syncPlayMenu.iconFor(false, "JoinGroups", "").disabled)
+    end function
+
+    @it("is shown and enabled when the push channel is available")
+    function _()
+      state = syncPlayMenu.iconFor(false, "JoinGroups", "available")
+      m.assertTrue(state.shown)
+      m.assertFalse(state.disabled)
+    end function
+
+    @it("is shown but disabled, with no badge, when the server has no push channel")
+    function _()
+      state = syncPlayMenu.iconFor(false, "JoinGroups", "unavailable", true)
+      m.assertTrue(state.shown)
+      m.assertTrue(state.disabled)
+      m.assertFalse(state.badge, "a group list is not read, so no badge")
+      m.assertFalse(state.active)
+    end function
+
+    @it("a hidden icon stays hidden whatever the channel says")
+    function _()
+      m.assertFalse(syncPlayMenu.iconFor(false, "None", "unavailable").shown)
+      m.assertFalse(syncPlayMenu.iconFor(false, "None", "available").shown)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -205,10 +234,12 @@ namespace tests
 
     @it("polls only while the icon could show a badge")
     function _()
-      m.assertTrue(syncPlayMenu.pollsGroups(true, false, "JoinGroups"))
-      m.assertFalse(syncPlayMenu.pollsGroups(false, false, "JoinGroups"), "the cluster is hidden: signed out or a player")
-      m.assertFalse(syncPlayMenu.pollsGroups(true, true, "JoinGroups"), "in a group the badge never shows")
-      m.assertFalse(syncPlayMenu.pollsGroups(true, false, "None"), "the icon is not shown")
+      m.assertTrue(syncPlayMenu.pollsGroups(true, false, "JoinGroups", "available"))
+      m.assertFalse(syncPlayMenu.pollsGroups(false, false, "JoinGroups", "available"), "the cluster is hidden: signed out or a player")
+      m.assertFalse(syncPlayMenu.pollsGroups(true, true, "JoinGroups", "available"), "in a group the badge never shows")
+      m.assertFalse(syncPlayMenu.pollsGroups(true, false, "None", "available"), "the icon is not shown")
+      m.assertFalse(syncPlayMenu.pollsGroups(true, false, "JoinGroups", "unavailable"), "no push channel: no group list")
+      m.assertFalse(syncPlayMenu.pollsGroups(true, false, "JoinGroups", ""), "channel unknown: the icon is hidden")
     end function
 
   end class

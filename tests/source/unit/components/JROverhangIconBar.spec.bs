@@ -110,6 +110,20 @@ namespace tests
       m.assertFalse(icon.hasBadge, "a patch without a badge leaves it alone")
     end function
 
+    @it("an entry's disabled flag is built from the entry and patched in place")
+    function _()
+      m.bar.entries = [{ id: "search", icon: "pkg:/images/icons/search_$$RES$$.png", disabled: true }]
+      icon = m.bar.findNode("searchIcon")
+      m.assertTrue(icon.isDisabled, "an entry can start disabled")
+      m.assertTrue(m.bar.callFunc("updateEntry", "search", { disabled: false }))
+      m.assertTrue(icon.isSameNode(m.bar.findNode("searchIcon")))
+      m.assertFalse(icon.isDisabled)
+      m.assertTrue(m.bar.callFunc("updateEntry", "search", { disabled: true }))
+      m.assertTrue(icon.isDisabled)
+      m.assertTrue(m.bar.callFunc("updateEntry", "search", { active: true }))
+      m.assertTrue(icon.isDisabled, "a patch without disabled leaves it alone")
+    end function
+
     @it("an active glyph is colorSecondary at rest; disabled wins over it")
     function _()
       m.bar.entries = m.entries()

@@ -9,6 +9,9 @@
  * mounts from that answer.
  * A membership the app exit left behind is remembered in the registry and ended at the next
  * launch (decision `syncplay-stale-membership-at-launch`).
+ * On a server with no push channel to the Roku (https without the companion plugin, which is what
+ * the default public demo is) a join could never be followed, so the icon is shown disabled with
+ * no dot, and OK explains the plugin need instead of opening the menu.
  */
 import { afterAll, beforeAll, it, expect } from 'vitest';
 import { ecp, odc } from 'roku-test-automation';
@@ -57,6 +60,9 @@ const isInactive = (v) => v === false;
 // a colorSecondary dot while a group exists to join and the Roku is in none.
 const hasBadge = (v) => v === true;
 const noBadge = (v) => v === false;
+// The icon's disabled flag (`JROverhangIcon.isDisabled`, read at
+// `#overhang.#cluster.#syncplayIcon.isDisabled`): set while the server has no push channel.
+const isDisabled = (v) => v === true;
 
 let session;
 let member;
@@ -125,7 +131,39 @@ async function waitMenuRows(count, label) {
   return getVals(Array.from({ length: count }, (_, i) => `#optionList.content.${i}.title`));
 }
 
-it('outside a group the icon is at rest and the menu ends with New group; Back returns to the icon', async () => {
+it('without a push channel the icon is disabled and has no dot; OK explains the plugin need and Back returns to the icon', async (testCtx) => {
+  if (pushAvailable)
+    testCtx.skip('the server has a push channel to this Roku, so the icon is enabled');
+  // The status settles once the receiver's probe answers, so the icon may appear after Home.
+  await waitFor('#overhang.#cluster.#syncplayIcon.isDisabled', isDisabled, {
+    label: 'the icon is shown disabled: no push channel',
+    timeout: 30000,
+  });
+  expect(
+    noBadge(await getVal('#overhang.#cluster.#syncplayIcon.hasBadge')),
+    'a disabled icon carries no dot',
+  ).toBe(true);
+
+  await focusOverhangIcon('syncplayIcon');
+  await press(ecp.Key.Ok);
+  await waitFor('#jrDialog.message', (m) => typeof m === 'string' && m.includes('HTTPS'), {
+    label: 'the alert names the HTTPS plugin need',
+    timeout: 10000,
+  });
+  expect(await getGlobalVal('syncPlayManager.inGroup'), 'no group was joined').toBe(false);
+
+  await press(ecp.Key.Back);
+  await waitDialogClosed('the plugin alert dismissed', { timeout: 10000 });
+  await waitFocused(atSyncPlayIcon, {
+    timeout: 8000,
+    interval: 250,
+    label: 'the icon again after Back',
+  });
+});
+
+it('outside a group the icon is at rest and the menu ends with New group; Back returns to the icon', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip('the SyncPlay menu is not offered without a push channel (the icon is disabled)');
   await focusOverhangIcon('syncplayIcon');
   expect(
     isInactive(await getVal('#overhang.#cluster.#syncplayIcon.isActive')),
@@ -147,7 +185,9 @@ it('outside a group the icon is at rest and the menu ends with New group; Back r
   });
 });
 
-it('a second OK while the group list loads is ignored: one wait, and the screen comes back', async () => {
+it('a second OK while the group list loads is ignored: one wait, and the screen comes back', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip('the SyncPlay menu is not offered without a push channel (the icon is disabled)');
   // The case above ends on the icon; walking up from Home again would fail there, so walk only
   // when the spec is not coming from it.
   if (!atSyncPlayIcon(await odc.getFocusedNode({ includeNode: true }))) {
@@ -182,7 +222,9 @@ it('a second OK while the group list loads is ignored: one wait, and the screen 
   expect(await getActiveVal('opacity'), 'the screen is not left hidden by a wait').toBe(1);
 });
 
-it('while the group list loads the screen stays in view and the wait holds the keys; Back cancels it and no menu opens', async () => {
+it('while the group list loads the screen stays in view and the wait holds the keys; Back cancels it and no menu opens', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip('the SyncPlay menu is not offered without a push channel (the icon is disabled)');
   if (!atSyncPlayIcon(await odc.getFocusedNode({ includeNode: true }))) {
     await focusOverhangIcon('syncplayIcon');
   }

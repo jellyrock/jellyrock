@@ -1,5 +1,6 @@
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/serverCapabilities.bs"
 ' The SyncPlay menu's decisions, pure: no node, no m.global. JRScene asks here what the cluster's
 ' SyncPlay icon shows and what the group menu offers, so a Rooibos spec covers every access value
 ' and every membership state without a scene.
@@ -87,13 +88,18 @@ namespace syncPlayMenu
   end function
 
   ' The cluster's SyncPlay icon: whether it shows at all (an account with access None never sees
-  ' it: a control the viewer can never use is not shown), whether it is active: drawn in
-  ' colorSecondary while in a group (JROverhangIcon.isActive), and whether it carries the badge:
-  ' a group exists to join and the viewer is in none (JROverhangIcon.hasBadge). The two are told
-  ' apart by shape, a tinted glyph or a dot, so neither rests on color alone.
-  function iconFor(inGroup as boolean, access as dynamic, groupsAvailable = false as boolean) as object
-    shown = canJoin(access)
-    return { shown: shown, active: inGroup, badge: shown and not inGroup and groupsAvailable }
+  ' it: a control the viewer can never use is not shown, and neither is it while the push channel
+  ' is unknown, so a server with the channel never flashes a disabled icon), whether it is
+  ' disabled (the server has no push channel, so a group could be joined on the server but never
+  ' followed here: JROverhangIcon.isDisabled, a press still explains why), whether it is active:
+  ' drawn in colorSecondary while in a group (JROverhangIcon.isActive), and whether it carries the
+  ' badge: a group exists to join and the viewer is in none (JROverhangIcon.hasBadge). The two are
+  ' told apart by shape, a tinted glyph or a dot, so neither rests on color alone. The channel is
+  ' the server node's remoteChannelStatus (serverCapabilities.STATUS_*).
+  function iconFor(inGroup as boolean, access as dynamic, channel as string, groupsAvailable = false as boolean) as object
+    shown = canJoin(access) and channel <> serverCapabilities.STATUS_UNKNOWN
+    disabled = shown and channel = serverCapabilities.STATUS_UNAVAILABLE
+    return { shown: shown, disabled: disabled, active: inGroup, badge: shown and not disabled and not inGroup and groupsAvailable }
   end function
 
   ' Whether a /SyncPlay/List answer holds a group the viewer could join: one with an id.
@@ -106,9 +112,10 @@ namespace syncPlayMenu
   end function
 
   ' Whether the group list is worth reading for the badge: the cluster is on screen (signed in,
-  ' not a player), the icon is shown, and the viewer is in no group, where the badge never shows.
-  function pollsGroups(clusterVisible as boolean, inGroup as boolean, access as dynamic) as boolean
-    return clusterVisible and not inGroup and canJoin(access)
+  ' not a player), the icon is shown and enabled (the push channel is available), and the viewer
+  ' is in no group, where the badge never shows.
+  function pollsGroups(clusterVisible as boolean, inGroup as boolean, access as dynamic, channel as string) as boolean
+    return clusterVisible and not inGroup and canJoin(access) and channel = serverCapabilities.STATUS_AVAILABLE
   end function
 
   ' The toast for a manager notice ({ kind, groupName, userName }): the translation key, the

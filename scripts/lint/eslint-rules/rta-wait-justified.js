@@ -123,6 +123,16 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // screen change: terminal, held until the next read finds a different answer.
   // `syncplay-menu.spec.js` waits on it around a join, a leave and an emptied list.
   '#overhang.#cluster.#syncplayIcon.hasBadge',
+  // The same bar writes the icon's `isDisabled` when it builds the entry and in `updateEntry`,
+  // both from `JRScene.renderSyncPlayIcon` once the server node's `remoteChannelStatus` is known
+  // (`RemoteControlTask` writes it once per run, after the plugin probe): terminal, held until
+  // the status changes, which only a server switch does. `syncplay-menu.spec.js` waits on it on
+  // a server with no push channel.
+  '#overhang.#cluster.#syncplayIcon.isDisabled',
+  // `showAlertDialog` sets the dialog's `message` before `presentOverlayDialog` mounts it, and
+  // nothing rewrites it: terminal for as long as the dialog is open, not a pulse.
+  // `syncplay-menu.spec.js` waits on it for the plugin-needed alert.
+  '#jrDialog.message',
   // `SyncPlayManager.publish` writes `sync.playingItemId` from the membership state, which only
   // a PlayQueue frame (`syncPlayState.applyGroupUpdate`) or leaving the group changes: held until
   // the group's queue moves again. `syncplay-menu.spec.js` waits on it for a cast's answer.

@@ -41,6 +41,8 @@ So JellyRock has two transports that feed one normalized command stream:
 - **`http://`:** the `ws://` socket, with no probe.
 - **`https://`:** probe the plugin with `GET /JellyRock/RemoteControl/info`. A `200` whose body carries the expected `CONTRACT_VERSION` starts the long-poll loop. Anything else leaves JellyRock dark: no cast target is advertised. `buildSocketUrl` returns nothing for a non-HTTP server, so an `https://` session's token never goes out over cleartext `ws://`.
 
+The receiver also publishes whether it has a push channel, as `m.global.server.remoteChannelStatus` (`serverCapabilities.STATUS_*`), because SyncPlay needs one. It is unknown at the start of each run, `available` once the socket opens or the plugin probe answers with the expected version, and `unavailable` when the probe answers an HTTP error or a version it does not implement. A transport failure with no HTTP status leaves it unknown. It is written only on a change, since a Task thread writing `m.global` costs a rendezvous.
+
 On HTTPS the plugin owns the capability. JellyRock advertises `SupportsMediaControl` as `false` there (`deviceCapabilities.bs` checks the scheme), and the plugin forces it `true` while a poll is live and revokes it when polling stops. That revocation follows the plugin's poll freshness, not `LastActivityDate`, and it is what drops a closed JellyRock from the cast list. The `ws://` path gets the same from the socket disconnect. Verified on a device: with the app closed, `SupportsRemoteControl` turned false within the grace window, though other traffic kept `LastActivityDate` recent.
 
 ## Threading: a Task owns the transport, the main thread dispatches

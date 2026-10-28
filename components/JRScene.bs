@@ -12,6 +12,7 @@ import "pkg:/source/utils/loadingStages.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/refusedNavigation.bs"
+import "pkg:/source/utils/serverCapabilities.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/translate.bs"
 ' JRScene is a Scene (not a sgrouter_View), so it does not inherit the router scripts from
@@ -461,6 +462,10 @@ sub initRouter()
   if not m.isObservingSyncPlay
     m.global.syncPlayManager.observeField("inGroup", "applySyncPlayIcon")
     m.global.syncPlayManager.observeField("notice", "onSyncPlayNotice")
+    ' Whether the server has a push channel to this Roku (RemoteControlTask writes it, once per
+    ' run): the icon stays hidden until it is known, and is disabled without one. The server node
+    ' is reset in place on a server switch, so this observer outlives it.
+    m.global.server.observeField("remoteChannelStatus", "applySyncPlayIcon")
     m.isObservingSyncPlay = true
   end if
 
@@ -1206,6 +1211,12 @@ sub openSyncPlayMenu()
   ' this guard is the backstop.
   if appWaits.isOpen(m.syncPlayWait) then return
   if not syncPlayMenu.canJoin(syncPlayAccess()) then return ' the icon is not shown then; a stale press
+  ' No push channel: the server would take a join but no frame would reach this Roku, so explain
+  ' instead of fetching. The icon is disabled in this state; a press still fires.
+  if m.global.server.remoteChannelStatus = serverCapabilities.STATUS_UNAVAILABLE
+    m.syncPlayDialog = showAlertDialog(translate(translationKeys.LabelSyncPlay), translate(translationKeys.MessageSyncPlayNeedsPlugin), "onSyncPlayAlertResult")
+    return
+  end if
   req = GetApi().BuildGetSyncPlayGroupsRequest()
   if not isValid(req)
     showToast(translate(translationKeys.MessageSyncPlayGroupsFailed), "error")
@@ -1326,7 +1337,7 @@ end sub
 ' change shows a new group without waiting for the Timer; a hidden cluster or a membership stops
 ' the reads and clears the badge.
 sub applySyncPlayIcon()
-  polls = syncPlayMenu.pollsGroups(m.overhang.isClusterVisible = true, m.global.syncPlayManager.inGroup = true, syncPlayAccess())
+  polls = syncPlayMenu.pollsGroups(m.overhang.isClusterVisible = true, m.global.syncPlayManager.inGroup = true, syncPlayAccess(), m.global.server.remoteChannelStatus)
   if polls
     if not m.isPollingSyncPlayGroups then m.syncPlayGroupsTimer.control = "start"
     m.isPollingSyncPlayGroups = true
@@ -1340,7 +1351,7 @@ sub applySyncPlayIcon()
 end sub
 
 sub renderSyncPlayIcon()
-  m.overhang.callFunc("applySyncPlayIcon", syncPlayMenu.iconFor(m.global.syncPlayManager.inGroup = true, syncPlayAccess(), m.syncPlayGroupsAvailable))
+  m.overhang.callFunc("applySyncPlayIcon", syncPlayMenu.iconFor(m.global.syncPlayManager.inGroup = true, syncPlayAccess(), m.global.server.remoteChannelStatus, m.syncPlayGroupsAvailable))
 end sub
 
 ' One read of the group list for the badge, never two at once: a screen change while one is out

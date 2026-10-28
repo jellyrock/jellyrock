@@ -827,6 +827,15 @@ The candidate: while halted, a play asks **Play for everyone** or **Only for me*
 
 Closes when phase F's plan decides it: built with its strings and specs, or recorded as declined in that decision.
 
+#### The remote channel status stays where it first settled, so the SyncPlay icon can be wrong for a session `[fid: remote-channel-status-not-live]` `[captured 2026-10-28]`
+
+`RemoteControlTask` publishes `server.remoteChannelStatus` once per run (PR #1270), and the SyncPlay icon follows it: hidden while unknown, disabled while unavailable. The status then stays where it first settled, in two cases read from the code, neither measured:
+
+- **HTTPS:** `runLongPollReceiver` probes the companion plugin once and returns on a failure. A transport failure at launch leaves the status unknown (icon hidden) and an HTTP error leaves it unavailable (icon disabled) until the next sign-in, even after the network or the plugin comes back.
+- **HTTP:** once the session socket has opened, the status stays `available` while `runWsReceiver` reconnects. A socket that never comes back leaves the icon enabled, and a join would strand the Roku in a group it cannot follow, the flaw this status exists to prevent.
+
+Closes when the status follows the channel: the long-poll path re-probes (on reconnect or a backoff) and the socket path drops the status on a terminal close that does not stabilize, each with a spec, or when a device check shows neither case occurs in practice.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`

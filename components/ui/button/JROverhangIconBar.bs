@@ -78,7 +78,7 @@ sub onIconFocusReturn(msg as object)
   m.top.requestFocusReturn = m.entries[i].id
 end sub
 
-' Change one entry's on-state or badge in place without rebuilding the bar, so a state change
+' Change one entry's on-state, badge or disabled flag in place without rebuilding the bar, so a state change
 ' never moves focus. The input field is left as written: the applied copy is patched. Returns false
 ' for an id the bar does not have.
 function updateEntry(id as string, patch as object) as boolean
@@ -93,6 +93,10 @@ function updateEntry(id as string, patch as object) as boolean
   if isValid(patch.badge)
     entry.badge = patch.badge = true
     icon.hasBadge = entry.badge
+  end if
+  if isValid(patch.disabled)
+    entry.disabled = patch.disabled = true
+    icon.isDisabled = entry.disabled
   end if
   return true
 end function
