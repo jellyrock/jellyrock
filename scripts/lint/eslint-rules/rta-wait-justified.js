@@ -137,6 +137,11 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // a PlayQueue frame (`syncPlayState.applyGroupUpdate`) or leaving the group changes: held until
   // the group's queue moves again. `syncplay-menu.spec.js` waits on it for a cast's answer.
   'syncPlayManager.sync.playingItemId',
+  // `SyncPlayManager.publish` writes `groupState` from the group's StateUpdate frames (Idle,
+  // Waiting, Paused, Playing). Waiting can pass inside a tick, so no wait targets it; Paused
+  // and Playing are held until the next request to the group. `syncplay-controls.spec.js`
+  // waits on them after the Roku's own Play key.
+  'syncPlayManager.groupState',
   // `AppWaitHost.publish` rewrites the whole map on each wait's begin and end, and nothing else
   // writes it: an empty map holds until the next wait begins. `syncplay-menu.spec.js` waits on
   // it after a cast over the player, once the cast's answer has arrived.
@@ -272,6 +277,11 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // climbs, so a `>= target` predicate stays true once true. Read 2026-10-02 against the
   // one gate using it (playback-notifications.spec.js, which seeks before it waits).
   'position',
+  // Roku's `Video.trickPlayBar.visible`, read off the player by id: the bar comes up on the
+  // first Right and stays until OK, Play or Back closes it (measured on a Stick 4K,
+  // 2026-10-28, with a bare swallow of OK leaving it up for good). `syncplay-controls.spec.js`
+  // waits for it before the OK that seeks the group.
+  'trickPlayBar.visible',
   'state',
 ]);
 
