@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-27
+last-updated: 2026-10-28
 ---
 
 # Progress
@@ -1122,6 +1122,29 @@ JellyRock's SyncPlay work (epic #1251, phase C merged as `6deec979`) ends a Sync
 Why the plugin: on HTTPS the Roku's session never drops a socket, so the server's `SyncPlayManager.OnSessionEnded` never fires for it. The plugin's `PlaybackReaperService` already detects a JellyRock session whose long poll went stale (the freshness its `QueueingSessionController.IsSessionActive` computes) and calls `OnPlaybackStopped`, which does not end the session, so the group keeps a member that never answers `Ready`. Servers before 12.1 have no group-wait timeout and wait for good; from 12.1 the group waits 30 s at every item change. Read 2026-10-23 from the plugin's source and the server's master branch.
 
 What to do there: on the reaper's sweep, when a JellyRock long-poll session is stale, remove it from its SyncPlay group through the server's `ISyncPlayManager`, the same `LeaveGroup` path `OnSessionEnded` takes. Leave only the group; never end the session, because the phantom-session wake for ECP relies on it. Ship alongside JellyRock's phase D. Open question for that plan: which staleness threshold the reaper uses today, and whether a group member should be dropped sooner than a session is reaped, since the whole group waits on it.
+
+#### `fetchAsync` overwrites a pending request that reuses its `requestId`, so the first promise never settles and the second can settle early `[fid: fetchasync-reused-requestid-orphans-promise]` `[captured 2026-10-28]` `[pinned]`
+
+**Root cause:** `fetchAsync()` in `source/api/apiPromise.bs` keys its pending registry (`m.__apiPromisePending`) by the caller's `requestId` alone and overwrites an existing entry without checking. The result node and the timeout timer are tagged with that id, and the handlers find the entry through `event.getNode()`. So a second request under an id still pending (1) leaves the first promise with no entry, so it never settles and a `promises.all` over it hangs; (2) leaves the first `isDone` observer in place, which on firing settles the second entry from the second result node's `result`, usually still `invalid`, so the second promise rejects as `"timeout"` before its own answer arrives; (3) leaves the first timer running, which on firing abandons the second request in the pool through `timeoutApiPromiseIn()`.
+
+**History:** in place since `f712a9d3` (#624, the promises adoption); never fixed and undone. It already bit once: `fe48a073` fixed the SyncPlay menu's double OK, where a second group-list fetch under the same id left the first wait open and the screen blank, by giving that caller unique ids and a guard. Callers work around it one by one (`VideoPlayerView.fetchNextEpisode()` says "a reused `requestId` is a pool-contract bug").
+
+**Depends on it:** about 35 `fetchAsync` call sites. Several use an id that can repeat while pending: `"favoriteToggle-" + item.id` and `"watchedToggle-" + item.id` (an `isLoading` guard protects them), `"filters-" + parentid`, `"libraryBackdrop-" + libraryId`, `"nextEpisode-" + m.top.id`, the five `"subtitle…-" + m.top.itemId` ids, `"quickConnectEnabled"`, and `SyncPlayManager.fetchQueue()`'s `"syncplay-queue-<lastUpdateMs>-<page>"` into `promises.all`. The RTA fault injection (`apiFaults.take` in `ApiQueueTask`) matches on the `requestId` the pool sees, so a fix keeps that string. `tests/source/unit/api/apiPromise.spec.bs` has no case for two requests under one id.
+
+**Caller audit (2026-10-27, read from the code):** one caller is exposed with no guard: `schedule.loadProgramDetails()` uses `"liveTvProgram-" + programId` and marks a program loaded only on success, so focusing program A, then B, then A again while the first A is pending reuses the id; the first A's observer then settles the second as a `"timeout"` and the details pane does not fill on that focus. `SyncPlayManager.fetchQueue()` is exposed only if a queue update repeats a `lastUpdateMs`. The rest are guarded by hand: `isLoading` (favorite, watched), `GridPresenterBase`'s `filtersInFlightFor` (its comment names this flaw), `libraryBackdropPendingId`, `checkedForNextEpisode`, `claimMutation()` in `SubtitlePanel`, and once-per-mount calls; the rest use a sequence number.
+
+**Options:**
+
+- `unique` (recommended): `fetchAsync` makes a private registry key from a per-`m` counter (`requestId + "#" + n`) and tags the result node and timer with it; the pool, logs, fault injection and error AAs keep the caller's `requestId`. Each request settles on its own. `apiPromise.bs` plus one spec case. Risk: anything that reads a result node's or timer's `id` as the caller's id sees the new key; grep that nothing outside `apiPromise.bs` does.
+- `supersede`: on a collision, reject the earlier promise with `reason: "superseded"` and tear it down first. Every caller's `.catch` fires on an ordinary double press, which can toast errors.
+- `refuse`: reject the new call at once as `"duplicate"`. A caller that retries or re-fetches under the same id gets a rejection instead of data.
+- `warn`: a debug-build print on a collision. Fixes nothing.
+
+**Close it:** build `unique` test first (a spec that submits two requests under one id and asserts both settle with their own result), run it on a Roku with `npm run test:tdd`, then drop the caller-side workarounds' comments that call this a contract bug only if they become wrong. Filed rather than fixed during SyncPlay phase D because it is a shared-mechanism change outside that work.
+
+**Not checked:** whether any of those callers fires twice under the same id while the first is pending (for example, `fetchQueue` seeing the same `lastUpdateMs` twice through a re-follow); the early settle of the second promise by the leftover observer is from reading the code, not a device run.
+
+**Tracked in** [#1272](https://github.com/jellyrock/jellyrock/issues/1272); close it with the fix.
 
 ### tests
 
