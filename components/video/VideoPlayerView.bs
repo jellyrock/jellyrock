@@ -126,8 +126,7 @@ sub init()
   ' Trickplay seek position tracking - we parse Roku's trickPlayBar text to get
   ' the authoritative seek position and sync our carousel to it
   m.isTrackingSeek = false
-  m.carouselHiddenForSeek = false ' Track when carousel is hidden during seek confirmation
-  m.lastSentThumbnailIndex = -1 ' Dedup thumbnail index updates to prevent double-rendering at tile boundaries
+  m.carouselHiddenForSeek = false ' Track when carousel is hidden during seek confirmation  m.lastSentThumbnailIndex = -1 ' Dedup thumbnail index updates to prevent double-rendering at tile boundaries
 
   m.playbackTimer = m.top.findNode("playbackTimer")
   m.bufferCheckTimer = m.top.findNode("bufferCheckTimer")
@@ -2711,7 +2710,14 @@ function handleTransport(evt as object) as object
 
   if cmd = "pause"
     if m.top.state = "paused" then return { status: "error.redundant" }
-    m.top.control = "pause"
+    ' A SyncPlay group's pause is this viewer's pause too, so it shows the OSD as the Play key
+    ' does (syncPlayPlayback.applyPlan marks the verb). A voice or remote-app pause keeps today's
+    ' plain pause.
+    if evt.showOsd = true
+      pauseWithOsd()
+    else
+      m.top.control = "pause"
+    end if
     return { status: "success" }
   end if
 

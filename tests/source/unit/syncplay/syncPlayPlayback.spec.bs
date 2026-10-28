@@ -108,9 +108,12 @@ namespace tests
       steps = syncPlayPlayback.applyPlan(pausePlan, "playing", 600000000&, "ready")
       m.assertEqual(steps.count(), 1)
       m.assertEqual(steps[0].command, "pause")
+      ' A group pause is the viewer's pause too: it shows the OSD as the Play key does.
+      m.assertTrue(steps[0].showOsd)
       stalling = syncPlayPlayback.applyPlan(pausePlan, "buffering", 600000000&, "stalling")
       m.assertEqual(stalling.count(), 1)
       m.assertEqual(stalling[0].command, "pause")
+      m.assertTrue(stalling[0].showOsd)
       ready = syncPlayPlayback.applyPlan(pausePlan, "buffering", 600000000&, "ready")
       m.assertEqual(ready.count(), 1)
       m.assertEqual(ready[0].command, "pause")

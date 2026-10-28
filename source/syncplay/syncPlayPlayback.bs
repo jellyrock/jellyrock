@@ -85,7 +85,7 @@ namespace syncPlayPlayback
       if needsSeek then steps.push(target)
       if playerState = "paused" and not needsSeek then steps.push({ command: "resume" })
     else if plan.action = "Pause"
-      if playerState = "playing" or (playerState = "buffering" and trackerPhase <> "loading") then steps.push({ command: "pause" })
+      if playerState = "playing" or (playerState = "buffering" and trackerPhase <> "loading") then steps.push({ command: "pause", showOsd: true })
     else if plan.action = "Seek"
       target.report = true
       target.thenPause = true
