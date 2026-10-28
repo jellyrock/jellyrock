@@ -2,7 +2,8 @@
 #
 # catchup-state.sh — the one read /catchup makes (and /focus through it). It prints the repo's git
 # position, the journal, the projects, this repo's own reader, the recent commits and, when this
-# machine keeps a mailbox, the open messages other repos left this one,
+# machine keeps a mailbox, the open messages other repos left this one and the work request parts
+# naming it,
 # then one CANDIDATES block: every check that fired, as a typed line, ranked in code, so the model
 # takes the first line instead of ordering banners itself. Sections are labeled `=== NAME ===` and
 # read top to bottom.
@@ -20,9 +21,10 @@
 #     this script's own lines (ERROR, BANNER, PIN, SLOT, FIX, INFO, CAVEAT or NOTE, then a colon or
 #     a tab, after an indent, list marker or checkbox) reads as a live check, so a NOTE under its
 #     section's header names it as journal text. It is never a candidate.
-#   - Read-only: nothing in the repo is written, and no fetch is made (unpushed commits are counted
-#     against the last fetch). The own reader may read the network, never write: a change to the
-#     tree while it ran is reported as an ERROR candidate naming each changed path.
+#   - Read-only: nothing in the repo is written. One bounded fetch updates the remote-tracking refs
+#     only, since a checkout behind its remote reads as the old tree. The own reader may read the
+#     network, never write: a change to the tree while it ran is reported as an ERROR candidate
+#     naming each changed path.
 #   - A repo's own state (CI, PRs, pipelines, disk) is its own reader's job, not this one's.
 #
 # CANDIDATES: typed, tab-separated lines (free text never breaks the parse), only in that block. Each
@@ -60,6 +62,20 @@
 #   mail-pinned: pinned (class 2)  an open message its sender pinned; ranked with the pinned followups by date
 #   mail-open: overdue            an open message from another repo about no project, once
 #                                 CATCHUP_MAIL_OVERDUE_DAYS (14) old or undated; debt before that
+#   mail-waiting: overdue         a handled message (marked done on a branch) whose branch has not
+#                                 merged CATCHUP_MAIL_OVERDUE_DAYS (14) after it was handled; an INFO line
+#                                 before that. A handled message is never mail-open, mail-pinned or
+#                                 mail-project; one whose state the forge could not give counts as
+#                                 waiting, with a NOTE
+#   request-pinned, request-project, request-open, request-waiting, request-landed: a work request's
+#                                 part naming this repo (mailbox.sh requests), ranked as the mail-
+#                                 id of the same name is; it opens with /focus <id>, or with
+#                                 /resume-project <slug> <id> when it is about a project, and
+#                                 closes with /done request <id>
+#   request-settle: overdue       a request this repo sent whose every part is closed or declined,
+#                                 one declined (mailbox.sh requests --sent): the requester settles
+#                                 it with /done request <id>; debt until CATCHUP_MAIL_OVERDUE_DAYS
+#                                 (14) after the newest decline
 #   followup-unblocked: overdue   an unpinned followup whose every waits-on wait is met (a pinned one
 #                                 is a PIN line); its waits-on is then to be dropped or kept on purpose
 #   followup-wait-broken: overdue a followup whose waits-on names nothing found, or an abandoned
@@ -79,7 +95,8 @@
 #   verify-first-format: debt     a PLAN's Verify first lines not in the `command` prints `value`
 #                                 shape, one line per PLAN (the rest of the PLAN check is
 #                                 plan-contradicts)
-#   off-branch, unpushed, gate-missing, journal-shaped (a NOTE named a journal line): FIX
+#   behind, off-branch, unpushed, gate-missing, journal-shaped (a NOTE named a journal line),
+#   mail-landed (a handled message whose commit has landed: close it): FIX
 #
 # This repo's own reader: catchup.conf beside this script (the repo's own file, never overwritten
 # by an update), one key=value per line, `#` comments:
@@ -134,19 +151,31 @@ declare -A RANK=([fire]=2 [resume]=4 [overdue]=5 [debt]=7)
 declare -A SHARED=([dirty-tree]="2 1" [work-running]="4 1" [project-unblocked]="4 2" [mail-project]="4 3" [mail-pinned]="3 0"
   [journal-stale]="5 1" [wait-unknown]="5 2" [plan-contradicts]="5 3" [project-dormant]="5 4"
   [cadence-overdue]="5 5" [followups-unreviewed]="5 6" [mail-open]="5 7" [followup-unblocked]="5 8" [followup-wait-broken]="5 9"
-  [followup-recheck]="5 10" [project-recheck]="5 11"
+  [followup-recheck]="5 10" [project-recheck]="5 11" [mail-waiting]="5 12"
   [cadence-unfilled]="7 1" [verify-first-format]="7 2" [wait-no-recheck]="7 3" [wait-in-prose]="7 4"
-  [off-branch]="9 1" [unpushed]="9 2" [gate-missing]="9 3" [journal-shaped]="9 4")
+  [behind]="9 1" [off-branch]="9 2" [unpushed]="9 3" [gate-missing]="9 4" [journal-shaped]="9 5" [mail-landed]="9 6"
+  [request-project]="4 4" [request-pinned]="3 0" [request-open]="5 14" [request-waiting]="5 13" [request-landed]="9 7" [request-settle]="5 15")
 shared() { # <id> <text> [project slug] [detail...]: a shared check that fired, with its route;
   # AT="<rank> <position>" before the call ranks this one firing elsewhere (a message's age)
   local id="$1" r p route type=BANNER
   read -r r p <<<"${AT:-${SHARED[$id]}}"
+  # rank 10 is an INFO line: no route, never a candidate
+  [ "$r" = 10 ] && { cand "$r" 1 "$p" "INFO$TAB$id$TAB$2"; return; }
   case "$id" in
     dirty-tree) route="look at it first: finish and commit it, or /resume-project {{slug}} if it is a project's" ;;
     work-running) route="check on it" ;;
     project-unblocked|wait-unknown|plan-contradicts|verify-first-format|project-dormant|mail-project|project-recheck) route="/resume-project $3" ;;
-    mail-open) route="read it (bash .claude/skills/start-project/mailbox.sh show $3), act on it, then /done message $3" ;;
-    mail-pinned) route="read it (bash .claude/skills/start-project/mailbox.sh show $3), act on it, then /done message $3${MPROJ:+; it is about project $MPROJ: /resume-project $MPROJ}" ;;
+    mail-open) route="/focus message:$3" ;;
+    # /resume-project takes no message id: it lists a message about its project by itself
+    mail-pinned) if [ -n "${MPROJ:-}" ]; then route="/resume-project $MPROJ"; else route="/focus message:$3"; fi ;;
+    mail-waiting) route="see what holds ${LBRANCH:-the branch}'s merge; once it has landed, /done message $3" ;;
+    mail-landed) route="/done message $3" ;;
+    request-project) route="/resume-project $3" ;;
+    request-open) route="/focus $3" ;;
+    request-pinned) if [ -n "${MPROJ:-}" ]; then route="/resume-project $MPROJ $3"; else route="/focus $3"; fi ;;
+    request-waiting) route="see what holds ${LBRANCH:-the branch}'s merge; once it has landed, /done request $3" ;;
+    request-landed) route="/done request $3" ;;
+    request-settle) route="read each decline (bash .claude/skills/start-project/mailbox.sh requests show $3), decide what follows, then /done request $3" ;;
     followup-unblocked) route="act on it (journal.sh show $3); when you keep it, drop its waits: journal.sh replace $3 --waits-on \"\"" ;;
     followup-wait-broken) route="fix its waits-on: journal.sh replace $3 --waits-on \"{{list}}\"" ;;
     followup-recheck) route="check on what it waits on (journal.sh show $3), then set a new after: date (journal.sh replace $3 --waits-on \"…\") or close it" ;;
@@ -156,8 +185,9 @@ shared() { # <id> <text> [project slug] [detail...]: a shared check that fired, 
     followups-unreviewed) route="re-read each against today's state, then /done followup {{fid}}, or keep it with a dated Re-checked YYYY-MM-DD note (journal.sh replace)" ;;
     cadence-overdue) route="run the command its row names" ;;
     cadence-unfilled) route="fill the table (or say there are none)" ;;
+    behind) route="git pull --rebase, then run the read again" ;;
     off-branch) route="confirm the branch" ;;
-    unpushed) route="git push" ;;
+    unpushed) route="${DIVERGED:+git pull --rebase && }git push" ;;
     gate-missing) route="pre-commit install --allow-missing-config" ;;
     journal-shaped) route="reword each one in $3" ;;
     *) route="" ;;
@@ -268,11 +298,28 @@ if up="$(git rev-parse -q --abbrev-ref '@{upstream}' 2>/dev/null)"; then :
 elif [ -n "$default" ] && git show-ref -q --verify "refs/remotes/origin/$default"; then up="origin/$default"
 else up=""; fi
 if [ -n "$up" ]; then
+  # Fetch first: a checkout behind its remote would read as the old tree. Bounded, never prompting;
+  # a fetch that fails or cannot be bounded is said, never a stop.
+  if git rev-parse -q --abbrev-ref '@{upstream}' >/dev/null 2>&1; then remote="$(git config "branch.$branch.remote" 2>/dev/null)"
+  else remote=origin; fi
+  secs="${CATCHUP_FETCH_SECONDS:-10}"
+  if [ "${remote:-.}" = . ]; then :
+  elif ! command -v timeout >/dev/null; then
+    echo "NOTE: no timeout command here: not fetched, so the counts are as of the last fetch"
+  elif GIT_TERMINAL_PROMPT=0 timeout "$secs" git fetch -q "$remote" >/dev/null 2>&1 </dev/null; then
+    echo "fetched $remote"
+  else echo "NOTE: could not fetch $remote within $secs s: the counts are as of the last fetch"; fi
   ahead="$(git rev-list --count "$up..HEAD" 2>/dev/null || echo "?")"
+  behind="$(git rev-list --count "HEAD..$up" 2>/dev/null || echo "?")"
+  if [ "$behind" != 0 ] && [ "$behind" != "?" ]; then
+    echo "behind: $behind (on $up, not in this checkout)"
+    shared behind "$behind commit(s) on $up not in this checkout: this read is of the old tree"
+    [ "$ahead" != 0 ] && [ "$ahead" != "?" ] && DIVERGED=1
+  fi
   if [ "$ahead" = 0 ]; then echo "unpushed: 0 (against $up, as of the last fetch)"
   else
     echo "unpushed: $ahead (against $up, as of the last fetch)"
-    git log --oneline "$up..HEAD" 2>/dev/null | head -10 | sed 's/^/  /'
+    git log --oneline "$up..HEAD" 2>/dev/null | sed -n 1,10p | sed 's/^/  /'
     shared unpushed "$ahead commit(s) not pushed to $up (as of the last fetch)"
   fi
 else echo "NOTE: no upstream and no origin default branch; unpushed commits are not checked"; fi
@@ -620,35 +667,114 @@ git log --oneline -10 2>/dev/null || serr "RECENT COMMITS" "git log failed"
 
 # The open messages other repos left this one (the mailbox), through the shared helper: nothing on
 # a machine with no mailbox. One about a project ranks with work to resume, any other as overdue.
-# --pin adds the seventh column (pinned or empty); a backend from before it exits 2, and then the
-# six-column list is read with every message unpinned.
-m_out=""; m_nopin=0
+# --pin adds the seventh column (pinned or empty) and --landing the eighth (whether a message
+# marked handled on a branch has landed, which the mailbox checks, asking the forge for at most 10
+# seconds each). A backend from before a flag exits 2, and then the list without it is read.
+m_out=""; m_nopin=0; m_nolanding=0
 if [ -f "$mailbox_sh" ]; then
-  m_out="$(bash "$mailbox_sh" list --tsv --pin 2>/dev/null </dev/null)"; m_rc=$?
+  m_out="$(bash "$mailbox_sh" list --tsv --pin --landing 2>/dev/null </dev/null)"; m_rc=$?
+  if [ "$m_rc" = 2 ]; then m_nolanding=1; m_out="$(bash "$mailbox_sh" list --tsv --pin 2>/dev/null </dev/null)"; m_rc=$?; fi
   if [ "$m_rc" = 2 ]; then m_nopin=1; m_out="$(bash "$mailbox_sh" list --tsv 2>/dev/null </dev/null)"; fi
 fi
-if [ -n "$m_out" ]; then
-  section "MAILBOX"
-  [ "$m_nopin" = 0 ] || echo "NOTE: the mailbox script has no --pin: pinned messages rank as unpinned; update the global setup"
+# rank_box <kind> <rows>: each open item of one kind, mail (a message) or request (a request part,
+# ADR 0012 item 3), as `mailbox.sh list --tsv --pin --landing` or `requests --tsv --landing` gives
+# them, printed on a line of its own and ranked. A part ranks as a message does, under its own ids
+# (request-…), since it opens with /focus and closes with /done request.
+rank_box() {
+  local kind="$1" noun=message open="an open message" row pa debt
+  [ "$kind" = mail ] || { noun=request; open="a request"; }
   while IFS= read -r row; do
     # a tab is whitespace to read, which merges empty columns: split on a separator that is not
-    IFS=$'\037' read -r mid mfrom msent mdays mproj mtitle mpin <<<"$(tr "$TAB" '\037' <<<"$row")"
+    IFS=$'\037' read -r mid mfrom msent mdays mproj mtitle mpin mland <<<"$(tr "$TAB" '\037' <<<"$row")"
     when="sent $msent, $mdays day(s) ago"; age="$mdays day(s) old"
     [ -n "$msent" ] || { when="undated"; age="undated"; }
-    printf 'mail: %s from %s (%s)%s: %s%s\n' "$mid" "$mfrom" "$when" "${mproj:+, about $mproj}" "$mtitle" "${mpin:+  [pinned]}"
-    if [ -n "$mpin" ]; then
+    # a handled item: <state> <days since handled> <code> <commit> <branch> [<PR number>]
+    lstate=""; ldays=""; lcode=""; lsha=""; lbranch=""; lpr=""; lsay=""
+    if [ -n "$mland" ]; then
+      read -r lstate ldays lcode lsha lbranch lpr <<<"$mland"
+      case "$lstate" in
+        landed) lsay="  [handled on $lbranch: landed${lpr:+, PR #$lpr}]" ;;
+        waiting|unknown) lsay="  [handled on $lbranch: waiting on merge]" ;;
+        *) echo "NOTE: cannot read the handled state of $mid ('$lstate'); it ranks as open"; lstate="" ;;
+      esac
+      [[ $ldays =~ ^[0-9]+$ ]] || { [ -z "$lstate" ] || echo "NOTE: cannot read how long $mid has waited ('$ldays'); it counts as overdue"; ldays=""; }
+    fi
+    printf '%s: %s from %s (%s)%s: %s%s%s\n' "$kind" "$mid" "$mfrom" "$when" "${mproj:+, about $mproj}" "$mtitle" "${mpin:+  [pinned]}" "$lsay"
+    if [ "$lstate" = landed ]; then
+      if [ -n "$lpr" ]; then lhow="PR #$lpr, $lsha"; else lhow="commit $lsha"; fi
+      shared "$kind-landed" "a handled $noun from $mfrom has landed ($lhow): $mtitle ($kind: $mid)" "$mid"
+    elif [ -n "$lstate" ]; then
+      if [ "$lstate" = unknown ]; then
+        case "$lcode" in
+          no-jq) lwhy="jq is not installed" ;;
+          not-a-list) lwhy="the forge's answer was not a list of PRs" ;;
+          *) lwhy="the forge could not be asked" ;;
+        esac
+        echo "NOTE: could not check whether $mid has landed: $lwhy; it counts as waiting"
+      fi
+      wtext="a handled $noun from $mfrom, waiting ${ldays:-an unknown number of} day(s) for $lbranch to merge: $mtitle ($kind: $mid)"
+      if [ -n "$ldays" ] && [ "$ldays" -lt "$mail_days" ]; then
+        AT="10 0" shared "$kind-waiting" "$wtext"
+      else
+        LBRANCH="$lbranch" shared "$kind-waiting" "$wtext" "$mid"
+      fi
+    elif [ -n "$mpin" ]; then
       # ranked with the pinned followups: the position is the sent date as a number, undated last
       md="${msent//-/}"; [[ $md =~ ^[0-9]{8}$ ]] || md=99999999
-      AT="3 $md" MPROJ="${mproj#[0-9][0-9][0-9][0-9]-[0-9][0-9]-}" shared mail-pinned "a pinned message from $mfrom, $age: $mtitle${mproj:+, about $mproj} (mail: $mid)" "$mid"
+      AT="3 $md" MPROJ="${mproj#[0-9][0-9][0-9][0-9]-[0-9][0-9]-}" shared "$kind-pinned" "a pinned $noun from $mfrom, $age: $mtitle${mproj:+, about $mproj} ($kind: $mid)" "$mid"
     elif [ -n "$mproj" ]; then
-      shared mail-project "an open message from $mfrom about $mproj, $age: $mtitle (mail: $mid)" "${mproj#[0-9][0-9][0-9][0-9]-[0-9][0-9]-}"
+      # a message's route resumes the project; a part's resumes it starting at the part
+      pa="${mproj#[0-9][0-9][0-9][0-9]-[0-9][0-9]-}"; [ "$kind" = mail ] || pa="$pa $mid"
+      shared "$kind-project" "$open from $mfrom about $mproj, $age: $mtitle ($kind: $mid)" "$pa"
     elif [ -n "$msent" ] && [[ $mdays =~ ^[0-9]+$ ]] && [ "$mdays" -lt "$mail_days" ]; then
       # younger than the threshold: debt; once it is that old, or undated, overdue
-      AT="7 3" shared mail-open "an open message from $mfrom, $age: $mtitle (mail: $mid)" "$mid"
+      debt="7 3"; [ "$kind" = mail ] || debt="7 5"
+      AT="$debt" shared "$kind-open" "$open from $mfrom, $age: $mtitle ($kind: $mid)" "$mid"
     else
-      shared mail-open "an open message from $mfrom, $age: $mtitle (mail: $mid)" "$mid"
+      shared "$kind-open" "$open from $mfrom, $age: $mtitle ($kind: $mid)" "$mid"
     fi
-  done <<<"$m_out"
+  done <<<"$2"
+}
+if [ -n "$m_out" ]; then
+  section "MAILBOX"
+  [ "$m_nolanding" = 0 ] || echo "NOTE: the mailbox script has no --landing: handled messages rank as open; update the global setup"
+  [ "$m_nopin" = 0 ] || echo "NOTE: the mailbox script has no --pin: pinned messages rank as unpinned; update the global setup"
+  rank_box mail "$m_out"
+fi
+
+# The request parts naming this repo (ADR 0012 item 3), through the same helper, ranked as messages
+# are. A backend from before `requests` exits 2: one NOTE, and no part is listed.
+r_out=""; r_none=0
+if [ -f "$mailbox_sh" ]; then
+  r_out="$(bash "$mailbox_sh" requests --tsv --landing 2>/dev/null </dev/null)" || { [ $? != 2 ] || r_none=1; r_out=""; }
+fi
+if [ -n "$r_out" ] || [ "$r_none" = 1 ]; then
+  section "REQUESTS"
+  [ "$r_none" = 0 ] || echo "NOTE: the mailbox script has no requests: work requests are not listed; update the global setup"
+  [ -z "$r_out" ] || rank_box request "$r_out"
+fi
+
+# The requests this repo sent (ADR 0012 item 6), each still open on a line with its progress. One
+# whose every part is closed or declined, with a part declined, is this repo's to settle: debt, then
+# overdue at the mail threshold counted from the newest decline. One with a part still open waits on
+# its targets, whose own readers rank it. A backend from before --sent exits 2: one NOTE.
+s_out=""; s_none=0
+if [ -f "$mailbox_sh" ]; then
+  s_out="$(bash "$mailbox_sh" requests --sent --tsv 2>/dev/null </dev/null)" || { [ $? != 2 ] || s_none=1; s_out=""; }
+fi
+if [ -n "$s_out" ] || [ "$s_none" = 1 ]; then
+  section "SENT REQUESTS"
+  [ "$s_none" = 0 ] || echo "NOTE: the mailbox script has no requests --sent: the requests this repo sent are not listed; update the global setup"
+  while IFS=$'\037' read -r sid ssent sdays stitle snp snc snd snh sdd; do
+    [ -n "$sid" ] || continue
+    sp="$snc of $snp parts closed"
+    sx=""; [ "$snd" = 0 ] || sx=", $snd declined"; [ "$snh" = 0 ] || sx="$sx, $snh handled"
+    printf 'sent request: %s (sent %s%s): %s: %s%s\n' "$sid" "$ssent" "${sdays:+, $sdays day(s) ago}" "$stitle" "$sp" "$sx"
+    [ "$snd" != 0 ] && [ "$((snc + snd))" = "$snp" ] || continue
+    stext="a request this repo sent has a declined part, ${sdd:-an unknown number of} day(s) since the newest decline: $stitle, $sp (sent request: $sid)"
+    if [[ $sdd =~ ^[0-9]+$ ]] && [ "$sdd" -lt "$mail_days" ]; then AT="7 6" shared request-settle "$stext" "$sid"
+    else shared request-settle "$stext" "$sid"; fi
+  done < <(tr "$TAB" '\037' <<<"$s_out")
 fi
 
 finish

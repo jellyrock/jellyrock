@@ -24,7 +24,7 @@ description: Handle a flaw found mid-work without switching gears. Start it the 
 - **A trivial slip:** the correction applied directly and named in one line. No screen, no report.
 - **Anything else:** the decision screen of Step 3, every field filled, shown before any edit; then the turn ends.
 - **On a fix chosen to build now:** the fix, its tests, one commit on its own paths whose body carries the root cause, the chosen fix and the alternatives rejected; nothing pushed; then the report of Step 7, every field filled.
-- **On `asap` or `later`:** a followup holding the cause and the options (pinned for `asap`), and nothing edited. For a flaw in another repo it is a message to that repo's mailbox instead of a followup here.
+- **On `asap` or `later`:** a followup holding the cause and the options (pinned for `asap`), and nothing edited. For a flaw in another repo it is a message to that repo's mailbox instead of a followup here. On `open` (another repo only), the same pinned message, then a new tab in that repo with it typed in, to deal with it now.
 - Anything journal-worthy that surfaced and is not yet captured, using the types `/log` records. Omit if nothing surfaced; do not pad.
 
 **Success criteria.**
@@ -100,12 +100,13 @@ In chat, exactly this shape, real names from the working context, every field pr
 
 **Recommended:** `{{label}}`: {{why, and its risk}}
 
-**Timing:** {{now | asap | later}}: {{one line of why}}
+**Timing:** {{now | open | asap | later}}: {{one line of why}}
 
 | Reply | What happens |
 |---|---|
 | `{{label}}` | Build that fix now, test first, commit it, no push. |
-| `ok` | {{if timing is now: "Build `label` now, test first, commit it, no push."; if asap or later: "File a followup recommending `label` (pinned for asap); to build it now, reply `label`."}} |
+| `ok` | {{if timing is now: "Build `label` now, test first, commit it, no push."; if open: "Send it to that repo pinned, then open a tab there to deal with it now."; if asap or later: "File a followup recommending `label` (pinned for asap); to build it now, reply `label`."}} |
+| `open` | Another repo only: send it there as a pinned message, then open a tab in that repo with it typed in, to deal with it now. |
 | `asap` | File a pinned followup with this cause and these options; stop. |
 | `later` | File a followup with this cause and these options; stop. |
 | `edit: <text>` | Change the plan as you say. |
@@ -114,12 +115,13 @@ In chat, exactly this shape, real names from the working context, every field pr
 
 In the `ok` row, write only the sentence for this screen's timing, with the recommended fix's label filled in, so it names the one action `ok` triggers.
 
-A label is a short word saying what the fix does (`mark`, `restore`), never a letter. Recommend `now` when the fix fits this session without derailing the work in hand, `asap` when it does not fit but blocks or endangers that work, `later` otherwise, or when it needs its own design or several sessions. A flaw in another repo is never `now`, because building it would commit into another repo's checkout: recommend `asap` or `later`, and leave the fix-label rows out of the reply table, since only filing is offered.
+A label is a short word saying what the fix does (`mark`, `restore`), never a letter. Recommend `now` when the fix fits this session without derailing the work in hand, `asap` when it does not fit but blocks or endangers that work, `later` otherwise, or when it needs its own design or several sessions. A flaw in another repo is never `now`, because building it would commit into another repo's checkout: recommend `open` (that repo's own session takes it now, under its own rules), or `later` when it can wait, and leave the fix-label rows out of the reply table, since only filing is offered. In this repo, leave the `open` row out.
 
 ### Step 4: Act on the reply
 
 - **A fix label, or `ok` with timing `now`:** go to Step 5 with that fix.
 - **`asap`, `later`, or `ok` with that timing:** follow `/log`'s steps for a followup whose body holds the root cause, the options and the recommendation, stating nothing the screen did not (its title too) and carrying the screen's **Not checked** list word for word; when the fix waits on something (a release, a person, another followup or project), pass `--waits-on` as [waits.md](../log/waits.md) describes, with an `after:` re-check date for a wait no script can check; for `asap` add `--pinned` to its `journal.sh add`. When the fix needs its own design or several sessions, also print `/start-project` alone in its own block for the user to type. Edit nothing else; stop. For a flaw in another repo, follow `/log`'s Step 6 for a new message to that repo instead. The body is written for a session there with none of this context: it holds the root cause, the options and the recommendation, and carries the **Not checked** list word for word. For `asap`, add `--pinned`, so the message ranks with the receiver's pinned followups, and the body says it blocks work here. When this repo's `HEAD` is not pushed, `--commit` names this repo's pushed default branch.
+- **`open`, or `ok` with that timing:** send the message as for `asap`, then run `bash .claude/skills/start-project/mailbox.sh open {{owner/name}} message:{{id}}` and pass its line on. `opened:` means a tab waits in that repo's window with the message typed in, for the user's Enter; there its `/focus` plans the fix in a short-lived worktree. Exit 1 means no tab opened, and its line says why: the pinned message waits for that repo's next session. Stop either way.
 - **`edit: <text>`:** apply it and show the screen again.
 - **`second-opinion`:** print `/second-opinion` with the options, alone in its own block, for the user to type.
 

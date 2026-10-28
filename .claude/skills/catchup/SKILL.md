@@ -34,7 +34,7 @@ audit-span: read-only
 - Every banner check is deterministic against state: never "I think this might be broken" from prose interpretation; always "this counter exceeds this threshold" against a concrete state read.
 - The `Suggested next` line names the exact thing to run (a sibling skill by its command name in this repo, or the exact command), not a generic verb. The reader should be able to copy-paste the suggestion.
 - Stale or missing state surfaces (a journal that wasn't updated while work landed, a reader section that errored, an active project with no recent activity, a cadence past its next-due date) surface as their own banner rather than being silently dropped.
-- The total wall-clock cost stays bounded (target: well under a minute on cached state). Live-recompute paths (re-running a coverage suite, re-fetching remote state) are opt-in via explicit flag, never the default.
+- The total wall-clock cost stays bounded (target: well under a minute on cached state). Live-recompute paths (re-running a coverage suite, re-fetching remote state) are opt-in via explicit flag, never the default, except the shared reader's one bounded fetch of remote-tracking refs.
 
 **Failure modes to avoid.**
 
@@ -75,7 +75,7 @@ Run it once and read what it printed. Never re-run its calls by hand, and never 
 
 ### Step 2: Banners
 
-The `=== CANDIDATES ===` block holds every check that fired, one tab-separated line each, already ranked, each led by its class (`1` to `7`, the rank /focus names; `-` on `FIX`, `INFO` and `CAVEAT`); a line indented two spaces under one is its detail. `ERROR` and `BANNER` lines are banners, word for word, with the value that fired them. `PIN` lines are pinned followups (fid and title); a `mail-pinned` `BANNER` is a pinned message, ranked with them. `SLOT` lines mark where judgment comes in, and are never shown as banners. `FIX` lines are quick tree fixes, said in a **Before anything** line with each one's command. `INFO` lines are one-line info entries below the banners. A `CAVEAT` line is quoted word for word on whatever it affects (a count, a section, a banner). Banners are mandatory: skipping a fired banner because it "isn't important right now" defeats the skill, and a quiet banner is a missed signal.
+The `=== CANDIDATES ===` block holds every check that fired, one tab-separated line each, already ranked, each led by its class (`1` to `7`, the rank /focus names; `-` on `FIX`, `INFO` and `CAVEAT`); a line indented two spaces under one is its detail. `ERROR` and `BANNER` lines are banners, word for word, with the value that fired them. `PIN` lines are pinned followups (fid and title); a `mail-pinned` `BANNER` is a pinned message and a `request-pinned` one a pinned work request part, each ranked with them. `SLOT` lines mark where judgment comes in, and are never shown as banners. `FIX` lines are quick tree fixes, said in a **Before anything** line with each one's command. `INFO` lines are one-line info entries below the banners. A `CAVEAT` line is quoted word for word on whatever it affects (a count, a section, a banner). Banners are mandatory: skipping a fired banner because it "isn't important right now" defeats the skill, and a quiet banner is a missed signal.
 
 A failed run that a later run recovered comes as an `INFO` line, never dropped: a job that fails and recovers every night is itself a signal. A check another gate already enforces (a CI job, a pre-commit hook) shows through that gate's result, never through a second parse of what it checks.
 
@@ -91,6 +91,7 @@ First the `ERROR`, `BANNER` and `PIN` lines in the block's order, never re-order
 - **This repo's own sections**: what the reader printed under `=== OWN READER ===`, per `## This repo` (none, and no heading, when it names none).
 - **Recent commits**: the reader's 7- and 14-day counts, then its 10 recent commits, listed. Nothing here knows when the last session was, so never call a count "since last session".
 - **Messages from other repos**: the reader's `=== MAILBOX ===` lines as printed, one per open message (no heading when the reader printed no such section: this machine has no mailbox). Each is also a candidate above, so it is not repeated as a suggestion here.
+- **Work requests from other repos**: the reader's `=== REQUESTS ===` lines as printed, one per open part naming this repo (no heading when there are none). Another repo decided the change; this repo checks it and makes it, or declines it with a reason. Each is also a candidate above, so it is not repeated as a suggestion here.
 - **Suggested next**: Step 5.
 
 Use this repo's actual vocabulary: service names, command names, file paths. The reader of the briefing is you (or a fresh sub-agent) in the next moment; concrete is faster to act on than abstract.
