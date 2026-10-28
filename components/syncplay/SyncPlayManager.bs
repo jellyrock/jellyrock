@@ -531,7 +531,7 @@ sub fetchQueue(reason as string, lastUpdateMs as longinteger, isRetry as boolean
   if not isValid(req) then return
   requestId = "syncplay-queue-" + lastUpdateMs.toStr() + tag
   if isRetry then requestId = requestId + "-retry"
-  promises.chain(fetchAsync(req, requestId), { reason: reason, lastUpdateMs: lastUpdateMs, isRetry: isRetry, entry: entry }).then(sub(res as object, ctx as object)
+  promises.chain(fetchAsync(req, requestId), { reason: reason, lastUpdateMs: lastUpdateMs, isRetry: isRetry, tag: tag, entry: entry }).then(sub(res as object, ctx as object)
     ' A newer update arrived while this one's item was in flight: it will apply its own.
     ' A member that stopped following while the item was in flight applies nothing, as onCommand
     ' does for a halted member.
@@ -539,34 +539,35 @@ sub fetchQueue(reason as string, lastUpdateMs as longinteger, isRetry as boolean
     items = syncPlayQueue.pagedItems([res])
     if not isValid(items)
       m.log.warn("the group's item could not be read", "reason", ctx.reason)
-      onQueueLoadFailed(ctx.reason, ctx.lastUpdateMs, ctx.isRetry, "missing")
+      onQueueLoadFailed(ctx.reason, ctx.lastUpdateMs, ctx.isRetry, ctx.tag, "missing")
       return
     end if
-    applyQueue(ctx.reason, syncPlayQueue.queueItemsFor([ctx.entry], items), ctx.lastUpdateMs, ctx.isRetry)
+    applyQueue(ctx.reason, syncPlayQueue.queueItemsFor([ctx.entry], items), ctx.lastUpdateMs, ctx.isRetry, ctx.tag)
   end sub).catch(sub(err as object, ctx as object)
     ' err whole: a timeout rejects with the pool's result, which has no `reason`.
     m.log.warn("the group's items could not be fetched", err)
-    onQueueLoadFailed(ctx.reason, ctx.lastUpdateMs, ctx.isRetry, "request")
+    onQueueLoadFailed(ctx.reason, ctx.lastUpdateMs, ctx.isRetry, ctx.tag, "request")
   end sub)
 end sub
 
 ' A queue that cannot be loaded: retry a request failure once, otherwise stop following so the
 ' server stops waiting on this member. Nothing happens when a newer update or a halt took over.
-sub onQueueLoadFailed(reason as string, lastUpdateMs as longinteger, isRetry as boolean, failure as string)
+' @param tag - the failed fetch's tag, which its retry keeps (fetchQueue)
+sub onQueueLoadFailed(reason as string, lastUpdateMs as longinteger, isRetry as boolean, tag as string, failure as string)
   if not syncPlayQueue.appliesFetchedQueue(m.state, lastUpdateMs) then return
   if syncPlayQueue.loadFailureAction(isRetry, failure) = "retry"
-    fetchQueue(reason, lastUpdateMs, true)
+    fetchQueue(reason, lastUpdateMs, true, tag)
     return
   end if
   haltFollowing("the group's queue could not be loaded (" + failure + ")")
 end sub
 
-sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteger, isRetry as boolean)
+sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteger, isRetry as boolean, tag as string)
   index = syncPlayQueue.positionOf(queueItems, m.state.playingItemId)
   ' Checked before the queue changes: a member that stops following keeps its own queue.
   if index < 0
     m.log.warn("the group's playing item is not in the fetched queue", "playlistItemId", m.state.playingItemId)
-    onQueueLoadFailed(reason, lastUpdateMs, isRetry, "missing")
+    onQueueLoadFailed(reason, lastUpdateMs, isRetry, tag, "missing")
     return
   end if
   ' Also before the queue changes. Not a load failure, so no retry: the audio player and Live TV
