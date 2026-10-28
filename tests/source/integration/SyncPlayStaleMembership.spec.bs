@@ -58,7 +58,8 @@ namespace tests
     @it("a join writes the group's id and name; a leave removes them")
     function _()
       m.joinGroup()
-      m.assertEqual(m.remembered(), "g-1|Movie night")
+      ' The parser stores ids dash-free (syncPlayMessage.serverId), so the registry holds "g1", not "g-1".
+      m.assertEqual(m.remembered(), "g1|Movie night")
       m.manager.frame = m.update("GroupLeft", invalid)
       m.assertInvalid(m.remembered())
     end function
@@ -69,7 +70,7 @@ namespace tests
       m.manager.frame = m.update("NotInGroup", invalid)
       m.assertInvalid(m.remembered())
       m.joinGroup()
-      m.assertEqual(m.remembered(), "g-1|Movie night")
+      m.assertEqual(m.remembered(), "g1|Movie night")
       m.manager.callFunc("reset")
       m.assertInvalid(m.remembered())
     end function
@@ -116,7 +117,7 @@ namespace tests
       m.joinGroup()
       m.global.server.serverUrl = "http://localhost:8096"
       m.assertFalse(m.manager.callFunc("leaveStaleMembership"))
-      m.assertEqual(m.remembered(), "g-1|Movie night")
+      m.assertEqual(m.remembered(), "g1|Movie night")
     end function
 
     @it("a plain GroupLeft with nothing stale and nothing in memory says nothing")
