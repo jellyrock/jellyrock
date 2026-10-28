@@ -220,3 +220,30 @@ it('a trickplay scrub confirmed with OK seeks the whole group, and this member l
   });
   expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
 });
+
+it("the remote's Replay key seeks the whole group back, not this Roku alone", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const before = await playerPosition();
+  expect(before, 'far enough in for a replay to go back').toBeGreaterThan(15);
+  const lastEmitted = await getGlobalVal('syncPlayManager.sync.lastCommand.emittedAtMs');
+  await press(ecp.Key.Replay);
+  // A replay the group took comes back as the server's Seek (then its Unpause): a newer group
+  // command. A seek of this Roku alone brings none.
+  await waitFor('syncPlayManager.sync.lastCommand.emittedAtMs', (v) => v !== lastEmitted, {
+    read: getGlobalVal,
+    timeout: 10000,
+    label: 'a group command answering the replay',
+  });
+  // Seek and Unpause both carry the group's position: behind where the replay started.
+  const ticks = await getGlobalVal('syncPlayManager.sync.lastCommand.positionTicks');
+  expect(ticks / 10_000_000, "the group's position after the replay").toBeLessThan(before);
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 15000,
+    label: "playing again after the group's Seek and Unpause",
+  });
+  expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+});

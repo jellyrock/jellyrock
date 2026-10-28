@@ -2519,6 +2519,13 @@ function onKeyEvent(key as string, press as boolean) as boolean
     return true
   end if
 
+  ' In a SyncPlay group Replay is a group seek, as the voice replay is: Roku's own replay never
+  ' reached the group (2026-10-28, Stick 4K).
+  if key = "replay" and not m.top.trickPlayBar.visible and syncPlayHooks.following()
+    seekRelativeWithBounds(-getInstantReplaySeconds())
+    return true
+  end if
+
   if key = "back"
     m.top.control = "stop"
   end if

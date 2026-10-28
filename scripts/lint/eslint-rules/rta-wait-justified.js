@@ -142,6 +142,10 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // and Playing are held until the next request to the group. `syncplay-controls.spec.js`
   // waits on them after the Roku's own Play key.
   'syncPlayManager.groupState',
+  // `SyncPlayManager.scheduleCommand` sets the last group command and publishes it; each later
+  // command is newer, so its `emittedAtMs` never returns to an earlier value within a membership.
+  // `syncplay-controls.spec.js` waits for it to differ from a value read before a key press.
+  'syncPlayManager.sync.lastCommand.emittedAtMs',
   // `AppWaitHost.publish` rewrites the whole map on each wait's begin and end, and nothing else
   // writes it: an empty map holds until the next wait begins. `syncplay-menu.spec.js` waits on
   // it after a cast over the player, once the cast's answer has arrived.
