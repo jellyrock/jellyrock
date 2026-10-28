@@ -113,6 +113,34 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // gate is `navSubtitlePanel`, which only runs on a fixture whose user can manage
   // subtitles (see `subtitlePanel` in tests/rta/screens.js).
   '#subtitlePanel.visible',
+  // `JROverhangIconBar` writes the cluster icon's `isActive` when it builds the entry and in
+  // `updateEntry`, both from `JRScene.applySyncPlayIcon` on each inGroup change and screen
+  // change: terminal, held until the membership changes again. `syncplay-menu.spec.js` waits
+  // on it for a join and a leave.
+  '#overhang.#cluster.#syncplayIcon.isActive',
+  // The same bar writes the icon's `hasBadge` when it builds the entry and in `updateEntry`,
+  // both from `JRScene.renderSyncPlayIcon` after a group-list read, a membership change or a
+  // screen change: terminal, held until the next read finds a different answer.
+  // `syncplay-menu.spec.js` waits on it around a join, a leave and an emptied list.
+  '#overhang.#cluster.#syncplayIcon.hasBadge',
+  // The same bar writes the icon's `isDisabled` when it builds the entry and in `updateEntry`,
+  // both from `JRScene.renderSyncPlayIcon` once the server node's `remoteChannelStatus` is known
+  // (`RemoteControlTask` writes it once per run, after the plugin probe): terminal, held until
+  // the status changes, which only a server switch does. `syncplay-menu.spec.js` waits on it on
+  // a server with no push channel.
+  '#overhang.#cluster.#syncplayIcon.isDisabled',
+  // `showAlertDialog` sets the dialog's `message` before `presentOverlayDialog` mounts it, and
+  // nothing rewrites it: terminal for as long as the dialog is open, not a pulse.
+  // `syncplay-menu.spec.js` waits on it for the plugin-needed alert.
+  '#jrDialog.message',
+  // `SyncPlayManager.publish` writes `sync.playingItemId` from the membership state, which only
+  // a PlayQueue frame (`syncPlayState.applyGroupUpdate`) or leaving the group changes: held until
+  // the group's queue moves again. `syncplay-menu.spec.js` waits on it for a cast's answer.
+  'syncPlayManager.sync.playingItemId',
+  // `AppWaitHost.publish` rewrites the whole map on each wait's begin and end, and nothing else
+  // writes it: an empty map holds until the next wait begins. `syncplay-menu.spec.js` waits on
+  // it after a cast over the player, once the cast's answer has arrived.
+  '#appWaitHost.openWaits',
   // `SubtitlePanel.setStatus` writes it. A search's reply sets the failed or the empty text
   // (`renderResults`), and the only write back to "" is `showResultsSpinner` when the next
   // search starts, which takes a Search press, a language pick or a reopen. Held until the

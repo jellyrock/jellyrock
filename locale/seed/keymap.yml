@@ -423,3 +423,71 @@ MessageSearchNoResults:
   en: No results.
   from:
     swiftfin: { key: noResults, en: No results. }
+
+# ── SyncPlay (components/JRScene.bs, source/syncplay/syncPlayMenu.bs) ─────────────
+# jellyfin-web's SyncPlay menu and toasts: the same menu rows, dialog titles and server
+# refusals JellyRock shows. Some locales translate the feature name in ButtonSyncPlay
+# (de "Synchronwiedergabe"): that is the name those viewers see in jellyfin-web.
+
+ButtonLeaveGroup:
+  en: Leave Group
+  from:
+    jellyfin-web: { key: LabelSyncPlayLeaveGroup, en: Leave group }
+
+LabelSyncPlay:
+  en: SyncPlay
+  from:
+    jellyfin-web: { key: ButtonSyncPlay, en: SyncPlay }
+
+LabelSyncPlayDefaultGroupName:
+  en: "{0}'s group"
+  from:
+    jellyfin-web:
+      key: SyncPlayGroupDefaultTitle
+      en: "{0}'s group"
+      exclude:
+        lt: "keeps the English \"'s\" (\"{0}'s grupė\")"
+        zh_Hans: "keeps the English \"'s\" before the Chinese possessive (\"{0}'s 的群组\")"
+
+LabelSyncPlayGroupRow:
+  en: "{0} ({1})"
+  reject:
+    - { source: jellyfin-androidtv, key: lbl_name_date, reason: "a name and a date; this row is a group name and its members" }
+
+LabelSyncPlayNewGroup:
+  en: New group
+  from:
+    jellyfin-web: { key: LabelSyncPlayNewGroup, en: New group }
+
+LabelSyncPlayNoGroups:
+  en: No groups available
+  from:
+    jellyfin-web: { key: LabelSyncPlayNoGroups, en: No groups available }
+
+LabelSyncPlaySelectGroup:
+  en: Join a group
+  from:
+    jellyfin-web:
+      key: HeaderSyncPlaySelectGroup
+      en: Join a group
+      exclude: { ru: "\"Присоединить группу\" is attach a group, not join one" }
+
+MessageSyncPlayCreateGroupDenied:
+  en: Permission required to create a group.
+  from:
+    jellyfin-web: { key: MessageSyncPlayCreateGroupDenied, en: Permission required to create a group. }
+
+MessageSyncPlayLibraryAccessDenied:
+  en: Access to this content is restricted.
+  from:
+    jellyfin-web: { key: MessageSyncPlayLibraryAccessDenied, en: Access to this content is restricted. }
+
+MessageSyncPlayUserJoined:
+  en: "{0} has joined the group."
+  from:
+    jellyfin-web: { key: MessageSyncPlayUserJoined, en: "{0} has joined the group." }
+
+MessageSyncPlayUserLeft:
+  en: "{0} has left the group."
+  from:
+    jellyfin-web: { key: MessageSyncPlayUserLeft, en: "{0} has left the group." }

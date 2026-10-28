@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Отменить",
   "ButtonDelete": "Удалить",
+  "ButtonLeaveGroup": "Покинуть группу",
   "ButtonManualLogin": "Войти вручную",
   "ButtonOk": "Ок",
   "ButtonPlay": "Воспроизвести",
@@ -138,6 +139,10 @@
   "LabelSports": "Спорт",
   "LabelStudios": "Студии",
   "LabelSubtitles": "Субтитры",
+  "LabelSyncPlay": "Совместный просмотр",
+  "LabelSyncPlayDefaultGroupName": "Группа {0}",
+  "LabelSyncPlayNewGroup": "Новая группа",
+  "LabelSyncPlayNoGroups": "Нет доступных групп",
   "LabelTheme": "Оформление",
   "LabelTrack": "Трек",
   "LabelTranscoding": "Перекодирование",
@@ -241,5 +246,9 @@
   "MessageEndsAt1": "Конец в {0}",
   "MessageMoreFrom1": "Ещё в {0}",
   "MessageSearchNoResults": "Нет результатов.",
-  "MessageSetTheMaximumAmountOfDays": "Задать максимальное количество дней, в течение которых сериал должен оставаться в списке «Следующих серий» без его просмотра ."
+  "MessageSetTheMaximumAmountOfDays": "Задать максимальное количество дней, в течение которых сериал должен оставаться в списке «Следующих серий» без его просмотра .",
+  "MessageSyncPlayCreateGroupDenied": "Требуется разрешение для создания группы.",
+  "MessageSyncPlayLibraryAccessDenied": "Доступ к данному содержанию ограничен.",
+  "MessageSyncPlayUserJoined": "{0} присоединился к группе.",
+  "MessageSyncPlayUserLeft": "{0} покинул группу."
 }

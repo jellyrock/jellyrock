@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Ofbriechen",
   "ButtonDelete": "Läschen",
+  "ButtonLeaveGroup": "SyncPlay: Grupp verlossen",
   "ButtonManualLogin": "Manuell Umellen",
   "ButtonOk": "OK",
   "ButtonPlay": "Spillen",
@@ -128,6 +129,9 @@
   "LabelSports": "Sport",
   "LabelStudios": "Studios",
   "LabelSubtitles": "Sous-titres",
+  "LabelSyncPlayNewGroup": "SyncPlay: Nei Grupp",
+  "LabelSyncPlayNoGroups": "Keng Gruppe verfügbar",
+  "LabelSyncPlaySelectGroup": "SyncPlay: Grupp auswielen",
   "LabelTheme": "Thema",
   "LabelTrack": "Titel",
   "LabelTranscoding": "Transkodéierung",
@@ -214,5 +218,9 @@
   "LanguageZh": "Chinesesch",
   "MessageDirectedBy1": "Réaliséiert vum {0}",
   "MessageMoreFrom1": "Méi vu {0}",
-  "MessageSetTheMaximumAmountOfDays": "Hëllef zum Max Deeg für Next Up"
+  "MessageSetTheMaximumAmountOfDays": "Hëllef zum Max Deeg für Next Up",
+  "MessageSyncPlayCreateGroupDenied": "Erstellung vun der SyncPlay-Gruppe verweigert",
+  "MessageSyncPlayLibraryAccessDenied": "Zougang zur SyncPlay-Bibliothéik verweigert",
+  "MessageSyncPlayUserJoined": "{0} ass der Grupp bäigetrueden",
+  "MessageSyncPlayUserLeft": "{0} huet d'Grupp verlossen"
 }

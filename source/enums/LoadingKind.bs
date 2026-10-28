@@ -26,6 +26,10 @@ enum LoadingKind
   ' the keys; Back cancels it, shows that screen again, and the late answer is dropped
   ' (ADR 0053). No stage text.
   ACTION = "action"
+  ' An action the viewer pressed whose answer opens over the screen it was pressed on (a dialog),
+  ' such as the SyncPlay menu's group list. An app wait like ACTION: it holds the keys and Back
+  ' cancels it. The screen stays in view, since nothing on it changes. No stage text.
+  OVERLAY = "overlay"
   ' The player waiting on its own stream, such as an audio seek that loads a new one. A screen
   ' wait on the player (screenWaits.begin): the player stays on show and takes only Back, which
   ' leaves it. No stage text: the wait is the player's, not a server answer to report.

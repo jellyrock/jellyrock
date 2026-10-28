@@ -12,6 +12,8 @@ import "pkg:/source/syncplay/syncPlayQueue.bs"
 import "pkg:/source/syncplay/syncPlayRequests.bs"
 import "pkg:/source/syncplay/syncPlayState.bs"
 import "pkg:/source/syncplay/syncPlayTime.bs"
+import "pkg:/source/utils/appWaits.bs"
+import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/tasks.bs"
@@ -20,6 +22,10 @@ import "pkg:/source/utils/tasks.bs"
 ' next burst runs is syncPlayOffset.nextBurstSeconds.
 const FIRST_SYNC_ROUNDS = 8
 const SYNC_ROUNDS = 3
+' The user-scoped registry key that remembers a membership across a launch: "groupId|groupName".
+' A Home exit ends the app without a Leave, and on HTTPS the session outlives it
+' (decision `syncplay-stale-membership-at-launch`).
+const STALE_GROUP_KEY = "syncPlayGroup"
 
 sub init()
   m.log = new log.Logger("SyncPlayManager")
@@ -78,6 +84,23 @@ sub ensureReady()
   m.pauseGaveUp = false
   ' The load a PlayQueue frame owes the player (syncPlayQueue.owedLoadAfter), kept until performed.
   m.owedLoad = invalid
+  ' The playback start a press opened when its play was handed to the group (claimPlay). The
+  ' claim lasts exactly as long as that start (hasOpenClaim): the group's answer takes it over,
+  ' a refusal, a leave or a halt ends it, and Back, its time limit or a newer press end it with
+  ' nothing to clear here.
+  m.claimedStart = invalid
+  ' A halted member's claim followed the group again at the press, so the group would wait on
+  ' it. That follow holds only until the group's load answers it (endUnansweredRefollow).
+  m.claimRefollowed = false
+  ' The name of the group a Leave at launch is ending (leaveStaleMembership), so the GroupLeft
+  ' that answers it can say which, since the membership is not in memory.
+  m.staleGroupName = ""
+  ' Whether no command has arrived since the join: the queue frame that comes first answers the
+  ' join, and its load says nothing past Joined (syncPlayQueue.noticeForQueueFrame).
+  m.joinAwaitsQueue = false
+  ' What the owed load tells the viewer when it runs, decided as its queue frame arrived
+  ' (syncPlayQueue.noticeForQueueFrame); invalid when no frame decided one.
+  m.loadNotice = invalid
   publish()
 end sub
 
@@ -88,6 +111,15 @@ function join(groupId as string) as boolean
   if not isValidAndNotEmpty(groupId) then return false
   m.log.info("joining group", "groupId", groupId)
   return post("Join", syncPlayRequests.join(groupId))
+end function
+
+' Create a group and join it: the server answers with GroupJoined. JRScene names it as
+' jellyfin-web does, "{0}'s group" (a custom name is a phase F addition).
+function newGroup(groupName as string) as boolean
+  ensureReady()
+  if not isValidAndNotEmpty(groupName) then return false
+  m.log.info("creating group", "groupName", groupName)
+  return post("New", syncPlayRequests.newGroup(groupName))
 end function
 
 function leave() as boolean
@@ -103,8 +135,28 @@ function reset() as boolean
   m.log.info("reset")
   ensureReady()
   if m.state.inGroup then post("Leave", invalid, true)
+  unsetUserSetting(STALE_GROUP_KEY)
   leaveLocally()
   return true
+end function
+
+' Ends the membership a Home exit left behind (decision `syncplay-stale-membership-at-launch`, the
+' app half): the registry remembers the group of the last session, and nothing in memory does.
+' Called once per launch from Home's first run, after the receiver is up so the server's GroupLeft
+' can reach the viewer as a toast naming the group. Answers true when a Leave was posted. On HTTP
+' the socket drop ended the membership already and the server answers NotInGroup, which says
+' nothing; the plugin's reaper does the same for a long-poll session that went stale.
+function leaveStaleMembership() as boolean
+  ensureReady()
+  if m.state.inGroup then return false
+  stale = getUserSetting(STALE_GROUP_KEY)
+  if not isValidAndNotEmpty(stale) then return false
+  unsetUserSetting(STALE_GROUP_KEY)
+  ' Split at the first bar only: the id (a GUID) has none, and the name may.
+  bar = stale.instr("|")
+  if bar >= 0 then m.staleGroupName = stale.mid(bar + 1)
+  m.log.info("leaving the group of the last session", "group", stale)
+  return post("Leave", invalid)
 end function
 
 ' @returns an AA with `following`: whether the caller should defer to the group (a `finished` the host
@@ -112,6 +164,7 @@ end function
 function playerEvent(evt as object) as object
   ensureReady()
   if not isValid(evt) or not syncPlayTime.isText(evt.kind) then return { following: isFollowing() }
+  endUnansweredRefollow()
   kind = evt.kind
   if isValid(evt.position) then m.playerPositionTicks = syncPlayPlayback.secondsToTicks(evt.position)
   if kind = "state" and syncPlayTime.isText(evt.state) then m.playerState = evt.state
@@ -173,18 +226,100 @@ end function
 
 ' This member stops following but stays in the group, and tells the server not to wait on it (a
 ' server before 12.1 has no group-wait timeout). Resuming is phase E.
-sub haltFollowing(reason as string)
+' @param tell - whether the viewer is told; false when what they did already says it
+sub haltFollowing(reason as string, tell = true as boolean)
   m.log.info("halting", "reason", reason, "groupId", m.state.groupId)
+  ' A follow the viewer was never told of (its load had not run) ends as quietly as it began.
+  if syncPlayTime.isText(m.loadNotice) and m.loadNotice = "followingAgain" then tell = false
+  if tell and isFollowing() then notify("halted", m.state.groupName, "")
   syncPlayState.halt(m.state)
   m.pendingPlan = invalid
   m.owedLoad = invalid
+  m.loadNotice = invalid
   m.groupPaused = false
   m.commandTimer.control = "stop"
   m.readyTimer.control = "stop"
   m.pauseTimer.control = "stop"
   m.tracker = syncPlayPlayback.newReadyTracker()
+  dropClaimedPlay("stopped following")
   post("SetIgnoreWait", syncPlayRequests.setIgnoreWait(true))
   publish()
+end sub
+
+' A play QueueManager.playQueue is about to launch, while in a group: hand it to the group
+' (syncPlayQueue.handoff) and answer true, so no local player starts; the group's PlayQueue
+' frame then loads it for every member, this one included. False when outside a group, when
+' the queue is the manager's own group load (its current item carries the group's playing
+' playlist id: syncPlayQueue.isGroupItem), when the queue holds something the player could
+' not follow, or when nothing could be posted: those play locally. A halted member's own play
+' follows the group again first: locally, so the answer applies (syncPlayQueue.appliesFetchedQueue),
+' and on the wire, so the group waits on it (a new queue marks every member buffering, but the
+' server's wait skips a member still ignoring it). It halts again if the group never loads the
+' play (endUnansweredRefollow).
+' @param start - the playback start the press opened (QueueManager.beginPlaybackStart), which
+'   the claim lives as long as; invalid when none is pending
+function claimPlay(start = invalid as dynamic) as boolean
+  ensureReady()
+  if not m.state.inGroup then return false
+  queueManager = m.global.queueManager
+  queueItems = queueManager.callFunc("getQueue")
+  position = queueManager.callFunc("getPosition")
+  if type(queueItems) <> "roArray" or position < 0 or position >= queueItems.count() then return false
+  if syncPlayQueue.isGroupItem(queueItems[position], m.state.playingItemId) then return false
+  handoff = syncPlayQueue.handoff(queueItems, position, m.state)
+  if not isValid(handoff) then return false
+  if handoff.action = "setPlaylistItem"
+    req = syncPlayRequest("SetPlaylistItem", syncPlayRequests.setPlaylistItem(handoff.playlistItemId))
+  else
+    req = syncPlayRequest("SetNewQueue", syncPlayRequests.setNewQueue(handoff.itemIds, handoff.position, handoff.startPositionTicks))
+  end if
+  if not isValid(req) then return false
+  ' Built before anything is sent, so a play that will run locally re-follows nothing.
+  if not isFollowing()
+    followAgain()
+    m.claimRefollowed = true
+  end if
+  SubmitSideEffect(req)
+  m.log.info("play handed to the group", "action", handoff.action, "groupId", m.state.groupId)
+  m.claimedStart = start
+  notify("playedToGroup", m.state.groupName, "")
+  return true
+end function
+
+' A halted member follows the group again: its own play, or another member's new playlist
+' (as jellyfin-web does), brings it back. The server is told to wait on it again. The caller
+' tells the viewer: the claim's notice, or the load's (syncPlayQueue.noticeForQueueFrame).
+sub followAgain()
+  m.log.info("following again", "groupId", m.state.groupId)
+  syncPlayState.resume(m.state)
+  m.tracker = syncPlayPlayback.newReadyTracker()
+  post("SetIgnoreWait", syncPlayRequests.setIgnoreWait(false))
+  publish()
+end sub
+
+' Whether a play this viewer handed to the group still waits on the group's answer: the start
+' its press opened is still open. Back, the start's time limit or a newer press ended it.
+function hasOpenClaim() as boolean
+  return appWaits.isOpen(m.claimedStart)
+end function
+
+' The group will not answer a handed play with a load (a refusal, the membership ended, a
+' halt): the start the press opened ends, or the spinner would run to its limit. Only that
+' start: a newer press's start is not this claim's to end.
+sub dropClaimedPlay(reason as string)
+  appWaits.fail(m.claimedStart, "the group did not play it (" + reason + ")")
+  m.claimedStart = invalid
+end sub
+
+' A claim that re-followed and ended with no load from the group (a refusal, Back, the start's
+' time limit, a lost post) leaves this member following with no player. It never posts Ready,
+' so the group's next wait would stall on it: it halts again, quietly, since the refusal or the
+' viewer's own action already says what happened. Called at each frame and player event: every
+' wait the group starts begins with a frame to every member.
+sub endUnansweredRefollow()
+  if not m.claimRefollowed or hasOpenClaim() then return
+  m.claimRefollowed = false
+  if isFollowing() then haltFollowing("the group did not load the play that followed it again", false)
 end sub
 
 ' --- frames ---
@@ -196,9 +331,12 @@ sub onFrame(event as object)
   ensureReady()
   frame = event.getData()
   if not isValid(frame) or not syncPlayTime.isText(frame.kind) then return
+  endUnansweredRefollow()
   if frame.kind = "syncplayupdate"
     onGroupUpdate(frame)
   else if frame.kind = "syncplaycommand"
+    ' An idle group answers a join with a Stop and no queue: a queue after it is not the join's.
+    m.joinAwaitsQueue = false
     onCommand(frame)
   end if
 end sub
@@ -210,14 +348,22 @@ sub onGroupUpdate(update as object)
     return
   end if
   previousPlayingItemId = m.state.playingItemId
+  wasInGroup = m.state.inGroup
+  previousGroupName = m.state.groupName
   m.state = syncPlayState.applyGroupUpdate(m.state, update)
   if updateType = "PlayQueue"
     m.owedLoad = syncPlayQueue.owedLoadAfter(m.owedLoad, update.reason, previousPlayingItemId, m.state.playingItemId)
+    if hasOpenClaim() then m.owedLoad = syncPlayQueue.owedLoadForClaimedPlay(m.owedLoad, update.reason, m.state.playingItemId)
   end if
   m.log.info("group update", "type", updateType, "groupId", m.state.groupId, "state", m.state.groupState)
 
   if updateType = "GroupJoined"
+    notify("joined", m.state.groupName, "")
+    setUserSetting(STALE_GROUP_KEY, m.state.groupId + "|" + m.state.groupName)
+    m.staleGroupName = ""
+    m.joinAwaitsQueue = true
     m.owedLoad = invalid
+    m.loadNotice = invalid
     syncPlayOffset.reset(m.estimator)
     m.heldCommand = invalid
     m.lastCommand = invalid
@@ -226,12 +372,35 @@ sub onGroupUpdate(update as object)
     m.failedBursts = 0
     startTimeSync(FIRST_SYNC_ROUNDS)
   else if updateType = "GroupLeft" or updateType = "NotInGroup"
+    ' NotInGroup also answers a request made outside any group: nothing to tell then. A
+    ' GroupLeft for a membership a Home exit left behind names the group from the registry.
+    if wasInGroup
+      notify("left", previousGroupName, "")
+    else if updateType = "GroupLeft" and m.staleGroupName <> ""
+      notify("leftStale", m.staleGroupName, "")
+    end if
+    m.staleGroupName = ""
+    unsetUserSetting(STALE_GROUP_KEY)
+    dropClaimedPlay("left the group")
     leaveLocally()
     return
+  else if updateType = "UserJoined"
+    notify("userJoined", m.state.groupName, update.userName)
+  else if updateType = "UserLeft"
+    notify("userLeft", m.state.groupName, update.userName)
+  else if updateType = "GroupDoesNotExist" or updateType = "LibraryAccessDenied" or updateType = "CreateGroupDenied" or updateType = "JoinGroupDenied"
+    notify(updateType, "", "")
+    dropClaimedPlay(updateType)
+    endUnansweredRefollow()
   else if updateType = "PlayQueue"
     onQueueUpdate(update)
   end if
   publish()
+end sub
+
+' Tell the viewer something (the `notice` field; JRScene shows the toast).
+sub notify(kind as string, groupName as string, userName as string)
+  m.top.notice = { kind: kind, groupName: groupName, userName: userName }
 end sub
 
 sub onCommand(command as object)
@@ -310,10 +479,24 @@ end sub
 ' --- the queue ---
 
 sub onQueueUpdate(update as object)
-  if not m.state.following then return
+  ' A halted member is brought back by a new playlist, and by nothing less: an append, a move
+  ' or a jump within the playlist it stopped following stays recorded (onCommand).
+  refollowed = false
+  if not m.state.following
+    if update.reason <> "NewPlaylist" then return
+    followAgain()
+    refollowed = true
+  end if
+  answersJoin = m.joinAwaitsQueue
+  m.joinAwaitsQueue = false
   ' A group that plays nothing waits on no Ready and has no item to load. The update that
-  ' picks an item owes the load (syncPlayQueue.owedLoadAfter).
-  if m.state.playingItemId = "" then return
+  ' picks an item owes the load (syncPlayQueue.owedLoadAfter). With no load to say it, a follow
+  ' made again is told now.
+  if m.state.playingItemId = ""
+    if refollowed then notify("followingAgain", m.state.groupName, "")
+    return
+  end if
+  m.loadNotice = syncPlayQueue.noticeForQueueFrame(m.loadNotice, refollowed, answersJoin)
   fetchQueue(update.reason, m.state.lastUpdateMs, false)
 end sub
 
@@ -396,6 +579,13 @@ sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteg
   if action = "" then return
   ' The load is performed from here. The early return above kept the record for its retry.
   m.owedLoad = invalid
+  ' One toast for what this load is: the claim said it already, a reload in place says only a
+  ' follow made again, and a launch says what its frame decided (syncPlayQueue.noticeAtLoad).
+  notice = syncPlayQueue.noticeAtLoad(m.loadNotice, action, hasOpenClaim())
+  m.loadNotice = invalid
+  if notice <> "" then notify(notice, m.state.groupName, "")
+  ' The group answered: a follow made at a claim is real from here, whichever branch loads it.
+  m.claimRefollowed = false
   if newPlaylist
     startTicks& = syncPlayPlayback.startPositionTicks({ lastUpdateMs: m.state.lastUpdateMs, startPositionTicks: m.state.startPositionTicks }, m.lastCommand, m.estimator, syncPlayTime.nowMs())
     queueManager.callFunc("setCurrentStartingPoint", startTicks&, true)
@@ -405,13 +595,17 @@ sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteg
   end if
   if action = "remount"
     ' The play route over a mounted player reloads nothing for the same item and stacks a second
-    ' player for another, so the player reloads in place. No playback-start wait opens: a
-    ' remount takes none.
+    ' player for another, so the player reloads in place. No playback-start wait opens here.
     m.expectingRemount = true
     if not newPlaylist then queueManager.callFunc("advanceTo", index)
     host.callFunc("skipToCurrentQueueItem")
+    ' A play this viewer handed over is answered here. The reloaded player took the start the
+    ' press opened (takePlaybackStart) and ends it once its stream holds, so the claim only ends.
+    m.claimedStart = invalid
   else
     if not newPlaylist then queueManager.callFunc("startCurrentFresh")
+    ' The start opened below replaces the claim's, as for any newer press.
+    m.claimedStart = invalid
     queueManager.callFunc("beginPlaybackStart", "")
     queueManager.callFunc("playQueue")
   end if
@@ -547,21 +741,29 @@ function playerHost() as dynamic
 end function
 
 ' A SyncPlay POST nobody reads the answer to: the server's reply is a frame on the receiver.
+' False when no request could be built (syncPlayRequest).
+function post(action as string, body as dynamic, isLastForSession = false as boolean) as boolean
+  req = syncPlayRequest(action, body, isLastForSession)
+  if not isValid(req) then return false
+  SubmitSideEffect(req)
+  return true
+end function
+
+' The request for a SyncPlay action, or invalid when none can be built (no server).
 ' @param isLastForSession - true for a post made as the session ends: the side-effect thread
 '   builds Authorization when it sends, after SignOut has cleared the user, so the header is
 '   taken now (a request's own headers win over the one it builds)
-function post(action as string, body as dynamic, isLastForSession = false as boolean) as boolean
+function syncPlayRequest(action as string, body as dynamic, isLastForSession = false as boolean) as dynamic
   req = GetApi().BuildSyncPlayRequest(action, body)
   if not isValid(req)
     m.log.warn("no request for SyncPlay action", "action", action)
-    return false
+    return invalid
   end if
   if isLastForSession
     if not isValid(req.headers) then req.headers = {}
     req.headers.Authorization = buildAuthHeader()
   end if
-  SubmitSideEffect(req)
-  return true
+  return req
 end function
 
 sub leaveLocally()
@@ -579,6 +781,10 @@ sub leaveLocally()
   m.pendingPlan = invalid
   m.owedLoad = invalid
   m.expectingRemount = false
+  m.claimedStart = invalid
+  m.claimRefollowed = false
+  m.joinAwaitsQueue = false
+  m.loadNotice = invalid
   m.loadStartTicks = 0&
   m.failedBursts = 0
   publish()
@@ -597,7 +803,8 @@ sub publish()
       hasEstimate: m.estimator.hasEstimate,
       lastCommand: m.lastCommand,
       trackerPhase: m.tracker.phase,
-      playingItemId: m.state.playingItemId
+      playingItemId: m.state.playingItemId,
+      loadNotice: m.loadNotice
     }
   })
 end sub

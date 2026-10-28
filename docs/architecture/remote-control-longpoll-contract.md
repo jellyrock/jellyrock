@@ -37,7 +37,7 @@ The plugin has a third route, `/pair`, for the cold-launch pairing report. It is
 | **404** | The plugin is absent (no such route). **This is how JellyRock learns** whether an `https` server has the plugin. |
 | **401** | Not authenticated, or the token expired. |
 
-JellyRock treats any status but 200 as "no usable plugin" and stays dark on `https`: it advertises no cast target. It also stays dark when `contractVersion` is not exactly the version it implements (`CONTRACT_VERSION` in `remoteProtocol.bs`).
+JellyRock treats a client-error answer (HTTP 400 to 499) as "no usable plugin": it advertises no cast target and probes again after `PLUGIN_RECHECK_MS`. A transport failure or a server error (HTTP 500 and up) says nothing about the plugin, so it probes again with backoff. It also stays dark, with the same slow re-check, when `contractVersion` is not exactly the version it implements (`CONTRACT_VERSION` in `remoteProtocol.bs`).
 
 ### `GET /JellyRock/RemoteControl/poll?waitMs=<n>[&ack=1][&ackId=<guid>]`: the command channel
 
@@ -48,7 +48,7 @@ The server holds the request until a command is queued or `waitMs` passes.
 | **200** | A JSON array of command envelopes (below): one or more commands were queued. |
 | **204** | The hold ran out with nothing queued. JellyRock polls again at once. |
 | **401** | Not authenticated, or the token expired. JellyRock stops polling: the session ended. |
-| **404** | The plugin was uninstalled during the session. JellyRock stops polling. |
+| **404** | The plugin was uninstalled during the session. JellyRock marks the channel unavailable and probes again. |
 
 `waitMs` is the longest hold JellyRock asks for, and the server MAY shorten it. JellyRock sends `waitMs=25000` and gives the transfer a 35-second timeout, longer than the hold, so a `204` always arrives before its own request times out.
 
@@ -119,7 +119,7 @@ Unlike the `ws` path, there is no socket whose disconnect drops JellyRock from t
 |---|---|
 | `http://…` | The `ws://` session socket (#666), with no probe. |
 | `https://…`, probe `200` with this `contractVersion` | The long poll (this contract). |
-| `https://…`, anything else | Dark: no cast target, as before #667. |
+| `https://…`, anything else | Dark: no cast target, as before #667, with the probe repeated (backoff after a transport failure, `PLUGIN_RECHECK_MS` after a "no plugin" answer). |
 
 ## Versioning
 

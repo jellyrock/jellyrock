@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Anuluj",
   "ButtonDelete": "Usuń",
+  "ButtonLeaveGroup": "Opuść grupę",
   "ButtonManualLogin": "Logowanie manualne",
   "ButtonOk": "OK",
   "ButtonPlay": "Odtwarzaj",
@@ -135,6 +136,10 @@
   "LabelSports": "Wydarzenia sportowe",
   "LabelStudios": "Wytwórnie",
   "LabelSubtitles": "Napisy",
+  "LabelSyncPlayDefaultGroupName": "Grupa {0}",
+  "LabelSyncPlayNewGroup": "Nowa grupa",
+  "LabelSyncPlayNoGroups": "Brak dostępnych grup",
+  "LabelSyncPlaySelectGroup": "Dołącz do grupy",
   "LabelTheme": "Motyw",
   "LabelTotalBitrate": "Całkowita przepływność",
   "LabelTrack": "Utwór",
@@ -239,5 +244,9 @@
   "MessageEndsAt1": "Koniec o {0}",
   "MessageMoreFrom1": "Więcej od {0}",
   "MessageSearchNoResults": "Brak wyników.",
-  "MessageSetTheMaximumAmountOfDays": "Ustaw maksymalną liczbę dni, przez które program powinien pozostać na liście 'Następny w kolejności' bez oglądania go."
+  "MessageSetTheMaximumAmountOfDays": "Ustaw maksymalną liczbę dni, przez które program powinien pozostać na liście 'Następny w kolejności' bez oglądania go.",
+  "MessageSyncPlayCreateGroupDenied": "Zezwolenie na tworzenie grup wymagane.",
+  "MessageSyncPlayLibraryAccessDenied": "Dostęp do tej zawartości jest ograniczony.",
+  "MessageSyncPlayUserJoined": "{0} dołączył do grupy.",
+  "MessageSyncPlayUserLeft": "{0} opuścił grupę."
 }

@@ -300,6 +300,8 @@
   "MessageSettingsRelatingToTheAppearanceOf4": "Configuraciones relacionadas con la apariencia de la pantalla de Inicio y del programa en general.",
   "MessageShowItemCountInTheLibrary": "Mostrar cantidad de elementos en la bibilioteca e índice del elemento seleccionado.",
   "MessageSupportDirectPlayOfMpeg4Content": "Admitir reproducción directa de contenido MPEG-4. Es posible que sea necesario desactivar esto para la reproducción de archivos de vídeo codificados en DIVX.",
+  "MessageSyncPlayCreateGroupDenied": "Permiso requerido para crear un grupo.",
+  "MessageSyncPlayLibraryAccessDenied": "El acceso a este contenido está restringido.",
   "MessageUseTheReplayButtonToSlowly": "Utiliza el botón de reproducción para animar lentamente el primer elemento de la carpeta. (Si está deshabilitada, la carpeta se restablecerá al primer elemento inmediatamente).",
   "MessageYouCanSearchForTitlesPeople": "Puedes buscar por Títulos, Gente, Canales de TV en Vivo y más"
 }

@@ -69,6 +69,73 @@ namespace tests
       m.assertInvalid(m.bar.callFunc("getIcon", "syncplay"))
     end function
 
+    ' A Poster holding a color the way the glyph would, since a color field reads back in its own form.
+    private function asColor(value as string) as dynamic
+      probe = CreateObject("roSGNode", "Poster")
+      probe.blendColor = value
+      return probe.blendColor
+    end function
+
+    @it("updateEntry turns an entry active in place, keeping the children")
+    function _()
+      m.bar.entries = m.entries()
+      before = m.bar.findNode("settingsIcon")
+      m.assertTrue(m.bar.callFunc("updateEntry", "settings", { active: true }))
+      after = m.bar.findNode("settingsIcon")
+      m.assertTrue(before.isSameNode(after))
+      m.assertTrue(after.isActive)
+      m.assertEqual(m.bar.getChildCount(), 2)
+      m.assertTrue(m.bar.callFunc("updateEntry", "settings", { active: false }))
+      m.assertFalse(after.isActive)
+    end function
+
+    @it("updateEntry leaves the state alone for a patch without it, and refuses a stranger")
+    function _()
+      m.bar.entries = [{ id: "search", icon: "pkg:/images/icons/search_$$RES$$.png", active: true }]
+      m.assertTrue(m.bar.findNode("searchIcon").isActive, "an entry can start active")
+      m.assertTrue(m.bar.callFunc("updateEntry", "search", {}))
+      m.assertTrue(m.bar.findNode("searchIcon").isActive)
+      m.assertFalse(m.bar.callFunc("updateEntry", "syncplay", { active: true }))
+    end function
+
+    @it("an entry's badge is built from the entry and patched in place")
+    function _()
+      m.bar.entries = [{ id: "search", icon: "pkg:/images/icons/search_$$RES$$.png", badge: true }]
+      icon = m.bar.findNode("searchIcon")
+      m.assertTrue(icon.hasBadge, "an entry can start with a badge")
+      m.assertTrue(m.bar.callFunc("updateEntry", "search", { badge: false }))
+      m.assertTrue(icon.isSameNode(m.bar.findNode("searchIcon")))
+      m.assertFalse(icon.hasBadge)
+      m.assertTrue(m.bar.callFunc("updateEntry", "search", { active: true }))
+      m.assertFalse(icon.hasBadge, "a patch without a badge leaves it alone")
+    end function
+
+    @it("an entry's disabled flag is built from the entry and patched in place")
+    function _()
+      m.bar.entries = [{ id: "search", icon: "pkg:/images/icons/search_$$RES$$.png", disabled: true }]
+      icon = m.bar.findNode("searchIcon")
+      m.assertTrue(icon.isDisabled, "an entry can start disabled")
+      m.assertTrue(m.bar.callFunc("updateEntry", "search", { disabled: false }))
+      m.assertTrue(icon.isSameNode(m.bar.findNode("searchIcon")))
+      m.assertFalse(icon.isDisabled)
+      m.assertTrue(m.bar.callFunc("updateEntry", "search", { disabled: true }))
+      m.assertTrue(icon.isDisabled)
+      m.assertTrue(m.bar.callFunc("updateEntry", "search", { active: true }))
+      m.assertTrue(icon.isDisabled, "a patch without disabled leaves it alone")
+    end function
+
+    @it("an active glyph is colorSecondary at rest; disabled wins over it")
+    function _()
+      m.bar.entries = m.entries()
+      glyph = m.bar.findNode("settingsIcon").findNode("buttonIcon")
+      constants = m.global.constants
+      m.assertEqual(glyph.blendColor, m.asColor(constants.colorTextSecondary))
+      m.bar.callFunc("updateEntry", "settings", { active: true })
+      m.assertEqual(glyph.blendColor, m.asColor(constants.colorSecondary))
+      m.bar.findNode("settingsIcon").isDisabled = true
+      m.assertEqual(glyph.blendColor, m.asColor(constants.colorTextDisabled))
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("a press")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

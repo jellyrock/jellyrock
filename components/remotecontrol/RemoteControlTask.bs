@@ -4,6 +4,7 @@ import "pkg:/source/remotecontrol/remoteProtocol.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/backoff.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/serverCapabilities.bs"
 
 ' Remote-control receiver (#666): the ws:// "Cast to JellyRock" listener. See RemoteControlTask.xml
 ' for the lifecycle/threading overview. This task owns the vendored WebSocketClient node and runs the
@@ -23,6 +24,9 @@ end sub
 sub runReceiver()
   serverUrl = m.global.server.serverUrl
 
+  ' The channel's state starts unknown for each run; the transport below settles it.
+  setChannelStatus(serverCapabilities.STATUS_UNKNOWN)
+
   ' NOTE: the cold-launch cast pairing report (#668) is not sent here. It fires as a fire-and-forget
   ' SubmitSideEffect from Home.onScreenShown's first run (alongside the capabilities POST), so it can
   ' never delay this command channel. See remoteProtocol.buildPairRequest + docs/architecture/remote-control.md.
@@ -31,6 +35,14 @@ sub runReceiver()
   else
     runLongPollReceiver(serverUrl)
   end if
+end sub
+
+' Publish whether this server has a push channel to the Roku (server.remoteChannelStatus, which
+' SyncPlay reads). Written only on a change: this is a Task thread writing m.global, a rendezvous
+' with the render thread, and the status settles once per run.
+sub setChannelStatus(status as string)
+  if m.global.server.remoteChannelStatus = status then return
+  m.global.server.remoteChannelStatus = status
 end sub
 
 ' ws:// transport (#666): build the session-socket url and run the connect/reconnect loop until the
@@ -128,6 +140,7 @@ function connectAndPump(url as string) as boolean
         handleFrame(msg.getData())
       else if field = "on_open"
         m.log.info("socket open")
+        setChannelStatus(serverCapabilities.STATUS_AVAILABLE)
         sessionTimer = CreateObject("roTimespan")
       else if isTerminalSocketEvent(field, msg, isValid(sessionTimer))
         m.log.info("socket", field)
@@ -237,27 +250,8 @@ sub runLongPollReceiver(serverUrl as string)
     return
   end if
 
-  ' Presence probe: 200 => the plugin is installed (long-poll available); anything else => the
-  ' secure server has no cast plugin, so JellyRock stays dark (unchanged pre-#667 https behavior).
-  probe = httpGet(probeUrl, PROBE_TIMEOUT_MS)
-  if probe.code <> 200
-    m.log.info("long-poll receiver disabled: plugin probe returned", probe.code)
-    return
-  end if
-
-  ' Contract-version gate. The plugin advertises its wire-contract version in the probe body; we run
-  ' the loop only for a version we implement, else stay dark rather than risk acting on a command
-  ' shape we might misread. See remote-control-longpoll-contract.md (Versioning).
-  version = remoteProtocol.parseContractVersion(probe.body)
-  if version <> remoteProtocol.CONTRACT_VERSION
-    m.log.info("long-poll receiver disabled: unsupported contract version", version)
-    return
-  end if
-  m.log.info("long-poll plugin present; starting poll loop")
-
-  if remoteProtocol.buildLongPollUrl(serverUrl, POLL_WAIT_MS) = "" then return
-
-  ' Snapshot the token so a poll can detect a server-side rotation and stop cleanly (mirrors the ws path).
+  ' Snapshot the token before probing, so every probe and poll can detect a server-side rotation or
+  ' a sign-out and stop cleanly (mirrors the ws path).
   m.openedWithToken = m.global.user.authToken
 
   ' At-least-once delivery state (contract v1). m.lastAckId is our cumulative ack (the newest MessageId
@@ -269,23 +263,78 @@ sub runLongPollReceiver(serverUrl as string)
   m.dispatchedIds = {}
   m.dispatchedOrder = []
 
+  if remoteProtocol.buildLongPollUrl(serverUrl, POLL_WAIT_MS) = "" then return
+
+  while true
+    ' Probe until the plugin answers as usable. A transport failure or 5xx retries with backoff and
+    ' leaves the channel status as it is; a "no plugin" answer marks it unavailable and checks again
+    ' after a long wait, so a plugin installed later is found without reopening the app.
+    if not waitForPlugin(probeUrl, PROBE_TIMEOUT_MS) then return
+    setChannelStatus(serverCapabilities.STATUS_AVAILABLE)
+    m.log.info("long-poll plugin present; starting poll loop")
+    if not pollUntilPluginGone(serverUrl, POLL_WAIT_MS, POLL_TIMEOUT_MS) then return
+  end while
+end sub
+
+' True while the session that started the receiver is still the signed-in one. False once the token is
+' gone or rotated, which ends the receiver.
+function isReceiverSessionCurrent() as boolean
+  currentToken = m.global.user.authToken
+  return isValidAndNotEmpty(currentToken) and currentToken = m.openedWithToken
+end function
+
+' Probe the plugin until it answers as usable. Returns true once it does, false when the session ended.
+' Contract-version gate: the probe body carries the plugin's wire-contract version, and we run the loop
+' only for a version we implement, else stay dark rather than risk acting on a command shape we might
+' misread. See remote-control-longpoll-contract.md (Versioning).
+function waitForPlugin(probeUrl as string, probeTimeoutMs as integer) as boolean
+  attempt = 0
+  while true
+    if not isReceiverSessionCurrent()
+      m.log.info("session ended; long-poll receiver stopping")
+      return false
+    end if
+
+    probe = httpGet(probeUrl, probeTimeoutMs)
+    version = remoteProtocol.parseContractVersion(probe.body)
+    outcome = remoteProtocol.probeOutcome(probe.code, version)
+    if outcome = remoteProtocol.PROBE_AVAILABLE
+      return true
+    else if outcome = remoteProtocol.PROBE_UNAVAILABLE
+      m.log.info("long-poll plugin unavailable; probe returned", probe.code, "contractVersion", version, "recheckInMs", remoteProtocol.PLUGIN_RECHECK_MS)
+      setChannelStatus(serverCapabilities.STATUS_UNAVAILABLE)
+      attempt = 0
+      sleep(remoteProtocol.PLUGIN_RECHECK_MS)
+    else
+      ' No answer about the plugin (transport failure, timeout or 5xx): keep the status, back off.
+      backoffMs = backoff.nextDelayMs(attempt)
+      m.log.info("long-poll plugin probe failed; retrying", "code", probe.code, "inMs", backoffMs)
+      sleep(backoffMs)
+      attempt++
+    end if
+  end while
+  return false ' not reached: the loop only exits through its returns
+end function
+
+' Run the long-poll loop. Returns true when the plugin is gone (a 404), so the caller probes again, and
+' false when the receiver should stop (a 401, or the session ended).
+function pollUntilPluginGone(serverUrl as string, pollWaitMs as integer, pollTimeoutMs as integer) as boolean
   attempt = 0
   while true
     ' Token rotation / logout guard. control="STOP" (SignOut / server switch) terminates this thread
     ' outright; this catches a server-side token rotation between polls.
-    currentToken = m.global.user.authToken
-    if not isValidAndNotEmpty(currentToken) or currentToken <> m.openedWithToken
+    if not isReceiverSessionCurrent()
       m.log.info("session ended; long-poll receiver stopping")
-      return
+      return false
     end if
 
     ' Rebuilt each poll: the URL carries our current cumulative ackId, which advances as we receive.
-    pollUrl = remoteProtocol.buildLongPollUrl(serverUrl, POLL_WAIT_MS, m.lastAckId)
+    pollUrl = remoteProtocol.buildLongPollUrl(serverUrl, pollWaitMs, m.lastAckId)
 
     ' Time the poll so an abnormally fast EMPTY response (a plugin that doesn't honor the hold) can be
-    ' floored below: a compliant plugin holds ~POLL_WAIT_MS, so the floor never fires on it.
+    ' floored below: a compliant plugin holds ~pollWaitMs, so the floor never fires on it.
     pollTimer = CreateObject("roTimespan")
-    resp = httpGet(pollUrl, POLL_TIMEOUT_MS)
+    resp = httpGet(pollUrl, pollTimeoutMs)
     if resp.code = 200
       ' Queued command(s). Dispatch in order, then re-poll immediately (no backoff on success). A 200
       ' that dispatched nothing (empty array / garbled body) is abnormal: floor it like a fast 204 so
@@ -298,10 +347,15 @@ sub runLongPollReceiver(serverUrl as string)
       ' instead of holding, which a compliant plugin never does).
       attempt = 0
       throttleEmptyPoll(pollTimer)
-    else if resp.code = 401 or resp.code = 404
-      ' 401 = token no longer valid; 404 = plugin uninstalled mid-session. Either way, stop.
+    else if resp.code = 401
+      ' The token is no longer valid: stop.
       m.log.info("long-poll receiver stopping; response", resp.code)
-      return
+      return false
+    else if resp.code = 404
+      ' The plugin was uninstalled mid-session: mark it unavailable and let the caller probe again.
+      m.log.info("long-poll plugin gone; probing again", resp.code)
+      setChannelStatus(serverCapabilities.STATUS_UNAVAILABLE)
+      return true
     else
       ' Transient error / timeout (code 0) -> exponential backoff (1s..30s), then retry. A persistently
       ' unreachable server keeps the counter climbing so it can't hot-loop.
@@ -311,7 +365,8 @@ sub runLongPollReceiver(serverUrl as string)
       attempt++
     end if
   end while
-end sub
+  return false ' not reached: the loop only exits through its returns
+end function
 
 ' Authenticated async GET on this Task thread. Blocks up to timeoutMs for the response. Returns
 ' { code, body }; code = 0 on a failed initiation or a timeout. A fresh roUrlTransfer + roMessagePort

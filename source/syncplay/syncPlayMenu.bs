@@ -1,0 +1,153 @@
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/serverCapabilities.bs"
+' The SyncPlay menu's decisions, pure: no node, no m.global. JRScene asks here what the cluster's
+' SyncPlay icon shows and what the group menu offers, so a Rooibos spec covers every access value
+' and every membership state without a scene.
+namespace syncPlayMenu
+
+  ' The user policy's SyncPlayAccess values (the server's SyncPlayUserAccessType, unchanged from
+  ' 10.7.0 to master, read 2026-10-27).
+  const ACCESS_CREATE_AND_JOIN = "CreateAndJoinGroups"
+  const ACCESS_NONE = "None"
+
+  ' A row's action in the group menu: join the row's group, or create a new one.
+  const ACTION_JOIN = "join"
+  const ACTION_NEW = "new"
+
+  ' The cluster's SyncPlay glyph, filled in both states: the membership shows as its color
+  ' (iconFor's active), since the outlined groups glyph is barely told from the filled one.
+  const ICON = "pkg:/images/icons/groups_$$RES$$.png"
+
+  ' How often the group list is read for the icon's badge, while pollsGroups holds. The server
+  ' tells a session about a group only once it is a member, so outside one the list is the only
+  ' way to know a group exists. jellyfin-web reads it as often.
+  const GROUPS_POLL_MS = 60000
+
+  ' Whether SyncPlay is offered at all. False hides the cluster icon, the one way into a group,
+  ' so a release can ship without it. Remove it once the in-player SyncPlay surface ships
+  ' (followup syncplay-remove-enabled-switch).
+  const IS_ENABLED = true
+
+  ' Whether this user may join a group: SyncPlay is switched on and the policy allows it.
+  function canJoin(access as dynamic) as boolean
+    return joinAllowed(access, IS_ENABLED)
+  end function
+
+  ' canJoin with the switch passed in, so a spec can drive both values. An unknown or missing
+  ' policy value is treated as the server's default (CreateAndJoinGroups), the way
+  ' SessionDataTransformer fills it.
+  function joinAllowed(access as dynamic, enabled as boolean) as boolean
+    if not enabled then return false
+    return not isAccess(access, ACCESS_NONE)
+  end function
+
+  ' Whether the policy lets this user create a group.
+  function canCreate(access as dynamic) as boolean
+    if not isValidAndNotEmpty(access) then return true
+    return isAccess(access, ACCESS_CREATE_AND_JOIN)
+  end function
+
+  ' The group menu's rows from the /SyncPlay/List answer (an array of GroupInfoDto: GroupId,
+  ' GroupName, Participants): one per group, in the server's order, then a New group row when
+  ' the policy allows. Each row is { action, groupId, name, members }, members the participants'
+  ' names joined for display (the server already lists each user once). A group with no usable
+  ' id is skipped: a row the viewer cannot join is worse than none.
+  function rowsFor(groups as dynamic, access as dynamic) as object
+    rows = []
+    if type(groups) = "roArray"
+      for each group in groups
+        if type(group) = "roAssociativeArray" and isValidAndNotEmpty(group.GroupId)
+          name = ""
+          if isValidAndNotEmpty(group.GroupName) then name = group.GroupName
+          rows.push({ action: ACTION_JOIN, groupId: group.GroupId, name: name, members: memberLine(group) })
+        end if
+      end for
+    end if
+    if canCreate(access) then rows.push({ action: ACTION_NEW, groupId: "", name: "", members: "" })
+    return rows
+  end function
+
+  ' The members of a GroupInfoDto as one line: "ann, bob". Empty with no participants.
+  function memberLine(group as dynamic) as string
+    if type(group) <> "roAssociativeArray" or type(group.Participants) <> "roArray" then return ""
+    names = []
+    for each participant in group.Participants
+      if isValidAndNotEmpty(participant) then names.push(participant)
+    end for
+    return names.join(", ")
+  end function
+
+  ' The group the viewer is in, out of the List answer, by id; invalid when the list lacks it.
+  function groupById(groups as dynamic, groupId as string) as dynamic
+    if type(groups) <> "roArray" then return invalid
+    for each group in groups
+      if type(group) = "roAssociativeArray" and isValid(group.GroupId) and group.GroupId = groupId then return group
+    end for
+    return invalid
+  end function
+
+  ' The cluster's SyncPlay icon: whether it shows at all (an account with access None never sees
+  ' it: a control the viewer can never use is not shown, and neither is it while the push channel
+  ' is unknown, so a server with the channel never flashes a disabled icon), whether it is
+  ' disabled (the server has no push channel, so a group could be joined on the server but never
+  ' followed here: JROverhangIcon.isDisabled, a press still explains why), whether it is active:
+  ' drawn in colorSecondary while in a group (JROverhangIcon.isActive), and whether it carries the
+  ' badge: a group exists to join and the viewer is in none (JROverhangIcon.hasBadge). The two are
+  ' told apart by shape, a tinted glyph or a dot, so neither rests on color alone. The channel is
+  ' the server node's remoteChannelStatus (serverCapabilities.STATUS_*).
+  function iconFor(inGroup as boolean, access as dynamic, channel as string, groupsAvailable = false as boolean) as object
+    shown = canJoin(access) and channel <> serverCapabilities.STATUS_UNKNOWN
+    disabled = shown and channel = serverCapabilities.STATUS_UNAVAILABLE
+    return { shown: shown, disabled: disabled, active: inGroup, badge: shown and not disabled and not inGroup and groupsAvailable }
+  end function
+
+  ' Whether a /SyncPlay/List answer holds a group the viewer could join: one with an id.
+  function hasGroups(groups as dynamic) as boolean
+    if type(groups) <> "roArray" then return false
+    for each group in groups
+      if type(group) = "roAssociativeArray" and isValidAndNotEmpty(group.GroupId) then return true
+    end for
+    return false
+  end function
+
+  ' Whether the group list is worth reading for the badge: the cluster is on screen (signed in,
+  ' not a player), the icon is shown and enabled (the push channel is available), and the viewer
+  ' is in no group, where the badge never shows.
+  function pollsGroups(clusterVisible as boolean, inGroup as boolean, access as dynamic, channel as string) as boolean
+    return clusterVisible and not inGroup and canJoin(access) and channel = serverCapabilities.STATUS_AVAILABLE
+  end function
+
+  ' The toast for a manager notice ({ kind, groupName, userName }): the translation key, the
+  ' toast type and the one placeholder, or invalid for a kind that shows nothing. The types
+  ' follow the settled table: success for the viewer's own join, info for membership and the
+  ' group start, warning for a halt, error for a refusal.
+  function toastFor(notice as dynamic) as dynamic
+    if type(notice) <> "roAssociativeArray" or not isValidAndNotEmpty(notice.kind) then return invalid
+    kind = notice.kind
+    groupName = ""
+    if isValidAndNotEmpty(notice.groupName) then groupName = notice.groupName
+    userName = ""
+    if isValidAndNotEmpty(notice.userName) then userName = notice.userName
+    if kind = "joined" then return { key: translationKeys.MessageSyncPlayJoinedGroup, toastType: "success", arg: groupName }
+    if kind = "left" then return { key: translationKeys.MessageSyncPlayLeftGroup, toastType: "info", arg: groupName }
+    if kind = "leftStale" then return { key: translationKeys.MessageSyncPlayLeftStaleGroup, toastType: "info", arg: groupName }
+    if kind = "userJoined" then return { key: translationKeys.MessageSyncPlayUserJoined, toastType: "info", arg: userName }
+    if kind = "userLeft" then return { key: translationKeys.MessageSyncPlayUserLeft, toastType: "info", arg: userName }
+    if kind = "groupStarted" then return { key: translationKeys.MessageSyncPlayGroupStarted, toastType: "info", arg: groupName }
+    if kind = "playedToGroup" then return { key: translationKeys.MessageSyncPlayPlayedToGroup, toastType: "info", arg: groupName }
+    if kind = "followingAgain" then return { key: translationKeys.MessageSyncPlayFollowingAgain, toastType: "info", arg: groupName }
+    if kind = "halted" then return { key: translationKeys.MessageSyncPlayStoppedFollowing, toastType: "warning", arg: groupName }
+    if kind = "GroupDoesNotExist" then return { key: translationKeys.MessageSyncPlayGroupDoesNotExist, toastType: "error", arg: "" }
+    if kind = "LibraryAccessDenied" then return { key: translationKeys.MessageSyncPlayLibraryAccessDenied, toastType: "error", arg: "" }
+    if kind = "CreateGroupDenied" then return { key: translationKeys.MessageSyncPlayCreateGroupDenied, toastType: "error", arg: "" }
+    if kind = "JoinGroupDenied" then return { key: translationKeys.MessageSyncPlayJoinGroupDenied, toastType: "error", arg: "" }
+    return invalid
+  end function
+
+  function isAccess(access as dynamic, value as string) as boolean
+    if not isValidAndNotEmpty(access) then return false
+    return lCase(access) = lCase(value)
+  end function
+
+end namespace

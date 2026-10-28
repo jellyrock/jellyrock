@@ -780,12 +780,6 @@ Not checked: whether 300 is the last seek target or the previous load's start po
 
 Closes when an RTA case with the viewer playing past the start point (OSD re-shown with Up before the gear) first separates one pick from two, confirming the cause, and then fails before `keep` and passes after it.
 
-#### The SyncPlay group menu must show members from GET /SyncPlay/List, not from join and leave updates `[fid: syncplay-group-menu-members-from-list]` `[captured 2026-10-23]`
-
-The SyncPlay membership state (`source/syncplay/syncPlayState.bs`) keeps no member list, on purpose (PR #1253 review). The server sends `UserJoined` and `UserLeft` once per session with only a user name, so one account on two devices makes any list kept from them wrong: `["ann","ann"]`, then empty while one device is still in the group. The server's own list is exact: `GET /SyncPlay/List` returns each group's `Participants` with duplicate names removed (`Group.GetInfo`).
-
-Closes when phase D's group menu (the overhang icon's `showListDialog`) fetches `GetApi().BuildGetSyncPlayGroupsRequest()` each time it opens and shows the members from it: each group's members in the join list, and the current group's members in the in-group menu's header (match on `GroupId`). The in-group header in jellyfin-web reads the list from `GroupJoined` only, so it goes stale; this does better. Decide in phase D whether the menu waits for the fetch or fills the members line in when it arrives, and what it shows when the fetch fails (the group and its actions, no members).
-
 #### `handleTransport`'s `playpause` still writes `control = "play"` to a node that is buffering `[fid: playpause-plays-buffering-node]` `[captured 2026-10-24]`
 
 `VideoPlayerView.handleTransport` routes `play` and `resume` through `voiceTransport.playControl()` since commit `4f9c48cd`, which writes nothing to a buffering node. Its `playpause` branch was left as it was: any state that is not playing or paused still gets `control = "play"`. A device probe (Streaming Stick 4K, Roku OS 15.3.4, 2026-10-23) showed that a `control = "play"` written while a seek buffers leaves the node at `buffering` for good, so a remote or voice play/pause pressed during a seek's buffering likely wedges playback the same way. Not checked on a device.
@@ -809,6 +803,20 @@ Not done now: it touches every screen, so it needs its own captures at 720p. Wha
 The overhang cluster is hidden on playback screens (`JRScene.registerOverhangData`, `appWaits.isPlaybackScreen`) because the app has no now-playing control. Leaving the audio player through search or Settings left the music playing with no screen to stop it from: measured on a Stick 4K (Roku OS 15.3.4, 2026-10-25), a theme reload from Settings opened over the audio player landed on Home with the song still playing.
 
 What closes it: a now-playing control outside the player that returns to it; a rule for starting other media while a player is suspended under another screen (untested: two `AudioPlayerView`s observing the shared `m.global.audioPlayer`); then the cluster on playback screens again. Not now: it needs its own design.
+
+#### A halted SyncPlay member's play replaces the group's with no prompt; phase F decides whether it asks first `[fid: syncplay-halted-play-asks-first]` `[captured 2026-10-27]`
+
+A halted SyncPlay member's play goes to the whole group (decision `syncplay-play-handed-to-group`), so a member who pressed Back and then plays something else, a trailer included, replaces what every member is watching, with only the "Playing this for {group}." toast as warning. Raised in the PR #1270 review on 2026-10-27.
+
+The candidate: while halted, a play asks **Play for everyone** or **Only for me** first; Only for me leaves the group's playback alone and plays locally. It changes decision B for every play by a halted member, so it is designed with phase F's in-group controls (the in-player state glyph, Leave, resume), not on its own.
+
+Closes when phase F's plan decides it: built with its strings and specs, or recorded as declined in that decision.
+
+#### The remote channel status stays available after the session socket dies, so the SyncPlay icon can stay enabled `[fid: remote-channel-status-not-live]` `[captured 2026-10-28]`
+
+`RemoteControlTask` publishes `server.remoteChannelStatus` (PR #1270), and the SyncPlay icon follows it: hidden while unknown, disabled while unavailable. The HTTPS path keeps probing the companion plugin, so its status follows the plugin. The HTTP path does not: once the session socket has opened, the status stays `available` while `runWsReceiver` reconnects with backoff. A socket that never comes back leaves the icon enabled, and a join would strand the Roku in a group it cannot follow. Read from the code, not measured.
+
+Closes when the socket path drops the status on a close that does not recover (for example, unknown after the socket has been down longer than its reconnect backoff cap), with a spec and without hiding the icon on a brief blip, or when a device check shows a dead socket does not happen in practice.
 
 ### source
 
@@ -987,6 +995,12 @@ Investigate before planning:
 
 The app-side half (one name helper used by the auth header and `buildPairPayload`, plus its unit spec) waits on the /pair field this plugin settles. When the contract is decided, send a message back to jellyrock/jellyrock naming the field and its rules.
 
+#### Remove the SyncPlay on-off switch once phase F ships `[fid: syncplay-remove-enabled-switch]` `[captured 2026-10-28]`
+
+`syncPlayMenu.IS_ENABLED` is a switch added in PR #1270 so a release could ship with SyncPlay hidden if phases E and F were not ready: set to `false`, `canJoin` refuses every user, so the cluster icon (the one way into a group), its menu and the badge's group-list reads all go away. It ships `true`. It is a temporary carve-out, not a setting.
+
+Closes when the in-player SyncPlay surface (phase F of epic #1251) ships: delete the constant, fold `joinAllowed` back into `canJoin`, and drop the two `syncPlayMenu.spec.bs` cases that drive the switch.
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`
@@ -1095,6 +1109,29 @@ When it moves: re-pin the plugin's `Jellyfin.Controller`/`Jellyfin.Model` + `bui
 The FLAC seek workaround (#662, ADR 0052) marks a stream `isFlac` only when its container is `flac` (`AudioStream` in `source/api/items.bs`). The device profile also direct-plays an `ogg` container probed for `flac` (`deviceCapabilities.bs`), so FLAC audio in an Ogg file seeks natively, with no server stream, and nobody has checked whether Roku's short-last-frame seek defect hits it too. Found in the PR #1234 review, 2026-10-21.
 
 Close it on a device: seek to 50% in an Ogg file holding FLAC whose last frame is shorter than its frame size. If it stalls before the end like a `.flac` does, extend the check to the audio codec and cover it in `audio-seek.spec.js`; if it ends cleanly, record that here and drop the entry. Why not now: it needs such a fixture, which the demo server does not have.
+
+#### `fetchAsync` overwrites a pending request that reuses its `requestId`, so the first promise never settles and the second can settle early `[fid: fetchasync-reused-requestid-orphans-promise]` `[captured 2026-10-28]` `[pinned]`
+
+**Root cause:** `fetchAsync()` in `source/api/apiPromise.bs` keys its pending registry (`m.__apiPromisePending`) by the caller's `requestId` alone and overwrites an existing entry without checking. The result node and the timeout timer are tagged with that id, and the handlers find the entry through `event.getNode()`. So a second request under an id still pending (1) leaves the first promise with no entry, so it never settles and a `promises.all` over it hangs; (2) leaves the first `isDone` observer in place, which on firing settles the second entry from the second result node's `result`, usually still `invalid`, so the second promise rejects as `"timeout"` before its own answer arrives; (3) leaves the first timer running, which on firing abandons the second request in the pool through `timeoutApiPromiseIn()`.
+
+**History:** in place since `f712a9d3` (#624, the promises adoption); never fixed and undone. It already bit once: `fe48a073` fixed the SyncPlay menu's double OK, where a second group-list fetch under the same id left the first wait open and the screen blank, by giving that caller unique ids and a guard. Callers work around it one by one (`VideoPlayerView.fetchNextEpisode()` says "a reused `requestId` is a pool-contract bug").
+
+**Depends on it:** about 35 `fetchAsync` call sites. Several use an id that can repeat while pending: `"favoriteToggle-" + item.id` and `"watchedToggle-" + item.id` (an `isLoading` guard protects them), `"filters-" + parentid`, `"libraryBackdrop-" + libraryId`, `"nextEpisode-" + m.top.id`, the five `"subtitle…-" + m.top.itemId` ids, `"quickConnectEnabled"`, and `SyncPlayManager.fetchQueue()`'s `"syncplay-queue-<lastUpdateMs>-<page>"` into `promises.all`. The RTA fault injection (`apiFaults.take` in `ApiQueueTask`) matches on the `requestId` the pool sees, so a fix keeps that string. `tests/source/unit/api/apiPromise.spec.bs` has no case for two requests under one id.
+
+**Caller audit (2026-10-27, read from the code):** one caller is exposed with no guard: `schedule.loadProgramDetails()` uses `"liveTvProgram-" + programId` and marks a program loaded only on success, so focusing program A, then B, then A again while the first A is pending reuses the id; the first A's observer then settles the second as a `"timeout"` and the details pane does not fill on that focus. `SyncPlayManager.fetchQueue()` is exposed only if a queue update repeats a `lastUpdateMs`. The rest are guarded by hand: `isLoading` (favorite, watched), `GridPresenterBase`'s `filtersInFlightFor` (its comment names this flaw), `libraryBackdropPendingId`, `checkedForNextEpisode`, `claimMutation()` in `SubtitlePanel`, and once-per-mount calls; the rest use a sequence number.
+
+**Options:**
+
+- `unique` (recommended): `fetchAsync` makes a private registry key from a per-`m` counter (`requestId + "#" + n`) and tags the result node and timer with it; the pool, logs, fault injection and error AAs keep the caller's `requestId`. Each request settles on its own. `apiPromise.bs` plus one spec case. Risk: anything that reads a result node's or timer's `id` as the caller's id sees the new key; grep that nothing outside `apiPromise.bs` does.
+- `supersede`: on a collision, reject the earlier promise with `reason: "superseded"` and tear it down first. Every caller's `.catch` fires on an ordinary double press, which can toast errors.
+- `refuse`: reject the new call at once as `"duplicate"`. A caller that retries or re-fetches under the same id gets a rejection instead of data.
+- `warn`: a debug-build print on a collision. Fixes nothing.
+
+**Close it:** build `unique` test first (a spec that submits two requests under one id and asserts both settle with their own result), run it on a Roku with `npm run test:tdd`, then drop the caller-side workarounds' comments that call this a contract bug only if they become wrong. Filed rather than fixed during SyncPlay phase D because it is a shared-mechanism change outside that work.
+
+**Not checked:** whether any of those callers fires twice under the same id while the first is pending (for example, `fetchQueue` seeing the same `lastUpdateMs` twice through a re-follow); the early settle of the second promise by the leftover observer is from reading the code, not a device run.
+
+**Tracked in** [#1272](https://github.com/jellyrock/jellyrock/issues/1272); close it with the fix.
 
 ### tests
 
@@ -1409,6 +1446,14 @@ The `dialogs` gear test (`osd gear caps the bitrate for this playback…`) faile
 Seen a second time the same day, in a draft case making two gear picks 0.5 s apart: `nav timed out waiting for player settled after two gear picks (last="stopped")`, focus again on `#jrDialog.#buttonRow.0`. A temporary capture of the dialog's text was in place for a later run, which passed.
 
 Closes when the dump in `tests/rta/lib/diagnostics.js` includes an open dialog's `title` and `message`, and a failing run shows whether the dialog is the playback error (the server's transcode failing) or something the app raised. Not now: it needs a run that fails, and two runs with a temporary capture in place both passed.
+
+#### The SyncPlay group-playback device check is not a tracked spec, so it cannot be rerun `[fid: syncplay-group-playback-device-check]` `[captured 2026-10-27]`
+
+PR #1270 (SyncPlay phase D) cites a 14-step device check of group playback (pause, seek, next item, Stop, Back, casts while halted and while following, a failing queue fetch, reset) that exists only as a throwaway RTA script outside the repo, so no reviewer or later session can run it again. Its fixed `sleep` reads also make one step depend on timing: the halted-cast step asserts the last group command is `Seek` six seconds after a seek, but the server's `Unpause` can already have arrived by then (a rerun on 2026-10-27 read `Unpause`; playback was past the seek target in both runs).
+
+The two casts are covered since #1270: `syncplay-menu.spec.js` casts to the Roku while halted and again over its player, through `appSession` and `playOnSession` in `tests/rta/lib/jellyfin.js`, and checks no wait outlives the reload. Still untracked: pause, seek, next item, Stop, Back during group playback, a failing queue fetch and reset.
+
+Closes when those steps are tracked specs under `tests/rta/specs/` (or folded into `syncplay-menu.spec.js`), with each `sleep` replaced by a wait on the state it means (the RTA lint gates require that) and the two-member setup shared with `syncplay-menu`. Not done in #1270: it needs a design for the waits on group commands.
 
 ### docs
 

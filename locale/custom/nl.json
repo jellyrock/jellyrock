@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Annuleren",
   "ButtonDelete": "Verwijderen",
+  "ButtonLeaveGroup": "Groep verlaten",
   "ButtonManualLogin": "Handmatig aanmelden",
   "ButtonOk": "OK",
   "ButtonPlay": "Afspelen",
@@ -133,6 +134,10 @@
   "LabelSports": "Sport",
   "LabelStudios": "Studio's",
   "LabelSubtitles": "Ondertiteling",
+  "LabelSyncPlayDefaultGroupName": "Groep van {0}",
+  "LabelSyncPlayNewGroup": "Nieuwe groep",
+  "LabelSyncPlayNoGroups": "Geen groepen beschikbaar",
+  "LabelSyncPlaySelectGroup": "Lid worden van een groep",
   "LabelTheme": "Thema",
   "LabelTrack": "Nummer",
   "LabelTranscoding": "Transcoderen",
@@ -220,5 +225,9 @@
   "MessageEndsAt1": "Afgelopen om {0}",
   "MessageMoreFrom1": "Meer van {0}",
   "MessageSearchNoResults": "Geen resultaten.",
-  "MessageSetTheMaximumAmountOfDays": "Stel het maximaal aantal dagen in dat een serie in de 'Als volgende'-lijst staat zonder deze te kijken."
+  "MessageSetTheMaximumAmountOfDays": "Stel het maximaal aantal dagen in dat een serie in de 'Als volgende'-lijst staat zonder deze te kijken.",
+  "MessageSyncPlayCreateGroupDenied": "Toestemming vereist om een groep te maken.",
+  "MessageSyncPlayLibraryAccessDenied": "Toegang tot deze inhoud is beperkt.",
+  "MessageSyncPlayUserJoined": "{0} is lid geworden van de groep.",
+  "MessageSyncPlayUserLeft": "{0} heeft de groep verlaten."
 }

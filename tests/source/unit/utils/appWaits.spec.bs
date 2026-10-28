@@ -94,6 +94,12 @@ namespace tests
       m.assertEqual(appWaits.limitMs(LoadingKind.BUFFERING), 0)
     end function
 
+    @it("gives an overlay action the same limit as a pressed action")
+    function _()
+      m.assertEqual(appWaits.limitMs(LoadingKind.OVERLAY), appWaits.limitMs(LoadingKind.ACTION))
+      m.assertEqual(appWaits.limitMs(LoadingKind.OVERLAY), timeouts.ACTION_WAIT_LIMIT_MS)
+    end function
+
     @it("outlasts a pressed action's request")
     function _()
       m.assertTrue(timeouts.ACTION_WAIT_LIMIT_MS > timeouts.API_WAIT_MS)
@@ -191,8 +197,37 @@ namespace tests
       m.assertTrue(appWaits.hidesLaunchingScreen(LoadingKind.PLAYBACK_START))
       m.assertTrue(appWaits.hidesLaunchingScreen(LoadingKind.SESSION))
       m.assertTrue(appWaits.hidesLaunchingScreen(LoadingKind.ACTION))
+      m.assertFalse(appWaits.hidesLaunchingScreen(LoadingKind.OVERLAY))
       m.assertFalse(appWaits.hidesLaunchingScreen(LoadingKind.CONTENT))
       m.assertFalse(appWaits.hidesLaunchingScreen(LoadingKind.BUFFERING))
+    end function
+
+    @it("holds the keys of every kind that hides its screen, and of an overlay action")
+    function _()
+      m.assertTrue(appWaits.holdsKeys(LoadingKind.PLAYBACK_START))
+      m.assertTrue(appWaits.holdsKeys(LoadingKind.SESSION))
+      m.assertTrue(appWaits.holdsKeys(LoadingKind.ACTION))
+      m.assertTrue(appWaits.holdsKeys(LoadingKind.OVERLAY))
+      m.assertFalse(appWaits.holdsKeys(LoadingKind.CONTENT))
+      m.assertFalse(appWaits.holdsKeys(LoadingKind.BUFFERING))
+      m.assertFalse(appWaits.holdsKeys(LoadingKind.PLAIN))
+    end function
+
+    @it("finds the waits that hold a screen's keys, hidden or not")
+    function _()
+      hidingStart = m.start(0, m.launcher)
+      hidingStart.hidden = m.launcher
+      hidingStart.held = m.launcher
+      overlay = m.start(0, m.launcher)
+      overlay.held = m.launcher
+      overlay.hidden = invalid
+      neither = m.start(0, m.player)
+      keys = appWaits.holding({ w1: hidingStart, w2: overlay, w3: neither })
+      m.assertEqual(keys.count(), 2)
+      m.assertEqual(keys[0], "w1")
+      m.assertEqual(keys[1], "w2")
+      m.assertEqual(appWaits.hiding({ w1: hidingStart, w2: overlay, w3: neither }).count(), 1)
+      m.assertEqual(appWaits.holding({}).count(), 0)
     end function
 
     @it("tells whether a screen is still hidden by an open wait")
@@ -209,18 +244,39 @@ namespace tests
     @describe("cancellable() — the waits Back cancels")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("finds the waits that hide a screen and have not committed")
+    @it("finds the waits that hold a screen's keys and have not committed")
     function _()
       open = m.start(0, m.launcher)
+      open.held = m.launcher
       open.hidden = m.launcher
       committed = m.start(0, m.launcher)
+      committed.held = m.launcher
       committed.hidden = m.launcher
       committed.committed = true
-      notHiding = m.start(0, m.player)
-      notHiding.hidden = invalid
-      keys = appWaits.cancellable({ w1: open, w2: committed, w3: notHiding })
+      notHolding = m.start(0, m.player)
+      notHolding.held = invalid
+      notHolding.hidden = invalid
+      keys = appWaits.cancellable({ w1: open, w2: committed, w3: notHolding })
       m.assertEqual(keys.count(), 1)
       m.assertEqual(keys[0], "w1")
+    end function
+
+    @it("includes an overlay action, which holds the keys without hiding its screen")
+    function _()
+      overlay = m.start(0, m.launcher)
+      overlay.held = m.launcher
+      overlay.hidden = invalid
+      keys = appWaits.cancellable({ w1: overlay })
+      m.assertEqual(keys.count(), 1)
+      m.assertEqual(keys[0], "w1")
+    end function
+
+    @it("leaves out a wait that only hides, with no keys held")
+    function _()
+      hideOnly = m.start(0, m.launcher)
+      hideOnly.hidden = m.launcher
+      hideOnly.held = invalid
+      m.assertEqual(appWaits.cancellable({ w1: hideOnly }).count(), 0)
     end function
 
     @it("has none with nothing open")

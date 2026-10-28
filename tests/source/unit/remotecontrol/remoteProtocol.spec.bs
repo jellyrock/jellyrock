@@ -159,6 +159,56 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("probeOutcome() — what a plugin probe's answer means")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is available for a 200 with the contract version we implement")
+    function _()
+      m.assertEqual(remoteProtocol.probeOutcome(200, remoteProtocol.CONTRACT_VERSION), remoteProtocol.PROBE_AVAILABLE)
+    end function
+
+    @it("is unavailable for a 200 with another contract version, or none")
+    @params(0)
+    @params(2)
+    function _(version)
+      m.assertEqual(remoteProtocol.probeOutcome(200, version), remoteProtocol.PROBE_UNAVAILABLE)
+    end function
+
+    @it("is unavailable for a 4xx answer, whatever the version")
+    @params(400)
+    @params(401)
+    @params(403)
+    @params(404)
+    @params(499)
+    function _(code)
+      m.assertEqual(remoteProtocol.probeOutcome(code, remoteProtocol.CONTRACT_VERSION), remoteProtocol.PROBE_UNAVAILABLE)
+      m.assertEqual(remoteProtocol.probeOutcome(code, 0), remoteProtocol.PROBE_UNAVAILABLE)
+    end function
+
+    @it("retries on a transport failure (code 0) or a 5xx")
+    @params(0)
+    @params(500)
+    @params(502)
+    @params(503)
+    @params(599)
+    function _(code)
+      m.assertEqual(remoteProtocol.probeOutcome(code, remoteProtocol.CONTRACT_VERSION), remoteProtocol.PROBE_RETRY)
+      m.assertEqual(remoteProtocol.probeOutcome(code, 0), remoteProtocol.PROBE_RETRY)
+    end function
+
+    @it("retries on an unexpected non-error code such as a redirect")
+    @params(204)
+    @params(301)
+    function _(code)
+      m.assertEqual(remoteProtocol.probeOutcome(code, remoteProtocol.CONTRACT_VERSION), remoteProtocol.PROBE_RETRY)
+    end function
+
+    @it("waits minutes, not seconds, before re-checking an unavailable plugin")
+    function _()
+      m.assertEqual(remoteProtocol.PLUGIN_RECHECK_MS, 300000)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("keepAliveFrame()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

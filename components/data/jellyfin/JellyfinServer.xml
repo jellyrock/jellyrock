@@ -46,6 +46,14 @@
          the rest of this node on a server switch. -->
     <field id="subtitleProviderStatus" type="string" value="" />
 
+    <!-- Whether the server has a push channel to this Roku, which SyncPlay needs: the
+         session socket on http://, the companion plugin's long poll on https://. A string
+         for the same reason as subtitleProviderStatus: "" = unknown (RemoteControlTask has
+         not settled yet), "available", "unavailable" (constants in
+         source/utils/serverCapabilities.bs). Written by RemoteControlTask, only on a change.
+         Reset with the rest of this node on a server switch. -->
+    <field id="remoteChannelStatus" type="string" value="" />
+
     <!-- The server's resume thresholds, from GET /System/Configuration:
          { maxResumePct, minResumeDurationSeconds }. INVALID (unset) = not read yet: an
          assocarray field declares no default, which is exactly the one "unknown" state

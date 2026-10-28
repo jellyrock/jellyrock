@@ -1202,9 +1202,9 @@ export async function walkHomeToFirstRow({ timeout = 10000, interval = 400 } = {
  *
  * `focusOverhangIcon` pressed Up exactly ONCE and then spent its whole timeout pressing
  * Right. Right is the correct key only AFTER the escape succeeded: it walks the overhang's
- * TabBar -> Search -> Settings chain. While focus is still inside Home's rows, Right walks
- * the ROW instead, and no number of Rights can ever leave Home. So a single lost Up was
- * unrecoverable by construction, and it presented as "the screen never loaded".
+ * TabBar -> SyncPlay -> Search -> Settings chain. While focus is still inside Home's rows,
+ * Right walks the ROW instead, and no number of Rights can ever leave Home. So a single lost Up
+ * was unrecoverable by construction, and it presented as "the screen never loaded".
  *
  * That is not hypothetical. Two failure records, `.176` 2026-08-16 and `.177` 2026-08-18
  * (this suite, current `main`), carry the same signature: focus still on `#homeRows`,
@@ -1261,6 +1261,41 @@ export function overhangWalkKey(focused, iconId) {
   // Unknown focus (a failed read) keeps the pre-existing behaviour rather than inventing a
   // new one: Right is inert on most of the overhang chain, Up from it is inert by design.
   return ecp.Key.Right;
+}
+
+/**
+ * Walk the overhang row until the icon with id `iconId` holds focus.
+ *
+ * The one row walk the suite has, shared because `walkFocusUntil` cannot do it: its origin
+ * gate presses only while focus is inside the routed view, and the row sits outside it (the
+ * reason a key pressed there reaches the scene, not the screen). Each tick picks the key from
+ * where focus IS (`overhangWalkKey`): Up while focus is still in Home's rows, Right along the
+ * row, nothing once arrived, so the walk never counts the icons between (the row's set changes
+ * with the account: SyncPlay shows only for one that may use it) and never overshoots.
+ *
+ * @param {string} iconId the overhang icon to reach
+ * @param {{timeout?: number, interval?: number, label?: string}} [opts] `waitFocused`'s
+ * @returns {Promise<{upPresses: number}>} how many Up keys were sent, counted only once a
+ * press resolved: `focusOverhangIcon` reports an Up re-sent after its own as a lost escape.
+ */
+export async function walkOverhangRowTo(
+  iconId,
+  { timeout = 8000, interval = 250, label = `overhang ${iconId}` } = {},
+) {
+  let upPresses = 0;
+  await waitFocused((f) => f?.node?.id === iconId, {
+    timeout,
+    interval,
+    action: async () => {
+      const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
+      const key = overhangWalkKey(f, iconId);
+      if (!key) return;
+      await press(key);
+      if (key === ecp.Key.Up) upPresses++;
+    },
+    label,
+  });
+  return { upPresses };
 }
 
 /** Roku media-player states that mean playback is live. Frozen: it is a shared registry now. */

@@ -1,5 +1,6 @@
 {
   "ButtonCancel": "გაუქმება",
+  "ButtonLeaveGroup": "ჯგუფიდან გასვლა",
   "ButtonManualLogin": "ხელით დალოგინება",
   "ButtonOk": "დიახ",
   "ButtonResume": "გაგრძელება",
@@ -70,6 +71,10 @@
   "LabelSize": "ზომა",
   "LabelSongs": "სიმღერები",
   "LabelSubtitles": "სუბტიტრები",
+  "LabelSyncPlayDefaultGroupName": "{0}-ის ჯგუფი",
+  "LabelSyncPlayNewGroup": "ახალი ჯგუფი",
+  "LabelSyncPlayNoGroups": "ჯგუფები ხელმისაწვდომი არაა",
+  "LabelSyncPlaySelectGroup": "ჯგუფში გაწევრება",
   "LabelTotalBitrate": "ჯამური ბიტური სიხშირე",
   "LabelTranscoding": "ტრანსკოდირება",
   "LabelVideo": "ვიდეო",
@@ -160,5 +165,9 @@
   "LanguageVi": "ვიეტნამური",
   "LanguageZh": "ჩინური",
   "LanguageZu": "ზულუ",
-  "MessageDirectedBy1": "რეჟისორი: {0}"
+  "MessageDirectedBy1": "რეჟისორი: {0}",
+  "MessageSyncPlayCreateGroupDenied": "ჯგუფის შექმნას უფლებ სჭიდება.",
+  "MessageSyncPlayLibraryAccessDenied": "ამ შემცველობასთან წვდომა შეზღუდულია.",
+  "MessageSyncPlayUserJoined": "{0} შემოუერთდა ჯგუფს.",
+  "MessageSyncPlayUserLeft": "{0} გავიდა ჯგუფიდან."
 }

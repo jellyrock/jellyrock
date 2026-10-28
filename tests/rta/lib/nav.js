@@ -36,7 +36,6 @@ import {
   waitOsdUp,
   walkFocusUntil,
   walkHomeToFirstRow,
-  overhangWalkKey,
   hasChildren,
   resendIfSwallowed,
   resendUntilFocused,
@@ -48,6 +47,7 @@ import {
   axisEnd,
   sweepBudget,
   sleep,
+  walkOverhangRowTo,
 } from './steps.js';
 
 /**
@@ -55,12 +55,12 @@ import {
  *
  * Two preconditions, in order. Home's active list must be resting on row 0, or Up does not
  * leave Home at all (`walkHomeToFirstRow`). Only then does Up move focus into the overhang,
- * whose focus chain is tab bar -> user dropdown -> Search -> Settings (left to right, see
- * overhangRow.nextFocus), so we walk Right until the icon is focused. The action is guarded to
- * press only while not yet on the icon. The row wraps at its ends, so that guard is what keeps
- * the walk from overshooting.
+ * whose focus chain is tab bar -> user dropdown -> SyncPlay (for an account that may use it) ->
+ * Search -> Settings (left to right, see overhangRow.nextFocus), so the row is walked until the
+ * icon is focused (`walkOverhangRowTo`, which picks each key from where focus is and stops on
+ * arrival, so the wrap at the row's ends never overshoots).
  */
-async function focusOverhangIcon(iconId) {
+export async function focusOverhangIcon(iconId) {
   await waitHome();
   // Up leaves Home only from the first row (see `walkHomeToFirstRow`, which is where that
   // rule and its tests live). Announced rather than silently routed around: resting anywhere
@@ -79,20 +79,9 @@ async function focusOverhangIcon(iconId) {
   // The key is chosen from where focus IS, not from where the walk assumes it got to: while
   // focus is still in Home's rows the escape has not happened and Right can only walk the row.
   // See `overhangWalkKey`, which carries the recorded failures this rule comes from.
-  let escapeRetries = 0;
-  await waitFocused((f) => f?.node?.id === iconId, {
+  const { upPresses: escapeRetries } = await walkOverhangRowTo(iconId, {
     timeout: 15000,
     interval: 400,
-    action: async () => {
-      const f = await odc.getFocusedNode({ includeNode: true }).catch(() => null);
-      const key = overhangWalkKey(f, iconId);
-      if (!key) return;
-      await press(key);
-      // Counted only once the press RESOLVED. `waitFocused` swallows a throwing action into
-      // its own `actionErrors` tally, so a re-press that never reached the device must not
-      // be reported below as one that did. The warning's whole value is that it is exact.
-      if (key === ecp.Key.Up) escapeRetries++;
-    },
     label: `overhang ${iconId}`,
   });
   if (escapeRetries > 0) {

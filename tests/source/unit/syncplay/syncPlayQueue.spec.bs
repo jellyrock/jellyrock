@@ -39,6 +39,24 @@ namespace tests
       m.assertEqual(queueItems[2].syncPlayPlaylistItemId, "p-3")
     end function
 
+    @it("matches a parsed dashed long-poll playlist to the dash-free items the REST fetch returns")
+    function _()
+      inner = {
+        Reason: "NewPlaylist",
+        LastUpdate: "2026-10-23T20:47:25.000Z",
+        Playlist: [{ ItemId: "08A5F1F3-D54D-4E48-8A1B-AAAAAAAAAAAA", PlaylistItemId: "9C295A4A-760F-4B3C-9D0E-BBBBBBBBBBBB" }],
+        PlayingItemIndex: 0,
+        StartPositionTicks: 0
+      }
+      update = remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "27067FA4-3DE4-4A1B-9C2D-0123456789AB", Type: "PlayQueue", Data: inner } })
+      fetched = [{ Id: "08a5f1f3d54d4e488a1baaaaaaaaaaaa", Type: "Movie", Name: "One", RunTimeTicks: 10000000& }]
+      queueItems = syncPlayQueue.queueItemsFor(update.playlist, fetched)
+      m.assertEqual(queueItems.count(), 1)
+      m.assertEqual(queueItems[0].id, "08a5f1f3d54d4e488a1baaaaaaaaaaaa")
+      m.assertEqual(queueItems[0].syncPlayPlaylistItemId, "9c295a4a760f4b3c9d0ebbbbbbbbbbbb")
+      m.assertEqual(syncPlayQueue.positionOf(queueItems, "9c295a4a760f4b3c9d0ebbbbbbbbbbbb"), 0)
+    end function
+
     @it("drops an entry the server returned no item for")
     function _()
       queueItems = syncPlayQueue.queueItemsFor(m.playlist, [m.items()[1]])
@@ -350,6 +368,133 @@ namespace tests
     function _()
       m.assertEqual(syncPlayQueue.loadFailureAction(false, "missing"), "halt")
       m.assertEqual(syncPlayQueue.loadFailureAction(true, "missing"), "halt")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("handoff()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    private function groupState() as object
+      state = syncPlayState.newState()
+      state.inGroup = true
+      state.playlist = m.playlist
+      state.playingItemId = "p-1"
+      return state
+    end function
+
+    @it("a current item the group already queues is a jump to it")
+    function _()
+      handoff = syncPlayQueue.handoff([{ id: "i-2", type: "Movie" }], 0, m.groupState())
+      m.assertEqual(handoff.action, "setPlaylistItem")
+      m.assertEqual(handoff.playlistItemId, "p-2")
+    end function
+
+    @it("an item the group does not queue replaces the group's queue with this one, at its position")
+    function _()
+      queueItems = [{ id: "i-9", type: "Episode" }, { id: "i-8", type: "Episode" }]
+      handoff = syncPlayQueue.handoff(queueItems, 1, m.groupState())
+      m.assertEqual(handoff.action, "setNewQueue")
+      m.assertEqual(handoff.itemIds, ["i-9", "i-8"])
+      m.assertEqual(handoff.position, 1)
+      m.assertEqual(handoff.startPositionTicks, 0&)
+    end function
+
+    @it("the current item's starting point is where the group starts, as a LongInteger")
+    function _()
+      queueItem = { id: "i-9", type: "Movie", startingPoint: 123456789012& }
+      handoff = syncPlayQueue.handoff([queueItem], 0, m.groupState())
+      m.assertEqual(handoff.startPositionTicks, 123456789012&)
+      queueItem.startingPoint = 50000000
+      m.assertEqual(syncPlayQueue.handoff([queueItem], 0, m.groupState()).startPositionTicks, 50000000&)
+    end function
+
+    @it("a queue the player could not follow plays locally: music, Live TV, or one such item among videos")
+    function _()
+      state = m.groupState()
+      m.assertInvalid(syncPlayQueue.handoff([{ id: "a-1", type: "Audio" }], 0, state))
+      m.assertInvalid(syncPlayQueue.handoff([{ id: "c-1", type: "TvChannel" }], 0, state))
+      m.assertInvalid(syncPlayQueue.handoff([{ id: "i-9", type: "Movie" }, { id: "a-1", type: "Audio" }], 0, state))
+    end function
+
+    @it("an empty queue, or a position outside it, hands nothing over")
+    function _()
+      state = m.groupState()
+      m.assertInvalid(syncPlayQueue.handoff([], 0, state))
+      m.assertInvalid(syncPlayQueue.handoff([{ id: "i-9", type: "Movie" }], 1, state))
+      m.assertInvalid(syncPlayQueue.handoff(invalid, 0, state))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("owedLoadForClaimedPlay()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a frame that kept the playing item still owes the load the viewer asked for")
+    function _()
+      owed = syncPlayQueue.owedLoadForClaimedPlay(invalid, "SetCurrentItem", "p-1")
+      m.assertNotInvalid(owed)
+      m.assertFalse(owed.newPlaylist)
+      m.assertTrue(syncPlayQueue.owedLoadForClaimedPlay(invalid, "NewPlaylist", "p-9").newPlaylist)
+    end function
+
+    @it("a load already owed, or a group playing nothing, is left as it is")
+    function _()
+      owed = { newPlaylist: true }
+      m.assertEqual(syncPlayQueue.owedLoadForClaimedPlay(owed, "SetCurrentItem", "p-1"), owed)
+      m.assertInvalid(syncPlayQueue.owedLoadForClaimedPlay(invalid, "RemoveItems", ""))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("noticeForQueueFrame()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a frame that brought a halted member back is told as following again")
+    function _()
+      m.assertEqual(syncPlayQueue.noticeForQueueFrame(invalid, true, false), "followingAgain")
+      m.assertEqual(syncPlayQueue.noticeForQueueFrame(invalid, true, true), "followingAgain")
+    end function
+
+    @it("a follow not yet told survives a newer frame before its load")
+    function _()
+      m.assertEqual(syncPlayQueue.noticeForQueueFrame("followingAgain", false, false), "followingAgain")
+    end function
+
+    @it("the queue that answers the viewer's own join says nothing more")
+    function _()
+      m.assertEqual(syncPlayQueue.noticeForQueueFrame(invalid, false, true), "")
+    end function
+
+    @it("anything else is the group starting something")
+    function _()
+      m.assertEqual(syncPlayQueue.noticeForQueueFrame(invalid, false, false), "groupStarted")
+      m.assertEqual(syncPlayQueue.noticeForQueueFrame("", false, false), "groupStarted")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("noticeAtLoad()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a play this viewer handed over was told at the claim")
+    function _()
+      m.assertEqual(syncPlayQueue.noticeAtLoad("groupStarted", "launch", true), "")
+      m.assertEqual(syncPlayQueue.noticeAtLoad("followingAgain", "remount", true), "")
+    end function
+
+    @it("a launch tells what its frame decided")
+    function _()
+      m.assertEqual(syncPlayQueue.noticeAtLoad("groupStarted", "launch", false), "groupStarted")
+      m.assertEqual(syncPlayQueue.noticeAtLoad("followingAgain", "launch", false), "followingAgain")
+      m.assertEqual(syncPlayQueue.noticeAtLoad("", "launch", false), "")
+    end function
+
+    @it("a reload in place tells only a follow made again: the viewer is already watching with the group")
+    function _()
+      m.assertEqual(syncPlayQueue.noticeAtLoad("followingAgain", "remount", false), "followingAgain")
+      m.assertEqual(syncPlayQueue.noticeAtLoad("groupStarted", "remount", false), "")
+    end function
+
+    @it("a load no frame decided is the group starting something")
+    function _()
+      m.assertEqual(syncPlayQueue.noticeAtLoad(invalid, "launch", false), "groupStarted")
     end function
 
   end class

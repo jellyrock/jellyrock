@@ -22,16 +22,32 @@
     <field id="groupId" type="string" value="" />
     <field id="groupName" type="string" value="" />
     <field id="groupState" type="string" value="" />
-    <!-- { offsetMs, delayMs, hasEstimate, lastCommand, trackerPhase, playingItemId } -->
+    <!-- { offsetMs, delayMs, hasEstimate, lastCommand, trackerPhase, playingItemId, loadNotice } -->
     <field id="sync" type="assocarray" />
+    <!-- Something the viewer is told: { kind, groupName, userName }. kind is joined, left, leftStale,
+         userJoined, userLeft, groupStarted, playedToGroup, followingAgain, halted, or a refusal's update type
+         (GroupDoesNotExist, LibraryAccessDenied, CreateGroupDenied, JoinGroupDenied). JRScene
+         turns it into a toast; the manager holds no translation. alwaysNotify: two notices of
+         one kind in a row are two. -->
+    <field id="notice" type="assocarray" alwaysNotify="true" />
 
     <!-- POST /SyncPlay/Join { GroupId }: the GroupJoined frame confirms it. -->
     <function name="join" />
+    <!-- newGroup(groupName): create a group named so and join it. -->
+    <function name="newGroup" />
     <!-- POST /SyncPlay/Leave: the GroupLeft frame confirms it. -->
     <function name="leave" />
+    <!-- claimPlay(start): QueueManager.playQueue asks, while in a group, whether the group takes
+         the play, passing the playback start the press opened. True when it was posted
+         (SetNewQueue or SetPlaylistItem) and no local player should start; false when it plays
+         locally. The claim lasts as long as that start. -->
+    <function name="claimPlay" />
     <!-- Sign-out and server switch: POST /SyncPlay/Leave while in a group, then forget it and
          stop every timer and task. -->
     <function name="reset" />
+    <!-- leaveStaleMembership(): at launch, POST /SyncPlay/Leave for the group the registry says
+         the last session was in; true when one was posted. -->
+    <function name="leaveStaleMembership" />
     <!-- { kind: "mounted" | "state" | "position" | "finished" | "unmounted", state, position }
          from the host and the player, position in the Video node's float seconds. -->
     <function name="playerEvent" />

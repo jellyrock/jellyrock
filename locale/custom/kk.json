@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Boldyrmau",
   "ButtonDelete": "Joiu",
+  "ButtonLeaveGroup": "Toptan şyğu",
   "ButtonManualLogin": "Qolmen kıru",
   "ButtonOk": "Jaraidy",
   "ButtonPlay": "Oinatu",
@@ -119,6 +120,9 @@
   "LabelSports": "Sport",
   "LabelStudios": "Studialar",
   "LabelSubtitles": "Subtitrler",
+  "LabelSyncPlayDefaultGroupName": "{0} toby",
+  "LabelSyncPlayNewGroup": "Jaña top",
+  "LabelSyncPlaySelectGroup": "Topty qosu",
   "LabelTheme": "Taqyryp",
   "LabelTrack": "Jolşyq",
   "LabelTranscoding": "Qaita kodtau",
@@ -221,5 +225,9 @@
   "MessageEndsAt1": "Soñy {0} kezınde",
   "MessageMoreFrom1": "{0} arqyly köbırek",
   "MessageSearchNoResults": "Nätije joq.",
-  "MessageSetTheMaximumAmountOfDays": "Körsetımdı körmei-aq \"Kelesı\" tızımınde qalatyn künderdıñ eñ köp sanyn ornatu."
+  "MessageSetTheMaximumAmountOfDays": "Körsetımdı körmei-aq \"Kelesı\" tızımınde qalatyn künderdıñ eñ köp sanyn ornatu.",
+  "MessageSyncPlayCreateGroupDenied": "Top qūruğa rūqsat qajet.",
+  "MessageSyncPlayLibraryAccessDenied": "Būl mazmūnğa qoljetіmdılık şektelgen.",
+  "MessageSyncPlayUserJoined": "{0} topqa qosyldy.",
+  "MessageSyncPlayUserLeft": "{0} toptan şyqty."
 }

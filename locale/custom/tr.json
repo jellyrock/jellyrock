@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "İptal",
   "ButtonDelete": "Sil",
+  "ButtonLeaveGroup": "Gruptan ayrıl",
   "ButtonManualLogin": "El İle Oturum Aç",
   "ButtonOk": "Tamam",
   "ButtonPlay": "Oynat",
@@ -136,6 +137,10 @@
   "LabelSports": "Spor",
   "LabelStudios": "Yapım Stüdyoları",
   "LabelSubtitles": "Alt yazılar",
+  "LabelSyncPlayDefaultGroupName": "{0} kullanıcısının grubu",
+  "LabelSyncPlayNewGroup": "Yeni grup",
+  "LabelSyncPlayNoGroups": "Mevcut grup yok",
+  "LabelSyncPlaySelectGroup": "Bir gruba katıl",
   "LabelTheme": "Tema",
   "LabelTrack": "Parça",
   "LabelTranscoding": "Kod Dönüştürme",
@@ -237,5 +242,9 @@
   "MessageEndsAt1": "Bitiş saati: {0}",
   "MessageMoreFrom1": "{0} bölümleri",
   "MessageSearchNoResults": "Sonuç yok.",
-  "MessageSetTheMaximumAmountOfDays": "Bir dizinin izlenmeden 'Sıradaki Bölümler' listesinde kalması gereken maksimum gün sayısını ayarlayın."
+  "MessageSetTheMaximumAmountOfDays": "Bir dizinin izlenmeden 'Sıradaki Bölümler' listesinde kalması gereken maksimum gün sayısını ayarlayın.",
+  "MessageSyncPlayCreateGroupDenied": "Grup oluşturmak için izin gerekiyor.",
+  "MessageSyncPlayLibraryAccessDenied": "Bu içeriğe erişim kısıtlanmış.",
+  "MessageSyncPlayUserJoined": "{0} gruba katıldı.",
+  "MessageSyncPlayUserLeft": "{0} gruptan ayrıldı."
 }

@@ -12,22 +12,22 @@ namespace tests
     private joinedAt = "2026-10-23T20:47:20.500Z"
 
     private function update(updateType as string, inner as dynamic) as object
-      return remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g-1", Type: updateType, Data: inner } })
+      return remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g1", Type: updateType, Data: inner } })
     end function
 
-    private function command(name as string, emittedAt as string, playlistItemId = "p-1" as string, groupId = "g-1" as string) as object
+    private function command(name as string, emittedAt as string, playlistItemId = "p1" as string, groupId = "g1" as string) as object
       data = { GroupId: groupId, PlaylistItemId: playlistItemId, When: "2026-10-23T20:47:40.000Z", Command: name, PositionTicks: 0, EmittedAt: emittedAt }
       return remoteCommand.parseMessage({ MessageType: "SyncPlayCommand", Data: data })
     end function
 
     private function joined() as object
       state = syncPlayState.newState()
-      syncPlayState.applyGroupUpdate(state, m.update("GroupJoined", { GroupId: "g-1", GroupName: "Movie night", State: "Idle", Participants: ["ann"], LastUpdatedAt: m.joinedAt }))
+      syncPlayState.applyGroupUpdate(state, m.update("GroupJoined", { GroupId: "g1", GroupName: "Movie night", State: "Idle", Participants: ["ann"], LastUpdatedAt: m.joinedAt }))
       return state
     end function
 
     private function withQueue(state as object) as object
-      inner = { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i-1", PlaylistItemId: "p-1" }, { ItemId: "i-2", PlaylistItemId: "p-2" }], PlayingItemIndex: 0, StartPositionTicks: 0, IsPlaying: false }
+      inner = { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }, { ItemId: "i2", PlaylistItemId: "p2" }], PlayingItemIndex: 0, StartPositionTicks: 0, IsPlaying: false }
       return syncPlayState.applyGroupUpdate(state, m.update("PlayQueue", inner))
     end function
 
@@ -47,7 +47,7 @@ namespace tests
     function _()
       state = m.joined()
       m.assertTrue(state.inGroup)
-      m.assertEqual(state.groupId, "g-1")
+      m.assertEqual(state.groupId, "g1")
       m.assertEqual(state.groupName, "Movie night")
       m.assertEqual(state.groupState, "Idle")
       m.assertEqual(state.joinedAtMs, 1792788440500&)
@@ -59,7 +59,7 @@ namespace tests
       state = m.withQueue(m.joined())
       m.assertEqual(state.playlist.count(), 2)
       m.assertEqual(state.playingItemIndex, 0)
-      m.assertEqual(state.playingItemId, "p-1")
+      m.assertEqual(state.playingItemId, "p1")
       m.assertFalse(state.isPlaying)
       m.assertEqual(state.lastUpdateMs, 1792788445000&)
     end function
@@ -79,7 +79,7 @@ namespace tests
       syncPlayState.applyGroupUpdate(state, m.update("UserLeft", "ann"))
       m.assertFalse(state.doesExist("participants"))
       m.assertTrue(state.inGroup)
-      m.assertEqual(state.groupId, "g-1")
+      m.assertEqual(state.groupId, "g1")
     end function
 
     @it("StateUpdate moves the group state")
@@ -93,7 +93,7 @@ namespace tests
     @params("GroupLeft")
     @params("NotInGroup")
     function _(updateType)
-      state = syncPlayState.applyGroupUpdate(m.withQueue(m.joined()), m.update(updateType, "g-1"))
+      state = syncPlayState.applyGroupUpdate(m.withQueue(m.joined()), m.update(updateType, "g1"))
       m.assertFalse(state.inGroup)
       m.assertEqual(state.groupId, "")
       m.assertEqual(state.playlist.count(), 0)
@@ -102,11 +102,11 @@ namespace tests
     @it("toast-only types and non-update frames change nothing")
     function _()
       state = m.joined()
-      syncPlayState.applyGroupUpdate(state, m.update("GroupDoesNotExist", "g-9"))
+      syncPlayState.applyGroupUpdate(state, m.update("GroupDoesNotExist", "g9"))
       syncPlayState.applyGroupUpdate(state, m.command("Pause", "2026-10-23T20:47:30.000Z"))
       syncPlayState.applyGroupUpdate(state, invalid)
       m.assertTrue(state.inGroup)
-      m.assertEqual(state.groupId, "g-1")
+      m.assertEqual(state.groupId, "g1")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -148,14 +148,14 @@ namespace tests
     @it("rejects a command for another playlist item, except a Stop")
     function _()
       state = m.withQueue(m.joined())
-      m.assertFalse(syncPlayState.acceptsCommand(state, m.command("Seek", "2026-10-23T20:47:30.000Z", "p-2")))
-      m.assertTrue(syncPlayState.acceptsCommand(state, m.command("Stop", "2026-10-23T20:47:30.000Z", "p-2")))
+      m.assertFalse(syncPlayState.acceptsCommand(state, m.command("Seek", "2026-10-23T20:47:30.000Z", "p2")))
+      m.assertTrue(syncPlayState.acceptsCommand(state, m.command("Stop", "2026-10-23T20:47:30.000Z", "p2")))
     end function
 
     @it("rejects a command for another group, outside a group, or that is not a command")
     function _()
       state = m.withQueue(m.joined())
-      m.assertFalse(syncPlayState.acceptsCommand(state, m.command("Pause", "2026-10-23T20:47:30.000Z", "p-1", "g-2")))
+      m.assertFalse(syncPlayState.acceptsCommand(state, m.command("Pause", "2026-10-23T20:47:30.000Z", "p1", "g2")))
       m.assertFalse(syncPlayState.acceptsCommand(syncPlayState.newState(), m.command("Pause", "2026-10-23T20:47:30.000Z")))
       m.assertFalse(syncPlayState.acceptsCommand(state, m.update("StateUpdate", { State: "Playing", Reason: "Unpause" })))
       m.assertFalse(syncPlayState.acceptsCommand(state, invalid))
@@ -190,9 +190,9 @@ namespace tests
     @it("a current-item change moves it; a queue edit that keeps the item does not")
     function _()
       state = m.withQueue(m.joined())
-      syncPlayState.applyGroupUpdate(state, m.update("PlayQueue", { Reason: "Queue", LastUpdate: "2026-10-23T20:47:26.000Z", Playlist: [{ ItemId: "i-1", PlaylistItemId: "p-1" }, { ItemId: "i-2", PlaylistItemId: "p-2" }, { ItemId: "i-3", PlaylistItemId: "p-3" }], PlayingItemIndex: 0, StartPositionTicks: 0 }))
+      syncPlayState.applyGroupUpdate(state, m.update("PlayQueue", { Reason: "Queue", LastUpdate: "2026-10-23T20:47:26.000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }, { ItemId: "i2", PlaylistItemId: "p2" }, { ItemId: "i3", PlaylistItemId: "p3" }], PlayingItemIndex: 0, StartPositionTicks: 0 }))
       m.assertEqual(state.playbackQueueAtMs, 1792788445000&)
-      syncPlayState.applyGroupUpdate(state, m.update("PlayQueue", { Reason: "NextItem", LastUpdate: "2026-10-23T20:47:27.000Z", Playlist: [{ ItemId: "i-1", PlaylistItemId: "p-1" }, { ItemId: "i-2", PlaylistItemId: "p-2" }, { ItemId: "i-3", PlaylistItemId: "p-3" }], PlayingItemIndex: 1, StartPositionTicks: 0 }))
+      syncPlayState.applyGroupUpdate(state, m.update("PlayQueue", { Reason: "NextItem", LastUpdate: "2026-10-23T20:47:27.000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }, { ItemId: "i2", PlaylistItemId: "p2" }, { ItemId: "i3", PlaylistItemId: "p3" }], PlayingItemIndex: 1, StartPositionTicks: 0 }))
       m.assertEqual(state.playbackQueueAtMs, 1792788447000&)
     end function
 

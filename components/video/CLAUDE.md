@@ -43,5 +43,5 @@ The video playback subsystem. [docs/architecture/playback.md](../../docs/archite
 ## What not to do
 
 - Don't move decision logic into the player. `LoadVideoContentTask` reads the server's answer and builds the URL; `VideoPlayerView` *reacts* to the result (the Dolby Vision `buffer:loop:` retry, the reload after an audio track change on a transcoded stream). Don't move the reactions into the loader either.
-- Don't bypass the queue. A play press fills the queue and reaches the `/details/:type/:id/play` route (through the `playbackLaunchRequest` signal from `QueueManager.playQueue()`, or the direct `navigateTo` in `ItemDetails`), so `PlayerHostView` mounts the player from the current queue item.
+- Don't bypass the queue. A play press fills the queue and reaches the `/details/:type/:id/play` route (through the `playbackLaunchRequest` signal from `QueueManager.playQueue()`, which every launcher and the details screen end in), so `PlayerHostView` mounts the player from the current queue item.
 - Don't observe the player's `state` from outside it. `PlayerHostView.onPlayerStateChange` is the one handler for the end of playback and queue advancement: the routed host owns the player as a child.

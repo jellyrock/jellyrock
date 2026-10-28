@@ -10,8 +10,8 @@ namespace tests
 
     private function commandFrame(data as object) as object
       base = {
-        GroupId: "g-1",
-        PlaylistItemId: "p-1",
+        GroupId: "g1",
+        PlaylistItemId: "p1",
         When: "2026-10-23T20:47:29.000Z",
         Command: "Unpause",
         PositionTicks: 600000000,
@@ -24,7 +24,75 @@ namespace tests
     end function
 
     private function updateFrame(updateType as dynamic, inner as dynamic) as object
-      return { MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g-1", Type: updateType, Data: inner }, MessageId: "m-2" }
+      return { MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g1", Type: updateType, Data: inner }, MessageId: "m-2" }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("ids: parsed to the server's form, lowercase with no dashes")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("normalizes the ids of a long-poll GroupJoined")
+    function _()
+      inner = { GroupId: "27067FA4-3DE4-4A1B-9C2D-0123456789AB", GroupName: "Movie night", State: "Idle", Participants: ["ann"], LastUpdatedAt: "2026-10-23T20:47:20.500Z" }
+      frame = { MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "27067FA4-3DE4-4A1B-9C2D-0123456789AB", Type: "GroupJoined", Data: inner }, MessageId: "m-2" }
+      cmd = remoteCommand.parseMessage(frame)
+      m.assertEqual(cmd.kind, "syncplayupdate")
+      m.assertEqual(cmd.groupId, "27067fa43de44a1b9c2d0123456789ab")
+      m.assertEqual(cmd.groupName, "Movie night")
+      m.assertEqual(cmd.participants, ["ann"])
+    end function
+
+    @it("normalizes the group id of every update, even one with no inner group id")
+    function _()
+      frame = { MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "27067FA4-3DE4-4A1B-9C2D-0123456789AB", Type: "StateUpdate", Data: { State: "Waiting", Reason: "Buffer" } }, MessageId: "m-2" }
+      m.assertEqual(remoteCommand.parseMessage(frame).groupId, "27067fa43de44a1b9c2d0123456789ab")
+    end function
+
+    @it("normalizes each playlist entry of a long-poll PlayQueue")
+    function _()
+      inner = {
+        Reason: "NewPlaylist",
+        LastUpdate: "2026-10-23T20:47:25.000Z",
+        Playlist: [
+          { ItemId: "08A5F1F3-D54D-4E48-8A1B-AAAAAAAAAAAA", PlaylistItemId: "9C295A4A-760F-4B3C-9D0E-BBBBBBBBBBBB" },
+          { ItemId: "18A5F1F3-D54D-4E48-8A1B-CCCCCCCCCCCC", PlaylistItemId: "AC295A4A-760F-4B3C-9D0E-DDDDDDDDDDDD" }
+        ],
+        PlayingItemIndex: 1,
+        StartPositionTicks: 0
+      }
+      cmd = remoteCommand.parseMessage(m.updateFrame("PlayQueue", inner))
+      m.assertEqual(cmd.playlist.count(), 2)
+      m.assertEqual(cmd.playlist[0].itemId, "08a5f1f3d54d4e488a1baaaaaaaaaaaa")
+      m.assertEqual(cmd.playlist[0].playlistItemId, "9c295a4a760f4b3c9d0ebbbbbbbbbbbb")
+      m.assertEqual(cmd.playlist[1].itemId, "18a5f1f3d54d4e488a1bcccccccccccc")
+      m.assertEqual(cmd.playlist[1].playlistItemId, "ac295a4a760f4b3c9d0edddddddddddd")
+    end function
+
+    @it("normalizes the ids of a long-poll SyncPlayCommand")
+    function _()
+      cmd = remoteCommand.parseMessage(m.commandFrame({ GroupId: "27067FA4-3DE4-4A1B-9C2D-0123456789AB", PlaylistItemId: "9C295A4A-760F-4B3C-9D0E-BBBBBBBBBBBB" }))
+      m.assertEqual(cmd.kind, "syncplaycommand")
+      m.assertEqual(cmd.groupId, "27067fa43de44a1b9c2d0123456789ab")
+      m.assertEqual(cmd.playlistItemId, "9c295a4a760f4b3c9d0ebbbbbbbbbbbb")
+    end function
+
+    @it("passes an id the server already wrote dash-free and lowercase through unchanged")
+    function _()
+      id = "08a5f1f3d54d4e488a1baaaaaaaaaaaa"
+      cmd = remoteCommand.parseMessage(m.commandFrame({ GroupId: id, PlaylistItemId: id }))
+      m.assertEqual(cmd.groupId, id)
+      m.assertEqual(cmd.playlistItemId, id)
+      inner = { Reason: "Queue", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: id, PlaylistItemId: id }], PlayingItemIndex: 0 }
+      queue = remoteCommand.parseMessage(m.updateFrame("PlayQueue", inner))
+      m.assertEqual(queue.playlist[0].itemId, id)
+      m.assertEqual(queue.playlist[0].playlistItemId, id)
+    end function
+
+    @it("keeps an empty or missing id empty")
+    function _()
+      cmd = remoteCommand.parseMessage(m.commandFrame({ GroupId: "", PlaylistItemId: invalid }))
+      m.assertEqual(cmd.groupId, "")
+      m.assertEqual(cmd.playlistItemId, "")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -39,8 +107,8 @@ namespace tests
       m.assertEqual(cmd.whenMs, 1792788449000&)
       m.assertEqual(cmd.emittedAtMs, 1792788448000&)
       m.assertEqual(cmd.positionTicks, 600000000&)
-      m.assertEqual(cmd.playlistItemId, "p-1")
-      m.assertEqual(cmd.groupId, "g-1")
+      m.assertEqual(cmd.playlistItemId, "p1")
+      m.assertEqual(cmd.groupId, "g1")
       m.assertEqual(cmd.messageId, "m-1")
     end function
 
@@ -89,11 +157,11 @@ namespace tests
 
     @it("parses GroupJoined with the group info and the join time")
     function _()
-      inner = { GroupId: "g-1", GroupName: "Movie night", State: "Idle", Participants: ["ann", "bob"], LastUpdatedAt: "2026-10-23T20:47:20.500Z" }
+      inner = { GroupId: "g1", GroupName: "Movie night", State: "Idle", Participants: ["ann", "bob"], LastUpdatedAt: "2026-10-23T20:47:20.500Z" }
       cmd = remoteCommand.parseMessage(m.updateFrame("GroupJoined", inner))
       m.assertEqual(cmd.kind, "syncplayupdate")
       m.assertEqual(cmd.updateType, "GroupJoined")
-      m.assertEqual(cmd.groupId, "g-1")
+      m.assertEqual(cmd.groupId, "g1")
       m.assertEqual(cmd.groupName, "Movie night")
       m.assertEqual(cmd.groupState, "Idle")
       m.assertEqual(cmd.participants, ["ann", "bob"])
@@ -103,7 +171,7 @@ namespace tests
 
     @it("ignores a GroupJoined whose LastUpdatedAt is missing: the join gate needs it")
     function _()
-      cmd = remoteCommand.parseMessage(m.updateFrame("GroupJoined", { GroupId: "g-1", GroupName: "x" }))
+      cmd = remoteCommand.parseMessage(m.updateFrame("GroupJoined", { GroupId: "g1", GroupName: "x" }))
       m.assertEqual(cmd.kind, "ignore")
     end function
 
@@ -130,7 +198,7 @@ namespace tests
       inner = {
         Reason: "NewPlaylist",
         LastUpdate: "2026-10-23T20:47:25.000Z",
-        Playlist: [{ ItemId: "i-1", PlaylistItemId: "p-1" }, { ItemId: "i-2", PlaylistItemId: "p-2" }],
+        Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }, { ItemId: "i2", PlaylistItemId: "p2" }],
         PlayingItemIndex: 1,
         StartPositionTicks: 1200000000&,
         IsPlaying: true,
@@ -142,8 +210,8 @@ namespace tests
       m.assertEqual(cmd.reason, "NewPlaylist")
       m.assertEqual(cmd.lastUpdateMs, 1792788445000&)
       m.assertEqual(cmd.playlist.count(), 2)
-      m.assertEqual(cmd.playlist[1].itemId, "i-2")
-      m.assertEqual(cmd.playlist[1].playlistItemId, "p-2")
+      m.assertEqual(cmd.playlist[1].itemId, "i2")
+      m.assertEqual(cmd.playlist[1].playlistItemId, "p2")
       m.assertEqual(cmd.playingItemIndex, 1)
       m.assertEqual(cmd.startPositionTicks, 1200000000&)
       m.assertTrue(cmd.isPlaying)
@@ -153,7 +221,7 @@ namespace tests
 
     @it("keeps IsPlaying unknown on a 10.7 PlayQueue, which has no such field")
     function _()
-      inner = { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i-1", PlaylistItemId: "p-1" }], PlayingItemIndex: 0, StartPositionTicks: 0 }
+      inner = { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }], PlayingItemIndex: 0, StartPositionTicks: 0 }
       cmd = remoteCommand.parseMessage(m.updateFrame("PlayQueue", inner))
       m.assertEqual(cmd.updateType, "PlayQueue")
       m.assertInvalid(cmd.isPlaying)
@@ -161,10 +229,10 @@ namespace tests
 
     @it("drops a playlist entry without both ids and ignores a PlayQueue without a Playlist")
     function _()
-      inner = { Reason: "Queue", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i-1" }, { ItemId: "i-2", PlaylistItemId: "p-2" }], PlayingItemIndex: 0 }
+      inner = { Reason: "Queue", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i1" }, { ItemId: "i2", PlaylistItemId: "p2" }], PlayingItemIndex: 0 }
       cmd = remoteCommand.parseMessage(m.updateFrame("PlayQueue", inner))
       m.assertEqual(cmd.playlist.count(), 1)
-      m.assertEqual(cmd.playlist[0].playlistItemId, "p-2")
+      m.assertEqual(cmd.playlist[0].playlistItemId, "p2")
       m.assertEqual(remoteCommand.parseMessage(m.updateFrame("PlayQueue", { Reason: "Queue" })).kind, "ignore")
     end function
 
@@ -176,10 +244,10 @@ namespace tests
     @params("CreateGroupDenied")
     @params("JoinGroupDenied")
     function _(updateType)
-      cmd = remoteCommand.parseMessage(m.updateFrame(updateType, "g-1"))
+      cmd = remoteCommand.parseMessage(m.updateFrame(updateType, "g1"))
       m.assertEqual(cmd.kind, "syncplayupdate")
       m.assertEqual(cmd.updateType, updateType)
-      m.assertEqual(cmd.groupId, "g-1")
+      m.assertEqual(cmd.groupId, "g1")
     end function
 
     @it("ignores an unknown or numeric Type")

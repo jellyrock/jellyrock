@@ -3,6 +3,7 @@ import "pkg:/source/utils/misc.bs"
 
 sub init()
   m.icons = [] ' JROverhangIcon children, in entry order
+  m.entries = [] ' The entries as applied, in the same order: updateEntry patches these, never the input field
 end sub
 
 ' Rebuild the icons for the entries. Children are recreated rather than diffed: a bar
@@ -15,6 +16,7 @@ sub onEntriesChanged()
     m.top.removeChild(icon)
   end for
   m.icons = []
+  m.entries = []
 
   entries = m.top.entries
   if isValidAndNotEmpty(entries)
@@ -25,12 +27,15 @@ sub onEntriesChanged()
       icon.icon = entry.icon
       icon.actionId = entry.id
       icon.isDisabled = entry.disabled = true
+      icon.isActive = entry.active = true
+      icon.hasBadge = entry.badge = true
       icon.translation = [iconBarNav.iconX(i), 0]
       icon.observeField("selectedAction", "onIconPressed")
       icon.observeField("requestFocusExit", "onIconFocusExit")
       icon.observeField("requestFocusReturn", "onIconFocusReturn")
       m.top.appendChild(icon)
       m.icons.push(icon)
+      m.entries.push(entry)
     end for
   end if
 
@@ -47,7 +52,7 @@ end function
 sub onIconPressed(msg as object)
   i = indexOfIcon(msg.getRoSGNode())
   if i < 0 then return
-  entry = m.top.entries[i]
+  entry = m.entries[i]
   action = entry.id
   if isValidAndNotEmpty(entry.action) then action = entry.action
   m.top.selectedAction = action
@@ -70,11 +75,34 @@ end sub
 sub onIconFocusReturn(msg as object)
   i = indexOfIcon(msg.getRoSGNode())
   if i < 0 then return
-  m.top.requestFocusReturn = m.top.entries[i].id
+  m.top.requestFocusReturn = m.entries[i].id
 end sub
 
+' Change one entry's on-state, badge or disabled flag in place without rebuilding the bar, so a state change
+' never moves focus. The input field is left as written: the applied copy is patched. Returns false
+' for an id the bar does not have.
+function updateEntry(id as string, patch as object) as boolean
+  i = iconBarNav.indexOf(m.entries, id)
+  if i < 0 then return false
+  entry = m.entries[i]
+  icon = m.icons[i]
+  if isValid(patch.active)
+    entry.active = patch.active = true
+    icon.isActive = entry.active
+  end if
+  if isValid(patch.badge)
+    entry.badge = patch.badge = true
+    icon.hasBadge = entry.badge
+  end if
+  if isValid(patch.disabled)
+    entry.disabled = patch.disabled = true
+    icon.isDisabled = entry.disabled
+  end if
+  return true
+end function
+
 function getIcon(id as string) as object
-  i = iconBarNav.indexOf(m.top.entries, id)
+  i = iconBarNav.indexOf(m.entries, id)
   if i < 0 then return invalid
   return m.icons[i]
 end function

@@ -20,7 +20,7 @@ related-files:
   - scripts/lint/socket-thread-release-check.js
   - scripts/lint/socket-auth-binding-check.js
   - docs/architecture/remote-control-longpoll-contract.md
-last-reviewed: 2026-10-23
+last-reviewed: 2026-10-27
 ---
 
 # Remote control: cast to JellyRock
@@ -39,7 +39,9 @@ So JellyRock has two transports that feed one normalized command stream:
 `RemoteControlTask.runReceiver` picks the transport from the server scheme (`remoteProtocol.isHttpServer`):
 
 - **`http://`:** the `ws://` socket, with no probe.
-- **`https://`:** probe the plugin with `GET /JellyRock/RemoteControl/info`. A `200` whose body carries the expected `CONTRACT_VERSION` starts the long-poll loop. Anything else leaves JellyRock dark: no cast target is advertised. `buildSocketUrl` returns nothing for a non-HTTP server, so an `https://` session's token never goes out over cleartext `ws://`.
+- **`https://`:** probe the plugin with `GET /JellyRock/RemoteControl/info`. A `200` whose body carries the expected `CONTRACT_VERSION` starts the long-poll loop. A "no plugin" answer leaves JellyRock dark until a later probe succeeds: no cast target is advertised meanwhile. `buildSocketUrl` returns nothing for a non-HTTP server, so an `https://` session's token never goes out over cleartext `ws://`.
+
+The receiver also publishes whether it has a push channel, as `m.global.server.remoteChannelStatus` (`serverCapabilities.STATUS_*`), because SyncPlay needs one. It is unknown at the start of each run, `available` once the socket opens or the plugin probe answers with the expected version, and `unavailable` when the probe answers an HTTP error or a version it does not implement. A transport failure with no HTTP status leaves it as it was. The HTTPS path keeps probing: with backoff after a transport failure or a server error, slowly (`remoteProtocol.PLUGIN_RECHECK_MS`) after a "no plugin" answer so a plugin installed later is found, and straight back to probing when the plugin goes away mid-session. It is written only on a change, since a Task thread writing `m.global` costs a rendezvous.
 
 On HTTPS the plugin owns the capability. JellyRock advertises `SupportsMediaControl` as `false` there (`deviceCapabilities.bs` checks the scheme), and the plugin forces it `true` while a poll is live and revokes it when polling stops. That revocation follows the plugin's poll freshness, not `LastActivityDate`, and it is what drops a closed JellyRock from the cast list. The `ws://` path gets the same from the socket disconnect. Verified on a device: with the app closed, `SupportsRemoteControl` turned false within the grace window, though other traffic kept `LastActivityDate` recent.
 
@@ -66,7 +68,7 @@ The command rides a field on the Task node, `dispatchCommand`, which the main lo
 
 `setGlobalNodes` (phase 2) creates the Task node on `m.global` but does not start it, because it needs the session token.
 
-- **Start:** `Home`'s first-run block launches it with `launchTask()` after sign-in, next to the capabilities POST and the pairing report ([below](#cold-launch-pairing-report-668)). First run is per Home instance, so the receiver restarts on each fresh sign-in, including after a server switch. The node is app-wide and never replaced: `main.bs` observes its `dispatchCommand` once at start-up, so a new node would go unheard. A new Home with no sign-out since the last one relaunches the node while it runs, which Roku ignores, and the one receiver keeps listening. The `no-same-node-relaunch` suppression on that launch records this.
+- **Start:** `Home`'s first-run block launches it with `launchTask()` after sign-in, next to the capabilities POST and the pairing report ([below](#cold-launch-pairing-report-668)), and right after it the SyncPlay manager's `leaveStaleMembership`, so a membership the last session left behind is ended with the receiver up to carry the server's answer ([playback.md](playback.md#syncplay-the-player-follows-the-group)). First run is per Home instance, so the receiver restarts on each fresh sign-in, including after a server switch. The node is app-wide and never replaced: `main.bs` observes its `dispatchCommand` once at start-up, so a new node would go unheard. A new Home with no sign-out since the last one relaunches the node while it runs, which Roku ignores, and the one receiver keeps listening. The `no-same-node-relaunch` suppression on that launch records this.
 - **Stop:** `SignOut` in `source/api/userAuth.bs`, the one teardown point for sign-out and server switch (a switch reaches `SignOut(false)` once the new server answers its probe). So the socket never outlives a session. `StopRemoteControlReceiver()` stops the receiver, then the live `WebSocketClient` child the receiver publishes on `socketNode`. The child needs its own stop, because stopping the receiver kills its thread before its own `closeSocket()` cleanup can run. A STOP does not wait for the thread to end, so the child is copied into a local first: the receiver may still be clearing that field, and a dot on `invalid` would crash sign-out.
 - **Commands that arrive after sign-out are dropped.** For the same reason, a command already queued on the main thread's port still drains after `SignOut`. `remoteDispatch.dispatch` drops any command while `user.IsAuthenticated()` is false, with a console line. It belongs to the session that ended: kept, a route command would open after the next sign-in, and a `DisplayContent` would open the old session's item for whoever signs in next. A cold-launch cast is not affected, because the plugin wakes the app with a Roku launch, not through the receiver ([below](#cold-launch-pairing-report-668)).
 

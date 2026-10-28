@@ -30,6 +30,10 @@ To split a growing suite, keep the base name and add the aspect (`remoteSubtitle
 
 > A green `npm run validate` says nothing about this: the crash is a runtime fault in the generated runner, so only hardware shows it.
 
+### No doubled quote inside an `@params` string
+
+**Never write `""` inside a string literal in `@params`.** Rooibos copies each param into the generated test data with a backslash before the quote, which BrightScript has no escape for, so the runner crashes on the device with `Type Mismatch. Operator "\" can't be applied` (observed 2026-10-25 on a Streaming Stick 4K). Like the suite rule above, it builds and validates cleanly. Write the value without the inner quotes, or build it in the test body with `chr(34)`.
+
 ## Lifecycle hooks: `setup()` runs per `@describe` group, `beforeEach()` per test
 
 Rooibos gives `BaseTestSuite` four hooks, and the two pairs run at different frequencies (read from `TestGroup.runSync` in `rooibos-roku` 6.0.0-alpha.56, 2026-10-11):

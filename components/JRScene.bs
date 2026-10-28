@@ -1,5 +1,9 @@
+' bsc-disable-file auto-abandon-promises: the scene is the app's root and lives as long as the
+' app, so no fetchAsync() started here (the SyncPlay group list) can outlive it.
+import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/enums/LoadingKind.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/syncplay/syncPlayMenu.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/appWaits.bs"
 import "pkg:/source/utils/backdrop.bs"
@@ -8,6 +12,7 @@ import "pkg:/source/utils/loadingStages.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/refusedNavigation.bs"
+import "pkg:/source/utils/serverCapabilities.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/translate.bs"
 ' JRScene is a Scene (not a sgrouter_View), so it does not inherit the router scripts from
@@ -56,6 +61,9 @@ sub init()
   m.refusedNavigationTimer = m.top.findNode("refusedNavigationTimer")
   m.refusedNavigationTimer.observeField("fire", "onRefusedNavigationPoll")
   m.refusedNavigationTimer.duration = refusedNavigation.POLL_MS / 1000#
+  m.syncPlayGroupsTimer = m.top.findNode("syncPlayGroupsTimer")
+  m.syncPlayGroupsTimer.observeField("fire", "pollSyncPlayGroups")
+  m.syncPlayGroupsTimer.duration = syncPlayMenu.GROUPS_POLL_MS / 1000#
   ' The navigation the router refused that waits for the router to go idle (navigateThenFocus);
   ' invalid when none does.
   m.pendingNavigation = invalid
@@ -83,6 +91,19 @@ sub init()
   ' The route Settings was last opened from ({ path, context }), for reloadRoutedHome; invalid
   ' when that opening had no route to return to (a player).
   m.settingsOrigin = invalid
+  ' The SyncPlay menu's open dialog and its rows (openSyncPlayMenu); one at a time.
+  m.syncPlayDialog = invalid
+  m.syncPlayRows = invalid
+  ' The pressed-action wait of the menu's group-list fetch, and the count that names each fetch.
+  m.syncPlayWait = invalid
+  m.syncPlayFetchCount = 0
+  ' The icon's badge: whether the last group list read had a group to join, whether the list is
+  ' being read for it (syncPlayMenu.pollsGroups), and whether a read is in flight.
+  m.syncPlayGroupsAvailable = false
+  m.isPollingSyncPlayGroups = false
+  m.isSyncPlayPollInFlight = false
+  ' Whether initRouter has registered the SyncPlay manager's observers (once per app run).
+  m.isObservingSyncPlay = false
 
   ' Hide backdrop until setting is resolved on first backdrop request (lazy initialization)
   m.imageFader.visible = false
@@ -433,6 +454,20 @@ sub initRouter()
   ' PhotoDetails reads the AA as route context on mount.
   m.global.unobserveField("photoLaunchRequest")
   m.global.observeField("photoLaunchRequest", "onPhotoLaunchRequested")
+
+  ' The cluster's SyncPlay icon is the membership's state on every screen: active while in a
+  ' group. The manager is a render-thread node on m.global, so observing it costs no crossing.
+  ' Registered once, never unobserved: setGlobalNodes creates the manager once, after init(),
+  ' and an unobserve here would drop any other component's observer of the same field (#898).
+  if not m.isObservingSyncPlay
+    m.global.syncPlayManager.observeField("inGroup", "applySyncPlayIcon")
+    m.global.syncPlayManager.observeField("notice", "onSyncPlayNotice")
+    ' Whether the server has a push channel to this Roku (RemoteControlTask writes it, once per
+    ' run): the icon stays hidden until it is known, and is disabled without one. The server node
+    ' is reset in place on a server switch, so this observer outlives it.
+    m.global.server.observeField("remoteChannelStatus", "applySyncPlayIcon")
+    m.isObservingSyncPlay = true
+  end if
 
   ' The auth guard. The SAME node we put on m.global in setGlobalNodes, registered by NODE
   ' REFERENCE. Added to every POST-login route below; the pre-login routes carry no guard
@@ -1046,6 +1081,7 @@ sub registerOverhangData(group as object)
     ' forgotten with the screen.
     m.overhang.isClusterVisible = user.IsAuthenticated() and not appWaits.isPlaybackScreen(group)
     m.overhang.callFunc("resetRowMemory")
+    applySyncPlayIcon()
 
     applyOverhangUserDropdown(group.shouldShowUserDropdown)
     group.observeField("shouldShowUserDropdown", "updateOverhangUserDropdown")
@@ -1140,6 +1176,10 @@ sub onOverhangIconAction()
   id = m.overhang.iconAction
   view = getActiveView()
   if isValid(view) and view.isSubType("JRScreen") and view.callFunc("onOverhangAction", id) = true then return
+  if id = "syncplay"
+    openSyncPlayMenu()
+    return
+  end if
   path = ""
   if id = "search"
     path = "/search"
@@ -1152,6 +1192,201 @@ sub onOverhangIconAction()
   end if
   if isValid(view) and view.isSubType("JRScreen") then view.overhangReturnIcon = id
   routerNavigate(path)
+end sub
+
+' ---------------------------------------------------------------------------
+' SyncPlay: the cluster icon's menu
+'
+' One icon is the membership's state and its control. Not in a group: the groups the server
+' lists, each a row to join, then New group when the policy allows. In a group: a confirm
+' dialog naming the members, with Leave. Both start from one /SyncPlay/List fetch under an
+' overlay wait (LoadingKind.OVERLAY), so a dialog never opens half-built: a list dialog
+' does not re-lay out after it mounts. The wait holds the keys and leaves the screen in view.
+' The manager posts the Join, New and Leave; the server's answer arrives as frames the manager
+' publishes, never as this fetch's result.
+' ---------------------------------------------------------------------------
+sub openSyncPlayMenu()
+  if isValid(m.syncPlayDialog) then return
+  ' One fetch at a time. The wait holds the keys, so a second press should not reach here;
+  ' this guard is the backstop.
+  if appWaits.isOpen(m.syncPlayWait) then return
+  if not syncPlayMenu.canJoin(syncPlayAccess()) then return ' the icon is not shown then; a stale press
+  ' No push channel: the server would take a join but no frame would reach this Roku, so explain
+  ' instead of fetching. The icon is disabled in this state; a press still fires.
+  if m.global.server.remoteChannelStatus = serverCapabilities.STATUS_UNAVAILABLE
+    m.syncPlayDialog = showAlertDialog(translate(translationKeys.LabelSyncPlay), translate(translationKeys.MessageSyncPlayNeedsPlugin), "onSyncPlayAlertResult")
+    return
+  end if
+  req = GetApi().BuildGetSyncPlayGroupsRequest()
+  if not isValid(req)
+    showToast(translate(translationKeys.MessageSyncPlayGroupsFailed), "error")
+    return
+  end if
+  wait = appWaits.begin(LoadingKind.OVERLAY)
+  m.syncPlayWait = wait
+  ' Each fetch has its own id: fetchAsync keys its pending requests by id, and a repeated id
+  ' would replace the earlier fetch, which would then never settle.
+  m.syncPlayFetchCount++
+  promises.chain(fetchAsync(req, "syncPlayGroups-" + m.syncPlayFetchCount.toStr().trim()), { wait: wait }).then(sub(res as object, ctx as object)
+    if isValid(ctx.wait) and not appWaits.isOpen(ctx.wait) then return ' Back ended it: the viewer moved on
+    appWaits.done(ctx.wait)
+    if res.ok
+      onSyncPlayGroupsRead(res.json)
+      showSyncPlayMenu(res.json)
+    else
+      m.log.warn("SyncPlay group list failed", "statusCode", res.statusCode)
+      onSyncPlayGroupsFailed()
+    end if
+  end sub).catch(sub(err as object, ctx as object)
+    if isValid(ctx.wait) and not appWaits.isOpen(ctx.wait) then return
+    appWaits.fail(ctx.wait, "SyncPlay group list failed")
+    m.log.warn("SyncPlay group list unreachable", "reason", err.reason, "statusCode", err.statusCode)
+    onSyncPlayGroupsFailed()
+  end sub)
+end sub
+
+function syncPlayAccess() as dynamic
+  globalUser = m.global.user
+  if isValid(globalUser) and isValid(globalUser.policy) then return globalUser.policy.syncPlayAccess
+  return invalid
+end function
+
+' Leaving needs nothing from the list, which only names the members: a viewer in a group still
+' gets the leave confirm, without its member line.
+sub onSyncPlayGroupsFailed()
+  if m.global.syncPlayManager.inGroup
+    showSyncPlayMenu(invalid)
+    return
+  end if
+  m.syncPlayDialog = showAlertDialog(translate(translationKeys.LabelSyncPlay), translate(translationKeys.MessageSyncPlayGroupsFailed), "onSyncPlayAlertResult")
+end sub
+
+' The list arrived: the leave dialog while in a group, else the groups to join.
+sub showSyncPlayMenu(groups as dynamic)
+  manager = m.global.syncPlayManager
+  if manager.inGroup
+    members = syncPlayMenu.memberLine(syncPlayMenu.groupById(groups, manager.groupId))
+    message = ""
+    if members <> "" then message = translate(translationKeys.MessageSyncPlayMembers, [members])
+    m.syncPlayDialog = showConfirmDialog(manager.groupName, message, "onSyncPlayLeaveResult", translate(translationKeys.ButtonLeaveGroup), translate(translationKeys.ButtonCancel))
+    return
+  end if
+  rows = syncPlayMenu.rowsFor(groups, syncPlayAccess())
+  if rows.count() = 0
+    m.syncPlayDialog = showAlertDialog(translate(translationKeys.LabelSyncPlay), translate(translationKeys.LabelSyncPlayNoGroups), "onSyncPlayAlertResult")
+    return
+  end if
+  labels = []
+  for each row in rows
+    if row.action = syncPlayMenu.ACTION_NEW
+      labels.push(translate(translationKeys.LabelSyncPlayNewGroup))
+    else if row.members = ""
+      labels.push(row.name)
+    else
+      labels.push(translate(translationKeys.LabelSyncPlayGroupRow, [row.name, row.members]))
+    end if
+  end for
+  m.syncPlayRows = rows
+  m.syncPlayDialog = showListDialog(translate(translationKeys.LabelSyncPlaySelectGroup), labels, "onSyncPlayListResult")
+end sub
+
+sub onSyncPlayAlertResult()
+  m.syncPlayDialog = invalid
+end sub
+
+sub onSyncPlayListResult()
+  dialog = m.syncPlayDialog
+  rows = m.syncPlayRows
+  m.syncPlayDialog = invalid
+  m.syncPlayRows = invalid
+  if not isValid(dialog) or not isValid(dialog.result) then return
+  result = dialog.result
+  if result.cancelled = true or result.externallyCancelled = true then return
+  if not isValid(rows) or result.optionIndex < 0 or result.optionIndex >= rows.count() then return
+  row = rows[result.optionIndex]
+  manager = m.global.syncPlayManager
+  if row.action = syncPlayMenu.ACTION_NEW
+    manager.callFunc("newGroup", translate(translationKeys.LabelSyncPlayDefaultGroupName, [m.global.user.name]))
+  else
+    manager.callFunc("join", row.groupId)
+  end if
+end sub
+
+sub onSyncPlayLeaveResult()
+  dialog = m.syncPlayDialog
+  m.syncPlayDialog = invalid
+  if not isValid(dialog) or not isValid(dialog.result) then return
+  result = dialog.result
+  if result.externallyCancelled = true or result.confirmed <> true then return
+  m.global.syncPlayManager.callFunc("leave")
+end sub
+
+' A SyncPlay notice from the manager: a toast, translated here (the manager is on m.global,
+' outside the scene, and holds no translation). The event's own payload, never the field: a
+' second notice written before this runs would otherwise be read twice and the first lost.
+sub onSyncPlayNotice(event as object)
+  toast = syncPlayMenu.toastFor(event.getData())
+  if not isValid(toast) then return
+  showToast(translate(toast.key, [toast.arg]), toast.toastType)
+end sub
+
+' The SyncPlay icon shows the membership and the policy: active while in a group, absent when
+' the user's SyncPlayAccess is None, and badged while a group exists to join. Applied on each
+' screen change (the user, and so the policy, can change) and whenever the manager's inGroup
+' changes. Each of those also reads the group list again while the badge could show, so a screen
+' change shows a new group without waiting for the Timer; a hidden cluster or a membership stops
+' the reads and clears the badge.
+sub applySyncPlayIcon()
+  polls = syncPlayMenu.pollsGroups(m.overhang.isClusterVisible = true, m.global.syncPlayManager.inGroup = true, syncPlayAccess(), m.global.server.remoteChannelStatus)
+  if polls
+    if not m.isPollingSyncPlayGroups then m.syncPlayGroupsTimer.control = "start"
+    m.isPollingSyncPlayGroups = true
+    pollSyncPlayGroups()
+  else
+    m.syncPlayGroupsTimer.control = "stop"
+    m.isPollingSyncPlayGroups = false
+    m.syncPlayGroupsAvailable = false
+  end if
+  renderSyncPlayIcon()
+end sub
+
+sub renderSyncPlayIcon()
+  m.overhang.callFunc("applySyncPlayIcon", syncPlayMenu.iconFor(m.global.syncPlayManager.inGroup = true, syncPlayAccess(), m.global.server.remoteChannelStatus, m.syncPlayGroupsAvailable))
+end sub
+
+' One read of the group list for the badge, never two at once: a screen change while one is out
+' waits for its answer. No wait and no toast: the badge is a hint, and a failed read clears it
+' rather than show groups the server did not confirm.
+sub pollSyncPlayGroups()
+  if not m.isPollingSyncPlayGroups or m.isSyncPlayPollInFlight then return
+  req = GetApi().BuildGetSyncPlayGroupsRequest()
+  if not isValid(req) then return
+  m.isSyncPlayPollInFlight = true
+  ' Its own id per read, as openSyncPlayMenu's: fetchAsync keys its pending requests by id.
+  m.syncPlayFetchCount++
+  promises.chain(fetchAsync(req, "syncPlayGroupsPoll-" + m.syncPlayFetchCount.toStr().trim()), {}).then(sub(res as object, _ctx as object)
+    m.isSyncPlayPollInFlight = false
+    if res.ok
+      onSyncPlayGroupsRead(res.json)
+    else
+      m.log.debug("SyncPlay group poll failed", "statusCode", res.statusCode)
+      onSyncPlayGroupsRead(invalid)
+    end if
+  end sub).catch(sub(err as object, _ctx as object)
+    m.isSyncPlayPollInFlight = false
+    m.log.debug("SyncPlay group poll unreachable", "reason", err.reason)
+    onSyncPlayGroupsRead(invalid)
+  end sub)
+end sub
+
+' A group list arrived, from the poll or the menu. An answer that lands after the reads stopped
+' (a join, a player, sign-out) is dropped, so it cannot bring a cleared badge back.
+sub onSyncPlayGroupsRead(groups as dynamic)
+  if not m.isPollingSyncPlayGroups then return
+  available = syncPlayMenu.hasGroups(groups)
+  if available = m.syncPlayGroupsAvailable then return
+  m.syncPlayGroupsAvailable = available
+  renderSyncPlayIcon()
 end sub
 
 ' A user dropdown item was chosen: relay it to main.bs, which observes this scene field

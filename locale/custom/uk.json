@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Скасувати",
   "ButtonDelete": "Видалити",
+  "ButtonLeaveGroup": "Покинути групу",
   "ButtonManualLogin": "Ввести ім’я користувача вручну",
   "ButtonOk": "ОК",
   "ButtonPlay": "Грати",
@@ -138,6 +139,11 @@
   "LabelSports": "Спорт",
   "LabelStudios": "Студії",
   "LabelSubtitles": "Субтитри",
+  "LabelSyncPlay": "Функція SyncPlay",
+  "LabelSyncPlayDefaultGroupName": "Група {0}",
+  "LabelSyncPlayNewGroup": "Нова група",
+  "LabelSyncPlayNoGroups": "Групи не доступні",
+  "LabelSyncPlaySelectGroup": "Приєднання до групи",
   "LabelTheme": "Тема",
   "LabelTrack": "Трек",
   "LabelTranscoding": "Перекодування",
@@ -240,5 +246,9 @@
   "MessageEndsAt1": "Завершиться о {0}",
   "MessageMoreFrom1": "Більше від {0}",
   "MessageSearchNoResults": "Нічого не знайдено.",
-  "MessageSetTheMaximumAmountOfDays": "Встановлює максимальну кількість днів, протягом яких серіал має залишатися в списку «Далі» без перегляду."
+  "MessageSetTheMaximumAmountOfDays": "Встановлює максимальну кількість днів, протягом яких серіал має залишатися в списку «Далі» без перегляду.",
+  "MessageSyncPlayCreateGroupDenied": "Для створення групи потрібен дозвіл.",
+  "MessageSyncPlayLibraryAccessDenied": "Доступ до цього вмісту обмежено.",
+  "MessageSyncPlayUserJoined": "{0} приєднався до групи.",
+  "MessageSyncPlayUserLeft": "{0} покинув групу."
 }

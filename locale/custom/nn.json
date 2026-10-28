@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Avbryt",
   "ButtonDelete": "Slett",
+  "ButtonLeaveGroup": "Forlat gruppa",
   "ButtonManualLogin": "Manuell innlogging",
   "ButtonOk": "OK",
   "ButtonPlay": "Spel av",
@@ -133,6 +134,10 @@
   "LabelSports": "Sport",
   "LabelStudios": "Studio",
   "LabelSubtitles": "Undertekstar",
+  "LabelSyncPlayDefaultGroupName": "{0}s gruppe",
+  "LabelSyncPlayNewGroup": "Ny gruppe",
+  "LabelSyncPlayNoGroups": "Ingen tilgjengelege grupper",
+  "LabelSyncPlaySelectGroup": "Bli med i ei gruppe",
   "LabelTheme": "Tema",
   "LabelTrack": "Spor",
   "LabelTranscoding": "Omkoding",
@@ -234,5 +239,9 @@
   "MessageDisc1": "Plate {0}",
   "MessageEndsAt1": "Slutter kl. {0}",
   "MessageMoreFrom1": "Meir frå {0}",
-  "MessageSetTheMaximumAmountOfDays": "Set maksimalt tal på dagar ein serie skal liggje i 'Neste'-lista utan at du ser på han."
+  "MessageSetTheMaximumAmountOfDays": "Set maksimalt tal på dagar ein serie skal liggje i 'Neste'-lista utan at du ser på han.",
+  "MessageSyncPlayCreateGroupDenied": "Du treng løyve for å opprette ei gruppe.",
+  "MessageSyncPlayLibraryAccessDenied": "Tilgang til dette innhaldet er avgrensa.",
+  "MessageSyncPlayUserJoined": "{0} har blitt med i gruppa.",
+  "MessageSyncPlayUserLeft": "{0} har forlate gruppa."
 }

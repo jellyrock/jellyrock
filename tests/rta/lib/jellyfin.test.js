@@ -24,6 +24,7 @@ import path from 'node:path';
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import {
   JellyfinRequestError,
+  appSession,
   authenticate,
   findEpisodeWithNext,
   findMovie,
@@ -31,11 +32,15 @@ import {
   getJson,
   getLibraries,
   isRequestError,
+  playOnSession,
   sessionDeviceId,
 } from './jellyfin.js';
 import { FAILURE_KINDS, readFailures } from '../../../scripts/run-record.js';
 
-/** Routes keyed by pathname prefix; each returns [status, body]. Set per test. */
+/**
+ * Routes keyed by pathname prefix; each is [status, body], or a function of the request
+ * that returns one (to see what a helper sent). Set per test.
+ */
 let routes = {};
 let server;
 let base;
@@ -43,7 +48,8 @@ let base;
 beforeAll(async () => {
   server = http.createServer((req, res) => {
     const key = Object.keys(routes).find((k) => req.url.startsWith(k));
-    const [status, body] = key ? routes[key] : [404, { error: 'no route' }];
+    const route = key ? routes[key] : [404, { error: 'no route' }];
+    const [status, body] = typeof route === 'function' ? route(req) : route;
     res.writeHead(status, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(body));
   });
@@ -298,5 +304,58 @@ describe('findEpisodeWithNext', () => {
     routes['/Shows/s1/'] = [500, {}];
 
     await expect(findEpisodeWithNext(session())).rejects.toThrow(JellyfinRequestError);
+  });
+});
+
+describe('appSession', () => {
+  const ROKU = 'roku-device-a';
+
+  it("finds this Roku's session among other Rokus and the REST roles", async () => {
+    let asked;
+    routes['/Sessions'] = (req) => {
+      asked = new URL(req.url, base);
+      return [
+        200,
+        [
+          { Id: 'rest', DeviceId: 'jellyrock-member-x', SupportsRemoteControl: false },
+          { Id: 'other-roku', DeviceId: 'roku-device-b', SupportsRemoteControl: true },
+          { Id: 'this-roku', DeviceId: ROKU, SupportsRemoteControl: true },
+        ],
+      ];
+    };
+
+    await expect(appSession(session(), ROKU)).resolves.toMatchObject({ Id: 'this-roku' });
+    expect(asked.searchParams.get('deviceId')).toBe(ROKU);
+    expect(asked.searchParams.get('controllableByUserId')).toBe('u1');
+  });
+
+  it('throws when the Roku session takes no remote command, rather than cast into nothing', async () => {
+    routes['/Sessions'] = [
+      200,
+      [{ Id: 'this-roku', DeviceId: ROKU, SupportsRemoteControl: false }],
+    ];
+
+    await expect(appSession(session(), ROKU)).rejects.toThrow(/no session takes remote commands/);
+  });
+
+  it('throws the request error when the session list fails', async () => {
+    routes['/Sessions'] = [500, {}];
+
+    await expect(appSession(session(), ROKU)).rejects.toThrow(JellyfinRequestError);
+  });
+});
+
+describe('playOnSession', () => {
+  it('sends PlayNow with the item ids to the session, as a cast does', async () => {
+    let sent;
+    routes['/Sessions/s9/Playing'] = (req) => {
+      sent = { method: req.method, url: new URL(req.url, base) };
+      return [204, ''];
+    };
+
+    await playOnSession(session(), 's9', ['m1', 'm2']);
+    expect(sent.method).toBe('POST');
+    expect(sent.url.searchParams.get('playCommand')).toBe('PlayNow');
+    expect(sent.url.searchParams.get('itemIds')).toBe('m1,m2');
   });
 });

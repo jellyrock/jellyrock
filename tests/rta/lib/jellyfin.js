@@ -113,8 +113,12 @@ export function postJson(urlStr, headers, bodyObj) {
         let data = '';
         res.on('data', (c) => (data += c));
         res.on('end', () => {
-          if (res.statusCode >= 200 && res.statusCode < 300) resolve(JSON.parse(data));
-          else
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            // A 204 (the SyncPlay routes) has no body: `null`, not a JSON.parse throw inside
+            // this handler, which no caller's catch can reach and which leaves the promise
+            // pending for good.
+            resolve(data.trim() === '' ? null : JSON.parse(data));
+          } else
             reject(
               fail(new JellyfinRequestError('POST', urlStr, res.statusCode, res.statusMessage)),
             );
@@ -125,6 +129,53 @@ export function postJson(urlStr, headers, bodyObj) {
     req.write(body);
     req.end();
   });
+}
+
+/**
+ * Whether the server can push a command (a SyncPlay group update, a remote-control
+ * command) to the Roku. Over http:// the app opens the session socket; over https:// Roku
+ * has no socket TLS, so the app needs the companion plugin's long poll, probed at its
+ * /JellyRock/RemoteControl/info route (`remoteProtocol.buildProbeUrl`). The public demo is
+ * https:// without the plugin, so a spec that waits for a pushed update skips there, visibly.
+ */
+export async function commandChannelAvailable(session) {
+  if (new URL(session.serverUrl).protocol === 'http:') return true;
+  try {
+    await getJson(`${session.serverUrl}/JellyRock/RemoteControl/info`, tokenHeader(session.token));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The Roku app's own session, found by the DeviceId the app signs in with
+ * (`m.global.device.serverDeviceName`, which `buildAuthHeader` sends), so a cast never
+ * reaches another Roku signed in to the same server. A REST caller of the same account can
+ * then send it a remote command, as a cast from another client does. Throws when no such
+ * session takes remote commands: a cast that reaches nothing would prove nothing.
+ */
+export async function appSession(session, deviceId) {
+  const query = new URLSearchParams({ controllableByUserId: session.userId, deviceId });
+  const sessions = await getJson(
+    `${session.serverUrl}/Sessions?${query}`,
+    tokenHeader(session.token),
+  );
+  const app = (sessions || []).find(
+    (s) => s.DeviceId === deviceId && s.SupportsRemoteControl === true,
+  );
+  if (!app) throw new Error(`no session takes remote commands for DeviceId ${deviceId}`);
+  return app;
+}
+
+/** What a cast from another client sends: POST /Sessions/{id}/Playing with PlayNow. */
+export function playOnSession(session, sessionId, itemIds) {
+  const query = new URLSearchParams({ playCommand: 'PlayNow', itemIds: itemIds.join(',') });
+  return postJson(
+    `${session.serverUrl}/Sessions/${sessionId}/Playing?${query}`,
+    { ...tokenHeader(session.token), 'Content-Type': 'application/json' },
+    {},
+  );
 }
 
 /** JSON GET over node http/https. */

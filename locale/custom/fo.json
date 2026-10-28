@@ -1,4 +1,5 @@
 {
+  "ButtonLeaveGroup": "Far úr bólkinum",
   "ButtonSearch": "Leita",
   "ButtonShuffle": "Blanda",
   "ButtonSignIn": "Innrita",
@@ -80,6 +81,10 @@
   "LabelSports": "Ítróttur",
   "LabelStudios": "Filmsfeløg",
   "LabelSubtitles": "Undirtekstur",
+  "LabelSyncPlayDefaultGroupName": "Bólkur {0}s",
+  "LabelSyncPlayNewGroup": "Nýggjan bólk",
+  "LabelSyncPlayNoGroups": "Eingir bólkar eru tøkir",
+  "LabelSyncPlaySelectGroup": "Luttak í bólki",
   "LabelTrack": "Spor",
   "LabelTranscoding": "Umkoting",
   "LabelTvShows": "Sjónvarpsrøðir",
@@ -174,5 +179,9 @@
   "LanguageZh": "kinesiskt",
   "LanguageZu": "sulu",
   "MessageDirectedBy1": "Leikstjórnað hevur {0}",
-  "MessageDisc1": "Fløga {0}"
+  "MessageDisc1": "Fløga {0}",
+  "MessageSyncPlayCreateGroupDenied": "Loyvi er neyðugt til tess at gera ein bólk.",
+  "MessageSyncPlayLibraryAccessDenied": "Tú hevur ikki atgongd til hetta innihaldið.",
+  "MessageSyncPlayUserJoined": "{0} luttekur í bólkinum.",
+  "MessageSyncPlayUserLeft": "{0} fór úr bólkinum."
 }

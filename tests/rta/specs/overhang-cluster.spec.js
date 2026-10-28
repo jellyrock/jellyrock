@@ -1,5 +1,5 @@
 /**
- * The overhang cluster (Search, Settings) is on every screen, and the row's keys are the
+ * The overhang cluster (Search, SyncPlay, Settings) is on every screen, and the row's keys are the
  * scene's, not Home's: Up from a screen's top enters the row, Right walks it, OK on the gear
  * opens Settings, and Back lands on the gear again, on a library screen and on details as
  * on Home. Settings' own Up enters the row too. On the search screen, Up from the keyboard's
@@ -26,6 +26,7 @@ import {
   getActiveVal,
   getGlobalVal,
   getVal,
+  walkOverhangRowTo,
   press,
   waitFocused,
   waitFocusInside,
@@ -35,6 +36,7 @@ import {
 } from '../lib/steps.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
+const atSyncPlayIcon = (f) => f?.node?.id === 'syncplayIcon';
 const atSearchIcon = (f) => f?.node?.id === 'searchIcon';
 const atSettingsIcon = (f) => f?.node?.id === 'settingsIcon';
 
@@ -52,24 +54,24 @@ async function freshApp(label) {
   await assertSeedTookEffect(expectedServer, label);
 }
 
-/** Up until the row's first icon holds focus: a screen with no tabs enters the row there. */
+/** Up until the row's first icon holds focus: a screen with no tabs enters the row there. The
+ * first icon is SyncPlay, since the test account may use it. */
 async function enterRow(label) {
-  await waitFocused(atSearchIcon, {
+  await waitFocused(atSyncPlayIcon, {
     timeout: 15000,
     interval: 350,
-    action: walkFocusUntil(ecp.Key.Up, atSearchIcon),
-    label: `the row's search icon from ${label}`,
+    action: walkFocusUntil(ecp.Key.Up, atSyncPlayIcon),
+    label: `the row's first icon from ${label}`,
   });
 }
 
+/** Along the row to an icon (`walkOverhangRowTo`), named for the step's failure message. */
+const walkRowTo = (iconId, label) => walkOverhangRowTo(iconId, { label: `${iconId} on ${label}` });
+const walkToGear = (label) => walkRowTo('settingsIcon', label);
+
 /** Right to the gear, OK, Settings up, Back: the gear holds focus again on the screen left. */
 async function roundTripThroughSettings(label) {
-  await press(ecp.Key.Right);
-  await waitFocused(atSettingsIcon, {
-    timeout: 8000,
-    interval: 250,
-    label: `the gear on ${label}`,
-  });
+  await walkToGear(label);
   await press(ecp.Key.Ok);
   await waitFor('#versionLabel.text', (t) => typeof t === 'string' && /^v/.test(t), {
     label: 'settings version label',
@@ -114,7 +116,11 @@ it('Settings: Up enters the row, the gear there does nothing, Back from the row 
   const viewId = await getActiveVal('id');
 
   await press(ecp.Key.Up);
-  await waitFocused(atSearchIcon, { timeout: 8000, interval: 250, label: 'the row from Settings' });
+  await waitFocused(atSyncPlayIcon, {
+    timeout: 8000,
+    interval: 250,
+    label: 'the row from Settings',
+  });
   await press(ecp.Key.Down);
   await waitFocusInside('#settingsMenu', { label: 'the settings menu after Down from the row' });
 
@@ -122,12 +128,7 @@ it('Settings: Up enters the row, the gear there does nothing, Back from the row 
   // and the gear keeps focus, so the one Back below still reaches Home (a stacked Settings
   // would take two).
   await press(ecp.Key.Up);
-  await press(ecp.Key.Right);
-  await waitFocused(atSettingsIcon, {
-    timeout: 8000,
-    interval: 250,
-    label: 'the gear on Settings',
-  });
+  await walkToGear('Settings');
   await press(ecp.Key.Ok);
   await waitFocused(atSettingsIcon, {
     timeout: 8000,
@@ -156,6 +157,7 @@ it('search: Up from the keyboard enters the row, and the search icon reopens the
 
   // The search icon on the search screen reopens the keyboard; it does not navigate.
   const viewId = await getActiveVal('id');
+  await walkRowTo('searchIcon', 'the search screen');
   await press(ecp.Key.Ok);
   // Focus returns to the column it last left the overlay from, so ask for the overlay.
   await waitFocusInside('#overlay', { label: 'the overlay, reopened by the search icon' });
@@ -180,12 +182,7 @@ it('a theme reload from Settings opened on a library returns to the library, wit
   const path = await getActiveVal('route.path');
 
   await enterRow('the grid');
-  await press(ecp.Key.Right);
-  await waitFocused(atSettingsIcon, {
-    timeout: 8000,
-    interval: 250,
-    label: 'the gear on the library',
-  });
+  await walkToGear('the library');
   await press(ecp.Key.Ok);
   await waitFor('#versionLabel.text', (t) => typeof t === 'string' && /^v/.test(t), {
     label: 'settings version label',
@@ -209,6 +206,7 @@ it('each screen keeps its own icon: library, search icon, search, gear, then Bac
   await freshApp('overhang-cluster nested');
   await navLibraryGrid(ctx);
   await enterRow('the grid');
+  await walkRowTo('searchIcon', 'the library');
   await press(ecp.Key.Ok);
   await waitFor('subtype()', (v) => v === 'SearchScreen', {
     read: getActiveVal,
@@ -219,8 +217,7 @@ it('each screen keeps its own icon: library, search icon, search, gear, then Bac
   await waitFocusInside('#kbd', { label: 'the search keyboard' });
 
   await enterRow('the keyboard');
-  await press(ecp.Key.Right);
-  await waitFocused(atSettingsIcon, { timeout: 8000, interval: 250, label: 'the gear on search' });
+  await walkToGear('search');
   await press(ecp.Key.Ok);
   await waitFor('#versionLabel.text', (t) => typeof t === 'string' && /^v/.test(t), {
     label: 'settings version label',

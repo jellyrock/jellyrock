@@ -103,6 +103,35 @@ namespace syncPlayQueue
     return syncPlayTime.isText(playlistItemId) and playlistItemId = playingItemId
   end function
 
+  ' What a play pressed while in a group asks of the group in place of a local start (decision
+  ' B). A current item already in the group's playlist is a jump to it (SetPlaylistItem);
+  ' anything else replaces the group's queue with this one (SetNewQueue), from the queue's
+  ' position and the current item's starting point. invalid for an empty queue, or one holding
+  ' an item this player could not follow (music, Live TV): that queue plays locally, and its
+  ' mount halts the member.
+  ' @param queueItems - QueueManager's queue
+  ' @param position - the queue's current index
+  ' @param state - syncPlayState
+  function handoff(queueItems as object, position as integer, state as object) as dynamic
+    if type(queueItems) <> "roArray" or position < 0 or position >= queueItems.count() then return invalid
+    for each queueItem in queueItems
+      if not followsItem(queueItem) or not syncPlayTime.isText(queueItem.id) then return invalid
+    end for
+    current = queueItems[position]
+    if type(state.playlist) = "roArray"
+      for each entry in state.playlist
+        if entry.itemId = current.id then return { action: "setPlaylistItem", playlistItemId: entry.playlistItemId }
+      end for
+    end if
+    itemIds = []
+    for each queueItem in queueItems
+      itemIds.push(queueItem.id)
+    end for
+    startTicks& = 0&
+    if syncPlayTime.isWholeNumber(current.startingPoint) then startTicks& = syncPlayTime.asLong(current.startingPoint)
+    return { action: "setNewQueue", itemIds: itemIds, position: position, startPositionTicks: startTicks& }
+  end function
+
   ' Whether a queue update moves this member to another item (a new playlist, the server's
   ' current-item change, or a removal that took the playing item with it).
   function changesPlayingItem(reason as string, previousPlaylistItemId as string, playlistItemId as string) as boolean
@@ -130,6 +159,46 @@ namespace syncPlayQueue
     if not changesPlayingItem(reason, previousPlaylistItemId, playlistItemId) then return owedLoad
     newPlaylist = reason = "NewPlaylist" or (isValid(owedLoad) and owedLoad.newPlaylist = true)
     return { newPlaylist: newPlaylist }
+  end function
+
+  ' The load owed once the frame answers a play this member handed to the group (claimPlay): a
+  ' load whether or not the playing item changed, since the viewer asked for this item even
+  ' when it is the one the group was already on (a halted member casting it back; a member
+  ' whose player a Stop closed). Nothing more when a load is owed already, or when the group
+  ' plays nothing.
+  ' @param owedLoad - owedLoadAfter's record for this frame
+  ' @param playlistItemId - the group's playing playlist id after this frame
+  function owedLoadForClaimedPlay(owedLoad as dynamic, reason as string, playlistItemId as string) as dynamic
+    if isValid(owedLoad) or playlistItemId = "" then return owedLoad
+    return { newPlaylist: reason = "NewPlaylist" }
+  end function
+
+  ' What the viewer is told when the load a queue frame owes runs, decided as the frame arrives,
+  ' so one thing that happened is one toast. "followingAgain" when the frame brought a halted
+  ' member back, or one brought back earlier is still untold; "" for the queue that answers the
+  ' viewer's own join (a server answers a join to a playing or paused group with its queue before
+  ' any command, and Joined said it); "groupStarted" otherwise.
+  ' @param pending - the notice an earlier frame decided for a load not yet run, or invalid
+  ' @param refollowed - whether this frame brought a halted member back
+  ' @param answersJoin - whether no command arrived since the join
+  function noticeForQueueFrame(pending as dynamic, refollowed as boolean, answersJoin as boolean) as string
+    if refollowed or (syncPlayTime.isText(pending) and pending = "followingAgain") then return "followingAgain"
+    if answersJoin then return ""
+    return "groupStarted"
+  end function
+
+  ' The notice the load runs with: none for a play this viewer handed over (told at the claim),
+  ' and none for a reload in place unless the member follows again, since the viewer is already
+  ' watching with the group. A load no frame decided is the group starting something.
+  ' @param frameNotice - noticeForQueueFrame's answer, or invalid
+  ' @param action - loadAction's answer
+  ' @param claimed - whether a play this viewer handed to the group is still waiting
+  function noticeAtLoad(frameNotice as dynamic, action as string, claimed as boolean) as string
+    if claimed then return ""
+    notice = "groupStarted"
+    if syncPlayTime.isText(frameNotice) then notice = frameNotice
+    if notice = "followingAgain" or action = "launch" then return notice
+    return ""
   end function
 
   ' What applying the owed load does to the player: "" when nothing is owed, "remount" to reload the

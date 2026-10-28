@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "取消",
   "ButtonDelete": "刪除",
+  "ButtonLeaveGroup": "離開群組",
   "ButtonManualLogin": "手動登入",
   "ButtonOk": "確定",
   "ButtonPlay": "播放",
@@ -137,6 +138,11 @@
   "LabelSports": "體育",
   "LabelStudios": "工作室",
   "LabelSubtitles": "字幕",
+  "LabelSyncPlay": "同步播放",
+  "LabelSyncPlayDefaultGroupName": "{0}的群組",
+  "LabelSyncPlayNewGroup": "建立群組",
+  "LabelSyncPlayNoGroups": "沒有可用的群組",
+  "LabelSyncPlaySelectGroup": "加入群組",
   "LabelTheme": "主題",
   "LabelTrack": "音軌",
   "LabelTranscoding": "轉檔",
@@ -239,5 +245,9 @@
   "MessageEndsAt1": "於 {0} 結束",
   "MessageMoreFrom1": "更多來自 {0}",
   "MessageSearchNoResults": "沒有結果。",
-  "MessageSetTheMaximumAmountOfDays": "設定一個節目在未被觀看的情況下應保留在「接下來」列表中的最大天數。"
+  "MessageSetTheMaximumAmountOfDays": "設定一個節目在未被觀看的情況下應保留在「接下來」列表中的最大天數。",
+  "MessageSyncPlayCreateGroupDenied": "需要建立群組之權限。",
+  "MessageSyncPlayLibraryAccessDenied": "存取受限。",
+  "MessageSyncPlayUserJoined": "{0}加入群組。",
+  "MessageSyncPlayUserLeft": "{0}離開了群組。"
 }

@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "ரத்துசெய்",
   "ButtonDelete": "அழி",
+  "ButtonLeaveGroup": "குழுவிலிருந்து விலகு",
   "ButtonManualLogin": "கைமுறை புகுபதிகை",
   "ButtonOk": "சரி",
   "ButtonPlay": "வாசிக்கவும்",
@@ -131,6 +132,11 @@
   "LabelSports": "விளையாட்டு",
   "LabelStudios": "ஸ்டுடியோக்கள்",
   "LabelSubtitles": "வசன வரிகள்",
+  "LabelSyncPlay": "ஒத்திசைவு இயக்கி",
+  "LabelSyncPlayDefaultGroupName": "{0} இன் குழு",
+  "LabelSyncPlayNewGroup": "புதிய குழு",
+  "LabelSyncPlayNoGroups": "எந்தவொரு குழுக்களும் பெறப்படவில்லை",
+  "LabelSyncPlaySelectGroup": "ஒரு குழுவில் சேர",
   "LabelTheme": "தீம்",
   "LabelTrack": "தடம்",
   "LabelTranscoding": "டிரான்ஸ்கோடிங்",
@@ -233,5 +239,9 @@
   "MessageEndsAt1": "{0} இல் முடிகிறது",
   "MessageMoreFrom1": "{0} இலிருந்து மேலும்",
   "MessageSearchNoResults": "முடிவுகள் இல்லை.",
-  "MessageSetTheMaximumAmountOfDays": "ஒரு நிகழ்ச்சியைப் பார்க்காமலேயே 'அடுத்து வரும்' பட்டியலில் இருக்க வேண்டிய அதிகபட்ச நாட்களை அமைக்கவும்."
+  "MessageSetTheMaximumAmountOfDays": "ஒரு நிகழ்ச்சியைப் பார்க்காமலேயே 'அடுத்து வரும்' பட்டியலில் இருக்க வேண்டிய அதிகபட்ச நாட்களை அமைக்கவும்.",
+  "MessageSyncPlayCreateGroupDenied": "ஒரு குழுவை உருவாக்க அனுமதி தேவை.",
+  "MessageSyncPlayLibraryAccessDenied": "இந்த உள்ளடக்கத்திற்கான அணுகல் தடைசெய்யப்பட்டுள்ளது.",
+  "MessageSyncPlayUserJoined": "{0} குழுவில் சேர்ந்துள்ளார்.",
+  "MessageSyncPlayUserLeft": "{0} குழுவிலிருந்து வெளியேறினார்."
 }

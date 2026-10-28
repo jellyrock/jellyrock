@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Annuller",
   "ButtonDelete": "Slet",
+  "ButtonLeaveGroup": "Forlad gruppe",
   "ButtonManualLogin": "Manuel Login",
   "ButtonOk": "OK",
   "ButtonPlay": "Afspil",
@@ -133,6 +134,10 @@
   "LabelSports": "Sport",
   "LabelStudios": "Studier",
   "LabelSubtitles": "Undertekster",
+  "LabelSyncPlayDefaultGroupName": "{0}s gruppe",
+  "LabelSyncPlayNewGroup": "Ny gruppe",
+  "LabelSyncPlayNoGroups": "Ingen grupper tilgængelige",
+  "LabelSyncPlaySelectGroup": "Deltag i en gruppe",
   "LabelTheme": "Tema",
   "LabelTrack": "Spor",
   "LabelTranscoding": "Transkodning",
@@ -235,5 +240,9 @@
   "MessageEndsAt1": "Slutter {0}",
   "MessageMoreFrom1": "Mere fra {0}",
   "MessageSearchNoResults": "Ingen resultater.",
-  "MessageSetTheMaximumAmountOfDays": "Indstil maks. dage, et program forbliver i køen uden at blive set."
+  "MessageSetTheMaximumAmountOfDays": "Indstil maks. dage, et program forbliver i køen uden at blive set.",
+  "MessageSyncPlayCreateGroupDenied": "Rettigheder påkrævet for at oprette en gruppe.",
+  "MessageSyncPlayLibraryAccessDenied": "Adgang til dette indhold er begrænset.",
+  "MessageSyncPlayUserJoined": "{0} deltager i gruppen.",
+  "MessageSyncPlayUserLeft": "{0} har forladt gruppen."
 }

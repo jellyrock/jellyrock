@@ -2,7 +2,7 @@
 <!--
   The top bar, one row: logo (Home only), the tab bar (the screen's views as text buttons
   with a glyph, one selected) or the title in its place, then the user dropdown (Home only),
-  the fixed cluster (Search, Settings) and the clock. The cluster is the same on every
+  the fixed cluster (SyncPlay when the account may use it, Search, Settings) and the clock. The cluster is the same on every
   screen that shows it; a screen's own controls live on the screen. Left and Right walk tab
   bar, dropdown and cluster as one row that wraps at both ends; Down returns to the screen.
 -->
@@ -39,7 +39,7 @@
          cluster is on every screen that shows the overhang once a user is signed in, except
          a player (JRScene.registerOverhangData says why). -->
     <field id="isClusterVisible" type="boolean" value="false" onChange="onIsClusterVisibleChanged" />
-    <!-- A cluster icon was pressed: its entry id ("search", "settings"). JRScene routes it. -->
+    <!-- A cluster icon was pressed: its entry id ("syncplay", "search", "settings"). JRScene routes it. -->
     <field id="iconAction" type="string" alwaysNotify="true" />
     <!-- A user dropdown item was chosen: its HomeAction. JRScene relays it to main.bs. -->
     <field id="userMenuAction" type="string" alwaysNotify="true" />
@@ -53,8 +53,12 @@
          the old imperative hideClock() function so all overhang element visibility follows
          one field-assignment pattern. -->
     <field id="isClockVisible" value="true" type="boolean" onChange="isClockVisibleChanged" />
-    <!-- The cluster icon for an entry id ("search", "settings"), for a screen's focus bookkeeping. -->
+    <!-- The cluster icon for an entry id ("syncplay", "search", "settings"), for a screen's focus bookkeeping. -->
     <function name="getIcon" />
+    <!-- The SyncPlay icon's state from JRScene: { shown, active, badge }. Shown first in the cluster
+         when the account may use SyncPlay; active (drawn in colorSecondary) while in a group; a
+         badge (a colorSecondary dot) while a group exists to join. -->
+    <function name="applySyncPlayIcon" />
     <!-- Up from a screen: focus the element Down last left the row from, else the first shown
          (tabs, dropdown, cluster). Returns false when the row has nothing to focus. -->
     <function name="focusRow" />

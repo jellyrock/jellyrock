@@ -46,6 +46,7 @@ namespace tests
         TAB_GAP: overhangRow.TAB_GAP, ELEMENT_GAP: overhangRow.ELEMENT_GAP,
         TEXT_DROP: overhangRow.TEXT_DROP, TEXT_TOP: overhangRow.TEXT_TOP,
         ICON_BOX: overhangRow.ICON_BOX, ICON_PADDING: overhangRow.ICON_PADDING, SLOT_SIZE: overhangRow.SLOT_SIZE,
+        BADGE_SIZE: overhangRow.BADGE_SIZE, BADGE_X: overhangRow.BADGE_X, BADGE_Y: overhangRow.BADGE_Y,
         "iconX(1)": iconBarNav.iconX(1), "barWidth(3)": iconBarNav.barWidth(3)
       })
     end function

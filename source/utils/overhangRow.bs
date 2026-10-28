@@ -15,6 +15,7 @@ namespace overhangRow
   ' Large font, on the grid), so a text label takes the row's box dropped this far.
   ' textMetrics.spec.bs fails if the two disagree.
   const TEXT_DROP = 3
+  const BADGE_SIZE = 18 ' A dot on a glyph's top-right for something waiting there (SyncPlay's groups to join)
 
   ' Derived
   const ROW_TOP = ROW_BOTTOM - ROW_HEIGHT ' Every box in the row shares this top edge
@@ -22,6 +23,9 @@ namespace overhangRow
   const ICON_BOX = ROW_HEIGHT ' An icon button's focus box: a square as tall as the row
   const ICON_PADDING = (ICON_BOX - GLYPH_SIZE) \ 2 ' Between a glyph and its focus box, all four sides
   const SLOT_SIZE = GLYPH_SIZE + BOX_PADDING * 2 ' What a glyph takes in the row's layout
+  ' The badge in its icon's box: a third of it past the glyph's right and top edges
+  const BADGE_X = ICON_PADDING + GLYPH_SIZE - BADGE_SIZE * 2 \ 3
+  const BADGE_Y = ICON_PADDING - BADGE_SIZE \ 3
 
   ' Where Left or Right from the row element `from` ("tabs", "dropdown" or "cluster") takes
   ' focus: the next element `shown` ({ tabs, dropdown, cluster } as booleans) along the row,

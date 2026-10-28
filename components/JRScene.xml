@@ -21,6 +21,9 @@
     <!-- Polls routerState while a navigation the router refused waits to be retried
          (refusedNavigation, navigateThenFocus). -->
     <Timer id="refusedNavigationTimer" repeat="true" />
+    <!-- Reads the SyncPlay group list for the cluster icon's badge while one could show
+         (syncPlayMenu.pollsGroups). -->
+    <Timer id="syncPlayGroupsTimer" repeat="true" />
     <Toast id="toast" visible="false" />
     <!-- Used to calculate m.global.user.fontScaleFactor -->
     <Label id="defaultFont" text="" visible="false" />

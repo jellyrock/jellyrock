@@ -1,0 +1,247 @@
+import "pkg:/source/syncplay/syncPlayMenu.bs"
+
+namespace tests
+
+  ' What the cluster's SyncPlay icon shows per membership and access, and what the policy allows.
+  @suite("syncPlayMenu — access and the cluster icon")
+  class SyncPlayMenuTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("access")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("CreateAndJoinGroups may join and create")
+    function _()
+      m.assertTrue(syncPlayMenu.canJoin("CreateAndJoinGroups"))
+      m.assertTrue(syncPlayMenu.canCreate("CreateAndJoinGroups"))
+    end function
+
+    @it("nobody may join while SyncPlay is switched off, whatever the policy")
+    function _()
+      m.assertFalse(syncPlayMenu.joinAllowed("CreateAndJoinGroups", false))
+      m.assertFalse(syncPlayMenu.joinAllowed(invalid, false))
+      m.assertTrue(syncPlayMenu.joinAllowed("JoinGroups", true))
+      m.assertFalse(syncPlayMenu.joinAllowed("None", true))
+    end function
+
+    @it("ships switched on")
+    function _()
+      m.assertTrue(syncPlayMenu.IS_ENABLED)
+    end function
+
+    @it("JoinGroups may join, not create")
+    function _()
+      m.assertTrue(syncPlayMenu.canJoin("JoinGroups"))
+      m.assertFalse(syncPlayMenu.canCreate("JoinGroups"))
+    end function
+
+    @it("None may do neither")
+    function _()
+      m.assertFalse(syncPlayMenu.canJoin("None"))
+      m.assertFalse(syncPlayMenu.canCreate("None"))
+    end function
+
+    @it("a missing value is the server's default, create and join")
+    function _()
+      m.assertTrue(syncPlayMenu.canJoin(invalid))
+      m.assertTrue(syncPlayMenu.canCreate(""))
+    end function
+
+    @it("compares the value case-insensitively, as the server's binder does")
+    function _()
+      m.assertFalse(syncPlayMenu.canJoin("none"))
+      m.assertTrue(syncPlayMenu.canCreate("createandjoingroups"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the group rows")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    private function groupList() as object
+      return [
+        { GroupId: "g-1", GroupName: "Movie night", State: "Idle", Participants: ["ann", "bob"], LastUpdatedAt: "2026-10-23T20:47:20.500Z" },
+        { GroupId: "g-2", GroupName: "Quiet room", State: "Playing", Participants: [], LastUpdatedAt: "2026-10-23T20:47:20.500Z" }
+      ]
+    end function
+
+    @it("lists each group as a join row in the server's order, then New group when allowed")
+    function _()
+      rows = syncPlayMenu.rowsFor(m.groupList(), "CreateAndJoinGroups")
+      m.assertEqual(rows.count(), 3)
+      m.assertEqual(rows[0].action, "join")
+      m.assertEqual(rows[0].groupId, "g-1")
+      m.assertEqual(rows[0].name, "Movie night")
+      m.assertEqual(rows[0].members, "ann, bob")
+      m.assertEqual(rows[1].members, "")
+      m.assertEqual(rows[2].action, "new")
+    end function
+
+    @it("JoinGroups gets no New group row, and an empty list with it is empty")
+    function _()
+      m.assertEqual(syncPlayMenu.rowsFor(m.groupList(), "JoinGroups").count(), 2)
+      m.assertEqual(syncPlayMenu.rowsFor([], "JoinGroups").count(), 0)
+    end function
+
+    @it("an empty list with create rights is the New group row alone")
+    function _()
+      rows = syncPlayMenu.rowsFor([], "CreateAndJoinGroups")
+      m.assertEqual(rows.count(), 1)
+      m.assertEqual(rows[0].action, "new")
+    end function
+
+    @it("skips a group with no id and tolerates a body that is no list")
+    function _()
+      rows = syncPlayMenu.rowsFor([{ GroupName: "ghost" }, "junk"], "JoinGroups")
+      m.assertEqual(rows.count(), 0)
+      m.assertEqual(syncPlayMenu.rowsFor(invalid, "JoinGroups").count(), 0)
+      m.assertEqual(syncPlayMenu.rowsFor({ error: true }, "CreateAndJoinGroups").count(), 1)
+    end function
+
+    @it("memberLine joins the names and is empty without participants")
+    function _()
+      m.assertEqual(syncPlayMenu.memberLine(m.groupList()[0]), "ann, bob")
+      m.assertEqual(syncPlayMenu.memberLine(m.groupList()[1]), "")
+      m.assertEqual(syncPlayMenu.memberLine(invalid), "")
+    end function
+
+    @it("groupById finds the viewer's group in the list, or nothing")
+    function _()
+      m.assertEqual(syncPlayMenu.groupById(m.groupList(), "g-2").GroupName, "Quiet room")
+      m.assertInvalid(syncPlayMenu.groupById(m.groupList(), "g-9"))
+      m.assertInvalid(syncPlayMenu.groupById(invalid, "g-1"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the toast for a notice")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the viewer's own join is a success toast naming the group")
+    function _()
+      toast = syncPlayMenu.toastFor({ kind: "joined", groupName: "Movie night", userName: "" })
+      m.assertEqual(toast.key, translationKeys.MessageSyncPlayJoinedGroup)
+      m.assertEqual(toast.toastType, "success")
+      m.assertEqual(toast.arg, "Movie night")
+    end function
+
+    @it("membership and the group start are info, a halt a warning, a refusal an error")
+    function _()
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "userJoined", userName: "bob" }).toastType, "info")
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "userJoined", userName: "bob" }).arg, "bob")
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "left", groupName: "g" }).toastType, "info")
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "leftStale", groupName: "g" }).key, translationKeys.MessageSyncPlayLeftStaleGroup)
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "groupStarted", groupName: "g" }).toastType, "info")
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "playedToGroup", groupName: "g" }).key, translationKeys.MessageSyncPlayPlayedToGroup)
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "followingAgain", groupName: "g" }).arg, "g")
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "halted", groupName: "g" }).toastType, "warning")
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "JoinGroupDenied" }).toastType, "error")
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "LibraryAccessDenied" }).key, translationKeys.MessageSyncPlayLibraryAccessDenied)
+    end function
+
+    @it("an unknown kind, or no notice, shows nothing")
+    function _()
+      m.assertInvalid(syncPlayMenu.toastFor({ kind: "StateUpdate" }))
+      m.assertInvalid(syncPlayMenu.toastFor(invalid))
+      m.assertInvalid(syncPlayMenu.toastFor({}))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the cluster icon")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is shown and not active while not in a group")
+    function _()
+      state = syncPlayMenu.iconFor(false, "CreateAndJoinGroups", "available")
+      m.assertFalse(state.active)
+      m.assertTrue(state.shown)
+    end function
+
+    @it("is active while in a group")
+    function _()
+      state = syncPlayMenu.iconFor(true, "JoinGroups", "available")
+      m.assertTrue(state.active)
+      m.assertTrue(state.shown)
+    end function
+
+    @it("is not shown with access None")
+    function _()
+      m.assertFalse(syncPlayMenu.iconFor(false, "None", "available").shown)
+    end function
+
+    @it("carries a badge while a group exists to join and the viewer is in none")
+    function _()
+      m.assertTrue(syncPlayMenu.iconFor(false, "JoinGroups", "available", true).badge)
+      m.assertFalse(syncPlayMenu.iconFor(false, "JoinGroups", "available", false).badge)
+      m.assertFalse(syncPlayMenu.iconFor(false, "JoinGroups", "available").badge, "no group list means no badge")
+    end function
+
+    @it("drops the badge in a group: the tint says it")
+    function _()
+      state = syncPlayMenu.iconFor(true, "JoinGroups", "available", true)
+      m.assertTrue(state.active)
+      m.assertFalse(state.badge)
+    end function
+
+    @it("carries no badge when not shown")
+    function _()
+      m.assertFalse(syncPlayMenu.iconFor(false, "None", "available", true).badge)
+    end function
+
+    @it("is hidden while the push channel is unknown: no flash of a disabled icon")
+    function _()
+      m.assertFalse(syncPlayMenu.iconFor(false, "JoinGroups", "").shown)
+      m.assertFalse(syncPlayMenu.iconFor(false, "JoinGroups", "", true).badge)
+      m.assertFalse(syncPlayMenu.iconFor(false, "JoinGroups", "").disabled)
+    end function
+
+    @it("is shown and enabled when the push channel is available")
+    function _()
+      state = syncPlayMenu.iconFor(false, "JoinGroups", "available")
+      m.assertTrue(state.shown)
+      m.assertFalse(state.disabled)
+    end function
+
+    @it("is shown but disabled, with no badge, when the server has no push channel")
+    function _()
+      state = syncPlayMenu.iconFor(false, "JoinGroups", "unavailable", true)
+      m.assertTrue(state.shown)
+      m.assertTrue(state.disabled)
+      m.assertFalse(state.badge, "a group list is not read, so no badge")
+      m.assertFalse(state.active)
+    end function
+
+    @it("a hidden icon stays hidden whatever the channel says")
+    function _()
+      m.assertFalse(syncPlayMenu.iconFor(false, "None", "unavailable").shown)
+      m.assertFalse(syncPlayMenu.iconFor(false, "None", "available").shown)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("groups to join")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a list with a joinable group has groups")
+    function _()
+      m.assertTrue(syncPlayMenu.hasGroups([{ GroupId: "g1", GroupName: "Movie night", Participants: ["ann"] }]))
+    end function
+
+    @it("an empty list, a group with no id, or no list has none")
+    function _()
+      m.assertFalse(syncPlayMenu.hasGroups([]))
+      m.assertFalse(syncPlayMenu.hasGroups([{ GroupName: "no id" }, { GroupId: "" }]))
+      m.assertFalse(syncPlayMenu.hasGroups(invalid))
+      m.assertFalse(syncPlayMenu.hasGroups({ GroupId: "g1" }))
+    end function
+
+    @it("polls only while the icon could show a badge")
+    function _()
+      m.assertTrue(syncPlayMenu.pollsGroups(true, false, "JoinGroups", "available"))
+      m.assertFalse(syncPlayMenu.pollsGroups(false, false, "JoinGroups", "available"), "the cluster is hidden: signed out or a player")
+      m.assertFalse(syncPlayMenu.pollsGroups(true, true, "JoinGroups", "available"), "in a group the badge never shows")
+      m.assertFalse(syncPlayMenu.pollsGroups(true, false, "None", "available"), "the icon is not shown")
+      m.assertFalse(syncPlayMenu.pollsGroups(true, false, "JoinGroups", "unavailable"), "no push channel: no group list")
+      m.assertFalse(syncPlayMenu.pollsGroups(true, false, "JoinGroups", ""), "channel unknown: the icon is hidden")
+    end function
+
+  end class
+
+end namespace

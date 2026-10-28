@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "إلغاء",
   "ButtonDelete": "حذف",
+  "ButtonLeaveGroup": "مغادرة المجموعة",
   "ButtonManualLogin": "تسجيل الدخول اليدوي",
   "ButtonOk": "موافق",
   "ButtonPlay": "قم بتشغيل",
@@ -138,6 +139,11 @@
   "LabelSports": "الرياضة",
   "LabelStudios": "استوديوهات",
   "LabelSubtitles": "الترجمات",
+  "LabelSyncPlay": "تشغيل متزامن",
+  "LabelSyncPlayDefaultGroupName": "مجموعة {0}",
+  "LabelSyncPlayNewGroup": "مجموعة جديدة",
+  "LabelSyncPlayNoGroups": "لا توجد مجموعات متاحة",
+  "LabelSyncPlaySelectGroup": "الانضمام إلى مجموعة",
   "LabelTheme": "سمة",
   "LabelTotalBitrate": "مجموع معدل البث",
   "LabelTrack": "مسار",
@@ -242,5 +248,9 @@
   "MessageEndsAt1": "ينتهى عند {0}",
   "MessageMoreFrom1": "المزيد من {0}",
   "MessageSearchNoResults": "لايوجد نتائج.",
-  "MessageSetTheMaximumAmountOfDays": "يضبط الحد الأقصى لعدد الأيام التي يجب أن يبقى فيها العرض في قائمة 'التالي' دون مشاهدته."
+  "MessageSetTheMaximumAmountOfDays": "يضبط الحد الأقصى لعدد الأيام التي يجب أن يبقى فيها العرض في قائمة 'التالي' دون مشاهدته.",
+  "MessageSyncPlayCreateGroupDenied": "الإذن مطلوب لإنشاء مجموعة.",
+  "MessageSyncPlayLibraryAccessDenied": "الوصول إلى هذا المحتوى مقيّد.",
+  "MessageSyncPlayUserJoined": "{0} انضم إلى المجموعة.",
+  "MessageSyncPlayUserLeft": "{0} غادر المجموعة."
 }

@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Odustani",
   "ButtonDelete": "Izbrisati",
+  "ButtonLeaveGroup": "Napusti grupu",
   "ButtonManualLogin": "Ručna prijava",
   "ButtonOk": "U redu",
   "ButtonPlay": "Pokreni",
@@ -131,6 +132,11 @@
   "LabelSports": "Sportovi",
   "LabelStudios": "Studija",
   "LabelSubtitles": "Titlovi",
+  "LabelSyncPlay": "Sinkronizirana reprodukcija (SyncPlay)",
+  "LabelSyncPlayDefaultGroupName": "Od grupe {0}",
+  "LabelSyncPlayNewGroup": "Nova grupa",
+  "LabelSyncPlayNoGroups": "Nema dostupnih grupa",
+  "LabelSyncPlaySelectGroup": "Pridruži se jednoj grupi",
   "LabelTheme": "Tema",
   "LabelTranscoding": "Transkodiranje",
   "LabelUsername": "Korisničko ime",
@@ -229,5 +235,9 @@
   "MessageEndsAt1": "Završava u {0}",
   "MessageMoreFrom1": "Više od {0}",
   "MessageSearchNoResults": "Nema rezultata.",
-  "MessageSetTheMaximumAmountOfDays": "Postavite najveći broj dana koliko serija treba ostati na popisu 'Sljedeće' bez gledanja."
+  "MessageSetTheMaximumAmountOfDays": "Postavite najveći broj dana koliko serija treba ostati na popisu 'Sljedeće' bez gledanja.",
+  "MessageSyncPlayCreateGroupDenied": "Potreban je dopuštaj za stvaranje grupe.",
+  "MessageSyncPlayLibraryAccessDenied": "Pristup ovom sadržaju je ograničen.",
+  "MessageSyncPlayUserJoined": "{0} se pridružio(la) grupi.",
+  "MessageSyncPlayUserLeft": "{0} se napustio(la) grupu."
 }

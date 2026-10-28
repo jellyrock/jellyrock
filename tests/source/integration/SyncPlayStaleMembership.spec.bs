@@ -1,0 +1,130 @@
+import "pkg:/source/remotecontrol/remoteCommand.bs"
+import "pkg:/source/utils/config.bs"
+
+namespace tests
+
+  ' The membership a Home exit left behind (decision `syncplay-stale-membership-at-launch`, the app
+  ' half): the manager keeps the group in the user's registry while in one, forgets it on a leave or
+  ' a reset, and at the next launch posts Leave for it and names it when the server's GroupLeft
+  ' answers. A real registry section, under a test- user id the base class deletes after each test.
+  @suite("SyncPlayManager - the membership a Home exit left behind")
+  class SyncPlayStaleMembershipTests extends tests.BaseTestSuite
+
+    private manager as object
+    private previousUserId as string
+    private previousServerUrl as string
+    private userId = "test-syncplay-stale"
+
+    protected override sub setup()
+      m.needsRegistrySetup = true
+      super.setup()
+    end sub
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.previousUserId = m.global.user.id
+      m.global.user.id = m.userId
+      ' No server until a test needs a post to build: a GroupJoined must not start a time-sync
+      ' burst, and nothing leaves the device (the suite has no side-effect task).
+      m.previousServerUrl = m.global.server.serverUrl
+      m.global.server.serverUrl = ""
+      m.manager = CreateObject("roSGNode", "SyncPlayManager")
+    end function
+
+    protected override function afterEach()
+      m.manager.callFunc("reset")
+      m.manager = invalid
+      m.global.server.serverUrl = m.previousServerUrl
+      m.global.user.id = m.previousUserId
+      super.afterEach()
+    end function
+
+    private function update(updateType as string, inner as dynamic) as object
+      return remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g-1", Type: updateType, Data: inner } })
+    end function
+
+    private sub joinGroup()
+      m.manager.frame = m.update("GroupJoined", { GroupId: "g-1", GroupName: "Movie night", State: "Idle", Participants: ["ann"], LastUpdatedAt: "2026-10-27T20:47:20.500Z" })
+    end sub
+
+    private function remembered() as dynamic
+      return registryRead("syncPlayGroup", m.userId)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("The registry remembers the membership")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a join writes the group's id and name; a leave removes them")
+    function _()
+      m.joinGroup()
+      m.assertEqual(m.remembered(), "g-1|Movie night")
+      m.manager.frame = m.update("GroupLeft", invalid)
+      m.assertInvalid(m.remembered())
+    end function
+
+    @it("NotInGroup and reset() remove them too")
+    function _()
+      m.joinGroup()
+      m.manager.frame = m.update("NotInGroup", invalid)
+      m.assertInvalid(m.remembered())
+      m.joinGroup()
+      m.assertEqual(m.remembered(), "g-1|Movie night")
+      m.manager.callFunc("reset")
+      m.assertInvalid(m.remembered())
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("leaveStaleMembership() at launch")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("with a remembered group and none in memory it posts Leave, forgets the key, and names the group when GroupLeft answers")
+    function _()
+      registryWrite("syncPlayGroup", "g-1|Movie night", m.userId)
+      m.global.server.serverUrl = "http://localhost:8096"
+      m.assertTrue(m.manager.callFunc("leaveStaleMembership"))
+      m.assertInvalid(m.remembered())
+      m.manager.frame = m.update("GroupLeft", invalid)
+      m.assertEqual(m.manager.notice.kind, "leftStale")
+      m.assertEqual(m.manager.notice.groupName, "Movie night")
+    end function
+
+    @it("a group name with a bar in it is named whole")
+    function _()
+      registryWrite("syncPlayGroup", "g-1|Movie | night", m.userId)
+      m.global.server.serverUrl = "http://localhost:8096"
+      m.manager.callFunc("leaveStaleMembership")
+      m.manager.frame = m.update("GroupLeft", invalid)
+      m.assertEqual(m.manager.notice.groupName, "Movie | night")
+    end function
+
+    @it("a NotInGroup answer (the membership had ended already) says nothing")
+    function _()
+      registryWrite("syncPlayGroup", "g-1|Movie night", m.userId)
+      m.global.server.serverUrl = "http://localhost:8096"
+      m.assertTrue(m.manager.callFunc("leaveStaleMembership"))
+      m.manager.notice = invalid
+      m.manager.frame = m.update("NotInGroup", invalid)
+      m.assertInvalid(m.manager.notice)
+    end function
+
+    @it("with nothing remembered, or while in a group, it posts nothing")
+    function _()
+      m.global.server.serverUrl = "http://localhost:8096"
+      m.assertFalse(m.manager.callFunc("leaveStaleMembership"))
+      m.global.server.serverUrl = ""
+      m.joinGroup()
+      m.global.server.serverUrl = "http://localhost:8096"
+      m.assertFalse(m.manager.callFunc("leaveStaleMembership"))
+      m.assertEqual(m.remembered(), "g-1|Movie night")
+    end function
+
+    @it("a plain GroupLeft with nothing stale and nothing in memory says nothing")
+    function _()
+      m.manager.notice = invalid
+      m.manager.frame = m.update("GroupLeft", invalid)
+      m.assertInvalid(m.manager.notice)
+    end function
+
+  end class
+end namespace

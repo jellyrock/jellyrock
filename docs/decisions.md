@@ -2356,6 +2356,66 @@ A theme preset never writes the seven `uiThemeColor*` settings. `applyThemeColor
 
 Ruled out: moving the prompt to the moment a preset is picked, which keeps a destructive step and loses the custom colors after Yes; a theme node on `m.global`, which is tech debt `manual-theme-cascade`'s own project.
 
+## decision-id: syncplay-play-handed-to-group
+
+**date**: 2026-10-27
+**status**: accepted
+**related-files**: `components/manager/QueueManager.bs`, `components/syncplay/SyncPlayManager.bs`, `source/syncplay/syncPlayQueue.bs`
+
+A video play pressed while in a SyncPlay group is the group's, decided at `QueueManager.playQueue` (decision B of the SyncPlay project): `SyncPlayManager.claimPlay` posts `SetPlaylistItem` for a current item already in the group's playlist and `SetNewQueue` for anything else (`syncPlayQueue.handoff`), and the group's `PlayQueue` answer loads it for every member. The manager's own group load is told apart by the playlist id stamped on its current item (`syncPlayQueue.isGroupItem`), never by a flag: every launcher clears the queue, so a stamp means the manager built it. The frame that answers a claimed play owes a load even when the group's item did not change (`syncPlayQueue.owedLoadForClaimedPlay`). The claim holds the start the press opened (`QueueManager.groupClaimsPlay` passes it to `claimPlay`) and lasts as long as it (`appWaits.isOpen`): the load's own start replaces it, a reload in place hands it to the reloaded player (which takes the pending start, `QueueManager.takePlaybackStart`), a refusal, the membership ending or a halt fails that start and no other, and Back or the start's time limit ends the claim with it. A halted member's claim posts `SetIgnoreWait(false)` before the hand-off, because the server's wait skips a member still ignoring it. A halted member follows again on its own play and on any member's `NewPlaylist`, as jellyfin-web does, and stays halted on a jump, an append or a removal. A queue the video player could not follow (music, Live TV, one such item among videos) plays locally. A trailer is a play like any other and goes to the group too: in a group, Play means play for the group whatever is pressed, which leaves one rule to learn. A current item already in the group's playlist is a jump rather than a new queue, so a halted member rejoining the group's playing item lands at the group's position instead of restarting everyone; that path drops the press's start point and the rest of its queue. A claim that re-followed a halted member and ends with no load from the group (a refusal, Back, the start's time limit, a lost post) halts it again, quietly (`SyncPlayManager.endUnansweredRefollow`). It is checked after a refusal and at every frame and player event: every group-wide wait starts with a frame to all members, and a following member with no player never posts Ready.
+
+Ruled out: a `performingGroupLoad` flag around the manager's own call (new state to keep in step with every load path, and a leak if the call ever became asynchronous); a manager timer failing the pending start a few seconds after the claim (a slow HTTPS long poll trips it on a good answer); failing the start at the claim and opening another at the load (a spinner flicker); a flag cleared at each end, with `QueueManager` telling the manager when a start fails (a second node kept in step, and the flag shipped first: the remount branch, Back and a failed post each left it set); a trailer-only exception, and trailers to the group only while it plays nothing (the server returns a group to Playing or Paused after its last item, so a finished movie looks like a playing one); re-following only on the `NewPlaylist` answer (the group would not wait for the presser); undoing the follow in the start's `onFinally` (Rooibos takes a promise only from a node test, so that path would go untested). A **Play for everyone** or **Only for me** prompt for a halted member is a phase F followup. Measured on the Stick 4K against a local 12.2.0 server on 2026-10-27: the phase C device check's halted-cast step loaded nothing until the claimed-play load rule, because `SetPlaylistItem` for the group's current item answers with the same playing item and `owedLoadAfter` saw no change; 14 of 14 after it.
+
+## decision-id: syncplay-stale-membership-at-launch
+
+**date**: 2026-10-27
+**status**: accepted
+**related-files**: `components/syncplay/SyncPlayManager.bs`, `components/home/Home.bs`
+
+A SyncPlay membership the app exit leaves behind is ended at the next launch, from the app side (decision C of the SyncPlay project, app half). Home on the remote ends the app with no `Leave`, and on HTTPS through the companion plugin the session outlives the long poll, so the server keeps the member in its group. The manager writes the group as `groupId|groupName` to the user-scoped registry key `syncPlayGroup` on `GroupJoined`, removes it on `GroupLeft`, `NotInGroup` and `reset()` (which runs before sign-out clears the user), and `Home`'s first run calls `leaveStaleMembership` right after it launches the receiver, so the server's `GroupLeft` can reach the viewer as a toast naming the group. A `NotInGroup` answer (on HTTP the socket drop ended it already) says nothing. The plugin half, leaving a long-poll session whose polls went stale, is followup `syncplay-plugin-leave-stale-session` for the plugin repo.
+
+Ruled out: relying on the socket drop alone (true on HTTP only); posting `Leave` before the receiver starts (the answer would be lost, and the toast with it). Checked on the Stick 4K against a local HTTP 12.2.0 server on 2026-10-27: after a hard relaunch while in a group, Home's first run posted the Leave and the key was gone.
+
+## decision-id: syncplay-one-toast-per-load
+
+**date**: 2026-10-27
+**status**: accepted
+**related-files**: `components/syncplay/SyncPlayManager.bs`, `source/syncplay/syncPlayQueue.bs`
+
+Each SyncPlay group load tells the viewer one thing, decided as its `PlayQueue` frame arrives (`syncPlayQueue.noticeForQueueFrame`) and said when the load runs (`noticeAtLoad`), because `Toast` has one slot and a second message replaces the first. The queue that answers the viewer's own join says nothing past Joined: the server sends a join to a playing or paused group its queue before any command (`WaitingGroupState.SessionJoined`), and an idle group a `Stop` first. A halted member brought back by another member's new playlist is told once, at the load, and a halt before that load stays quiet.
+
+Ruled out: a queue in `Toast` (late, out-of-date toasts, and an app-wide timing change), severity-based replacement (both doubles were info then info), and keeping both toasts. Measured on a Stick 4K against a local 12.2.0 server on 2026-10-27: before the change, joining a playing group never showed Joined, since the RTA poll read the group-start toast within 250 ms.
+
+## decision-id: overlay-wait-holds-keys-not-screen
+
+**date**: 2026-10-27
+**status**: accepted
+**related-files**: `components/AppWaitHost.bs`, `source/utils/appWaits.bs`, `source/enums/LoadingKind.bs`, `components/JRScene.bs`
+
+An app wait records the screen it hides apart from the screen whose keys it holds (`AppWaitHost` entries carry `hidden` and `held`; `appWaits.holding` and `cancellable` read `held`), because a pressed action whose answer is a dialog over an unchanged screen needs the keys held and Back to cancel ([ADR 0053](adr/0053-back-cancels-every-wait.md)) without the screen going blank. `LoadingKind.OVERLAY` is that kind; the SyncPlay menu's group list is its first user. A press from the overhang is held too: `holdFocus` remembers the overhang's focused node and `releaseFocus` returns to it. The overhang comes back when no wait hides a screen, and the focus when none holds the keys.
+
+Ruled out: ending the hiding wait after the dialog shows (the page still blanks during the fetch), and a screen wait (it holds no keys, and Back on it leaves the screen). Measured on a Stick 4K on 2026-10-27: under the hiding kind the screen and overhang read opacity 0 for 90 to 430 ms while the focus stayed on the overhang icon, and a second press orphaned a wait that blanked the screen for about 64 s.
+
+## decision-id: syncplay-icon-badge-by-shape
+
+**date**: 2026-10-27
+**status**: accepted
+**related-files**: `source/syncplay/syncPlayMenu.bs`, `components/ui/button/JROverhangIcon.bs`, `components/JRScene.bs`, `source/utils/overhangRow.bs`
+
+The cluster's SyncPlay icon tells its two states apart by shape. In a group the glyph is tinted `colorSecondary` (`JROverhangIcon.isActive`); outside one, while a group exists to join, an 18 pixel `colorSecondary` dot sits on the white glyph's top-right (`JROverhangIcon.hasBadge`, `overhangRow.BADGE_SIZE`). The server tells a session about a group only once it is a member (every `SyncPlayBroadcastType` is group-scoped, read on Jellyfin master 2026-10-27), so `JRScene` reads `/SyncPlay/List` every `syncPlayMenu.GROUPS_POLL_MS` (the interval jellyfin-web uses), on each screen and membership change and from the menu's own fetch, one read at a time and only while `syncPlayMenu.pollsGroups` holds; a failed read clears the dot. The size came from captures on a Streaming Stick 4K at 1080p on 2026-10-27 at 12, 15, 18 and 21 pixels: 12 read as a speck, 21 crowded the glyph and its focus ring.
+
+Ruled out: the two dots jellyfin-web draws (green for groups to join, blue `primary` for in a group), because the themes have no green, a fixed color falls outside the palette a viewer can recolor, `colorPrimary` means focusable here, and two dots told apart by color alone fail WCAG 1.4.1 and merge for a viewer whose `colorSecondary` is green. A group-name chip (the epic's original status chip), because a variable-width entry in the cluster's fixed slots reopens the row alignment of #1262. The tint alone, because it cannot show groups to join.
+
+## decision-id: syncplay-icon-follows-push-channel
+
+**date**: 2026-10-28
+**status**: accepted
+**related-files**: `components/remotecontrol/RemoteControlTask.bs`, `source/syncplay/syncPlayMenu.bs`, `source/remotecontrol/remoteProtocol.bs`
+
+SyncPlay is offered only where the server has a push channel to the Roku, because membership, commands and queue updates arrive only as pushed messages (the session socket on an HTTP server, the companion plugin's long poll on HTTPS). `RemoteControlTask` publishes `server.remoteChannelStatus`. The icon is hidden while it is unknown, so a server with a channel never flashes a disabled icon, and shown disabled when it is unavailable; a press explains that an HTTPS server needs the plugin. Measured on the public demo on 2026-10-28: a join there put the Roku in the group on the server (`GET /SyncPlay/List` listed it, and the Roku's session read `SupportsRemoteControl: false`) while the app never learned of it. The HTTPS probe retries with backoff after a transport failure or a server error, and checks again every 5 minutes after a "no plugin" answer.
+
+Ruled out: hiding the icon without a channel, as for access None, because a viewer on two servers would see SyncPlay vanish on one with no reason; posting `Leave` when no `GroupJoined` arrives in time, because it offers the feature and takes it back and leaves the member stranded until the timer fires; and `roku-requests`' `retryCount` for the probe, because it retries at once with no delay.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

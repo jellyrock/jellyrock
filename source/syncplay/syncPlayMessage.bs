@@ -7,6 +7,9 @@
 ' in JsonDefaults), so Command and Type are matched as strings and never as numbers. Anything
 ' unknown or malformed degrades to "ignore", never an error, as the rest of the receiver does.
 '
+' Every id (group, item and playlist item) is normalized by serverId to the server's websocket
+' form, lowercase with no dashes, whichever channel delivered the frame.
+'
 ' Normalized shapes (the Task drops `raw` before marshalling, so these carry everything):
 '   syncplaycommand -> command ("Unpause"|"Pause"|"Stop"|"Seek"), whenMs, emittedAtMs, positionTicks,
 '                      playlistItemId, groupId
@@ -33,8 +36,8 @@ namespace syncPlayMessage
     result.whenMs = whenMs
     result.emittedAtMs = emittedAtMs
     result.positionTicks = asTicks(data.PositionTicks)
-    result.playlistItemId = asText(data.PlaylistItemId)
-    result.groupId = asText(data.GroupId)
+    result.playlistItemId = serverId(data.PlaylistItemId)
+    result.groupId = serverId(data.GroupId)
     return result
   end function
 
@@ -46,14 +49,14 @@ namespace syncPlayMessage
     inner = data.Data
     result.kind = "syncplayupdate"
     result.updateType = updateType
-    result.groupId = asText(data.GroupId)
+    result.groupId = serverId(data.GroupId)
 
     if updateType = "GroupJoined"
       ' GroupInfoDto: { GroupId, GroupName, State, Participants, LastUpdatedAt }
       if not isValid(inner) then return ignored(result)
       lastUpdatedAtMs = syncPlayTime.parseServerTimeMs(inner.LastUpdatedAt)
       if lastUpdatedAtMs = invalid then return ignored(result)
-      if isValidAndNotEmpty(inner.GroupId) then result.groupId = inner.GroupId
+      if isValidAndNotEmpty(inner.GroupId) then result.groupId = serverId(inner.GroupId)
       result.groupName = asText(inner.GroupName)
       result.groupState = asText(inner.State)
       result.participants = asTextArray(inner.Participants)
@@ -107,14 +110,23 @@ namespace syncPlayMessage
 
   ' --- helpers ---
 
+  ' An id in the form the server's websocket and REST answers write it: lowercase, no dashes. The
+  ' plugin's long poll writes GUIDs with dashes (plain System.Text.Json), and a dashed id would
+  ' never match the dash-free item ids the queue fetch returns. Every id the parser reads goes
+  ' through here, so the rest of the layer compares ids in one form. Empty or missing stays "".
+  function serverId(value as dynamic) as string
+    id = asText(value)
+    return lcase(id.replace("-", ""))
+  end function
+
   ' A queue entry is { ItemId, PlaylistItemId } on every line (QueueItem on 10.7 and 10.8,
-  ' SyncPlayQueueItem from 10.9). Entries without both ids are dropped.
+  ' SyncPlayQueueItem from 10.9). Entries without both ids are dropped. Both ids are normalized.
   function parsePlaylist(entries as object) as object
     playlist = []
     if type(entries) <> "roArray" then return playlist
     for each entry in entries
       if isValid(entry) and isValidAndNotEmpty(entry.ItemId) and isValidAndNotEmpty(entry.PlaylistItemId)
-        playlist.push({ itemId: entry.ItemId, playlistItemId: entry.PlaylistItemId })
+        playlist.push({ itemId: serverId(entry.ItemId), playlistItemId: serverId(entry.PlaylistItemId) })
       end if
     end for
     return playlist

@@ -102,6 +102,32 @@ namespace remoteProtocol
     return 0
   end function
 
+  ' What to do with a plugin probe's answer (see probeOutcome).
+  const PROBE_AVAILABLE = "available"
+  const PROBE_UNAVAILABLE = "unavailable"
+  const PROBE_RETRY = "retry"
+
+  ' How long to wait before probing again after the server answered "no usable plugin", so a plugin
+  ' installed later is found without reopening the app. Milliseconds.
+  const PLUGIN_RECHECK_MS = 300000
+
+  ' Decide what a /info probe means. A usable plugin is a 200 with the contract version we implement.
+  ' Any other answer from the server (a 4xx, or a 200 with another version) says the plugin is not
+  ' usable now, so the caller marks the channel unavailable and checks again after PLUGIN_RECHECK_MS.
+  ' Code 0 (a transport failure or timeout) and a 5xx say nothing about the plugin, so the caller
+  ' retries with backoff and leaves the channel status as it is.
+  '
+  ' @param httpCode - the probe's HTTP status, 0 for a failed or timed-out transfer
+  ' @param contractVersion - parseContractVersion() of the probe body
+  function probeOutcome(httpCode as integer, contractVersion as integer) as string
+    if httpCode = 200
+      if contractVersion = CONTRACT_VERSION then return PROBE_AVAILABLE
+      return PROBE_UNAVAILABLE
+    end if
+    if httpCode >= 400 and httpCode < 500 then return PROBE_UNAVAILABLE
+    return PROBE_RETRY
+  end function
+
   ' --- Cold-launch cast pairing (#668 P1) ---
   ' JellyRock reports its wake identity to the companion plugin so a CLOSED app can be cold-woken via
   ' ECP /launch. Sent to the SAME companion plugin as the long-poll channel, but works on http OR https
