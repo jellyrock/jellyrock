@@ -2,7 +2,7 @@
 name: start-project
 model: opus
 effort: medium
-description: This skill should be used only when the user explicitly types "/start-project" (optionally with a slug). It begins a new tracked JellyRock project under docs/projects/, running scaffold-project.sh to create PLAN.md from docs/projects/_TEMPLATE.md and index it in the projects README, then walking the user through the Charter. For multi-session work that crosses a phase boundary or carries a decision worth recording as an ADR in docs/adr/. Do not auto-invoke on vague phrases like "let's start something"; for a single-session fix just do the work and capture any tail via /log followup.
+description: This skill should be used only when the user explicitly types "/start-project" (optionally with a slug). It begins a new tracked JellyRock project in the projects folder (docs/projects/ by default), running scaffold-project.sh to create PLAN.md from the project template and index it in the projects README, then walking the user through the Charter. For multi-session work that crosses a phase boundary or carries a decision worth recording as an ADR in docs/adr/. Do not auto-invoke on vague phrases like "let's start something"; for a single-session fix just do the work and capture any tail via /log followup.
 ---
 
 # Start Project
