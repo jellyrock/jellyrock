@@ -748,7 +748,6 @@ function isFollowing() as boolean
   return m.state.inGroup and m.state.following
 end function
 
-' The routed play host, when the viewer is on the play route.
 ' Hands the group's own verb to the player, marked fromGroup: the player applies it as it is
 ' instead of asking the group for it again (VideoPlayerView.handleTransport). Without the mark a
 ' group Seek came back as a new Seek request and went round for good, and the load's first-frame
@@ -758,6 +757,7 @@ sub tellPlayer(host as object, verb as object)
   host.callFunc("handleTransport", verb)
 end sub
 
+' The routed play host, when the viewer is on the play route.
 function playerHost() as dynamic
   view = m.global.activeRoutedView
   if isValid(view) and view.subtype() = "PlayerHostView" then return view
