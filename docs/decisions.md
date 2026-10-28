@@ -2386,6 +2386,16 @@ Each SyncPlay group load tells the viewer one thing, decided as its `PlayQueue` 
 
 Ruled out: a queue in `Toast` (late, out-of-date toasts, and an app-wide timing change), severity-based replacement (both doubles were info then info), and keeping both toasts. Measured on a Stick 4K against a local 12.2.0 server on 2026-10-27: before the change, joining a playing group never showed Joined, since the RTA poll read the group-start toast within 250 ms.
 
+## decision-id: overlay-wait-holds-keys-not-screen
+
+**date**: 2026-10-27
+**status**: accepted
+**related-files**: `components/AppWaitHost.bs`, `source/utils/appWaits.bs`, `source/enums/LoadingKind.bs`, `components/JRScene.bs`
+
+An app wait records the screen it hides apart from the screen whose keys it holds (`AppWaitHost` entries carry `hidden` and `held`; `appWaits.holding` and `cancellable` read `held`), because a pressed action whose answer is a dialog over an unchanged screen needs the keys held and Back to cancel ([ADR 0053](adr/0053-back-cancels-every-wait.md)) without the screen going blank. `LoadingKind.OVERLAY` is that kind; the SyncPlay menu's group list is its first user. A press from the overhang is held too: `holdFocus` remembers the overhang's focused node and `releaseFocus` returns to it. The overhang comes back when no wait hides a screen, and the focus when none holds the keys.
+
+Ruled out: ending the hiding wait after the dialog shows (the page still blanks during the fetch), and a screen wait (it holds no keys, and Back on it leaves the screen). Measured on a Stick 4K on 2026-10-27: under the hiding kind the screen and overhang read opacity 0 for 90 to 430 ms while the focus stayed on the overhang icon, and a second press orphaned a wait that blanked the screen for about 64 s.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
