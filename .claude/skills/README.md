@@ -25,7 +25,7 @@ This file is the index. Each skill's own `description` is the full summary; a ro
 
 | Skill | Model | What |
 |---|---|---|
-| [`/start-project`](start-project/SKILL.md) | opus | Begin a tracked project under `docs/projects/`, with its PLAN and Charter |
+| [`/start-project`](start-project/SKILL.md) | opus | Begin a tracked project in the projects folder, with its PLAN and Charter |
 | [`/resume-project`](resume-project/SKILL.md) `<slug>` | sonnet | Load a project and its kickoff, with a continuity check |
 | [`/end-session`](end-session/SKILL.md) | opus | Close a project session: update the PLAN, commit and push. The user types it |
 
