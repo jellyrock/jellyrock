@@ -146,6 +146,10 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // command is newer, so its `emittedAtMs` never returns to an earlier value within a membership.
   // `syncplay-controls.spec.js` waits for it to differ from a value read before a key press.
   'syncPlayManager.sync.lastCommand.emittedAtMs',
+  // `SyncPlayManager.scheduleCommand` sets the last group command and publishes it; it holds until
+  // the group's next command, and in the `beforeAll` of `syncplay-controls.spec.js` nothing sends
+  // one between the Unpause and the first case.
+  'syncPlayManager.sync.lastCommand.command',
   // `SyncPlayManager.publish` writes the group playlist's length from each PlayQueue frame:
   // held until the group's queue changes again. `syncplay-controls.spec.js` waits on it after the
   // REST member queues an item.

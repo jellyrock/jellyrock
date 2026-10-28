@@ -132,6 +132,11 @@ beforeAll(async () => {
     label: "the group's queue reached the Roku",
   });
   await waitMediaPlaying("the group's item", 90000);
+  await waitFor('syncPlayManager.sync.lastCommand.command', (v) => v === 'Unpause', {
+    read: getGlobalVal,
+    timeout: 30000,
+    label: "the group's Unpause after this member's first-frame Ready",
+  });
   await waitFor('state', (s) => s === 'playing', {
     read: playerState,
     timeout: 30000,

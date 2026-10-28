@@ -1452,9 +1452,9 @@ Closes when the dump in `tests/rta/lib/diagnostics.js` includes an open dialog's
 
 PR #1270 (SyncPlay phase D) cites a 14-step device check of group playback (pause, seek, next item, Stop, Back, casts while halted and while following, a failing queue fetch, reset) that exists only as a throwaway RTA script outside the repo, so no reviewer or later session can run it again. Its fixed `sleep` reads also make one step depend on timing: the halted-cast step asserts the last group command is `Seek` six seconds after a seek, but the server's `Unpause` can already have arrived by then (a rerun on 2026-10-27 read `Unpause`; playback was past the seek target in both runs).
 
-The two casts are covered since #1270: `syncplay-menu.spec.js` casts to the Roku while halted and again over its player, through `appSession` and `playOnSession` in `tests/rta/lib/jellyfin.js`, and checks no wait outlives the reload. Still untracked: pause, seek, next item, Stop, Back during group playback, a failing queue fetch and reset.
+The two casts are covered since #1270: `syncplay-menu.spec.js` casts to the Roku while halted and again over its player, through `appSession` and `playOnSession` in `tests/rta/lib/jellyfin.js`, and checks no wait outlives the reload. Pause, seek, next and previous are covered since #1276 by `syncplay-controls.spec.js`, which also settled the waits on group commands: it waits on the manager's last command (`syncPlayManager.sync.lastCommand`), listed in `rta-wait-justified.js`. Still untracked: Stop, Back during group playback, a failing queue fetch and reset.
 
-Closes when those steps are tracked specs under `tests/rta/specs/` (or folded into `syncplay-menu.spec.js`), with each `sleep` replaced by a wait on the state it means (the RTA lint gates require that) and the two-member setup shared with `syncplay-menu`. Not done in #1270: it needs a design for the waits on group commands.
+Closes when those steps are tracked specs under `tests/rta/specs/` (folded into `syncplay-controls.spec.js` or `syncplay-menu.spec.js`), each waiting on the state it means.
 
 ### docs
 
