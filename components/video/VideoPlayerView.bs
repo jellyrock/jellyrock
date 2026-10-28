@@ -1538,6 +1538,9 @@ end sub
 ' Forces playback to finished state for proper watched-status and auto-play.
 ' Triggers synchronous teardown (onState -> PlayerHostView.onPlayerStateChange -> destroy/
 ' goBack -> onDestroy), invalidating all m. references. Callers must return immediately after.
+' In a SyncPlay group a finish moves every member on: the host hands it to the manager, which
+' asks the group for the next item. A segment skip finishes only when the segment reaches the
+' end (skipEndsPlayback), so a scene after the credits segment still plays.
 sub forceFinishPlayback()
   ' Explicitly mark as watched via dedicated API endpoint.
   ' Uses the API pool (not SideEffectTask) so it can't be overwritten

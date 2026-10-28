@@ -81,7 +81,8 @@ namespace syncPlayQueue
 
   ' Whether the group's playing item is the last of its playlist, so a finished item has nothing to
   ' move on to. The group's playlist, not the local queue: the local one drops items this member
-  ' cannot see. Repeat modes are phase E's.
+  ' cannot see. The group's repeat mode is not read yet: under RepeatAll or RepeatOne the server
+  ' answers NextItem on the last item, which this does not expect.
   function isLastItem(state as object) as boolean
     if state.playingItemIndex < 0 then return true
     return state.playingItemIndex >= state.playlist.count() - 1
@@ -112,8 +113,8 @@ namespace syncPlayQueue
   end function
 
   ' What the OSD's previous and next may ask of the group, from the group's playlist: a step
-  ' past either end has no item to go to. Repeat modes are the server's: it answers NextItem
-  ' on the last item by its own mode, which this does not predict.
+  ' past either end has no item to go to. The group's repeat mode is not read yet: under
+  ' RepeatAll the server would wrap at either end, which this does not offer.
   ' @param index - the group's playing index
   ' @param count - the group's playlist length
   function stepBounds(index as integer, count as integer) as object
