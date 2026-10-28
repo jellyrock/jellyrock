@@ -196,16 +196,14 @@ sub populateData()
   setVideoSubTitle()
 end sub
 
-' setButtonStates: Disable previous/next buttons if needed and remove any other unneeded buttons
-sub setButtonStates()
-  ' Whole row first: the removals below look buttons up BY ID inside the group, and a
-  ' stashed button is not in it. Without this a previous item's overflow would survive
-  ' its own removal and reappear in the next item's menu.
-  unsplitButtons()
-
+' The previous and next buttons' enabled state, set both ways. Run at each item load and again as
+' the OSD opens: a SyncPlay group's playlist can change under the playing item.
+sub applyStepButtons()
+  if not isValid(m.itemData) then return
+  ' Keep prev/next enabled for TvChannel: channel list loads async after init
+  if m.itemData.type = "TvChannel" then return
   queueCount = m.global.queueManager.callFunc("getCount")
   queueIndex = m.global.queueManager.callFunc("getPosition")
-  isTvChannel = m.itemData.type = "TvChannel"
   hasPrevious = queueCount > 1 and queueIndex > 0
   hasNext = queueIndex + 1 < queueCount
   ' In a SyncPlay group the local queue holds the playing item alone: previous and next read the
@@ -215,18 +213,22 @@ sub setButtonStates()
     hasPrevious = group.hasPrevious
     hasNext = group.hasNext
   end if
+  ' Either can sit in the overflow menu, outside the row, while the row is split.
+  itemPrevious = m.buttonMenuLeft.findNode("itemBack")
+  if isValid(itemPrevious) then itemPrevious.isEnabled = hasPrevious
+  itemNext = m.buttonMenuLeft.findNode("itemNext")
+  if isValid(itemNext) then itemNext.isEnabled = hasNext
+end sub
 
-  ' Disable these buttons as needed
+' setButtonStates: Disable previous/next buttons if needed and remove any other unneeded buttons
+sub setButtonStates()
+  ' Whole row first: the removals below look buttons up BY ID inside the group, and a
+  ' stashed button is not in it. Without this a previous item's overflow would survive
+  ' its own removal and reappear in the next item's menu.
+  unsplitButtons()
 
-  ' Keep prev/next enabled for TvChannel: channel list loads async after init
-  if not isTvChannel and not hasPrevious
-    itemPrevious = m.buttonMenuLeft.findNode("itemBack")
-    itemPrevious.isEnabled = false
-  end if
-  if not isTvChannel and not hasNext
-    itemNext = m.buttonMenuLeft.findNode("itemNext")
-    itemNext.isEnabled = false
-  end if
+  isTvChannel = m.itemData.type = "TvChannel"
+  applyStepButtons()
 
   ' Remove these buttons as needed
 
@@ -742,6 +744,7 @@ end sub
 
 sub onVisibleChanged()
   if m.top.visible
+    applyStepButtons()
     resetFocusToDefaultButton()
 
     ' Timer runs even while paused so the live TV behind-live counter keeps ticking
