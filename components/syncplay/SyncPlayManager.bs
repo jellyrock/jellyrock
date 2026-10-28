@@ -296,6 +296,25 @@ sub followAgain()
   publish()
 end sub
 
+' A halted member follows the group again from the SyncPlay menu (phase E): the follow first, so
+' the fetched queue applies, then the group's item loaded as a new queue at the position the
+' state kept while halted (every update and command is recorded then; syncPlayPlayback.
+' startPositionTicks estimates it). A group playing nothing is only followed again. True when
+' this member was halted in a group.
+function resumeFollowing() as boolean
+  ensureReady()
+  if not m.state.inGroup or m.state.following then return false
+  followAgain()
+  if m.state.playingItemId = ""
+    notify("followingAgain", m.state.groupName, "")
+    return true
+  end if
+  m.owedLoad = { newPlaylist: true }
+  m.loadNotice = "followingAgain"
+  fetchQueue("Resume", m.state.lastUpdateMs, false, "-resume")
+  return true
+end function
+
 ' Whether a play this viewer handed to the group still waits on the group's answer: the start
 ' its press opened is still open. Back, the start's time limit or a newer press ended it.
 function hasOpenClaim() as boolean
@@ -503,12 +522,14 @@ end sub
 ' the playlist's length (syncPlayQueue's header says why). A failed load goes to
 ' onQueueLoadFailed: the server waits on this member's Ready, so a silent exit would hold the
 ' whole group.
-sub fetchQueue(reason as string, lastUpdateMs as longinteger, isRetry as boolean)
+' @param tag - what tells this fetch's request id from the update's own (a resume fetches an
+'   update already fetched once; fetchAsync keys its pending requests by id)
+sub fetchQueue(reason as string, lastUpdateMs as longinteger, isRetry as boolean, tag = "" as string)
   entry = syncPlayQueue.playingEntry(m.state)
   if not isValid(entry) then return
   req = GetApi().BuildGetItemsByQueryRequest({ ids: entry.itemId })
   if not isValid(req) then return
-  requestId = "syncplay-queue-" + lastUpdateMs.toStr()
+  requestId = "syncplay-queue-" + lastUpdateMs.toStr() + tag
   if isRetry then requestId = requestId + "-retry"
   promises.chain(fetchAsync(req, requestId), { reason: reason, lastUpdateMs: lastUpdateMs, isRetry: isRetry, entry: entry }).then(sub(res as object, ctx as object)
     ' A newer update arrived while this one's item was in flight: it will apply its own.

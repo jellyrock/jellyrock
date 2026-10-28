@@ -678,6 +678,43 @@ namespace tests
       m.manager.notice = invalid
     end sub
 
+    @it("resumeFollowing follows again from the menu and tells the server to wait on this member once more")
+    function _()
+      m.halt()
+      m.enableServer()
+      posts = m.capturePosts()
+      m.assertTrue(m.manager.callFunc("resumeFollowing"))
+      m.assertTrue(m.manager.following)
+      last = m.lastPost(posts)
+      m.assertTrue(last.url.instr("/SyncPlay/SetIgnoreWait") >= 0)
+      m.assertEqual(last.body, FormatJson({ "IgnoreWait": false }))
+      ' The group's item is fetched for the load; with no answer here nothing is told yet.
+      m.assertInvalid(m.manager.notice)
+    end function
+
+    @it("resumeFollowing into a group playing nothing only follows again, and says so")
+    function _()
+      m.joinGroup()
+      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }], PlayingItemIndex: 0, StartPositionTicks: 0, IsPlaying: false, ShuffleMode: "Sorted", RepeatMode: "RepeatNone" })
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.manager.frame = m.update("PlayQueue", { Reason: "RemoveItems", LastUpdate: "2026-10-23T20:47:26.000Z", Playlist: [], PlayingItemIndex: -1, StartPositionTicks: 0, IsPlaying: false, ShuffleMode: "Sorted", RepeatMode: "RepeatNone" })
+      m.manager.notice = invalid
+      m.assertFalse(m.manager.following)
+      m.assertTrue(m.manager.callFunc("resumeFollowing"))
+      m.assertTrue(m.manager.following)
+      m.assertEqual(m.manager.notice.kind, "followingAgain")
+    end function
+
+    @it("resumeFollowing does nothing for a member already following, or outside a group")
+    function _()
+      m.assertFalse(m.manager.callFunc("resumeFollowing"))
+      m.joinGroup()
+      m.playGroupItem()
+      m.assertFalse(m.manager.callFunc("resumeFollowing"))
+      m.assertTrue(m.manager.following)
+    end function
+
     @it("a new playlist brings a halted member back, and its load says so")
     function _()
       m.halt()
