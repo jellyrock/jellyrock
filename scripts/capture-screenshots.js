@@ -52,7 +52,7 @@ import {
   deployRtaBuild,
   hardRelaunch,
 } from '../tests/rta/lib/driver.js';
-import { sleep, waitFor } from '../tests/rta/lib/steps.js';
+import { getVal, sleep, waitFor } from '../tests/rta/lib/steps.js';
 import {
   authenticate,
   findMovie,
@@ -198,6 +198,31 @@ async function injectBackdrop(buf) {
     interval: 500,
     label: 'backdrop image load',
   }).catch(() => {});
+}
+
+/**
+ * Show the overhang's SyncPlay icon enabled and badged ("a group to join") on every screen
+ * that has the cluster, so the store and gallery images draw the eye to SyncPlay.
+ *
+ * The public demo is HTTPS without the JellyRock plugin, so the app shows the icon disabled
+ * there, and `syncPlayMenu.iconFor()` never badges a disabled icon. The app is left to settle
+ * first: the icon appears only once the push status is known (`iconFor`'s `shown`), and a
+ * status that lands after the override would redraw over it, or capture it hidden. Then the
+ * icon's own fields are set, so the app draws its real enabled-and-badged state. The scene
+ * redraws the icon only on a screen, membership or push-status change, and group polling is
+ * off while the status is unavailable, so the override holds until the capture.
+ */
+async function showSyncPlayBadge() {
+  if ((await getVal('#overhang.isClusterVisible')) !== true) return;
+  await waitFor('#overhang.#cluster.#syncplayIcon.isDisabled', (v) => typeof v === 'boolean', {
+    timeout: 20000,
+    interval: 500,
+    label: 'SyncPlay icon shown (push status known)',
+  });
+  const icon = '#overhang.#cluster.#syncplayIcon';
+  // isDisabled first: the icon hides its badge while disabled.
+  await odc.setValue({ base: 'scene', keyPath: `${icon}.isDisabled`, value: false });
+  await odc.setValue({ base: 'scene', keyPath: `${icon}.hasBadge`, value: true });
 }
 
 /** Capture the current screen to docs/screenshots/<folder>/<name>.webp (JPEG to lossless WebP). */
@@ -414,6 +439,7 @@ async function main() {
       await injectBackdrop(backdrops[backdropKey(ctx)]);
       await sleep(1000);
     }
+    await showSyncPlayBadge();
     await capture(screen.name, folder);
   };
   // Each screen reseeds + relaunches from scratch, so a transient hiccup (a

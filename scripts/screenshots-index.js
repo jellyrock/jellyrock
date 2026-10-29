@@ -26,7 +26,18 @@ const manifestJson = path.join(shotsDir, 'screenshots.json');
 // any captured screen not listed here falls into a trailing "More" section, so new
 // screens still appear (regroup them here when convenient).
 const SECTIONS = [
-  { title: 'Getting started', names: ['serverSelect', 'userSelect', 'home', 'settings', 'search'] },
+  {
+    title: 'Getting started',
+    names: [
+      'serverSelect',
+      'userSelect',
+      'home',
+      'settings',
+      'search',
+      'searchTyping',
+      'searchRecent',
+    ],
+  },
   // Playback sits high up: the OSD is a highlight, not something to bury at the bottom.
   { title: 'Playback', names: ['osd', 'trickplay'] },
   {

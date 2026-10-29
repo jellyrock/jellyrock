@@ -115,6 +115,17 @@ export async function seedHome(session, locale) {
   return session.serverUrl;
 }
 
+/**
+ * Seed the user's recent searches (`searchHistory.KEY`, a JSON array of strings, newest
+ * first). No relaunch needed: `searchHistory.load()` reads the registry each time the
+ * search screen fills its suggestion column.
+ */
+export async function seedSearchHistory(session, terms) {
+  await odc.writeRegistry({
+    values: { [session.userId]: { searchRecent: JSON.stringify(terms) } },
+  });
+}
+
 /** A `saved_servers` list entry built from an authenticated session (mirrors SaveServerList's shape). */
 export function savedServerEntry(session) {
   return {

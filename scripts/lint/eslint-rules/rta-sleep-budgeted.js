@@ -81,7 +81,9 @@ export const BUDGETS = new Map([
   // Plus 2 measurement windows (see that category below): `navGridScroll`'s rest before its
   // timed scroll and its drain after, which fix the workload the `item-grid-paging` line is
   // read against. Gating either on a signal would change what is measured.
-  ['tests/rta/lib/nav.js', 12],
+  // Plus 2 paint settles for the searchTyping and searchRecent screenshots: their gates
+  // (the hints, the seeded recent list) pass before the posters and the sliding overlay paint.
+  ['tests/rta/lib/nav.js', 14],
   ['scripts/capture-screenshots.js', 1],
 
   // Timer-window waits: out-wait a period to prove a NON-EVENT (a dialog that must
