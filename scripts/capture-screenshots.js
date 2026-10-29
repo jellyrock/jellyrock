@@ -52,11 +52,12 @@ import {
   deployRtaBuild,
   hardRelaunch,
 } from '../tests/rta/lib/driver.js';
-import { sleep, waitFor } from '../tests/rta/lib/steps.js';
+import { getVal, sleep, waitFor } from '../tests/rta/lib/steps.js';
 import {
   authenticate,
   findMovie,
   getBuffer,
+  getJson,
   getLibraries,
   libraryIdFor,
 } from '../tests/rta/lib/jellyfin.js';
@@ -200,8 +201,74 @@ async function injectBackdrop(buf) {
   }).catch(() => {});
 }
 
+/**
+ * Show the overhang's SyncPlay icon enabled and badged ("a group to join") on every screen
+ * that has the cluster, so the store and gallery images draw the eye to SyncPlay.
+ *
+ * The public demo is HTTPS without the JellyRock plugin, so the app shows the icon disabled
+ * there, and `syncPlayMenu.iconFor()` never badges a disabled icon. The app is left to settle
+ * first: the icon appears only once the push status is known (`iconFor`'s `shown`), and a
+ * status that lands after the override would redraw over it, or capture it hidden. Then the
+ * icon's own fields are set, so the app draws its real enabled-and-badged state. The scene
+ * redraws the icon only on a screen, membership or push-status change, and group polling is
+ * off while the status is unavailable, so the override holds until the capture.
+ */
+async function showSyncPlayBadge() {
+  if ((await getVal('#overhang.isClusterVisible')) !== true) return;
+  await waitFor('#overhang.#cluster.#syncplayIcon.isDisabled', (v) => typeof v === 'boolean', {
+    timeout: 20000,
+    interval: 500,
+    label: 'SyncPlay icon shown (push status known)',
+  });
+  const icon = '#overhang.#cluster.#syncplayIcon';
+  // isDisabled first: the icon hides its badge while disabled.
+  await odc.setValue({ base: 'scene', keyPath: `${icon}.isDisabled`, value: false });
+  await odc.setValue({ base: 'scene', keyPath: `${icon}.hasBadge`, value: true });
+}
+
+/**
+ * Wait for the backdrop to finish painting before a capture. The user picker returns from its
+ * readiness gate before the splash arrives: `UserSelect.loadSplashscreen()` fetches the branding
+ * config and only then sets the backdrop uri. The app's own `isSplashscreenEnabled` cannot say
+ * "not fetched yet" (an unset boolean field reads false), so the script asks the server what the
+ * app is about to be told. An enabled splash makes the uri a required wait; a disabled one
+ * leaves the uri empty and there is nothing to wait for. The server picker loads no splash.
+ * Then, whenever the fader holds an image, wait for the poster to decode and the fade-in to
+ * reach full opacity (`BackdropFader.fadeinAnimation` ends at 1.0 and nothing lowers it
+ * until the uri changes).
+ */
+async function settleBackdrop(screen, serverUrl) {
+  if (screen.state === 'userSelect') {
+    const branding = await getJson(`${serverUrl}/Branding/Configuration`, {});
+    if (branding.SplashscreenEnabled === true) {
+      await waitFor('#imageFader.uri', (v) => typeof v === 'string' && v !== '', {
+        timeout: 15000,
+        interval: 250,
+        label: 'splashscreen uri set (server has it enabled)',
+      });
+    }
+  }
+  if ((await getVal('#imageFader.uri')) === '') return;
+  await waitFor('#imageFader.#background.loadStatus', (v) => v === 'ready', {
+    timeout: 15000,
+    interval: 250,
+    label: 'backdrop image decoded',
+  });
+  await waitFor('#imageFader.#background.opacity', (v) => v >= 1, {
+    timeout: 5000,
+    interval: 100,
+    label: 'backdrop fade-in finished',
+  });
+}
+
 /** Capture the current screen to docs/screenshots/<folder>/<name>.webp (JPEG to lossless WebP). */
 async function capture(name, folder) {
+  // Guard: a visible scene spinner means the screen is still loading, so the shot would
+  // show the spinner instead of the content. Throw so captureScreen retries the whole nav.
+  if ((await getVal('#spinner.visible')) === true) {
+    // eslint-disable-next-line no-restricted-syntax -- fail-fast, cause already named
+    throw new Error(`capture of ${folder}/${name} refused: #spinner.visible is true`);
+  }
   const tmp = path.join('/tmp/rta-shots', `${folder}-${name}`);
   fs.mkdirSync(path.dirname(tmp), { recursive: true });
   const shot = await device.getScreenshot(tmp);
@@ -407,6 +474,10 @@ async function main() {
     await hardRelaunch();
     await assertSeedTookEffect(expectedServer, screen.name, { landing });
     if (screen.nav) await screen.nav(ctx);
+    // The readiness gate the spec runs, after the nav as there. hardRelaunch no longer
+    // sleeps a fixed 14 s, so without it a pre-login screen is photographed before it
+    // has loaded.
+    if (screen.assert) await screen.assert(ctx);
     // Store-only polish: fill the un-capturable black video plane with the real
     // in-film frame (osd's paused frame). trickplay has no backdrop on purpose: it
     // would cover Roku's built-in trickPlayBar, so its video plane stays black.
@@ -414,6 +485,8 @@ async function main() {
       await injectBackdrop(backdrops[backdropKey(ctx)]);
       await sleep(1000);
     }
+    await showSyncPlayBadge();
+    await settleBackdrop(screen, session.serverUrl);
     await capture(screen.name, folder);
   };
   // Each screen reseeds + relaunches from scratch, so a transient hiccup (a

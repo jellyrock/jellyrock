@@ -411,6 +411,7 @@ Committed images are lossless WebP. The device outputs a fixed-quality JPEG, so 
 | Locales | en_US only | All of them |
 | Build | Dev | Prod, with release branding |
 | OSD background | Black: the video plane can't be captured | A real film frame, composited with ffmpeg |
+| SyncPlay icon | As the server leaves it (disabled on the demo, which lacks the JellyRock plugin) | Enabled, with the dot for a group to join, set on the icon once it has settled |
 | For | Seeing the UI while you design it | Store and website images |
 
 `screenshots:capture:dev` and `screenshots:capture:fast` are the alternatives ([`capture-screenshots.js`](../../scripts/capture-screenshots.js)).

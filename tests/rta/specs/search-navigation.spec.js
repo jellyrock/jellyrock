@@ -23,6 +23,7 @@ import {
   openSearchKeyboard,
   SKELETON_TYPE,
   submitSearchFromKeyboard,
+  typeAndWaitForHints,
   waitSearchResults,
 } from '../lib/nav.js';
 import {
@@ -60,27 +61,6 @@ async function freshSearch() {
   await hardRelaunch();
   await assertSeedTookEffect(expectedServer, 'search-navigation');
   await openSearchKeyboard();
-}
-
-/**
- * Types the query and waits until its hints, not the recent searches, fill the list. Typing
- * switches the header to Suggestions at once, but the recent rows stay until the hints
- * arrive and replace them, which also puts focus back on row 0. So "the list has rows" is
- * true too early: wait for the first row to change from the recent list's first row.
- */
-async function typeAndWaitForHints(query = RTA_CONFIG.searchQuery) {
-  const recentFirst = await getActiveVal('#suggestions.#list.content.0.description');
-  await ecp.sendText(query);
-  await waitFor(
-    '#suggestions.#list.content.0.description',
-    (v) => typeof v === 'string' && v !== '' && v !== recentFirst,
-    {
-      read: getActiveVal,
-      timeout: 20000,
-      interval: 250,
-      label: `hints for "${query}" in place of the recent searches`,
-    },
-  );
 }
 
 /** Types the query, waits for its results, and submits it from the keyboard. */

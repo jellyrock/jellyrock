@@ -826,6 +826,12 @@ Found while fixing `syncplay-controls.spec.js`'s intermittent pause failures (#1
 
 Closes after a manual check: pause from another member (jellyfin-web) within a second of a group start on the Roku. If the picture freezes with no OSD, build the fix above with a unit spec on `applyPlan` and a device check; if it never shows, close as not reproduced.
 
+#### `UserSelect` applies 'splash disabled' before the branding answer arrives `[fid: splashscreen-flag-reads-false-unset]` `[captured 2026-10-29]`
+
+`JellyfinServer.isSplashscreenEnabled` (`components/data/jellyfin/JellyfinServer.xml`) is commented "invalid = not loaded yet", but it is `type="boolean"` with no value, so an unset field reads `false`. `UserSelect.loadSplashscreen()` therefore always takes its `isValid()` "already cached" branch and applies "splash disabled" (clearing the backdrop) before the branding fetch delivers the real value. Found while fixing the screenshot capture, whose `settleBackdrop()` reads the server's `/Branding/Configuration` for this reason; the app log shows `Splashscreen disabled - using default background` before every `Branding config cached successfully`.
+
+Not checked: whether the flash of the default background is visible on a device. Check that first; fix by tracking "fetched" separately (an `isSplashscreenLoaded` field) or declaring the field so it starts invalid. Not done now: it needs a device check and an app change outside the screenshot work.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -1478,6 +1484,14 @@ PR #1270 (SyncPlay phase D) cites a 14-step device check of group playback (paus
 The two casts are covered since #1270: `syncplay-menu.spec.js` casts to the Roku while halted and again over its player, through `appSession` and `playOnSession` in `tests/rta/lib/jellyfin.js`, and checks no wait outlives the reload. Pause, seek, next and previous are covered since #1276 by `syncplay-controls.spec.js`, which also settled the waits on group commands: it waits on the manager's last command (`syncPlayManager.sync.lastCommand`), listed in `rta-wait-justified.js`. Still untracked: Stop, Back during group playback, a failing queue fetch and reset.
 
 Closes when those steps are tracked specs under `tests/rta/specs/` (folded into `syncplay-controls.spec.js` or `syncplay-menu.spec.js`), each waiting on the state it means.
+
+#### `navOsd()` leaves the player playing, so the OSD screenshot can lose its OSD `[fid: navosd-leaves-player-playing]` `[captured 2026-10-29]` `[pinned]`
+
+`navOsd()` (`tests/rta/lib/nav.js`) presses Play to pause, then writes `#<heroId>.seek`, and assumes the player stays paused. A device probe (Stick 4K, 2026-10-29, three runs of `navOsd()` sampled every 500 ms) read `state=playing osd=true pos=1724` when the nav returned and `osd=false pos=1727` about 2.5 s later, every run. `OSD.inactiveCheck()` hides the OSD 5 s after the last key press unless `playbackState` is `paused`, so the OSD shot survives only if taken within about 2.5 s of the nav; the screenshot capture's backdrop step and reads can push it past that (`de/osd` lost its OSD in the 2026-10-29 capture and was retaken). Affects the `osd` screen in the screenshot capture and in `screens.spec.js`; nothing checks the player is paused. #1276 reworked the player's pause, play and seek (`pausePlayer()`, `resumePlayer()`, `seekPlayer()` in `VideoPlayerView.bs`) the same day, which may be what moved it.
+
+Options: `pause` (recommended): find which step resumes playback, then have `navOsd()` wait for the player to read `paused` after the seek, pressing Play again if the seek resumed it; if the Play press itself no longer pauses, that is an app bug to raise separately. `guard`: `capture()` refuses an OSD shot unless `#osd.visible` is true, so the capture retries; it does not fix the cause.
+
+Not checked: which of the two (the Play press or the seek) leaves it playing; whether #1276 changed it; whether a real viewer's Play press during playback still pauses.
 
 ### docs
 

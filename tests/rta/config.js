@@ -133,6 +133,15 @@ export const DEMO_CONTENT = Object.freeze({
   // "a" returns 7 grouped rows (Movies / Episodes / People / Playlists / Artists /
   // Albums / Songs); see the probe in #621.
   searchQuery: 'a',
+  // The recent searches the searchRecent screenshot seeds, newest first. Titles the demo
+  // has (checked 2026-10-29), so a pick from the list finds them. Not overridable from the
+  // environment: the list only fills a picture, and no check reads it against the server.
+  recentSearches: Object.freeze([
+    'Night of the Living Dead',
+    'Caminandes',
+    'King Lear',
+    'Pioneer One',
+  ]),
 });
 
 /**
@@ -171,6 +180,7 @@ export function resolveContent(env = process.env, fallback = DEMO_CONTENT) {
     trickplaySeekSeconds:
       overrideNumber(env.RTA_TRICKPLAY_SEEK_SECONDS) ?? fallback.trickplaySeekSeconds,
     searchQuery: override(env.RTA_SEARCH_QUERY) ?? fallback.searchQuery,
+    recentSearches: fallback.recentSearches,
   });
 }
 

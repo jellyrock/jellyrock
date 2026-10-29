@@ -20,6 +20,7 @@ import { libraryIdFor } from './jellyfin.js';
 import { diagnosedError, FAILURE_KINDS } from './diagnostics.js';
 import { recordRecovery } from '../../../scripts/run-record.js';
 import { focusIsInHomeContent } from './home-list.js';
+import { seedSearchHistory } from './seed.js';
 import {
   press,
   getVal,
@@ -252,6 +253,55 @@ export async function navSearch() {
   await waitSearchResults({ label: `search results for "${RTA_CONFIG.searchQuery}"` });
   await submitSearchFromKeyboard();
   await sleep(1500); // let the focus settle + result posters paint before capture
+}
+
+/**
+ * Types the query and waits until its hints, not the recent searches, fill the list. Typing
+ * switches the header to Suggestions at once, but the recent rows stay until the hints
+ * arrive and replace them, which also puts focus back on row 0. So "the list has rows" is
+ * true too early: wait for the first row to change from the recent list's first row.
+ */
+export async function typeAndWaitForHints(query = RTA_CONFIG.searchQuery) {
+  const recentFirst = await getActiveVal('#suggestions.#list.content.0.description');
+  await ecp.sendText(query);
+  await waitFor(
+    '#suggestions.#list.content.0.description',
+    (v) => typeof v === 'string' && v !== '' && v !== recentFirst,
+    {
+      read: getActiveVal,
+      timeout: 20000,
+      interval: 250,
+      label: `hints for "${query}" in place of the recent searches`,
+    },
+  );
+}
+
+/**
+ * home -> search, mid-query: the keyboard open with the typed query, its live suggestions
+ * in the column, and the results filling in below the overlay.
+ */
+export async function navSearchTyping() {
+  await openSearchKeyboard();
+  await typeAndWaitForHints();
+  await waitSearchResults({ label: `search results for "${RTA_CONFIG.searchQuery}"` });
+  await sleep(1500); // let the result posters paint before capture
+}
+
+/**
+ * home -> search with the box empty: the keyboard open and the seeded recent searches in
+ * the column. Seeded rather than searched for, so the list is the same every run.
+ */
+export async function navSearchRecent(ctx) {
+  const terms = RTA_CONFIG.recentSearches;
+  await seedSearchHistory(ctx.session, terms);
+  await openSearchKeyboard();
+  await waitFor('#suggestions.#list.content.0.description', (v) => v === terms[0], {
+    read: getActiveVal,
+    timeout: 10000,
+    interval: 250,
+    label: 'the seeded recent searches in the column',
+  });
+  await sleep(1000); // let the overlay finish sliding in before capture
 }
 
 /**

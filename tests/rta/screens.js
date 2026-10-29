@@ -48,6 +48,8 @@ import {
   navEpisodeDetails,
   navAudioDetails,
   navSearch,
+  navSearchTyping,
+  navSearchRecent,
   navHomeReturnBare,
   navHomeReturnAfterDetails,
   navSearchReturn,
@@ -353,6 +355,18 @@ export const SCREENS = [
   },
   { name: 'settings', state: 'home', nav: navSettings, capture: { eligible: true } },
   { name: 'search', state: 'home', nav: navSearch, capture: { eligible: true } },
+  {
+    name: 'searchTyping',
+    state: 'home',
+    nav: navSearchTyping,
+    capture: { eligible: true },
+  },
+  {
+    name: 'searchRecent',
+    state: 'home',
+    nav: navSearchRecent,
+    capture: { eligible: true },
+  },
   {
     // Subtitle management panel (#750). A child of ItemDetails, not a routed
     // screen: it opens over the detail view rather than replacing it.
