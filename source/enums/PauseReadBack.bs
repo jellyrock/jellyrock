@@ -1,0 +1,12 @@
+' What a player does with its session read back after a pause report
+' (playbackCheckIn.pauseReadBackAction in source/utils/playbackCheckIn.bs).
+enum PauseReadBack
+  ' The server shows the pause: nothing more to do.
+  CONFIRMED = "confirmed"
+  ' The server shows playing: report the pause again and read back again.
+  RESEND = "resend"
+  ' The server still shows playing after the last report allowed: the keepalive corrects it.
+  GIVE_UP = "giveUp"
+  ' No answer to judge (an error, or no session for this device): the keepalive corrects it.
+  UNREADABLE = "unreadable"
+end enum

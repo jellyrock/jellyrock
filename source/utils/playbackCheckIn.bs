@@ -1,0 +1,58 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/enums/PauseReadBack.bs"
+import "pkg:/source/utils/misc.bs"
+
+' How a player keeps the server's view of its playback true. Two server rules shape it (read in
+' Jellyfin 12.4; the same in 10.11 and 12.2):
+'   - After each report the server sends itself a "still playing" copy of it every second
+'     (SessionInfo.StartAutomaticProgress). A copy that lands while a pause report is being handled
+'     sets IsPaused back to false, and nothing corrects it until the next report.
+'   - It ends a playing session that sent no report of its own for more than 5 minutes, paused or
+'     not (SessionManager.CheckForIdlePlayback). Its copies do not count.
+' So a player reads its session back after a pause report and sends the pause again when it was
+' lost, and keeps reporting at KEEPALIVE_SECONDS while a stream is open and nothing else reports.
+namespace playbackCheckIn
+
+  ' Seconds between reports when no other report is due: well inside the server's 5-minute limit,
+  ' and the longest a pause the read-back could not confirm stays lost.
+  const KEEPALIVE_SECONDS = 60
+  ' Seconds from a pause report to the read-back. The server's copies stop once it holds a paused
+  ' report, so a read this late sees the state that stays.
+  const CONFIRM_DELAY_SECONDS = 2
+  ' The most pause reports for one pause, the first included.
+  const PAUSE_REPORTS = 3
+
+  ' The read-back request: this device's sessions, which a user may read without admin rights.
+  function sessionRequest() as dynamic
+    return GetApi().BuildGetSessionsRequest({ deviceId: m.global.device.serverDeviceName })
+  end function
+
+  ' What to do with the session read back after a pause report.
+  ' @param res - the fetchAsync response AA ({ ok, json }); json is the list of this device's sessions
+  ' @param reportsSent - pause reports sent for this pause so far
+  ' @returns a PauseReadBack
+  function pauseReadBackAction(res as dynamic, reportsSent as integer) as string
+    if not isValid(res) or res.ok <> true then return PauseReadBack.UNREADABLE
+    sessions = res.json
+    if type(sessions) <> "roArray" or sessions.Count() = 0 then return PauseReadBack.UNREADABLE
+    session = sessions[0]
+    if type(session) <> "roAssociativeArray" or type(session.PlayState) <> "roAssociativeArray" then return PauseReadBack.UNREADABLE
+    ' A session the server ended reads not paused too, and a report brings it back.
+    if session.PlayState.IsPaused = true then return PauseReadBack.CONFIRMED
+    if reportsSent < PAUSE_REPORTS then return PauseReadBack.RESEND
+    return PauseReadBack.GIVE_UP
+  end function
+
+  ' Why a read-back was UNREADABLE, for the log: a read that never finds this device's session
+  ' (a DeviceId the server files it under differently, a 403) must show in a normal build.
+  ' @param res - the fetchAsync response AA
+  ' @returns "no answer", "http <status>", "not a list", "no session for this device" or "no play state"
+  function unreadableCause(res as dynamic) as string
+    if not isValid(res) then return "no answer"
+    if res.ok <> true then return "http " + Str(res.statusCode).Trim()
+    if type(res.json) <> "roArray" then return "not a list"
+    if res.json.Count() = 0 then return "no session for this device"
+    return "no play state"
+  end function
+
+end namespace

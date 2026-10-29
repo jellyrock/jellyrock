@@ -1,8 +1,12 @@
+' bsc-disable-file auto-abandon-promises: one instance for the app's life on m.global, never destroyed, so no request outlives it
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiPromise.bs"
+import "pkg:/source/enums/PauseReadBack.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/audioSeek.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/playbackCheckIn.bs"
 
 sub init()
   m.log = new log.Logger("AudioPlayer")
@@ -21,6 +25,21 @@ sub init()
   m.endGuardTimer.duration = audioSeek.STALL_SECONDS
   m.endGuardTimer.repeat = false
   m.endGuardTimer.observeField("fire", "onEndGuardFire")
+
+  ' Reports go out on state changes only, so a long track or a pause would leave the server with
+  ' none for minutes, and it ends such a session (playbackCheckIn.bs). This reports while a stream
+  ' is open; each report restarts it.
+  m.keepaliveTimer = CreateObject("roSGNode", "Timer")
+  m.keepaliveTimer.duration = playbackCheckIn.KEEPALIVE_SECONDS
+  m.keepaliveTimer.repeat = true
+  m.keepaliveTimer.observeField("fire", "onKeepaliveDue")
+  ' A moment after a pause report: read the session back, since the server can lose that report.
+  m.pauseConfirmTimer = CreateObject("roSGNode", "Timer")
+  m.pauseConfirmTimer.duration = playbackCheckIn.CONFIRM_DELAY_SECONDS
+  m.pauseConfirmTimer.repeat = false
+  m.pauseConfirmTimer.observeField("fire", "onPauseConfirmDue")
+  m.pauseReportsSent = 0 ' pause reports for the current pause
+  m.pauseReadBackSeq = 0 ' drops a read-back a newer pause replaced
 
   m.top.observeField("content", "onContentChanged")
   m.top.observeField("state", "audioStateChanged")
@@ -71,6 +90,7 @@ sub audioStateChanged()
   end if
 
   if currentState = "stopped" or currentState = "finished"
+    m.keepaliveTimer.control = "stop"
     ' Only the stream that is loaded now: a replaced stream was reported when it was replaced.
     if isValid(m.openSession) and isValid(m.top.content) and m.openSession.id = m.top.content.id
       reportEnd()
@@ -87,6 +107,59 @@ sub audioStateChanged()
     sendReport("start", m.openSession)
   else
     sendReport("update", m.openSession)
+  end if
+  ' A full interval from this report.
+  m.keepaliveTimer.control = "stop"
+  m.keepaliveTimer.control = "start"
+  if currentState = "paused"
+    m.pauseReportsSent = 1
+    m.pauseConfirmTimer.control = "stop"
+    m.pauseConfirmTimer.control = "start"
+  end if
+end sub
+
+' The keepalive: one more report for the open stream, playing or paused, once its start went out.
+sub onKeepaliveDue()
+  if not isValid(m.openSession) or not m.isPlayReported then return
+  state = LCase(m.top.state)
+  if state <> "playing" and state <> "paused" and state <> "buffering" then return
+  sendReport("update", m.openSession)
+end sub
+
+' Reads this device's session back after a pause report, and reports the pause again if the server
+' lost it (playbackCheckIn.bs).
+sub onPauseConfirmDue()
+  if LCase(m.top.state) <> "paused" or not isValid(m.openSession) then return
+  req = playbackCheckIn.sessionRequest()
+  if not isValid(req)
+    m.log.warn("no request to read the session back; the keepalive reports the pause again")
+    return
+  end if
+  m.pauseReadBackSeq += 1
+  promises.chain(fetchAsync(req, "audioPauseReadBack-" + m.pauseReadBackSeq.toStr()), { seq: m.pauseReadBackSeq }).then(sub(res as object, ctx as object)
+    onPauseReadBack(res, ctx.seq)
+  end sub).catch(sub(err as object, _ctx as object)
+    ' The keepalive reports the pause again within a minute. err whole: a timeout rejects with
+    ' the pool's result, which has no `reason`.
+    m.log.warn("pause read-back failed; the keepalive reports the pause again", err)
+  end sub)
+end sub
+
+sub onPauseReadBack(res as object, seq as integer)
+  ' A newer pause, a resume or the end of the stream since: this answer is about nothing current.
+  if seq <> m.pauseReadBackSeq or LCase(m.top.state) <> "paused" or not isValid(m.openSession) then return
+  action = playbackCheckIn.pauseReadBackAction(res, m.pauseReportsSent)
+  if action = PauseReadBack.RESEND
+    m.log.info("the server shows playing after a pause report; reporting the pause again", "reportsSent", m.pauseReportsSent)
+    sendReport("update", m.openSession)
+    m.pauseReportsSent += 1
+    m.pauseConfirmTimer.control = "start"
+  else if action = PauseReadBack.GIVE_UP
+    m.log.warn("the server still shows playing; the keepalive will report the pause again", "reportsSent", m.pauseReportsSent)
+  else if action = PauseReadBack.UNREADABLE
+    m.log.warn("pause read-back could not judge the session; the keepalive reports the pause again", "cause", playbackCheckIn.unreadableCause(res))
+  else
+    m.log.debug("the server shows the pause", "reportsSent", m.pauseReportsSent)
   end if
 end sub
 

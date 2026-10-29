@@ -67,6 +67,7 @@
     <Group id="captionGroup" translation="[960,1020]" />
     <TrickplayCarousel id="trickplayCarousel" visible="false" />
     <timer id="playbackTimer" repeat="true" duration="10" />
+    <timer id="pauseConfirmTimer" repeat="false" />
     <timer id="bufferCheckTimer" repeat="true" />
     <OSD id="osd" visible="false" inactiveTimeout="5" />
 

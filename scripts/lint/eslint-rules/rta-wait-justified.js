@@ -287,10 +287,11 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   '#userRow',
   '#versionLabel.text',
   '#videoTitle.text',
-  // Roku's `Video.state` on the global AudioPlayer engine (m.global.audioPlayer). The one
-  // target is `playing`: held while audio plays, and entered again after a rebuffer, so a
-  // tick that misses it gets another chance. Read 2026-10-21 against AudioPlayer.bs and
-  // AudioPlayerView.bs, which write only `control`, `seek` and the engine's own `finished`.
+  // Roku's `Video.state` on the global AudioPlayer engine (m.global.audioPlayer). Two targets:
+  // `playing`, held while audio plays and entered again after a rebuffer, so a tick that
+  // misses it gets another chance; and `paused`, held until the next `control` write.
+  // Read 2026-10-21 against AudioPlayer.bs and AudioPlayerView.bs, which write only
+  // `control`, `seek` and the engine's own `finished`; `paused` read 2026-10-29.
   'audioPlayer.state',
   'itemId',
   'loadState',
@@ -298,6 +299,13 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // climbs, so a `>= target` predicate stays true once true. Read 2026-10-02 against the
   // one gate using it (playback-notifications.spec.js, which seeks before it waits).
   'position',
+  // The app's session on the server, read over REST (playback-check-in.spec.js). Jellyfin 12.4
+  // writes `PlayState.IsPaused` only from a report (SessionManager.UpdateNowPlayingItem), so
+  // while the player stays paused and keeps reporting it stays true: terminal. And
+  // `LastPlaybackCheckIn` only moves forward, so a "later than" predicate stays true once true.
+  // Read 2026-10-29 against the server source.
+  'session.LastPlaybackCheckIn',
+  'session.PlayState.IsPaused',
   // Roku's `Video.trickPlayBar.visible`, read off the player by id: the bar comes up on the
   // first Right and stays until OK, Play or Back closes it (measured on a Stick 4K,
   // 2026-10-28, with a bare swallow of OK leaving it up for good). `syncplay-controls.spec.js`
