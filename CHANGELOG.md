@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- (syncplay) Send controls to the group and resume from the menu ([#1276](https://github.com/jellyrock/jellyrock/pull/1276))
 - (syncplay) See, join and play with groups from the SyncPlay icon ([#1270](https://github.com/jellyrock/jellyrock/pull/1270))
 - (ui) Search and settings icons on every screen, and safer themes ([#1265](https://github.com/jellyrock/jellyrock/pull/1265))
 - (syncplay) Follow a group, fix Play on buffering, speed up casts ([#1257](https://github.com/jellyrock/jellyrock/pull/1257))
