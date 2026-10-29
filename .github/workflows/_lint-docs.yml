@@ -12,6 +12,8 @@ name: lint-docs
 #                              which Claude Code would replace at run time
 #   - docs:dev-index:check:    drift on the auto-generated dev-guides index in
 #                              docs/architecture/README.md
+#   - docs:features:check:     drift on the feature catalog, the features index
+#                              and the README features list
 #   - docs:stale:blocking:     conditional hard gate (only fails if this PR
 #                              touches a stale doc's related-files without
 #                              also updating the doc; see lint/docs-stale-blocking.cjs)
@@ -96,6 +98,9 @@ jobs:
       - name: Check dev-index drift
         if: steps.detect.outputs.relevant == 'true'
         run: node scripts/generate/dev-index.cjs --check
+      - name: Check feature catalog drift
+        if: steps.detect.outputs.relevant == 'true'
+        run: node scripts/generate/feature-catalog.cjs --check
       - name: Conditional stale-doc gate
         if: steps.detect.outputs.relevant == 'true'
         run: node scripts/lint/docs-stale-blocking.cjs

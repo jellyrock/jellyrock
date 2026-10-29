@@ -8,16 +8,24 @@
 [![Build Status](https://img.shields.io/github/actions/workflow/status/jellyrock/jellyrock/build.yml?logo=github&branch=main "Build Status")](https://github.com/jellyrock/jellyrock/actions/workflows/build.yml?query=branch%3Amain)
 <!-- [![Translation Status](https://translate.jellyfin.org/widgets/jellyfin/-/jellyfin-roku/svg-badge.svg "Translation Status")](https://translate.jellyfin.org/projects/jellyfin/jellyfin-roku/?utm_source=widget) -->
 
-JellyRock is a fast, fluid Jellyfin client for Roku, focused on stability, performance, and a polished UX. Direct Play in original quality, a redesigned playback OSD, deep theming with custom hex colors, and 99 built-in language translations. Free and open-source, no ads, no tracking. Bring your own Jellyfin server.
+JellyRock is a Jellyfin client for Roku, from a former maintainer of the original Jellyfin Roku app. It is built to stay smooth: every request to your server runs in the background, so menus keep moving while things load. It plays your media in its original quality whenever your Roku can, and it comes in 98 languages. Free and open source, with no ads and no tracking. You need your own Jellyfin server.
 
-## Changelog
+## Features
 
-All notable changes to this project are documented in [CHANGELOG.md](CHANGELOG.md).
+<!-- BEGIN generated features (npm run docs:features) -->
 
-## Prerequisites
+- **[Deep linking and casting to JellyRock](docs/user/features/deep-linking.md):** Open or play anything in JellyRock from another device, a script or a voice routine, with only the item's ID.
+- **[Manage subtitles](docs/user/features/manage-subtitles.md):** Search your server's subtitle providers and download a subtitle onto a movie or episode from its page.
+- **[Media segments (skip intro and outro)](docs/user/features/media-segments.md):** Skip the intros, outros, recaps, previews and commercials your server has marked, or get a button to skip them.
 
-- Roku OS 15.1 or later
-- Jellyfin server 10.7.0 or later
+<!-- END generated features -->
+
+Every feature has a page on [docs.jellyrock.app](https://docs.jellyrock.app/features/), and [jellyrock.app](https://jellyrock.app) has screenshots of them.
+
+## What you need
+
+- A Roku on Roku OS 15.1 or later
+- A Jellyfin server, 10.7.0 or later. Some features need a newer one: see the [Jellyfin server feature matrix](docs/user/jellyfin-server-feature-matrix.md).
 
 ## Install
 
@@ -62,6 +70,21 @@ It needs Jellyfin server 10.11 or later. To install it, and to see the other plu
 
 **🖼️ [View all screenshots →](docs/screenshots/)**
 
+## Docs
+
+The user docs are at [docs.jellyrock.app](https://docs.jellyrock.app). Beyond the feature pages:
+
+- [App settings](docs/user/app-settings.md)
+- [Jellyfin server feature matrix](docs/user/jellyfin-server-feature-matrix.md)
+- [Jellyfin server plugins](docs/user/jellyfin-server-plugins.md)
+- [Playback troubleshooting](docs/user/playback-troubleshooting.md)
+
+## Translations
+
+JellyRock uses Weblate for translations: <https://translate.jellyrock.app/projects/jellyrock>
+
+[![Translation status](https://translate.jellyrock.app/widget/jellyrock/multi-auto.svg)](https://translate.jellyrock.app/engage/jellyrock/)
+
 ## History
 
 From 2019 to 2025, I worked on the original Jellyfin client for Roku as a member of the Jellyfin team, and was its sole maintainer for part of that time.
@@ -82,7 +105,11 @@ To run the latest version of JellyRock before it hits the Roku Channel Store:
 
 > NOTE: The app will always be at the bottom of your Roku's channel list and it will *not* automatically update.
 
-## Build
+## Contribute
+
+Start with the [contributing guide](docs/dev/contributing.md). The developer docs are at [dev.jellyrock.app](https://dev.jellyrock.app), and every guide is listed in [docs/architecture/README.md](docs/architecture/README.md#existing-dev-guides).
+
+### Build
 
 ```bash
 git clone https://github.com/jellyrock/jellyrock.git
@@ -92,31 +119,6 @@ npm install
 npm run build # OR npm run build:prod
 ```
 
-## User docs
+## Changelog
 
-- [App Settings](docs/user/app-settings.md)
-- [Deep Linking & Casting](docs/user/features/deep-linking.md)
-- [Jellyfin Server Feature Matrix](docs/user/jellyfin-server-feature-matrix.md)
-- [Jellyfin Server Plugins](docs/user/jellyfin-server-plugins.md)
-- [Manage Subtitles](docs/user/features/manage-subtitles.md)
-- [Media Segments (skip intro / outro)](docs/user/features/media-segments.md)
-- [Playback Troubleshooting](docs/user/playback-troubleshooting.md)
-
-## Dev docs
-
-- [Contributing](docs/dev/contributing.md)
-- [Developer Mode](docs/dev/developer-mode.md)
-- [Dev Guide](docs/dev/DEVGUIDE.md)
-- [Logging](docs/dev/logging.md)
-- [New User Setting](docs/dev/new-user-setting.md)
-- [Registry Migrations](docs/dev/registry-migrations.md)
-- [TDD Workflow](docs/dev/unit-tests-tdd.md)
-- [Unit Tests](docs/dev/unit-tests.md)
-- [Jellyfin Server Versioning](docs/dev/jellyfin-server-versioning.md)
-- [Writing Style](docs/dev/writing-style.md)
-
-## Translations
-
-JellyRock uses Weblate for translations: <https://translate.jellyrock.app/projects/jellyrock>
-
-[![Translation status](https://translate.jellyrock.app/widget/jellyrock/multi-auto.svg)](https://translate.jellyrock.app/engage/jellyrock/)
+All notable changes to this project are documented in [CHANGELOG.md](CHANGELOG.md).
