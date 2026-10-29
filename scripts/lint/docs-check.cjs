@@ -81,7 +81,6 @@
 const fs = require('fs');
 const path = require('path');
 const { readFrontmatter, parseRelatedFiles, getLastUpdated } = require('../lib/frontmatter.cjs');
-const { loadBoundaries } = require('../lib/version-boundaries.cjs');
 
 const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '.';
 const ARCH_DIR = path.join(ROOT_DIR, 'docs/architecture');
@@ -833,7 +832,21 @@ function storeListingFacts() {
     }
   };
   walk(JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'settings/settings.json'), 'utf8')));
-  return { languages, themes, floor: loadBoundaries(ROOT_DIR).floor };
+  return { languages, themes, floor: readServerFloor() };
+}
+
+// The oldest supported server: the top-level `floor:` in the version map that
+// scripts/lib/version-boundaries.cjs validates. Read with a pattern, not that
+// loader, so this script keeps to the stdlib and runs without `npm ci`.
+function readServerFloor() {
+  const map = fs.readFileSync(
+    path.join(ROOT_DIR, 'docs/dev/jellyfin-version-boundaries.yml'),
+    'utf8',
+  );
+  const match = map.match(/^floor: '([0-9.]+)'$/m);
+  if (!match)
+    throw new Error('docs-check: no `floor:` in docs/dev/jellyfin-version-boundaries.yml');
+  return match[1];
 }
 
 function checkStoreListing() {
