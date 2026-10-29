@@ -738,3 +738,101 @@ describe('docs-check — decisions.md supersede chain', () => {
     });
   });
 });
+
+describe('docs-check: store listing', () => {
+  let dir;
+
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+
+  // The sources the listing's counts are checked against: two languages (plus
+  // the code-less "Automatic" entry, which is not a language), two theme presets
+  // (plus Custom, which is not a preset) and a 10.7.0 floor.
+  const sources = {
+    'locale/languages.json': JSON.stringify([
+      { code: '', name: 'Automatic' },
+      { code: 'en_US', name: 'English' },
+      { code: 'fr', name: 'French' },
+    ]),
+    'settings/settings.json': JSON.stringify([
+      {
+        title: 'User Interface',
+        children: [
+          {
+            settingName: 'uiTheme',
+            options: [{ id: 'jellyrock' }, { id: 'ocean' }, { id: 'custom' }],
+          },
+        ],
+      },
+    ]),
+    'docs/dev/jellyfin-version-boundaries.yml':
+      "floor: '10.7.0'\ntiers:\n  1:\n    minServer: '10.7.0'\n    maxServer: null\n    status: active\n",
+  };
+
+  const listing = (onDevice, online) =>
+    '# Roku store listing\n\n' +
+    (onDevice === null ? '' : '```text store-on-device\n' + onDevice + '\n```\n\n') +
+    (online === null ? '' : '```text store-online\n' + online + '\n```\n');
+
+  const run = (onDevice, online) => {
+    dir = setup({ ...sources, 'docs/admin/store-listing.md': listing(onDevice, online) });
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);
+    const found = JSON.parse(stdout).errors.filter((e) => e.category === 'store-listing');
+    return { exitCode, found };
+  };
+
+  const good = 'Two languages, two themes. Needs Jellyfin 10.7 or later.';
+
+  it('passes when both blocks fit and every count matches its source', () => {
+    const { exitCode, found } = run(good, `${good}\n\n2 languages and two themes.`);
+    expect(found).toEqual([]);
+    expect(exitCode).toBe(0);
+  });
+
+  it('FAILs a block over its limit', () => {
+    const { exitCode, found } = run('a'.repeat(301), good);
+    expect(exitCode).toBe(1);
+    expect(found[0].message).toMatch(/store-on-device is 301 characters, over its limit of 300/);
+  });
+
+  it('counts each line break as two characters', () => {
+    // 298 letters and one line break: 299 as typed, 300 counted as CRLF, which fits.
+    expect(run('a'.repeat(149) + '\n' + 'a'.repeat(149), good).found).toEqual([]);
+    rmSync(dir, { recursive: true, force: true });
+    // One more letter: 301 counted as CRLF.
+    const { found } = run('a'.repeat(150) + '\n' + 'a'.repeat(149), good);
+    expect(found[0].message).toMatch(/is 301 characters/);
+  });
+
+  it('FAILs a language count that includes the "Automatic" entry', () => {
+    const { exitCode, found } = run('3 languages.', good);
+    expect(exitCode).toBe(1);
+    expect(found[0].message).toMatch(/says 3 languages, but locale\/languages\.json has 2/);
+  });
+
+  it('FAILs a theme count, written as a word, that does not match the presets', () => {
+    const { exitCode, found } = run('Three themes.', good);
+    expect(exitCode).toBe(1);
+    expect(found[0].message).toMatch(/says Three themes, but the uiTheme setting has 2 presets/);
+  });
+
+  it('FAILs a server version that is not the floor', () => {
+    const { exitCode, found } = run('Needs Jellyfin 10.8 or later.', good);
+    expect(exitCode).toBe(1);
+    expect(found[0].message).toMatch(/says Jellyfin 10\.8, but the supported floor is 10\.7\.0/);
+  });
+
+  it('FAILs when a block is missing', () => {
+    const { exitCode, found } = run(good, null);
+    expect(exitCode).toBe(1);
+    expect(found[0].message).toMatch(/no ```text store-online block/);
+  });
+
+  it('is silent when the repo has no store listing', () => {
+    dir = setup(sources);
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);
+    expect(JSON.parse(stdout).errors).toEqual([]);
+    expect(exitCode).toBe(0);
+  });
+});

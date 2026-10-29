@@ -47,6 +47,12 @@
 //     a three-part hand edit, so a half-applied one used to leave the
 //     chain silently lying, and `/log`'s SKILL.md claimed this was
 //     already validated when no such logic existed.
+//   - The Roku store descriptions in docs/admin/store-listing.md (see
+//     checkStoreListing): each block is within the dashboard's limit,
+//     and each count it cites (languages, themes, the oldest Jellyfin
+//     server) matches its source, so a release never ships a stale
+//     number. The text is pasted into the store by hand, where nothing
+//     checks it.
 //
 // What it doesn't check (yet):
 //   - Inline backtick-quoted paths in prose (noise-prone; many false
@@ -61,8 +67,8 @@
 //   --json     emit a single JSON object on stdout: {filesChecked, errorsCount,
 //              errors: [{category, file, message, target}]} where category is
 //              one of "broken-related-file", "broken-link", "broken-anchor",
-//              "stale-anchor", "progress-frontmatter", or
-//              "decisions-supersede-chain".
+//              "stale-anchor", "progress-frontmatter",
+//              "decisions-supersede-chain", or "store-listing".
 //              Mutually exclusive with --verbose (verbose is a no-op under
 //              --json). Exit code semantics unchanged.
 //
@@ -74,6 +80,7 @@
 const fs = require('fs');
 const path = require('path');
 const { readFrontmatter, parseRelatedFiles, getLastUpdated } = require('../lib/frontmatter.cjs');
+const { loadBoundaries } = require('../lib/version-boundaries.cjs');
 
 const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '.';
 const ARCH_DIR = path.join(ROOT_DIR, 'docs/architecture');
@@ -82,6 +89,7 @@ const USER_DIR = path.join(ROOT_DIR, 'docs/user');
 const ADR_DIR = path.join(ROOT_DIR, 'docs/adr');
 const DECISIONS_PATH = path.join(ROOT_DIR, 'docs/decisions.md');
 const PROGRESS_PATH = path.join(ROOT_DIR, 'docs/progress.md');
+const STORE_LISTING_PATH = path.join(ROOT_DIR, 'docs/admin/store-listing.md');
 const TECH_DEBT_PATH = path.join(ARCH_DIR, 'tech-debt.md');
 const SCRIPTS_DIR = path.join(ROOT_DIR, 'scripts');
 const JSON_MODE = process.argv.includes('--json');
@@ -771,11 +779,102 @@ for (const file of findPluginScripts()) {
   }
 }
 
+// The Roku store descriptions in docs/admin/store-listing.md, one fenced
+// block each (```text store-on-device, ```text store-online). The limits are
+// the Developer Dashboard's. Each line break counts as two characters, since
+// the dashboard may count it as CRLF, so a block that passes here fits either
+// way.
+const STORE_BLOCKS = [
+  { name: 'store-on-device', limit: 300 },
+  { name: 'store-online', limit: 1500 },
+];
+const NUMBER_WORDS = [
+  'zero',
+  'one',
+  'two',
+  'three',
+  'four',
+  'five',
+  'six',
+  'seven',
+  'eight',
+  'nine',
+  'ten',
+  'eleven',
+  'twelve',
+  'thirteen',
+  'fourteen',
+  'fifteen',
+  'sixteen',
+  'seventeen',
+  'eighteen',
+  'nineteen',
+  'twenty',
+];
+const COUNT_RE = new RegExp(`\\b(\\d+|${NUMBER_WORDS.join('|')}) (languages|themes)\\b`, 'gi');
+const SERVER_RE = /\bJellyfin (\d+\.\d+(?:\.\d+)?) or later\b/g;
+
+// The counts the store text may cite, read from what the app ships.
+// Languages: the entries in locale/languages.json with a code ("Automatic"
+// has none and is not a language). Themes: the uiTheme presets, without
+// Custom, which is the viewer's own colors.
+function storeListingFacts() {
+  const languages = JSON.parse(
+    fs.readFileSync(path.join(ROOT_DIR, 'locale/languages.json'), 'utf8'),
+  ).filter((l) => l.code).length;
+  let themes = null;
+  const walk = (entries) => {
+    for (const e of entries) {
+      if (e.settingName === 'uiTheme') themes = e.options.filter((o) => o.id !== 'custom').length;
+      if (e.children) walk(e.children);
+    }
+  };
+  walk(JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'settings/settings.json'), 'utf8')));
+  return { languages, themes, floor: loadBoundaries(ROOT_DIR).floor };
+}
+
+function checkStoreListing() {
+  if (!fs.existsSync(STORE_LISTING_PATH)) return; // silent when absent
+  const content = fs.readFileSync(STORE_LISTING_PATH, 'utf8');
+  const fail = (message, target) =>
+    pushError({ category: 'store-listing', file: STORE_LISTING_PATH, message, target });
+  const facts = storeListingFacts();
+  for (const { name, limit } of STORE_BLOCKS) {
+    const match = content.match(new RegExp('^```text ' + name + '\\n([\\s\\S]*?)\\n```$', 'm'));
+    if (!match) {
+      fail(`no \`\`\`text ${name} block`, name);
+      continue;
+    }
+    const text = match[1];
+    const length = Array.from(text).length + (text.match(/\n/g) || []).length;
+    if (length > limit) {
+      fail(`${name} is ${length} characters, over its limit of ${limit}`, name);
+    }
+    for (const [, said, noun] of text.matchAll(COUNT_RE)) {
+      const value = /^\d+$/.test(said) ? Number(said) : NUMBER_WORDS.indexOf(said.toLowerCase());
+      const kind = noun.toLowerCase();
+      const actual = facts[kind];
+      if (value === actual) continue;
+      fail(
+        kind === 'languages'
+          ? `${name} says ${said} languages, but locale/languages.json has ${actual}`
+          : `${name} says ${said} themes, but the uiTheme setting has ${actual} presets`,
+        kind,
+      );
+    }
+    for (const [, said] of text.matchAll(SERVER_RE)) {
+      if (facts.floor === said || facts.floor.startsWith(`${said}.`)) continue;
+      fail(`${name} says Jellyfin ${said}, but the supported floor is ${facts.floor}`, 'floor');
+    }
+  }
+}
+
 // Post-loop journal-system checks. These don't iterate files (they target
 // specific paths) so they run after the per-file scan so their errors
 // participate in the same accumulator.
 checkProgressFrontmatter();
 checkDecisionsSupersedeChain();
+checkStoreListing();
 
 if (JSON_MODE) {
   // Single-line JSON to stdout regardless of pass/fail. Exit code carries

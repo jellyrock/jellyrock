@@ -67,6 +67,8 @@ Publishing creates the `vX.Y.Z` tag on `main`, which starts `release-build.yml`.
 
 The Channel Store takes a signed `.pkg`, not the sideload ZIP. Roku has no upload API, so you always upload by hand, but `npm run package:signed` builds the `.pkg` for you.
 
+The store's descriptions change only with a submission. Paste them from [the store listing](store-listing.md) when you submit, after any change to them has merged.
+
 ### Build it
 
 After the release PR has merged, run this with your dev Roku on the network:
