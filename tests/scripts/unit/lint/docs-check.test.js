@@ -69,6 +69,19 @@ describe('docs-check', () => {
     expect(stderr).toMatch(/markdown link target does not exist/);
   });
 
+  it('checks the docs in a subfolder, such as docs/user/features/', () => {
+    dir = setup({
+      'docs/user/features/foo.md': '# Foo\n\nSee [settings](app-settings.md).\n',
+      'docs/user/app-settings.md': '# App settings\n',
+      'docs/architecture/tech-debt.md': '---\ntopic: tech-debt\n---\n# Tech Debt\n',
+    });
+    const { exitCode, stderr } = spawnScript(SCRIPT, [dir]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(
+      /docs\/user\/features\/foo\.md: markdown link target does not exist: app-settings\.md/,
+    );
+  });
+
   it('exits 1 on a stale tech-debt anchor reference', () => {
     dir = setup({
       'docs/architecture/foo.md': fmDoc(

@@ -16,8 +16,9 @@
 // What it checks:
 //   - Every `related-files:` path in docs/architecture/*.md frontmatter
 //     resolves to an existing file (or directory) in the repo.
-//   - Every relative markdown link in docs/architecture/*.md, docs/dev/*.md,
-//     docs/user/*.md, docs/adr/*.md, and docs/decisions.md resolves
+//   - Every relative markdown link in the .md files under docs/architecture/,
+//     docs/dev/, docs/user/ and docs/adr/ (subfolders included), and in
+//     docs/decisions.md, resolves
 //     (skipping http(s): and mailto:). A link with a `#fragment`, to another
 //     .md file or to the same file (`#x`), must also name a heading or an
 //     explicit anchor (`<a id>`, `<a name>`, `<hN id>`) that exists in the
@@ -654,10 +655,12 @@ function checkDecisionsSupersedeChain() {
   }
 }
 
+// Every .md in dir and its subfolders (docs/user/features/ is one), so a doc in a
+// subfolder is checked like any other.
 function checkDirOfMds(dir) {
   if (!fs.existsSync(dir)) return;
   const files = fs
-    .readdirSync(dir)
+    .readdirSync(dir, { recursive: true })
     .filter((f) => f.endsWith('.md'))
     .map((f) => path.join(dir, f))
     .sort();
