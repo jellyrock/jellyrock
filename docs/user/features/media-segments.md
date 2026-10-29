@@ -1,3 +1,10 @@
+---
+pitch: Skip the intros, outros, recaps, previews and commercials your server has marked, or get a button to skip them.
+since: 2.9.0
+server: 10.10.0
+plugins: Chapter Segments Provider, Intro Skipper
+---
+
 # Media segments (skip intro and outro)
 
 JellyRock can skip the parts of a video your server has marked, or show a button to skip them. These parts are intros, outros, recaps, previews and commercials.

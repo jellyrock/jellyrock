@@ -396,7 +396,7 @@ One makes it report more. A name built at runtime from a variable (`setField(nam
 
 | Script | Checks |
 |---|---|
-| `lint:docs` | `related-files:` paths, relative links and `tech-debt.md#` anchors across the docs, every `CLAUDE.md` outside dot-directories, and the BSC plugins. Plus the schema of `progress.md`'s frontmatter, the `decisions.md` supersede chain, and the Roku store descriptions in `docs/admin/store-listing.md` (each within its length limit, each count it cites matching the app). Run it through `/docs-lint` |
+| `lint:docs` | `related-files:` paths, relative links and `tech-debt.md#` anchors across the docs, every `CLAUDE.md` outside dot-directories, and the BSC plugins. Plus the schema of `progress.md`'s frontmatter, the `decisions.md` supersede chain, the Roku store descriptions in `docs/admin/store-listing.md` (each within its length limit, each count it cites matching the app), and the frontmatter of each feature page in `docs/user/features/` ([Document a feature](../dev/feature-pages.md)). Run it through `/docs-lint` |
 | `lint:voice` | The house voice and line-number citations in every tracked `.md`, as a per-file ratchet ([writing-style.md](../dev/writing-style.md#what-the-gate-checks)) |
 | `lint:comment-voice` | The house voice in the comments of tracked code, as a per-file ratchet ([writing-style.md](../dev/writing-style.md#what-the-gate-checks)) |
 | `lint:skill-placeholders` | Argument placeholders in `.claude/skills/*/SKILL.md` (`$ARGUMENTS`, `$0` to `$9`, an `arguments:` list), which Claude Code replaces at run time ([the script's header](../../scripts/lint/skill-placeholders-check.js)) |

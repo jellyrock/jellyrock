@@ -69,16 +69,16 @@ describe('docs-check', () => {
     expect(stderr).toMatch(/markdown link target does not exist/);
   });
 
-  it('checks the docs in a subfolder, such as docs/user/features/', () => {
+  it('checks the docs in a subfolder of a docs folder', () => {
     dir = setup({
-      'docs/user/features/foo.md': '# Foo\n\nSee [settings](app-settings.md).\n',
-      'docs/user/app-settings.md': '# App settings\n',
+      'docs/dev/guides/foo.md': '# Foo\n\nSee [settings](app-settings.md).\n',
+      'docs/dev/app-settings.md': '# App settings\n',
       'docs/architecture/tech-debt.md': '---\ntopic: tech-debt\n---\n# Tech Debt\n',
     });
     const { exitCode, stderr } = spawnScript(SCRIPT, [dir]);
     expect(exitCode).toBe(1);
     expect(stderr).toMatch(
-      /docs\/user\/features\/foo\.md: markdown link target does not exist: app-settings\.md/,
+      /docs\/dev\/guides\/foo\.md: markdown link target does not exist: app-settings\.md/,
     );
   });
 
@@ -844,6 +844,104 @@ describe('docs-check: store listing', () => {
 
   it('is silent when the repo has no store listing', () => {
     dir = setup(sources);
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);
+    expect(JSON.parse(stdout).errors).toEqual([]);
+    expect(exitCode).toBe(0);
+  });
+});
+
+describe('docs-check: feature pages', () => {
+  let dir;
+
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+
+  // What a feature page's frontmatter is checked against: the app's version,
+  // the oldest supported server, the plugins page's table and the screenshot list.
+  const sources = {
+    'package.json': JSON.stringify({ version: '3.2.0' }),
+    'docs/dev/jellyfin-version-boundaries.yml': "floor: '10.7.0'\n",
+    'docs/user/jellyfin-server-plugins.md':
+      '# Jellyfin server plugins\n\n## Supported plugins\n\n| Plugin | What you get |\n| --- | --- |\n' +
+      '| [Open Subtitles](https://example.com/os) | Subtitles |\n| [Intro Skipper](https://example.com/is) | Skips |\n',
+    'docs/screenshots/screenshots.json': JSON.stringify({ screens: ['home', 'osd'] }),
+  };
+
+  const page = (frontmatter) =>
+    (frontmatter === null ? '' : `---\n${frontmatter}\n---\n\n`) + '# A feature\n\nBody.\n';
+
+  const run = (frontmatter) => {
+    dir = setup({ ...sources, 'docs/user/features/a-feature.md': page(frontmatter) });
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);
+    const found = JSON.parse(stdout).errors.filter((e) => e.category === 'feature-frontmatter');
+    return { exitCode, found, messages: found.map((e) => e.message).join('\n') };
+  };
+
+  const good = [
+    'pitch: Skip the intros your server has marked.',
+    'since: 2.9.0',
+    'server: 10.10.0',
+    'plugins: Intro Skipper',
+    'screenshots: osd, home',
+  ].join('\n');
+
+  it('passes a page whose every field is valid', () => {
+    const { exitCode, found } = run(good);
+    expect(found).toEqual([]);
+    expect(exitCode).toBe(0);
+  });
+
+  it('accepts `since: unreleased` and no optional fields', () => {
+    expect(run('pitch: Soon.\nsince: unreleased\nserver: 10.7.0').found).toEqual([]);
+  });
+
+  it('FAILs a page with no frontmatter', () => {
+    const { exitCode, messages } = run(null);
+    expect(exitCode).toBe(1);
+    expect(messages).toMatch(/has no frontmatter/);
+  });
+
+  it('FAILs a missing required field', () => {
+    expect(run('pitch: Hi.\nserver: 10.7.0').messages).toMatch(/missing `since:`/);
+  });
+
+  it('FAILs an unknown field, so a typo cannot pass', () => {
+    expect(run(`${good}\nplugin: Intro Skipper`).messages).toMatch(/unknown field `plugin:`/);
+  });
+
+  it('FAILs a pitch over its limit', () => {
+    expect(run(good.replace(/^pitch: .*/m, `pitch: ${'a'.repeat(121)}`)).messages).toMatch(
+      /pitch is 121 characters, over its limit of 120/,
+    );
+  });
+
+  it('FAILs a since newer than the app', () => {
+    expect(run(good.replace('since: 2.9.0', 'since: 3.3.0')).messages).toMatch(
+      /since: 3\.3\.0 is newer than the app \(3\.2\.0\)/,
+    );
+  });
+
+  it('FAILs a server below the floor', () => {
+    expect(run(good.replace('server: 10.10.0', 'server: 10.6.0')).messages).toMatch(
+      /server: 10\.6\.0 is older than the supported floor \(10\.7\.0\)/,
+    );
+  });
+
+  it('FAILs a plugin the plugins page does not list', () => {
+    expect(
+      run(good.replace('plugins: Intro Skipper', 'plugins: Intro Skipper, Ghost')).messages,
+    ).toMatch(/plugin "Ghost" is not a row in docs\/user\/jellyfin-server-plugins\.md/);
+  });
+
+  it('FAILs a screenshot key that screenshots.json does not list', () => {
+    expect(run(good.replace('screenshots: osd, home', 'screenshots: osd, nope')).messages).toMatch(
+      /screenshot "nope" is not in docs\/screenshots\/screenshots\.json/,
+    );
+  });
+
+  it('checks only pages in docs/user/features/', () => {
+    dir = setup({ ...sources, 'docs/user/app-settings.md': '# App settings\n' });
     const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);
     expect(JSON.parse(stdout).errors).toEqual([]);
     expect(exitCode).toBe(0);

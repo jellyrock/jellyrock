@@ -54,6 +54,10 @@
 //     server) matches its source, so a release never ships a stale
 //     number. The text is pasted into the store by hand, where nothing
 //     checks it.
+//   - The frontmatter of each feature page in docs/user/features/ (see
+//     checkFeaturePages): the fields a catalog of features is built from,
+//     each checked against the app (its version, the server floor, the
+//     plugins page, the screenshot list).
 //
 // What it doesn't check (yet):
 //   - Inline backtick-quoted paths in prose (noise-prone; many false
@@ -69,7 +73,8 @@
 //              errors: [{category, file, message, target}]} where category is
 //              one of "broken-related-file", "broken-link", "broken-anchor",
 //              "stale-anchor", "progress-frontmatter",
-//              "decisions-supersede-chain", or "store-listing".
+//              "decisions-supersede-chain", "store-listing", or
+//              "feature-frontmatter".
 //              Mutually exclusive with --verbose (verbose is a no-op under
 //              --json). Exit code semantics unchanged.
 //
@@ -90,6 +95,7 @@ const ADR_DIR = path.join(ROOT_DIR, 'docs/adr');
 const DECISIONS_PATH = path.join(ROOT_DIR, 'docs/decisions.md');
 const PROGRESS_PATH = path.join(ROOT_DIR, 'docs/progress.md');
 const STORE_LISTING_PATH = path.join(ROOT_DIR, 'docs/admin/store-listing.md');
+const FEATURES_DIR = path.join(USER_DIR, 'features');
 const TECH_DEBT_PATH = path.join(ARCH_DIR, 'tech-debt.md');
 const SCRIPTS_DIR = path.join(ROOT_DIR, 'scripts');
 const JSON_MODE = process.argv.includes('--json');
@@ -885,12 +891,117 @@ function checkStoreListing() {
   }
 }
 
+// The frontmatter of every page in docs/user/features/: flat `key: value`
+// lines, so it parses without a YAML library. A list is comma-separated. Every
+// field is checked against what the app ships, and an unknown key fails, so a
+// misspelled field is never silently ignored.
+const FEATURE_FIELDS = {
+  pitch: { required: true },
+  since: { required: true },
+  server: { required: true },
+  plugins: { required: false },
+  screenshots: { required: false },
+};
+const PITCH_LIMIT = 120;
+const VERSION_RE = /^\d+\.\d+\.\d+$/;
+
+function compareVersions(a, b) {
+  const [x, y] = [a, b].map((v) => v.split('.').map(Number));
+  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return (x[i] || 0) - (y[i] || 0);
+  return 0;
+}
+
+// The plugin names in the first column of the plugins page's table.
+function listedPlugins() {
+  const page = fs.readFileSync(path.join(USER_DIR, 'jellyfin-server-plugins.md'), 'utf8');
+  return new Set([...page.matchAll(/^\| \[([^\]]+)\]\(/gm)].map((m) => m[1]));
+}
+
+function checkFeaturePages() {
+  if (!fs.existsSync(FEATURES_DIR)) return; // silent when absent
+  const appVersion = JSON.parse(
+    fs.readFileSync(path.join(ROOT_DIR, 'package.json'), 'utf8'),
+  ).version;
+  const floor = readServerFloor();
+  const plugins = listedPlugins();
+  const screens = new Set(
+    JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'docs/screenshots/screenshots.json'), 'utf8'))
+      .screens,
+  );
+  const files = fs
+    .readdirSync(FEATURES_DIR)
+    .filter((f) => f.endsWith('.md'))
+    .sort();
+  for (const name of files) {
+    const file = path.join(FEATURES_DIR, name);
+    const fail = (message, target) =>
+      pushError({ category: 'feature-frontmatter', file, message, target });
+    const fm = readFrontmatter(fs.readFileSync(file, 'utf8'));
+    if (fm === null) {
+      fail('has no frontmatter: a feature page needs pitch, since and server', 'frontmatter');
+      continue;
+    }
+    const fields = {};
+    for (const line of fm.split(/\r?\n/)) {
+      const match = line.match(/^([a-z]+): (.+)$/);
+      if (!match) {
+        fail(`frontmatter line is not \`key: value\`: ${line}`, 'frontmatter');
+      } else if (!(match[1] in FEATURE_FIELDS)) {
+        fail(
+          `unknown field \`${match[1]}:\` (known: ${Object.keys(FEATURE_FIELDS).join(', ')})`,
+          match[1],
+        );
+      } else {
+        fields[match[1]] = match[2].trim();
+      }
+    }
+    for (const [key, { required }] of Object.entries(FEATURE_FIELDS)) {
+      if (required && !(key in fields)) fail(`missing \`${key}:\``, key);
+    }
+    const { pitch, since, server } = fields;
+    if (pitch && Array.from(pitch).length > PITCH_LIMIT) {
+      fail(
+        `pitch is ${Array.from(pitch).length} characters, over its limit of ${PITCH_LIMIT}`,
+        'pitch',
+      );
+    }
+    if (since && since !== 'unreleased') {
+      if (!VERSION_RE.test(since)) fail(`since: ${since} is not x.y.z or \`unreleased\``, 'since');
+      else if (compareVersions(since, appVersion) > 0) {
+        fail(`since: ${since} is newer than the app (${appVersion})`, 'since');
+      }
+    }
+    if (server) {
+      if (!VERSION_RE.test(server)) fail(`server: ${server} is not x.y.z`, 'server');
+      else if (compareVersions(server, floor) < 0) {
+        fail(`server: ${server} is older than the supported floor (${floor})`, 'server');
+      }
+    }
+    for (const plugin of (fields.plugins || '')
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean)) {
+      if (!plugins.has(plugin)) {
+        fail(`plugin "${plugin}" is not a row in docs/user/jellyfin-server-plugins.md`, 'plugins');
+      }
+    }
+    for (const key of (fields.screenshots || '')
+      .split(',')
+      .map((k) => k.trim())
+      .filter(Boolean)) {
+      if (!screens.has(key))
+        fail(`screenshot "${key}" is not in docs/screenshots/screenshots.json`, 'screenshots');
+    }
+  }
+}
+
 // Post-loop journal-system checks. These don't iterate files (they target
 // specific paths) so they run after the per-file scan so their errors
 // participate in the same accumulator.
 checkProgressFrontmatter();
 checkDecisionsSupersedeChain();
 checkStoreListing();
+checkFeaturePages();
 
 if (JSON_MODE) {
   // Single-line JSON to stdout regardless of pass/fail. Exit code carries
