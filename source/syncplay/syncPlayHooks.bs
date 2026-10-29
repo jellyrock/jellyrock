@@ -34,8 +34,8 @@ namespace syncPlayHooks
   end function
 
   ' Ask the group for a control the viewer pressed (SyncPlayManager.control has the shapes): true
-  ' when the group took it, so the server's command will move every member, false when the
-  ' player should act on its own. A pause is the one control the player also applies at once.
+  ' when the request was posted, so the server's command will move every member, false when the
+  ' player should act on its own. The server's answer comes later, as a command or not at all. A pause is the one control the player also applies at once.
   function control(request as object) as boolean
     manager = m.global.syncPlayManager
     if not isValid(manager) or manager.following <> true then return false

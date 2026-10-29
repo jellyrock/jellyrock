@@ -213,7 +213,6 @@ sub applyStepButtons()
     hasPrevious = group.hasPrevious
     hasNext = group.hasNext
   end if
-  ' Either can sit in the overflow menu, outside the row, while the row is split.
   itemPrevious = m.buttonMenuLeft.findNode("itemBack")
   if isValid(itemPrevious) then itemPrevious.isEnabled = hasPrevious
   itemNext = m.buttonMenuLeft.findNode("itemNext")

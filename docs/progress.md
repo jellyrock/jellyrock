@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-28
+last-updated: 2026-10-29
 ---
 
 # Progress
@@ -1017,6 +1017,14 @@ Under `RepeatAll` or `RepeatOne`, Jellyfin's SyncPlay `PlayQueueManager.Next()` 
 Deferred from #1276 to the SyncPlay project's hardening phase, where the control itself is designed: the operator expects it in the playback settings menu of the OSD (the gear), and the player has no native loop yet, so what repeat means outside a group is part of the design.
 
 The proposed shape: keep `repeatMode` in the state; `stepBounds()` and `isLastItem()` follow `RepeatAll`; every `NextItem` or `PreviousItem` reloads, since the server sends one only after a step. Closes when a group with a REST member setting each mode plays through the last item on a device, and the gear offers the control.
+
+#### SyncPlay in a group offers no queue edits or shuffle from the Roku, and voice fast-forward and rewind are unchecked `[fid: syncplay-queue-edits-shuffle-voice-scrub]` `[captured 2026-10-29]`
+
+Phase E (#1276) chose honor-only for the group's modes: the server applies shuffle and owns the playlist, so the Roku offers no queue editing and no shuffle control while following. Design both with the repeat control in the OSD gear (followup `syncplay-repeat-modes`), in the SyncPlay project's hardening phase.
+
+Also unchecked: voice fast-forward and rewind still write the node (`control` set to `fastforward` or `rewind` in `VideoPlayerView.handleTransport`) instead of going to the group. The remote's OK on the trick-play bar posts the group seek, but nobody has checked on a device whether a voice scrub can land with no OK, which would move this member alone.
+
+Closes when the queue-edit and shuffle design ships or is declined in a decision note, and a device check shows a voice scrub in a group either reaches the group or cannot land without an OK.
 
 ### api
 
