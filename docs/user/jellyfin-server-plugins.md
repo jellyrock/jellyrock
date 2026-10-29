@@ -8,9 +8,9 @@ Features that depend on your server version rather than a plugin are in the [Jel
 
 | Plugin | What you get in JellyRock | Jellyfin server version | JellyRock version | Install |
 | --- | --- | --- | --- | --- |
-| [Open Subtitles](https://github.com/jellyfin/jellyfin-plugin-opensubtitles) | Find and download subtitles from an item's page ([Manage Subtitles](manage-subtitles.md)) | 10.7 or later | 2.29.0 or later | [From your catalog](#install-from-your-catalog) |
-| [Chapter Segments Provider](https://github.com/jellyfin/jellyfin-plugin-chapter-segments) | [Skip the intro and outro](media-segments.md), found from chapter markers | 10.10 or later | 2.9.0 or later | [From your catalog](#install-from-your-catalog) |
-| [Intro Skipper](https://github.com/intro-skipper/intro-skipper) | [Skip the intro and outro](media-segments.md), detected from the audio and video | 10.10 or later | 2.9.0 or later | [Add a repository](#install-from-a-repository) |
+| [Open Subtitles](https://github.com/jellyfin/jellyfin-plugin-opensubtitles) | Find and download subtitles from an item's page ([Manage Subtitles](features/manage-subtitles.md)) | 10.7 or later | 2.29.0 or later | [From your catalog](#install-from-your-catalog) |
+| [Chapter Segments Provider](https://github.com/jellyfin/jellyfin-plugin-chapter-segments) | [Skip the intro and outro](features/media-segments.md), found from chapter markers | 10.10 or later | 2.9.0 or later | [From your catalog](#install-from-your-catalog) |
+| [Intro Skipper](https://github.com/intro-skipper/intro-skipper) | [Skip the intro and outro](features/media-segments.md), detected from the audio and video | 10.10 or later | 2.9.0 or later | [Add a repository](#install-from-a-repository) |
 | [JellyRock Companion](https://github.com/jellyrock/jellyfin-plugin-jellyrock) | [Cast to JellyRock while it's closed](https://github.com/jellyrock/jellyfin-plugin-jellyrock/blob/main/docs/features/cold-launch-cast.md). On HTTPS servers, also [remote control](https://github.com/jellyrock/jellyfin-plugin-jellyrock/blob/main/docs/features/remote-control.md) and [fast cleanup after you press Home](https://github.com/jellyrock/jellyfin-plugin-jellyrock/blob/main/docs/features/playback-cleanup.md) | 10.11 or later | 2.23.0 or later (2.24.0 to cast while closed) | [Add a repository](#install-from-a-repository) |
 
 The Jellyfin server version is the oldest server the JellyRock feature works with. Your server's catalog offers the plugin build that matches your server.

@@ -11,7 +11,7 @@ last-reviewed: 2026-10-22
 
 # Deep linking and casting
 
-How another device opens content in JellyRock: the payload it sends, how JellyRock resolves and acts on it, and how to test it. For how a user sends one, see the [user guide](../user/deep-linking.md).
+How another device opens content in JellyRock: the payload it sends, how JellyRock resolves and acts on it, and how to test it. For how a user sends one, see the [user guide](../user/features/deep-linking.md).
 
 This isn't about Roku Search or ads: JellyRock publishes no catalog. The sender is the Jellyfin ecosystem casting to a Roku, such as a phone app telling the Roku to play an item. We control both ends, so the payload below is JellyRock's contract, not Roku's.
 

@@ -95,11 +95,11 @@ npm run build # OR npm run build:prod
 ## User docs
 
 - [App Settings](docs/user/app-settings.md)
-- [Deep Linking & Casting](docs/user/deep-linking.md)
+- [Deep Linking & Casting](docs/user/features/deep-linking.md)
 - [Jellyfin Server Feature Matrix](docs/user/jellyfin-server-feature-matrix.md)
 - [Jellyfin Server Plugins](docs/user/jellyfin-server-plugins.md)
-- [Manage Subtitles](docs/user/manage-subtitles.md)
-- [Media Segments (skip intro / outro)](docs/user/media-segments.md)
+- [Manage Subtitles](docs/user/features/manage-subtitles.md)
+- [Media Segments (skip intro / outro)](docs/user/features/media-segments.md)
 - [Playback Troubleshooting](docs/user/playback-troubleshooting.md)
 
 ## Dev docs

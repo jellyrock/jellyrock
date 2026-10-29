@@ -170,4 +170,4 @@ curl "http://<roku-ip>:8060/query/media-player"
 
 ## Full reference
 
-This guide covers everyday use. For the full parameter list, the parsing rules, the security model and how it works inside the app, see the [developer reference](../dev/deep-linking.md).
+This guide covers everyday use. For the full parameter list, the parsing rules, the security model and how it works inside the app, see the [developer reference](../../dev/deep-linking.md).
