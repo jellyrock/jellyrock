@@ -85,7 +85,7 @@ namespace syncPlayPlayback
       if needsSeek then steps.push(target)
       if playerState = "paused" and not needsSeek then steps.push({ command: "resume" })
     else if plan.action = "Pause"
-      if playerState = "playing" or (playerState = "buffering" and trackerPhase <> "loading") then steps.push({ command: "pause" })
+      if playerState = "playing" or (playerState = "buffering" and trackerPhase <> "loading") then steps.push({ command: "pause", showOsd: true })
     else if plan.action = "Seek"
       target.report = true
       target.thenPause = true
@@ -106,13 +106,18 @@ namespace syncPlayPlayback
   end function
 
   ' Where a new playlist starts for this member: the last Unpause estimated forward when it is
-  ' newer than the queue update (web's startPlayback), else the update's own start. Web estimates
-  ' forward from the update's LastUpdate even for a paused group and then takes the corrective
-  ' Seek; the update's position as is reports the paused player where it is.
+  ' newer than the queue update (web's startPlayback), a newer Pause or Seek's own position (the
+  ' group stands there; a halted member resuming into a paused group lands where it waits), else
+  ' the update's own start. Web estimates forward from the update's LastUpdate even for a paused
+  ' group and then takes the corrective Seek; the update's position as is reports the paused
+  ' player where it is.
   function startPositionTicks(update as object, lastCommand as dynamic, estimator as object, nowMs as longinteger) as longinteger
-    if isValid(lastCommand) and lastCommand.command = "Unpause" and lastCommand.emittedAtMs >= update.lastUpdateMs
-      serverNow& = syncPlayOffset.serverNowMs(estimator, nowMs)
-      return syncPlayTime.asLong(lastCommand.positionTicks) + syncPlayTime.msToTicks(serverNow& - lastCommand.whenMs)
+    if isValid(lastCommand) and lastCommand.emittedAtMs >= update.lastUpdateMs
+      if lastCommand.command = "Unpause"
+        serverNow& = syncPlayOffset.serverNowMs(estimator, nowMs)
+        return syncPlayTime.asLong(lastCommand.positionTicks) + syncPlayTime.msToTicks(serverNow& - lastCommand.whenMs)
+      end if
+      if lastCommand.command = "Pause" or lastCommand.command = "Seek" then return syncPlayTime.asLong(lastCommand.positionTicks)
     end if
     return syncPlayTime.asLong(update.startPositionTicks)
   end function

@@ -11,9 +11,12 @@ namespace syncPlayMenu
   const ACCESS_CREATE_AND_JOIN = "CreateAndJoinGroups"
   const ACCESS_NONE = "None"
 
-  ' A row's action in the group menu: join the row's group, or create a new one.
+  ' A row's action in the group menu: join the row's group, or create a new one; in a group,
+  ' follow it again (a halted member) or leave it.
   const ACTION_JOIN = "join"
   const ACTION_NEW = "new"
+  const ACTION_RESUME = "resume"
+  const ACTION_LEAVE = "leave"
 
   ' The cluster's SyncPlay glyph, filled in both states: the membership shows as its color
   ' (iconFor's active), since the outlined groups glyph is barely told from the filled one.
@@ -66,6 +69,26 @@ namespace syncPlayMenu
     end if
     if canCreate(access) then rows.push({ action: ACTION_NEW, groupId: "", name: "", members: "" })
     return rows
+  end function
+
+  ' The menu's rows while in a group: Resume with group for a halted member (its player left the
+  ' group's item; the group plays on without it), then Leave Group. One list in every state, so
+  ' the menu's shape does not change with the membership (operator, 2026-10-28).
+  ' @param following - whether this member follows the group's playback
+  function memberRows(following as boolean) as object
+    rows = []
+    if not following then rows.push({ action: ACTION_RESUME })
+    rows.push({ action: ACTION_LEAVE })
+    return rows
+  end function
+
+  ' The in-group menu's title: the group's name, with its members in the parenthetical the join
+  ' rows use ("Movie night (ann, bob)"); the name alone when the list did not load.
+  ' @param groupName - the group's name
+  ' @param members - memberLine's answer
+  function memberTitle(groupName as string, members as string) as object
+    if members = "" then return { key: "", args: [groupName] }
+    return { key: translationKeys.LabelSyncPlayGroupRow, args: [groupName, members] }
   end function
 
   ' The members of a GroupInfoDto as one line: "ann, bob". Empty with no participants.
@@ -137,6 +160,7 @@ namespace syncPlayMenu
     if kind = "groupStarted" then return { key: translationKeys.MessageSyncPlayGroupStarted, toastType: "info", arg: groupName }
     if kind = "playedToGroup" then return { key: translationKeys.MessageSyncPlayPlayedToGroup, toastType: "info", arg: groupName }
     if kind = "followingAgain" then return { key: translationKeys.MessageSyncPlayFollowingAgain, toastType: "info", arg: groupName }
+    if kind = "resumeFailed" then return { key: translationKeys.MessageSyncPlayResumeFailed, toastType: "warning", arg: groupName }
     if kind = "halted" then return { key: translationKeys.MessageSyncPlayStoppedFollowing, toastType: "warning", arg: groupName }
     if kind = "GroupDoesNotExist" then return { key: translationKeys.MessageSyncPlayGroupDoesNotExist, toastType: "error", arg: "" }
     if kind = "LibraryAccessDenied" then return { key: translationKeys.MessageSyncPlayLibraryAccessDenied, toastType: "error", arg: "" }

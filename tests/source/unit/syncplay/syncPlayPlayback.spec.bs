@@ -108,9 +108,12 @@ namespace tests
       steps = syncPlayPlayback.applyPlan(pausePlan, "playing", 600000000&, "ready")
       m.assertEqual(steps.count(), 1)
       m.assertEqual(steps[0].command, "pause")
+      ' A group pause is the viewer's pause too: it shows the OSD as the Play key does.
+      m.assertTrue(steps[0].showOsd)
       stalling = syncPlayPlayback.applyPlan(pausePlan, "buffering", 600000000&, "stalling")
       m.assertEqual(stalling.count(), 1)
       m.assertEqual(stalling[0].command, "pause")
+      m.assertTrue(stalling[0].showOsd)
       ready = syncPlayPlayback.applyPlan(pausePlan, "buffering", 600000000&, "ready")
       m.assertEqual(ready.count(), 1)
       m.assertEqual(ready[0].command, "pause")
@@ -206,6 +209,18 @@ namespace tests
       update = { lastUpdateMs: 1792788440000&, startPositionTicks: 300000000& }
       newer = m.command("Unpause", "2026-10-23T20:47:28.000Z", 600000000&)
       m.assertEqual(syncPlayPlayback.startPositionTicks(update, newer, m.estimator(), m.deviceNow), 620000000&)
+    end function
+
+    @it("takes a newer Pause or Seek at its own position: the group stands there")
+    function _()
+      update = { lastUpdateMs: 1792788440000&, startPositionTicks: 300000000& }
+      paused = m.command("Pause", "2026-10-23T20:47:28.000Z", 600000000&)
+      m.assertEqual(syncPlayPlayback.startPositionTicks(update, paused, m.estimator(), m.deviceNow), 600000000&)
+      sought = m.command("Seek", "2026-10-23T20:47:28.000Z", 700000000&)
+      m.assertEqual(syncPlayPlayback.startPositionTicks(update, sought, m.estimator(), m.deviceNow), 700000000&)
+      ' A Stop says nothing about a position: the update's start stands.
+      stopped = m.command("Stop", "2026-10-23T20:47:28.000Z", 0&)
+      m.assertEqual(syncPlayPlayback.startPositionTicks(update, stopped, m.estimator(), m.deviceNow), 300000000&)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

@@ -48,9 +48,16 @@
     <!-- leaveStaleMembership(): at launch, POST /SyncPlay/Leave for the group the registry says
          the last session was in; true when one was posted. -->
     <function name="leaveStaleMembership" />
+    <!-- resumeFollowing(): a halted member follows the group again from the menu and loads the
+         group's item at its estimated position; true when it was halted in a group. -->
+    <function name="resumeFollowing" />
     <!-- { kind: "mounted" | "state" | "position" | "finished" | "unmounted", state, position }
          from the host and the player, position in the Video node's float seconds. -->
     <function name="playerEvent" />
+    <!-- control({ kind: "pause" | "unpause" | "seek" | "next" | "previous", position }): a control
+         the viewer pressed while following, posted to the group in place of the player; a seek's
+         position in the Video node's float seconds. True when posted. -->
+    <function name="control" />
   </interface>
   <children>
     <!-- The one scheduled command: a new command replaces a pending one. -->

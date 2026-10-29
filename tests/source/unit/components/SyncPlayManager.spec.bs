@@ -585,6 +585,87 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("The viewer's controls go to the group (control)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the group's playlist length and playing index are published for the OSD's previous and next")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.assertEqual(m.manager.sync.playlistCount, 2)
+      m.assertEqual(m.manager.sync.playingItemIndex, 0)
+    end function
+
+    @it("next and previous while following post NextItem and PreviousItem for the playing item")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.enableServer()
+      posts = m.capturePosts()
+      m.assertTrue(m.manager.callFunc("control", { kind: "next" }))
+      last = m.lastPost(posts)
+      m.assertTrue(last.url.instr("/SyncPlay/NextItem") >= 0)
+      m.assertEqual(last.body, FormatJson({ "PlaylistItemId": "p1" }))
+      m.assertTrue(m.manager.callFunc("control", { kind: "previous" }))
+      last = m.lastPost(posts)
+      m.assertTrue(last.url.instr("/SyncPlay/PreviousItem") >= 0)
+      m.assertEqual(last.body, FormatJson({ "PlaylistItemId": "p1" }))
+      m.assertEqual(posts.getChildCount(), 2)
+    end function
+
+    @it("pause and unpause while following post Pause and Unpause with no body")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.enableServer()
+      posts = m.capturePosts()
+      m.assertTrue(m.manager.callFunc("control", { kind: "pause" }))
+      m.assertTrue(m.lastPost(posts).url.instr("/SyncPlay/Pause") >= 0)
+      m.assertTrue(m.manager.callFunc("control", { kind: "unpause" }))
+      m.assertTrue(m.lastPost(posts).url.instr("/SyncPlay/Unpause") >= 0)
+      m.assertEqual(posts.getChildCount(), 2)
+    end function
+
+    @it("a seek while following posts Seek with the position in ticks, as a LongInteger")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.enableServer()
+      posts = m.capturePosts()
+      m.assertTrue(m.manager.callFunc("control", { kind: "seek", position: 90.5 }))
+      last = m.lastPost(posts)
+      m.assertTrue(last.url.instr("/SyncPlay/Seek") >= 0)
+      m.assertEqual(last.body, FormatJson({ "PositionTicks": 905000000& }))
+      m.assertFalse(m.manager.callFunc("control", { kind: "seek" }))
+      m.assertEqual(posts.getChildCount(), 1)
+    end function
+
+    @it("nothing is posted while halted")
+    function _()
+      m.haltWithServer()
+      posts = m.capturePosts()
+      m.assertFalse(m.manager.callFunc("control", { kind: "next" }))
+      m.assertFalse(m.manager.callFunc("control", { kind: "previous" }))
+      m.assertFalse(m.manager.callFunc("control", { kind: "pause" }))
+      m.assertFalse(m.manager.callFunc("control", { kind: "unpause" }))
+      m.assertFalse(m.manager.callFunc("control", { kind: "seek", position: 10 }))
+      m.assertEqual(posts.getChildCount(), 0)
+    end function
+
+    ' No reset() between the two halves: a state rebuilt through callFunc from the test thread
+    ' loses its LongInteger entries on the render thread (the app resets from the render thread).
+    @it("nothing is posted while the group plays nothing, or for a kind the group has no verb for")
+    function _()
+      m.joinGroupWithServer()
+      posts = m.capturePosts()
+      m.assertFalse(m.manager.callFunc("control", { kind: "next" }))
+      m.playGroupItem()
+      m.assertFalse(m.manager.callFunc("control", { kind: "shuffle" }))
+      m.assertFalse(m.manager.callFunc("control", invalid))
+      m.assertEqual(posts.getChildCount(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Following again")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -596,6 +677,43 @@ namespace tests
       m.manager.callFunc("playerEvent", { kind: "unmounted" })
       m.manager.notice = invalid
     end sub
+
+    @it("resumeFollowing follows again from the menu and tells the server to wait on this member once more")
+    function _()
+      m.halt()
+      m.enableServer()
+      posts = m.capturePosts()
+      m.assertTrue(m.manager.callFunc("resumeFollowing"))
+      m.assertTrue(m.manager.following)
+      last = m.lastPost(posts)
+      m.assertTrue(last.url.instr("/SyncPlay/SetIgnoreWait") >= 0)
+      m.assertEqual(last.body, FormatJson({ "IgnoreWait": false }))
+      ' The group's item is fetched for the load; with no answer here nothing is told yet.
+      m.assertInvalid(m.manager.notice)
+    end function
+
+    @it("resumeFollowing into a group playing nothing only follows again, and says so")
+    function _()
+      m.joinGroup()
+      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }], PlayingItemIndex: 0, StartPositionTicks: 0, IsPlaying: false, ShuffleMode: "Sorted", RepeatMode: "RepeatNone" })
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.manager.frame = m.update("PlayQueue", { Reason: "RemoveItems", LastUpdate: "2026-10-23T20:47:26.000Z", Playlist: [], PlayingItemIndex: -1, StartPositionTicks: 0, IsPlaying: false, ShuffleMode: "Sorted", RepeatMode: "RepeatNone" })
+      m.manager.notice = invalid
+      m.assertFalse(m.manager.following)
+      m.assertTrue(m.manager.callFunc("resumeFollowing"))
+      m.assertTrue(m.manager.following)
+      m.assertEqual(m.manager.notice.kind, "followingAgain")
+    end function
+
+    @it("resumeFollowing does nothing for a member already following, or outside a group")
+    function _()
+      m.assertFalse(m.manager.callFunc("resumeFollowing"))
+      m.joinGroup()
+      m.playGroupItem()
+      m.assertFalse(m.manager.callFunc("resumeFollowing"))
+      m.assertTrue(m.manager.following)
+    end function
 
     @it("a new playlist brings a halted member back, and its load says so")
     function _()

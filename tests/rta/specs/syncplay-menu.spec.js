@@ -38,6 +38,7 @@ import {
   getVal,
   getVals,
   press,
+  readPlayer,
   stopPlayback,
   waitDialogClosed,
   waitFocused,
@@ -350,26 +351,18 @@ it('OK on a group joins it and makes the icon active; the icon then offers Leave
     label: 'the icon after the join',
   });
   await press(ecp.Key.Ok);
-  await waitFor('#buttonRow.getChildCount()', (n) => n === 2, {
-    label: 'the leave dialog',
+  // In a group the menu is one list in every state: Leave Group alone while following.
+  await waitFor('#optionList.content.getChildCount()', (n) => n === 1, {
+    label: 'the in-group menu',
     timeout: 20000,
   });
-  const [cancelLabel, leaveLabel] = await getVals(['#buttonRow.0.text', '#buttonRow.1.text']);
-  expect(cancelLabel, 'button labels must read or the waits below prove nothing').toBeTruthy();
-  expect(leaveLabel).toBe('Leave Group');
-  expect(await getVal('#jrDialog.title'), 'the dialog is named after the group').toBe(GROUP_NAME);
+  expect(await getVal('#optionList.content.0.title')).toBe('Leave Group');
+  const title = await getVal('#jrDialog.title');
+  expect(title, 'the menu is named after the group, with its members').toContain(GROUP_NAME);
+  expect(title).toContain(session.username);
 
-  await waitFocused((f) => f.node?.text === cancelLabel, {
-    label: 'Cancel focused on open',
-    timeout: 5000,
-  });
-  await press(ecp.Key.Right);
-  await waitFocused((f) => f.node?.text === leaveLabel, {
-    label: 'Leave Group focused',
-    timeout: 5000,
-  });
   await press(ecp.Key.Ok);
-  await waitDialogClosed('leave dialog closed', { timeout: 10000 });
+  await waitDialogClosed('leave menu closed', { timeout: 10000 });
   await waitFor('#overhang.#cluster.#syncplayIcon.isActive', isInactive, {
     label: 'the icon goes back to rest on the leave',
     timeout: 20000,
@@ -458,6 +451,54 @@ it('Play on a movie while in a group goes to the group, whose answer starts the 
     label: 'the halted toast',
   });
   expect(await getGlobalVal('syncPlayManager.inGroup')).toBe(true);
+  expect(await getGlobalVal('syncPlayManager.following')).toBe(false);
+});
+
+it('while halted the menu offers Resume with Group, which opens the player following at the group position', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  // The case above leaves the Roku halted in the group, the group still on its movie.
+  expect(await getGlobalVal('syncPlayManager.following'), 'halted by its Back').toBe(false);
+  // Back left the player on the details screen; the walk to the icon starts from Home.
+  await press(ecp.Key.Back);
+  await waitHome();
+  await focusOverhangIcon('syncplayIcon');
+  await press(ecp.Key.Ok);
+  await waitFor('#optionList.content.getChildCount()', (n) => n === 2, {
+    label: 'the halted menu: Resume with Group, then Leave Group',
+    timeout: 20000,
+  });
+  expect(await getVals(['#optionList.content.0.title', '#optionList.content.1.title'])).toEqual([
+    'Resume with Group',
+    'Leave Group',
+  ]);
+  await press(ecp.Key.Ok);
+  await waitDialogClosed('resume menu closed', { timeout: 10000 });
+  await waitFor('subtype()', (v) => v === 'PlayerHostView', {
+    read: getActiveVal,
+    timeout: 30000,
+    interval: 250,
+    label: 'the player mounted from the resume',
+  });
+  await waitToast(`Following ${GROUP_NAME} again.`, { label: 'the following-again toast' });
+  await waitMediaPlaying("the group's item, resumed", 60000);
+  expect(await getGlobalVal('syncPlayManager.following')).toBe(true);
+  // The group kept playing while this member was halted, so the resume lands past the start. A
+  // load that starts partway in still reads 0 at its first playing (playback.md), so this waits.
+  await waitFor('position', (v) => typeof v === 'number' && v > 5, {
+    read: readPlayer(ctx.heroId),
+    timeout: 15000,
+    interval: 250,
+    label: 'resumed at the group position, not from zero',
+  });
+
+  // Back halts again, leaving the state the next case starts from.
+  await stopPlayback();
+  await waitToast(`No longer following ${GROUP_NAME}. What plays now is your own.`, {
+    label: 'the halted toast after the resume',
+  });
   expect(await getGlobalVal('syncPlayManager.following')).toBe(false);
 });
 

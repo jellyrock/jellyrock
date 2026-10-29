@@ -11,6 +11,7 @@ import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/enums/LiveStreamStage.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/syncplay/syncPlayQueue.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
@@ -929,6 +930,11 @@ end sub
 ' Add next episodes to the playback queue
 sub addNextEpisodesToQueue(showID)
   queueManager = m.global.queueManager
+
+  ' A SyncPlay group's item: the group's playlist is the queue and the server names what follows,
+  ' so nothing is queued after it. Measured 2026-10-28 on a Stick 4K: without this a one-episode
+  ' group queue grew to 50 items.
+  if syncPlayQueue.isGroupQueueItem(queueManager.callFunc("getCurrentItem")) then return
 
   ' Don't queue next episodes if we already have a playback queue
   maxQueueCount = 1

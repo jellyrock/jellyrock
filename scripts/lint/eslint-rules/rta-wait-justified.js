@@ -137,6 +137,23 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // a PlayQueue frame (`syncPlayState.applyGroupUpdate`) or leaving the group changes: held until
   // the group's queue moves again. `syncplay-menu.spec.js` waits on it for a cast's answer.
   'syncPlayManager.sync.playingItemId',
+  // `SyncPlayManager.publish` writes `groupState` from the group's StateUpdate frames (Idle,
+  // Waiting, Paused, Playing). Waiting can pass inside a tick, so no wait targets it; Paused
+  // and Playing are held until the next request to the group. `syncplay-controls.spec.js`
+  // waits on them after the Roku's own Play key.
+  'syncPlayManager.groupState',
+  // `SyncPlayManager.scheduleCommand` sets the last group command and publishes it; each later
+  // command is newer, so its `emittedAtMs` never returns to an earlier value within a membership.
+  // `syncplay-controls.spec.js` waits for it to differ from a value read before a key press.
+  'syncPlayManager.sync.lastCommand.emittedAtMs',
+  // `SyncPlayManager.scheduleCommand` sets the last group command and publishes it; it holds until
+  // the group's next command, and in the `beforeAll` of `syncplay-controls.spec.js` nothing sends
+  // one between the Unpause and the first case.
+  'syncPlayManager.sync.lastCommand.command',
+  // `SyncPlayManager.publish` writes the group playlist's length from each PlayQueue frame:
+  // held until the group's queue changes again. `syncplay-controls.spec.js` waits on it after the
+  // REST member queues an item.
+  'syncPlayManager.sync.playlistCount',
   // `AppWaitHost.publish` rewrites the whole map on each wait's begin and end, and nothing else
   // writes it: an empty map holds until the next wait begins. `syncplay-menu.spec.js` waits on
   // it after a cast over the player, once the cast's answer has arrived.
@@ -272,6 +289,11 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // climbs, so a `>= target` predicate stays true once true. Read 2026-10-02 against the
   // one gate using it (playback-notifications.spec.js, which seeks before it waits).
   'position',
+  // Roku's `Video.trickPlayBar.visible`, read off the player by id: the bar comes up on the
+  // first Right and stays until OK, Play or Back closes it (measured on a Stick 4K,
+  // 2026-10-28, with a bare swallow of OK leaving it up for good). `syncplay-controls.spec.js`
+  // waits for it before the OK that seeks the group.
+  'trickPlayBar.visible',
   'state',
 ]);
 

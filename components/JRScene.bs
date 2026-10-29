@@ -1265,10 +1265,21 @@ end sub
 sub showSyncPlayMenu(groups as dynamic)
   manager = m.global.syncPlayManager
   if manager.inGroup
-    members = syncPlayMenu.memberLine(syncPlayMenu.groupById(groups, manager.groupId))
-    message = ""
-    if members <> "" then message = translate(translationKeys.MessageSyncPlayMembers, [members])
-    m.syncPlayDialog = showConfirmDialog(manager.groupName, message, "onSyncPlayLeaveResult", translate(translationKeys.ButtonLeaveGroup), translate(translationKeys.ButtonCancel))
+    ' One list in every membership state: Resume with group while halted, then Leave Group.
+    title = syncPlayMenu.memberTitle(manager.groupName, syncPlayMenu.memberLine(syncPlayMenu.groupById(groups, manager.groupId)))
+    titleText = title.args[0]
+    if title.key <> "" then titleText = translate(title.key, title.args)
+    rows = syncPlayMenu.memberRows(manager.following = true)
+    labels = []
+    for each row in rows
+      if row.action = syncPlayMenu.ACTION_RESUME
+        labels.push(translate(translationKeys.ButtonResumeWithGroup))
+      else
+        labels.push(translate(translationKeys.ButtonLeaveGroup))
+      end if
+    end for
+    m.syncPlayRows = rows
+    m.syncPlayDialog = showListDialog(titleText, labels, "onSyncPlayListResult")
     return
   end if
   rows = syncPlayMenu.rowsFor(groups, syncPlayAccess())
@@ -1307,18 +1318,13 @@ sub onSyncPlayListResult()
   manager = m.global.syncPlayManager
   if row.action = syncPlayMenu.ACTION_NEW
     manager.callFunc("newGroup", translate(translationKeys.LabelSyncPlayDefaultGroupName, [m.global.user.name]))
+  else if row.action = syncPlayMenu.ACTION_RESUME
+    manager.callFunc("resumeFollowing")
+  else if row.action = syncPlayMenu.ACTION_LEAVE
+    manager.callFunc("leave")
   else
     manager.callFunc("join", row.groupId)
   end if
-end sub
-
-sub onSyncPlayLeaveResult()
-  dialog = m.syncPlayDialog
-  m.syncPlayDialog = invalid
-  if not isValid(dialog) or not isValid(dialog.result) then return
-  result = dialog.result
-  if result.externallyCancelled = true or result.confirmed <> true then return
-  m.global.syncPlayManager.callFunc("leave")
 end sub
 
 ' A SyncPlay notice from the manager: a toast, translated here (the manager is on m.global,

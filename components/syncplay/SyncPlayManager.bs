@@ -1,6 +1,5 @@
 ' bsc-disable-file auto-abandon-promises: one instance for the app's life on m.global, never destroyed, so no request outlives it
 import "pkg:/source/api/ApiClient.bs"
-import "pkg:/source/api/apiIds.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/api/baseRequest.bs"
@@ -101,6 +100,9 @@ sub ensureReady()
   ' What the owed load tells the viewer when it runs, decided as its queue frame arrived
   ' (syncPlayQueue.noticeForQueueFrame); invalid when no frame decided one.
   m.loadNotice = invalid
+  ' Whether the follow under way is a Resume with Group the viewer chose, so a load that fails
+  ' before it runs says so (haltFollowing); false once the load runs.
+  m.resumeAsked = false
   publish()
 end sub
 
@@ -229,6 +231,13 @@ end function
 ' @param tell - whether the viewer is told; false when what they did already says it
 sub haltFollowing(reason as string, tell = true as boolean)
   m.log.info("halting", "reason", reason, "groupId", m.state.groupId)
+  ' A resume the viewer chose from the menu that never loaded says so. The quiet rule below is
+  ' for a follow they were never told of.
+  if tell and m.resumeAsked and isFollowing()
+    notify("resumeFailed", m.state.groupName, "")
+    tell = false
+  end if
+  m.resumeAsked = false
   ' A follow the viewer was never told of (its load had not run) ends as quietly as it began.
   if syncPlayTime.isText(m.loadNotice) and m.loadNotice = "followingAgain" then tell = false
   if tell and isFollowing() then notify("halted", m.state.groupName, "")
@@ -296,6 +305,26 @@ sub followAgain()
   post("SetIgnoreWait", syncPlayRequests.setIgnoreWait(false))
   publish()
 end sub
+
+' A halted member follows the group again from the SyncPlay menu (phase E): the follow first, so
+' the fetched queue applies, then the group's item loaded as a new queue at the position the
+' state kept while halted (every update and command is recorded then; syncPlayPlayback.
+' startPositionTicks estimates it). A group playing nothing is only followed again. True when
+' this member was halted in a group.
+function resumeFollowing() as boolean
+  ensureReady()
+  if not m.state.inGroup or m.state.following then return false
+  followAgain()
+  if m.state.playingItemId = ""
+    notify("followingAgain", m.state.groupName, "")
+    return true
+  end if
+  m.owedLoad = { newPlaylist: true }
+  m.loadNotice = "followingAgain"
+  m.resumeAsked = true
+  fetchQueue("Resume", m.state.lastUpdateMs, false, "-resume")
+  return true
+end function
 
 ' Whether a play this viewer handed to the group still waits on the group's answer: the start
 ' its press opened is still open. Back, the start's time limit or a newer press ended it.
@@ -466,7 +495,7 @@ sub applyPendingPlan()
       m.expectingRemount = true
       host.callFunc("exitPlayback")
     else
-      host.callFunc("handleTransport", verb)
+      tellPlayer(host, verb)
       if verb.command = "pause"
         m.pauseAttempts++
         armPauseTimer()
@@ -500,61 +529,56 @@ sub onQueueUpdate(update as object)
   fetchQueue(update.reason, m.state.lastUpdateMs, false)
 end sub
 
-' Fetches the group's items and applies the queue. The ids go out in apiIds runs, one request
-' each, so a long playlist stays under the request-line limit. A failed load goes to
+' Fetches the item the group plays and applies it as the queue: one item, one request, whatever
+' the playlist's length (syncPlayQueue's header says why). A failed load goes to
 ' onQueueLoadFailed: the server waits on this member's Ready, so a silent exit would hold the
 ' whole group.
-sub fetchQueue(reason as string, lastUpdateMs as longinteger, isRetry as boolean)
-  ids = syncPlayQueue.itemIds(m.state.playlist)
-  if ids.count() = 0 then return
-  requests = []
-  for each chunk in apiIds.chunks(ids)
-    req = GetApi().BuildGetItemsByQueryRequest({ ids: chunk.join(",") })
-    if not isValid(req) then return
-    requests.push(req)
-  end for
-  pages = []
-  for pageIndex = 0 to requests.count() - 1
-    requestId = "syncplay-queue-" + lastUpdateMs.toStr() + "-" + pageIndex.toStr()
-    if isRetry then requestId = requestId + "-retry"
-    pages.push(fetchAsync(requests[pageIndex], requestId))
-  end for
-  promises.chain(promises.all(pages), { reason: reason, lastUpdateMs: lastUpdateMs, isRetry: isRetry }).then(sub(results as object, ctx as object)
-    ' A newer update arrived while this one's items were in flight: it will apply its own.
-    ' A member that stopped following while the items were in flight applies nothing, as onCommand
+' @param tag - what tells this fetch's request id from the update's own (a resume fetches an
+'   update already fetched once; fetchAsync keys its pending requests by id)
+sub fetchQueue(reason as string, lastUpdateMs as longinteger, isRetry as boolean, tag = "" as string)
+  entry = syncPlayQueue.playingEntry(m.state)
+  if not isValid(entry) then return
+  req = GetApi().BuildGetItemsByQueryRequest({ ids: entry.itemId })
+  if not isValid(req) then return
+  requestId = "syncplay-queue-" + lastUpdateMs.toStr() + tag
+  if isRetry then requestId = requestId + "-retry"
+  promises.chain(fetchAsync(req, requestId), { reason: reason, lastUpdateMs: lastUpdateMs, isRetry: isRetry, tag: tag, entry: entry }).then(sub(res as object, ctx as object)
+    ' A newer update arrived while this one's item was in flight: it will apply its own.
+    ' A member that stopped following while the item was in flight applies nothing, as onCommand
     ' does for a halted member.
     if not syncPlayQueue.appliesFetchedQueue(m.state, ctx.lastUpdateMs) then return
-    items = syncPlayQueue.pagedItems(results)
+    items = syncPlayQueue.pagedItems([res])
     if not isValid(items)
-      m.log.warn("the group's items could not be read", "reason", ctx.reason)
-      onQueueLoadFailed(ctx.reason, ctx.lastUpdateMs, ctx.isRetry, "missing")
+      m.log.warn("the group's item could not be read", "reason", ctx.reason)
+      onQueueLoadFailed(ctx.reason, ctx.lastUpdateMs, ctx.isRetry, ctx.tag, "missing")
       return
     end if
-    applyQueue(ctx.reason, syncPlayQueue.queueItemsFor(m.state.playlist, items), ctx.lastUpdateMs, ctx.isRetry)
+    applyQueue(ctx.reason, syncPlayQueue.queueItemsFor([ctx.entry], items), ctx.lastUpdateMs, ctx.isRetry, ctx.tag)
   end sub).catch(sub(err as object, ctx as object)
     ' err whole: a timeout rejects with the pool's result, which has no `reason`.
     m.log.warn("the group's items could not be fetched", err)
-    onQueueLoadFailed(ctx.reason, ctx.lastUpdateMs, ctx.isRetry, "request")
+    onQueueLoadFailed(ctx.reason, ctx.lastUpdateMs, ctx.isRetry, ctx.tag, "request")
   end sub)
 end sub
 
 ' A queue that cannot be loaded: retry a request failure once, otherwise stop following so the
 ' server stops waiting on this member. Nothing happens when a newer update or a halt took over.
-sub onQueueLoadFailed(reason as string, lastUpdateMs as longinteger, isRetry as boolean, failure as string)
+' @param tag - the failed fetch's tag, which its retry keeps (fetchQueue)
+sub onQueueLoadFailed(reason as string, lastUpdateMs as longinteger, isRetry as boolean, tag as string, failure as string)
   if not syncPlayQueue.appliesFetchedQueue(m.state, lastUpdateMs) then return
   if syncPlayQueue.loadFailureAction(isRetry, failure) = "retry"
-    fetchQueue(reason, lastUpdateMs, true)
+    fetchQueue(reason, lastUpdateMs, true, tag)
     return
   end if
   haltFollowing("the group's queue could not be loaded (" + failure + ")")
 end sub
 
-sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteger, isRetry as boolean)
+sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteger, isRetry as boolean, tag as string)
   index = syncPlayQueue.positionOf(queueItems, m.state.playingItemId)
   ' Checked before the queue changes: a member that stops following keeps its own queue.
   if index < 0
     m.log.warn("the group's playing item is not in the fetched queue", "playlistItemId", m.state.playingItemId)
-    onQueueLoadFailed(reason, lastUpdateMs, isRetry, "missing")
+    onQueueLoadFailed(reason, lastUpdateMs, isRetry, tag, "missing")
     return
   end if
   ' Also before the queue changes. Not a load failure, so no retry: the audio player and Live TV
@@ -583,6 +607,7 @@ sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteg
   ' follow made again, and a launch says what its frame decided (syncPlayQueue.noticeAtLoad).
   notice = syncPlayQueue.noticeAtLoad(m.loadNotice, action, hasOpenClaim())
   m.loadNotice = invalid
+  m.resumeAsked = false
   if notice <> "" then notify(notice, m.state.groupName, "")
   ' The group answered: a follow made at a claim is real from here, whichever branch loads it.
   m.claimRefollowed = false
@@ -626,7 +651,7 @@ sub track(evt as object)
     ' A load's first frame: hold here and tell the server where we are. Its Unpause starts
     ' everyone together (web pauses at playbackstart the same way).
     host = playerHost()
-    if isValid(host) then host.callFunc("handleTransport", { command: "pause" })
+    if isValid(host) then tellPlayer(host, { command: "pause" })
     isPlaying = false
   end if
   if result.report <> ""
@@ -656,15 +681,18 @@ sub onPauseTimer()
   if not isFollowing() then return
   if not syncPlayPlayback.owesPause(m.groupPaused, m.playerState, m.tracker.phase) then return
   if m.pauseAttempts >= syncPlayPlayback.PAUSE_ATTEMPTS
+    ' The viewer's own Play goes to the group (control), so a node that plays on through three
+    ' pauses is a device fault: the member halts rather than drift out of sync unannounced.
     if not m.pauseGaveUp
       m.pauseGaveUp = true
       m.log.warn("the player would not stay paused", "state", m.playerState, "attempts", m.pauseAttempts)
+      haltFollowing("the player would not stay paused")
     end if
     return
   end if
   host = playerHost()
   if not isValid(host) then return
-  host.callFunc("handleTransport", { command: "pause" })
+  tellPlayer(host, { command: "pause" })
   m.pauseAttempts++
   armPauseTimer()
 end sub
@@ -733,6 +761,15 @@ function isFollowing() as boolean
   return m.state.inGroup and m.state.following
 end function
 
+' Hands the group's own verb to the player, marked fromGroup: the player applies it as it is
+' instead of asking the group for it again (VideoPlayerView.handleTransport). Without the mark a
+' group Seek came back as a new Seek request and went round for good, and the load's first-frame
+' pause paused the whole group (Stick 4K, 2026-10-28).
+sub tellPlayer(host as object, verb as object)
+  verb.fromGroup = true
+  host.callFunc("handleTransport", verb)
+end sub
+
 ' The routed play host, when the viewer is on the play route.
 function playerHost() as dynamic
   view = m.global.activeRoutedView
@@ -785,6 +822,7 @@ sub leaveLocally()
   m.claimRefollowed = false
   m.joinAwaitsQueue = false
   m.loadNotice = invalid
+  m.resumeAsked = false
   m.loadStartTicks = 0&
   m.failedBursts = 0
   publish()
@@ -804,7 +842,30 @@ sub publish()
       lastCommand: m.lastCommand,
       trackerPhase: m.tracker.phase,
       playingItemId: m.state.playingItemId,
+      playingItemIndex: m.state.playingItemIndex,
+      playlistCount: m.state.playlist.count(),
       loadNotice: m.loadNotice
     }
   })
 end sub
+
+' --- the viewer's controls ---
+
+' A control the viewer pressed while following, asked of the group in place of the player:
+' { kind: "pause" | "unpause" | "seek" | "next" | "previous", position }, the seek's position in
+' the Video node's float seconds. True when it was posted; the server's command then moves every
+' member, this one included (a pause is also written locally by the player, as web does, so the
+' viewer sees it land at once). Nothing is posted while halted, or while the group plays nothing:
+' the player then keeps its own behavior.
+function control(request as object) as boolean
+  if not isValid(request) or not isFollowing() or m.state.playingItemId = "" then return false
+  if request.kind = "pause" then return post("Pause", invalid)
+  if request.kind = "unpause" then return post("Unpause", invalid)
+  if request.kind = "seek"
+    if not isValid(request.position) then return false
+    return post("Seek", syncPlayRequests.seek(syncPlayPlayback.secondsToTicks(request.position)))
+  end if
+  if request.kind = "next" then return post("NextItem", syncPlayRequests.nextItem(m.state.playingItemId))
+  if request.kind = "previous" then return post("PreviousItem", syncPlayRequests.previousItem(m.state.playingItemId))
+  return false
+end function

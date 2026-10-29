@@ -97,6 +97,27 @@ namespace tests
       m.assertEqual(syncPlayMenu.rowsFor({ error: true }, "CreateAndJoinGroups").count(), 1)
     end function
 
+    @it("in a group the rows are Leave Group alone while following, Resume with group first while halted")
+    function _()
+      following = syncPlayMenu.memberRows(true)
+      m.assertEqual(following.count(), 1)
+      m.assertEqual(following[0].action, syncPlayMenu.ACTION_LEAVE)
+      halted = syncPlayMenu.memberRows(false)
+      m.assertEqual(halted.count(), 2)
+      m.assertEqual(halted[0].action, syncPlayMenu.ACTION_RESUME)
+      m.assertEqual(halted[1].action, syncPlayMenu.ACTION_LEAVE)
+    end function
+
+    @it("the in-group title is the group with its members in the row parenthetical, the name alone without them")
+    function _()
+      withMembers = syncPlayMenu.memberTitle("Movie night", "ann, bob")
+      m.assertEqual(withMembers.key, translationKeys.LabelSyncPlayGroupRow)
+      m.assertEqual(withMembers.args, ["Movie night", "ann, bob"])
+      alone = syncPlayMenu.memberTitle("Movie night", "")
+      m.assertEqual(alone.key, "")
+      m.assertEqual(alone.args, ["Movie night"])
+    end function
+
     @it("memberLine joins the names and is empty without participants")
     function _()
       m.assertEqual(syncPlayMenu.memberLine(m.groupList()[0]), "ann, bob")
@@ -133,6 +154,8 @@ namespace tests
       m.assertEqual(syncPlayMenu.toastFor({ kind: "playedToGroup", groupName: "g" }).key, translationKeys.MessageSyncPlayPlayedToGroup)
       m.assertEqual(syncPlayMenu.toastFor({ kind: "followingAgain", groupName: "g" }).arg, "g")
       m.assertEqual(syncPlayMenu.toastFor({ kind: "halted", groupName: "g" }).toastType, "warning")
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "resumeFailed", groupName: "g" }).key, translationKeys.MessageSyncPlayResumeFailed)
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "resumeFailed", groupName: "g" }).toastType, "warning")
       m.assertEqual(syncPlayMenu.toastFor({ kind: "JoinGroupDenied" }).toastType, "error")
       m.assertEqual(syncPlayMenu.toastFor({ kind: "LibraryAccessDenied" }).key, translationKeys.MessageSyncPlayLibraryAccessDenied)
     end function

@@ -1,0 +1,129 @@
+namespace tests
+
+  ' The OSD's previous and next while following a SyncPlay group: their enabled state reads the
+  ' group's playlist (syncPlayHooks.groupQueue), and is read again as the OSD opens, since the
+  ' group's playlist can change under the playing item. Outside a group they read the local queue,
+  ' on the same two occasions. The manager is a stand-in node with the two fields groupQueue reads.
+  @suite("OSD - previous and next in a SyncPlay group")
+  class OSDGroupStepsTests extends tests.BaseTestSuite
+
+    private osd as object
+    private previousQueue as object
+    private previousManager as object
+
+    protected override function beforeEach()
+      super.beforeEach()
+      if not m.global.doesExist("queueManager") then m.global.addField("queueManager", "node", false)
+      m.previousQueue = m.global.queueManager
+      m.global.queueManager = CreateObject("roSGNode", "QueueManager")
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+      if not m.global.doesExist("syncPlayManager") then m.global.addField("syncPlayManager", "node", false)
+      m.previousManager = m.global.syncPlayManager
+      manager = CreateObject("roSGNode", "ContentNode")
+      manager.addFields({ following: true, sync: {} })
+      m.global.syncPlayManager = manager
+      m.osd = CreateObject("roSGNode", "OSD")
+      ' Hidden, as VideoPlayerView.xml declares it, so opening it is a change.
+      m.osd.visible = false
+    end function
+
+    protected override function afterEach()
+      m.osd = invalid
+      m.global.syncPlayManager = m.previousManager
+      m.previousManager = invalid
+      m.global.queueManager = m.previousQueue
+      m.previousQueue = invalid
+      super.afterEach()
+    end function
+
+    private sub groupAt(index as integer, count as integer)
+      m.global.syncPlayManager.sync = { playingItemIndex: index, playlistCount: count }
+    end sub
+
+    ' A local queue of count episodes, playing the one at index.
+    private sub localQueueAt(index as integer, count as integer)
+      items = []
+      for i = 1 to count
+        items.push({ id: "test-episode-" + i.toStr(), type: "Episode" })
+      end for
+      m.global.queueManager.callFunc("set", items)
+      m.global.queueManager.callFunc("setPosition", index)
+    end sub
+
+    ' onItemDataChanged reads nothing from an item with no id.
+    private function item() as object
+      node = CreateObject("roSGNode", "JellyfinBaseItem")
+      node.setFields({ id: "test-episode", type: "Episode" })
+      return node
+    end function
+
+    private function button(id as string) as object
+      return m.osd.findNode(id)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("The enabled state reads the group's playlist")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the group's last item disables next and keeps previous")
+    function _()
+      m.groupAt(1, 2)
+      m.osd.itemData = m.item()
+      m.assertFalse(m.button("itemNext").isEnabled)
+      m.assertTrue(m.button("itemBack").isEnabled)
+    end function
+
+    @it("an item another member adds enables next as the OSD opens")
+    function _()
+      m.groupAt(1, 2)
+      m.osd.itemData = m.item()
+      m.assertFalse(m.button("itemNext").isEnabled)
+      m.groupAt(1, 3)
+      m.osd.visible = true
+      m.assertTrue(m.button("itemNext").isEnabled)
+    end function
+
+    @it("a removal that leaves the first item alone disables both as the OSD opens")
+    function _()
+      m.groupAt(1, 3)
+      m.osd.itemData = m.item()
+      m.assertTrue(m.button("itemNext").isEnabled)
+      m.assertTrue(m.button("itemBack").isEnabled)
+      m.groupAt(0, 1)
+      m.osd.visible = true
+      m.assertFalse(m.button("itemNext").isEnabled)
+      m.assertFalse(m.button("itemBack").isEnabled)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Outside a group the enabled state reads the local queue")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the queue's first item enables next and disables previous, whatever the group's playlist says")
+    function _()
+      m.global.syncPlayManager.following = false
+      m.groupAt(1, 3)
+      m.localQueueAt(0, 2)
+      m.osd.itemData = m.item()
+      m.assertTrue(m.button("itemNext").isEnabled)
+      m.assertFalse(m.button("itemBack").isEnabled)
+    end function
+
+    @it("a queue that grows after the load enables next as the OSD opens")
+    function _()
+      m.global.syncPlayManager.following = false
+      m.localQueueAt(1, 2)
+      m.osd.itemData = m.item()
+      m.assertFalse(m.button("itemNext").isEnabled)
+      m.global.queueManager.callFunc("push", { id: "test-episode-3", type: "Episode" })
+      m.osd.visible = true
+      m.assertTrue(m.button("itemNext").isEnabled)
+      m.assertTrue(m.button("itemBack").isEnabled)
+    end function
+
+  end class
+
+end namespace

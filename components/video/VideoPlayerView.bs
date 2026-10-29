@@ -127,6 +127,7 @@ sub init()
   ' the authoritative seek position and sync our carousel to it
   m.isTrackingSeek = false
   m.carouselHiddenForSeek = false ' Track when carousel is hidden during seek confirmation
+  m.trickSeekTarget = -1 ' The scrub's target in seconds while the bar is up, for a group seek
   m.lastSentThumbnailIndex = -1 ' Dedup thumbnail index updates to prevent double-rendering at tile boundaries
 
   m.playbackTimer = m.top.findNode("playbackTimer")
@@ -278,7 +279,7 @@ sub handleChapterSkipAction(action as string)
     ' If there is no next chapter, exit
     if gotoChapter > m.chapters.count() - 1 then return
 
-    m.top.seek = m.chapters[gotoChapter].StartPositionTicks / 10000000#
+    seekPlayer(m.chapters[gotoChapter].StartPositionTicks / 10000000#)
     return
   end if
 
@@ -287,7 +288,7 @@ sub handleChapterSkipAction(action as string)
     ' If there is no previous chapter, restart current chapter
     if gotoChapter < 0 then gotoChapter = 0
 
-    m.top.seek = m.chapters[gotoChapter].StartPositionTicks / 10000000#
+    seekPlayer(m.chapters[gotoChapter].StartPositionTicks / 10000000#)
     return
   end if
 end sub
@@ -296,6 +297,14 @@ end sub
 '
 ' @param {string} action - skip action to take
 sub handleItemSkipAction(action as string)
+  ' In a SyncPlay group the step is the group's: the server's queue update moves every member.
+  group = syncPlayHooks.groupQueue()
+  if isValid(group)
+    if action = "itemnext" and group.hasNext then syncPlayHooks.control({ kind: "next" })
+    if action = "itemback" and group.hasPrevious then syncPlayHooks.control({ kind: "previous" })
+    return
+  end if
+
   queueManager = m.global.queueManager
   queueCount = queueManager.callFunc("getCount")
   queuePosition = queueManager.callFunc("getPosition")
@@ -392,9 +401,7 @@ sub handleHideAction(resume as boolean)
   m.osd.hasFocus = false
   m.osd.setFocus(false)
   if osdHadFocus then m.top.setFocus(true)
-  if resume
-    m.top.control = "resume"
-  end if
+  if resume then resumePlayer()
 
   ' Re-check segments after OSD closes: re-shows paused notification if still in segment
   checkMediaSegments()
@@ -446,7 +453,33 @@ sub handleVideoPlayPauseAction()
   end if
 
   ' Pause video
-  m.top.control = "pause"
+  pausePlayer(false)
+end sub
+
+' The viewer's own pause, play and seek. In a SyncPlay group each goes to the group
+' (syncPlayHooks.control), whose command then moves every member, this one included; outside
+' one, or when the request cannot be posted, the node is written as before. A pause is also written
+' locally at once, as jellyfin-web does, so the viewer sees their own press land.
+
+' @param showOsd - true from the Play key, which pauses with the OSD up
+sub pausePlayer(showOsd as boolean)
+  syncPlayHooks.control({ kind: "pause" })
+  if showOsd
+    pauseWithOsd()
+  else
+    m.top.control = "pause"
+  end if
+end sub
+
+sub resumePlayer()
+  if syncPlayHooks.control({ kind: "unpause" }) then return
+  m.top.control = "resume"
+end sub
+
+' @param targetSeconds - where to seek, in the node's float seconds
+sub seekPlayer(targetSeconds as float)
+  if syncPlayHooks.control({ kind: "seek", position: targetSeconds }) then return
+  m.top.seek = targetSeconds
 end sub
 
 ' handleShowSubtitleMenuAction: Handles action to show subtitle selection menu
@@ -1505,6 +1538,9 @@ end sub
 ' Forces playback to finished state for proper watched-status and auto-play.
 ' Triggers synchronous teardown (onState -> PlayerHostView.onPlayerStateChange -> destroy/
 ' goBack -> onDestroy), invalidating all m. references. Callers must return immediately after.
+' In a SyncPlay group a finish moves every member on: the host hands it to the manager, which
+' asks the group for the next item. A segment skip finishes only when the segment reaches the
+' end (skipEndsPlayback), so a scene after the credits segment still plays.
 sub forceFinishPlayback()
   ' Explicitly mark as watched via dedicated API endpoint.
   ' Uses the API pool (not SideEffectTask) so it can't be overwritten
@@ -1550,9 +1586,9 @@ sub checkMediaSegments()
     ' Already-skipped Skip segments degrade to AskToSkip so replay still offers the
     ' manual button without re-triggering the one-shot auto-skip (see resolveEffectiveSegmentAction).
     action = resolveEffectiveSegmentAction(segmentType, userSession.settings, userSession.config, m.skippedSegments.DoesExist(segmentId))
-    ' In a SyncPlay group no seek is local: an auto-skip would desync this member, and the
-    ' button's press is a local seek too until phase E routes it through the server.
-    if syncPlayHooks.following() then action = MediaSegmentAction.NONE
+    ' In a SyncPlay group an auto-skip stands down: one member's setting would move everyone.
+    ' The button stays, and its press is a group seek (seekPlayer).
+    if syncPlayHooks.following() and action = MediaSegmentAction.SKIP then action = MediaSegmentAction.ASK_TO_SKIP
     m.log.verbose("Active segment found", segmentType, segmentId, "action:", action)
 
     if action = MediaSegmentAction.SKIP
@@ -1650,7 +1686,7 @@ sub onSegmentNotificationAction()
         return
       end if
 
-      m.top.seek = seekPosition
+      seekPlayer(seekPosition)
       m.skippedSegments[m.activeSegmentId] = true
       ' Treat the skip as a dismissal so the button doesn't re-flash during the
       ' post-seek buffering (position still lags inside the segment); the button
@@ -1763,6 +1799,7 @@ sub onPositionChanged()
     if not trickPlayBarVisible
       m.isTrackingSeek = false
       m.carouselHiddenForSeek = false
+      m.trickSeekTarget = -1
       m.lastSentThumbnailIndex = -1 ' Reset so next scrub session sends initial position
     end if
   end if
@@ -1824,6 +1861,7 @@ sub onTrickPlayBarTextChange()
   end if
 
   m.log.debug("TrickPlayBar text changed", timeText, "parsed to", seekTime, "seconds")
+  m.trickSeekTarget = seekTime
 
   ' Sync carousel with Roku's authoritative seek position
   m.isTrackingSeek = true
@@ -2398,7 +2436,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       ' Don't seek if user clicked on No Chapter Data
       if seekTime = m.playbackEnum.null then return true
 
-      m.top.seek = seekTime
+      seekPlayer(seekTime)
       return true
     end if
 
@@ -2473,11 +2511,18 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
     ' If video is paused, resume it and don't show OSD
     if m.top.state = "paused"
-      m.top.control = "resume"
+      resumePlayer()
       return true
     end if
 
-    pauseWithOsd()
+    pausePlayer(true)
+    return true
+  end if
+
+  ' In a SyncPlay group Replay is a group seek, as the voice replay is: Roku's own replay never
+  ' reached the group (2026-10-28, Stick 4K).
+  if key = "replay" and not m.top.trickPlayBar.visible and syncPlayHooks.following()
+    seekRelativeWithBounds(-getInstantReplaySeconds())
     return true
   end if
 
@@ -2497,6 +2542,16 @@ function onKeyEvent(key as string, press as boolean) as boolean
       ' Set flag to prevent auto-show (line 790 guard) until trickPlayBar closes (line 797 reset)
       ' This prevents carousel flashing back on between OK press and trickPlayBar closing
       m.carouselHiddenForSeek = true
+    end if
+    ' In a SyncPlay group the scrub's target goes to the group, and the group's Seek moves every
+    ' member. The node leaves trick mode where it was through a seek to its own position: the one
+    ' write that closes the bar without moving (a bare swallow leaves the bar up for good, a
+    ' resume plays on under it; measured on a Stick 4K, 2026-10-28). A seek that cannot be posted
+    ' (not following, or no request could be built) falls through to Roku's own. A posted seek the
+    ' server then refuses is not seen here: like jellyfin-web, the member waits for the group.
+    if m.trickSeekTarget >= 0 and syncPlayHooks.control({ kind: "seek", position: m.trickSeekTarget })
+      m.top.seek = m.top.position
+      return true
     end if
     ' Return false to let Roku handle the seek and close the trickPlayBar
     return false
@@ -2693,6 +2748,9 @@ function handleTransport(evt as object) as object
   m.log.info("voice transport", cmd)
 
   if cmd = "play" or cmd = "resume"
+    ' In a SyncPlay group a paused member's play is the group's Unpause. The group's own verbs
+    ' (fromGroup) are applied here as they are, or they would go round again.
+    if m.top.state = "paused" and evt.fromGroup <> true and syncPlayHooks.control({ kind: "unpause" }) then return { status: "success" }
     ' A buffering node writes nothing and still reports success: it plays once it has buffered, and
     ' a control "play" written during a seek's buffering wedges it in `buffering` for good
     ' (measured on a Streaming Stick 4K, 2026-10-23). See voiceTransport.playControl().
@@ -2711,7 +2769,16 @@ function handleTransport(evt as object) as object
 
   if cmd = "pause"
     if m.top.state = "paused" then return { status: "error.redundant" }
-    m.top.control = "pause"
+    ' A SyncPlay group's pause is this viewer's pause too, so it shows the OSD as the Play key
+    ' does (syncPlayPlayback.applyPlan marks the verb). A voice or remote-app pause keeps today's
+    ' plain pause, and in a group goes to the group as well (pausePlayer).
+    if evt.showOsd = true
+      pauseWithOsd()
+    else if evt.fromGroup = true
+      m.top.control = "pause"
+    else
+      pausePlayer(false)
+    end if
     return { status: "success" }
   end if
 
@@ -2772,16 +2839,16 @@ function handleTransport(evt as object) as object
 
   if cmd = "seekto"
     if not isValid(evt.position) then return { status: "error.generic" }
-    return seekToWithBounds(evt.position)
+    return seekToWithBounds(evt.position, evt.fromGroup = true)
   end if
 
   if cmd = "playpause"
     if m.top.state = "playing"
-      m.top.control = "pause"
+      pausePlayer(false)
       return { status: "success" }
     end if
     if m.top.state = "paused"
-      m.top.control = "resume"
+      resumePlayer()
     else
       m.top.control = "play"
     end if
@@ -2825,9 +2892,15 @@ end function
 
 ' 30s end-slack matches the Roku transport-controls reference example for video:
 ' clamping shy of duration prevents the player from firing end-of-content immediately.
-function seekToWithBounds(targetSeconds as float) as object
+' @param fromGroup - true for a SyncPlay group's own Seek, which is written to the node and never
+'   asked of the group again
+function seekToWithBounds(targetSeconds as float, fromGroup = false as boolean) as object
   result = voiceTransport.computeSeekStatus(targetSeconds, m.top.duration, 30)
-  m.top.seek = result.clamped
+  if fromGroup
+    m.top.seek = result.clamped
+  else
+    seekPlayer(result.clamped)
+  end if
   return { status: result.status }
 end function
 
@@ -2851,7 +2924,7 @@ function tryActiveSegmentSkip() as boolean
   if skipEndsPlayback(seekPosition, getEffectiveDuration())
     forceFinishPlayback()
   else
-    m.top.seek = seekPosition
+    seekPlayer(seekPosition)
     m.skippedSegments[m.activeSegmentId] = true
   end if
 
@@ -2865,6 +2938,11 @@ end function
 ' Reuse the OSD itemNext code path so Live-TV channel advance, queue advance, and
 ' Episode-to-next-Episode all behave identically to pressing the on-screen Next button.
 function handleVoiceNextItem() as object
+  group = syncPlayHooks.groupQueue()
+  if isValid(group)
+    if group.hasNext and syncPlayHooks.control({ kind: "next" }) then return { status: "success" }
+    return { status: "error.generic" }
+  end if
   queueManager = m.global.queueManager
   if not isValid(queueManager) then return { status: "error.generic" }
   queueCount = queueManager.callFunc("getCount")
@@ -2886,6 +2964,11 @@ end function
 ' Remote "PreviousTrack": step back one queue item, symmetric with handleVoiceNextItem.
 ' error.generic at the head of the queue (no previous item): no chapter-back concept here.
 function handleVideoPreviousItem() as object
+  group = syncPlayHooks.groupQueue()
+  if isValid(group)
+    if group.hasPrevious and syncPlayHooks.control({ kind: "previous" }) then return { status: "success" }
+    return { status: "error.generic" }
+  end if
   queueManager = m.global.queueManager
   if not isValid(queueManager) then return { status: "error.generic" }
   queuePosition = queueManager.callFunc("getPosition")

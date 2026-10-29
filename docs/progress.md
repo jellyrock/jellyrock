@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-28
+last-updated: 2026-10-29
 ---
 
 # Progress
@@ -819,6 +819,14 @@ Closes when phase F's plan decides it: built with its strings and specs, or reco
 
 Closes when the socket path drops the status on a close that does not recover (for example, unknown after the socket has been down longer than its reconnect backoff cap), with a spec and without hiding the icon on a brief blip, or when a device check shows a dead socket does not happen in practice.
 
+#### A group Pause during a SyncPlay member's first-frame start hold leaves it paused with no OSD `[fid: syncplay-pause-during-start-hold-no-osd]` `[captured 2026-10-28]`
+
+A group Pause that arrives while a member holds its first frame for the group's synchronized start (the first-frame pause in `SyncPlayManager`, before its Ready and the group's `Unpause`) leaves the node paused with no OSD: `syncPlayPlayback.applyPlan()` writes a Pause step only for a playing (or settled buffering) node, so no `showOsd` reaches the player, and the Pause replaces the pending `Unpause`. The viewer sees a frozen picture with no controls, the symptom #1276 fixed for every other pause.
+
+Found while fixing `syncplay-controls.spec.js`'s intermittent pause failures (#1276, 2026-10-28): the test race was this window, and the test now waits for the group's `Unpause`. The app-side fix (a Pause that finds this member in its start hold also shows the OSD, through a step in `applyPlan()` and its handling in `VideoPlayerView.handleTransport`) was rejected for now: the window is about the first second of a start, and no failing device console confirms the app case.
+
+Closes after a manual check: pause from another member (jellyfin-web) within a second of a group start on the Roku. If the picture freezes with no OSD, build the fix above with a unit spec on `applyPlan` and a device check; if it never shows, close as not reproduced.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -1001,6 +1009,22 @@ The app-side half (one name helper used by the auth header and `buildPairPayload
 `syncPlayMenu.IS_ENABLED` is a switch added in PR #1270 so a release could ship with SyncPlay hidden if phases E and F were not ready: set to `false`, `canJoin` refuses every user, so the cluster icon (the one way into a group), its menu and the badge's group-list reads all go away. It ships `true`. It is a temporary carve-out, not a setting.
 
 Closes when the in-player SyncPlay surface (phase F of epic #1251) ships: delete the constant, fold `joinAllowed` back into `canJoin`, and drop the two `syncPlayMenu.spec.bs` cases that drive the switch.
+
+#### SyncPlay repeat modes are not read: a `RepeatOne` member is left on a finished player and `RepeatAll` grays out Next on the last item `[fid: syncplay-repeat-modes]` `[captured 2026-10-28]`
+
+Under `RepeatAll` or `RepeatOne`, Jellyfin's SyncPlay `PlayQueueManager.Next()` and `Previous()` answer on the playlist's ends: `RepeatAll` wraps around, `RepeatOne` keeps the same index (read upstream 2026-10-28). A jellyfin-web member can set either mode. JellyRock parses `RepeatMode` (`syncPlayMessage`) but `syncPlayState` drops it, and `syncPlayQueue.changesPlayingItem()` treats a `NextItem` with the same id as no change. So, from reading the code and not yet seen on a device: a `RepeatOne` member is left on a finished player (and leaves playback on the last item, `syncPlayQueue.isLastItem()`), and a `RepeatAll` member's **Next** grays out on the last item (`syncPlayQueue.stepBounds()`).
+
+Deferred from #1276 to the SyncPlay project's hardening phase, where the control itself is designed: the operator expects it in the playback settings menu of the OSD (the gear), and the player has no native loop yet, so what repeat means outside a group is part of the design.
+
+The proposed shape: keep `repeatMode` in the state; `stepBounds()` and `isLastItem()` follow `RepeatAll`; every `NextItem` or `PreviousItem` reloads, since the server sends one only after a step. Closes when a group with a REST member setting each mode plays through the last item on a device, and the gear offers the control.
+
+#### SyncPlay in a group offers no queue edits or shuffle from the Roku, and voice fast-forward and rewind are unchecked `[fid: syncplay-queue-edits-shuffle-voice-scrub]` `[captured 2026-10-29]`
+
+Phase E (#1276) chose honor-only for the group's modes: the server applies shuffle and owns the playlist, so the Roku offers no queue editing and no shuffle control while following. Design both with the repeat control in the OSD gear (followup `syncplay-repeat-modes`), in the SyncPlay project's hardening phase.
+
+Also unchecked: voice fast-forward and rewind still write the node (`control` set to `fastforward` or `rewind` in `VideoPlayerView.handleTransport`) instead of going to the group. The remote's OK on the trick-play bar posts the group seek, but nobody has checked on a device whether a voice scrub can land with no OK, which would move this member alone.
+
+Closes when the queue-edit and shuffle design ships or is declined in a decision note, and a device check shows a voice scrub in a group either reaches the group or cannot land without an OK.
 
 ### api
 
@@ -1452,9 +1476,9 @@ Closes when the dump in `tests/rta/lib/diagnostics.js` includes an open dialog's
 
 PR #1270 (SyncPlay phase D) cites a 14-step device check of group playback (pause, seek, next item, Stop, Back, casts while halted and while following, a failing queue fetch, reset) that exists only as a throwaway RTA script outside the repo, so no reviewer or later session can run it again. Its fixed `sleep` reads also make one step depend on timing: the halted-cast step asserts the last group command is `Seek` six seconds after a seek, but the server's `Unpause` can already have arrived by then (a rerun on 2026-10-27 read `Unpause`; playback was past the seek target in both runs).
 
-The two casts are covered since #1270: `syncplay-menu.spec.js` casts to the Roku while halted and again over its player, through `appSession` and `playOnSession` in `tests/rta/lib/jellyfin.js`, and checks no wait outlives the reload. Still untracked: pause, seek, next item, Stop, Back during group playback, a failing queue fetch and reset.
+The two casts are covered since #1270: `syncplay-menu.spec.js` casts to the Roku while halted and again over its player, through `appSession` and `playOnSession` in `tests/rta/lib/jellyfin.js`, and checks no wait outlives the reload. Pause, seek, next and previous are covered since #1276 by `syncplay-controls.spec.js`, which also settled the waits on group commands: it waits on the manager's last command (`syncPlayManager.sync.lastCommand`), listed in `rta-wait-justified.js`. Still untracked: Stop, Back during group playback, a failing queue fetch and reset.
 
-Closes when those steps are tracked specs under `tests/rta/specs/` (or folded into `syncplay-menu.spec.js`), with each `sleep` replaced by a wait on the state it means (the RTA lint gates require that) and the two-member setup shared with `syncplay-menu`. Not done in #1270: it needs a design for the waits on group commands.
+Closes when those steps are tracked specs under `tests/rta/specs/` (folded into `syncplay-controls.spec.js` or `syncplay-menu.spec.js`), each waiting on the state it means.
 
 ### docs
 
