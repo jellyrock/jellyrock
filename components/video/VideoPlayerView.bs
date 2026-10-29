@@ -2173,7 +2173,7 @@ sub reportPlayback(state = "update" as string)
 end sub
 
 ' Runs the report timer at `seconds` from now. A restart, so the next report is a full interval
-' after the one just sent.
+' after the one sent now.
 sub restartPlaybackTimer(seconds as float)
   m.playbackTimer.control = "stop"
   m.playbackTimer.duration = seconds
