@@ -25,13 +25,12 @@ sub init()
   m.endGuardTimer.repeat = false
   m.endGuardTimer.observeField("fire", "onEndGuardFire")
 
-  ' Reports go out on state changes only, so a long track or a pause would leave the server with
-  ' none for minutes, and it ends such a session (playbackCheckIn.bs). This reports while a stream
-  ' is open; each report restarts it.
-  m.keepaliveTimer = CreateObject("roSGNode", "Timer")
-  m.keepaliveTimer.duration = playbackCheckIn.KEEPALIVE_SECONDS
-  m.keepaliveTimer.repeat = true
-  m.keepaliveTimer.observeField("fire", "onKeepaliveDue")
+  ' Reports while a stream is open, as the video player's timer does: the server keeps the resume
+  ' point only from reports, and ends a session that sends none for 5 minutes (playbackCheckIn.bs).
+  ' Each state change's report restarts it at that state's interval.
+  m.reportTimer = CreateObject("roSGNode", "Timer")
+  m.reportTimer.repeat = true
+  m.reportTimer.observeField("fire", "onReportDue")
   ' A moment after a pause report: read the session back, since the server can lose that report.
   m.pauseConfirmTimer = CreateObject("roSGNode", "Timer")
   m.pauseConfirmTimer.duration = playbackCheckIn.CONFIRM_DELAY_SECONDS
@@ -88,7 +87,7 @@ sub audioStateChanged()
   end if
 
   if currentState = "stopped" or currentState = "finished"
-    m.keepaliveTimer.control = "stop"
+    m.reportTimer.control = "stop"
     ' Only the stream that is loaded now: a replaced stream was reported when it was replaced.
     if isValid(m.openSession) and isValid(m.top.content) and m.openSession.id = m.top.content.id
       reportEnd()
@@ -106,9 +105,14 @@ sub audioStateChanged()
   else
     sendReport("update", m.openSession)
   end if
-  ' A full interval from this report.
-  m.keepaliveTimer.control = "stop"
-  m.keepaliveTimer.control = "start"
+  ' A full interval from this report: slow while paused, as often as video while playing.
+  m.reportTimer.control = "stop"
+  if currentState = "paused"
+    m.reportTimer.duration = playbackCheckIn.KEEPALIVE_SECONDS
+  else
+    m.reportTimer.duration = playbackCheckIn.PLAYING_REPORT_SECONDS
+  end if
+  m.reportTimer.control = "start"
   if currentState = "paused"
     m.pauseCheck.paused()
     m.pauseConfirmTimer.control = "stop"
@@ -116,8 +120,8 @@ sub audioStateChanged()
   end if
 end sub
 
-' The keepalive: one more report for the open stream, playing or paused, once its start went out.
-sub onKeepaliveDue()
+' One more report for the open stream, playing or paused, once its start went out.
+sub onReportDue()
   if not isValid(m.openSession) or not m.isPlayReported then return
   state = LCase(m.top.state)
   if state <> "playing" and state <> "paused" and state <> "buffering" then return

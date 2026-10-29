@@ -132,8 +132,6 @@ sub init()
   m.lastSentThumbnailIndex = -1 ' Dedup thumbnail index updates to prevent double-rendering at tile boundaries
 
   m.playbackTimer = m.top.findNode("playbackTimer")
-  ' The report interval while playing (the XML's); paused, the timer runs at the keepalive's.
-  m.playingReportSeconds = m.playbackTimer.duration
   m.pauseConfirmTimer = m.top.findNode("pauseConfirmTimer")
   m.pauseConfirmTimer.duration = playbackCheckIn.CONFIRM_DELAY_SECONDS
   m.pauseCheck = new playbackCheckIn.PauseCheck(m.log, "pauseReadBack-")
@@ -2123,7 +2121,7 @@ sub onState()
     else
       reportPlayback()
     end if
-    restartPlaybackTimer(m.playingReportSeconds)
+    restartPlaybackTimer(playbackCheckIn.PLAYING_REPORT_SECONDS)
   else if m.top.state = "paused"
     stopLoadingSpinner()
     ' Same reason as `playing`: a paused player is not stalling, and the stall window

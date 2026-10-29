@@ -33,6 +33,9 @@ const LOCALE = RTA_CONFIG.languages[0];
 const SONG = 'Thunderdays';
 // The keepalive (playbackCheckIn.KEEPALIVE_SECONDS, 60 s) plus room for the report to land.
 const CHECK_IN_WAIT_MS = 90000;
+// The report while playing (playbackCheckIn.PLAYING_REPORT_SECONDS, 10 s) plus room, and well under
+// the keepalive, so a player reporting only at the keepalive's pace fails it.
+const PLAYING_CHECK_IN_WAIT_MS = 25000;
 
 let session;
 let deviceId;
@@ -52,6 +55,7 @@ const readSession = async (keyPath) => {
   const s = await appSessionNow();
   if (keyPath === 'session.PlayState.IsPaused') return s?.PlayState?.IsPaused;
   if (keyPath === 'session.LastPlaybackCheckIn') return s?.LastPlaybackCheckIn;
+  if (keyPath === 'session.NowPlayingItem.Id') return s?.NowPlayingItem?.Id;
   return undefined;
 };
 
@@ -116,7 +120,7 @@ it('a paused video keeps checking in, and the server keeps it paused', async () 
   }
 });
 
-it('a paused song keeps checking in, and the server keeps it paused', async () => {
+it('a song checks in on the video pace while playing, keeps checking in while paused, and stays paused', async () => {
   const readState = () => getGlobalVal('audioPlayer.state');
   try {
     await ecp.sendInput({ params: { contentId: `id=${songId}|action=play` } });
@@ -132,6 +136,22 @@ it('a paused song keeps checking in, and the server keeps it paused', async () =
       interval: 250,
       label: `${SONG} playing`,
     });
+    // A playing song checks in on the video player's pace, which is what keeps its resume point.
+    // Counted from a check-in of the song's own: the video case before left one on this session.
+    await waitFor('session.NowPlayingItem.Id', (v) => v === songId, {
+      read: readSession,
+      timeout: 15000,
+      interval: 1000,
+      label: `the server shows ${SONG} playing`,
+    });
+    const playingSince = Date.parse(await readSession('session.LastPlaybackCheckIn'));
+    await waitFor('session.LastPlaybackCheckIn', (v) => Date.parse(v) > playingSince, {
+      read: readSession,
+      timeout: PLAYING_CHECK_IN_WAIT_MS,
+      interval: 1000,
+      label: `a newer check-in from the playing song`,
+    });
+    expect(await readState(), `${SONG} kept playing`).toBe('playing');
     await press(ecp.Key.Play);
     await waitFor('audioPlayer.state', (v) => v === 'paused', {
       read: getGlobalVal,

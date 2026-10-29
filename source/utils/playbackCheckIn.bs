@@ -10,11 +10,16 @@ import "pkg:/source/utils/misc.bs"
 '   - It ends a playing session that sent no report of its own for more than 5 minutes, paused or
 '     not (SessionManager.CheckForIdlePlayback). Its copies do not count.
 ' So a player reads its session back after a pause report and sends the pause again when it was
-' lost, and keeps reporting at KEEPALIVE_SECONDS while a stream is open and nothing else reports.
+' lost, and keeps reporting while a stream is open: every PLAYING_REPORT_SECONDS while it plays,
+' every KEEPALIVE_SECONDS while it is paused.
 namespace playbackCheckIn
 
-  ' Seconds between reports when no other report is due: well inside the server's 5-minute limit,
-  ' and the longest a pause the read-back could not confirm stays lost.
+  ' Seconds between reports while playing. The server saves the resume point only from a report of
+  ' the player's own (SessionManager.OnPlaybackProgress), so this is the most position a crash or a
+  ' lost connection can lose.
+  const PLAYING_REPORT_SECONDS = 10
+  ' Seconds between reports while paused: well inside the server's 5-minute limit, and the longest a
+  ' pause the read-back could not confirm stays lost.
   const KEEPALIVE_SECONDS = 60
   ' Seconds from a pause report to the read-back. The server's copies stop once it holds a paused
   ' report, so a read this late sees the state that stays.

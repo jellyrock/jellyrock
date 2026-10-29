@@ -142,6 +142,7 @@ namespace tests
     function _()
       m.assertTrue(playbackCheckIn.KEEPALIVE_SECONDS < 300)
       m.assertTrue(playbackCheckIn.CONFIRM_DELAY_SECONDS < playbackCheckIn.KEEPALIVE_SECONDS)
+      m.assertTrue(playbackCheckIn.PLAYING_REPORT_SECONDS < playbackCheckIn.KEEPALIVE_SECONDS)
     end function
 
   end class

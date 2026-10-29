@@ -305,6 +305,10 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // `LastPlaybackCheckIn` only moves forward, so a "later than" predicate stays true once true.
   // Read 2026-10-29 against the server source.
   'session.LastPlaybackCheckIn',
+  // `NowPlayingItem` is set from each report and cleared only by a stop, so while the song plays
+  // the target id stays: terminal. Read 2026-10-29 against the same source (UpdateNowPlayingItem,
+  // RemoveNowPlayingItem).
+  'session.NowPlayingItem.Id',
   'session.PlayState.IsPaused',
   // Roku's `Video.trickPlayBar.visible`, read off the player by id: the bar comes up on the
   // first Right and stays until OK, Play or Back closes it (measured on a Stick 4K,
