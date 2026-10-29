@@ -98,6 +98,7 @@ The how-to guides in [`docs/dev/`](../dev/), listed by each file's `H1` heading.
 | [`docs/dev/debug-flags.md`](../dev/debug-flags.md) | Debug flags and toast testing |
 | [`docs/dev/deep-linking.md`](../dev/deep-linking.md) | Deep linking and casting |
 | [`docs/dev/developer-mode.md`](../dev/developer-mode.md) | Developer mode for Roku devices |
+| [`docs/dev/feature-pages.md`](../dev/feature-pages.md) | Document a feature |
 | [`docs/dev/home-first-paint-performance.md`](../dev/home-first-paint-performance.md) | Measuring orchestrator wait-vs-emit on device |
 | [`docs/dev/jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md) | Jellyfin server versions |
 | [`docs/dev/logging.md`](../dev/logging.md) | Logging guide (roku-log) |
