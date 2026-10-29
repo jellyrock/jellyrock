@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-29: fix(playback): Confirm pauses and keep paused and long plays reported
 - 2026-10-29: docs: Feature pages, a generated catalog, and checked store text
 - 2026-10-29: chore(screenshots): Recapture the new overhang, search and Home for the store
 - 2026-10-29: feat(syncplay): Send controls to the group and resume from the menu
