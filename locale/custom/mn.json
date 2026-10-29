@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Цуцлах",
   "ButtonDelete": "Устгах",
+  "ButtonLeaveGroup": "Бүлгээс гарах",
   "ButtonManualLogin": "Гар утгаар нэвтрэх",
   "ButtonOk": "За",
   "ButtonPlay": "Тоглуулах",
@@ -131,6 +132,11 @@
   "LabelSports": "Спорт",
   "LabelStudios": "Студиуд",
   "LabelSubtitles": "Хадмалууд",
+  "LabelSyncPlay": "Хамтдаа үзэх",
+  "LabelSyncPlayDefaultGroupName": "{0}-ийн бүлэг",
+  "LabelSyncPlayNewGroup": "Шинэ бүлэг",
+  "LabelSyncPlayNoGroups": "Бүлэг байхгүй",
+  "LabelSyncPlaySelectGroup": "Бүлэгт нэгдэх",
   "LabelTheme": "Сэдэв",
   "LabelTrack": "Зам",
   "LabelTranscoding": "Дахин кодлох",
@@ -232,5 +238,9 @@
   "MessageDisc1": "Диск {0}",
   "MessageEndsAt1": "{0}-д дуусна",
   "MessageMoreFrom1": "Илүү {0}-ээс",
-  "MessageSetTheMaximumAmountOfDays": "Шоу-г үзээгүй байхад 'Next Up' жагсаалтад хамгийн их хэдэн өдөр байхыг тохируулах."
+  "MessageSetTheMaximumAmountOfDays": "Шоу-г үзээгүй байхад 'Next Up' жагсаалтад хамгийн их хэдэн өдөр байхыг тохируулах.",
+  "MessageSyncPlayCreateGroupDenied": "Бүлэг үүсгэх эрх шаардлагатай.",
+  "MessageSyncPlayLibraryAccessDenied": "Энэ контент руу нэвтрэх эрх хязгаарлагдсан.",
+  "MessageSyncPlayUserJoined": "{0} бүлэгт нэгдлээ.",
+  "MessageSyncPlayUserLeft": "{0} бүлгээс гарлаа."
 }

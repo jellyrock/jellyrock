@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Peruuta",
   "ButtonDelete": "Poista",
+  "ButtonLeaveGroup": "Poistu ryhmästä",
   "ButtonManualLogin": "Manuaalinen kirjautuminen",
   "ButtonOk": "Ok",
   "ButtonPlay": "Toista",
@@ -134,6 +135,10 @@
   "LabelSports": "Urheilu",
   "LabelStudios": "Studiot",
   "LabelSubtitles": "Tekstitykset",
+  "LabelSyncPlayDefaultGroupName": "{0} -n ryhmä",
+  "LabelSyncPlayNewGroup": "Uusi ryhmä",
+  "LabelSyncPlayNoGroups": "Ryhmiä ei ole käytettävissä",
+  "LabelSyncPlaySelectGroup": "Liity ryhmään",
   "LabelTheme": "Teema",
   "LabelTrack": "Kappale",
   "LabelTranscoding": "Transkoodaus",
@@ -235,5 +240,9 @@
   "MessageDisc1": "Levy {0}",
   "MessageEndsAt1": "Päättyy {0}",
   "MessageMoreFrom1": "Lisää kohteesta {0}",
-  "MessageSetTheMaximumAmountOfDays": "Määritä enimmäisaika päivinä, jonka katsomaton sarja pysyy 'Seuraavaksi'-osiossa."
+  "MessageSetTheMaximumAmountOfDays": "Määritä enimmäisaika päivinä, jonka katsomaton sarja pysyy 'Seuraavaksi'-osiossa.",
+  "MessageSyncPlayCreateGroupDenied": "Lupa ryhmän luomiseen vaaditaan.",
+  "MessageSyncPlayLibraryAccessDenied": "Pääsy sisältöön on rajattu.",
+  "MessageSyncPlayUserJoined": "{0} liittyi ryhmään.",
+  "MessageSyncPlayUserLeft": "{0} poistui ryhmästä."
 }

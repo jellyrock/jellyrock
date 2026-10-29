@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Avbryt",
   "ButtonDelete": "Slett",
+  "ButtonLeaveGroup": "Forlat gruppe",
   "ButtonManualLogin": "Manuell innlogging",
   "ButtonOk": "OK",
   "ButtonPlay": "Spill av",
@@ -133,6 +134,11 @@
   "LabelSports": "Sport",
   "LabelStudios": "Studioer",
   "LabelSubtitles": "Undertekster",
+  "LabelSyncPlay": "Synkronistert avspilling",
+  "LabelSyncPlayDefaultGroupName": "{0}s gruppe",
+  "LabelSyncPlayNewGroup": "Ny gruppe",
+  "LabelSyncPlayNoGroups": "Ingen grupper tilgjengelig",
+  "LabelSyncPlaySelectGroup": "Bli med i en gruppe",
   "LabelTheme": "Tema",
   "LabelTrack": "Spor",
   "LabelTranscoding": "Omkoding",
@@ -235,5 +241,9 @@
   "MessageEndsAt1": "Slutter klokken {0}",
   "MessageMoreFrom1": "Mer informasjon fra {0}",
   "MessageSearchNoResults": "Ingen resultater.",
-  "MessageSetTheMaximumAmountOfDays": "Velg det maksimale antallet dager en serie skal forbli i \"Neste\"-listen uten å se den."
+  "MessageSetTheMaximumAmountOfDays": "Velg det maksimale antallet dager en serie skal forbli i \"Neste\"-listen uten å se den.",
+  "MessageSyncPlayCreateGroupDenied": "Tillatelse kreves for å opprette en gruppe.",
+  "MessageSyncPlayLibraryAccessDenied": "Tilgang til dette innholdet er begrenset.",
+  "MessageSyncPlayUserJoined": "{0} har blitt med i gruppen.",
+  "MessageSyncPlayUserLeft": "{0} har forlatt gruppen."
 }

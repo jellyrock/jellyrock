@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Ezeztatu",
   "ButtonDelete": "Ezabatu",
+  "ButtonLeaveGroup": "Taldea utzi",
   "ButtonManualLogin": "Eskuz sartu",
   "ButtonOk": "OK",
   "ButtonPlay": "Erreproduzitu",
@@ -134,6 +135,10 @@
   "LabelSports": "Kirolak",
   "LabelStudios": "Ikasketak",
   "LabelSubtitles": "Azpitituluak",
+  "LabelSyncPlayDefaultGroupName": "{0}ren taldea",
+  "LabelSyncPlayNewGroup": "Talde berria",
+  "LabelSyncPlayNoGroups": "Ez dago talderik eskuragarri",
+  "LabelSyncPlaySelectGroup": "Batu talde bati",
   "LabelTheme": "Gaia",
   "LabelTrack": "Pista",
   "LabelTranscoding": "Bihurketa",
@@ -235,5 +240,9 @@
   "MessageDisc1": "{0}. diskoa",
   "MessageEndsAt1": "{0}(e)tan amaituko da",
   "MessageMoreFrom1": "{0}(r)en beste batzuk",
-  "MessageSetTheMaximumAmountOfDays": "Ezarri gehienez zenbat egunetan egongo den serie bat \"Nobedadeak\" atalean, ikusten ez duzun bitartean."
+  "MessageSetTheMaximumAmountOfDays": "Ezarri gehienez zenbat egunetan egongo den serie bat \"Nobedadeak\" atalean, ikusten ez duzun bitartean.",
+  "MessageSyncPlayCreateGroupDenied": "Talde bat sortzeko baimena behar da.",
+  "MessageSyncPlayLibraryAccessDenied": "Eduki honetarako sarbide mugatua.",
+  "MessageSyncPlayUserJoined": "{0} taldeari batu zaio.",
+  "MessageSyncPlayUserLeft": "{0}(e)k taldea utzi du."
 }

@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Avbryt",
   "ButtonDelete": "Ta bort",
+  "ButtonLeaveGroup": "Lämna grupp",
   "ButtonManualLogin": "Manuell inloggning",
   "ButtonOk": "OK",
   "ButtonPlay": "Spela upp",
@@ -132,6 +133,10 @@
   "LabelSports": "Sport",
   "LabelStudios": "Studior",
   "LabelSubtitles": "Undertexter",
+  "LabelSyncPlayDefaultGroupName": "{0}s grupp",
+  "LabelSyncPlayNewGroup": "Ny grupp",
+  "LabelSyncPlayNoGroups": "Inga grupper tillgängliga",
+  "LabelSyncPlaySelectGroup": "Gå med i en grupp",
   "LabelTheme": "Tema",
   "LabelTrack": "Spår",
   "LabelTranscoding": "Omkodning",
@@ -235,5 +240,9 @@
   "MessageEndsAt1": "Slutar vid: {0}",
   "MessageMoreFrom1": "Mer från {0}",
   "MessageSearchNoResults": "Inga resultat.",
-  "MessageSetTheMaximumAmountOfDays": "Bestäm antal dagar en serie ska vara i \"Nästa på tur\"-listan utan att någon har tittat på den."
+  "MessageSetTheMaximumAmountOfDays": "Bestäm antal dagar en serie ska vara i \"Nästa på tur\"-listan utan att någon har tittat på den.",
+  "MessageSyncPlayCreateGroupDenied": "Tillåtelse krävs för att skapa en grupp.",
+  "MessageSyncPlayLibraryAccessDenied": "Tillgång till detta innehåll är begränsat.",
+  "MessageSyncPlayUserJoined": "{0} har anslutit sig till gruppen.",
+  "MessageSyncPlayUserLeft": "{0} har lämnat gruppen."
 }

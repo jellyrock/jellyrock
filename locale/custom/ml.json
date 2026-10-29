@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "റദ്ദാക്കുക",
   "ButtonDelete": "ഇല്ലാതാക്കുക",
+  "ButtonLeaveGroup": "കൂട്ടം വിടുക",
   "ButtonManualLogin": "സ്വമേധയാലുള്ള ലോഗിൻ",
   "ButtonOk": "ശരി",
   "ButtonPlay": "പ്ലേ ചെയ്യുക",
@@ -118,6 +119,10 @@
   "LabelSports": "സ്പോർട്സ്",
   "LabelStudios": "സ്റ്റുഡിയോകൾ",
   "LabelSubtitles": "സബ്‌ടൈറ്റിലുകൾ",
+  "LabelSyncPlay": "സമന്വയ പ്ലേ",
+  "LabelSyncPlayDefaultGroupName": "{0} ന്റെ ഗ്രൂപ്പ്",
+  "LabelSyncPlayNewGroup": "പുതിയ ഗ്രൂപ്പ്",
+  "LabelSyncPlaySelectGroup": "ഒരു ഗ്രൂപ്പിൽ ചേരുക",
   "LabelTheme": "തീം",
   "LabelTrack": "ട്രാക്ക്",
   "LabelTranscoding": "ട്രാൻസ്കോഡിംഗ്",
@@ -217,5 +222,9 @@
   "MessageDirectedBy1": "സംവിധാനം {0}",
   "MessageDisc1": "ഡിസ്ക് {0}",
   "MessageEndsAt1": "{0} ന് അവസാനിക്കുന്നു",
-  "MessageMoreFrom1": "{0} ൽ നിന്ന് കൂടുതൽ"
+  "MessageMoreFrom1": "{0} ൽ നിന്ന് കൂടുതൽ",
+  "MessageSyncPlayCreateGroupDenied": "ഒരു ഗ്രൂപ്പ് സൃഷ്ടിക്കാൻ അനുമതി ആവശ്യമാണ്.",
+  "MessageSyncPlayLibraryAccessDenied": "ഈ ഉള്ളടക്കത്തിലേക്കുള്ള ആക്‌സസ്സ് നിയന്ത്രിച്ചിരിക്കുന്നു.",
+  "MessageSyncPlayUserJoined": "{0} ഗ്രൂപ്പിൽ ചേർന്നു.",
+  "MessageSyncPlayUserLeft": "{0} ഗ്രൂപ്പ് വിട്ടു."
 }

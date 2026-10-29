@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Rezignu",
   "ButtonDelete": "Forigi",
+  "ButtonLeaveGroup": "Forlasi grupon",
   "ButtonManualLogin": "Ensalutu Mane",
   "ButtonOk": "Ek",
   "ButtonPlay": "Ludu",
@@ -118,6 +119,9 @@
   "LabelSports": "Sportoj",
   "LabelStudios": "Studioj",
   "LabelSubtitles": "Subtekstoj",
+  "LabelSyncPlayDefaultGroupName": "Grupo de {0}",
+  "LabelSyncPlayNewGroup": "Nova grupo",
+  "LabelSyncPlaySelectGroup": "Aligi grupon",
   "LabelTheme": "Temo",
   "LabelTrack": "Trako",
   "LabelTranscoding": "Transkodado",
@@ -214,5 +218,9 @@
   "MessageEndsAt1": "Finiĝas je {0}",
   "MessageMoreFrom1": "Pli de {0}",
   "MessageSearchNoResults": "Neniuj rezultoj.",
-  "MessageSetTheMaximumAmountOfDays": "Starigi la maksimuman kvanton da tagoj, kiam serio devas resti en la listo de \"Sekva Plue\" sen spekti ĝin."
+  "MessageSetTheMaximumAmountOfDays": "Starigi la maksimuman kvanton da tagoj, kiam serio devas resti en la listo de \"Sekva Plue\" sen spekti ĝin.",
+  "MessageSyncPlayCreateGroupDenied": "Permeso necesa por krei grupon.",
+  "MessageSyncPlayLibraryAccessDenied": "Aliro al ĉi tiu enhavo estas limigita.",
+  "MessageSyncPlayUserJoined": "{0} aliĝis al la grupo.",
+  "MessageSyncPlayUserLeft": "{0} forlasis la grupon."
 }

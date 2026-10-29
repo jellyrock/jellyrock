@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Отмени",
   "ButtonDelete": "Премахване",
+  "ButtonLeaveGroup": "Напусни групата",
   "ButtonManualLogin": "Вход с име и парола",
   "ButtonOk": "Да",
   "ButtonPlay": "Въпзроизвеждане",
@@ -167,6 +168,11 @@
   "LabelStartsAt": "Започва в",
   "LabelStudios": "Студиа",
   "LabelSubtitles": "Субтитри",
+  "LabelSyncPlay": "\"SyncPlay\"",
+  "LabelSyncPlayDefaultGroupName": "групата на {0}",
+  "LabelSyncPlayNewGroup": "Нова група",
+  "LabelSyncPlayNoGroups": "Няма налични групи",
+  "LabelSyncPlaySelectGroup": "Присъединяване към група",
   "LabelTheme": "Облик",
   "LabelTitle": "Име",
   "LabelTrack": "Писта",
@@ -276,5 +282,9 @@
   "MessageSetTheMaximumAmountOfDays": "Задайте максималния брой дни, през които едно шоу би трябвало да остане в списъка „Next Up“, без да го гледате.",
   "MessageShowItemCountInTheLibrary": "Показване на броя на елементите в библиотеката и индекса на избрания елемент.",
   "MessageSupportDirectPlayOfMpeg4Content": "Поддръжка на директно възпроизвеждане на MPEG-4 съдържание. Може да трябва да се изключи за възпроизвеждане на файлове с DIVX кодиране.",
+  "MessageSyncPlayCreateGroupDenied": "Необходимо е разрешени за създаване на група.",
+  "MessageSyncPlayLibraryAccessDenied": "Достъпът до това съдържание е ограничен.",
+  "MessageSyncPlayUserJoined": "{0} се присъедини към групата.",
+  "MessageSyncPlayUserLeft": "{0} е напуснал групата.",
   "MessageYouCanSearchForTitlesPeople": "Можете да търсите заглавия, хора, TV канали на живо и други"
 }

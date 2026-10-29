@@ -105,6 +105,9 @@
   "LabelSports": "體育",
   "LabelStudios": "工作室",
   "LabelSubtitles": "字幕",
+  "LabelSyncPlay": "一齊睇",
+  "LabelSyncPlayDefaultGroupName": "{0} 嘅群組",
+  "LabelSyncPlayNoGroups": "暫時冇可用群組",
   "LabelTheme": "主題",
   "LabelTrack": "音軌",
   "LabelTranscoding": "轉碼",
@@ -207,5 +210,9 @@
   "MessageDisc1": "光碟#{0}",
   "MessageEndsAt1": "喺 {0} 播完",
   "MessageMoreFrom1": "更多來自 {0} 嘅內容",
-  "MessageSetTheMaximumAmountOfDays": "設定「即將播放」清單入面，劇集喺冇人睇嘅情況下最長可以留幾多日。"
+  "MessageSetTheMaximumAmountOfDays": "設定「即將播放」清單入面，劇集喺冇人睇嘅情況下最長可以留幾多日。",
+  "MessageSyncPlayCreateGroupDenied": "你未有權限建立群組。",
+  "MessageSyncPlayLibraryAccessDenied": "你冇權睇呢個內容。",
+  "MessageSyncPlayUserJoined": "{0} 加入咗群組。",
+  "MessageSyncPlayUserLeft": "{0} 離開咗群組。"
 }

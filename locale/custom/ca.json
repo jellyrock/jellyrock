@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Cancel·la",
   "ButtonDelete": "Elimina",
+  "ButtonLeaveGroup": "Sortir del grup",
   "ButtonManualLogin": "Inici manual de sessió",
   "ButtonOk": "D'acord",
   "ButtonPlay": "Reprodueix",
@@ -132,6 +133,11 @@
   "LabelSports": "Esports",
   "LabelStudios": "Estudis",
   "LabelSubtitles": "Subtítols",
+  "LabelSyncPlay": "Reproducció sincronitzada",
+  "LabelSyncPlayDefaultGroupName": "Grup de {0}",
+  "LabelSyncPlayNewGroup": "Grup nou",
+  "LabelSyncPlayNoGroups": "No hi ha grups disponibles",
+  "LabelSyncPlaySelectGroup": "Unió a un grup",
   "LabelTheme": "Tema",
   "LabelTotalBitrate": "Taxa de bits local",
   "LabelTrack": "Pista",
@@ -235,5 +241,9 @@
   "MessageDisc1": "Disc {0}",
   "MessageEndsAt1": "Acabaria a les {0}",
   "MessageMoreFrom1": "Més de {0}",
-  "MessageSetTheMaximumAmountOfDays": "Estableix la quantitat màxima de dies que una sèrie ha de romandre a la llista \"A continuació\" sense haver-la mirat."
+  "MessageSetTheMaximumAmountOfDays": "Estableix la quantitat màxima de dies que una sèrie ha de romandre a la llista \"A continuació\" sense haver-la mirat.",
+  "MessageSyncPlayCreateGroupDenied": "Per a crear un grup cal un permís.",
+  "MessageSyncPlayLibraryAccessDenied": "L'accés a aquest contingut està restringit.",
+  "MessageSyncPlayUserJoined": "{0} s'ha unit al grup.",
+  "MessageSyncPlayUserLeft": "{0} ha deixat el grup."
 }

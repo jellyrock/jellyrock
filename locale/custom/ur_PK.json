@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "منسوخ کریں",
   "ButtonDelete": "حذف کریں",
+  "ButtonLeaveGroup": "گروپ چھوڑ دیں",
   "ButtonManualLogin": "دستی لاگ ان",
   "ButtonOk": "ٹھیک ہے",
   "ButtonPlay": "پلے کریں",
@@ -127,6 +128,10 @@
   "LabelSports": "کھیل",
   "LabelStudios": "اسٹوڈیوز",
   "LabelSubtitles": "سب ٹائٹلز",
+  "LabelSyncPlayDefaultGroupName": "{0} کا گروپ",
+  "LabelSyncPlayNewGroup": "نیا گروپ",
+  "LabelSyncPlayNoGroups": "کوئی گروپ دستیاب نہیں",
+  "LabelSyncPlaySelectGroup": "ایک گروپ میں شامل ہوں",
   "LabelTheme": "خیالیہ",
   "LabelTrack": "ٹریک",
   "LabelTranscoding": "ٹرانس کوڈنگ",
@@ -228,5 +233,9 @@
   "MessageDisc1": "ڈسک {0}",
   "MessageEndsAt1": "{0} پر ختم ہوتا ہے",
   "MessageMoreFrom1": "{0} سے مزید",
-  "MessageSetTheMaximumAmountOfDays": "ایک شو کو دیکھے بغیر 'نیکسٹ اپ' کی فہرست میں رہنے کے زیادہ سے زیادہ دن مقرر کریں۔"
+  "MessageSetTheMaximumAmountOfDays": "ایک شو کو دیکھے بغیر 'نیکسٹ اپ' کی فہرست میں رہنے کے زیادہ سے زیادہ دن مقرر کریں۔",
+  "MessageSyncPlayCreateGroupDenied": "گروپ بنانے کے لیے اجازت درکار ہے۔",
+  "MessageSyncPlayLibraryAccessDenied": "اس مواد تک رسائی ممنوع ہے۔",
+  "MessageSyncPlayUserJoined": "{0} گروپ میں شامل ہو گیا ہے۔",
+  "MessageSyncPlayUserLeft": "{0} نے گروپ چھوڑ دیا ہے۔"
 }

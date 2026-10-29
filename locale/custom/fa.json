@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "لغو کردن",
   "ButtonDelete": "حذف",
+  "ButtonLeaveGroup": "ترک گروه",
   "ButtonManualLogin": "ورود دستی",
   "ButtonOk": "خوب",
   "ButtonPlay": "اجرا کردن",
@@ -128,6 +129,10 @@
   "LabelSports": "ورزش‌ها",
   "LabelStudios": "استودیو‌ها",
   "LabelSubtitles": "زیرنویس‌ها",
+  "LabelSyncPlay": "اجرای همگام",
+  "LabelSyncPlayDefaultGroupName": "گروه {0}",
+  "LabelSyncPlayNewGroup": "گروه جدید",
+  "LabelSyncPlaySelectGroup": "پیوستن به یک گروه",
   "LabelTheme": "قالب",
   "LabelTrack": "قطعه",
   "LabelTranscoding": "کدگذاری",
@@ -228,5 +233,8 @@
   "MessageDisc1": "دیسک {0}",
   "MessageEndsAt1": "تمام شده در {0}",
   "MessageMoreFrom1": "موارد بیشتر از {0}",
-  "MessageSetTheMaximumAmountOfDays": "تنظیم حداکثر روزهایی که یک نمایش بدون تماشا کردن باید در لیست 'بعدی' بماند."
+  "MessageSetTheMaximumAmountOfDays": "تنظیم حداکثر روزهایی که یک نمایش بدون تماشا کردن باید در لیست 'بعدی' بماند.",
+  "MessageSyncPlayLibraryAccessDenied": "دسترسی به این محتوا محدود شده است.",
+  "MessageSyncPlayUserJoined": "{0} به گروه پیوست.",
+  "MessageSyncPlayUserLeft": "{0} از گروه خارج شد."
 }

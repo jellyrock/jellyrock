@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Tühista",
   "ButtonDelete": "Kustuta",
+  "ButtonLeaveGroup": "Lahku rühmast",
   "ButtonManualLogin": "Käsitsi sisselogimine",
   "ButtonOk": "OK",
   "ButtonPlay": "Esita",
@@ -134,6 +135,10 @@
   "LabelSports": "Sport",
   "LabelStudios": "Stuudiod",
   "LabelSubtitles": "Subtiitrid",
+  "LabelSyncPlayDefaultGroupName": "{0} rühm",
+  "LabelSyncPlayNewGroup": "Uus rühm",
+  "LabelSyncPlayNoGroups": "Gruppe pole",
+  "LabelSyncPlaySelectGroup": "Liitu rühmaga",
   "LabelTheme": "Teema",
   "LabelTrack": "Rada",
   "LabelTranscoding": "Transkoodimine",
@@ -235,5 +240,9 @@
   "MessageDisc1": "Plaat {0}",
   "MessageEndsAt1": "Lõpeb kell {0}",
   "MessageMoreFrom1": "Veel {0}",
-  "MessageSetTheMaximumAmountOfDays": "Määra maksimaalne päevade arv, mille jooksul sari jääb jaotisesse 'Järgmiseks' ilma seda vaatamata."
+  "MessageSetTheMaximumAmountOfDays": "Määra maksimaalne päevade arv, mille jooksul sari jääb jaotisesse 'Järgmiseks' ilma seda vaatamata.",
+  "MessageSyncPlayCreateGroupDenied": "Rühma loomiseks on vaja luba.",
+  "MessageSyncPlayLibraryAccessDenied": "Juurdepääs sellele sisule on piiratud.",
+  "MessageSyncPlayUserJoined": "{0} liitus rühmaga.",
+  "MessageSyncPlayUserLeft": "{0} lahkus rühmast."
 }

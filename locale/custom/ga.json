@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Cuir ar ceal",
   "ButtonDelete": "Scrios",
+  "ButtonLeaveGroup": "Fág an grúpa",
   "ButtonManualLogin": "Logáil Isteach de Láimh",
   "ButtonOk": "CEART GO LEOR",
   "ButtonPlay": "Seinn",
@@ -134,6 +135,11 @@
   "LabelSports": "Spórt",
   "LabelStudios": "Stiúideonna",
   "LabelSubtitles": "Fotheidil",
+  "LabelSyncPlay": "SioncrónaighPlay",
+  "LabelSyncPlayDefaultGroupName": "Grúpa {0}",
+  "LabelSyncPlayNewGroup": "Grúpa nua",
+  "LabelSyncPlayNoGroups": "Níl aon ghrúpaí ar fáil",
+  "LabelSyncPlaySelectGroup": "Bí páirteach i ngrúpa",
   "LabelTheme": "Téama",
   "LabelTrack": "Amhrán",
   "LabelTranscoding": "Traschódú",
@@ -233,5 +239,9 @@
   "MessageDisc1": "Diosca {0}",
   "MessageEndsAt1": "Críoch ag {0}",
   "MessageMoreFrom1": "Tuilleadh ó {0}",
-  "MessageSetTheMaximumAmountOfDays": "Socraigh an t-uasmhéid laethanta ba chóir do thaispeántas fanacht ar an liosta 'Next Up' gan féachaint air."
+  "MessageSetTheMaximumAmountOfDays": "Socraigh an t-uasmhéid laethanta ba chóir do thaispeántas fanacht ar an liosta 'Next Up' gan féachaint air.",
+  "MessageSyncPlayCreateGroupDenied": "Cead ag teastáil chun grúpa a chruthú.",
+  "MessageSyncPlayLibraryAccessDenied": "Tá rochtain ar an ábhar seo srianta.",
+  "MessageSyncPlayUserJoined": "Tá {0} tagtha isteach sa ghrúpa.",
+  "MessageSyncPlayUserLeft": "D'fhág {0} an grúpa."
 }

@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Cancelar",
   "ButtonDelete": "Eliminar",
+  "ButtonLeaveGroup": "Salir del grupo",
   "ButtonManualLogin": "Inicio de sesión manual",
   "ButtonOk": "OK",
   "ButtonPlay": "Reproducir",
@@ -290,6 +291,10 @@
   "MessageSettingsRelatingToTheAppearanceOf4": "Opciones relacionadas a la apariencia de la página de inicio y la aplicación en general.",
   "MessageShowItemCountInTheLibrary": "Mostrar el conteo de ítems en la biblioteca y el índice del ítem seleccionado.",
   "MessageSupportDirectPlayOfMpeg4Content": "Soporte para Direct Play de contenido MPEG-4. Puede ser necesario deshabilitar esta opción para reproducir archivos de video codificados en DIVX.",
+  "MessageSyncPlayCreateGroupDenied": "Se requiere permiso para crear un grupo.",
+  "MessageSyncPlayLibraryAccessDenied": "El acceso a este contenido está restringido.",
+  "MessageSyncPlayUserJoined": "{0} se unió al grupo.",
+  "MessageSyncPlayUserLeft": "{0} salió del grupo.",
   "MessageUseTheReplayButtonToSlowly": "Usar el botón de repetición para moverse lentamente hacia el primer ítem en la carpeta. (Si está deshabilitado, la carpeta volverá al primer elemento inmediatamente).",
   "MessageYouCanSearchForTitlesPeople": "Ahora puedes buscar por Títulos, Personas, Canales de TV en vivo y más"
 }

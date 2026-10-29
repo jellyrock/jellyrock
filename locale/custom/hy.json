@@ -13,6 +13,7 @@
   "LabelPersonKindWriter": "Գրող",
   "LabelPhotos": "Լուսանկարներ",
   "LabelSongs": "Երգեր",
+  "LabelSyncPlayDefaultGroupName": "{0}ի խումբը",
   "LabelYes": "Այո",
   "LanguageAf": "աֆրիկաանս",
   "LanguageAr": "արաբերեն",
@@ -99,5 +100,7 @@
   "LanguageUz": "ուզբեկերեն",
   "LanguageVi": "վիետնամերեն",
   "LanguageZh": "չինարեն",
-  "LanguageZu": "զուլուերեն"
+  "LanguageZu": "զուլուերեն",
+  "MessageSyncPlayUserJoined": "{0}ն միացել է խմբին",
+  "MessageSyncPlayUserLeft": "{0}ն լքել է խումբը"
 }

@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Адмяніць",
   "ButtonDelete": "Выдаліць",
+  "ButtonLeaveGroup": "Пакінуць групу",
   "ButtonManualLogin": "Уваход уручную",
   "ButtonOk": "ОК",
   "ButtonPlay": "Прайграць",
@@ -134,6 +135,11 @@
   "LabelSports": "Спорт",
   "LabelStudios": "Студыі",
   "LabelSubtitles": "Субцітры",
+  "LabelSyncPlay": "Функцыя SyncPlay",
+  "LabelSyncPlayDefaultGroupName": "Група {0}",
+  "LabelSyncPlayNewGroup": "Новая група",
+  "LabelSyncPlayNoGroups": "Няма даступных груп",
+  "LabelSyncPlaySelectGroup": "Далучыцца да групы",
   "LabelTheme": "Тэма",
   "LabelTrack": "Дарожка",
   "LabelTranscoding": "Перакадзіроўка",
@@ -235,5 +241,9 @@
   "MessageDisc1": "Дыск {0}",
   "MessageEndsAt1": "Заканчваецца ў {0}",
   "MessageMoreFrom1": "Больш ад {0}",
-  "MessageSetTheMaximumAmountOfDays": "Усталюйце максімальную колькасць дзён, на працягу якіх серыя павінна заставацца ў спісе \"Наступны\", без прагляду."
+  "MessageSetTheMaximumAmountOfDays": "Усталюйце максімальную колькасць дзён, на працягу якіх серыя павінна заставацца ў спісе \"Наступны\", без прагляду.",
+  "MessageSyncPlayCreateGroupDenied": "Для стварэння групы патрабуецца дазвол.",
+  "MessageSyncPlayLibraryAccessDenied": "Доступ да гэтага кантэнту абмежаваны.",
+  "MessageSyncPlayUserJoined": "{0} далучыўся да групы.",
+  "MessageSyncPlayUserLeft": "{0} пакінуў групу."
 }

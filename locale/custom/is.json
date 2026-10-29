@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Hætta við",
   "ButtonDelete": "Eyða",
+  "ButtonLeaveGroup": "Fara úr hóp",
   "ButtonManualLogin": "Handvirkt Auðkenni",
   "ButtonOk": "Í lagi",
   "ButtonPlay": "Spila",
@@ -102,6 +103,10 @@
   "LabelSongs": "Lög",
   "LabelSort": "Raða",
   "LabelSubtitles": "Skjátexti",
+  "LabelSyncPlayDefaultGroupName": "Hópur {0}",
+  "LabelSyncPlayNewGroup": "Nýr hópur",
+  "LabelSyncPlayNoGroups": "Engir hópar í boði",
+  "LabelSyncPlaySelectGroup": "Ganga í hóp",
   "LabelTranscoding": "Umkóðun",
   "LabelUnplayed": "Óspilað",
   "LabelVideo": "Myndband",
@@ -195,5 +200,9 @@
   "LanguageZh": "kínverska",
   "LanguageZu": "súlú",
   "MessageDirectedBy1": "Leikstýrt af {0}",
-  "MessageMoreFrom1": "Meira frá {0}"
+  "MessageMoreFrom1": "Meira frá {0}",
+  "MessageSyncPlayCreateGroupDenied": "Þú þarft leyfi til að búa til hóp.",
+  "MessageSyncPlayLibraryAccessDenied": "Þú hefur ekki aðgang að þessu efni.",
+  "MessageSyncPlayUserJoined": "{0} gekk í hópinn.",
+  "MessageSyncPlayUserLeft": "{0} fór úr hópnum."
 }

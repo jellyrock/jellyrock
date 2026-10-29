@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "キャンセル",
   "ButtonDelete": "削除",
+  "ButtonLeaveGroup": "グループを離れる",
   "ButtonManualLogin": "マニュアルログイン",
   "ButtonOk": "OK",
   "ButtonPlay": "再生",
@@ -131,6 +132,10 @@
   "LabelSports": "スポーツ",
   "LabelStudios": "スタジオ",
   "LabelSubtitles": "字幕",
+  "LabelSyncPlayDefaultGroupName": "{0} のグループ",
+  "LabelSyncPlayNewGroup": "新しいグループ",
+  "LabelSyncPlayNoGroups": "グループが見つかりません",
+  "LabelSyncPlaySelectGroup": "グループに参加",
   "LabelTheme": "テーマ",
   "LabelTrack": "トラック",
   "LabelTranscoding": "トランスコーディング",
@@ -233,5 +238,9 @@
   "MessageEndsAt1": "{0}に終了",
   "MessageMoreFrom1": "もっと詳しく {0}",
   "MessageSearchNoResults": "結果がありません。",
-  "MessageSetTheMaximumAmountOfDays": "視聴されないまま「まずは…」に表示を続ける最大日数を設定します。"
+  "MessageSetTheMaximumAmountOfDays": "視聴されないまま「まずは…」に表示を続ける最大日数を設定します。",
+  "MessageSyncPlayCreateGroupDenied": "グループ作成の権限が必要です。",
+  "MessageSyncPlayLibraryAccessDenied": "このコンテンツへのアクセスは制限されています。",
+  "MessageSyncPlayUserJoined": "{0} がグループに加わりました。",
+  "MessageSyncPlayUserLeft": "{0} がグループから退出しました。"
 }

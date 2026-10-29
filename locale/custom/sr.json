@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Откажи",
   "ButtonDelete": "Обрисати",
+  "ButtonLeaveGroup": "Напусти групу",
   "ButtonManualLogin": "Ручна пријава",
   "ButtonOk": "У реду",
   "ButtonPlay": "Репродукуј",
@@ -136,6 +137,11 @@
   "LabelSports": "Спортови",
   "LabelStudios": "Студији",
   "LabelSubtitles": "Титлови",
+  "LabelSyncPlay": "СинкПлеј",
+  "LabelSyncPlayDefaultGroupName": "група корисника {0}",
+  "LabelSyncPlayNewGroup": "Нова група",
+  "LabelSyncPlayNoGroups": "Нема доступних група",
+  "LabelSyncPlaySelectGroup": "Придружи се групи",
   "LabelTheme": "Тема",
   "LabelTrack": "Нумера",
   "LabelTranscoding": "Транскодирање",
@@ -237,5 +243,7 @@
   "MessageDisc1": "Диск {0}",
   "MessageEndsAt1": "Завршава се у {0}",
   "MessageMoreFrom1": "Више од {0}",
-  "MessageSetTheMaximumAmountOfDays": "Подеси максимални број дана колико серија мође да остане у 'Следећим' листи без гледања."
+  "MessageSetTheMaximumAmountOfDays": "Подеси максимални број дана колико серија мође да остане у 'Следећим' листи без гледања.",
+  "MessageSyncPlayCreateGroupDenied": "За стварање групе потребна је дозвола.",
+  "MessageSyncPlayLibraryAccessDenied": "Приступ овом садржају је ограничен."
 }

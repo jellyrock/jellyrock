@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "取消",
   "ButtonDelete": "删除",
+  "ButtonLeaveGroup": "离开群组",
   "ButtonManualLogin": "手动登录",
   "ButtonOk": "确定",
   "ButtonPlay": "播放",
@@ -137,6 +138,10 @@
   "LabelSports": "体育",
   "LabelStudios": "工作室",
   "LabelSubtitles": "字幕",
+  "LabelSyncPlay": "同步播放",
+  "LabelSyncPlayNewGroup": "新建群组",
+  "LabelSyncPlayNoGroups": "没有可用的组",
+  "LabelSyncPlaySelectGroup": "加入群组",
   "LabelTheme": "主题",
   "LabelTotalBitrate": "总比特率",
   "LabelTrack": "音轨",
@@ -241,5 +246,9 @@
   "MessageEndsAt1": "结束于 {0}",
   "MessageMoreFrom1": "更多来自 {0}",
   "MessageSearchNoResults": "没有结果。",
-  "MessageSetTheMaximumAmountOfDays": "设置节目在不观看的情况下应保留在“接下来”列表中的最大天数。"
+  "MessageSetTheMaximumAmountOfDays": "设置节目在不观看的情况下应保留在“接下来”列表中的最大天数。",
+  "MessageSyncPlayCreateGroupDenied": "需要权限以创建群组。",
+  "MessageSyncPlayLibraryAccessDenied": "对此内容的访问受到限制。",
+  "MessageSyncPlayUserJoined": "{0}已加入该群组。",
+  "MessageSyncPlayUserLeft": "{0}已离开群组。"
 }

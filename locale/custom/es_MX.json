@@ -202,5 +202,7 @@
   "MessageDisc1": "Disco {0}",
   "MessageEndsAt1": "Termina a las {0}",
   "MessageMoreFrom1": "Más de {0}",
-  "MessageSetTheMaximumAmountOfDays": "Establece la cantidad máxima de días que un programa debe permanecer en la lista \"Siguiente\" sin verlo."
+  "MessageSetTheMaximumAmountOfDays": "Establece la cantidad máxima de días que un programa debe permanecer en la lista \"Siguiente\" sin verlo.",
+  "MessageSyncPlayCreateGroupDenied": "Permiso requerido para crear un grupo.",
+  "MessageSyncPlayLibraryAccessDenied": "El acceso a este contenido está restringido."
 }

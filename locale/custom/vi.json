@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Hủy bỏ",
   "ButtonDelete": "Xóa",
+  "ButtonLeaveGroup": "Rời khỏi nhóm",
   "ButtonManualLogin": "Đăng nhập thủ công",
   "ButtonOk": "Đồng Ý",
   "ButtonPlay": "Phát",
@@ -135,6 +136,11 @@
   "LabelSports": "Thể thao",
   "LabelStudios": "Hãng Phim",
   "LabelSubtitles": "Phụ đề",
+  "LabelSyncPlay": "Đồng Bộ Phát",
+  "LabelSyncPlayDefaultGroupName": "Nhóm của {0}",
+  "LabelSyncPlayNewGroup": "Nhóm mới",
+  "LabelSyncPlayNoGroups": "Không có nhóm nào",
+  "LabelSyncPlaySelectGroup": "Tham gia nhóm",
   "LabelTheme": "Chủ đề",
   "LabelTrack": "Bản ghi",
   "LabelTranscoding": "Chuyển mã",
@@ -237,5 +243,9 @@
   "MessageEndsAt1": "Kết thúc lúc {0}",
   "MessageMoreFrom1": "Thêm từ {0}",
   "MessageSearchNoResults": "Không có kết quả.",
-  "MessageSetTheMaximumAmountOfDays": "Đặt số ngày tối đa mà một chương trình sẽ ở trong danh sách 'Tiếp Theo' mà không cần xem nó."
+  "MessageSetTheMaximumAmountOfDays": "Đặt số ngày tối đa mà một chương trình sẽ ở trong danh sách 'Tiếp Theo' mà không cần xem nó.",
+  "MessageSyncPlayCreateGroupDenied": "Cần có quyền để tạo nhóm.",
+  "MessageSyncPlayLibraryAccessDenied": "Quyền truy cập vào nội dung này bị hạn chế.",
+  "MessageSyncPlayUserJoined": "{0} đã tham gia nhóm.",
+  "MessageSyncPlayUserLeft": "{0} đã rời khỏi nhóm."
 }

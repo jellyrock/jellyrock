@@ -1,6 +1,7 @@
 {
   "ButtonCancel": "Ακύρωση",
   "ButtonDelete": "Διαγραφή",
+  "ButtonLeaveGroup": "Βγείτε από την ομάδα",
   "ButtonManualLogin": "Χειροκίνητη Είσοδος",
   "ButtonOk": "ΟΚ",
   "ButtonPlay": "Αναπαραγωγή",
@@ -135,6 +136,11 @@
   "LabelSports": "Σπόρ",
   "LabelStudios": "Στούντιο",
   "LabelSubtitles": "Υπότιτλοι",
+  "LabelSyncPlay": "Συγχρονισμένη Αναπαραγωγή",
+  "LabelSyncPlayDefaultGroupName": "ομάδα του {0}",
+  "LabelSyncPlayNewGroup": "Νέα ομάδα",
+  "LabelSyncPlayNoGroups": "Δεν υπάρχουν διαθέσιμες ομάδες",
+  "LabelSyncPlaySelectGroup": "Εγγραφείτε σε μια ομάδα",
   "LabelTheme": "Θέμα",
   "LabelTrack": "τροχιά",
   "LabelTranscoding": "Διακωδικοποίηση",
@@ -238,5 +244,9 @@
   "MessageEndsAt1": "Τελειώνει στις {0}",
   "MessageMoreFrom1": "Περισσότερα από {0}",
   "MessageSearchNoResults": "Δεν βρέθηκαν αποτελέσματα.",
-  "MessageSetTheMaximumAmountOfDays": "Ορίστε τον μέγιστο αριθμό ημερών που μια σειρά θα πρέπει να παραμείνει στη λίστα \"Επόμενα\" χωρίς να την παρακολουθήσετε."
+  "MessageSetTheMaximumAmountOfDays": "Ορίστε τον μέγιστο αριθμό ημερών που μια σειρά θα πρέπει να παραμείνει στη λίστα \"Επόμενα\" χωρίς να την παρακολουθήσετε.",
+  "MessageSyncPlayCreateGroupDenied": "Απαιτείται άδεια για τη δημιουργία ομάδας.",
+  "MessageSyncPlayLibraryAccessDenied": "Η πρόσβαση σε αυτό το περιεχόμενο είναι περιορισμένη.",
+  "MessageSyncPlayUserJoined": "Ο χρήστης {0} εντάχθηκε στην ομάδα.",
+  "MessageSyncPlayUserLeft": "Ο χρήστης {0} αποχώρησε από την ομάδα."
 }
