@@ -59,6 +59,82 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("PauseCheck")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A logger that records each call's level. Every parameter is optional: a dev build's roku-log
+    ' plugin puts the call's file location in front of the message.
+    function recordingLogger() as object
+      logger = { levels: [] }
+      logger.info = function(_a = invalid, _b = invalid, _c = invalid, _d = invalid, _e = invalid, _f = invalid, _g = invalid, _h = invalid, _i = invalid, _j = invalid)
+        m.levels.push("info")
+      end function
+      logger.warn = function(_a = invalid, _b = invalid, _c = invalid, _d = invalid, _e = invalid, _f = invalid, _g = invalid, _h = invalid, _i = invalid, _j = invalid)
+        m.levels.push("warn")
+      end function
+      logger.debug = function(_a = invalid, _b = invalid, _c = invalid, _d = invalid, _e = invalid, _f = invalid, _g = invalid, _h = invalid, _i = invalid, _j = invalid)
+        m.levels.push("debug")
+      end function
+      return logger
+    end function
+
+    @it("reports again until the last pause report allowed, then gives up with a warning")
+    function _()
+      logger = m.recordingLogger()
+      check = new playbackCheckIn.PauseCheck(logger, "test-")
+      check.paused()
+      seq = check.seq
+      for attempt = 1 to playbackCheckIn.PAUSE_REPORTS - 1
+        m.assertTrue(check.shouldResend(m.sessionsRead(false), seq, true), "resend " + attempt.toStr())
+      end for
+      m.assertEqual(check.reportsSent, playbackCheckIn.PAUSE_REPORTS)
+      m.assertFalse(check.shouldResend(m.sessionsRead(false), seq, true))
+      m.assertEqual(logger.levels.peek(), "warn")
+    end function
+
+    @it("stops, logging at debug, once the server shows the pause")
+    function _()
+      logger = m.recordingLogger()
+      check = new playbackCheckIn.PauseCheck(logger, "test-")
+      check.paused()
+      m.assertFalse(check.shouldResend(m.sessionsRead(true), check.seq, true))
+      m.assertEqual(logger.levels, ["debug"])
+    end function
+
+    @it("drops an answer for an earlier pause, and one that lands after a resume")
+    function _()
+      logger = m.recordingLogger()
+      check = new playbackCheckIn.PauseCheck(logger, "test-")
+      check.paused()
+      earlier = check.seq
+      check.paused()
+      m.assertFalse(check.shouldResend(m.sessionsRead(false), earlier, true))
+      m.assertFalse(check.shouldResend(m.sessionsRead(false), check.seq, false))
+      m.assertEqual(check.reportsSent, 1)
+      m.assertEqual(logger.levels.Count(), 0)
+    end function
+
+    @it("warns, naming nothing to resend, when the answer can't be judged or never came")
+    function _()
+      logger = m.recordingLogger()
+      check = new playbackCheckIn.PauseCheck(logger, "test-")
+      check.paused()
+      m.assertFalse(check.shouldResend({ ok: true, statusCode: 200, json: [] }, check.seq, true))
+      check.readBackFailed({ reason: "timeout" })
+      m.assertEqual(logger.levels, ["warn", "warn"])
+    end function
+
+    @it("starts each pause's count again")
+    function _()
+      check = new playbackCheckIn.PauseCheck(m.recordingLogger(), "test-")
+      check.paused()
+      check.shouldResend(m.sessionsRead(false), check.seq, true)
+      m.assertEqual(check.reportsSent, 2)
+      check.paused()
+      m.assertEqual(check.reportsSent, 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("intervals")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

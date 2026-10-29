@@ -9,7 +9,6 @@ import "pkg:/source/enums/BufferCheckAction.bs"
 import "pkg:/source/enums/LiveStreamStage.bs"
 import "pkg:/source/enums/MediaSegmentAction.bs"
 import "pkg:/source/enums/MediaSegmentType.bs"
-import "pkg:/source/enums/PauseReadBack.bs"
 import "pkg:/source/enums/PlaybackEndReport.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
@@ -137,8 +136,7 @@ sub init()
   m.playingReportSeconds = m.playbackTimer.duration
   m.pauseConfirmTimer = m.top.findNode("pauseConfirmTimer")
   m.pauseConfirmTimer.duration = playbackCheckIn.CONFIRM_DELAY_SECONDS
-  m.pauseReportsSent = 0 ' pause reports for the current pause (onPauseConfirmDue)
-  m.pauseReadBackSeq = 0 ' drops a read-back a newer pause replaced
+  m.pauseCheck = new playbackCheckIn.PauseCheck(m.log, "pauseReadBack-")
   m.bufferCheckTimer = m.top.findNode("bufferCheckTimer")
 
   ' Every m.top observer is registered here, once, and released only in onDestroy.
@@ -2137,7 +2135,7 @@ sub onState()
     ' report to its own "still playing" copies (playbackCheckIn.bs): keep reporting slowly, and
     ' read the session back to confirm the pause.
     restartPlaybackTimer(playbackCheckIn.KEEPALIVE_SECONDS)
-    m.pauseReportsSent = 1
+    m.pauseCheck.paused()
     m.pauseConfirmTimer.control = "stop"
     m.pauseConfirmTimer.control = "start"
   else if m.top.state = "stopped"
@@ -2184,37 +2182,16 @@ end sub
 ' server lost it (playbackCheckIn.bs).
 sub onPauseConfirmDue()
   if m.top.state <> "paused" then return
-  req = playbackCheckIn.sessionRequest()
-  if not isValid(req)
-    m.log.warn("no request to read the session back; the keepalive reports the pause again")
-    return
-  end if
-  m.pauseReadBackSeq += 1
-  promises.chain(fetchAsync(req, "pauseReadBack-" + m.pauseReadBackSeq.toStr()), { seq: m.pauseReadBackSeq }).then(sub(res as object, ctx as object)
-    onPauseReadBack(res, ctx.seq)
+  readBack = m.pauseCheck.nextReadBack()
+  if not isValid(readBack) then return
+  promises.chain(fetchAsync(readBack.req, readBack.requestId), { seq: readBack.seq }).then(sub(res as object, ctx as object)
+    if m.pauseCheck.shouldResend(res, ctx.seq, m.top.state = "paused")
+      reportPlayback()
+      m.pauseConfirmTimer.control = "start"
+    end if
   end sub).catch(sub(err as object, _ctx as object)
-    ' The keepalive reports the pause again within a minute. err whole: a timeout rejects with
-    ' the pool's result, which has no `reason`.
-    m.log.warn("pause read-back failed; the keepalive reports the pause again", err)
+    m.pauseCheck.readBackFailed(err)
   end sub)
-end sub
-
-sub onPauseReadBack(res as object, seq as integer)
-  ' A newer pause, a resume or the end of the stream since: this answer is about nothing current.
-  if seq <> m.pauseReadBackSeq or m.top.state <> "paused" then return
-  action = playbackCheckIn.pauseReadBackAction(res, m.pauseReportsSent)
-  if action = PauseReadBack.RESEND
-    m.log.info("the server shows playing after a pause report; reporting the pause again", "reportsSent", m.pauseReportsSent)
-    reportPlayback()
-    m.pauseReportsSent += 1
-    m.pauseConfirmTimer.control = "start"
-  else if action = PauseReadBack.GIVE_UP
-    m.log.warn("the server still shows playing; the keepalive will report the pause again", "reportsSent", m.pauseReportsSent)
-  else if action = PauseReadBack.UNREADABLE
-    m.log.warn("pause read-back could not judge the session; the keepalive reports the pause again", "cause", playbackCheckIn.unreadableCause(res))
-  else
-    m.log.debug("the server shows the pause", "reportsSent", m.pauseReportsSent)
-  end if
 end sub
 
 ' Report the end of this stream, once (classifyPlaybackEnd decides which report, if any). Every end

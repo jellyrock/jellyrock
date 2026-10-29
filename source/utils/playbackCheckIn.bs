@@ -55,4 +55,76 @@ namespace playbackCheckIn
     return "no play state"
   end function
 
+  ' One player's pause confirmation: the count of pause reports for the current pause, which
+  ' read-back is the newest, and every outcome's log line. The player keeps one, sends the read-back
+  ' with fetchAsync (its promises live on the component) and sends its own report when told to.
+  class PauseCheck
+
+    ' Pause reports for the current pause, the first included.
+    reportsSent = 0
+    ' The newest read-back. An answer for an older one, or for an earlier pause, is dropped.
+    seq = 0
+
+    ' The player's logger. Named `log` so its calls are `m.log.*`, which the roku-log plugin
+    ' strips from a production build like every other log line.
+    private log
+    ' Prefix of the read-back's pool request id, unique to the player.
+    private requestPrefix
+
+    ' @param logger - the player's log.Logger
+    ' @param requestPrefix - the player's prefix for read-back request ids
+    sub new(logger as object, requestPrefix as string)
+      m.log = logger
+      m.requestPrefix = requestPrefix
+    end sub
+
+    ' A pause report went out: what is read back next is about this pause.
+    sub paused()
+      m.reportsSent = 1
+      m.seq++
+    end sub
+
+    ' The read-back to send now: { req, requestId, seq }, or invalid when none can be built.
+    function nextReadBack() as dynamic
+      req = sessionRequest()
+      if not isValid(req)
+        m.log.warn("no request to read the session back; the keepalive reports the pause again")
+        return invalid
+      end if
+      m.seq++
+      return { req: req, requestId: m.requestPrefix + m.seq.toStr(), seq: m.seq }
+    end function
+
+    ' Whether the player must report the pause again (and read back again), from a read-back's
+    ' answer. Counts that report and logs every outcome.
+    ' @param res - the fetchAsync response AA
+    ' @param seq - the seq nextReadBack gave this read-back
+    ' @param isStillPaused - the player is paused now
+    function shouldResend(res as dynamic, seq as integer, isStillPaused as boolean) as boolean
+      ' A newer pause, a resume or the end of the stream since: this answer is about nothing current.
+      if seq <> m.seq or not isStillPaused then return false
+      action = pauseReadBackAction(res, m.reportsSent)
+      if action = PauseReadBack.RESEND
+        m.log.info("the server shows playing after a pause report; reporting the pause again", "reportsSent", m.reportsSent)
+        m.reportsSent++
+        return true
+      end if
+      if action = PauseReadBack.GIVE_UP
+        m.log.warn("the server still shows playing; the keepalive will report the pause again", "reportsSent", m.reportsSent)
+      else if action = PauseReadBack.UNREADABLE
+        m.log.warn("pause read-back could not judge the session; the keepalive reports the pause again", "cause", unreadableCause(res))
+      else
+        m.log.debug("the server shows the pause", "reportsSent", m.reportsSent)
+      end if
+      return false
+    end function
+
+    ' The read-back never answered (transport, timeout, no pool).
+    ' @param err - the rejection: a timeout rejects with the pool's result, which has no `reason`
+    sub readBackFailed(err as dynamic)
+      m.log.warn("pause read-back failed; the keepalive reports the pause again", err)
+    end sub
+
+  end class
+
 end namespace
