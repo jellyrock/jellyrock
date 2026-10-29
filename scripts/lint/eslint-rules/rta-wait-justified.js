@@ -105,6 +105,15 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   '#rtaBackdrop.loadStatus',
   '#extrasGrid.rowItemFocused',
   '#imageFader.uri',
+  // `BackdropFader` forwards the uri to its `#background` Poster, whose `loadStatus` is READ_ONLY
+  // `none -> loading -> ready | failed` and holds `ready` until the uri changes. Read against the
+  // app source 2026-10-29 (BackdropFader.changeImage).
+  '#imageFader.#background.loadStatus',
+  // `BackdropFader.onBackgroundLoaded` starts `fadeinAnimation`, a linear 0.5 s interpolator that
+  // ends at 1.0 on `background.opacity`; nothing lowers it until the uri changes (the fade-out
+  // animations act on `oldBackground` and `shade`). Terminal at 1, not a pulse. Read against the
+  // app source 2026-10-29.
+  '#imageFader.#background.opacity',
   // `ItemDetails.openSubtitlePanel` sets it true before raising `isOpen`, and
   // `SubtitlePanel.openPanel` sets it true again on open; the only write back to false
   // is `SubtitlePanel.onPanelAnimeStateChanged`, at the end of the close slide. So

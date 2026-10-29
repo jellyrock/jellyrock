@@ -57,6 +57,7 @@ import {
   authenticate,
   findMovie,
   getBuffer,
+  getJson,
   getLibraries,
   libraryIdFor,
 } from '../tests/rta/lib/jellyfin.js';
@@ -225,8 +226,49 @@ async function showSyncPlayBadge() {
   await odc.setValue({ base: 'scene', keyPath: `${icon}.hasBadge`, value: true });
 }
 
+/**
+ * Wait for the backdrop to finish painting before a capture. The user picker returns from its
+ * readiness gate before the splash arrives: `UserSelect.loadSplashscreen()` fetches the branding
+ * config and only then sets the backdrop uri. The app's own `isSplashscreenEnabled` cannot say
+ * "not fetched yet" (an unset boolean field reads false), so the script asks the server what the
+ * app is about to be told. An enabled splash makes the uri a required wait; a disabled one
+ * leaves the uri empty and there is nothing to wait for. The server picker loads no splash.
+ * Then, whenever the fader holds an image, wait for the poster to decode and the fade-in to
+ * reach full opacity (`BackdropFader.fadeinAnimation` ends at 1.0 and nothing lowers it
+ * until the uri changes).
+ */
+async function settleBackdrop(screen, serverUrl) {
+  if (screen.state === 'userSelect') {
+    const branding = await getJson(`${serverUrl}/Branding/Configuration`, {});
+    if (branding.SplashscreenEnabled === true) {
+      await waitFor('#imageFader.uri', (v) => typeof v === 'string' && v !== '', {
+        timeout: 15000,
+        interval: 250,
+        label: 'splashscreen uri set (server has it enabled)',
+      });
+    }
+  }
+  if ((await getVal('#imageFader.uri')) === '') return;
+  await waitFor('#imageFader.#background.loadStatus', (v) => v === 'ready', {
+    timeout: 15000,
+    interval: 250,
+    label: 'backdrop image decoded',
+  });
+  await waitFor('#imageFader.#background.opacity', (v) => v >= 1, {
+    timeout: 5000,
+    interval: 100,
+    label: 'backdrop fade-in finished',
+  });
+}
+
 /** Capture the current screen to docs/screenshots/<folder>/<name>.webp (JPEG to lossless WebP). */
 async function capture(name, folder) {
+  // Guard: a visible scene spinner means the screen is still loading, so the shot would
+  // show the spinner instead of the content. Throw so captureScreen retries the whole nav.
+  if ((await getVal('#spinner.visible')) === true) {
+    // eslint-disable-next-line no-restricted-syntax -- fail-fast, cause already named
+    throw new Error(`capture of ${folder}/${name} refused: #spinner.visible is true`);
+  }
   const tmp = path.join('/tmp/rta-shots', `${folder}-${name}`);
   fs.mkdirSync(path.dirname(tmp), { recursive: true });
   const shot = await device.getScreenshot(tmp);
@@ -432,6 +474,10 @@ async function main() {
     await hardRelaunch();
     await assertSeedTookEffect(expectedServer, screen.name, { landing });
     if (screen.nav) await screen.nav(ctx);
+    // The readiness gate the spec runs, after the nav as there. hardRelaunch no longer
+    // sleeps a fixed 14 s, so without it a pre-login screen is photographed before it
+    // has loaded.
+    if (screen.assert) await screen.assert(ctx);
     // Store-only polish: fill the un-capturable black video plane with the real
     // in-film frame (osd's paused frame). trickplay has no backdrop on purpose: it
     // would cover Roku's built-in trickPlayBar, so its video plane stays black.
@@ -440,6 +486,7 @@ async function main() {
       await sleep(1000);
     }
     await showSyncPlayBadge();
+    await settleBackdrop(screen, session.serverUrl);
     await capture(screen.name, folder);
   };
   // Each screen reseeds + relaunches from scratch, so a transient hiccup (a
