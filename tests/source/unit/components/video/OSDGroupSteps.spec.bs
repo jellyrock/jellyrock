@@ -2,8 +2,8 @@ namespace tests
 
   ' The OSD's previous and next while following a SyncPlay group: their enabled state reads the
   ' group's playlist (syncPlayHooks.groupQueue), and is read again as the OSD opens, since the
-  ' group's playlist can change under the playing item. The manager is a stand-in node with the
-  ' two fields groupQueue reads.
+  ' group's playlist can change under the playing item. Outside a group they read the local queue,
+  ' on the same two occasions. The manager is a stand-in node with the two fields groupQueue reads.
   @suite("OSD - previous and next in a SyncPlay group")
   class OSDGroupStepsTests extends tests.BaseTestSuite
 
@@ -41,6 +41,16 @@ namespace tests
 
     private sub groupAt(index as integer, count as integer)
       m.global.syncPlayManager.sync = { playingItemIndex: index, playlistCount: count }
+    end sub
+
+    ' A local queue of count episodes, playing the one at index.
+    private sub localQueueAt(index as integer, count as integer)
+      items = []
+      for i = 1 to count
+        items.push({ id: "test-episode-" + i.toStr(), type: "Episode" })
+      end for
+      m.global.queueManager.callFunc("set", items)
+      m.global.queueManager.callFunc("setPosition", index)
     end sub
 
     ' onItemDataChanged reads nothing from an item with no id.
@@ -86,6 +96,32 @@ namespace tests
       m.osd.visible = true
       m.assertFalse(m.button("itemNext").isEnabled)
       m.assertFalse(m.button("itemBack").isEnabled)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Outside a group the enabled state reads the local queue")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the queue's first item enables next and disables previous, whatever the group's playlist says")
+    function _()
+      m.global.syncPlayManager.following = false
+      m.groupAt(1, 3)
+      m.localQueueAt(0, 2)
+      m.osd.itemData = m.item()
+      m.assertTrue(m.button("itemNext").isEnabled)
+      m.assertFalse(m.button("itemBack").isEnabled)
+    end function
+
+    @it("a queue that grows after the load enables next as the OSD opens")
+    function _()
+      m.global.syncPlayManager.following = false
+      m.localQueueAt(1, 2)
+      m.osd.itemData = m.item()
+      m.assertFalse(m.button("itemNext").isEnabled)
+      m.global.queueManager.callFunc("push", { id: "test-episode-3", type: "Episode" })
+      m.osd.visible = true
+      m.assertTrue(m.button("itemNext").isEnabled)
+      m.assertTrue(m.button("itemBack").isEnabled)
     end function
 
   end class
