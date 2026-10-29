@@ -1,0 +1,135 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/enums/PauseReadBack.bs"
+import "pkg:/source/utils/misc.bs"
+
+' How a player keeps the server's view of its playback true. Two server rules shape it (read in
+' Jellyfin 12.4; the same in 10.11 and 12.2):
+'   - After each report the server sends itself a "still playing" copy of it every second
+'     (SessionInfo.StartAutomaticProgress). A copy that lands while a pause report is being handled
+'     sets IsPaused back to false, and nothing corrects it until the next report.
+'   - It ends a playing session that sent no report of its own for more than 5 minutes, paused or
+'     not (SessionManager.CheckForIdlePlayback). Its copies do not count.
+' So a player reads its session back after a pause report and sends the pause again when it was
+' lost, and keeps reporting while a stream is open: every PLAYING_REPORT_SECONDS while it plays,
+' every KEEPALIVE_SECONDS while it is paused.
+namespace playbackCheckIn
+
+  ' Seconds between reports while playing. The server saves the resume point only from a report of
+  ' the player's own (SessionManager.OnPlaybackProgress), so this is the most position a crash or a
+  ' lost connection can lose.
+  const PLAYING_REPORT_SECONDS = 10
+  ' Seconds between reports while paused: well inside the server's 5-minute limit, and the longest a
+  ' pause the read-back could not confirm stays lost.
+  const KEEPALIVE_SECONDS = 60
+  ' Seconds from a pause report to the read-back. The server's copies stop once it holds a paused
+  ' report, so a read this late sees the state that stays.
+  const CONFIRM_DELAY_SECONDS = 2
+  ' The most pause reports for one pause, the first included.
+  const PAUSE_REPORTS = 3
+
+  ' The read-back request: this device's sessions, which a user may read without admin rights.
+  function sessionRequest() as dynamic
+    return GetApi().BuildGetSessionsRequest({ deviceId: m.global.device.serverDeviceName })
+  end function
+
+  ' What to do with the session read back after a pause report.
+  ' @param res - the fetchAsync response AA ({ ok, json }); json is the list of this device's sessions
+  ' @param reportsSent - pause reports sent for this pause so far
+  ' @returns a PauseReadBack
+  function pauseReadBackAction(res as dynamic, reportsSent as integer) as string
+    if not isValid(res) or res.ok <> true then return PauseReadBack.UNREADABLE
+    sessions = res.json
+    if type(sessions) <> "roArray" or sessions.Count() = 0 then return PauseReadBack.UNREADABLE
+    session = sessions[0]
+    if type(session) <> "roAssociativeArray" or type(session.PlayState) <> "roAssociativeArray" then return PauseReadBack.UNREADABLE
+    ' A session the server ended reads not paused too, and a report brings it back.
+    if session.PlayState.IsPaused = true then return PauseReadBack.CONFIRMED
+    if reportsSent < PAUSE_REPORTS then return PauseReadBack.RESEND
+    return PauseReadBack.GIVE_UP
+  end function
+
+  ' Why a read-back was UNREADABLE, for the log: a read that never finds this device's session
+  ' (a DeviceId the server files it under differently, a 403) must show in a normal build.
+  ' @param res - the fetchAsync response AA
+  ' @returns "no answer", "http <status>", "not a list", "no session for this device" or "no play state"
+  function unreadableCause(res as dynamic) as string
+    if not isValid(res) then return "no answer"
+    if res.ok <> true then return "http " + Str(res.statusCode).Trim()
+    if type(res.json) <> "roArray" then return "not a list"
+    if res.json.Count() = 0 then return "no session for this device"
+    return "no play state"
+  end function
+
+  ' One player's pause confirmation: the count of pause reports for the current pause, which
+  ' read-back is the newest, and every outcome's log line. The player keeps one, sends the read-back
+  ' with fetchAsync (its promises live on the component) and sends its own report when told to.
+  class PauseCheck
+
+    ' Pause reports for the current pause, the first included.
+    reportsSent = 0
+    ' The newest read-back. An answer for an older one, or for an earlier pause, is dropped.
+    seq = 0
+
+    ' The player's logger. Named `log` so its calls are `m.log.*`, which the roku-log plugin
+    ' strips from a production build like every other log line.
+    private log
+    ' Prefix of the read-back's pool request id, unique to the player.
+    private requestPrefix
+
+    ' @param logger - the player's log.Logger
+    ' @param requestPrefix - the player's prefix for read-back request ids
+    sub new(logger as object, requestPrefix as string)
+      m.log = logger
+      m.requestPrefix = requestPrefix
+    end sub
+
+    ' A pause report went out: what is read back next is about this pause.
+    sub paused()
+      m.reportsSent = 1
+      m.seq++
+    end sub
+
+    ' The read-back to send now: { req, requestId, seq }, or invalid when none can be built.
+    function nextReadBack() as dynamic
+      req = sessionRequest()
+      if not isValid(req)
+        m.log.warn("no request to read the session back; the keepalive reports the pause again")
+        return invalid
+      end if
+      m.seq++
+      return { req: req, requestId: m.requestPrefix + m.seq.toStr(), seq: m.seq }
+    end function
+
+    ' Whether the player must report the pause again (and read back again), from a read-back's
+    ' answer. Counts that report and logs every outcome.
+    ' @param res - the fetchAsync response AA
+    ' @param seq - the seq nextReadBack gave this read-back
+    ' @param isStillPaused - the player is paused now
+    function shouldResend(res as dynamic, seq as integer, isStillPaused as boolean) as boolean
+      ' A newer pause, a resume or the end of the stream since: this answer is about nothing current.
+      if seq <> m.seq or not isStillPaused then return false
+      action = pauseReadBackAction(res, m.reportsSent)
+      if action = PauseReadBack.RESEND
+        m.log.info("the server shows playing after a pause report; reporting the pause again", "reportsSent", m.reportsSent)
+        m.reportsSent++
+        return true
+      end if
+      if action = PauseReadBack.GIVE_UP
+        m.log.warn("the server still shows playing; the keepalive will report the pause again", "reportsSent", m.reportsSent)
+      else if action = PauseReadBack.UNREADABLE
+        m.log.warn("pause read-back could not judge the session; the keepalive reports the pause again", "cause", unreadableCause(res))
+      else
+        m.log.debug("the server shows the pause", "reportsSent", m.reportsSent)
+      end if
+      return false
+    end function
+
+    ' The read-back never answered (transport, timeout, no pool).
+    ' @param err - the rejection: a timeout rejects with the pool's result, which has no `reason`
+    sub readBackFailed(err as dynamic)
+      m.log.warn("pause read-back failed; the keepalive reports the pause again", err)
+    end sub
+
+  end class
+
+end namespace

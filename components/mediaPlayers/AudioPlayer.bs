@@ -1,8 +1,11 @@
+' bsc-disable-file auto-abandon-promises: one instance for the app's life on m.global, never destroyed, so no request outlives it
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
+import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/audioSeek.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/playbackCheckIn.bs"
 
 sub init()
   m.log = new log.Logger("AudioPlayer")
@@ -21,6 +24,19 @@ sub init()
   m.endGuardTimer.duration = audioSeek.STALL_SECONDS
   m.endGuardTimer.repeat = false
   m.endGuardTimer.observeField("fire", "onEndGuardFire")
+
+  ' Reports while a stream is open, as the video player's timer does: the server keeps the resume
+  ' point only from reports, and ends a session that sends none for 5 minutes (playbackCheckIn.bs).
+  ' Each state change's report restarts it at that state's interval.
+  m.reportTimer = CreateObject("roSGNode", "Timer")
+  m.reportTimer.repeat = true
+  m.reportTimer.observeField("fire", "onReportDue")
+  ' A moment after a pause report: read the session back, since the server can lose that report.
+  m.pauseConfirmTimer = CreateObject("roSGNode", "Timer")
+  m.pauseConfirmTimer.duration = playbackCheckIn.CONFIRM_DELAY_SECONDS
+  m.pauseConfirmTimer.repeat = false
+  m.pauseConfirmTimer.observeField("fire", "onPauseConfirmDue")
+  m.pauseCheck = new playbackCheckIn.PauseCheck(m.log, "audioPauseReadBack-")
 
   m.top.observeField("content", "onContentChanged")
   m.top.observeField("state", "audioStateChanged")
@@ -71,6 +87,7 @@ sub audioStateChanged()
   end if
 
   if currentState = "stopped" or currentState = "finished"
+    m.reportTimer.control = "stop"
     ' Only the stream that is loaded now: a replaced stream was reported when it was replaced.
     if isValid(m.openSession) and isValid(m.top.content) and m.openSession.id = m.top.content.id
       reportEnd()
@@ -88,6 +105,43 @@ sub audioStateChanged()
   else
     sendReport("update", m.openSession)
   end if
+  ' A full interval from this report: slow while paused, as often as video while playing.
+  m.reportTimer.control = "stop"
+  if currentState = "paused"
+    m.reportTimer.duration = playbackCheckIn.KEEPALIVE_SECONDS
+  else
+    m.reportTimer.duration = playbackCheckIn.PLAYING_REPORT_SECONDS
+  end if
+  m.reportTimer.control = "start"
+  if currentState = "paused"
+    m.pauseCheck.paused()
+    m.pauseConfirmTimer.control = "stop"
+    m.pauseConfirmTimer.control = "start"
+  end if
+end sub
+
+' One more report for the open stream, playing or paused, once its start went out.
+sub onReportDue()
+  if not isValid(m.openSession) or not m.isPlayReported then return
+  state = LCase(m.top.state)
+  if state <> "playing" and state <> "paused" and state <> "buffering" then return
+  sendReport("update", m.openSession)
+end sub
+
+' Reads this device's session back after a pause report, and reports the pause again if the server
+' lost it (playbackCheckIn.bs).
+sub onPauseConfirmDue()
+  if LCase(m.top.state) <> "paused" or not isValid(m.openSession) then return
+  readBack = m.pauseCheck.nextReadBack()
+  if not isValid(readBack) then return
+  promises.chain(fetchAsync(readBack.req, readBack.requestId), { seq: readBack.seq }).then(sub(res as object, ctx as object)
+    if m.pauseCheck.shouldResend(res, ctx.seq, LCase(m.top.state) = "paused" and isValid(m.openSession))
+      sendReport("update", m.openSession)
+      m.pauseConfirmTimer.control = "start"
+    end if
+  end sub).catch(sub(err as object, _ctx as object)
+    m.pauseCheck.readBackFailed(err)
+  end sub)
 end sub
 
 sub onPositionChanged()

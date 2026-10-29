@@ -23,6 +23,7 @@ import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/playbackCaps.bs"
+import "pkg:/source/utils/playbackCheckIn.bs"
 import "pkg:/source/utils/playbackEnd.bs"
 import "pkg:/source/utils/playbackErrorInfo.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
@@ -131,6 +132,9 @@ sub init()
   m.lastSentThumbnailIndex = -1 ' Dedup thumbnail index updates to prevent double-rendering at tile boundaries
 
   m.playbackTimer = m.top.findNode("playbackTimer")
+  m.pauseConfirmTimer = m.top.findNode("pauseConfirmTimer")
+  m.pauseConfirmTimer.duration = playbackCheckIn.CONFIRM_DELAY_SECONDS
+  m.pauseCheck = new playbackCheckIn.PauseCheck(m.log, "pauseReadBack-")
   m.bufferCheckTimer = m.top.findNode("bufferCheckTimer")
 
   ' Every m.top observer is registered here, once, and released only in onDestroy.
@@ -154,6 +158,7 @@ sub init()
   m.top.observeField("shouldAllowCaptions", "onAllowCaptionsChange")
 
   m.playbackTimer.observeField("fire", "reportPlayback")
+  m.pauseConfirmTimer.observeField("fire", "onPauseConfirmDue")
   m.bufferPercentage = 0 ' Track whether content is being loaded
   m.isPlayReported = false
   m.isEndReported = false ' this stream's end has been reported (see reportPlaybackEnd)
@@ -2116,15 +2121,21 @@ sub onState()
     else
       reportPlayback()
     end if
-    m.playbackTimer.control = "start"
+    restartPlaybackTimer(playbackCheckIn.PLAYING_REPORT_SECONDS)
   else if m.top.state = "paused"
     stopLoadingSpinner()
-    m.playbackTimer.control = "stop"
     ' Same reason as `playing`: a paused player is not stalling, and the stall window
     ' must not carry into the next buffering episode.
     m.bufferCheckTimer.control = "stop"
     m.bufferCheckTimer.unobserveField("fire")
     reportPlayback()
+    ' Paused, the server still ends a session with no report for 5 minutes, and it can lose this
+    ' report to its own "still playing" copies (playbackCheckIn.bs): keep reporting slowly, and
+    ' read the session back to confirm the pause.
+    restartPlaybackTimer(playbackCheckIn.KEEPALIVE_SECONDS)
+    m.pauseCheck.paused()
+    m.pauseConfirmTimer.control = "stop"
+    m.pauseConfirmTimer.control = "start"
   else if m.top.state = "stopped"
     stopLoadingSpinner()
     m.playbackTimer.control = "stop"
@@ -2155,6 +2166,30 @@ end sub
 ' Report playback to server
 sub reportPlayback(state = "update" as string)
   submitPlaybackReport(state, false)
+end sub
+
+' Runs the report timer at `seconds` from now. A restart, so the next report is a full interval
+' after the one sent now.
+sub restartPlaybackTimer(seconds as float)
+  m.playbackTimer.control = "stop"
+  m.playbackTimer.duration = seconds
+  m.playbackTimer.control = "start"
+end sub
+
+' A moment after a pause report: read this device's session back, and report the pause again if the
+' server lost it (playbackCheckIn.bs).
+sub onPauseConfirmDue()
+  if m.top.state <> "paused" then return
+  readBack = m.pauseCheck.nextReadBack()
+  if not isValid(readBack) then return
+  promises.chain(fetchAsync(readBack.req, readBack.requestId), { seq: readBack.seq }).then(sub(res as object, ctx as object)
+    if m.pauseCheck.shouldResend(res, ctx.seq, m.top.state = "paused")
+      reportPlayback()
+      m.pauseConfirmTimer.control = "start"
+    end if
+  end sub).catch(sub(err as object, _ctx as object)
+    m.pauseCheck.readBackFailed(err)
+  end sub)
 end sub
 
 ' Report the end of this stream, once (classifyPlaybackEnd decides which report, if any). Every end
@@ -2637,6 +2672,12 @@ sub onDestroy()
     m.playbackTimer.control = "stop"
     m.playbackTimer.unobserveField("fire")
     m.playbackTimer = invalid
+  end if
+
+  if isValid(m.pauseConfirmTimer)
+    m.pauseConfirmTimer.control = "stop"
+    m.pauseConfirmTimer.unobserveField("fire")
+    m.pauseConfirmTimer = invalid
   end if
 
   if isValid(m.bufferCheckTimer)

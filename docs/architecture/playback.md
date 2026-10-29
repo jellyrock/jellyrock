@@ -60,7 +60,7 @@ related-files:
   - source/syncplay/syncPlayQueue.bs
   - source/syncplay/syncPlayHooks.bs
   - source/syncplay/syncPlayState.bs
-last-reviewed: 2026-10-28
+last-reviewed: 2026-10-29
 ---
 
 # Video and audio playback
@@ -290,8 +290,15 @@ Position is reported in Jellyfin ticks (1 tick = 100 ns; `int(positionSeconds) *
 | Report | When |
 | --- | --- |
 | `start` | Once per stream, on the first `playing` |
-| `update` | Every 10 seconds while playing; once when paused |
+| `update` | Every 10 seconds while playing; when paused, at once and then every 60 seconds |
 | `stop` or `finished` | Once per stream, when it ends (`stopped`, `finished` or a terminal `error`), through `reportPlaybackEnd()` |
+
+**A pause is confirmed, and a paused player keeps reporting** (#1281). Two server rules make a single pause report unsafe (`source/utils/playbackCheckIn.bs` has the details):
+
+- After each report the server makes "still playing" copies of it once a second. One that lands while a pause report is being handled sets `IsPaused` back to false, and the dashboard and other apps then show the Roku playing.
+- The server ends a playing session that sent no report of its own for more than 5 minutes, paused or not. Its copies don't count.
+
+So 2 seconds after a pause report the player reads its own session back (`GET /Sessions?deviceId=`) and reports the pause again when the server shows playing, at most 3 reports per pause (`playbackCheckIn.pauseReadBackAction()`). And while paused the report timer keeps running at `playbackCheckIn.KEEPALIVE_SECONDS`, well inside the 5 minutes. A pause the read-back could not confirm is corrected by the next keepalive report. The audio engine does the same (below).
 
 **The end of a stream is reported once, and only a stream that played saves its position.** `reportPlaybackEnd()` asks `classifyPlaybackEnd()` (`source/utils/playbackEnd.bs`):
 
@@ -481,7 +488,7 @@ Two instances overlay playback:
 
 `components/mediaPlayers/AudioPlayer` extends `Video` but plays only audio. It lives at `m.global.audioPlayer` for the whole app, but music does not play on once the viewer leaves `/audio`: every exit from `AudioPlayerView` stops it (Back, `exitAudioPlayback()`, a deep link, a move to a video in a mixed queue). It sets `disableScreenSaver` while playing, which keeps Roku's screensaver off during audio, and has a `loopMode` field for repeat. `Video` and not `Audio` is deliberate: `disableScreenSaver` exists only on `Video`, and Roku documents it for audio-only streams.
 
-**Reporting is per listen.** Each `content` the engine is given opens a session (its `PlaySessionId`, the queue item, the last position). It reports `start` on the first `playing` and `update` on each other state change, through the same `BuildPlaystateRequest` and `SubmitSideEffect` as video, with positions in the whole track (below). A session's `stop` is reported once: when the stream reaches `stopped` or `finished`, or when another `content` replaces it for a new listen (another track, a replay).
+**Reporting is per listen.** Each `content` the engine is given opens a session (its `PlaySessionId`, the queue item, the last position). It reports `start` on the first `playing` and `update` on each other state change, through the same `BuildPlaystateRequest` and `SubmitSideEffect` as video, with positions in the whole track (below). Like video, it reads its session back after a pause report, and it reports on the same timing while a stream is open: every `playbackCheckIn.PLAYING_REPORT_SECONDS` while playing and every `playbackCheckIn.KEEPALIVE_SECONDS` while paused. The server keeps the resume point only from these reports, and ends a session that sends none for 5 minutes ([Reporting playback to Jellyfin](#reportplayback--server-side-reporting)). A session's `stop` is reported once: when the stream reaches `stopped` or `finished`, or when another `content` replaces it for a new listen (another track, a replay).
 
 A stream a seek loaded is not a new listen. `AudioPlayerView` marks it `continuesListen`, and `audioSeek.streamHandover()` then has the engine send no `stop` for the old session and no `start` for the new one, only `update`s under the new `PlaySessionId`. This matters because Jellyfin adds a play on every `start` (`SessionManager.OnPlaybackStart()`, on 10.7.7 and on master): reporting each reload as a new listen counted a FLAC play with one seek as two (measured 2026-10-21 on the demo server, against one for an MP3 play with a seek). A server stream replaced this way still has a transcode the server runs until told otherwise, so the engine ends it with `BuildStopEncodingRequest` (`DELETE /Videos/ActiveEncodings`), which kills the job without a playstate report.
 

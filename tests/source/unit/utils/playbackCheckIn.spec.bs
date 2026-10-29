@@ -1,0 +1,150 @@
+import "pkg:/source/enums/PauseReadBack.bs"
+import "pkg:/source/utils/playbackCheckIn.bs"
+
+namespace tests
+
+  @suite("playbackCheckIn.bs")
+  class PlaybackCheckInTests extends tests.BaseTestSuite
+
+    function sessionsRead(isPaused as dynamic) as object
+      return { ok: true, statusCode: 200, json: [{ DeviceId: "roku", PlayState: { IsPaused: isPaused } }] }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("pauseReadBackAction()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("stops when the server shows the pause")
+    function _()
+      m.assertEqual(playbackCheckIn.pauseReadBackAction(m.sessionsRead(true), 1), PauseReadBack.CONFIRMED)
+    end function
+
+    @it("reports again when the server shows playing after a pause report")
+    function _()
+      m.assertEqual(playbackCheckIn.pauseReadBackAction(m.sessionsRead(false), 1), PauseReadBack.RESEND)
+      m.assertEqual(playbackCheckIn.pauseReadBackAction(m.sessionsRead(false), playbackCheckIn.PAUSE_REPORTS - 1), PauseReadBack.RESEND)
+    end function
+
+    @it("gives up after the last pause report allowed")
+    function _()
+      m.assertEqual(playbackCheckIn.pauseReadBackAction(m.sessionsRead(false), playbackCheckIn.PAUSE_REPORTS), PauseReadBack.GIVE_UP)
+    end function
+
+    @it("reports again when the server ended the session, whose play state reads not paused")
+    function _()
+      ended = { ok: true, statusCode: 200, json: [{ DeviceId: "roku", PlayState: {} }] }
+      m.assertEqual(playbackCheckIn.pauseReadBackAction(ended, 1), PauseReadBack.RESEND)
+    end function
+
+    @it("judges nothing it cannot read")
+    function _()
+      m.assertEqual(playbackCheckIn.pauseReadBackAction(invalid, 1), PauseReadBack.UNREADABLE)
+      m.assertEqual(playbackCheckIn.pauseReadBackAction({ ok: false, statusCode: 500, json: invalid }, 1), PauseReadBack.UNREADABLE)
+      m.assertEqual(playbackCheckIn.pauseReadBackAction({ ok: true, statusCode: 200, json: [] }, 1), PauseReadBack.UNREADABLE)
+      m.assertEqual(playbackCheckIn.pauseReadBackAction({ ok: true, statusCode: 200, json: {} }, 1), PauseReadBack.UNREADABLE)
+      m.assertEqual(playbackCheckIn.pauseReadBackAction({ ok: true, statusCode: 200, json: [{ DeviceId: "roku" }] }, 1), PauseReadBack.UNREADABLE)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("unreadableCause()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("names why a read-back could not be judged")
+    function _()
+      m.assertEqual(playbackCheckIn.unreadableCause(invalid), "no answer")
+      m.assertEqual(playbackCheckIn.unreadableCause({ ok: false, statusCode: 403, json: invalid }), "http 403")
+      m.assertEqual(playbackCheckIn.unreadableCause({ ok: true, statusCode: 200, json: {} }), "not a list")
+      m.assertEqual(playbackCheckIn.unreadableCause({ ok: true, statusCode: 200, json: [] }), "no session for this device")
+      m.assertEqual(playbackCheckIn.unreadableCause({ ok: true, statusCode: 200, json: [{ DeviceId: "roku" }] }), "no play state")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("PauseCheck")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A logger that records each call's level. Every parameter is optional: a dev build's roku-log
+    ' plugin puts the call's file location in front of the message.
+    function recordingLogger() as object
+      logger = { levels: [] }
+      logger.info = function(_a = invalid, _b = invalid, _c = invalid, _d = invalid, _e = invalid, _f = invalid, _g = invalid, _h = invalid, _i = invalid, _j = invalid)
+        m.levels.push("info")
+      end function
+      logger.warn = function(_a = invalid, _b = invalid, _c = invalid, _d = invalid, _e = invalid, _f = invalid, _g = invalid, _h = invalid, _i = invalid, _j = invalid)
+        m.levels.push("warn")
+      end function
+      logger.debug = function(_a = invalid, _b = invalid, _c = invalid, _d = invalid, _e = invalid, _f = invalid, _g = invalid, _h = invalid, _i = invalid, _j = invalid)
+        m.levels.push("debug")
+      end function
+      return logger
+    end function
+
+    @it("reports again until the last pause report allowed, then gives up with a warning")
+    function _()
+      logger = m.recordingLogger()
+      check = new playbackCheckIn.PauseCheck(logger, "test-")
+      check.paused()
+      seq = check.seq
+      for attempt = 1 to playbackCheckIn.PAUSE_REPORTS - 1
+        m.assertTrue(check.shouldResend(m.sessionsRead(false), seq, true), "resend " + attempt.toStr())
+      end for
+      m.assertEqual(check.reportsSent, playbackCheckIn.PAUSE_REPORTS)
+      m.assertFalse(check.shouldResend(m.sessionsRead(false), seq, true))
+      m.assertEqual(logger.levels.peek(), "warn")
+    end function
+
+    @it("stops, logging at debug, once the server shows the pause")
+    function _()
+      logger = m.recordingLogger()
+      check = new playbackCheckIn.PauseCheck(logger, "test-")
+      check.paused()
+      m.assertFalse(check.shouldResend(m.sessionsRead(true), check.seq, true))
+      m.assertEqual(logger.levels, ["debug"])
+    end function
+
+    @it("drops an answer for an earlier pause, and one that lands after a resume")
+    function _()
+      logger = m.recordingLogger()
+      check = new playbackCheckIn.PauseCheck(logger, "test-")
+      check.paused()
+      earlier = check.seq
+      check.paused()
+      m.assertFalse(check.shouldResend(m.sessionsRead(false), earlier, true))
+      m.assertFalse(check.shouldResend(m.sessionsRead(false), check.seq, false))
+      m.assertEqual(check.reportsSent, 1)
+      m.assertEqual(logger.levels.Count(), 0)
+    end function
+
+    @it("warns, naming nothing to resend, when the answer can't be judged or never came")
+    function _()
+      logger = m.recordingLogger()
+      check = new playbackCheckIn.PauseCheck(logger, "test-")
+      check.paused()
+      m.assertFalse(check.shouldResend({ ok: true, statusCode: 200, json: [] }, check.seq, true))
+      check.readBackFailed({ reason: "timeout" })
+      m.assertEqual(logger.levels, ["warn", "warn"])
+    end function
+
+    @it("starts each pause's count again")
+    function _()
+      check = new playbackCheckIn.PauseCheck(m.recordingLogger(), "test-")
+      check.paused()
+      check.shouldResend(m.sessionsRead(false), check.seq, true)
+      m.assertEqual(check.reportsSent, 2)
+      check.paused()
+      m.assertEqual(check.reportsSent, 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("intervals")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps the keepalive inside the server's 5-minute idle limit")
+    function _()
+      m.assertTrue(playbackCheckIn.KEEPALIVE_SECONDS < 300)
+      m.assertTrue(playbackCheckIn.CONFIRM_DELAY_SECONDS < playbackCheckIn.KEEPALIVE_SECONDS)
+      m.assertTrue(playbackCheckIn.PLAYING_REPORT_SECONDS < playbackCheckIn.KEEPALIVE_SECONDS)
+    end function
+
+  end class
+
+end namespace
