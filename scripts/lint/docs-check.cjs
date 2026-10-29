@@ -73,8 +73,8 @@
 //              errors: [{category, file, message, target}]} where category is
 //              one of "broken-related-file", "broken-link", "broken-anchor",
 //              "stale-anchor", "progress-frontmatter",
-//              "decisions-supersede-chain", "store-listing", or
-//              "feature-frontmatter".
+//              "decisions-supersede-chain", "store-listing",
+//              "readme-counts", or "feature-frontmatter".
 //              Mutually exclusive with --verbose (verbose is a no-op under
 //              --json). Exit code semantics unchanged.
 //
@@ -86,6 +86,17 @@
 const fs = require('fs');
 const path = require('path');
 const { readFrontmatter, parseRelatedFiles, getLastUpdated } = require('../lib/frontmatter.cjs');
+const {
+  FEATURE_FIELDS,
+  appFacts,
+  appVersion,
+  compareVersions,
+  featurePageFiles,
+  listedPlugins,
+  parseFeaturePage,
+  readServerFloor,
+  screenshotKeys,
+} = require('../lib/feature-facts.cjs');
 
 const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '.';
 const ARCH_DIR = path.join(ROOT_DIR, 'docs/architecture');
@@ -822,45 +833,12 @@ const NUMBER_WORDS = [
 const COUNT_RE = new RegExp(`\\b(\\d+|${NUMBER_WORDS.join('|')}) (languages|themes)\\b`, 'gi');
 const SERVER_RE = /\bJellyfin (\d+\.\d+(?:\.\d+)?) or later\b/g;
 
-// The counts the store text may cite, read from what the app ships.
-// Languages: the entries in locale/languages.json with a code ("Automatic"
-// has none and is not a language). Themes: the uiTheme presets, without
-// Custom, which is the viewer's own colors.
-function storeListingFacts() {
-  const languages = JSON.parse(
-    fs.readFileSync(path.join(ROOT_DIR, 'locale/languages.json'), 'utf8'),
-  ).filter((l) => l.code).length;
-  let themes = null;
-  const walk = (entries) => {
-    for (const e of entries) {
-      if (e.settingName === 'uiTheme') themes = e.options.filter((o) => o.id !== 'custom').length;
-      if (e.children) walk(e.children);
-    }
-  };
-  walk(JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'settings/settings.json'), 'utf8')));
-  return { languages, themes, floor: readServerFloor() };
-}
-
-// The oldest supported server: the top-level `floor:` in the version map that
-// scripts/lib/version-boundaries.cjs validates. Read with a pattern, not that
-// loader, so this script keeps to the stdlib and runs without `npm ci`.
-function readServerFloor() {
-  const map = fs.readFileSync(
-    path.join(ROOT_DIR, 'docs/dev/jellyfin-version-boundaries.yml'),
-    'utf8',
-  );
-  const match = map.match(/^floor: '([0-9.]+)'$/m);
-  if (!match)
-    throw new Error('docs-check: no `floor:` in docs/dev/jellyfin-version-boundaries.yml');
-  return match[1];
-}
-
 function checkStoreListing() {
   if (!fs.existsSync(STORE_LISTING_PATH)) return; // silent when absent
   const content = fs.readFileSync(STORE_LISTING_PATH, 'utf8');
   const fail = (message, target) =>
     pushError({ category: 'store-listing', file: STORE_LISTING_PATH, message, target });
-  const facts = storeListingFacts();
+  const facts = appFacts(ROOT_DIR);
   for (const { name, limit } of STORE_BLOCKS) {
     const match = content.match(new RegExp('^```text ' + name + '\\n([\\s\\S]*?)\\n```$', 'm'));
     if (!match) {
@@ -872,89 +850,64 @@ function checkStoreListing() {
     if (length > limit) {
       fail(`${name} is ${length} characters, over its limit of ${limit}`, name);
     }
-    for (const [, said, noun] of text.matchAll(COUNT_RE)) {
-      const value = /^\d+$/.test(said) ? Number(said) : NUMBER_WORDS.indexOf(said.toLowerCase());
-      const kind = noun.toLowerCase();
-      const actual = facts[kind];
-      if (value === actual) continue;
-      fail(
-        kind === 'languages'
-          ? `${name} says ${said} languages, but locale/languages.json has ${actual}`
-          : `${name} says ${said} themes, but the uiTheme setting has ${actual} presets`,
-        kind,
-      );
-    }
-    for (const [, said] of text.matchAll(SERVER_RE)) {
-      if (facts.floor === said || facts.floor.startsWith(`${said}.`)) continue;
-      fail(`${name} says Jellyfin ${said}, but the supported floor is ${facts.floor}`, 'floor');
-    }
+    checkCitedCounts(text, name, facts, fail);
   }
 }
 
-// The frontmatter of every page in docs/user/features/: flat `key: value`
-// lines, so it parses without a YAML library. A list is comma-separated. Every
-// field is checked against what the app ships, and an unknown key fails, so a
-// misspelled field is never silently ignored.
-const FEATURE_FIELDS = {
-  pitch: { required: true },
-  since: { required: true },
-  server: { required: true },
-  plugins: { required: false },
-  screenshots: { required: false },
-};
+// Each count a text cites ("98 languages", "nine themes", "Jellyfin 10.7 or
+// later") must match the app. `name` labels the text in the message.
+function checkCitedCounts(text, name, facts, fail) {
+  for (const [, said, noun] of text.matchAll(COUNT_RE)) {
+    const value = /^\d+$/.test(said) ? Number(said) : NUMBER_WORDS.indexOf(said.toLowerCase());
+    const kind = noun.toLowerCase();
+    const actual = facts[kind];
+    if (value === actual) continue;
+    fail(
+      kind === 'languages'
+        ? `${name} says ${said} languages, but locale/languages.json has ${actual}`
+        : `${name} says ${said} themes, but the uiTheme setting has ${actual} presets`,
+      kind,
+    );
+  }
+  for (const [, said] of text.matchAll(SERVER_RE)) {
+    if (facts.floor === said || facts.floor.startsWith(`${said}.`)) continue;
+    fail(`${name} says Jellyfin ${said}, but the supported floor is ${facts.floor}`, 'floor');
+  }
+}
+
+// The README cites the same counts as the store text, typed by hand.
+function checkReadmeCounts() {
+  const readme = path.join(ROOT_DIR, 'README.md');
+  if (!fs.existsSync(readme)) return; // silent when absent
+  const fail = (message, target) =>
+    pushError({ category: 'readme-counts', file: readme, message, target });
+  checkCitedCounts(fs.readFileSync(readme, 'utf8'), 'README.md', appFacts(ROOT_DIR), fail);
+}
+
+// The frontmatter of every page in docs/user/features/ (parsed by
+// scripts/lib/feature-facts.cjs, as the feature catalog's generator parses it).
+// Every field is checked against what the app ships, and an unknown key fails,
+// so a misspelled field is never silently ignored.
 const PITCH_LIMIT = 120;
 const VERSION_RE = /^\d+\.\d+\.\d+$/;
 
-function compareVersions(a, b) {
-  const [x, y] = [a, b].map((v) => v.split('.').map(Number));
-  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return (x[i] || 0) - (y[i] || 0);
-  return 0;
-}
-
-// The plugin names in the first column of the plugins page's table.
-function listedPlugins() {
-  const page = fs.readFileSync(path.join(USER_DIR, 'jellyfin-server-plugins.md'), 'utf8');
-  return new Set([...page.matchAll(/^\| \[([^\]]+)\]\(/gm)].map((m) => m[1]));
-}
-
 function checkFeaturePages() {
-  if (!fs.existsSync(FEATURES_DIR)) return; // silent when absent
-  const appVersion = JSON.parse(
-    fs.readFileSync(path.join(ROOT_DIR, 'package.json'), 'utf8'),
-  ).version;
-  const floor = readServerFloor();
-  const plugins = listedPlugins();
-  const screens = new Set(
-    JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'docs/screenshots/screenshots.json'), 'utf8'))
-      .screens,
-  );
-  const files = fs
-    .readdirSync(FEATURES_DIR)
-    .filter((f) => f.endsWith('.md'))
-    .sort();
-  for (const name of files) {
+  const names = featurePageFiles(ROOT_DIR);
+  if (names.length === 0) return; // silent when absent
+  const version = appVersion(ROOT_DIR);
+  const floor = readServerFloor(ROOT_DIR);
+  const plugins = listedPlugins(ROOT_DIR);
+  const screens = screenshotKeys(ROOT_DIR);
+  for (const name of names) {
     const file = path.join(FEATURES_DIR, name);
     const fail = (message, target) =>
       pushError({ category: 'feature-frontmatter', file, message, target });
-    const fm = readFrontmatter(fs.readFileSync(file, 'utf8'));
-    if (fm === null) {
+    const { fields, problems } = parseFeaturePage(fs.readFileSync(file, 'utf8'));
+    if (fields === null) {
       fail('has no frontmatter: a feature page needs pitch, since and server', 'frontmatter');
       continue;
     }
-    const fields = {};
-    for (const line of fm.split(/\r?\n/)) {
-      const match = line.match(/^([a-z]+): (.+)$/);
-      if (!match) {
-        fail(`frontmatter line is not \`key: value\`: ${line}`, 'frontmatter');
-      } else if (!(match[1] in FEATURE_FIELDS)) {
-        fail(
-          `unknown field \`${match[1]}:\` (known: ${Object.keys(FEATURE_FIELDS).join(', ')})`,
-          match[1],
-        );
-      } else {
-        fields[match[1]] = match[2].trim();
-      }
-    }
+    for (const problem of problems) fail(problem, 'frontmatter');
     for (const [key, { required }] of Object.entries(FEATURE_FIELDS)) {
       if (required && !(key in fields)) fail(`missing \`${key}:\``, key);
     }
@@ -967,8 +920,8 @@ function checkFeaturePages() {
     }
     if (since && since !== 'unreleased') {
       if (!VERSION_RE.test(since)) fail(`since: ${since} is not x.y.z or \`unreleased\``, 'since');
-      else if (compareVersions(since, appVersion) > 0) {
-        fail(`since: ${since} is newer than the app (${appVersion})`, 'since');
+      else if (compareVersions(since, version) > 0) {
+        fail(`since: ${since} is newer than the app (${version})`, 'since');
       }
     }
     if (server) {
@@ -977,20 +930,15 @@ function checkFeaturePages() {
         fail(`server: ${server} is older than the supported floor (${floor})`, 'server');
       }
     }
-    for (const plugin of (fields.plugins || '')
-      .split(',')
-      .map((p) => p.trim())
-      .filter(Boolean)) {
+    for (const plugin of fields.plugins || []) {
       if (!plugins.has(plugin)) {
         fail(`plugin "${plugin}" is not a row in docs/user/jellyfin-server-plugins.md`, 'plugins');
       }
     }
-    for (const key of (fields.screenshots || '')
-      .split(',')
-      .map((k) => k.trim())
-      .filter(Boolean)) {
-      if (!screens.has(key))
+    for (const key of fields.screenshots || []) {
+      if (!screens.has(key)) {
         fail(`screenshot "${key}" is not in docs/screenshots/screenshots.json`, 'screenshots');
+      }
     }
   }
 }
@@ -1001,6 +949,7 @@ function checkFeaturePages() {
 checkProgressFrontmatter();
 checkDecisionsSupersedeChain();
 checkStoreListing();
+checkReadmeCounts();
 checkFeaturePages();
 
 if (JSON_MODE) {

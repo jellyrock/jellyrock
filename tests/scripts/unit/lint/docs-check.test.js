@@ -842,6 +842,16 @@ describe('docs-check: store listing', () => {
     expect(found[0].message).toMatch(/no ```text store-online block/);
   });
 
+  it('checks the counts the README cites too', () => {
+    dir = setup({ ...sources, 'README.md': '# JellyRock\n\nIn 3 languages and two themes.\n' });
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);
+    const found = JSON.parse(stdout).errors.filter((e) => e.category === 'readme-counts');
+    expect(exitCode).toBe(1);
+    expect(found.map((e) => e.message)).toEqual([
+      'README.md says 3 languages, but locale/languages.json has 2',
+    ]);
+  });
+
   it('is silent when the repo has no store listing', () => {
     dir = setup(sources);
     const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);
