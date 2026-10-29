@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- (playback) Confirm pauses and keep paused and long plays reported ([#1282](https://github.com/jellyrock/jellyrock/pull/1282))
+
 ## [3.3.0](https://github.com/jellyrock/jellyrock/compare/v3.2.0...v3.3.0) - 2026-10-29
 
 ### Added
