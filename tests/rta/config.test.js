@@ -124,6 +124,8 @@ describe('resolveContent', () => {
       trickplayMovie: 'Big Buck Bunny',
       trickplaySeekSeconds: 120,
       searchQuery: 'bun',
+      // Not overridable from the environment: it only fills a picture.
+      recentSearches: DEMO_CONTENT.recentSearches,
     });
   });
 
