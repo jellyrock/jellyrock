@@ -1485,6 +1485,14 @@ The two casts are covered since #1270: `syncplay-menu.spec.js` casts to the Roku
 
 Closes when those steps are tracked specs under `tests/rta/specs/` (folded into `syncplay-controls.spec.js` or `syncplay-menu.spec.js`), each waiting on the state it means.
 
+#### `navOsd()` leaves the player playing, so the OSD screenshot can lose its OSD `[fid: navosd-leaves-player-playing]` `[captured 2026-10-29]` `[pinned]`
+
+`navOsd()` (`tests/rta/lib/nav.js`) presses Play to pause, then writes `#<heroId>.seek`, and assumes the player stays paused. A device probe (Stick 4K, 2026-10-29, three runs of `navOsd()` sampled every 500 ms) read `state=playing osd=true pos=1724` when the nav returned and `osd=false pos=1727` about 2.5 s later, every run. `OSD.inactiveCheck()` hides the OSD 5 s after the last key press unless `playbackState` is `paused`, so the OSD shot survives only if taken within about 2.5 s of the nav; the screenshot capture's backdrop step and reads can push it past that (`de/osd` lost its OSD in the 2026-10-29 capture and was retaken). Affects the `osd` screen in the screenshot capture and in `screens.spec.js`; nothing checks the player is paused. #1276 reworked the player's pause, play and seek (`pausePlayer()`, `resumePlayer()`, `seekPlayer()` in `VideoPlayerView.bs`) the same day, which may be what moved it.
+
+Options: `pause` (recommended): find which step resumes playback, then have `navOsd()` wait for the player to read `paused` after the seek, pressing Play again if the seek resumed it; if the Play press itself no longer pauses, that is an app bug to raise separately. `guard`: `capture()` refuses an OSD shot unless `#osd.visible` is true, so the capture retries; it does not fix the cause.
+
+Not checked: which of the two (the Play press or the seek) leaves it playing; whether #1276 changed it; whether a real viewer's Play press during playback still pauses.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`
