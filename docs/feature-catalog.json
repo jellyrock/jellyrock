@@ -19,6 +19,17 @@
       "url": "https://docs.jellyrock.app/features/deep-linking/"
     },
     {
+      "slug": "delete-media",
+      "title": "Delete media",
+      "pitch": "Delete a movie, an episode or any other item from your server, from its details page, when your account may.",
+      "since": "1.13.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "page": "docs/user/features/delete-media.md",
+      "url": "https://docs.jellyrock.app/features/delete-media/"
+    },
+    {
       "slug": "manage-subtitles",
       "title": "Manage subtitles",
       "pitch": "Search your server's subtitle providers and download a subtitle onto a movie or episode from its page.",
@@ -44,6 +55,17 @@
       "screenshots": [],
       "page": "docs/user/features/media-segments.md",
       "url": "https://docs.jellyrock.app/features/media-segments/"
+    },
+    {
+      "slug": "syncplay",
+      "title": "SyncPlay (watch together)",
+      "pitch": "Watch together. Join a SyncPlay group and play, pause and seek in step with people on other Jellyfin apps.",
+      "since": "3.3.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "page": "docs/user/features/syncplay.md",
+      "url": "https://docs.jellyrock.app/features/syncplay/"
     }
   ]
 }
