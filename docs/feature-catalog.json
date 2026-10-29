@@ -1,0 +1,71 @@
+{
+  "_comment": "Generated from the frontmatter of docs/user/features/*.md by npm run docs:features. Edit the pages, not this file.",
+  "schema": 1,
+  "app": {
+    "languages": 98,
+    "themes": 9,
+    "serverFloor": "10.7.0"
+  },
+  "features": [
+    {
+      "slug": "deep-linking",
+      "title": "Deep linking and casting to JellyRock",
+      "pitch": "Open or play anything in JellyRock from another device, a script or a voice routine, with only the item's ID.",
+      "since": "2.22.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "page": "docs/user/features/deep-linking.md",
+      "url": "https://docs.jellyrock.app/features/deep-linking/"
+    },
+    {
+      "slug": "delete-media",
+      "title": "Delete media",
+      "pitch": "Delete a movie, an episode or any other item from your server, from its details page, when your account may.",
+      "since": "1.13.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "page": "docs/user/features/delete-media.md",
+      "url": "https://docs.jellyrock.app/features/delete-media/"
+    },
+    {
+      "slug": "manage-subtitles",
+      "title": "Manage subtitles",
+      "pitch": "Search your server's subtitle providers and download a subtitle onto a movie or episode from its page.",
+      "since": "2.29.0",
+      "server": "10.7.0",
+      "plugins": [
+        "Open Subtitles"
+      ],
+      "screenshots": [],
+      "page": "docs/user/features/manage-subtitles.md",
+      "url": "https://docs.jellyrock.app/features/manage-subtitles/"
+    },
+    {
+      "slug": "media-segments",
+      "title": "Media segments (skip intro and outro)",
+      "pitch": "Skip the intros, outros, recaps, previews and commercials your server has marked, or get a button to skip them.",
+      "since": "2.9.0",
+      "server": "10.10.0",
+      "plugins": [
+        "Chapter Segments Provider",
+        "Intro Skipper"
+      ],
+      "screenshots": [],
+      "page": "docs/user/features/media-segments.md",
+      "url": "https://docs.jellyrock.app/features/media-segments/"
+    },
+    {
+      "slug": "syncplay",
+      "title": "SyncPlay (watch together)",
+      "pitch": "Watch together. Join a SyncPlay group and play, pause and seek in step with people on other Jellyfin apps.",
+      "since": "3.3.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "page": "docs/user/features/syncplay.md",
+      "url": "https://docs.jellyrock.app/features/syncplay/"
+    }
+  ]
+}

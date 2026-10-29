@@ -16,8 +16,9 @@
 // What it checks:
 //   - Every `related-files:` path in docs/architecture/*.md frontmatter
 //     resolves to an existing file (or directory) in the repo.
-//   - Every relative markdown link in docs/architecture/*.md, docs/dev/*.md,
-//     docs/user/*.md, docs/adr/*.md, and docs/decisions.md resolves
+//   - Every relative markdown link in the .md files under docs/architecture/,
+//     docs/dev/, docs/user/ and docs/adr/ (subfolders included), and in
+//     docs/decisions.md, resolves
 //     (skipping http(s): and mailto:). A link with a `#fragment`, to another
 //     .md file or to the same file (`#x`), must also name a heading or an
 //     explicit anchor (`<a id>`, `<a name>`, `<hN id>`) that exists in the
@@ -47,6 +48,16 @@
 //     a three-part hand edit, so a half-applied one used to leave the
 //     chain silently lying, and `/log`'s SKILL.md claimed this was
 //     already validated when no such logic existed.
+//   - The Roku store descriptions in docs/admin/store-listing.md (see
+//     checkStoreListing): each block is within the dashboard's limit,
+//     and each count it cites (languages, themes, the oldest Jellyfin
+//     server) matches its source, so a release never ships a stale
+//     number. The text is pasted into the store by hand, where nothing
+//     checks it.
+//   - The frontmatter of each feature page in docs/user/features/ (see
+//     checkFeaturePages): the fields a catalog of features is built from,
+//     each checked against the app (its version, the server floor, the
+//     plugins page, the screenshot list).
 //
 // What it doesn't check (yet):
 //   - Inline backtick-quoted paths in prose (noise-prone; many false
@@ -61,8 +72,9 @@
 //   --json     emit a single JSON object on stdout: {filesChecked, errorsCount,
 //              errors: [{category, file, message, target}]} where category is
 //              one of "broken-related-file", "broken-link", "broken-anchor",
-//              "stale-anchor", "progress-frontmatter", or
-//              "decisions-supersede-chain".
+//              "stale-anchor", "progress-frontmatter",
+//              "decisions-supersede-chain", "store-listing",
+//              "readme-counts", or "feature-frontmatter".
 //              Mutually exclusive with --verbose (verbose is a no-op under
 //              --json). Exit code semantics unchanged.
 //
@@ -74,6 +86,17 @@
 const fs = require('fs');
 const path = require('path');
 const { readFrontmatter, parseRelatedFiles, getLastUpdated } = require('../lib/frontmatter.cjs');
+const {
+  FEATURE_FIELDS,
+  appFacts,
+  appVersion,
+  compareVersions,
+  featurePageFiles,
+  listedPlugins,
+  parseFeaturePage,
+  readServerFloor,
+  screenshotKeys,
+} = require('../lib/feature-facts.cjs');
 
 const ROOT_DIR = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : '.';
 const ARCH_DIR = path.join(ROOT_DIR, 'docs/architecture');
@@ -82,6 +105,8 @@ const USER_DIR = path.join(ROOT_DIR, 'docs/user');
 const ADR_DIR = path.join(ROOT_DIR, 'docs/adr');
 const DECISIONS_PATH = path.join(ROOT_DIR, 'docs/decisions.md');
 const PROGRESS_PATH = path.join(ROOT_DIR, 'docs/progress.md');
+const STORE_LISTING_PATH = path.join(ROOT_DIR, 'docs/admin/store-listing.md');
+const FEATURES_DIR = path.join(USER_DIR, 'features');
 const TECH_DEBT_PATH = path.join(ARCH_DIR, 'tech-debt.md');
 const SCRIPTS_DIR = path.join(ROOT_DIR, 'scripts');
 const JSON_MODE = process.argv.includes('--json');
@@ -646,10 +671,12 @@ function checkDecisionsSupersedeChain() {
   }
 }
 
+// Every .md in dir and its subfolders (docs/user/features/ is one), so a doc in a
+// subfolder is checked like any other.
 function checkDirOfMds(dir) {
   if (!fs.existsSync(dir)) return;
   const files = fs
-    .readdirSync(dir)
+    .readdirSync(dir, { recursive: true })
     .filter((f) => f.endsWith('.md'))
     .map((f) => path.join(dir, f))
     .sort();
@@ -771,11 +798,159 @@ for (const file of findPluginScripts()) {
   }
 }
 
+// The Roku store descriptions in docs/admin/store-listing.md, one fenced
+// block each (```text store-on-device, ```text store-online). The limits are
+// the Developer Dashboard's. Each line break counts as two characters, since
+// the dashboard may count it as CRLF, so a block that passes here fits either
+// way.
+const STORE_BLOCKS = [
+  { name: 'store-on-device', limit: 300 },
+  { name: 'store-online', limit: 1500 },
+];
+const NUMBER_WORDS = [
+  'zero',
+  'one',
+  'two',
+  'three',
+  'four',
+  'five',
+  'six',
+  'seven',
+  'eight',
+  'nine',
+  'ten',
+  'eleven',
+  'twelve',
+  'thirteen',
+  'fourteen',
+  'fifteen',
+  'sixteen',
+  'seventeen',
+  'eighteen',
+  'nineteen',
+  'twenty',
+];
+const COUNT_RE = new RegExp(`\\b(\\d+|${NUMBER_WORDS.join('|')}) (languages|themes)\\b`, 'gi');
+const SERVER_RE = /\bJellyfin (\d+\.\d+(?:\.\d+)?) or later\b/g;
+
+function checkStoreListing() {
+  if (!fs.existsSync(STORE_LISTING_PATH)) return; // silent when absent
+  const content = fs.readFileSync(STORE_LISTING_PATH, 'utf8');
+  const fail = (message, target) =>
+    pushError({ category: 'store-listing', file: STORE_LISTING_PATH, message, target });
+  const facts = appFacts(ROOT_DIR);
+  for (const { name, limit } of STORE_BLOCKS) {
+    const match = content.match(new RegExp('^```text ' + name + '\\n([\\s\\S]*?)\\n```$', 'm'));
+    if (!match) {
+      fail(`no \`\`\`text ${name} block`, name);
+      continue;
+    }
+    const text = match[1];
+    const length = Array.from(text).length + (text.match(/\n/g) || []).length;
+    if (length > limit) {
+      fail(`${name} is ${length} characters, over its limit of ${limit}`, name);
+    }
+    checkCitedCounts(text, name, facts, fail);
+  }
+}
+
+// Each count a text cites ("98 languages", "nine themes", "Jellyfin 10.7 or
+// later") must match the app. `name` labels the text in the message.
+function checkCitedCounts(text, name, facts, fail) {
+  for (const [, said, noun] of text.matchAll(COUNT_RE)) {
+    const value = /^\d+$/.test(said) ? Number(said) : NUMBER_WORDS.indexOf(said.toLowerCase());
+    const kind = noun.toLowerCase();
+    const actual = facts[kind];
+    if (value === actual) continue;
+    fail(
+      kind === 'languages'
+        ? `${name} says ${said} languages, but locale/languages.json has ${actual}`
+        : `${name} says ${said} themes, but the uiTheme setting has ${actual} presets`,
+      kind,
+    );
+  }
+  for (const [, said] of text.matchAll(SERVER_RE)) {
+    if (facts.floor === said || facts.floor.startsWith(`${said}.`)) continue;
+    fail(`${name} says Jellyfin ${said}, but the supported floor is ${facts.floor}`, 'floor');
+  }
+}
+
+// The README cites the same counts as the store text, typed by hand.
+function checkReadmeCounts() {
+  const readme = path.join(ROOT_DIR, 'README.md');
+  if (!fs.existsSync(readme)) return; // silent when absent
+  const fail = (message, target) =>
+    pushError({ category: 'readme-counts', file: readme, message, target });
+  checkCitedCounts(fs.readFileSync(readme, 'utf8'), 'README.md', appFacts(ROOT_DIR), fail);
+}
+
+// The frontmatter of every page in docs/user/features/ (parsed by
+// scripts/lib/feature-facts.cjs, as the feature catalog's generator parses it).
+// Every field is checked against what the app ships, and an unknown key fails,
+// so a misspelled field is never silently ignored.
+const PITCH_LIMIT = 120;
+const VERSION_RE = /^\d+\.\d+\.\d+$/;
+
+function checkFeaturePages() {
+  const names = featurePageFiles(ROOT_DIR);
+  if (names.length === 0) return; // silent when absent
+  const version = appVersion(ROOT_DIR);
+  const floor = readServerFloor(ROOT_DIR);
+  const plugins = listedPlugins(ROOT_DIR);
+  const screens = screenshotKeys(ROOT_DIR);
+  for (const name of names) {
+    const file = path.join(FEATURES_DIR, name);
+    const fail = (message, target) =>
+      pushError({ category: 'feature-frontmatter', file, message, target });
+    const { fields, problems } = parseFeaturePage(fs.readFileSync(file, 'utf8'));
+    if (fields === null) {
+      fail('has no frontmatter: a feature page needs pitch, since and server', 'frontmatter');
+      continue;
+    }
+    for (const problem of problems) fail(problem, 'frontmatter');
+    for (const [key, { required }] of Object.entries(FEATURE_FIELDS)) {
+      if (required && !(key in fields)) fail(`missing \`${key}:\``, key);
+    }
+    const { pitch, since, server } = fields;
+    if (pitch && Array.from(pitch).length > PITCH_LIMIT) {
+      fail(
+        `pitch is ${Array.from(pitch).length} characters, over its limit of ${PITCH_LIMIT}`,
+        'pitch',
+      );
+    }
+    if (since && since !== 'unreleased') {
+      if (!VERSION_RE.test(since)) fail(`since: ${since} is not x.y.z or \`unreleased\``, 'since');
+      else if (compareVersions(since, version) > 0) {
+        fail(`since: ${since} is newer than the app (${version})`, 'since');
+      }
+    }
+    if (server) {
+      if (!VERSION_RE.test(server)) fail(`server: ${server} is not x.y.z`, 'server');
+      else if (compareVersions(server, floor) < 0) {
+        fail(`server: ${server} is older than the supported floor (${floor})`, 'server');
+      }
+    }
+    for (const plugin of fields.plugins || []) {
+      if (!plugins.has(plugin)) {
+        fail(`plugin "${plugin}" is not a row in docs/user/jellyfin-server-plugins.md`, 'plugins');
+      }
+    }
+    for (const key of fields.screenshots || []) {
+      if (!screens.has(key)) {
+        fail(`screenshot "${key}" is not in docs/screenshots/screenshots.json`, 'screenshots');
+      }
+    }
+  }
+}
+
 // Post-loop journal-system checks. These don't iterate files (they target
 // specific paths) so they run after the per-file scan so their errors
 // participate in the same accumulator.
 checkProgressFrontmatter();
 checkDecisionsSupersedeChain();
+checkStoreListing();
+checkReadmeCounts();
+checkFeaturePages();
 
 if (JSON_MODE) {
   // Single-line JSON to stdout regardless of pass/fail. Exit code carries

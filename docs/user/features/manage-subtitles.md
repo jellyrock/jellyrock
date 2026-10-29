@@ -1,8 +1,15 @@
+---
+pitch: Search your server's subtitle providers and download a subtitle onto a movie or episode from its page.
+since: 2.29.0
+server: 10.7.0
+plugins: Open Subtitles
+---
+
 # Manage subtitles
 
 The **Manage Subtitles** button on a movie or episode searches your Jellyfin server's subtitle providers and downloads a subtitle onto the item. You stay on the details screen.
 
-It needs a subtitle provider plugin on your server. [Jellyfin server plugins](jellyfin-server-plugins.md) lists the ones JellyRock is tested with and how to install them.
+It needs a subtitle provider plugin on your server. [Jellyfin server plugins](../jellyfin-server-plugins.md) lists the ones JellyRock is tested with and how to install them.
 
 ## What you need
 

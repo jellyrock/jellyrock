@@ -339,6 +339,10 @@ Closes with a lint in `npm run lint` and its CI home that fails a tracked code c
 
 A BrightScript runtime error during an RTA spec suspends the app in the micro debugger, and every later wait in the run times out with `last={}` and no hint of the crash. [`scripts/rta-run.js`](../scripts/rta-run.js) and [`tests/rta/lib/driver.js`](../tests/rta/lib/driver.js) open no console tail; `driver.js` only names the telnet command in its deploy-timeout message. **Evidence:** SyncPlay phase C (2026-10-23, Streaming Stick 4K): a type mismatch in `syncPlayQueue.isStaleQueueUpdate` failed seven of eight specs as plain timeouts, and the backtrace surfaced only after a rerun with `nc` on port 8085 held open by hand. Not done in that PR: it is a runner change with its own tests. **Close:** have `rta-run.js` hold a console tail for the run (share the reader `two-roku-console-readers` proposes rather than writing a third), surface any `runtime error` or `Backtrace:` lines seen since the spec started in the failed wait's diagnosis, and save the tail beside the run record.
 
+#### Nothing changes a feature page's `since: unreleased` to the version when the release ships `[fid: feature-since-unreleased-at-release]` `[captured 2026-10-29]`
+
+A feature page's frontmatter takes `since: unreleased` until its feature ships (`docs/dev/feature-pages.md`), and `npm run lint:docs` accepts it, but nothing changes it to the version when a release goes out, so the catalog and the docs site would say "unreleased" for a shipped feature. Close it with one of: the release-prep workflow that bumps the version files rewrites `since: unreleased` to the new version; `docs-check.cjs` fails on `unreleased` once that release's version is in `package.json` (needs a way to tell which release a page targets); or a step in `docs/admin/releases.md`. No page uses it yet (2026-10-29), so it bites with the first unreleased feature's page.
+
 ### components
 
 #### The `cell-load` counters are silently zeroed whenever a screen replaces its content root, so any measurement of a session that does so under-reports. `[fid: cell-load-counters-zeroed-by-root-swap]` `[captured 2026-08-22]`
@@ -429,7 +433,7 @@ It runs `m.view.unobserveField("state")` before `m.view.control = "stop"`, and [
 
 #### Manage Subtitles is offered on disc-rip items where the search can never return anything `[fid: manage-subtitles-offered-on-disc-rips]` `[captured 2026-09-14]`
 
-(#750). Jellyfin's `SubtitleManager.SearchSubtitles(Video, …)` returns an empty list unless `video.VideoType` is `VideoFile` — so an ISO image or DVD / Blu-ray folder always gets "no subtitles found" — read at the `v10.7.0`, `v10.7.7`, `v10.8.13`, `v10.9.11`, `v10.10.7`, `v10.11.11` and `v12.0` tags, unchanged. `ItemDetails` does not gate the button on the targeted version's `VideoType` (its only `VideoType = "VideoFile"` check is `buildVideoDropdownItems`), so the user is told to check provider setup when setup is fine. Documented for users in [`manage-subtitles.md`](user/manage-subtitles.md). **Decide:** hide the button for a non-`VideoFile` version, or keep the doc as the answer. A code change, so it needs device testing — kept out of #750's docs pass for that reason.
+(#750). Jellyfin's `SubtitleManager.SearchSubtitles(Video, …)` returns an empty list unless `video.VideoType` is `VideoFile` — so an ISO image or DVD / Blu-ray folder always gets "no subtitles found" — read at the `v10.7.0`, `v10.7.7`, `v10.8.13`, `v10.9.11`, `v10.10.7`, `v10.11.11` and `v12.0` tags, unchanged. `ItemDetails` does not gate the button on the targeted version's `VideoType` (its only `VideoType = "VideoFile"` check is `buildVideoDropdownItems`), so the user is told to check provider setup when setup is fine. Documented for users in [`manage-subtitles.md`](user/features/manage-subtitles.md). **Decide:** hide the button for a non-`VideoFile` version, or keep the doc as the answer. A code change, so it needs device testing — kept out of #750's docs pass for that reason.
 
 #### `ItemGridOptions` commits View / Sort / Filter on the key RELEASE, so a press guard would break selection. `[fid: item-grid-options-commits-on-key-release]` `[captured 2026-09-19]`
 
@@ -832,6 +836,14 @@ Closes after a manual check: pause from another member (jellyfin-web) within a s
 `JellyfinServer.isSplashscreenEnabled` (`components/data/jellyfin/JellyfinServer.xml`) is commented "invalid = not loaded yet", but it is `type="boolean"` with no value, so an unset field reads `false`. `UserSelect.loadSplashscreen()` therefore always takes its `isValid()` "already cached" branch and applies "splash disabled" (clearing the backdrop) before the branding fetch delivers the real value. Found while fixing the screenshot capture, whose `settleBackdrop()` reads the server's `/Branding/Configuration` for this reason; the app log shows `Splashscreen disabled - using default background` before every `Branding config cached successfully`.
 
 Not checked: whether the flash of the default background is visible on a device. Check that first; fix by tracking "fetched" separately (an `isSplashscreenLoaded` field) or declaring the field so it starts invalid. Not done now: it needs a device check and an app change outside the screenshot work.
+
+#### The SyncPlay halt toast after Back promises 'What plays now is your own', but the next video play re-follows the group `[fid: syncplay-halt-toast-promises-local]` `[captured 2026-10-29]`
+
+`MessageSyncPlayStoppedFollowing` ("No longer following {0}. What plays now is your own.") is the toast for every `halted` notice `SyncPlayManager.haltFollowing` sends, but it is true for only one of the five halts that send it: "a player mounted for an item the group is not playing" (music or Live TV played locally). After the other four (Back, "the group's queue could not be loaded", "the group is playing an item this player cannot follow", "the player would not stay paused"), `SyncPlayManager.claimPlay` hands the member's next video play to the group and follows again, as decision `syncplay-play-handed-to-group` intends. All three arrived together in 08759649 (#1270); only `en_US.json` has the key, and it ships in 3.3.0. Found while writing `docs/user/features/syncplay.md`.
+
+Options: `reword` (recommended): make the one string true after every halt, for example "No longer following {0}. Pick Resume with Group in the SyncPlay menu to catch up." (`en_US.json` only). `split`: keep "What plays now is your own" for the local-play halt and give the other four a new message (a new key, `haltFollowing` passes which kind, `syncPlayMenu.toastFor`, both specs). Not offered: making a halted member's play local, which reverses the accepted decision.
+
+Not checked: how the toast looks on a device; whether jellyfin-web words this case differently.
 
 ### source
 
@@ -1536,6 +1548,10 @@ To close it, as its own project:
 - Check the new text on a Roku for fit, and confirm what Weblate does to existing translations when an English value changes.
 
 `settingName`, `type` and the generated-file note stay on the page: it serves users and contributors alike (decided 2026-10-09).
+
+#### Tell the marketing site's repo about the feature catalog once it is on main `[fid: tell-site-about-feature-catalog]` `[captured 2026-10-29]`
+
+`docs/feature-catalog.json` (schema 1: `app.languages`, `app.themes`, `app.serverFloor`, and per feature `slug`, `title`, `pitch`, `since`, `server`, `plugins`, `screenshots`, `page`, `url`) is generated by `npm run docs:features` for the marketing site to read at build time, and `notify-homepage.yml` now rebuilds that site when it changes. The site still hand-keeps its cards in `src/data/features.ts` (including a "99 Language Translations" card; the app has 98), and its `/audit-features` skill reads the changelog. Once the catalog is on `main`, tell that repo's next session: its repo is not in this machine's registry, so `/log message` cannot reach it; open an issue there or start a session there, with what the catalog holds and that `/audit-features` can check cards against it.
 
 ### claude
 

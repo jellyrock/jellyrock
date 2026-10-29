@@ -61,6 +61,8 @@
 #     added locally gates nothing.
 #   - npm run docs:dev-index:check: drift check on the generated dev-guides
 #     table.
+#   - npm run docs:features:check: drift check on the feature catalog, the
+#     features index and the README features list.
 #   - npm run docs:api-manifest:check: drift check on the API usage manifest.
 #   - npm run roku-hardware:check: integrity check on the Roku device
 #     dictionary (scripts/data/roku-hardware.json).
@@ -266,6 +268,9 @@ npm run lint:ci-parity
 
 echo "📑 Checking dev-index drift..."
 npm run docs:dev-index:check
+
+echo "🧭 Checking feature catalog drift..."
+npm run docs:features:check
 
 echo "🗺️  Checking API usage manifest drift..."
 npm run docs:api-manifest:check

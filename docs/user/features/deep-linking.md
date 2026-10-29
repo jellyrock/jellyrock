@@ -1,3 +1,9 @@
+---
+pitch: Open or play anything in JellyRock from another device, a script or a voice routine, with only the item's ID.
+since: 2.22.0
+server: 10.7.0
+---
+
 # Deep linking and casting to JellyRock
 
 You can open or play anything in JellyRock from another device: a browser bookmark, a shell script, a Home Assistant automation, a phone shortcut or a voice routine. You send your Roku one short command, and JellyRock goes to the item or starts playing it. You don't touch the remote.
@@ -170,4 +176,4 @@ curl "http://<roku-ip>:8060/query/media-player"
 
 ## Full reference
 
-This guide covers everyday use. For the full parameter list, the parsing rules, the security model and how it works inside the app, see the [developer reference](../dev/deep-linking.md).
+This guide covers everyday use. For the full parameter list, the parsing rules, the security model and how it works inside the app, see the [developer reference](../../dev/deep-linking.md).

@@ -69,6 +69,19 @@ describe('docs-check', () => {
     expect(stderr).toMatch(/markdown link target does not exist/);
   });
 
+  it('checks the docs in a subfolder of a docs folder', () => {
+    dir = setup({
+      'docs/dev/guides/foo.md': '# Foo\n\nSee [settings](app-settings.md).\n',
+      'docs/dev/app-settings.md': '# App settings\n',
+      'docs/architecture/tech-debt.md': '---\ntopic: tech-debt\n---\n# Tech Debt\n',
+    });
+    const { exitCode, stderr } = spawnScript(SCRIPT, [dir]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(
+      /docs\/dev\/guides\/foo\.md: markdown link target does not exist: app-settings\.md/,
+    );
+  });
+
   it('exits 1 on a stale tech-debt anchor reference', () => {
     dir = setup({
       'docs/architecture/foo.md': fmDoc(
@@ -736,5 +749,211 @@ describe('docs-check — decisions.md supersede chain', () => {
           .join('\n'),
       ).toMatch(/is `withdrawn` — a withdrawn note has no successor/);
     });
+  });
+});
+
+describe('docs-check: store listing', () => {
+  let dir;
+
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+
+  // The sources the listing's counts are checked against: two languages (plus
+  // the code-less "Automatic" entry, which is not a language), two theme presets
+  // (plus Custom, which is not a preset) and a 10.7.0 floor.
+  const sources = {
+    'locale/languages.json': JSON.stringify([
+      { code: '', name: 'Automatic' },
+      { code: 'en_US', name: 'English' },
+      { code: 'fr', name: 'French' },
+    ]),
+    'settings/settings.json': JSON.stringify([
+      {
+        title: 'User Interface',
+        children: [
+          {
+            settingName: 'uiTheme',
+            options: [{ id: 'jellyrock' }, { id: 'ocean' }, { id: 'custom' }],
+          },
+        ],
+      },
+    ]),
+    'docs/dev/jellyfin-version-boundaries.yml':
+      "floor: '10.7.0'\ntiers:\n  1:\n    minServer: '10.7.0'\n    maxServer: null\n    status: active\n",
+  };
+
+  const listing = (onDevice, online) =>
+    '# Roku store listing\n\n' +
+    (onDevice === null ? '' : '```text store-on-device\n' + onDevice + '\n```\n\n') +
+    (online === null ? '' : '```text store-online\n' + online + '\n```\n');
+
+  const run = (onDevice, online) => {
+    dir = setup({ ...sources, 'docs/admin/store-listing.md': listing(onDevice, online) });
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);
+    const found = JSON.parse(stdout).errors.filter((e) => e.category === 'store-listing');
+    return { exitCode, found };
+  };
+
+  const good = 'Two languages, two themes. Needs Jellyfin 10.7 or later.';
+
+  it('passes when both blocks fit and every count matches its source', () => {
+    const { exitCode, found } = run(good, `${good}\n\n2 languages and two themes.`);
+    expect(found).toEqual([]);
+    expect(exitCode).toBe(0);
+  });
+
+  it('FAILs a block over its limit', () => {
+    const { exitCode, found } = run('a'.repeat(301), good);
+    expect(exitCode).toBe(1);
+    expect(found[0].message).toMatch(/store-on-device is 301 characters, over its limit of 300/);
+  });
+
+  it('counts each line break as two characters', () => {
+    // 298 letters and one line break: 299 as typed, 300 counted as CRLF, which fits.
+    expect(run('a'.repeat(149) + '\n' + 'a'.repeat(149), good).found).toEqual([]);
+    rmSync(dir, { recursive: true, force: true });
+    // One more letter: 301 counted as CRLF.
+    const { found } = run('a'.repeat(150) + '\n' + 'a'.repeat(149), good);
+    expect(found[0].message).toMatch(/is 301 characters/);
+  });
+
+  it('FAILs a language count that includes the "Automatic" entry', () => {
+    const { exitCode, found } = run('3 languages.', good);
+    expect(exitCode).toBe(1);
+    expect(found[0].message).toMatch(/says 3 languages, but locale\/languages\.json has 2/);
+  });
+
+  it('FAILs a theme count, written as a word, that does not match the presets', () => {
+    const { exitCode, found } = run('Three themes.', good);
+    expect(exitCode).toBe(1);
+    expect(found[0].message).toMatch(/says Three themes, but the uiTheme setting has 2 presets/);
+  });
+
+  it('FAILs a server version that is not the floor', () => {
+    const { exitCode, found } = run('Needs Jellyfin 10.8 or later.', good);
+    expect(exitCode).toBe(1);
+    expect(found[0].message).toMatch(/says Jellyfin 10\.8, but the supported floor is 10\.7\.0/);
+  });
+
+  it('FAILs when a block is missing', () => {
+    const { exitCode, found } = run(good, null);
+    expect(exitCode).toBe(1);
+    expect(found[0].message).toMatch(/no ```text store-online block/);
+  });
+
+  it('checks the counts the README cites too', () => {
+    dir = setup({ ...sources, 'README.md': '# JellyRock\n\nIn 3 languages and two themes.\n' });
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);
+    const found = JSON.parse(stdout).errors.filter((e) => e.category === 'readme-counts');
+    expect(exitCode).toBe(1);
+    expect(found.map((e) => e.message)).toEqual([
+      'README.md says 3 languages, but locale/languages.json has 2',
+    ]);
+  });
+
+  it('is silent when the repo has no store listing', () => {
+    dir = setup(sources);
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);
+    expect(JSON.parse(stdout).errors).toEqual([]);
+    expect(exitCode).toBe(0);
+  });
+});
+
+describe('docs-check: feature pages', () => {
+  let dir;
+
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+
+  // What a feature page's frontmatter is checked against: the app's version,
+  // the oldest supported server, the plugins page's table and the screenshot list.
+  const sources = {
+    'package.json': JSON.stringify({ version: '3.2.0' }),
+    'docs/dev/jellyfin-version-boundaries.yml': "floor: '10.7.0'\n",
+    'docs/user/jellyfin-server-plugins.md':
+      '# Jellyfin server plugins\n\n## Supported plugins\n\n| Plugin | What you get |\n| --- | --- |\n' +
+      '| [Open Subtitles](https://example.com/os) | Subtitles |\n| [Intro Skipper](https://example.com/is) | Skips |\n',
+    'docs/screenshots/screenshots.json': JSON.stringify({ screens: ['home', 'osd'] }),
+  };
+
+  const page = (frontmatter) =>
+    (frontmatter === null ? '' : `---\n${frontmatter}\n---\n\n`) + '# A feature\n\nBody.\n';
+
+  const run = (frontmatter) => {
+    dir = setup({ ...sources, 'docs/user/features/a-feature.md': page(frontmatter) });
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);
+    const found = JSON.parse(stdout).errors.filter((e) => e.category === 'feature-frontmatter');
+    return { exitCode, found, messages: found.map((e) => e.message).join('\n') };
+  };
+
+  const good = [
+    'pitch: Skip the intros your server has marked.',
+    'since: 2.9.0',
+    'server: 10.10.0',
+    'plugins: Intro Skipper',
+    'screenshots: osd, home',
+  ].join('\n');
+
+  it('passes a page whose every field is valid', () => {
+    const { exitCode, found } = run(good);
+    expect(found).toEqual([]);
+    expect(exitCode).toBe(0);
+  });
+
+  it('accepts `since: unreleased` and no optional fields', () => {
+    expect(run('pitch: Soon.\nsince: unreleased\nserver: 10.7.0').found).toEqual([]);
+  });
+
+  it('FAILs a page with no frontmatter', () => {
+    const { exitCode, messages } = run(null);
+    expect(exitCode).toBe(1);
+    expect(messages).toMatch(/has no frontmatter/);
+  });
+
+  it('FAILs a missing required field', () => {
+    expect(run('pitch: Hi.\nserver: 10.7.0').messages).toMatch(/missing `since:`/);
+  });
+
+  it('FAILs an unknown field, so a typo cannot pass', () => {
+    expect(run(`${good}\nplugin: Intro Skipper`).messages).toMatch(/unknown field `plugin:`/);
+  });
+
+  it('FAILs a pitch over its limit', () => {
+    expect(run(good.replace(/^pitch: .*/m, `pitch: ${'a'.repeat(121)}`)).messages).toMatch(
+      /pitch is 121 characters, over its limit of 120/,
+    );
+  });
+
+  it('FAILs a since newer than the app', () => {
+    expect(run(good.replace('since: 2.9.0', 'since: 3.3.0')).messages).toMatch(
+      /since: 3\.3\.0 is newer than the app \(3\.2\.0\)/,
+    );
+  });
+
+  it('FAILs a server below the floor', () => {
+    expect(run(good.replace('server: 10.10.0', 'server: 10.6.0')).messages).toMatch(
+      /server: 10\.6\.0 is older than the supported floor \(10\.7\.0\)/,
+    );
+  });
+
+  it('FAILs a plugin the plugins page does not list', () => {
+    expect(
+      run(good.replace('plugins: Intro Skipper', 'plugins: Intro Skipper, Ghost')).messages,
+    ).toMatch(/plugin "Ghost" is not a row in docs\/user\/jellyfin-server-plugins\.md/);
+  });
+
+  it('FAILs a screenshot key that screenshots.json does not list', () => {
+    expect(run(good.replace('screenshots: osd, home', 'screenshots: osd, nope')).messages).toMatch(
+      /screenshot "nope" is not in docs\/screenshots\/screenshots\.json/,
+    );
+  });
+
+  it('checks only pages in docs/user/features/', () => {
+    dir = setup({ ...sources, 'docs/user/app-settings.md': '# App settings\n' });
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);
+    expect(JSON.parse(stdout).errors).toEqual([]);
+    expect(exitCode).toBe(0);
   });
 });

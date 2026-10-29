@@ -29,7 +29,7 @@ On Jellyfin 10.8 and later, JellyRock hides the **Quick Connect** button when yo
 
 Media segments let JellyRock skip intros, outros, recaps, previews and commercials. They need Jellyfin 10.10 or later; 10.9 and earlier do not have the feature.
 
-Your server also needs a media segment provider plugin to find the segments. See [Media segments](media-segments.md) for the plugins JellyRock is tested with, how to choose what happens for each segment type, and troubleshooting.
+Your server also needs a media segment provider plugin to find the segments. See [Media segments](features/media-segments.md) for the plugins JellyRock is tested with, how to choose what happens for each segment type, and troubleshooting.
 
 ## Collections row
 

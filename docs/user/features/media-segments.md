@@ -1,8 +1,15 @@
+---
+pitch: Skip the intros, outros, recaps, previews and commercials your server has marked, or get a button to skip them.
+since: 2.9.0
+server: 10.10.0
+plugins: Chapter Segments Provider, Intro Skipper
+---
+
 # Media segments (skip intro and outro)
 
 JellyRock can skip the parts of a video your server has marked, or show a button to skip them. These parts are intros, outros, recaps, previews and commercials.
 
-You need Jellyfin 10.10.0 or later and a media segment provider plugin on your server. [Jellyfin server plugins](jellyfin-server-plugins.md) lists the ones JellyRock is tested with and how to install them.
+You need Jellyfin 10.10.0 or later and a media segment provider plugin on your server. [Jellyfin server plugins](../jellyfin-server-plugins.md) lists the ones JellyRock is tested with and how to install them.
 
 ## What you need
 
@@ -14,7 +21,7 @@ JellyRock is tested with **Chapter Segments Provider** and **Intro Skipper**. An
 
 For each segment type, you choose to skip it, show a skip button or do nothing. You set this in the Jellyfin web client.
 
-To change it for one Roku, go to **Settings → Playback → Media Segments** in JellyRock. See [App settings](app-settings.md#playback-media-segments).
+To change it for one Roku, go to **Settings → Playback → Media Segments** in JellyRock. See [App settings](../app-settings.md#playback-media-segments).
 
 ## Troubleshooting
 

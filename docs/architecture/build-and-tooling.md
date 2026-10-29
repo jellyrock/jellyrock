@@ -54,6 +54,8 @@ related-files:
   - scripts/journal-sync.js
   - scripts/lint/issue-forms.schema.json
   - scripts/generate/dev-index.cjs
+  - scripts/generate/feature-catalog.cjs
+  - scripts/lib/feature-facts.cjs
   - scripts/generate/icons-build.js
   - scripts/generate/gradient-assets.js
   - scripts/generate/icons-add.js
@@ -384,7 +386,7 @@ One makes it report more. A name built at runtime from a variable (`setField(nam
 | Translations | `update-translations`, `translations:seed`, `translations:merge` | [translations.md](translations.md) |
 | Server upgrades | `docs:api-manifest`, `docs:spec-fingerprints`, `api-watch:*`, `jellyfin:matrix`, each with `:check` where one exists | [server-upgrade-automation.md](server-upgrade-automation.md) |
 | Generated assets | `icons:build`, `icons:add`, `gradients:build`, `roku-hardware:fetch`, each with `:check` | [Icon resolution pipeline](#icon-resolution-pipeline) |
-| Docs | `docs:settings`, `docs:dev-index`, `docs:stale`, `docs:stale:blocking`, `docs:fact-report`, `dictionary:sentence-final` | [Doc-maintenance enforcement](#doc-maintenance-enforcement) |
+| Docs | `docs:settings`, `docs:dev-index`, `docs:features`, `docs:stale`, `docs:stale:blocking`, `docs:fact-report`, `dictionary:sentence-final` | [Doc-maintenance enforcement](#doc-maintenance-enforcement) |
 | Agent state | `catchup:state` (the JSON `/catchup` and `/ramp` read), `agent-telemetry` | [Agent telemetry](#agent-telemetry) |
 | Dead code | `dead-code:replay`, `dead-code:mutate`, `dead-code:write-only` | [Dead code](#dead-code) |
 | Changelog | `changelog:*`, run by CI only | [changelog.md](../admin/changelog.md) |
@@ -396,7 +398,7 @@ One makes it report more. A name built at runtime from a variable (`setField(nam
 
 | Script | Checks |
 |---|---|
-| `lint:docs` | `related-files:` paths, relative links and `tech-debt.md#` anchors across the docs, every `CLAUDE.md` outside dot-directories, and the BSC plugins. Plus the schema of `progress.md`'s frontmatter and the `decisions.md` supersede chain. Run it through `/docs-lint` |
+| `lint:docs` | `related-files:` paths, relative links and `tech-debt.md#` anchors across the docs, every `CLAUDE.md` outside dot-directories, and the BSC plugins. Plus the schema of `progress.md`'s frontmatter, the `decisions.md` supersede chain, the Roku store descriptions in `docs/admin/store-listing.md` (each within its length limit, each count it cites matching the app), and the frontmatter of each feature page in `docs/user/features/` ([Document a feature](../dev/feature-pages.md)). Run it through `/docs-lint` |
 | `lint:voice` | The house voice and line-number citations in every tracked `.md`, as a per-file ratchet ([writing-style.md](../dev/writing-style.md#what-the-gate-checks)) |
 | `lint:comment-voice` | The house voice in the comments of tracked code, as a per-file ratchet ([writing-style.md](../dev/writing-style.md#what-the-gate-checks)) |
 | `lint:skill-placeholders` | Argument placeholders in `.claude/skills/*/SKILL.md` (`$ARGUMENTS`, `$0` to `$9`, an `arguments:` list), which Claude Code replaces at run time ([the script's header](../../scripts/lint/skill-placeholders-check.js)) |
@@ -592,6 +594,7 @@ CI and local work never share a Roku: CI uses its own device, named by an org-le
 | `lint:comment-voice` | | ✓ | Runs on every push, so a baseline-only change is checked too |
 | `lint:skill-placeholders` | ✓ | ✓ | Pre-commit checks the staged skills; pre-push checks every skill |
 | `docs:dev-index:check` | | ✓ | Drift in a generated table |
+| `docs:features:check` | | ✓ | Drift in the feature catalog, the features index and the README list, all generated from the feature pages |
 | `update-translations` | | ✓ | Regenerates from `en_US.json` |
 | `lint:language-coverage` | | ✓ | Only when its inputs change |
 | `lint:issue-templates` | | ✓ | Only when the templates change |
