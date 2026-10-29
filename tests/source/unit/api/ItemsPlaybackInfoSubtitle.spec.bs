@@ -1,0 +1,38 @@
+import "pkg:/source/api/items.bs"
+import "pkg:/source/enums/SubtitleSelection.bs"
+
+namespace tests
+
+  ' buildPlaybackInfoPostData: the subtitle pick reaches the server as the pick. Jellyfin reads
+  ' a missing SubtitleStreamIndex as "use the server's default track", so None must be sent as
+  ' -1, or a file with a default or forced track that can only be burned in transcodes with that
+  ' track on screen and no way to turn it off.
+  @suite("Items.bs - buildPlaybackInfoPostData() subtitle pick")
+  class ItemsPlaybackInfoSubtitleTests extends tests.BaseTestSuite
+
+    private function build(subtitleTrackIndex as integer) as object
+      return buildPlaybackInfoPostData("", -1, subtitleTrackIndex)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("subtitle stream index")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sends -1 when the pick is None")
+    function _()
+      m.assertEqual(m.build(SubtitleSelection.NONE).SubtitleStreamIndex, -1)
+    end function
+
+    @it("sends the picked track")
+    function _()
+      m.assertEqual(m.build(2).SubtitleStreamIndex, 2)
+    end function
+
+    @it("leaves the index out when nothing was picked, so the server decides")
+    function _()
+      m.assertFalse(m.build(SubtitleSelection.NOT_SET).doesExist("SubtitleStreamIndex"))
+    end function
+
+  end class
+
+end namespace

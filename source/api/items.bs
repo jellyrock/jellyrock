@@ -100,7 +100,9 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
     end if
   end if
 
-  if subtitleTrackIndex <> SubtitleSelection.NONE and subtitleTrackIndex <> SubtitleSelection.NOT_SET
+  ' None is sent as -1. Jellyfin reads a missing index as "use the server's default track", which
+  ' for a default or forced track that can only be burned in means a transcode showing it.
+  if subtitleTrackIndex <> SubtitleSelection.NOT_SET
     postData.SubtitleStreamIndex = subtitleTrackIndex
   end if
 
