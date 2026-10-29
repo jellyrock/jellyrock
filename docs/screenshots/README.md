@@ -21,6 +21,10 @@ Every screen in the app, captured on a real Roku. The full gallery below is in *
   <tr>
     <td align="center" valign="top"><a href="en_US/settings.webp"><img src="en_US/settings.webp" width="260" alt="Settings"></a><br>Settings</td>
     <td align="center" valign="top"><a href="en_US/search.webp"><img src="en_US/search.webp" width="260" alt="Search"></a><br>Search</td>
+    <td align="center" valign="top"><a href="en_US/searchTyping.webp"><img src="en_US/searchTyping.webp" width="260" alt="Search Typing"></a><br>Search Typing</td>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><a href="en_US/searchRecent.webp"><img src="en_US/searchRecent.webp" width="260" alt="Search Recent"></a><br>Search Recent</td>
   </tr>
 </table>
 

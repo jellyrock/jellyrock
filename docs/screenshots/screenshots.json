@@ -26,6 +26,8 @@
     "serverSelect",
     "settings",
     "search",
+    "searchTyping",
+    "searchRecent",
     "moviesLibraryGrid",
     "moviesLibraryStudios",
     "moviesLibraryGenres",

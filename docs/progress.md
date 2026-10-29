@@ -826,6 +826,12 @@ Found while fixing `syncplay-controls.spec.js`'s intermittent pause failures (#1
 
 Closes after a manual check: pause from another member (jellyfin-web) within a second of a group start on the Roku. If the picture freezes with no OSD, build the fix above with a unit spec on `applyPlan` and a device check; if it never shows, close as not reproduced.
 
+#### `UserSelect` applies 'splash disabled' before the branding answer arrives `[fid: splashscreen-flag-reads-false-unset]` `[captured 2026-10-29]`
+
+`JellyfinServer.isSplashscreenEnabled` (`components/data/jellyfin/JellyfinServer.xml`) is commented "invalid = not loaded yet", but it is `type="boolean"` with no value, so an unset field reads `false`. `UserSelect.loadSplashscreen()` therefore always takes its `isValid()` "already cached" branch and applies "splash disabled" (clearing the backdrop) before the branding fetch delivers the real value. Found while fixing the screenshot capture, whose `settleBackdrop()` reads the server's `/Branding/Configuration` for this reason; the app log shows `Splashscreen disabled - using default background` before every `Branding config cached successfully`.
+
+Not checked: whether the flash of the default background is visible on a device. Check that first; fix by tracking "fetched" separately (an `isSplashscreenLoaded` field) or declaring the field so it starts invalid. Not done now: it needs a device check and an app change outside the screenshot work.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
