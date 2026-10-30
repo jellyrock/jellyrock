@@ -21,7 +21,7 @@
     {
       "slug": "themes",
       "title": "Color themes",
-      "pitch": "Give JellyRock your own look: pick a color theme, or set every color yourself.",
+      "pitch": "Pick a color theme for JellyRock, or set every color yourself.",
       "since": "1.11.0",
       "server": "10.7.0",
       "plugins": [],
