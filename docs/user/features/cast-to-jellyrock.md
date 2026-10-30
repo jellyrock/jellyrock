@@ -7,7 +7,7 @@ highlight: 2
 
 # Cast from another Jellyfin app
 
-Pick something in the Jellyfin app on your phone or in your browser, send it to your Roku, and JellyRock plays it. Then use that app as a remote: pause, seek, skip or stop without picking up the Roku remote.
+Pick something in the Jellyfin app on your phone or in your browser, send it to your Roku, and JellyRock plays it. Then use that app as a remote: pause, seek, skip or stop without picking up the Roku remote. JellyRock is the first Roku client for Jellyfin to support casting and display mirroring.
 
 ## What you need
 
@@ -40,6 +40,10 @@ Someone signed in to your server can send your TV a message from Jellyfin. A sho
 ## Cast while JellyRock is closed
 
 With the JellyRock Companion plugin on your server, your Roku shows up as a cast target even while JellyRock is closed, and JellyRock opens straight into what you picked. Your server must be on the same network as your Roku. [Jellyfin server plugins](../jellyfin-server-plugins.md) says which plugin version this needs.
+
+## How it reaches your Roku
+
+Jellyfin sends cast commands over a connection that stays open, called a WebSocket. On an HTTP server, JellyRock opens that connection itself. Roku can't open a secure WebSocket, so on an HTTPS server the JellyRock Companion plugin holds the commands and JellyRock collects them over an ordinary secure connection, as soon as each one arrives. That's what makes casting and SyncPlay work on HTTPS servers, where no other Roku client for Jellyfin supports them.
 
 ## Troubleshooting
 

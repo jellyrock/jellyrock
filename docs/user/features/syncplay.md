@@ -7,7 +7,7 @@ highlight: 1
 
 # SyncPlay (watch together)
 
-SyncPlay keeps a group of people watching the same video at the same moment. When anyone in the group pauses, seeks or moves to the next item, everyone does. The others can be on JellyRock, the Jellyfin web app or any other Jellyfin app with SyncPlay.
+SyncPlay keeps a group of people watching the same video at the same moment. When anyone in the group pauses, seeks or moves to the next item, everyone does. The others can be on JellyRock, the Jellyfin web app or any other Jellyfin app with SyncPlay. JellyRock is the first Roku client for Jellyfin to support SyncPlay.
 
 ## What you need
 
