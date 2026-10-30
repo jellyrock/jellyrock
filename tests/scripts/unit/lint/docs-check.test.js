@@ -950,6 +950,31 @@ describe('docs-check: feature pages', () => {
     );
   });
 
+  it('accepts a `highlight:` rank from 1 to 6 and FAILs anything else', () => {
+    expect(run(`${good}\nhighlight: 1`).found).toEqual([]);
+    expect(run(`${good}\nhighlight: 6`).found).toEqual([]);
+    for (const bad of ['yes', '0', '7', '1.5']) {
+      expect(run(`${good}\nhighlight: ${bad}`).messages).toMatch(
+        new RegExp(`highlight: ${bad.replace('.', '\\.')} is not a whole number from 1 to 6`),
+      );
+    }
+  });
+
+  it('FAILs two pages with the same highlight rank', () => {
+    dir = setup({
+      ...sources,
+      'docs/user/features/a.md': page(`${good}\nhighlight: 2`),
+      'docs/user/features/b.md': page(`${good}\nhighlight: 2`),
+    });
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);
+    const messages = JSON.parse(stdout)
+      .errors.filter((e) => e.category === 'feature-frontmatter')
+      .map((e) => e.message)
+      .join('\n');
+    expect(messages).toMatch(/highlight: 2 is also on a\.md/);
+    expect(exitCode).toBe(1);
+  });
+
   it('checks only pages in docs/user/features/', () => {
     dir = setup({ ...sources, 'docs/user/app-settings.md': '# App settings\n' });
     const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);

@@ -2,6 +2,7 @@
 pitch: Watch together. Join a SyncPlay group and play, pause and seek in step with people on other Jellyfin apps.
 since: 3.3.0
 server: 10.7.0
+highlight: 1
 ---
 
 # SyncPlay (watch together)

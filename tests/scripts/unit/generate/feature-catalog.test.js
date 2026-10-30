@@ -25,6 +25,12 @@ const segments = [
   '',
 ].join('\n');
 
+// The same page, picked for the README's short list, ranked second.
+const segmentsHighlighted = segments.replace(
+  'server: 10.10.0\n',
+  'server: 10.10.0\nhighlight: 2\n',
+);
+
 const subtitles = [
   '---',
   'pitch: Download a subtitle from its page.',
@@ -100,25 +106,49 @@ describe('feature-catalog', () => {
     );
   });
 
-  it('writes the README list between its markers and leaves the rest alone', () => {
-    dir = setupTree();
+  it('lists only the highlighted pages in the README, links them all, and leaves the rest alone', () => {
+    dir = setupTree({ 'media-segments.md': segmentsHighlighted, 'manage-subtitles.md': subtitles });
     spawnScript(SCRIPT, [dir]);
     const readme = read(dir, 'README.md');
     expect(readme).toContain(
-      `${README_BEGIN}\n\n- **[Manage subtitles](docs/user/features/manage-subtitles.md):** Download a subtitle from its page.\n` +
-        `- **[Media segments](docs/user/features/media-segments.md):** Skip the intros your server has marked.\n\n${README_END}`,
+      `${README_BEGIN}\n\n- **[Media segments](docs/user/features/media-segments.md):** Skip the intros your server has marked.\n\n` +
+        `See [all 2 features](docs/user/features/index.md).\n\n${README_END}`,
     );
+    expect(readme).not.toContain('[Manage subtitles](docs/user/features/manage-subtitles.md)');
     expect(readme).toMatch(/^# JellyRock\n\n## Features\n\n/);
     expect(readme).toMatch(/\n\n## Install\n$/);
   });
 
-  it('--check passes once the outputs are written, and fails after a page changes', () => {
+  it('lists the highlighted pages by rank, not by title', () => {
+    dir = setupTree({
+      'media-segments.md': segmentsHighlighted,
+      'manage-subtitles.md': subtitles.replace(
+        'server: 10.7.0\n',
+        'server: 10.7.0\nhighlight: 1\n',
+      ),
+    });
+    spawnScript(SCRIPT, [dir]);
+    const readme = read(dir, 'README.md');
+    expect(readme).toContain('[Manage subtitles]');
+    expect(readme).toContain('[Media segments]');
+    expect(readme.indexOf('[Manage subtitles]')).toBeLessThan(readme.indexOf('[Media segments]'));
+  });
+
+  it('writes only the link to every feature when no page is highlighted', () => {
     dir = setupTree();
+    spawnScript(SCRIPT, [dir]);
+    expect(read(dir, 'README.md')).toContain(
+      `${README_BEGIN}\n\nSee [all 2 features](docs/user/features/index.md).\n\n${README_END}`,
+    );
+  });
+
+  it('--check passes once the outputs are written, and fails after a page changes', () => {
+    dir = setupTree({ 'media-segments.md': segmentsHighlighted, 'manage-subtitles.md': subtitles });
     spawnScript(SCRIPT, [dir]);
     expect(spawnScript(SCRIPT, [dir, '--check']).exitCode).toBe(0);
     writeFileSync(
       join(dir, 'docs/user/features/media-segments.md'),
-      segments.replace('Skip the intros', 'Skip the outros'),
+      segmentsHighlighted.replace('Skip the intros', 'Skip the outros'),
     );
     const { exitCode, stderr } = spawnScript(SCRIPT, [dir, '--check']);
     expect(exitCode).toBe(1);

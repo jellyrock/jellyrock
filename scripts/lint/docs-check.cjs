@@ -88,6 +88,7 @@ const path = require('path');
 const { readFrontmatter, parseRelatedFiles, getLastUpdated } = require('../lib/frontmatter.cjs');
 const {
   FEATURE_FIELDS,
+  README_HIGHLIGHTS_MAX,
   appFacts,
   appVersion,
   compareVersions,
@@ -898,6 +899,7 @@ function checkFeaturePages() {
   const floor = readServerFloor(ROOT_DIR);
   const plugins = listedPlugins(ROOT_DIR);
   const screens = screenshotKeys(ROOT_DIR);
+  const ranks = new Map(); // rank -> the first page that holds it
   for (const name of names) {
     const file = path.join(FEATURES_DIR, name);
     const fail = (message, target) =>
@@ -938,6 +940,19 @@ function checkFeaturePages() {
     for (const key of fields.screenshots || []) {
       if (!screens.has(key)) {
         fail(`screenshot "${key}" is not in docs/screenshots/screenshots.json`, 'screenshots');
+      }
+    }
+    if ('highlight' in fields) {
+      const rank = fields.highlight;
+      if (!/^\d+$/.test(rank) || Number(rank) < 1 || Number(rank) > README_HIGHLIGHTS_MAX) {
+        fail(
+          `highlight: ${rank} is not a whole number from 1 to ${README_HIGHLIGHTS_MAX} (leave the field out for no)`,
+          'highlight',
+        );
+      } else if (ranks.has(Number(rank))) {
+        fail(`highlight: ${rank} is also on ${ranks.get(Number(rank))}`, 'highlight');
+      } else {
+        ranks.set(Number(rank), name);
       }
     }
   }

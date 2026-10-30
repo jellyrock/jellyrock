@@ -7,7 +7,8 @@
 //     for the marketing site to read at build time (a `schema` number marks
 //     changes to its shape).
 //   - docs/user/features/index.md: the features index on the docs site.
-//   - README.md: the features list between its generated markers.
+//   - README.md: the highlighted features, in their `highlight:` rank, between
+//     its generated markers, then a link to the features index.
 //
 // It refuses a page whose frontmatter is missing a required field or holds an
 // unknown one, rather than publish it; `npm run lint:docs` checks every value.
@@ -77,6 +78,7 @@ function readFeatures() {
       server: fields.server,
       plugins: fields.plugins || [],
       screenshots: fields.screenshots || [],
+      highlight: fields.highlight ? Number(fields.highlight) : null,
       page: rel,
       url: `${DOCS_SITE}/features/${slug}/`,
     });
@@ -95,7 +97,8 @@ function buildCatalog(features) {
     _comment: `Generated from the frontmatter of ${FEATURES_REL}/*.md by npm run docs:features. Edit the pages, not this file.`,
     schema: 1,
     app: { languages, themes, serverFloor: floor },
-    features,
+    // The README's pick is not a fact about the feature: the site reads none of it.
+    features: features.map(({ highlight: _highlight, ...feature }) => feature),
   };
   return `${JSON.stringify(catalog, null, 2)}\n`;
 }
@@ -125,8 +128,14 @@ function buildReadme(features, current) {
   if (begin === -1 || end === -1 || begin > end) {
     fail(`${README_REL} is missing its markers, in this order:\n${README_BEGIN}\n${README_END}`);
   }
-  const list = features.map((f) => `- **[${f.title}](${f.page}):** ${f.pitch}`);
-  const block = [README_BEGIN, '', ...list, '', README_END].join('\n');
+  const list = features
+    .filter((f) => f.highlight)
+    .sort((a, b) => a.highlight - b.highlight)
+    .map((f) => `- **[${f.title}](${f.page}):** ${f.pitch}`);
+  const all = `See [all ${features.length} features](${INDEX_REL}).`;
+  const block = [README_BEGIN, '', ...list, ...(list.length ? [''] : []), all, '', README_END].join(
+    '\n',
+  );
   return current.slice(0, begin) + block + current.slice(end + README_END.length);
 }
 

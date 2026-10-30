@@ -22,7 +22,14 @@ const FEATURE_FIELDS = {
   server: { required: true },
   plugins: { required: false, list: true },
   screenshots: { required: false, list: true },
+  // A rank from 1 puts the page in the README's short list, in that order;
+  // the field left out means no.
+  highlight: { required: false },
 };
+
+// The most pages the README lists, so its features list stays a short pitch
+// and the full list lives in the features index. Ranks run 1 to this.
+const README_HIGHLIGHTS_MAX = 6;
 
 function readJson(root, rel) {
   return JSON.parse(fs.readFileSync(path.join(root, rel), 'utf8'));
@@ -120,6 +127,7 @@ module.exports = {
   FEATURES_REL,
   INDEX_FILE,
   FEATURE_FIELDS,
+  README_HIGHLIGHTS_MAX,
   readServerFloor,
   appFacts,
   appVersion,

@@ -2,6 +2,7 @@
 pitch: Delete a movie, an episode or any other item from your server, from its details page, when your account may.
 since: 1.13.0
 server: 10.7.0
+highlight: 3
 ---
 
 # Delete media
