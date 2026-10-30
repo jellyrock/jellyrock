@@ -950,6 +950,65 @@ describe('docs-check: feature pages', () => {
     );
   });
 
+  describe('values YAML would misread', () => {
+    const pitchOf = (value) => run(good.replace(/^pitch: .*/m, `pitch: ${value}`));
+
+    it('FAILs a pitch with a colon and a space, which YAML reads as a nested mapping', () => {
+      const { messages } = pitchOf('Give JellyRock your own look: pick a color theme.');
+      expect(messages).toMatch(/pitch: contains ": ", which YAML reads as a nested mapping/);
+    });
+
+    it('FAILs a value that ends in a colon', () => {
+      expect(pitchOf('Pick a theme:').messages).toMatch(/pitch: ends with ":"/);
+    });
+
+    it('FAILs a value that starts with a YAML indicator character', () => {
+      for (const start of ['- one', '[one]', '"one"', '*one', '%one', '`one`']) {
+        expect(pitchOf(start).messages).toMatch(/pitch: starts with ".", which YAML reads/);
+      }
+    });
+
+    it('FAILs a value with " #", which YAML reads as a comment', () => {
+      expect(pitchOf('Skip intros #1 and more').messages).toMatch(
+        /pitch: contains " #", which YAML reads as a comment/,
+      );
+    });
+
+    it('FAILs a value that starts with "!", which YAML reads as a tag', () => {
+      expect(pitchOf('! bang first').messages).toMatch(/pitch: starts with "!", which YAML reads/);
+    });
+
+    it('FAILs a value YAML reads as a number, boolean or null', () => {
+      for (const value of ['true', 'false', 'null', '~', '10.10', '1.0', '5']) {
+        expect(pitchOf(value).messages).toMatch(/pitch: .* YAML reads as/);
+      }
+    });
+
+    it('names the offending field in a list value', () => {
+      const { found } = run(good.replace('screenshots: osd, home', 'screenshots: osd: x, home'));
+      expect(found.some((e) => e.target === 'screenshots' && /YAML/.test(e.message))).toBe(true);
+    });
+
+    it('passes values YAML reads back unchanged', () => {
+      for (const value of [
+        '100% free',
+        'key:value no space',
+        'C:\\path',
+        'SyncPlay (watch together)',
+        'Cast, then pause, seek and skip.',
+        '3.3.0',
+        'yes',
+        'Watch together. Join a group',
+      ]) {
+        expect(pitchOf(value).found).toEqual([]);
+      }
+    });
+
+    it('still accepts a numeric `highlight:`', () => {
+      expect(run(`${good}\nhighlight: 3`).found).toEqual([]);
+    });
+  });
+
   it('accepts a `highlight:` rank from 1 to 6 and FAILs anything else', () => {
     expect(run(`${good}\nhighlight: 1`).found).toEqual([]);
     expect(run(`${good}\nhighlight: 6`).found).toEqual([]);

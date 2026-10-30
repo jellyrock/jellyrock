@@ -892,6 +892,27 @@ function checkReadmeCounts() {
 const PITCH_LIMIT = 120;
 const VERSION_RE = /^\d+\.\d+\.\d+$/;
 
+// Why a frontmatter value would not read back as the same string through YAML,
+// or null when it does. The docs site parses the same frontmatter with real
+// YAML, but this check stays a flat, stdlib-only read (see the decision
+// `feature-pages-are-the-source`), so it rejects the shapes YAML misreads.
+const YAML_NUMBER_RE = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
+const YAML_NON_STRING = new Set(['true', 'false', 'null', '~']);
+function yamlMisreading(value, allowNumber) {
+  if (value.includes(': ')) return `contains ": ", which YAML reads as a nested mapping`;
+  if (value.endsWith(':')) return `ends with ":", which YAML reads as a mapping key`;
+  if (value.includes(' #')) return `contains " #", which YAML reads as a comment`;
+  const first = value[0];
+  if ('-?*&|>[{"\'%@`'.includes(first)) {
+    return `starts with "${first}", which YAML reads as syntax, not text`;
+  }
+  if (first === '!') return `starts with "!", which YAML reads as a tag`;
+  if (!allowNumber && (YAML_NON_STRING.has(value.toLowerCase()) || YAML_NUMBER_RE.test(value))) {
+    return `is "${value}", which YAML reads as a number, boolean or null, not text`;
+  }
+  return null;
+}
+
 function checkFeaturePages() {
   const names = featurePageFiles(ROOT_DIR);
   if (names.length === 0) return; // silent when absent
@@ -912,6 +933,12 @@ function checkFeaturePages() {
     for (const problem of problems) fail(problem, 'frontmatter');
     for (const [key, { required }] of Object.entries(FEATURE_FIELDS)) {
       if (required && !(key in fields)) fail(`missing \`${key}:\``, key);
+    }
+    for (const [key, value] of Object.entries(fields)) {
+      const raw = Array.isArray(value) ? value.join(', ') : value;
+      const why = yamlMisreading(raw, key === 'highlight');
+      if (why)
+        fail(`${key}: ${why}; reword it (no quotes: the frontmatter is flat key: value)`, key);
     }
     const { pitch, since, server } = fields;
     if (pitch && Array.from(pitch).length > PITCH_LIMIT) {
