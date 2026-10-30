@@ -52,6 +52,17 @@
       "url": "https://docs.jellyrock.app/features/delete-media/"
     },
     {
+      "slug": "favorites",
+      "title": "Favorites",
+      "pitch": "Mark what you love as a favorite and find it all in one place, on its own tab on Home.",
+      "since": "1.0.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "page": "docs/user/features/favorites.md",
+      "url": "https://docs.jellyrock.app/features/favorites/"
+    },
+    {
       "slug": "hdr-dolby-vision",
       "title": "HDR and Dolby Vision",
       "pitch": "Watch HDR10, HDR10+, HLG and Dolby Vision as they were made, on a 4K Roku and a TV that shows them.",

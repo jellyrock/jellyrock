@@ -19,7 +19,7 @@ JellyRock is a Jellyfin client for Roku, from a former maintainer of the origina
 - **[Delete media](docs/user/features/delete-media.md):** Delete a movie, an episode or any other item from your server, from its details page, when your account may.
 - **[Watch in original quality](docs/user/features/original-quality.md):** Play your files as they are, with no conversion, whenever your Roku can, and see why when it can't.
 
-See [all 16 features](docs/user/features/index.md).
+See [all 17 features](docs/user/features/index.md).
 
 <!-- END generated features -->
 
