@@ -20,7 +20,7 @@
     },
     {
       "slug": "deep-linking",
-      "title": "Deep linking and casting to JellyRock",
+      "title": "Deep links for scripts and smart homes",
       "pitch": "Open or play anything in JellyRock from another device, a script or a voice routine, with only the item's ID.",
       "since": "2.22.0",
       "server": "10.7.0",

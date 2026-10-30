@@ -47,4 +47,4 @@ With the JellyRock Companion plugin on your server, your Roku shows up as a cast
 - **Dragging the progress bar does nothing.** Use the app's skip buttons instead; the web app doesn't send a drag to a cast device.
 - **Only the first track of an album plays.** JellyRock plays the first item of what you cast. Queue the rest from JellyRock.
 
-To send commands from a script, a smart home system or a voice routine instead, see [Deep linking and casting to JellyRock](deep-linking.md).
+To send commands from a script, a smart home system or a voice routine instead, see [Deep links for scripts and smart homes](deep-linking.md).
