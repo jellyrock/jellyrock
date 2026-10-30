@@ -542,8 +542,8 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
       serverAllowedFirst = isValid(manifestSource) and isBooleanTrue(manifestSource.SupportsDirectPlay)
       answerPlays = serverAnswerPlays(upstreamBlocker, deviceLoadsUpstream, serverAllowedFirst)
       m.log.info("Tracks picked from the streams the first PlaybackInfo probed", "audioStreamIdx", audioStreamIdx, "subtitleIdx", subtitleIdx, "answerPlays", answerPlays, "itemId", video.id)
-      ' A transcode was built for the server's own picks, so ask for one built for ours, unless
-      ' the device plays the upstream URL or the player's retry asks the server with our picks.
+      ' A transcode was built for the picks made before the probe, so ask for one built for these,
+      ' unless the device plays the upstream URL or the player's retry asks the server with our picks.
       if answerPlays and probedPicksNeedNewAnswer(manifestSource, audioStreamIdx, subtitleIdx, sentSubtitleIdx)
         res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, 0, pickedCaps)
         if isValid(res) and res.ok and isValid(res.json) and isValidAndNotEmpty(res.json.MediaSources) and not isValidAndNotEmpty(res.json.ErrorCode)
