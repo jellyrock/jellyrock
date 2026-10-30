@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # focus-fid.sh: what /focus prints when its arguments are an open followup's fid, or the id of an
-# open work request part naming this repo (ADR 0012 item 5). It prints the entry or the part
+# open work request part naming this repo. It prints the entry or the part
 # (verbatim, in <followup> or <request> tags) and the fixed parts of the pick block, so the model
 # fills in only the route. The block opens the message that ends the
 # turn: a prose instruction to show it mid-turn was skipped, and tool output never reaches the
@@ -16,9 +16,6 @@
 # - The entry comes from journal.sh show, found beside this skill's folder at ../log/journal.sh; the
 #   part from mailbox.sh requests show, at ../start-project/mailbox.sh.
 # - A bare id is looked up as both; one that is both is refused, and fid: or request: picks one.
-#
-# Shared code: maintained upstream and updated in place. A local edit is not overwritten
-# silently: it is reviewed (kept, or taken upstream) at the next update.
 #
 # Usage: bash .claude/skills/focus/focus-fid.sh <fid> | fid:<fid> | request:<id>
 # Prints the FOLLOWUP (or REQUEST), PICK and END sections. Exit 0; 1 when nothing open has the id
@@ -113,6 +110,10 @@ while IFS= read -r line; do
 done <<<"$entry"
 printf '=== PICK ===\n'
 printf 'NOTE: the user does not see this output, only text you write. The block below opens the message that ends this turn, filling only the {{…}} parts. On a command route it is the whole reply. On the plan route go on to Step 4 now and put it at the top of the fork questions or the final report.%s\n' "${resume:+ $resume}"
+case "$kind" in
+  request) printf 'NOTE: on the plan route, the plan'"'"'s Landing & closeout ends with /done request %s, run by the supervising session after the work commit (or /done request %s --declined with its reason, when the change does not fit this repo): on a branch it marks the part handled, so in a pull-request repo run it before the pull request is opened, which carries the handled line into the PR body; once the commit is on the default branch, /done request %s again closes it.\n' "$fid" "$fid" "$fid" ;;
+  message) printf 'NOTE: on the plan route, the plan'"'"'s Landing & closeout ends with /done message %s, run by the supervising session after the work commit: on a branch it marks the message handled, so in a pull-request repo run it before the pull request is opened, which carries the handled line into the PR body; once the commit is on the default branch, /done message %s again closes it.\n' "$fid" "$fid" ;;
+esac
 printf '**Recommended:** %s\n' "$title"
 printf '**Why:** you named it: %s.\n' "$why"
 printf '**Route:** {{resume | scaffold | another skill | plan}}. {{for a command route: "Type this to take it:", then its one command alone in a text block}}\n'

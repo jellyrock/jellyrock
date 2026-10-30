@@ -2,8 +2,6 @@
 #
 # projects-write.sh commits and pushes one session's change to a projects folder kept in a repo of
 # its own: one clone that many sessions write into at once, and that other machines push to.
-# Shared code: maintained upstream and updated in place. A local edit is not overwritten
-# silently: it is reviewed (kept, or taken upstream) at the next update.
 #
 # A write takes only the named paths' change from the clone's HEAD (other sessions' edits, staged
 # or not, are never touched), applies it three-way onto a freshly fetched upstream in a temporary

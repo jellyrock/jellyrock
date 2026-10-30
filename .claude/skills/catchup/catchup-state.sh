@@ -7,8 +7,6 @@
 # then one CANDIDATES block: every check that fired, as a typed line, ranked in code, so the model
 # takes the first line instead of ordering banners itself. Sections are labeled `=== NAME ===` and
 # read top to bottom.
-# Shared code: maintained upstream and updated in place. A local edit is not overwritten
-# silently — it is reviewed (kept, or taken upstream) at the next update.
 #
 # Rules this script keeps:
 #   - A section it cannot read is an ERROR candidate; it is never left out silently, since silence
@@ -676,8 +674,8 @@ if [ -f "$mailbox_sh" ]; then
   if [ "$m_rc" = 2 ]; then m_nolanding=1; m_out="$(bash "$mailbox_sh" list --tsv --pin 2>/dev/null </dev/null)"; m_rc=$?; fi
   if [ "$m_rc" = 2 ]; then m_nopin=1; m_out="$(bash "$mailbox_sh" list --tsv 2>/dev/null </dev/null)"; fi
 fi
-# rank_box <kind> <rows>: each open item of one kind, mail (a message) or request (a request part,
-# ADR 0012 item 3), as `mailbox.sh list --tsv --pin --landing` or `requests --tsv --landing` gives
+# rank_box <kind> <rows>: each open item of one kind, mail (a message) or request (a request part),
+# as `mailbox.sh list --tsv --pin --landing` or `requests --tsv --landing` gives
 # them, printed on a line of its own and ranked. A part ranks as a message does, under its own ids
 # (request-…), since it opens with /focus and closes with /done request.
 rank_box() {
@@ -742,7 +740,7 @@ if [ -n "$m_out" ]; then
   rank_box mail "$m_out"
 fi
 
-# The request parts naming this repo (ADR 0012 item 3), through the same helper, ranked as messages
+# The request parts naming this repo, through the same helper, ranked as messages
 # are. A backend from before `requests` exits 2: one NOTE, and no part is listed.
 r_out=""; r_none=0
 if [ -f "$mailbox_sh" ]; then
@@ -754,7 +752,7 @@ if [ -n "$r_out" ] || [ "$r_none" = 1 ]; then
   [ -z "$r_out" ] || rank_box request "$r_out"
 fi
 
-# The requests this repo sent (ADR 0012 item 6), each still open on a line with its progress. One
+# The requests this repo sent, each still open on a line with its progress. One
 # whose every part is closed or declined, with a part declined, is this repo's to settle: debt, then
 # overdue at the mail threshold counted from the newest decline. One with a part still open waits on
 # its targets, whose own readers rank it. A backend from before --sent exits 2: one NOTE.

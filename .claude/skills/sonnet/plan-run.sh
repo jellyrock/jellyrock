@@ -2,8 +2,6 @@
 #
 # plan-run.sh — the mechanical parts of running a written plan. /sonnet's steps, and the parent that
 # supervises a /sonnet sub-agent, call it instead of doing these by hand.
-# Shared code: maintained upstream and updated in place. A local edit is not overwritten
-# silently — it is reviewed (kept, or taken upstream) at the next update.
 #
 # Usage (from inside the repo):
 #   bash .claude/skills/sonnet/plan-run.sh check <plan>

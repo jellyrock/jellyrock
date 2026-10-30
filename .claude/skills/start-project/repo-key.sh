@@ -3,8 +3,7 @@
 # repo-key.sh prints the one name every script uses for a repo, `owner/name` from its origin URL, so
 # every checkout of a repo gets the same key whatever its folder or URL form (scp-like, ssh://
 # with a port, https). Every script that keys anything by repo asks this one place, so two parsers
-# can never disagree. Shared code: maintained upstream and updated in place. A local edit is not
-# overwritten silently: it is reviewed (kept, or taken upstream) at the next update.
+# can never disagree.
 #
 # The host, port, user and a trailing `.git` are dropped, and the key is lowercased so a URL typed
 # in another case names the same repo. A path deeper than owner/name (a nested group) keeps every

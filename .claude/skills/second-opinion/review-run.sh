@@ -2,8 +2,6 @@
 #
 # review-run.sh — the mechanical parts of a review. /second-opinion's steps call it instead of doing
 # these by hand.
-# Shared code: maintained upstream and updated in place. A local edit is not overwritten
-# silently — it is reviewed (kept, or taken upstream) at the next update.
 #
 # Usage:
 #   bash .claude/skills/second-opinion/review-run.sh check <brief>

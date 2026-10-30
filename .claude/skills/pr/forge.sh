@@ -292,7 +292,7 @@ if [ "$backend" = forgejo ]; then
   # What Forgejo cannot do, refused before any setup or call.
   case "$cmd" in
     run\ *) die 5 "'$cmd' is not available on the Forgejo backend: its API has no Actions logs or rerun, so the run verbs wait for it" ;;
-    # Forgejo finds a PR from its merge commit only; the branch walk waits for a real case (ADR 0012)
+    # Forgejo finds a PR from its merge commit only; the branch walk waits for a real case
     "pr for-commit") die 5 "'$cmd' is not available on the Forgejo backend: its API finds no PR from a branch commit" ;;
     "issue create") [ -z "$opt_parent" ] || die 5 "Forgejo has no sub-issues: drop --parent and add \"Part of #$opt_parent\" to the body" ;;
     "repo merge-settings")

@@ -4,8 +4,6 @@
 # closes, /catchup lists and counts; the model only picks the category and writes the words, and
 # this script does everything that has one right answer: where an entry goes, its markers, the
 # date line, the checks, and the path-restricted commit.
-# Shared code: maintained upstream and updated in place. A local edit is not overwritten
-# silently — it is reviewed (kept, or taken upstream) at the next update.
 #
 # The format. Under `## Open followups`, each `### Category` holds entries; an entry is a `####`
 # heading, then its body up to the next heading. Nothing is numbered, so nothing renumbers:
