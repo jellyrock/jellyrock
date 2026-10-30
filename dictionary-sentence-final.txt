@@ -785,7 +785,6 @@
 (?:Weblate)\.
 (?:WebP)\.
 (?:webp)\.
-(?:WebSocket)\.
 (?:whitespace)\.
 (?:Whitespace)\.
 (?:Wikimedia)\.
