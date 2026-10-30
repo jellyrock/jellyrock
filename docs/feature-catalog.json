@@ -41,6 +41,17 @@
       "url": "https://docs.jellyrock.app/features/delete-media/"
     },
     {
+      "slug": "hdr-dolby-vision",
+      "title": "HDR and Dolby Vision",
+      "pitch": "Watch HDR10, HDR10+, HLG and Dolby Vision as they were made, on a 4K Roku and a TV that shows them.",
+      "since": "1.0.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "page": "docs/user/features/hdr-dolby-vision.md",
+      "url": "https://docs.jellyrock.app/features/hdr-dolby-vision/"
+    },
+    {
       "slug": "live-tv",
       "title": "Live TV and recordings",
       "pitch": "Watch live channels from your Jellyfin server, browse the TV guide, and schedule recordings from your couch.",
@@ -79,6 +90,17 @@
       "url": "https://docs.jellyrock.app/features/media-segments/"
     },
     {
+      "slug": "surround-sound",
+      "title": "Surround sound",
+      "pitch": "Hear 5.1 and 7.1 sound on your soundbar or receiver, kept as surround even when the server has to convert it.",
+      "since": "1.0.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "page": "docs/user/features/surround-sound.md",
+      "url": "https://docs.jellyrock.app/features/surround-sound/"
+    },
+    {
       "slug": "syncplay",
       "title": "SyncPlay (watch together)",
       "pitch": "Watch together. Join a SyncPlay group and play, pause and seek in step with people on other Jellyfin apps.",
@@ -88,6 +110,17 @@
       "screenshots": [],
       "page": "docs/user/features/syncplay.md",
       "url": "https://docs.jellyrock.app/features/syncplay/"
+    },
+    {
+      "slug": "original-quality",
+      "title": "Watch in original quality",
+      "pitch": "Play your files as they are, with no conversion, whenever your Roku can, and see why when it can't.",
+      "since": "1.0.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "page": "docs/user/features/original-quality.md",
+      "url": "https://docs.jellyrock.app/features/original-quality/"
     }
   ]
 }

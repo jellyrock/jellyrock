@@ -46,6 +46,7 @@
 (?:affordance)\.
 (?:agent-collaborative)\.
 (?:allowlist)\.
+(?:Anamorphic)\.
 (?:antialiases)\.
 (?:api)\.
 (?:api-layering-guide)\.
@@ -242,6 +243,7 @@
 (?:dts)\.
 (?:DTS)\.
 (?:DTS-HD)\.
+(?:DTS:X)\.
 (?:dtshd)\.
 (?:durations)\.
 (?:DX)\.
@@ -319,9 +321,11 @@
 (?:Hardcoding)\.
 (?:HD)\.
 (?:HDR)\.
+(?:HDR10)\.
 (?:HEVC)\.
 (?:HIG)\.
 (?:HK-specific)\.
+(?:HLG)\.
 (?:HLS)\.
 (?:Holm)\.
 (?:hostname)\.
@@ -465,6 +469,7 @@
 (?:PascalCase)\.
 (?:passthrough)\.
 (?:pcm)\.
+(?:PCM)\.
 (?:PD-textlogo)\.
 (?:PDF)\.
 (?:PDFs)\.
