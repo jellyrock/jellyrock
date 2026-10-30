@@ -6,6 +6,7 @@ What JellyRock does, one page per feature. Each page says what the feature needs
 
 | Feature | What you get | Jellyfin server | Server plugin |
 | --- | --- | --- | --- |
+| [Cast from another Jellyfin app](cast-to-jellyrock.md) | Cast from a Jellyfin app on your phone or browser to your Roku, then pause, seek and skip from there. | 10.7.0 or later | None |
 | [Deep linking and casting to JellyRock](deep-linking.md) | Open or play anything in JellyRock from another device, a script or a voice routine, with only the item's ID. | 10.7.0 or later | None |
 | [Delete media](delete-media.md) | Delete a movie, an episode or any other item from your server, from its details page, when your account may. | 10.7.0 or later | None |
 | [Live TV and recordings](live-tv.md) | Watch live channels from your Jellyfin server, browse the TV guide, and schedule recordings from your couch. | 10.7.0 or later | None |

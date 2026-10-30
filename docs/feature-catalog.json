@@ -8,6 +8,17 @@
   },
   "features": [
     {
+      "slug": "cast-to-jellyrock",
+      "title": "Cast from another Jellyfin app",
+      "pitch": "Cast from a Jellyfin app on your phone or browser to your Roku, then pause, seek and skip from there.",
+      "since": "2.23.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "page": "docs/user/features/cast-to-jellyrock.md",
+      "url": "https://docs.jellyrock.app/features/cast-to-jellyrock/"
+    },
+    {
       "slug": "deep-linking",
       "title": "Deep linking and casting to JellyRock",
       "pitch": "Open or play anything in JellyRock from another device, a script or a voice routine, with only the item's ID.",
