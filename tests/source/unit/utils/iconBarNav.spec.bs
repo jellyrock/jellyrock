@@ -35,12 +35,12 @@ namespace tests
 
     @it("exits by the edge the press left")
     function _()
-      left = iconBarNav.move(0, 3, "left")
-      m.assertEqual(left.index, -1)
-      m.assertEqual(left.exit, "left")
-      right = iconBarNav.move(2, 3, "right")
-      m.assertEqual(right.index, -1)
-      m.assertEqual(right.exit, "right")
+      leftExit = iconBarNav.move(0, 3, "left")
+      m.assertEqual(leftExit.index, -1)
+      m.assertEqual(leftExit.exit, "left")
+      rightExit = iconBarNav.move(2, 3, "right")
+      m.assertEqual(rightExit.index, -1)
+      m.assertEqual(rightExit.exit, "right")
     end function
 
     @it("exits both ways from a bar of one")
