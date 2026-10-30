@@ -24,15 +24,13 @@ Open your music library from Home. Press the options button (**\***) to choose h
 
 The now-playing screen shows the album art, the song, the artist and the progress, with buttons for previous, play and pause, next, **shuffle** and **repeat**. Press **Back** to leave it; the music stops.
 
+You can also control the music by voice, shuffle and repeat included: see [Voice control](voice-control.md).
+
 When the music plays with no button pressed for as long as your Roku waits before its screensaver, JellyRock shows a screensaver of its own with the album art.
 
 ## Lyrics
 
 A song's page shows its lyrics when your server has them.
-
-## Settings
-
-The voice commands for music, including shuffle and repeat, are on [Voice control](voice-control.md).
 
 ## Troubleshooting
 

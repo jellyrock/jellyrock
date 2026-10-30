@@ -15,6 +15,7 @@ What JellyRock does, one page per feature. Each page says what the feature needs
 | [Manage subtitles](manage-subtitles.md) | Search your server's subtitle providers and download a subtitle onto a movie or episode from its page. | 10.7.0 or later | Open Subtitles |
 | [Media segments (skip intro and outro)](media-segments.md) | Skip the intros, outros, recaps, previews and commercials your server has marked, or get a button to skip them. | 10.10.0 or later | Chapter Segments Provider or Intro Skipper |
 | [Music](music.md) | Browse your music by artist, album or genre, play albums and instant mixes, and read a song's lyrics. | 10.7.0 or later | None |
+| [Photos](photos.md) | Look through your photo albums on the TV, one by one or as a slideshow. | 10.7.0 or later | None |
 | [Quick Connect (sign in with a code)](quick-connect.md) | Sign in with a short code from your phone or computer, instead of typing a password with the remote. | 10.7.0 or later | None |
 | [Surround sound](surround-sound.md) | Hear 5.1 and 7.1 sound on your soundbar or receiver, kept as surround even when the server has to convert it. | 10.7.0 or later | None |
 | [SyncPlay (watch together)](syncplay.md) | Watch together. Join a SyncPlay group and play, pause and seek in step with people on other Jellyfin apps. | 10.7.0 or later | None |
