@@ -101,6 +101,17 @@
       "url": "https://docs.jellyrock.app/features/media-segments/"
     },
     {
+      "slug": "music",
+      "title": "Music",
+      "pitch": "Browse your music by artist, album or genre, play albums and instant mixes, and read a song's lyrics.",
+      "since": "1.0.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "page": "docs/user/features/music.md",
+      "url": "https://docs.jellyrock.app/features/music/"
+    },
+    {
       "slug": "quick-connect",
       "title": "Quick Connect (sign in with a code)",
       "pitch": "Sign in with a short code from your phone or computer, instead of typing a password with the remote.",
