@@ -56,22 +56,33 @@ jobs:
           echo "📝 Converting unreleased changes to release ${{ steps.version.outputs.version }}"
           node scripts/changelog-syncer.js sync-release "${{ steps.version.outputs.version }}"
 
-      - name: Commit changelog update
+      - name: Commit changelog and feature-page updates
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG_NAME: ${{ steps.version.outputs.tag_name }}
         run: |
-          if git diff --quiet CHANGELOG.md; then
-            echo "ℹ️ No changelog changes to commit"
+          # Switch to main, carrying the changelog edit made on the tag's checkout
+          changelog_changed=false
+          if ! git diff --quiet CHANGELOG.md; then
+            git stash push -m "changelog updates" CHANGELOG.md
+            changelog_changed=true
+          fi
+          git checkout main
+          git pull --rebase origin main
+          if [ "$changelog_changed" = true ]; then git stash pop; fi
+
+          # Feature pages that said `since: unreleased` in the tagged commit get this version,
+          # and the catalog, the features index and the README are written again from them
+          node scripts/generate/feature-catalog.cjs . --release "$VERSION" --ref "$TAG_NAME"
+
+          git add CHANGELOG.md docs/user/features docs/feature-catalog.json README.md
+          if git diff --cached --quiet; then
+            echo "ℹ️ No changelog or feature-page changes to commit"
             echo "has_changes=false" >> $GITHUB_ENV
           else
-            # Switch to main branch and apply the changelog changes
-            git stash push -m "changelog updates" CHANGELOG.md
-            git checkout main
-            git pull --rebase origin main
-            git stash pop
-
-            git add CHANGELOG.md
-            git commit -m "chore:(docs) finalize changelog for v${{ steps.version.outputs.version }}"
+            git commit -m "chore:(docs) finalize changelog and feature pages for v$VERSION"
             echo "has_changes=true" >> $GITHUB_ENV
-            echo "✅ Prepared changelog for release ${{ steps.version.outputs.version }}"
+            echo "✅ Prepared changelog and feature pages for release $VERSION"
           fi
 
       - name: Push changes

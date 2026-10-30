@@ -47,7 +47,7 @@ plugins: Chapter Segments Provider, Intro Skipper
 | Field | Required | What it holds |
 | --- | --- | --- |
 | `pitch` | yes | One sentence, at most 120 characters, saying what the viewer gets. Plain words, no claim the code doesn't back. |
-| `since` | yes | The JellyRock release the feature first shipped in, or `unreleased` until it ships. Change `unreleased` to the version when the release goes out. |
+| `since` | yes | The JellyRock release the feature first shipped in. A new feature's page says `unreleased`: publishing the release that ships it changes that to the version ([Releases](../admin/releases.md#3-publish-the-release)). |
 | `server` | yes | The oldest Jellyfin server the feature works with. A feature that works on every supported server takes the floor, `10.7.0`. |
 | `plugins` | no | The server plugins it needs one of, separated by commas, each named as in the table in [Jellyfin server plugins](../user/jellyfin-server-plugins.md). Add a new plugin's row there first. |
 | `screenshots` | no | Keys from [`screenshots.json`](../screenshots/screenshots.json)'s `screens`, separated by commas. |

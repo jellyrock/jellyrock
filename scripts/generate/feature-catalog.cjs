@@ -17,11 +17,16 @@
 // Run modes:
 //   node scripts/generate/feature-catalog.cjs           write (default)
 //   node scripts/generate/feature-catalog.cjs --check   fail if an output is stale, write nothing
+//   node scripts/generate/feature-catalog.cjs --release <x.y.z> --ref <tag>
+//       when a release is published: change `since: unreleased` to the version on each page
+//       that was unreleased in the tagged commit, then write the outputs. A page merged after
+//       the tag is not in the release, so it stays unreleased. Run by release-build.yml.
 
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
+const { git } = require('../lib/git-safe.cjs');
 const {
   FEATURES_REL,
   INDEX_FILE,
@@ -32,8 +37,17 @@ const {
 } = require('../lib/feature-facts.cjs');
 
 const args = process.argv.slice(2);
-const ROOT_DIR = args.find((a) => !a.startsWith('--')) || '.';
+// The flags that take a value, so the value is not read as the root folder.
+const VALUE_FLAGS = ['--release', '--ref'];
+const flagValue = (flag) => {
+  const i = args.indexOf(flag);
+  return i === -1 ? undefined : args[i + 1];
+};
+const ROOT_DIR =
+  args.find((a, i) => !a.startsWith('--') && !VALUE_FLAGS.includes(args[i - 1])) || '.';
 const CHECK_MODE = args.includes('--check');
+const RELEASE = flagValue('--release');
+const RELEASE_REF = flagValue('--ref');
 
 const CATALOG_REL = 'docs/feature-catalog.json';
 const INDEX_REL = `${FEATURES_REL}/${INDEX_FILE}`;
@@ -138,6 +152,40 @@ function buildReadme(features, current) {
   );
   return current.slice(0, begin) + block + current.slice(end + README_END.length);
 }
+
+// `since: unreleased` becomes the release's version on each page that was unreleased in the
+// tagged commit. Reading the tag, not the working tree, keeps a feature merged after the tag
+// unreleased: the release does not hold it.
+function stampRelease(version, ref) {
+  if (!/^\d+\.\d+\.\d+$/.test(version || '') || !ref) {
+    fail(
+      "--release takes a version x.y.z and --ref the release's tag, for example --release 3.4.0 --ref v3.4.0",
+    );
+  }
+  try {
+    git(ROOT_DIR, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+  } catch {
+    fail(`${ref} is not a commit in this repo`);
+  }
+  for (const name of featurePageFiles(ROOT_DIR)) {
+    const rel = `${FEATURES_REL}/${name}`;
+    let tagged;
+    try {
+      tagged = git(ROOT_DIR, ['show', `${ref}:${rel}`]);
+    } catch {
+      continue; // not in the release
+    }
+    if (parseFeaturePage(tagged).fields?.since !== 'unreleased') continue;
+    const file = path.join(ROOT_DIR, rel);
+    const current = fs.readFileSync(file, 'utf8');
+    const stamped = current.replace(/^since: unreleased$/m, `since: ${version}`);
+    if (stamped === current) continue;
+    fs.writeFileSync(file, stamped);
+    console.log(`docs:features: stamped since: ${version} on ${rel}`);
+  }
+}
+
+if (RELEASE !== undefined || RELEASE_REF !== undefined) stampRelease(RELEASE, RELEASE_REF);
 
 const features = readFeatures();
 const readmePath = path.join(ROOT_DIR, README_REL);

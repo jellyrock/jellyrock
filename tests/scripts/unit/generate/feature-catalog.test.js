@@ -4,7 +4,9 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { spawnScript } from '../_helpers/spawn-script.js';
+import { gitSafeEnv } from '../_helpers/git-env.js';
 
 const SCRIPT = 'scripts/generate/feature-catalog.cjs';
 
@@ -178,5 +180,86 @@ describe('feature-catalog', () => {
     const { exitCode, stderr } = spawnScript(SCRIPT, [dir]);
     expect(exitCode).toBe(1);
     expect(stderr).toMatch(/README\.md is missing its markers/);
+  });
+
+  describe('--release: stamping `since: unreleased` when a release is published', () => {
+    // Commits the tree, tags it, then applies `after` (pages added or changed on main after the tag).
+    const git = (args) => execFileSync('git', args, { cwd: dir, env: gitSafeEnv(), stdio: 'pipe' });
+    function tagTree(tag, after = {}) {
+      git(['init', '-q', '-b', 'main']);
+      git(['config', 'user.email', 'test@example.com']);
+      git(['config', 'user.name', 'Test']);
+      git(['add', '-A']);
+      git(['commit', '-q', '-m', 'release']);
+      git(['tag', tag]);
+      for (const [name, content] of Object.entries(after)) {
+        writeFileSync(join(dir, 'docs/user/features', name), content);
+      }
+    }
+    const lateFeature = subtitles.replace('# Manage subtitles', '# Late feature');
+
+    it('stamps a page that was unreleased in the tagged commit, then regenerates the outputs', () => {
+      dir = setupTree();
+      tagTree('v3.4.0');
+      const { exitCode, stdout } = spawnScript(SCRIPT, [
+        dir,
+        '--release',
+        '3.4.0',
+        '--ref',
+        'v3.4.0',
+      ]);
+      expect(exitCode).toBe(0);
+      expect(stdout).toMatch(
+        /stamped since: 3\.4\.0 on docs\/user\/features\/manage-subtitles\.md/,
+      );
+      expect(read(dir, 'docs/user/features/manage-subtitles.md')).toContain('\nsince: 3.4.0\n');
+      const catalog = JSON.parse(read(dir, 'docs/feature-catalog.json'));
+      expect(catalog.features.find((f) => f.slug === 'manage-subtitles').since).toBe('3.4.0');
+    });
+
+    it('leaves a page with a version alone', () => {
+      dir = setupTree();
+      tagTree('v3.4.0');
+      spawnScript(SCRIPT, [dir, '--release', '3.4.0', '--ref', 'v3.4.0']);
+      expect(read(dir, 'docs/user/features/media-segments.md')).toBe(segments);
+    });
+
+    it('leaves unreleased a page merged after the tag, which the release does not hold', () => {
+      dir = setupTree();
+      tagTree('v3.4.0', { 'late-feature.md': lateFeature });
+      const { exitCode } = spawnScript(SCRIPT, [dir, '--release', '3.4.0', '--ref', 'v3.4.0']);
+      expect(exitCode).toBe(0);
+      expect(read(dir, 'docs/user/features/late-feature.md')).toContain('\nsince: unreleased\n');
+      expect(read(dir, 'docs/user/features/manage-subtitles.md')).toContain('\nsince: 3.4.0\n');
+    });
+
+    it('refuses a version that is not x.y.z, or a missing --ref, and writes nothing', () => {
+      dir = setupTree();
+      tagTree('v3.4.0');
+      for (const args of [
+        ['--release', 'v3.4.0', '--ref', 'v3.4.0'],
+        ['--release', '3.4.0'],
+      ]) {
+        const { exitCode, stderr } = spawnScript(SCRIPT, [dir, ...args]);
+        expect(exitCode).toBe(1);
+        expect(stderr).toMatch(/--release takes a version x\.y\.z and --ref the release's tag/);
+      }
+      expect(read(dir, 'docs/user/features/manage-subtitles.md')).toBe(subtitles);
+    });
+
+    it('fails, writing nothing, when the ref is not in the repo', () => {
+      dir = setupTree();
+      tagTree('v3.4.0');
+      const { exitCode, stderr } = spawnScript(SCRIPT, [
+        dir,
+        '--release',
+        '3.5.0',
+        '--ref',
+        'v3.5.0',
+      ]);
+      expect(exitCode).toBe(1);
+      expect(stderr).toMatch(/v3\.5\.0 is not a commit in this repo/);
+      expect(read(dir, 'docs/user/features/manage-subtitles.md')).toBe(subtitles);
+    });
   });
 });
