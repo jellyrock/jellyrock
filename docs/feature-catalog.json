@@ -19,6 +19,17 @@
       "url": "https://docs.jellyrock.app/features/cast-to-jellyrock/"
     },
     {
+      "slug": "themes",
+      "title": "Color themes",
+      "pitch": "Give JellyRock your own look: pick a color theme, or set every color yourself.",
+      "since": "1.11.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "page": "docs/user/features/themes.md",
+      "url": "https://docs.jellyrock.app/features/themes/"
+    },
+    {
       "slug": "deep-linking",
       "title": "Deep links for scripts and smart homes",
       "pitch": "Open or play anything in JellyRock from another device, a script or a voice routine, with only the item's ID.",
