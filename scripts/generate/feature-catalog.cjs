@@ -146,7 +146,7 @@ function buildReadme(features, current) {
     .filter((f) => f.highlight)
     .sort((a, b) => a.highlight - b.highlight)
     .map((f) => `- **[${f.title}](${f.page}):** ${f.pitch}`);
-  const all = `See [all ${features.length} features](${INDEX_REL}).`;
+  const all = `See [all features](${INDEX_REL}).`;
   const block = [README_BEGIN, '', ...list, ...(list.length ? [''] : []), all, '', README_END].join(
     '\n',
   );

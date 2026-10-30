@@ -114,7 +114,7 @@ describe('feature-catalog', () => {
     const readme = read(dir, 'README.md');
     expect(readme).toContain(
       `${README_BEGIN}\n\n- **[Media segments](docs/user/features/media-segments.md):** Skip the intros your server has marked.\n\n` +
-        `See [all 2 features](docs/user/features/index.md).\n\n${README_END}`,
+        `See [all features](docs/user/features/index.md).\n\n${README_END}`,
     );
     expect(readme).not.toContain('[Manage subtitles](docs/user/features/manage-subtitles.md)');
     expect(readme).toMatch(/^# JellyRock\n\n## Features\n\n/);
@@ -140,7 +140,7 @@ describe('feature-catalog', () => {
     dir = setupTree();
     spawnScript(SCRIPT, [dir]);
     expect(read(dir, 'README.md')).toContain(
-      `${README_BEGIN}\n\nSee [all 2 features](docs/user/features/index.md).\n\n${README_END}`,
+      `${README_BEGIN}\n\nSee [all features](docs/user/features/index.md).\n\n${README_END}`,
     );
   });
 
