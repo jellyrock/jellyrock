@@ -30,6 +30,17 @@
       "url": "https://docs.jellyrock.app/features/delete-media/"
     },
     {
+      "slug": "live-tv",
+      "title": "Live TV and recordings",
+      "pitch": "Watch live channels from your Jellyfin server, browse the TV guide, and schedule recordings from your couch.",
+      "since": "1.0.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "page": "docs/user/features/live-tv.md",
+      "url": "https://docs.jellyrock.app/features/live-tv/"
+    },
+    {
       "slug": "manage-subtitles",
       "title": "Manage subtitles",
       "pitch": "Search your server's subtitle providers and download a subtitle onto a movie or episode from its page.",

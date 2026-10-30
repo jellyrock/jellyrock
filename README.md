@@ -16,6 +16,7 @@ JellyRock is a Jellyfin client for Roku, from a former maintainer of the origina
 
 - **[Deep linking and casting to JellyRock](docs/user/features/deep-linking.md):** Open or play anything in JellyRock from another device, a script or a voice routine, with only the item's ID.
 - **[Delete media](docs/user/features/delete-media.md):** Delete a movie, an episode or any other item from your server, from its details page, when your account may.
+- **[Live TV and recordings](docs/user/features/live-tv.md):** Watch live channels from your Jellyfin server, browse the TV guide, and schedule recordings from your couch.
 - **[Manage subtitles](docs/user/features/manage-subtitles.md):** Search your server's subtitle providers and download a subtitle onto a movie or episode from its page.
 - **[Media segments (skip intro and outro)](docs/user/features/media-segments.md):** Skip the intros, outros, recaps, previews and commercials your server has marked, or get a button to skip them.
 - **[SyncPlay (watch together)](docs/user/features/syncplay.md):** Watch together. Join a SyncPlay group and play, pause and seek in step with people on other Jellyfin apps.
