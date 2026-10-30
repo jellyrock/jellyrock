@@ -45,7 +45,7 @@ The program information updates by itself when one program ends and the next beg
 
 Press **Record** or **Record Series** on a program's details in the TV guide. A channel's page, and the page of a program that is airing or still to come, has **Record** too: on a channel's page it records the program airing now. JellyRock tells you **Recording scheduled**, and the program shows that it's set to record.
 
-To cancel, open the same program and press **Cancel Recording** or **Cancel Series Recording**. JellyRock tells you when the recording is canceled.
+To cancel, open the same program and press **Cancel Recording** or **Cancel Series Recording**. JellyRock tells you **Recording canceled**.
 
 Your server saves each recording. Which library it shows up in depends on how your server's admin set up recordings, and **Search** finds it either way.
 
