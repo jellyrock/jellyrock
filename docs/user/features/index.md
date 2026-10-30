@@ -15,4 +15,5 @@ What JellyRock does, one page per feature. Each page says what the feature needs
 | [Media segments (skip intro and outro)](media-segments.md) | Skip the intros, outros, recaps, previews and commercials your server has marked, or get a button to skip them. | 10.10.0 or later | Chapter Segments Provider or Intro Skipper |
 | [Surround sound](surround-sound.md) | Hear 5.1 and 7.1 sound on your soundbar or receiver, kept as surround even when the server has to convert it. | 10.7.0 or later | None |
 | [SyncPlay (watch together)](syncplay.md) | Watch together. Join a SyncPlay group and play, pause and seek in step with people on other Jellyfin apps. | 10.7.0 or later | None |
+| [Trickplay (preview thumbnails while seeking)](trickplay.md) | See preview pictures of the scene you're skipping to while you fast-forward or rewind. | 10.9.0 or later | None |
 | [Watch in original quality](original-quality.md) | Play your files as they are, with no conversion, whenever your Roku can, and see why when it can't. | 10.7.0 or later | None |

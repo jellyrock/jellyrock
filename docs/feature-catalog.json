@@ -112,6 +112,19 @@
       "url": "https://docs.jellyrock.app/features/syncplay/"
     },
     {
+      "slug": "trickplay",
+      "title": "Trickplay (preview thumbnails while seeking)",
+      "pitch": "See preview pictures of the scene you're skipping to while you fast-forward or rewind.",
+      "since": "1.9.0",
+      "server": "10.9.0",
+      "plugins": [],
+      "screenshots": [
+        "trickplay"
+      ],
+      "page": "docs/user/features/trickplay.md",
+      "url": "https://docs.jellyrock.app/features/trickplay/"
+    },
+    {
       "slug": "original-quality",
       "title": "Watch in original quality",
       "pitch": "Play your files as they are, with no conversion, whenever your Roku can, and see why when it can't.",
