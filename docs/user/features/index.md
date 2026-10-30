@@ -18,4 +18,5 @@ What JellyRock does, one page per feature. Each page says what the feature needs
 | [Surround sound](surround-sound.md) | Hear 5.1 and 7.1 sound on your soundbar or receiver, kept as surround even when the server has to convert it. | 10.7.0 or later | None |
 | [SyncPlay (watch together)](syncplay.md) | Watch together. Join a SyncPlay group and play, pause and seek in step with people on other Jellyfin apps. | 10.7.0 or later | None |
 | [Trickplay (preview thumbnails while seeking)](trickplay.md) | See preview pictures of the scene you're skipping to while you fast-forward or rewind. | 10.9.0 or later | None |
+| [Voice control](voice-control.md) | Search by voice, and play, pause, seek, skip and replay with your Roku voice remote. | 10.7.0 or later | None |
 | [Watch in original quality](original-quality.md) | Play your files as they are, with no conversion, whenever your Roku can, and see why when it can't. | 10.7.0 or later | None |

@@ -147,6 +147,17 @@
       "url": "https://docs.jellyrock.app/features/trickplay/"
     },
     {
+      "slug": "voice-control",
+      "title": "Voice control",
+      "pitch": "Search by voice, and play, pause, seek, skip and replay with your Roku voice remote.",
+      "since": "1.0.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "page": "docs/user/features/voice-control.md",
+      "url": "https://docs.jellyrock.app/features/voice-control/"
+    },
+    {
       "slug": "original-quality",
       "title": "Watch in original quality",
       "pitch": "Play your files as they are, with no conversion, whenever your Roku can, and see why when it can't.",
