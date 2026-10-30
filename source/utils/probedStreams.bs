@@ -1,6 +1,7 @@
 ' A source the server has never probed (a .strm item before its first play) lists no media streams,
 ' so a track pick made from it has nothing to choose from. The PlaybackInfo that starts the play
 ' probes the source, and the server saves what it found.
+import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/enums/UpstreamManifestBlocker.bs"
 import "pkg:/source/utils/misc.bs"
 
@@ -11,6 +12,18 @@ import "pkg:/source/utils/misc.bs"
 function sourceListsNoStreams(source as dynamic) as boolean
   if not isValid(source) then return false
   return not isValidAndNotEmpty(source.MediaStreams)
+end function
+
+' The subtitle pick the details screen hands to playback. A pick made from a source that lists no
+' streams was made from nothing, so it goes as not set and the load picks from the probed streams,
+' as it already does for audio. Sent as Off, it would keep a forced track off on the first play.
+'
+' @param {integer} pick - the details screen's subtitle index, or SubtitleSelection.NONE for Off
+' @param {dynamic} sourceStreams - the MediaStreams of the version the details screen selected
+' @returns {integer} the pick, or SubtitleSelection.NOT_SET
+function detailsSubtitlePick(pick as integer, sourceStreams as dynamic) as integer
+  if not isValidAndNotEmpty(sourceStreams) then return SubtitleSelection.NOT_SET
+  return pick
 end function
 
 ' The audio stream index the server built its transcode for: the AudioStreamIndex in the

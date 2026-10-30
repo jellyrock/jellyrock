@@ -121,6 +121,30 @@ namespace tests
       m.assertFalse(probedPicksNeedNewAnswer(invalid, 2, 3, SubtitleSelection.NONE))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("detailsSubtitlePick()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is not set when the source lists no streams, so the load picks from the probed ones")
+    function _()
+      m.assertEqual(detailsSubtitlePick(SubtitleSelection.NONE, []), SubtitleSelection.NOT_SET)
+    end function
+
+    @it("is not set when the source has no MediaStreams field")
+    function _()
+      m.assertEqual(detailsSubtitlePick(SubtitleSelection.NONE, invalid), SubtitleSelection.NOT_SET)
+    end function
+
+    @it("keeps Off when the source lists streams")
+    function _()
+      m.assertEqual(detailsSubtitlePick(SubtitleSelection.NONE, [{ Type: "Subtitle", Index: 2 }]), SubtitleSelection.NONE)
+    end function
+
+    @it("keeps a picked track when the source lists streams")
+    function _()
+      m.assertEqual(detailsSubtitlePick(2, [{ Type: "Subtitle", Index: 2 }]), 2)
+    end function
+
   end class
 
 end namespace

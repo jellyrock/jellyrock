@@ -97,8 +97,8 @@ sub init()
   audioStreamIndex = 0
   if isValid(m.currentItem.selectedAudioStreamIndex) then audioStreamIndex = m.currentItem.selectedAudioStreamIndex
   ' Subtitle override set pre-playback by ItemDetails' TrackDropdown. When unset we pass
-  ' auto-detect (-2) so the server's language/Smart-mode rules still apply for callers
-  ' that don't pick a track upfront.
+  ' NOT_SET (-2), and the load picks a track by the user's subtitle mode and language
+  ' (defaultSubtitleTrackFromVid) for callers that don't pick one upfront.
   subtitleIndex = SubtitleSelection.NOT_SET
   if isValid(m.currentItem.selectedSubtitleStreamIndex)
     subtitleIndex = m.currentItem.selectedSubtitleStreamIndex

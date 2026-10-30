@@ -23,6 +23,7 @@ import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/people.bs"
 import "pkg:/source/utils/placeholderImage.bs"
 import "pkg:/source/utils/playKind.bs"
+import "pkg:/source/utils/probedStreams.bs"
 import "pkg:/source/utils/remoteSubtitles.bs"
 import "pkg:/source/utils/screenReadiness.bs"
 import "pkg:/source/utils/screenWaits.bs"
@@ -892,7 +893,9 @@ sub startPlayFromDetail(startingPoint as longinteger)
   if isValid(m.top.selectedAudioStreamIndex) then audioStreamIdx = m.top.selectedAudioStreamIndex
   queueItem.selectedAudioStreamIndex = audioStreamIdx
   if isValid(m.top.selectedSubtitleStreamIndex)
-    queueItem.selectedSubtitleStreamIndex = m.top.selectedSubtitleStreamIndex
+    sourceStreams = invalid
+    if isValid(item.mediaSourcesData) then sourceStreams = getStreamsForSelectedSource(item.mediaSourcesData.mediaSources)
+    queueItem.selectedSubtitleStreamIndex = detailsSubtitlePick(m.top.selectedSubtitleStreamIndex, sourceStreams)
   end if
   ' selectedVideoStreamId is the user-chosen MediaSource: land it in mediaSourceId
   ' (not id), which LoadVideoContentTask reads.
