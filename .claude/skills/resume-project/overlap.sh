@@ -14,8 +14,6 @@
 #   default branch to compare with: it says so, with the fix when there is one, and compares
 #   uncommitted and untracked files only.
 # - A worktree whose folder is gone is skipped.
-# Shared code: maintained upstream and updated in place. A local edit is not overwritten
-# silently: it is reviewed (kept, or taken upstream) at the next update.
 #
 # Usage: bash .claude/skills/resume-project/overlap.sh [-C <folder>] [--] [<path>…]
 # Prints one line per file and worktree, sorted: <path><TAB><worktree folder><TAB><branch, or

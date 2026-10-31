@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 #
 # end-session decision mover: the deterministic mechanics behind trimming a PLAN.md's
-# "Last N decisions" list. Shared code: maintained upstream and updated in place. A local edit is
-# not overwritten silently; it is reviewed (kept, or taken upstream) at the next update. Keep it
-# present in this directory: a SKILL.md that names a co-located script missing from its own dir
-# is broken on arrival.
+# "Last N decisions" list. Keep it present in this directory: a SKILL.md that names a co-located
+# script missing from its own dir is broken on arrival.
 #
 # The list keeps the newest N decisions (N is read from the heading, `**Last 5 decisions ...`).
 # Every older one MOVES to DECISIONS.md beside the PLAN, newest first, above the entries already

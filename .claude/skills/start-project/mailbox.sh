@@ -5,8 +5,6 @@
 # mailbox.script names, with the same arguments, and prints what it prints. With no setting this
 # machine has no mailbox: a list (list, handled, or requests with nothing or only flags after it)
 # prints nothing, and anything else says so.
-# Shared code: maintained upstream and updated in place. A local edit is not overwritten
-# silently: it is reviewed (kept, or taken upstream) at the next update.
 #
 # Usage: bash .claude/skills/start-project/mailbox.sh list [--tsv [--pin [--landing]]] [--project <folder>]
 #        bash .claude/skills/start-project/mailbox.sh show <id>

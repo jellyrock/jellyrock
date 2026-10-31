@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 #
 # start-project scaffolder — the deterministic mechanics behind /start-project.
-# Shared code: maintained upstream and updated in place. A local edit is not
-# overwritten silently — it is reviewed (kept, or taken upstream) at the next
-# update. Keep it present in this directory — a SKILL.md that names a co-located script
+# Keep it present in this directory — a SKILL.md that names a co-located script
 # missing from its own dir is broken on arrival.
 #
 # Does ONLY the parts with exactly one correct output given (slug, goal):

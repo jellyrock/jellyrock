@@ -9,8 +9,6 @@
 # words sits inside an XML tag (`<kickoff>`…`</kickoff>`), so it reads as data, never as this
 # script's own BANNER, NOTE or ERROR lines, which stay outside every tag. The same PLAN check, run by /end-session before it
 # commits (--check), is the gate that keeps a kickoff from contradicting its own Status.
-# Shared code: maintained upstream and updated in place. A local edit is not overwritten
-# silently — it is reviewed (kept, or taken upstream) at the next update.
 #
 # Why not read the whole PLAN: a long-running project's PLAN grows past 100KB (its session log and
 # Status), and a whole read either costs tens of thousands of tokens or is cut off.
@@ -824,7 +822,7 @@ if [ -n "$m_out" ]; then
   tagged mailbox "$m_out"
 fi
 
-# The work request parts naming this repo about this project (ADR 0012 item 3): another repo decided
+# The work request parts naming this repo about this project: another repo decided
 # each change, so the banner says to make it or decline it, not to weigh it as a message. A backend
 # from before `requests` exits 2: one NOTE.
 r_out=""; r_none=0
@@ -863,7 +861,7 @@ fi
 if [ -n "$start" ]; then
   section "START (from the arguments: this session starts here; the kickoff below is context)"
   if [[ "$start" =~ ^(fid:|request:)?[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
-    # one id: an open followup, or an open work request part naming this repo (ADR 0012 item 5);
+    # one id: an open followup, or an open work request part naming this repo;
     # fid: or request: picks one kind, and a bare id that is both is said and asked about
     f="${start#fid:}"; f="${f#request:}"; want=both
     case "$start" in fid:*) want=fid ;; request:*) want=request ;; esac

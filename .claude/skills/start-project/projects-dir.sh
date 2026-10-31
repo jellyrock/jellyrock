@@ -2,8 +2,6 @@
 #
 # projects-dir.sh: where this repo's tracked projects live. Every lifecycle skill and script asks
 # this one place instead of writing the path itself, so the folder can move without touching them.
-# Shared code: maintained upstream and updated in place. A local edit is not overwritten
-# silently: it is reviewed (kept, or taken upstream) at the next update.
 #
 # The answer, first match wins:
 #   1. The per-machine git setting projects.<owner>.home is set: <home>/<owner>/<name>/projects,

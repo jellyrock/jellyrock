@@ -2,8 +2,6 @@
 #
 # voice-check.sh: holds each tracked Markdown file to a per-file baseline of "house voice" counts, a
 # ratchet: a file may only go down, and a file absent from the baseline is allowed zero.
-# Shared code: maintained upstream and updated in place. A local edit is not overwritten
-# silently, it is reviewed (kept, or taken upstream) at the next update.
 #
 # The six categories, counted on the prose of a file (fenced blocks, inline code, link targets,
 # reference definitions, URLs and dash-only table cells are removed first, except for line-citation):

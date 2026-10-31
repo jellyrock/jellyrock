@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 #
 # end-session section replacer: the deterministic mechanics behind rewriting one whole `## `
-# section of a PLAN.md (the kickoff, or Status when it is rewritten whole). Shared code:
-# maintained upstream and updated in place. A local edit is not overwritten silently; it is
-# reviewed (kept, or taken upstream) at the next update. Keep it present in this directory: a
-# SKILL.md that names a co-located script missing from its own dir is broken on arrival.
+# section of a PLAN.md (the kickoff, or Status when it is rewritten whole). Keep it present in this
+# directory: a SKILL.md that names a co-located script missing from its own dir is broken on
+# arrival.
 # It also reads ../log/md-skip.awk (the log skill's), the one rule for what is not a heading.
 #
 # It replaces the body of exactly one section with the text you give it, keeps the heading line as

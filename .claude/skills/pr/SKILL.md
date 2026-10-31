@@ -40,7 +40,7 @@ allowed-tools: Bash(bash .claude/skills/pr/forge.sh pr view:*), Bash(bash .claud
 - The journal passes run against the resolved lower-bound commit (the prior render marker on update, the default branch on create), so the user isn't re-asked about candidates already handled, and each candidate is confirm/skip per item.
 - The title passes the repo's title gate, backticks code identifiers and names every user-visible change; on the update path it is re-derived from the whole PR.
 - Labels come from the deliverables the title and the body's summary name, each shown to the user beside the phrase that earned it; tooling-only work is `dev-improvement`, `documentation` goes only on a PR that changes nothing but docs, and labels this skill does not manage are never removed.
-- The body passes the repo's own PR checks before it is posted, every issue reference points where its sentence means, and in a public repo nothing private is posted.
+- The body passes the repo's own PR checks before it is posted, every issue reference points where its sentence means, and in a public repo nothing private is posted and the agent files appear only as a bare file list.
 - `forge.sh pr create`, `pr edit` and `pr comment` permission prompts are left intact: they are the user's gate on what gets posted, not friction to allowlist away.
 
 **Failure modes to avoid.**
@@ -121,6 +121,8 @@ Each pass surfaces journal entries the user should write, one-line confirm/skip 
 
 ### Step 6: Title
 
+**Agent files in a public repo.** When [this repo's public posture](../../../AGENTS.md#public-posture) is `public` and `git diff --name-status {{default}}...HEAD | bash .claude/skills/pr/agent-body.sh kind` prints `agent-only`, the title is exactly what `bash .claude/skills/pr/agent-body.sh title` prints, and the rest of this step does not apply. Each commit on such a branch has that title as its subject and no body.
+
 `type: Imperative summary` or `type(scope): Imperative summary`, under 70 characters, passed with `--title`; the types and the gate that checks them are in this skill's `## This repo`. Synthesize it from all the commits, not the latest. Pick the type by what the PR does to the product (this skill's `## This repo` names the product paths): a change to the product takes a product type; a change only to the tooling around it takes a tooling type, even when it fixes something; a PR with both is typed by its product change. Scope is optional; never write an empty one.
 
 **Name every user-visible change.** List the changes a user of the product would notice, then check the title names each; when they don't fit, name the outcome that covers them all rather than the biggest alone. A refactor that changes behavior is not a refactor here: if you can say "X used to sometimes fail, now it doesn't", it is user-visible, and a commit subject that joins a fix to a restructure with "and" needs each half checked. On the update path, re-derive the title from the whole PR; a PR that grew in review is when a title goes stale.
@@ -148,6 +150,8 @@ Labels are for finding PRs in the forge's list: a label is right when someone fi
 Check each chosen label exists (`bash .claude/skills/pr/forge.sh label list`: every label with its description). For a missing one, in this order: use the existing label whose name and description fit the same deliverable, shown beside the label it replaces; else leave it off and say so; and only when the user wants it and nothing existing fits, show the `bash .claude/skills/pr/forge.sh label create {{name}} --description "{{text}}"` command for them to run or approve. Never create a label silently. Leave alone the labels automation owns (this skill's `## This repo` lists them) and any label not in the table.
 
 ### Step 8: Build the body (and the notes comment)
+
+**Agent files in a public repo.** When [this repo's public posture](../../../AGENTS.md#public-posture) is `public`, run `git diff --name-status {{default}}...HEAD | bash .claude/skills/pr/agent-body.sh kind` first. `agent-only`: the body is exactly what `agent-body.sh body` prints from the same input (no template, no handled lines), followed by the render marker when the body is not the commit message; a notes comment holds only its first line and the marker. `mixed`: write the body below about the `other` files of `agent-body.sh split` alone, and end its changes section with what `agent-body.sh body` prints; neither the body nor the notes say anything else about the agent files. `none`: the steps below as they are.
 
 Start from the template. Fill each section the way its hint comment asks (a section the hint marks required is never left empty; an optional one is left out or marked `None` as that hint says), then remove the hint comments. Keep the headings you use exactly as the template spells them. This skill's `## This repo` has the repo's guidance per section. Fill checkboxes from what the diff and Step 4 actually produced, never from intent.
 
