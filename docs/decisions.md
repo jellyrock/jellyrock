@@ -2462,7 +2462,7 @@ Ruled out: a separate root folder for features, which would need three pipeline 
 **status**: accepted
 **related-files**: `source/utils/rowItemImage.bs`, `source/home/latestRows.bs`, `components/ui/rowitem/JRRowItem.bs`
 
-An episode in a portrait slot shows a parent poster (the server's parent image, then the series poster) and ignores the **Episode Images Next Up** setting, because a wide image would be cropped. The spoiler blur is skipped on these posters, since a poster shows no spoilers. An episode with no parent poster shows its own image, fitted rather than cropped. Rows that bypass the setting (`shouldApplyEpisodeImageSetting = false`, the extras rows) keep the episode's own image, so playlist and box set rows don't change.
+An episode in a portrait slot shows a parent poster (the server's parent image, then the series poster) and ignores the **Episode Images Next Up** setting, because a wide image would be cropped. The spoiler blur is skipped on these posters, since a poster shows no spoilers. An episode with no parent poster shows its own image, fitted rather than cropped. Rows that bypass the setting (`usesHomeEpisodeArt = false`, the extras rows) keep the episode's own image, so playlist and box set rows don't change.
 
 Only Recently Added in TV libraries goes portrait; Next Up and Continue Watching stay wide. Ruled out: putting the series poster first, which would hide a season's own poster.
 
