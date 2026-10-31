@@ -164,9 +164,10 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // REST member queues an item.
   'syncPlayManager.sync.playlistCount',
   // `SyncPlayManager.checkSettle` publishes the drift from the group on every position
-  // notification while an Unpause is in force (every 0.5 s), and once past the threshold seeks
-  // once; after that the drift holds inside it until the next command, so "inside the threshold"
-  // is recurrent, not a pulse. `syncplay-controls.spec.js` waits on it after the group's unpause.
+  // notification while an Unpause is in force (every 0.5 s), and a group command clears it. Past
+  // the threshold the manager corrects it, and it then holds inside the threshold until the next
+  // command, so "inside the threshold" is recurrent, not a pulse. `syncplay-controls.spec.js` and
+  // `syncplay-correction.spec.js` wait on it.
   'syncPlayManager.sync.playbackDiffMs',
   // `AppWaitHost.publish` rewrites the whole map on each wait's begin and end, and nothing else
   // writes it: an empty map holds until the next wait begins. `syncplay-menu.spec.js` waits on

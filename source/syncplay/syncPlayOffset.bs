@@ -72,18 +72,12 @@ namespace syncPlayOffset
 
   ' The server's clock now, given the device's clock now, the extra offset included.
   function serverNowMs(estimator as object, deviceNowMs as longinteger) as longinteger
-    return deviceNowMs + estimator.offsetMs + extraOffsetMs(estimator)
+    return deviceNowMs + estimator.offsetMs + estimator.extraOffsetMs
   end function
 
   ' The device clock reading at which the server's clock reads whenMs (a command's When).
   function deviceTimeForServerMs(estimator as object, whenMs as longinteger) as longinteger
-    return whenMs - estimator.offsetMs - extraOffsetMs(estimator)
-  end function
-
-  ' An estimator built before the field existed (a spec's literal) reads as no extra offset.
-  function extraOffsetMs(estimator as object) as longinteger
-    if not isValid(estimator.extraOffsetMs) then return 0&
-    return syncPlayTime.asLong(estimator.extraOffsetMs)
+    return whenMs - estimator.offsetMs - estimator.extraOffsetMs
   end function
 
   ' Seconds until the next burst. Once there is an estimate, jellyfin-web's low-profile interval.

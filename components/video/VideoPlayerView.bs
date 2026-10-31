@@ -1756,7 +1756,7 @@ sub onPositionChanged()
 
   ' A SyncPlay member confirms a seek landed from a position notification, never at the
   ' `playing` edge (syncPlayPlayback.bs). Nothing is sent while not following.
-  syncPlayHooks.notify({ kind: "position", position: m.top.position })
+  syncPlayHooks.notify({ kind: "position", position: m.top.position, duration: m.top.duration })
 
   ' Without the content.length fallback (see getEffectiveDuration), progressPercentage stays
   ' pinned at 0 on live-transcoded MKV, and since the OSD only observes progressPercentage,

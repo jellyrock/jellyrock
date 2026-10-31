@@ -269,17 +269,83 @@ namespace tests
       m.assertFalse(check.armed)
     end function
 
-    @it("a drift inside the threshold, or unknown, spends the check with no seek")
+    @it("a drift inside the threshold spends the check with no seek")
     function _()
       check = syncPlayPlayback.newSettleCheck()
       syncPlayPlayback.armSettleCheck(check)
       syncPlayPlayback.settleCorrectionDue(check, 120&, "playing", "ready", false)
       m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, -149&, "playing", "ready", false))
       m.assertFalse(check.armed)
+    end function
+
+    @it("an unknown drift counts for nothing and does not spend the check")
+    function _()
+      check = syncPlayPlayback.newSettleCheck()
       syncPlayPlayback.armSettleCheck(check)
-      syncPlayPlayback.settleCorrectionDue(check, invalid, "playing", "ready", false)
       m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, invalid, "playing", "ready", false))
-      m.assertFalse(check.armed)
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, invalid, "playing", "ready", false))
+      m.assertEqual(check.positions, 0)
+      m.assertTrue(check.armed)
+    end function
+
+    @it("a disarmed check never fires, whatever it had counted")
+    function _()
+      check = syncPlayPlayback.newSettleCheck()
+      syncPlayPlayback.armSettleCheck(check)
+      syncPlayPlayback.settleCorrectionDue(check, 3354&, "playing", "ready", false)
+      syncPlayPlayback.disarmSettleCheck(check)
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 3354&, "playing", "ready", false))
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 3354&, "playing", "ready", false))
+    end function
+
+    @it("a correction gets one more reading after it, once per arming")
+    function _()
+      check = syncPlayPlayback.newSettleCheck()
+      syncPlayPlayback.armSettleCheck(check)
+      syncPlayPlayback.settleCorrectionDue(check, 300&, "playing", "ready", false)
+      m.assertTrue(syncPlayPlayback.settleCorrectionDue(check, 300&, "playing", "ready", false))
+      syncPlayPlayback.retrySettleCheck(check)
+      syncPlayPlayback.settleCorrectionDue(check, 300&, "playing", "ready", false)
+      m.assertTrue(syncPlayPlayback.settleCorrectionDue(check, 300&, "playing", "ready", false), "the second reading")
+      syncPlayPlayback.retrySettleCheck(check)
+      m.assertFalse(check.armed, "no third")
+      syncPlayPlayback.armSettleCheck(check)
+      syncPlayPlayback.settleCorrectionDue(check, 300&, "playing", "ready", false)
+      syncPlayPlayback.settleCorrectionDue(check, 300&, "playing", "ready", false)
+      syncPlayPlayback.retrySettleCheck(check)
+      m.assertTrue(check.armed, "a new arming allows another")
+    end function
+
+    @it("a landing near its target moves the resume by the error, and a far one leaves it")
+    function _()
+      plan = syncPlayPlayback.correctionPlan(500&, 695000000&, m.unpauseInForce(), m.estimator())
+      syncPlayPlayback.landCorrection(plan, 723000000&)
+      m.assertEqual(plan.resumeAtMs, m.deviceNow + 2300&, "300 ms past the target")
+      syncPlayPlayback.landCorrection(plan, 723000000&)
+      m.assertEqual(plan.resumeAtMs, m.deviceNow + 2300&, "a second call moves nothing")
+      plan = syncPlayPlayback.correctionPlan(500&, 695000000&, m.unpauseInForce(), m.estimator())
+      syncPlayPlayback.landCorrection(plan, 695000000&)
+      m.assertEqual(plan.resumeAtMs, m.deviceNow + 2000&, "2.5 s off is not a landing")
+    end function
+
+    @it("seekPastEnd is true at or past the duration, and false while it is unknown")
+    function _()
+      m.assertTrue(syncPlayPlayback.seekPastEnd(100000000&, 10.0))
+      m.assertTrue(syncPlayPlayback.seekPastEnd(110000000&, 10.0))
+      m.assertFalse(syncPlayPlayback.seekPastEnd(90000000&, 10.0))
+      m.assertFalse(syncPlayPlayback.seekPastEnd(100000000&, 0))
+      m.assertFalse(syncPlayPlayback.seekPastEnd(100000000&, invalid))
+    end function
+
+    @it("an abandoned correction seek lands without pausing the node")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 700000000&, report: false, thenPause: true })
+      syncPlayPlayback.abandonSeekPause(tracker)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 600000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 700000000& })
+      m.assertEqual(tracker.phase, "ready")
+      m.assertFalse(result.pauseFirst)
     end function
 
     @it("nothing is counted while the group is paused, the node is not playing, or the tracker is not settled")
@@ -309,6 +375,20 @@ namespace tests
       m.assertEqual(syncPlayPlayback.correctionResumeDelayMs(plan, m.deviceNow), 2000&)
       m.assertEqual(syncPlayPlayback.correctionResumeDelayMs(plan, m.deviceNow + 1500&), 500&)
       m.assertEqual(syncPlayPlayback.correctionResumeDelayMs(plan, m.deviceNow + 2500&), 0&)
+    end function
+
+    @it("correctionPlan holds a member ahead of the group where it is, with no seek")
+    function _()
+      ' The group is at 70 s now; the player reads 70.3 s.
+      plan = syncPlayPlayback.correctionPlan(-300&, 703000000&, m.unpauseInForce(), m.estimator())
+      m.assertFalse(plan.seek)
+      m.assertEqual(plan.targetTicks, 703000000&)
+      m.assertEqual(plan.resumeAtMs, m.deviceNow + 300&)
+    end function
+
+    @it("correctionPlan seeks for a member behind the group")
+    function _()
+      m.assertTrue(syncPlayPlayback.correctionPlan(300&, 697000000&, m.unpauseInForce(), m.estimator()).seek)
     end function
 
     @it("the viewer's extra offset moves the resume moment, not the target")

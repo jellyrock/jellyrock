@@ -31,7 +31,7 @@ While you're in a group, the **SyncPlay** icon is highlighted.
 - **Play something as you usually would.** While you're in a group, it plays for the whole group.
 - **Use the remote as usual.** Play, pause, seeking, skipping and next or previous all go to the group, so everyone moves together.
 - **People coming and going.** A message tells you when someone joins or leaves the group.
-- **Staying in step.** JellyRock keeps your Roku on the group's clock by itself. If a resume leaves it noticeably behind, it catches up once: the picture holds for a moment and starts again in step with the group. If the sound from your TV still lags the other people's devices, raise **SyncPlay Time Offset** in **Settings → Playback** until they line up. It is in milliseconds, and 0 means no offset.
+- **Staying in step.** JellyRock keeps your Roku on the group's clock by itself. If a resume leaves it noticeably ahead or behind, it corrects itself: the picture holds for a moment and starts again in step with the group. If the sound from your TV still lags the other people's devices, raise **SyncPlay Time Offset** in **Settings → Playback** until they line up. It is in milliseconds, and 0 means no offset.
 
 So that one person's settings don't move everyone, a few things wait while you're in a group: JellyRock shows the skip button instead of skipping intros by itself, doesn't ask whether you're still watching, doesn't play Cinema Mode intros, and doesn't show its next-episode button. When a video ends, the group's playlist decides what plays next.
 

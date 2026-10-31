@@ -2466,6 +2466,16 @@ An episode in a portrait slot shows a parent poster (the server's parent image, 
 
 Only Recently Added in TV libraries goes portrait; Next Up and Continue Watching stay wide. Ruled out: putting the series poster first, which would hide a season's own poster.
 
+## decision-id: syncplay-settle-correction
+
+**date**: 2026-10-31
+**status**: accepted
+**related-files**: `components/syncplay/SyncPlayManager.bs`, `source/syncplay/syncPlayPlayback.bs`, `source/syncplay/syncPlayOffset.bs`
+
+After an `Unpause`, a SyncPlay member more than 150 ms off the group corrects itself with a hold. A member ahead pauses and resumes as the group reaches it, with no seek. A member behind seeks 2 s past the group, pauses as it lands, and resumes as the group reaches where it stopped. Each correction gets one more reading, so an `Unpause` costs at most two. The **SyncPlay Time Offset** setting is 0 to 2000 ms, non-negative as web's field is.
+
+Ruled out: a running correction loop, since nothing drifted over a steady minute (Stick 4K, 2026-10-31); a plain corrective seek, which landed 364 to 667 ms behind on the slow transcode path; and a seek for a member ahead, a visible jump and freeze to fix 158 ms, while 29 no-seek holds settled within 19 ms. Recheck if a device or path shows drift growing during steady playback, or if seeks commonly outlast the 2 s lead.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
