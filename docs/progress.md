@@ -238,7 +238,7 @@ Found 2026-10-09: every `debug=true` build had failed since the dead-code rule l
 
 `sameDeviceRefusal()` in `scripts/measure-matrix.js` (its printed message and its doc comment, and the comment above the `'refuses two distinct devices of the same model…'` test in `tests/scripts/unit/measure-matrix.test.js`) says `measurements.jsonl` "identifies a device by model / model number / RAM tier and by nothing else". That has been false since 2026-08-11: every series carries `deviceKey` (run ledger since `8794b2873`; a `measure:compare` selector since #810), and `measure-report.js` lists `device` in `PROVENANCE_AXES`. The text came with #802 (2026-08-10), when it was true, and was not updated. The refusal itself may still be right: two same-model devices would land in one `measure:report` column and pool with only a disclosure.
 
-Options weighed on the /snag screen: `reword` (keep the refusal; state the true reason in the message, doc comment and test comment, name both escapes, `--arm` per device or `--select device=<key>` afterwards; then delete the warning box in `docs/dev/measuring-performance.md`, section "More than one device"), or `allow` (drop the same-model refusal and let `measure:report` disclose the pooling; a behavior change needing a design call, possibly re-keying columns on `device`). Recommended `reword`; read `measure-report.js` first to confirm the column claim. Ships as its own PR from `main`.
+Options weighed: `reword` (keep the refusal; state the true reason in the message, doc comment and test comment, name both escapes, `--arm` per device or `--select device=<key>` afterwards; then delete the warning box in `docs/dev/measuring-performance.md`, section "More than one device"), or `allow` (drop the same-model refusal and let `measure:report` disclose the pooling; a behavior change needing a design call, possibly re-keying columns on `device`). Recommended `reword`; read `measure-report.js` first to confirm the column claim. Ships as its own PR from `main`.
 
 Not checked: whether `measure:report` really keys its columns by model and tier (taken from the old guide's wording, not read in `measure-report.js`); whether pooling two same-model devices in one cell is a problem worth refusing, or only a disclosure. Nobody has run the refusal on real hardware: you have one device of each model.
 
@@ -592,7 +592,7 @@ Only `ContentNodes.spec.bs` (field-assignment tests) and the mock device JSON fi
 
 Found 2026-10-10 while rewriting `global-state.md` (2dbe60d3), by `git grep` over every `.bs`, `.brs` and `.xml` file.
 
-Options weighed in a `/snag`:
+Options weighed:
 
 - `track` (recommended): add `videoRefresh` and `videoBitDepth` to #1072's `DeviceInfo` item as a comment, drafted and approved before posting, so the epic's one decision covers all eight fields.
 - `followup`: keep the finding here only.
@@ -626,7 +626,7 @@ On an HLS stream that carries several audio tracks in one variant, Roku lists no
 
 Evidence (2026-10-12, Stick 4K, 12.1): the muxed fixture `vod2a` gave an empty track list for 20 s, with and without a pick; the same clip with two `#EXT-X-MEDIA` renditions (`vod2r`) listed both, and French played when picked (`currentAudioTrack` "2"). A direct-played MKV with two audio tracks lists them.
 
-Options weighed in `/snag`: reload through the server's stream when Roku lists no tracks and the pick differs from what plays (the pick then plays, but the list is known only after playback starts, so it restarts the play and loads the server); leave it as a known limitation.
+Options weighed: reload through the server's stream when Roku lists no tracks and the pick differs from what plays (the pick then plays, but the list is known only after playback starts, so it restarts the play and loads the server); leave it as a known limitation.
 
 Not checked: which track is audible on the muxed stream; how common muxed multi-audio HLS is in real `.strm` or Live TV provider sources (no user report); Live TV TS channels.
 
@@ -1082,7 +1082,7 @@ The cost shows on an idle screen too, as a fixed price per request. Measured 202
 
 #### A promise rejection from a transport failure has no `reason`, so 26 `.catch` handlers log INVALID `[fid: promise-rejection-missing-reason]` `[captured 2026-10-09]`
 
-Found 2026-10-09 while rewriting `docs/dev/promises.md` (docs-voice, Phase C) and taken through `/snag`.
+Found 2026-10-09 while rewriting `docs/dev/promises.md` (docs-voice, Phase C) .
 
 **Root cause:** `fetchAsync` rejects with two shapes. Only the adapter-built error (`buildApiPromiseError()`, used for a timeout and for an unavailable pool) carries `reason`. When the pool's own response comes back with `statusCode` 0 or below, or with no `statusCode`, `settleApiPromiseIn()` in `source/api/apiPromise.bs` rejects with that response itself, which has no `reason`. All 26 `.catch` handlers log `err.reason`: `ItemDetails` 8, `SubtitlePanel` 7, `UserSelect` 5, `BaseGridView` 2, `VideoPlayerView` 2, `Home` 1, `schedule` 1. The logger prints a missing value as `INVALID`, so a network failure's cause is lost. Nothing branches on `reason`; every use is a log argument. The form dates from #624 (2026-06-06) and was copied by every later conversion to `fetchAsync`.
 
@@ -1115,7 +1115,7 @@ Some remote `.strm` items fail on every play with "There was an error retrieving
 
 Evidence (2026-10-12): on a device (`.176` and `.177`, Jellyfin 12.1), `.strm` items pointing at a public HLS stream failed with `[http] Timeout= 10000`, then `Event Timed Out` and `PlaybackInfo failed cause timed out isLive false`, on a first play and on a later one. With curl, every `PlaybackInfo` for those items took 10.4 to 11.5 s on 12.1 and 10.7 to 12.0 s on 10.11, before and after the server had saved their streams (44.6 s once while a library scan ran). The same stream answered a plain GET in 0.6 s from inside both server containers, so the time is the server's own work. A `.strm` item served from the LAN answered `PlaybackInfo` in under 0.3 s and played.
 
-Options weighed in `/snag` (`unprobed-limit` was recommended, then disproved: it assumed only the first play was slow):
+Options weighed (`unprobed-limit` was recommended, then disproved: it assumed only the first play was slow):
 
 - A per-source limit for remote `.strm` sources (an `Http` source whose `Path` is not the server's), sized from measurements. The `PLAYBACK_START` app wait already shows "Still loading…". Back is the open design: the pool never stops a POST, so the slot stays held up to the limit. That is the third part the `screens-outgrowing-10s-request-limit` rule asks for.
 - `all-playback-info`: a longer limit for every non-live `PlaybackInfo`. Rejected: a dead server would take that long to report on every Play.
@@ -1276,7 +1276,7 @@ Building the Task-thread ceiling (ADR 0031), an append into `GetGlobalAA()` meas
 
 #### RTA runs in CI only on `release-*.*.*` branches and `workflow_dispatch`, so every RTA gate catches regressions at release prep rather than at PR time. `[fid: rta-ci-only-on-release-branches]` `[captured 2026-08-23]`
 
-That is a deliberate trade (the self-hosted device runner is heavily contended — session 28 lost the lock to a parallel agent three times in one afternoon), but it is worth an explicit decision now that a gate with real teeth depends on it: `tests/rta/specs/task-thread-peak.spec.js` is the PRIMARY defense against a future Task-thread fan-out (ADR 0031), and a runtime ceiling cannot report anything in a store build. **Question to settle:** is a thread-budget regression worth an earlier trigger than release-prep — and if so, does it run per-PR, on a merge queue, or nightly?
+That is a deliberate trade (the self-hosted device runner is heavily contended — session 28 lost the lock to a parallel run three times in one afternoon), but it is worth an explicit decision now that a gate with real teeth depends on it: `tests/rta/specs/task-thread-peak.spec.js` is the PRIMARY defense against a future Task-thread fan-out (ADR 0031), and a runtime ceiling cannot report anything in a store build. **Question to settle:** is a thread-budget regression worth an earlier trigger than release-prep — and if so, does it run per-PR, on a merge queue, or nightly?
 
 #### The RTA specs cannot run against an `.env` server that has been re-pointed, and the failure does not say so. `[fid: rta-specs-repointed-env-server-silent]` `[captured 2026-08-24]`
 
@@ -1398,7 +1398,7 @@ Do this as one project, not piecemeal, because the parts depend on each other:
 - **Loud failure:** a skipped or canceled `rta` job should show on the release as "RTA did not run". Read the release flow first.
 - **Optional trim:** move measurement-style specs (leaks, task-thread peak) to an on-demand job.
 
-Options weighed on the /snag screen: `limit` (raise to 60 min, fix the docs), `trim` (limit plus move measurement specs out), `loud` (limit plus a visible did-not-run signal). Recommended `limit` as the first step; the operator chose to defer and do all of it together.
+Options weighed: `limit` (raise to 60 min, fix the docs), `trim` (limit plus move measurement specs out), `loud` (limit plus a visible did-not-run signal). Recommended `limit` as the first step; the operator chose to defer and do all of it together.
 
 Not checked: whether the 2026-08-07 and 2026-08-17 failures would pass today; whether anything in the release flow reads this job's result; the CI device's actual run time (assumed to match `.177`, the same model); whether a single spec got slower, since the ledger has no per-spec times; the self-hosted runner's env file.
 
@@ -1550,21 +1550,3 @@ To close it, as its own project:
 - Check the new text on a Roku for fit, and confirm what Weblate does to existing translations when an English value changes.
 
 `settingName`, `type` and the generated-file note stay on the page: it serves users and contributors alike (decided 2026-10-09).
-
-### claude
-
-#### Exercise `/dep-major` end-to-end on the next real Renovate major PR — validate the changelog→call-site mapping and the on-device `test:unit`+`test:rta` gate run inside the skill flow (mechanics validated at build time, but the full orchestration on a real major bump is not yet exercised). `[fid: dep-major-end-to-end-exercise]` `[captured 2026-06-28]`
-
-#### Audit the `.claude/` rules + `CLAUDE.md` files against what is actually ENFORCED, not just documented. `[fid: audit-claude-rules-vs-enforced]` `[captured 2026-08-05]`
-
-Two independent instances of the same failure: agents repeatedly blow the roku-log 9-argument cap even though it is written down (it recurs whenever a session logs heavily), and `bs_const=debug=true` has landed on `main` twice (`27d99141`, `dc05db8d`) despite `debug-flags.md` claiming the commit skill prevents it. Both are documented-but-unenforced rules, and the pattern is that prose alone does not hold. **Sequence matters**: land the enforcement first (the roku-log argument-count diagnostic — see the `m.log` call-site entry in [`tech-debt.md`](architecture/tech-debt.md)), then tighten the docs against what the gate actually catches. Auditing the prose first just rewrites text that will keep being ignored. **Then trim for size** (user call, 2026-09-23): the root, scoped `CLAUDE.md` files and `.claude/rules/` all auto-load, and several bullets have grown to paragraph length — cut what a gate already enforces down to a pointer at the gate.
-
-#### Have `/pr` verify a created PR is `MERGEABLE` and that its check COUNT matches a recent PR's. GitHub runs no `pull_request`-triggered workflow on a PR that conflicts with `main`, so only the `pull_request_target` ones report — #779 showed 4 green checks that read as a pass while 18 lint/build jobs had never run. Color is not the gate; count is. `[fid: pr-skill-verify-mergeable-check-count]` `[captured 2026-08-08]`
-
-#### `/pr`'s Pass 1 can hang and the skill has no way to say so, so a degraded scan reads as a clean one. `[fid: pr-pass-1-hang-undetected]` `[captured 2026-08-16]`
-
-On 2026-08-16 the `/tech-debt-scan` sub-agent it spawns ran 20+ minutes with a frozen elapsed clock and had to be killed with `TaskStop`; the pass returned nothing. The fallback used was a targeted grep of tech-debt entries whose `area` names a file the branch touched — **narrower than the intended walk**, so a slug matched only by prose would be missed silently, and nothing in the PR output distinguishes that from a full pass. Sample of one, and the shape is clear enough to act on. **Fix shape**: a bounded wait in the skill that prints an explicit "Pass 1 did not complete — tech-debt coverage is degraded" line, and/or a non-agent path (a script matching `- **area**:` lines against `git diff --name-only`) so the deterministic half of the scan never depends on a sub-agent completing at all. The judgment half — is this entry resolved? — still wants the agent.
-
-#### `/done`'s problem-statement carve-out shipped without being exercised — dogfood it on the next real closure. `[fid: done-carve-out-unexercised]` `[captured 2026-08-17]`
-
-Step 2-F now says a followup phrased as a PROBLEM ("X has no sanctioned way to do Y") must close as a resolution line rather than a verbatim copy, because verbatim asserts the problem still exists on the day it was fixed. It was written from a live hit (closing the multi-step-followup entry, where the verbatim copy would have said the opposite of the truth) but could not be exercised in the same session: the only followup available to close was the one that produced the finding, and it was already closed by hand to the same shape. So the RULE is validated and the SKILL PATH is not. Next `/done` on a problem-shaped bullet is the test — check it rewrites rather than copies, and that a deliverable-shaped bullet in the same run still closes verbatim. Per the unavailable-dependencies clause, tracked rather than silently skipped.

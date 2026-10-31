@@ -11,7 +11,7 @@
 # settings.json: Claude Code passes JSON event data on stdin (we don't
 # need it here, so it's discarded), and we want a stable point at which
 # to add tool-specific behavior later if needed (for example,
-# short-circuit on certain session types). Same pattern as log-tool-use.sh.
+# short-circuit on certain session types).
 #
 # Failure mode: this hook must not block or fail an agent's turn.
 # Every error path exits 0. Stderr is appended to a log file (rather
@@ -27,7 +27,7 @@ cat >/dev/null
 
 cd "${CLAUDE_PROJECT_DIR:-$(pwd)}" || exit 0
 
-# Match the per-USER telemetry dir convention from log-tool-use.sh so
+# A per-USER folder, so
 # all hook diagnostics live in one place.
 LOG_DIR="${JELLYROCK_TELEMETRY_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/jellyrock/telemetry}"
 LOG_FILE="$LOG_DIR/check-touched-errors.log"

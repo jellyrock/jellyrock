@@ -82,15 +82,6 @@
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Read|Grep|Glob|Edit|Write|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/log-tool-use.sh"
-          }
-        ]
-      },
-      {
         "matcher": "Edit|Write|MultiEdit",
         "hooks": [
           {

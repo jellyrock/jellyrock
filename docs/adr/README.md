@@ -12,8 +12,8 @@ notes in [`../decisions.md`](../decisions.md), not here.
 
 | ADR | Title | Status | Date |
 |---|---|---|---|
-| [0001](0001-triage-opus-inline-investigation.md) | Triage skills run Opus inline with a sibling INVESTIGATION contract | Accepted | 2026-05-06 |
-| [0002](0002-four-pillar-journal-reshape.md) | Adopt the four-pillar journal system | Accepted | 2026-05-06 |
+| 0001 | Withdrawn | Withdrawn | 2026-05-06 |
+| 0002 | Withdrawn | Withdrawn | 2026-05-06 |
 | [0003](0003-icons-material-rounded-house-style.md) | Icon house style — Material Symbols Rounded, weight 500, `24px` | Accepted | 2026-05-09 |
 | [0004](0004-icons-outlined-by-default.md) | Icons default to outlined (fill 0), with documented fill-1 exceptions | Accepted | 2026-05-09 |
 | [0005](0005-jrplaceholder-themed-composition.md) | Placeholder cards as runtime themed SceneGraph composition | Accepted | 2026-05-09 |

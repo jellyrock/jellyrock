@@ -74,7 +74,6 @@ related-files:
   - .husky/pre-commit
   - .husky/pre-push
   - .claude/settings.json
-  - .claude/hooks/log-tool-use.sh
   - .claude/hooks/check-touched-related-files.sh
   - .claude/hooks/check-touched-lint.sh
   - .claude/hooks/check-progress-cursor.sh
@@ -387,7 +386,7 @@ One makes it report more. A name built at runtime from a variable (`setField(nam
 | Server upgrades | `docs:api-manifest`, `docs:spec-fingerprints`, `api-watch:*`, `jellyfin:matrix`, each with `:check` where one exists | [server-upgrade-automation.md](server-upgrade-automation.md) |
 | Generated assets | `icons:build`, `icons:add`, `gradients:build`, `roku-hardware:fetch`, each with `:check` | [Icon resolution pipeline](#icon-resolution-pipeline) |
 | Docs | `docs:settings`, `docs:dev-index`, `docs:features`, `docs:stale`, `docs:stale:blocking`, `docs:fact-report`, `dictionary:sentence-final` | [Doc-maintenance enforcement](#doc-maintenance-enforcement) |
-| Agent state | `catchup:state` (the JSON `/catchup` and `/ramp` read), `agent-telemetry` | [Agent telemetry](#agent-telemetry) |
+| Agent state | `catchup:state` (the JSON `/catchup` and `/ramp` read) | [`scripts/catchup-state.js`](../../scripts/catchup-state.js) |
 | Dead code | `dead-code:replay`, `dead-code:mutate`, `dead-code:write-only` | [Dead code](#dead-code) |
 | Changelog | `changelog:*`, run by CI only | [changelog.md](../admin/changelog.md) |
 | Install | `postinstall` (`ropm`, then `patches:apply`), `prepare` (husky) | [ropm modules](#ropm-modules) |
@@ -673,12 +672,6 @@ The editor catches `.bs` issues and pre-push catches the rest, but an agent woul
 - It prints failures so they land in the agent's next turn.
 
 It skips what the editor covers (`lint:bs`, `validate`, formatting), `lint:docs` (the layers above cover it) and the translation checks (pre-push runs them). It never blocks.
-
-## Agent telemetry
-
-`.claude/settings.json` registers a `PostToolUse` hook for Read, Grep, Glob, Edit, Write and `MultiEdit`. [`log-tool-use.sh`](../../.claude/hooks/log-tool-use.sh) appends a JSON line to `${XDG_STATE_HOME:-~/.local/state}/jellyrock/telemetry/tool-use.jsonl`, or `$JELLYROCK_TELEMETRY_DIR`. The log is per user, so several checkouts feed one picture, and it is never committed. The hook never delays the tool, and without `jq` it does nothing.
-
-`npm run agent-telemetry` reports the most-read and most-edited files and the most common search patterns. Use it to decide where a scoped `CLAUDE.md` would pay off.
 
 ## Editor setup
 

@@ -82,7 +82,6 @@
     "docs:features:check": "node scripts/generate/feature-catalog.cjs --check",
     "docs:stale": "node scripts/lint/docs-stale.cjs",
     "docs:stale:blocking": "node scripts/lint/docs-stale-blocking.cjs",
-    "agent-telemetry": "node scripts/agent-telemetry-report.cjs",
     "catchup:state": "node scripts/catchup-state.js",
     "gradients:build": "node scripts/generate/gradient-assets.js",
     "gradients:check": "node scripts/generate/gradient-assets.js --check",
