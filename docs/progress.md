@@ -1035,6 +1035,12 @@ Also unchecked: voice fast-forward and rewind still write the node (`control` se
 
 Closes when the queue-edit and shuffle design ships or is declined in a decision note, and a device check shows a voice scrub in a group either reaches the group or cannot land without an OK.
 
+#### Type the memory monitor once BrighterScript knows its `setMessagePort` `[fid: bsc-types-app-memory-monitor-port]` `[captured 2026-10-31]`
+
+`memoryMonitor.start()` in `source/utils/memoryMonitor.bs` types its `roAppMemoryMonitor` as `dynamic`, because the BrighterScript type data bundled in `node_modules` lacks `setMessagePort` on `roAppMemoryMonitor`. Roku's docs (rokudev/dev-doc `roappmemorymonitor.md`) list `ifSetMessagePort` as supported. Found 2026-10-31 while registering the memory monitor for #1072.
+
+**Check:** after a `brighterscript` bump, type the variable as the component and run `npm run validate`. **When it passes:** drop the `dynamic` and its comment.
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`
