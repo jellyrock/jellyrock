@@ -1,0 +1,89 @@
+import "pkg:/source/utils/memoryMonitor.bs"
+
+namespace tests
+
+  @suite("memoryMonitor - snapshot and notification fields")
+  class MemoryMonitorTests extends tests.BaseTestSuite
+
+    protected override function setup()
+      super.setup()
+    end function
+
+    ' A stand-in for roAppMemoryMonitor: an AA with the three getters readSnapshot calls.
+    private function fakeMonitor(limit as dynamic, percent as dynamic, available as dynamic) as object
+      return {
+        limit: limit,
+        percent: percent,
+        available: available,
+        GetChannelMemoryLimit: function() as dynamic
+          return m.limit
+        end function,
+        GetMemoryLimitPercent: function() as dynamic
+          return m.percent
+        end function,
+        GetChannelAvailableMemory: function() as dynamic
+          return m.available
+        end function
+      }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("readSnapshot()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the limit, the usage percent and the available memory")
+    function _()
+      monitor = m.fakeMonitor({ maxForegroundMemory: 500000 }, 42, 123456)
+      m.assertEqual(memoryMonitor.readSnapshot(monitor), { memoryTotal: 500000, memoryUsagePercent: 42, memoryAvailable: 123456 })
+    end function
+
+    @it("returns an empty AA for an invalid monitor")
+    function _()
+      m.assertEqual(memoryMonitor.readSnapshot(invalid), {})
+    end function
+
+    @it("leaves memoryTotal out when the limit AA is invalid")
+    function _()
+      monitor = m.fakeMonitor(invalid, 42, 123456)
+      m.assertEqual(memoryMonitor.readSnapshot(monitor), { memoryUsagePercent: 42, memoryAvailable: 123456 })
+    end function
+
+    @it("leaves memoryTotal out when the limit AA has no maxForegroundMemory")
+    function _()
+      monitor = m.fakeMonitor({ other: 1 }, 42, 123456)
+      m.assertEqual(memoryMonitor.readSnapshot(monitor), { memoryUsagePercent: 42, memoryAvailable: 123456 })
+    end function
+
+    @it("leaves a field out when its getter returns invalid")
+    function _()
+      monitor = m.fakeMonitor({ maxForegroundMemory: 500000 }, invalid, invalid)
+      m.assertEqual(memoryMonitor.readSnapshot(monitor), { memoryTotal: 500000 })
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("fieldsFromNotification()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the usage percent from the event info")
+    function _()
+      m.assertEqual(memoryMonitor.fieldsFromNotification({ memoryUsagePercent: 87 }), { memoryUsagePercent: 87 })
+    end function
+
+    @it("returns an empty AA when the key is missing")
+    function _()
+      m.assertEqual(memoryMonitor.fieldsFromNotification({ other: 1 }), {})
+    end function
+
+    @it("returns an empty AA for invalid info")
+    function _()
+      m.assertEqual(memoryMonitor.fieldsFromNotification(invalid), {})
+    end function
+
+    @it("returns an empty AA when the value is not a number")
+    function _()
+      m.assertEqual(memoryMonitor.fieldsFromNotification({ memoryUsagePercent: "high" }), {})
+    end function
+
+  end class
+
+end namespace

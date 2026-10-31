@@ -47,7 +47,12 @@
 
     <!-- Performance -->
     <field id="memoryLevel" type="string" value="normal" />
+    <!-- memoryTotal is the app's foreground memory limit from roAppMemoryMonitor GetChannelMemoryLimit() -->
     <field id="memoryTotal" type="integer" value="0" />
+    <!-- Percent of the app's memory limit in use, from roAppMemoryMonitor -->
+    <field id="memoryUsagePercent" type="integer" value="0" />
+    <!-- Memory the app can still use, in kilobytes, from roAppMemoryMonitor GetChannelAvailableMemory() -->
+    <field id="memoryAvailable" type="integer" value="0" />
     <field id="isLowMemoryDevice" type="boolean" value="false" />
   </interface>
 </component>

@@ -312,6 +312,9 @@ namespace tests
       m.assertEqual(deviceInfo.name, "")
       m.assertEqual(deviceInfo.model, "")
       m.assertEqual(deviceInfo.memoryLevel, "normal")
+      m.assertEqual(deviceInfo.memoryTotal, 0)
+      m.assertEqual(deviceInfo.memoryUsagePercent, 0)
+      m.assertEqual(deviceInfo.memoryAvailable, 0)
       m.assertEqual(deviceInfo.canPlay4K, false)
     end function
 

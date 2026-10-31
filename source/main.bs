@@ -1,3 +1,4 @@
+import "pkg:/source/utils/memoryMonitor.bs"
 import "pkg:/source/utils/tasks.bs"
 sub Main (args as dynamic) as void
   printRegistry()
@@ -101,6 +102,16 @@ sub Main (args as dynamic) as void
   device.EnableCodecCapChangedEvent(true)
   device.EnableAudioGuideChangedEvent(true)
 
+  ' roAppMemoryMonitor: Roku certification requires the app to use its interface and events.
+  ' Keep the reference on m so roAppMemoryNotificationEvent keeps arriving. It is invalid on
+  ' platforms that don't support it (Liberty, Austin, Mustang, Littlefield).
+  m.memoryMonitor = memoryMonitor.start(m.port)
+  if isValid(m.memoryMonitor)
+    memorySnapshot = memoryMonitor.readSnapshot(m.memoryMonitor)
+    m.global.device.setFields(memorySnapshot)
+    print "memory monitor: limit="; memorySnapshot.memoryTotal; " usagePercent="; memorySnapshot.memoryUsagePercent; " available="; memorySnapshot.memoryAvailable
+  end if
+
   ' Enter the login flow. reenterLogin() re-resolves the pre-login locale, then beginLogin()
   ' runs the saved-server + saved-token fast path (sync, no UI). On success it brings up Home;
   ' otherwise it routes to the right pre-login screen (/server, /users, /login), whose views
@@ -197,6 +208,13 @@ sub Main (args as dynamic) as void
       else
         print "Unhandled roDeviceInfoEvent:"
         print msg.GetInfo()
+      end if
+    else if type(msg) = "roAppMemoryNotificationEvent"
+      ' The app's memory use crossed a warning level. Record the new usage percent.
+      memoryFields = memoryMonitor.fieldsFromNotification(msg.GetInfo())
+      if memoryFields.count() > 0
+        print "memory warning: usagePercent="; memoryFields.memoryUsagePercent
+        m.global.device.setFields(memoryFields)
       end if
     else if type(msg) = "roInputEvent"
       if msg.IsInput()
