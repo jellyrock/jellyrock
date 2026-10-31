@@ -115,15 +115,6 @@ function getItemWidePosterUrl(item as object, size = imageSize.WIDE_MD as object
   return ""
 end function
 
-' Generate a thumbnail URL (wide, smaller size).
-' Delegates to getItemWidePosterUrl with a smaller default size.
-' @param item - JellyfinBaseItem content node
-' @param size - Size constant from imageSize namespace (default: imageSize.WIDE_SM)
-' @returns Full image URL string, or "" if no image is available
-function getItemThumbnailUrl(item as object, size = imageSize.WIDE_SM as object) as string
-  return getItemWidePosterUrl(item, size)
-end function
-
 ' Generate a full backdrop URL with fallback chain.
 ' Fallback order: item backdrop, then parent backdrop
 ' @param item - JellyfinBaseItem content node

@@ -17,7 +17,7 @@ const PEOPLE_TYPE = "Person"
 const FAVORITES_STAND_IN_ID = "favoritesStandIn"
 
 sub init()
-  m.top.itemComponentName = "JRRowItem"
+  m.top.itemComponentName = "BrowseRowItem"
   m.top.numRows = 3
   m.top.vertFocusAnimationStyle = "fixedFocus"
   m.top.content = CreateObject("roSGNode", "ContentNode")

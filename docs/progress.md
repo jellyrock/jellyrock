@@ -845,6 +845,12 @@ Options: `reword` (recommended): make the one string true after every halt, for 
 
 Not checked: how the toast looks on a device; whether jellyfin-web words this case differently.
 
+#### Recently Added in a library with no collection type follows the episode image setting `[fid: recently-added-follows-episode-image-setting]` `[captured 2026-10-31]`
+
+`HomeRows` uses `JRRowItem`, so an episode in a Recently Added row for a library with no collection type follows the **Episode Images Next Up** setting. The setting's text names only Next Up and Continue Watching, so what it covers and what it says differ. Surfaced while fixing the Favorites cell in #1290.
+
+Not fixed there because telling each cell its row adds work per cell in Home's hot path, and rewording is a separate product choice. Closes when the row stops following the setting, or the setting's text names it.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`

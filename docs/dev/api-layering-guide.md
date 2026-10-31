@@ -108,7 +108,6 @@ These take a `JellyfinBaseItem` or `JellyfinUser` node, read the IDs and tags fr
 | --- | --- | --- |
 | `getItemPosterUrl(item, size)` | `JellyfinBaseItem` | Item primary, parent primary, series primary |
 | `getItemWidePosterUrl(item, size)` | `JellyfinBaseItem` | Item thumb, item backdrop, parent thumb, parent backdrop |
-| `getItemThumbnailUrl(item, size)` | `JellyfinBaseItem` | Same as `getItemWidePosterUrl`, with a smaller default size |
 | `getItemBackdropUrl(item, size)` | `JellyfinBaseItem` | Item backdrop, parent backdrop |
 | `getItemParentWidePosterUrl(item, size)` | `JellyfinBaseItem` | Parent thumb, parent backdrop |
 | `getItemImageUrl(item, imageType, size)` | `JellyfinBaseItem` | Only the type you ask for, such as `"Logo"` |

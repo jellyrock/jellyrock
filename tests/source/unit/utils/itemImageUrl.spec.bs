@@ -246,22 +246,6 @@ namespace tests
       m.assertEqual(url, "")
     end function
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("getItemThumbnailUrl - delegates to widePosterUrl")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("returns same URL as getItemWidePosterUrl with WIDE_SM size")
-    function _()
-      item = CreateObject("roSGNode", "JellyfinBaseItem")
-      item.id = "item1"
-      item.thumbImageTag = "thumb1"
-
-      thumbUrl = getItemThumbnailUrl(item)
-      wideUrl = getItemWidePosterUrl(item, imageSize.WIDE_SM)
-
-      m.assertEqual(thumbUrl, wideUrl)
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("getItemBackdropUrl - backdrop with fallback")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
