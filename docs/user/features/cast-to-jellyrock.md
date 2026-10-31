@@ -2,6 +2,8 @@
 pitch: Cast from a Jellyfin app on your phone or browser to your Roku, then pause, seek and skip from there.
 since: 2.23.0
 server: 10.7.0
+httpsserver: 10.9.0
+httpsplugins: JellyRock Companion
 highlight: 2
 ---
 
@@ -12,7 +14,7 @@ Pick something in the Jellyfin app on your phone or in your browser, send it to 
 ## What you need
 
 - **JellyRock open and signed in** to the same server as the app you cast from. To cast while JellyRock is closed, see [Cast while JellyRock is closed](#cast-while-jellyrock-is-closed).
-- **On an HTTPS server, the JellyRock Companion plugin.** On an HTTP server you need nothing else. See [Jellyfin server plugins](../jellyfin-server-plugins.md) to install it.
+- **On an HTTPS server, the JellyRock Companion plugin, on Jellyfin 10.9 or later.** On an HTTP server you need nothing else. See [Jellyfin server plugins](../jellyfin-server-plugins.md) to install it.
 
 ## Cast something
 

@@ -22,6 +22,10 @@ const FEATURE_FIELDS = {
   server: { required: true },
   plugins: { required: false, list: true },
   screenshots: { required: false, list: true },
+  // What the feature needs on an HTTPS server when that differs from HTTP. Both or
+  // neither: Roku has no secure socket, so these features go through a plugin there.
+  httpsserver: { required: false },
+  httpsplugins: { required: false, list: true },
   // A rank from 1 puts the page in the README's short list, in that order;
   // the field left out means no.
   highlight: { required: false },

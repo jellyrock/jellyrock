@@ -89,6 +89,7 @@ describe('feature-catalog', () => {
       server: '10.10.0',
       plugins: ['Intro Skipper'],
       screenshots: [],
+      https: null,
       page: 'docs/user/features/media-segments.md',
       url: 'https://docs.jellyrock.app/features/media-segments/',
     });
@@ -180,6 +181,24 @@ describe('feature-catalog', () => {
     const { exitCode, stderr } = spawnScript(SCRIPT, [dir]);
     expect(exitCode).toBe(1);
     expect(stderr).toMatch(/README\.md is missing its markers/);
+  });
+
+  it('shows what a feature needs on HTTPS in the index and the catalog', () => {
+    const page = subtitles.replace(
+      'server: 10.7.0\n',
+      'server: 10.7.0\nhttpsserver: 10.11.0\nhttpsplugins: Open Subtitles\n',
+    );
+    dir = setupTree({ 'media-segments.md': segments, 'manage-subtitles.md': page });
+    expect(spawnScript(SCRIPT, [dir]).exitCode).toBe(0);
+    const features = JSON.parse(read(dir, 'docs/feature-catalog.json')).features;
+    expect(features.find((f) => f.slug === 'manage-subtitles').https).toEqual({
+      server: '10.11.0',
+      plugins: ['Open Subtitles'],
+    });
+    expect(features.find((f) => f.slug === 'media-segments').https).toBeNull();
+    expect(read(dir, 'docs/user/features/index.md')).toContain(
+      '10.7.0 or later (HTTPS: 10.11.0 or later) | None (HTTPS: Open Subtitles) |',
+    );
   });
 
   describe('--release: stamping `since: unreleased` when a release is published', () => {

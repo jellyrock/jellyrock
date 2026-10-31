@@ -1034,6 +1034,35 @@ describe('docs-check: feature pages', () => {
     });
   });
 
+  describe('what a feature needs on HTTPS', () => {
+    const https = 'httpsserver: 10.11.0\nhttpsplugins: Intro Skipper';
+
+    it('accepts the two fields together', () => {
+      expect(run(`${good}\n${https}`).found).toEqual([]);
+    });
+
+    it('FAILs one without the other', () => {
+      for (const line of ['httpsserver: 10.11.0', 'httpsplugins: Intro Skipper']) {
+        expect(run(`${good}\n${line}`).messages).toMatch(/set both or neither/);
+      }
+    });
+
+    it('FAILs a server older than the page server, or not a version', () => {
+      expect(run(`${good}\nhttpsserver: 10.9.0\nhttpsplugins: Intro Skipper`).messages).toMatch(
+        /httpsserver: 10\.9\.0 is older than server \(10\.10\.0\)/,
+      );
+      expect(run(`${good}\nhttpsserver: soon\nhttpsplugins: Intro Skipper`).messages).toMatch(
+        /httpsserver: soon is not x\.y\.z/,
+      );
+    });
+
+    it('FAILs a plugin the plugins page does not list', () => {
+      expect(run(`${good}\nhttpsserver: 10.11.0\nhttpsplugins: Ghost`).messages).toMatch(
+        /plugin "Ghost" is not a row/,
+      );
+    });
+  });
+
   it('accepts a `highlight:` rank from 1 to 6 and FAILs anything else', () => {
     expect(run(`${good}\nhighlight: 1`).found).toEqual([]);
     expect(run(`${good}\nhighlight: 6`).found).toEqual([]);

@@ -51,6 +51,7 @@ plugins: Chapter Segments Provider, Intro Skipper
 | `server` | yes | The oldest Jellyfin server the feature works with. A feature that works on every supported server takes the floor, `10.7.0`. |
 | `plugins` | no | The server plugins it needs one of, separated by commas, each named as in the table in [Jellyfin server plugins](../user/jellyfin-server-plugins.md). Add a new plugin's row there first. |
 | `screenshots` | no | Keys from [`screenshots.json`](../screenshots/screenshots.json)'s `screens`, separated by commas. |
+| `httpsserver`, `httpsplugins` | no | What the feature needs on an HTTPS server when that differs from HTTP: the oldest Jellyfin server and the plugins, named as for `plugins`. Set both or neither. |
 | `highlight` | no | A rank from 1 to 6: the README lists the ranked features in that order, then links the features index. Leave it out otherwise. Rank the features that best say what JellyRock does, the strongest first; no two pages share a rank. |
 
 Write one `key: value` per line, with no quotes and no nesting. `npm run lint:docs` fails when a page has no frontmatter, misses a required field, has a field not in this table, or holds a value that doesn't match the app: a `since` newer than the app's version, a `server` older than the floor in [`jellyfin-version-boundaries.yml`](jellyfin-version-boundaries.yml), a plugin or screenshot key that isn't listed, a `highlight` that is not a rank from 1 to 6 or repeats another page's, or a value that YAML reads differently, such as one with a colon and a space. Reword that value.

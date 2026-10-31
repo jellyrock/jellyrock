@@ -92,6 +92,9 @@ function readFeatures() {
       server: fields.server,
       plugins: fields.plugins || [],
       screenshots: fields.screenshots || [],
+      https: fields.httpsserver
+        ? { server: fields.httpsserver, plugins: fields.httpsplugins || [] }
+        : null,
       highlight: fields.highlight ? Number(fields.highlight) : null,
       page: rel,
       url: `${DOCS_SITE}/features/${slug}/`,
@@ -120,7 +123,9 @@ function buildCatalog(features) {
 function buildIndex(features) {
   const rows = features.map((f) => {
     const plugins = f.plugins.length ? f.plugins.join(' or ') : 'None';
-    return `| [${f.title}](${f.slug}.md) | ${f.pitch} | ${f.server} or later | ${plugins} |`;
+    const httpsServer = f.https ? ` (HTTPS: ${f.https.server} or later)` : '';
+    const httpsPlugins = f.https ? ` (HTTPS: ${f.https.plugins.join(' or ')})` : '';
+    return `| [${f.title}](${f.slug}.md) | ${f.pitch} | ${f.server} or later${httpsServer} | ${plugins}${httpsPlugins} |`;
   });
   return [
     '# Features',

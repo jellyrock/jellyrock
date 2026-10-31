@@ -976,9 +976,22 @@ function checkFeaturePages() {
         fail(`server: ${server} is older than the supported floor (${floor})`, 'server');
       }
     }
-    for (const plugin of fields.plugins || []) {
-      if (!plugins.has(plugin)) {
-        fail(`plugin "${plugin}" is not a row in docs/user/jellyfin-server-plugins.md`, 'plugins');
+    for (const target of ['plugins', 'httpsplugins']) {
+      for (const plugin of fields[target] || []) {
+        if (!plugins.has(plugin)) {
+          fail(`plugin "${plugin}" is not a row in docs/user/jellyfin-server-plugins.md`, target);
+        }
+      }
+    }
+    const { httpsserver, httpsplugins } = fields;
+    if (Boolean(httpsserver) !== Boolean(httpsplugins?.length)) {
+      fail('httpsserver and httpsplugins go together: set both or neither', 'httpsserver');
+    }
+    if (httpsserver) {
+      if (!VERSION_RE.test(httpsserver)) {
+        fail(`httpsserver: ${httpsserver} is not x.y.z`, 'httpsserver');
+      } else if (VERSION_RE.test(server || '') && compareVersions(httpsserver, server) < 0) {
+        fail(`httpsserver: ${httpsserver} is older than server (${server})`, 'httpsserver');
       }
     }
     for (const key of fields.screenshots || []) {

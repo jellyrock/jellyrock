@@ -11,11 +11,11 @@ Features that depend on your server version rather than a plugin are in the [Jel
 | [Open Subtitles](https://github.com/jellyfin/jellyfin-plugin-opensubtitles) | Find and download subtitles from an item's page ([Manage Subtitles](features/manage-subtitles.md)) | 10.7 or later | 2.29.0 or later | [From your catalog](#install-from-your-catalog) |
 | [Chapter Segments Provider](https://github.com/jellyfin/jellyfin-plugin-chapter-segments) | [Skip the intro and outro](features/media-segments.md), found from chapter markers | 10.10 or later | 2.9.0 or later | [From your catalog](#install-from-your-catalog) |
 | [Intro Skipper](https://github.com/intro-skipper/intro-skipper) | [Skip the intro and outro](features/media-segments.md), detected from the audio and video | 10.10 or later | 2.9.0 or later | [Add a repository](#install-from-a-repository) |
-| [JellyRock Companion](https://github.com/jellyrock/jellyfin-plugin-jellyrock) | [Cast to JellyRock while it's closed](https://github.com/jellyrock/jellyfin-plugin-jellyrock/blob/main/docs/features/cold-launch-cast.md). On HTTPS servers, also [remote control](https://github.com/jellyrock/jellyfin-plugin-jellyrock/blob/main/docs/features/remote-control.md) and [fast cleanup after you press Home](https://github.com/jellyrock/jellyfin-plugin-jellyrock/blob/main/docs/features/playback-cleanup.md) | 10.11 or later | 2.23.0 or later (2.24.0 to cast while closed) | [Add a repository](#install-from-a-repository) |
+| [JellyRock Companion](https://github.com/jellyrock/jellyfin-plugin-jellyrock) | [Cast to JellyRock while it's closed](https://github.com/jellyrock/jellyfin-plugin-jellyrock/blob/main/docs/features/cold-launch-cast.md). On HTTPS servers, also [remote control](https://github.com/jellyrock/jellyfin-plugin-jellyrock/blob/main/docs/features/remote-control.md), [SyncPlay](https://github.com/jellyrock/jellyfin-plugin-jellyrock/blob/main/docs/features/syncplay.md) and [fast cleanup after you press Home](https://github.com/jellyrock/jellyfin-plugin-jellyrock/blob/main/docs/features/playback-cleanup.md) | 10.11 or later | 2.23.0 or later (2.24.0 to cast while closed, 3.3.0 for SyncPlay) | [Add a repository](#install-from-a-repository) |
 
 The Jellyfin server version is the oldest server the JellyRock feature works with. Your server's catalog offers the plugin build that matches your server.
 
-On Jellyfin 10.9 and 10.10, the catalog offers an older JellyRock Companion release (0.2.x) that cannot cast to a closed app.
+On Jellyfin 10.9 and 10.10, the catalog offers an older JellyRock Companion release (0.2.x) that cannot cast to a closed app or run SyncPlay.
 
 ## Install from your catalog
 

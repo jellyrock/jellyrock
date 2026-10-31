@@ -8,7 +8,7 @@
 [![Build Status](https://img.shields.io/github/actions/workflow/status/jellyrock/jellyrock/build.yml?logo=github&branch=main "Build Status")](https://github.com/jellyrock/jellyrock/actions/workflows/build.yml?query=branch%3Amain)
 <!-- [![Translation Status](https://translate.jellyfin.org/widgets/jellyfin/-/jellyfin-roku/svg-badge.svg "Translation Status")](https://translate.jellyfin.org/projects/jellyfin/jellyfin-roku/?utm_source=widget) -->
 
-JellyRock is a Jellyfin client for Roku, from a former maintainer of the original Jellyfin Roku app. It is built to stay smooth: every request to your server runs in the background, so menus keep moving while things load. It plays your media in its original quality whenever your Roku can, and it comes in 98 languages. It is the first Roku client for Jellyfin with SyncPlay, casting from other Jellyfin apps and display mirroring, on HTTP and HTTPS servers alike. Free and open source, with no ads and no tracking. You need your own Jellyfin server.
+JellyRock is a Jellyfin client for Roku, from a former maintainer of the original Jellyfin Roku app. It is built to stay smooth: every request to your server runs in the background, so menus keep moving while things load. It plays your media in its original quality whenever your Roku can, and it comes in 98 languages. It is the first Roku client for Jellyfin with SyncPlay, casting from other Jellyfin apps and display mirroring, on HTTP servers, and on HTTPS servers with the JellyRock Companion plugin. Free and open source, with no ads and no tracking. You need your own Jellyfin server.
 
 ## Features
 

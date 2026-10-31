@@ -15,6 +15,12 @@
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
+      "https": {
+        "server": "10.9.0",
+        "plugins": [
+          "JellyRock Companion"
+        ]
+      },
       "page": "docs/user/features/cast-to-jellyrock.md",
       "url": "https://docs.jellyrock.app/features/cast-to-jellyrock/"
     },
@@ -26,6 +32,7 @@
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
+      "https": null,
       "page": "docs/user/features/themes.md",
       "url": "https://docs.jellyrock.app/features/themes/"
     },
@@ -37,6 +44,7 @@
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
+      "https": null,
       "page": "docs/user/features/deep-linking.md",
       "url": "https://docs.jellyrock.app/features/deep-linking/"
     },
@@ -48,6 +56,7 @@
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
+      "https": null,
       "page": "docs/user/features/delete-media.md",
       "url": "https://docs.jellyrock.app/features/delete-media/"
     },
@@ -59,6 +68,7 @@
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
+      "https": null,
       "page": "docs/user/features/favorites.md",
       "url": "https://docs.jellyrock.app/features/favorites/"
     },
@@ -70,6 +80,7 @@
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
+      "https": null,
       "page": "docs/user/features/hdr-dolby-vision.md",
       "url": "https://docs.jellyrock.app/features/hdr-dolby-vision/"
     },
@@ -81,6 +92,7 @@
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
+      "https": null,
       "page": "docs/user/features/live-tv.md",
       "url": "https://docs.jellyrock.app/features/live-tv/"
     },
@@ -94,6 +106,7 @@
         "Open Subtitles"
       ],
       "screenshots": [],
+      "https": null,
       "page": "docs/user/features/manage-subtitles.md",
       "url": "https://docs.jellyrock.app/features/manage-subtitles/"
     },
@@ -108,6 +121,7 @@
         "Intro Skipper"
       ],
       "screenshots": [],
+      "https": null,
       "page": "docs/user/features/media-segments.md",
       "url": "https://docs.jellyrock.app/features/media-segments/"
     },
@@ -119,6 +133,7 @@
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
+      "https": null,
       "page": "docs/user/features/music.md",
       "url": "https://docs.jellyrock.app/features/music/"
     },
@@ -130,6 +145,7 @@
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
+      "https": null,
       "page": "docs/user/features/photos.md",
       "url": "https://docs.jellyrock.app/features/photos/"
     },
@@ -141,6 +157,7 @@
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
+      "https": null,
       "page": "docs/user/features/quick-connect.md",
       "url": "https://docs.jellyrock.app/features/quick-connect/"
     },
@@ -152,6 +169,7 @@
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
+      "https": null,
       "page": "docs/user/features/surround-sound.md",
       "url": "https://docs.jellyrock.app/features/surround-sound/"
     },
@@ -163,6 +181,12 @@
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
+      "https": {
+        "server": "10.11.0",
+        "plugins": [
+          "JellyRock Companion"
+        ]
+      },
       "page": "docs/user/features/syncplay.md",
       "url": "https://docs.jellyrock.app/features/syncplay/"
     },
@@ -176,6 +200,7 @@
       "screenshots": [
         "trickplay"
       ],
+      "https": null,
       "page": "docs/user/features/trickplay.md",
       "url": "https://docs.jellyrock.app/features/trickplay/"
     },
@@ -187,6 +212,7 @@
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
+      "https": null,
       "page": "docs/user/features/voice-control.md",
       "url": "https://docs.jellyrock.app/features/voice-control/"
     },
@@ -198,6 +224,7 @@
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
+      "https": null,
       "page": "docs/user/features/original-quality.md",
       "url": "https://docs.jellyrock.app/features/original-quality/"
     }

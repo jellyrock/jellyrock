@@ -19,6 +19,8 @@ Features that need a server plugin are in [Jellyfin server plugins](jellyfin-ser
 
 ✅ means the feature works on that version. ❌ means it is not available.
 
+The SyncPlay row is for HTTP servers. On an HTTPS server, SyncPlay needs Jellyfin 10.11 or later and the [JellyRock Companion](jellyfin-server-plugins.md) plugin.
+
 ## Quick Connect
 
 Quick Connect works on every server version JellyRock supports.
