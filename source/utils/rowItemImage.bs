@@ -14,9 +14,9 @@ import "pkg:/source/utils/misc.bs"
 ' @param userSettings - m.global.user.settings node (may be invalid)
 ' @param useEpisodeImages - pre-computed from m.global.user.config.useEpisodeImagesInNextUpAndResume;
 '                           only relevant when uiGeneralEpisodeImages = "webclient"
-' @param shouldApplyEpisodeImageSetting - when false, skip the uiGeneralEpisodeImages user setting entirely
-'                                   and use the default episode image order (own Primary, then wide
-'                                   art, then the portrait poster). Use false for
+' @param shouldApplyEpisodeImageSetting - when false, skip the uiGeneralEpisodeImages user setting and the
+'                                   portrait poster rule, and use the default episode image order (own
+'                                   Primary, then wide art, then the portrait poster). Use false for
 '                                   extras rows (season episode lists, person TV shows) where the
 '                                   setting is only meaningful for home rows (Continue Watching, Next Up).
 ' @returns Image URL string, or "" if no image is available
@@ -51,11 +51,16 @@ function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight a
     return getItemImageUrl(item, "Backdrop", size)
   end if
 
-  ' Episodes: only "show" (and "webclient" with episode images off) use series art.
+  ' Episodes: a portrait slot shows a parent poster, because a wide image would be cropped.
+  ' In any other slot, only "show" (and "webclient" with episode images off) use series art.
   ' Everything else, including the bypass (shouldApplyEpisodeImageSetting = false, used by
   ' extras rows) and an empty or unknown setting, shares one image order below.
   if item.type = "Episode"
-    if shouldApplyEpisodeImageSetting and isValid(userSettings)
+    isPosterSlot = shouldApplyEpisodeImageSetting and posterHeight > slotWidth
+    if isPosterSlot
+      parentPosterUrl = getItemParentPosterUrl(item, size)
+      if parentPosterUrl <> "" then return parentPosterUrl
+    else if shouldApplyEpisodeImageSetting and isValid(userSettings)
       episodeImageSetting = userSettings.uiGeneralEpisodeImages
       if episodeImageSetting = "show"
         return getItemParentWidePosterUrl(item, size)
@@ -114,4 +119,18 @@ function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight a
   end if
 
   return getItemPosterUrl(item, size)
+end function
+
+' Whether getRowItemImageUrl gives this item a season or series poster instead of its own image.
+' The blur for unwatched episodes hides spoilers, and a poster shows none.
+function episodeShowsPosterInSlot(item as object, slotWidth as integer, posterHeight as integer, shouldApplyEpisodeImageSetting = true as boolean) as boolean
+  if item.type <> "Episode" or not shouldApplyEpisodeImageSetting or posterHeight <= slotWidth then return false
+  return getItemParentPosterUrl(item, { width: slotWidth, height: posterHeight }) <> ""
+end function
+
+' Whether getRowItemImageUrl falls back to a 16:9 episode image in a portrait slot, which the
+' caller fits rather than crops.
+function episodeShowsOwnImageInPortraitSlot(item as object, slotWidth as integer, posterHeight as integer, shouldApplyEpisodeImageSetting = true as boolean) as boolean
+  if item.type <> "Episode" or not shouldApplyEpisodeImageSetting or posterHeight <= slotWidth then return false
+  return getItemParentPosterUrl(item, { width: slotWidth, height: posterHeight }) = ""
 end function

@@ -1,4 +1,5 @@
 import "pkg:/source/api/apiResponse.bs"
+import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/home/latestRows.bs"
 
@@ -373,6 +374,26 @@ namespace tests
     @it("loads nothing without libraries")
     function _()
       m.assertEqual(latestRows.runLibraries(invalid, invalid), [])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("slotSizeFor()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the slot for each library type, in any case")
+    @params("movies", [234, 351])
+    @params("tvshows", [234, 351])
+    @params("TvShows", [234, 351])
+    @params("music", [234, 234])
+    @params("homevideos", [468, 264])
+    @params("", [468, 264])
+    function _(collectionType, expected)
+      m.assertEqual(latestRows.slotSizeFor(collectionType), expected)
+    end function
+
+    @it("returns the wide slot for a library with no type")
+    function _()
+      m.assertEqual(latestRows.slotSizeFor(invalid), rowSlotSize.WIDE)
     end function
 
   end class

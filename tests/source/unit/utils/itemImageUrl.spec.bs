@@ -455,5 +455,26 @@ namespace tests
       m.assertEqual(url, "")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getItemParentPosterUrl()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("prefers the parent poster, then the series poster, and skips the item's own image")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.primaryImageTag = "eptag"
+
+      m.assertEqual(getItemParentPosterUrl(item, imageSize.POSTER_MD), "")
+
+      item.seriesPrimaryImageTag = "seriestag"
+      item.seriesId = "series1"
+      m.assertTrue(getItemParentPosterUrl(item, imageSize.POSTER_MD).inStr("seriestag") > -1)
+
+      item.parentPrimaryImageTag = "seasontag"
+      item.parentPrimaryImageItemId = "season1"
+      m.assertTrue(getItemParentPosterUrl(item, imageSize.POSTER_MD).inStr("seasontag") > -1)
+    end function
+
   end class
 end namespace

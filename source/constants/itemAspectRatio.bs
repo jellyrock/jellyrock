@@ -8,7 +8,7 @@
 ' Image area = slot height - 90px.
 
 namespace rowSlotSize
-  ' Portrait: 2:3, for Movie, Series, Season, BoxSet, Person
+  ' Portrait: 2:3, for Movie, Series, Season, BoxSet, Person, and Recently Added in movie and TV libraries
   ' Height = 351 gives exact 2:3 ratio (234 × 1.5). Text adds 90px below.
   ' Total row height needed: 351 + 90 = 441px
   const PORTRAIT = [234, 351]
@@ -16,7 +16,7 @@ namespace rowSlotSize
   ' Height = 234 gives exact 1:1 ratio. Text adds 90px below.
   ' Total row height needed: 234 + 90 = 324px
   const SQUARE = [234, 234]
-  ' Wide: ≈16:9, for Episode, Continue Watching, Next Up
+  ' Wide: ≈16:9, for Episode rows outside Recently Added, Continue Watching, Next Up
   ' Height = 264 gives ~16:9 ratio (468 × 9/16 = 263.25). Text adds 90px below.
   ' Total row height needed: 264 + 90 = 354px
   const WIDE = [468, 264]

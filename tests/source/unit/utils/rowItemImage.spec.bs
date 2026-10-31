@@ -519,6 +519,127 @@ namespace tests
       m.assertTrue(url.inStr("Primary") > -1)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getRowItemImageUrl() - episodes in a portrait slot")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses the parent poster ahead of the series poster and the episode image")
+    function _()
+      url = getRowItemImageUrl(m.portraitEpisode(true, true, true), 234, 351, invalid)
+
+      m.assertTrue(url.inStr("season1") > -1)
+      m.assertTrue(url.inStr("seasontag") > -1)
+    end function
+
+    @it("falls back to the series poster when there is no parent poster")
+    function _()
+      url = getRowItemImageUrl(m.portraitEpisode(false, true, true), 234, 351, invalid)
+
+      m.assertTrue(url.inStr("series1") > -1)
+      m.assertTrue(url.inStr("seriestag") > -1)
+    end function
+
+    @it("falls back to the episode image when there is no poster")
+    function _()
+      url = getRowItemImageUrl(m.portraitEpisode(false, false, true), 234, 351, invalid)
+
+      m.assertTrue(url.inStr("ep1") > -1)
+      m.assertTrue(url.inStr("eptag") > -1)
+    end function
+
+    @it("ignores the episode image setting")
+    @params("episode")
+    @params("show")
+    @params("webclient")
+    function _(setting)
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = setting
+
+      url = getRowItemImageUrl(m.portraitEpisode(true, true, true), 234, 351, userSettings, true)
+
+      m.assertTrue(url.inStr("seasontag") > -1)
+    end function
+
+    @it("keeps the episode's own image when the row bypasses the setting")
+    function _()
+      url = getRowItemImageUrl(m.portraitEpisode(true, true, true), 234, 351, invalid, false, false)
+
+      m.assertTrue(url.inStr("eptag") > -1)
+    end function
+
+    @it("still follows the episode image setting in a wide slot")
+    function _()
+      item = m.portraitEpisode(true, true, true)
+      item.parentThumbImageTag = "seriesthumb"
+      item.parentThumbItemId = "series1"
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = "show"
+
+      url = getRowItemImageUrl(item, 468, 264, userSettings)
+
+      m.assertTrue(url.inStr("seriesthumb") > -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("episodeShowsPosterInSlot()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for a portrait episode with a parent or series poster")
+    function _()
+      m.assertTrue(episodeShowsPosterInSlot(m.portraitEpisode(true, false, true), 234, 351))
+      m.assertTrue(episodeShowsPosterInSlot(m.portraitEpisode(false, true, true), 234, 351))
+    end function
+
+    @it("is false when a portrait episode has only its own image")
+    function _()
+      m.assertFalse(episodeShowsPosterInSlot(m.portraitEpisode(false, false, true), 234, 351))
+    end function
+
+    @it("is false when the row bypasses the setting")
+    function _()
+      m.assertFalse(episodeShowsPosterInSlot(m.portraitEpisode(true, true, true), 234, 351, false))
+      m.assertFalse(episodeShowsOwnImageInPortraitSlot(m.portraitEpisode(false, false, true), 234, 351, false))
+    end function
+
+    @it("is false in a wide slot")
+    function _()
+      m.assertFalse(episodeShowsPosterInSlot(m.portraitEpisode(true, true, true), 468, 264))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("episodeShowsOwnImageInPortraitSlot()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true when a portrait episode has no poster")
+    function _()
+      m.assertTrue(episodeShowsOwnImageInPortraitSlot(m.portraitEpisode(false, false, true), 234, 351))
+    end function
+
+    @it("is false with a poster, in a wide slot, or for another type")
+    function _()
+      m.assertFalse(episodeShowsOwnImageInPortraitSlot(m.portraitEpisode(true, true, true), 234, 351))
+      m.assertFalse(episodeShowsOwnImageInPortraitSlot(m.portraitEpisode(false, false, true), 468, 264))
+      item = m.portraitEpisode(false, false, true)
+      item.type = "Movie"
+      m.assertFalse(episodeShowsOwnImageInPortraitSlot(item, 234, 351))
+    end function
+
+    private function portraitEpisode(hasParent as boolean, hasSeries as boolean, hasOwn as boolean) as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.type = "Episode"
+      if hasOwn then item.primaryImageTag = "eptag"
+      if hasParent
+        item.parentPrimaryImageTag = "seasontag"
+        item.parentPrimaryImageItemId = "season1"
+      end if
+      if hasSeries
+        item.seriesPrimaryImageTag = "seriestag"
+        item.seriesId = "series1"
+      end if
+      return item
+    end function
+
   end class
 
 end namespace
