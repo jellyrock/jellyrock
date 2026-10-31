@@ -99,7 +99,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-10-18
+last-reviewed: 2026-10-31
 ---
 
 # Build and tooling
@@ -124,7 +124,7 @@ Each build target has its own `bsconfig*.json`, and every one inherits from `bsc
 |---|---|
 | `bsconfig-base.json` | Not a build target. The settings every config shares: `compilerOptions` (`autoImportComponentScript`, `sourceMap: true`), every `diagnosticFilters` entry, and `outDir` |
 | `bsconfig.json` | Dev build, and the project `npm run validate`, the editor and CI check. Every plugin, logs kept, source maps on |
-| `bsconfig-prod.json` | Production build. Logs and comments stripped, no file paths in log lines, no source maps, release branding copied to `images/branding`. Runs fewer plugins than the dev build (below) |
+| `bsconfig-prod.json` | Production build. Logs and comments stripped, no file paths in log lines, no source maps, release branding copied to `images/branding`. Leaves out Markdown, the test probes (`components/testing/`) and the translation seed (`locale/seed/`), which Roku's analyzer flags as extraneous; `release-package-contents.test.js` fails if any non-runtime file comes back. Runs fewer plugins than the dev build (below) |
 | `bsconfig-analysis.json` | `bsconfig-prod.json` plus source maps, built to `build-analysis/` (`npm run build:analysis`). `/crash-report` derives the same config from each tag's own prod config |
 | `bsconfig-tests.json` | Every suite except the `migration`, `registry` and `measurement` tags, without code coverage. The gating build (`test:all`, CI) |
 | `bsconfig-tests-unit.json` | Unit tests only, except the `measurement` tag |
