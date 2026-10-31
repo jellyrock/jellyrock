@@ -768,7 +768,7 @@ Not checked: which server version the demo ran at 01:33; whether this case passe
 
 Why not now: found mid-way through blocking-spinners phase C; it needs its own device session.
 
-Measured again 2026-10-31 on unmodified `main` on a Stick 4K: the case failed 4 of 6 runs, with the song ending 1 to 2 s early, so it still fails on and off rather than every time. Which server version those runs used was not recorded.
+Measured again 2026-10-31 on unmodified `main` on a Stick 4K: the case failed 4 of 6 runs, with the song ending 1 to 2 s after the seek, so it still fails on and off rather than every time. Which server version those runs used was not recorded.
 
 #### The OSD gear offers no quality rows for Live TV until a channel reload is shown to release its stream once `[fid: live-tv-gear-quality-rows]` `[captured 2026-10-23]`
 
