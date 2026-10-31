@@ -479,7 +479,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 - **area**: `scripts/` (top level), `scripts/lib/`, `scripts/lint/`
 - **issue**: `package.json` sets `"type": "module"`, so new code defaults to ESM, but the tree mixes both:
-  - **Top level:** the `.js` scripts are ESM; four are `.cjs` (`agent-telemetry-report.cjs`, `create-package.cjs`, `create-signed-package.cjs`, `ropm-hook.cjs`).
+  - **Top level:** the `.js` scripts are ESM; three are `.cjs` (`create-package.cjs`, `create-signed-package.cjs`, `ropm-hook.cjs`).
   - **`scripts/lib/`:** `.cjs`, except four ESM files nothing `require()`s (`fixture-probe.js`, `odc-probe.js`, `png-compare.js`, `pr-title.js`).
   - **`scripts/lint/`:** mostly `.cjs`, the rest ESM (`ls scripts/lint/*.js` lists them). `floor-coverage-check.js` must be ESM, because it imports named exports from the ESM `findings-candidates.js`.
 

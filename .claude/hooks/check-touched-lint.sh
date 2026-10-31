@@ -22,7 +22,7 @@ cat >/dev/null
 
 cd "${CLAUDE_PROJECT_DIR:-$(pwd)}" || exit 0
 
-# Match the per-USER telemetry dir convention from log-tool-use.sh so all
+# A per-USER folder, so all
 # hook diagnostics live in one place.
 LOG_DIR="${JELLYROCK_TELEMETRY_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/jellyrock/telemetry}"
 LOG_FILE="$LOG_DIR/check-touched-lint-errors.log"

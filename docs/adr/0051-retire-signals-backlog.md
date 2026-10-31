@@ -1,6 +1,6 @@
 # ADR 0051: Upstream watches are CI issues, and the server-upgrade anchor is the newest committed fingerprint
 
-**Status:** Accepted. Partially supersedes [ADR 0002](0002-four-pillar-journal-reshape.md) (its signals journal; the other surfaces stand) and [ADR 0015](0015-server-upgrade-anchor-vs-resolved-decoupling.md) (where the anchor is stored; the anchor still trails clean releases)
+**Status:** Accepted. Partially supersedes [ADR 0015](0015-server-upgrade-anchor-vs-resolved-decoupling.md) (where the anchor is stored; the anchor still trails clean releases)
 **Date:** 2026-10-20
 
 **related-files**: `scripts/generate/spec-fingerprint.js`, `scripts/server-upgrade-tracker.js`, `scripts/roku-os-watch.js`, `scripts/catchup-state.js`, `.github/workflows/server-upgrade-tracker.yml`, `.github/workflows/roku-hardware-sync.yml`, `.claude/skills/server-upgrade/SKILL.md`, `docs/architecture/system-shape.md`

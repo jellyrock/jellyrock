@@ -2463,8 +2463,6 @@ convergence (audit-before-migrate). Old `decision-id` references resolve here:
 
 | former decision-id | now |
 |---|---|
-| `triage-opus-inline-investigation` | [ADR 0001](adr/0001-triage-opus-inline-investigation.md) |
-| `four-pillar-journal-reshape` | [ADR 0002](adr/0002-four-pillar-journal-reshape.md) |
 | `icons-material-rounded-house-style` | [ADR 0003](adr/0003-icons-material-rounded-house-style.md) |
 | `icons-outlined-by-default` | [ADR 0004](adr/0004-icons-outlined-by-default.md) |
 | `jrplaceholder-themed-composition` | [ADR 0005](adr/0005-jrplaceholder-themed-composition.md) |

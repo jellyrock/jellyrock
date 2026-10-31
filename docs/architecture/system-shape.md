@@ -44,8 +44,6 @@ The system is an engineering journal for one developer working with AI agents. I
 3. Skills for the daily work of capturing, closing and catching up.
 4. Hooks, pre-push checks and CI that close drift loops so nobody has to remember to.
 
-[ADR 0002](../adr/0002-four-pillar-journal-reshape.md) records its adoption from a sister project.
-
 ## The four pillars
 
 ### 1. Information architecture (Diátaxis-lite)
