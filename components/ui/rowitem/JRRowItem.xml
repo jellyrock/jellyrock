@@ -61,11 +61,11 @@
     <field id="width" type="float" value="0" onChange="onSizeChanged" />
     <field id="height" type="float" value="0" onChange="onSizeChanged" />
     <!--
-      shouldApplyEpisodeImageSetting: when true (default), respects the uiGeneralEpisodeImages user
-      setting when selecting the image for Episode items. Set to false for extras rows (season
-      episode lists, person TV shows) to always show the episode's own screenshot regardless
-      of the setting, which only makes sense for home rows (Continue Watching, Next Up).
+      usesHomeEpisodeArt: when true (default), this is a Home row: Episode items follow the
+      uiGeneralEpisodeImages user setting, and a portrait slot shows a parent poster instead.
+      Set to false for browse rows (season episode lists, person TV shows, search, favorites) to
+      always show the episode's own screenshot.
     -->
-    <field id="shouldApplyEpisodeImageSetting" type="boolean" value="true" />
+    <field id="usesHomeEpisodeArt" type="boolean" value="true" />
   </interface>
 </component>

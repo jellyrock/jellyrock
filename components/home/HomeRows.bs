@@ -523,19 +523,10 @@ sub insertLatestMediaSkeletons()
       ' Skip if this row already exists (for example, on refresh)
       if isValid(findRowBySectionId(sectionId)) then continue for
 
-      slotSize = rowSlotSize.WIDE
-      if isValidAndNotEmpty(lib.collectionType)
-        if LCase(lib.collectionType) = "movies"
-          slotSize = rowSlotSize.PORTRAIT
-        else if LCase(lib.collectionType) = "music"
-          slotSize = rowSlotSize.SQUARE
-        end if
-      end if
-
       row = CreateObject("roSGNode", "HomeRow")
       row.title = `${translate(translationKeys.LabelRecentlyAddedIn)} ${lib.name}`
       row.sectionId = sectionId
-      row.cursorSize = slotSize
+      row.cursorSize = latestRows.slotSizeFor(lib.collectionType)
 
       ' Add placeholder child
       row.appendChild(skeleton.createPlaceholder())
@@ -930,15 +921,7 @@ function getRowConfigForSection(sectionId as string) as object
     libId = sectionId.mid(7) ' strip "latest_" prefix
     for each lib in m.filteredLatest
       if lib.id = libId
-        slotSize = rowSlotSize.WIDE
-        if isValidAndNotEmpty(lib.collectionType)
-          if LCase(lib.collectionType) = "movies"
-            slotSize = rowSlotSize.PORTRAIT
-          else if LCase(lib.collectionType) = "music"
-            slotSize = rowSlotSize.SQUARE
-          end if
-        end if
-        return { title: `${translate(translationKeys.LabelRecentlyAddedIn)} ${lib.name}`, slotSize: slotSize }
+        return { title: `${translate(translationKeys.LabelRecentlyAddedIn)} ${lib.name}`, slotSize: latestRows.slotSizeFor(lib.collectionType) }
       end if
     end for
   end if

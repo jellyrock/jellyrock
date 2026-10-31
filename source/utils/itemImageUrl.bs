@@ -77,6 +77,38 @@ function getItemPosterUrl(item as object, size = imageSize.POSTER_LG as object) 
   return ""
 end function
 
+' Find the poster an item's parents offer, skipping its own image.
+' Use this when the item's own image is the wrong shape for the slot, as an episode's still is.
+' Fallback order: parent primary, then series primary
+' @param item - JellyfinBaseItem content node (typically an Episode)
+' @returns an AA with the poster's item id and image tag, or invalid if no parent poster is available
+function getItemParentPosterSource(item as object) as dynamic
+  if not isValid(item) then return invalid
+  if not isValidAndNotEmpty(item.id) then return invalid
+
+  ' 1. Parent's primary image (the server's choice: the season, on the servers checked)
+  if isValidAndNotEmpty(item.parentPrimaryImageTag) and isValidAndNotEmpty(item.parentPrimaryImageItemId)
+    return { id: item.parentPrimaryImageItemId, tag: item.parentPrimaryImageTag }
+  end if
+
+  ' 2. Series primary image
+  if isValidAndNotEmpty(item.seriesPrimaryImageTag) and isValidAndNotEmpty(item.seriesId)
+    return { id: item.seriesId, tag: item.seriesPrimaryImageTag }
+  end if
+
+  return invalid
+end function
+
+' Generate a poster (portrait) URL from the item's parents (see getItemParentPosterSource).
+' @param item - JellyfinBaseItem content node (typically an Episode)
+' @param size - Size constant from imageSize namespace (default: imageSize.POSTER_LG)
+' @returns Full image URL string, or "" if no parent poster is available
+function getItemParentPosterUrl(item as object, size = imageSize.POSTER_LG as object) as string
+  source = getItemParentPosterSource(item)
+  if not isValid(source) then return ""
+  return ImageURL(source.id, "Primary", { maxWidth: size.width, maxHeight: size.height, tag: source.tag })
+end function
+
 ' Generate a wide/landscape URL with fallback chain.
 ' Fallback order: item thumb, then item backdrop, then parent thumb, then parent backdrop
 ' @param item - JellyfinBaseItem content node

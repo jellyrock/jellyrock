@@ -107,12 +107,13 @@ These take a `JellyfinBaseItem` or `JellyfinUser` node, read the IDs and tags fr
 | Function | Takes | Tries, in order |
 | --- | --- | --- |
 | `getItemPosterUrl(item, size)` | `JellyfinBaseItem` | Item primary, parent primary, series primary |
+| `getItemParentPosterUrl(item, size)` | `JellyfinBaseItem` | Parent primary, series primary, skipping the item's own image |
 | `getItemWidePosterUrl(item, size)` | `JellyfinBaseItem` | Item thumb, item backdrop, parent thumb, parent backdrop |
 | `getItemBackdropUrl(item, size)` | `JellyfinBaseItem` | Item backdrop, parent backdrop |
 | `getItemParentWidePosterUrl(item, size)` | `JellyfinBaseItem` | Parent thumb, parent backdrop |
 | `getItemImageUrl(item, imageType, size)` | `JellyfinBaseItem` | Only the type you ask for, such as `"Logo"` |
 | `getProgramImageUrl(programItem, channelItem, size)` | Two `JellyfinBaseItem` nodes | The Live TV program's image, then its channel's |
-| `getRowItemImageUrl(item, slotWidth, posterHeight, userSettings, …)` | `JellyfinBaseItem` | Picks one of the above from the item type, the slot size and the user's settings |
+| `getRowItemImageUrl(item, slotWidth, posterHeight, userSettings, …)` | `JellyfinBaseItem` | Picks one of these from the item type, the slot size and the user's settings |
 | `GetUserAvatarURL(user, maxHeight, maxWidth)` | `JellyfinUser` | Primary only, with the tag check |
 
 ### When to use layer 3

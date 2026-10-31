@@ -1,3 +1,4 @@
+import "pkg:/source/enums/RowItemArt.bs"
 import "pkg:/source/utils/rowItemImage.bs"
 
 namespace tests
@@ -517,6 +518,154 @@ namespace tests
 
       m.assertTrue(url.inStr("tvtag") > -1)
       m.assertTrue(url.inStr("Primary") > -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getRowItemImageUrl() - episodes in a portrait slot")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses the parent poster ahead of the series poster and the episode image")
+    function _()
+      url = getRowItemImageUrl(m.portraitEpisode(true, true, true), 234, 351, invalid)
+
+      m.assertTrue(url.inStr("season1") > -1)
+      m.assertTrue(url.inStr("seasontag") > -1)
+    end function
+
+    @it("falls back to the series poster when there is no parent poster")
+    function _()
+      url = getRowItemImageUrl(m.portraitEpisode(false, true, true), 234, 351, invalid)
+
+      m.assertTrue(url.inStr("series1") > -1)
+      m.assertTrue(url.inStr("seriestag") > -1)
+    end function
+
+    @it("falls back to the episode image when there is no poster")
+    function _()
+      url = getRowItemImageUrl(m.portraitEpisode(false, false, true), 234, 351, invalid)
+
+      m.assertTrue(url.inStr("ep1") > -1)
+      m.assertTrue(url.inStr("eptag") > -1)
+    end function
+
+    @it("ignores the episode image setting")
+    @params("episode")
+    @params("show")
+    @params("webclient")
+    function _(setting)
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = setting
+
+      url = getRowItemImageUrl(m.portraitEpisode(true, true, true), 234, 351, userSettings, true)
+
+      m.assertTrue(url.inStr("seasontag") > -1)
+    end function
+
+    @it("keeps the episode's own image when the row bypasses the setting")
+    function _()
+      url = getRowItemImageUrl(m.portraitEpisode(true, true, true), 234, 351, invalid, false, false)
+
+      m.assertTrue(url.inStr("eptag") > -1)
+    end function
+
+    @it("still follows the episode image setting in a wide slot")
+    function _()
+      item = m.portraitEpisode(true, true, true)
+      item.parentThumbImageTag = "seriesthumb"
+      item.parentThumbItemId = "series1"
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = "show"
+
+      url = getRowItemImageUrl(item, 468, 264, userSettings)
+
+      m.assertTrue(url.inStr("seriesthumb") > -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getRowItemArt()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("labels a portrait episode with a parent or series poster")
+    function _()
+      m.assertEqual(getRowItemArt(m.portraitEpisode(true, false, true), 234, 351), RowItemArt.PARENT_POSTER)
+      m.assertEqual(getRowItemArt(m.portraitEpisode(false, true, true), 234, 351), RowItemArt.PARENT_POSTER)
+    end function
+
+    @it("labels a portrait episode with no poster as fitted")
+    function _()
+      m.assertEqual(getRowItemArt(m.portraitEpisode(false, false, true), 234, 351), RowItemArt.FITTED_OWN_IMAGE)
+    end function
+
+    @it("is standard when the row isn't a Home row")
+    function _()
+      m.assertEqual(getRowItemArt(m.portraitEpisode(true, true, true), 234, 351, false), RowItemArt.STANDARD)
+      m.assertEqual(getRowItemArt(m.portraitEpisode(false, false, true), 234, 351, false), RowItemArt.STANDARD)
+    end function
+
+    @it("is standard in a wide or square slot")
+    @params(468, 264)
+    @params(234, 234)
+    function _(slotWidth, posterHeight)
+      m.assertEqual(getRowItemArt(m.portraitEpisode(true, true, true), slotWidth, posterHeight), RowItemArt.STANDARD)
+    end function
+
+    @it("is standard for another type")
+    function _()
+      item = m.portraitEpisode(false, false, true)
+      item.type = "Movie"
+      m.assertEqual(getRowItemArt(item, 234, 351), RowItemArt.STANDARD)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shouldBlurRowItem()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("blurs an unwatched episode's own image")
+    function _()
+      m.assertTrue(shouldBlurRowItem("Episode", false, RowItemArt.STANDARD))
+      m.assertTrue(shouldBlurRowItem("Episode", false, RowItemArt.FITTED_OWN_IMAGE))
+    end function
+
+    @it("doesn't blur a poster, a watched episode or another type")
+    function _()
+      m.assertFalse(shouldBlurRowItem("Episode", false, RowItemArt.PARENT_POSTER))
+      m.assertFalse(shouldBlurRowItem("Episode", true, RowItemArt.STANDARD))
+      m.assertFalse(shouldBlurRowItem("Movie", false, RowItemArt.STANDARD))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isRowItemFitted()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("fits a channel logo, album art, a chapter and an episode's own image in a portrait slot")
+    function _()
+      m.assertTrue(isRowItemFitted("TvChannel", RowItemArt.STANDARD))
+      m.assertTrue(isRowItemFitted("Audio", RowItemArt.STANDARD))
+      m.assertTrue(isRowItemFitted("Chapter", RowItemArt.STANDARD))
+      m.assertTrue(isRowItemFitted("Episode", RowItemArt.FITTED_OWN_IMAGE))
+    end function
+
+    @it("fills the slot with everything else")
+    function _()
+      m.assertFalse(isRowItemFitted("Movie", RowItemArt.STANDARD))
+      m.assertFalse(isRowItemFitted("Episode", RowItemArt.STANDARD))
+      m.assertFalse(isRowItemFitted("Episode", RowItemArt.PARENT_POSTER))
+    end function
+
+    private function portraitEpisode(hasParent as boolean, hasSeries as boolean, hasOwn as boolean) as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.type = "Episode"
+      if hasOwn then item.primaryImageTag = "eptag"
+      if hasParent
+        item.parentPrimaryImageTag = "seasontag"
+        item.parentPrimaryImageItemId = "season1"
+      end if
+      if hasSeries
+        item.seriesPrimaryImageTag = "seriestag"
+        item.seriesId = "series1"
+      end if
+      return item
     end function
 
   end class

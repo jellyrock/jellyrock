@@ -1,3 +1,4 @@
+import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/utils/misc.bs"
 
@@ -9,6 +10,19 @@ import "pkg:/source/utils/misc.bs"
 ' them without a callFunc seam on the XML. Extracting the judgment instead keeps the seam off
 ' the component and the rules under test. Same move as source/remotecontrol/remoteCommand.bs.
 namespace latestRows
+
+  ' The poster slot of a library's Recently Added row.
+  '
+  ' @param collectionType - the library's collection type, invalid or empty for a mixed library
+  ' @return one of the rowSlotSize shapes
+  function slotSizeFor(collectionType as dynamic) as object
+    if not isValidAndNotEmpty(collectionType) then return rowSlotSize.WIDE
+
+    libraryType = LCase(collectionType)
+    if libraryType = "movies" or libraryType = "tvshows" then return rowSlotSize.PORTRAIT
+    if libraryType = "music" then return rowSlotSize.SQUARE
+    return rowSlotSize.WIDE
+  end function
 
   ' The raw items one latest-media response lets the row show, or invalid when the row must be
   ' treated as "failed".

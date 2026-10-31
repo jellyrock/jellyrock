@@ -1,4 +1,5 @@
 import "pkg:/source/api/image.bs"
+import "pkg:/source/enums/RowItemArt.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 
@@ -14,13 +15,13 @@ import "pkg:/source/utils/misc.bs"
 ' @param userSettings - m.global.user.settings node (may be invalid)
 ' @param useEpisodeImages - pre-computed from m.global.user.config.useEpisodeImagesInNextUpAndResume;
 '                           only relevant when uiGeneralEpisodeImages = "webclient"
-' @param shouldApplyEpisodeImageSetting - when false, skip the uiGeneralEpisodeImages user setting entirely
-'                                   and use the default episode image order (own Primary, then wide
-'                                   art, then the portrait poster). Use false for
-'                                   extras rows (season episode lists, person TV shows) where the
-'                                   setting is only meaningful for home rows (Continue Watching, Next Up).
+' @param usesHomeEpisodeArt - whether this is a Home row, where the uiGeneralEpisodeImages user setting
+'                             and the portrait poster rule apply. When false, use the default episode
+'                             image order (own Primary, then wide art, then the portrait poster). Use
+'                             false for browse rows (season episode lists, person TV shows, search,
+'                             favorites).
 ' @returns Image URL string, or "" if no image is available
-function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight as integer, userSettings as object, useEpisodeImages = false as boolean, shouldApplyEpisodeImageSetting = true as boolean) as string
+function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight as integer, userSettings as object, useEpisodeImages = false as boolean, usesHomeEpisodeArt = true as boolean) as string
   if not isValid(item) then return ""
   if not isValidAndNotEmpty(item.id) then return ""
 
@@ -51,11 +52,15 @@ function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight a
     return getItemImageUrl(item, "Backdrop", size)
   end if
 
-  ' Episodes: only "show" (and "webclient" with episode images off) use series art.
-  ' Everything else, including the bypass (shouldApplyEpisodeImageSetting = false, used by
-  ' extras rows) and an empty or unknown setting, shares one image order below.
+  ' Episodes: a Home portrait slot shows a parent poster, because a wide image would be cropped.
+  ' In any other Home slot, only "show" (and "webclient" with episode images off) use series art.
+  ' Everything else, including browse rows and an empty or unknown setting, shares one image
+  ' order below.
   if item.type = "Episode"
-    if shouldApplyEpisodeImageSetting and isValid(userSettings)
+    art = getRowItemArt(item, slotWidth, posterHeight, usesHomeEpisodeArt)
+    if art = RowItemArt.PARENT_POSTER
+      return getItemParentPosterUrl(item, size)
+    else if art = RowItemArt.STANDARD and usesHomeEpisodeArt and isValid(userSettings)
       episodeImageSetting = userSettings.uiGeneralEpisodeImages
       if episodeImageSetting = "show"
         return getItemParentWidePosterUrl(item, size)
@@ -114,4 +119,32 @@ function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight a
   end if
 
   return getItemPosterUrl(item, size)
+end function
+
+' What the cell shows for this item: the one answer its image, blur and fit all follow.
+' Reads image tags only and builds no URL, because a cell asks on every render.
+'
+' @param item - JellyfinBaseItem content node
+' @param slotWidth - width of the image area in pixels
+' @param posterHeight - height of the image area in pixels
+' @param usesHomeEpisodeArt - see getRowItemImageUrl
+' @returns a RowItemArt value
+function getRowItemArt(item as object, slotWidth as integer, posterHeight as integer, usesHomeEpisodeArt = true as boolean) as string
+  if item.type <> "Episode" or not usesHomeEpisodeArt or posterHeight <= slotWidth then return RowItemArt.STANDARD
+  if isValid(getItemParentPosterSource(item)) then return RowItemArt.PARENT_POSTER
+  return RowItemArt.FITTED_OWN_IMAGE
+end function
+
+' Whether an item's image gets the unwatched blur, once the user has turned it on. The blur
+' hides spoilers, and a poster shows none.
+function shouldBlurRowItem(itemType as string, isWatched as boolean, art as string) as boolean
+  return itemType = "Episode" and not isWatched and art <> RowItemArt.PARENT_POSTER
+end function
+
+' Whether an item's image is fitted rather than cropped to the slot.
+' TvChannel logos may be any aspect ratio. Audio album art is square, which a portrait slot would
+' crop (for example, a mixed-content Playlist row). An episode's own image in a portrait slot is
+' wide, for the same reason. All other types fill the slot, since their images match its shape.
+function isRowItemFitted(itemType as string, art as string) as boolean
+  return itemType = "TvChannel" or itemType = "Audio" or itemType = "Chapter" or art = RowItemArt.FITTED_OWN_IMAGE
 end function

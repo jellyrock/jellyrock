@@ -768,6 +768,8 @@ Not checked: which server version the demo ran at 01:33; whether this case passe
 
 Why not now: found mid-way through blocking-spinners phase C; it needs its own device session.
 
+Measured again 2026-10-31 on unmodified `main` on a Stick 4K: the case failed 4 of 6 runs, with the song ending 1 to 2 s after the seek, so it still fails on and off rather than every time. Which server version those runs used was not recorded.
+
 #### The OSD gear offers no quality rows for Live TV until a channel reload is shown to release its stream once `[fid: live-tv-gear-quality-rows]` `[captured 2026-10-23]`
 
 The playback-settings gear on the OSD has no rows for a Live TV channel, so `setButtonStates()` drops it there (`playbackSettingsMenu.rows()` returns nothing for a `TvChannel`). A quality pick reloads the stream through `VideoPlayerView.reloadAtCurrentPosition()`, and on a channel that reload opens a new live stream. Nobody has checked that this path keeps exactly one release per stream (`releaseVideoLoad()`, `source/utils/liveStreamHandoff.bs`): a second release can end another viewer's shared stream, and a missing one leaves a tuner open. An audio-track change on a transcoded channel already takes the same path, so start there.
@@ -849,6 +851,8 @@ Not checked: how the toast looks on a device; whether jellyfin-web words this ca
 #### Recently Added in a library with no collection type follows the episode image setting `[fid: recently-added-follows-episode-image-setting]` `[captured 2026-10-31]`
 
 `HomeRows` uses `JRRowItem`, so an episode in a Recently Added row for a library with no collection type follows the **Episode Images Next Up** setting. The setting's text names only Next Up and Continue Watching, so what it covers and what it says differ. Surfaced while fixing the Favorites cell in #1290.
+
+TV libraries no longer have this gap: their Recently Added rows use a portrait slot, where an episode shows a parent poster and ignores the setting (decision `portrait-episode-shows-parent-poster`). A library with no collection type keeps the wide slot, so decide whether it should follow TV libraries too.
 
 Not fixed there because telling each cell its row adds work per cell in Home's hot path, and rewording is a separate product choice. Closes when the row stops following the setting, or the setting's text names it.
 
