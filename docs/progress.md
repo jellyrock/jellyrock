@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-10-31: update(home): Show vertical posters in TV Recently Added rows
 - 2026-10-31: fix(home): Show episode images in Favorites tab
 - 2026-10-31: fix: Correct the canceled-recording toast
 - 2026-10-30: fix(playback): Turn subtitles off when None is picked
