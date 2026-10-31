@@ -176,12 +176,10 @@ sub init()
 
   ' Video notifications (Next Episode + Media Segments)
   m.nextEpisodeNotification = m.top.findNode("nextEpisodeNotification")
-  m.nextEpisodeNotification.notificationType = "nextEpisode"
   m.nextEpisodeNotification.observeField("action", "onNextEpisodeNotificationAction")
   m.nextupbuttonseconds = userSettings.playbackNextUpButtonSeconds
 
   m.segmentNotification = m.top.findNode("segmentNotification")
-  m.segmentNotification.notificationType = "segment"
   m.segmentNotification.observeField("action", "onSegmentNotificationAction")
   m.segmentNotification.observeField("state", "onNotificationStateChanged")
   m.nextEpisodeNotification.observeField("state", "onNotificationStateChanged")
@@ -1312,7 +1310,6 @@ sub onVideoContentLoaded(event as object)
   ' Configure trickplay carousel if metadata is available
   if isValidAndNotEmpty(videoContent[0].content.trickplayMetadata)
     m.trickplayCarousel.trickplayConfig = videoContent[0].content.trickplayMetadata
-    m.trickplayCarousel.videoDuration = m.top.duration
   else
     m.trickplayCarousel.isVisible = false
   end if

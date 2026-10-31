@@ -136,8 +136,6 @@ sub layoutTrigger()
 
   ' Menu drops down right below the trigger
   m.menuContainer.translation = [0, totalHeight + 4]
-
-  m.top.triggerHeight = totalHeight
 end sub
 
 sub onSlotWidthChanged()

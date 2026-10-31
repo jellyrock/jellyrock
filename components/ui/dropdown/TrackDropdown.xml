@@ -76,8 +76,6 @@
          dimmer when ANY dropdown opens. alwaysNotify so consecutive same-value
          writes still fire (defensive; current code only writes on transitions). -->
     <field id="menuOpen" type="boolean" value="false" alwaysNotify="true" />
-    <!-- Published so parent can read layout height without measuring Group boundingRect -->
-    <field id="triggerHeight" type="integer" value="0" />
 
     <!-- Functions -->
     <function name="onDestroy" />
