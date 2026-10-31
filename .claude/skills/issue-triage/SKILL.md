@@ -30,7 +30,7 @@ allowed-tools: Bash(bash .claude/skills/pr/forge.sh issue view:*), Bash(bash .cl
 
 ## Contract
 
-**Goal.** Take one GitHub issue from filed to acted on in one session: a fix built, a decision put to the user, a reply asking the reporter for what is missing, or a recommendation to close. It checks before it fixes, stopping at the first check that settles it: is the issue still true (everything it names still exists), is it expected behavior, is it already fixed, is it reproducible. Then it reproduces it, names the root cause and follows `/snag`'s method: a decision screen, the user's pick, the fix built test-first and committed, never pushed. It runs on Opus because classification, validation and root cause are judgment over real code.
+**Goal.** Take one GitHub issue from filed to acted on in one session: a fix built, a decision put to the user, a reply asking the reporter for what is missing, or a recommendation to close. It checks before it fixes, stopping at the first check that settles it: is the issue still true (everything it names still exists), is it expected behavior, is it already fixed, is it reproducible. Then it reproduces it, names the root cause and follows `/snag`'s method: a decision screen, the user's pick, the fix built test-first and committed, never pushed.
 
 **Inputs.** The arguments are an issue number; with none, ask for it. The skill reads the issue and its comments, the repo's issue forms, its issues and merged pull requests (duplicates, earlier fixes), the code and history the issue points at, and this skill's `## This repo` (the area map, the docs that say what is expected behavior, how to reproduce here).
 
