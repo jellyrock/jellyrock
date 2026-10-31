@@ -953,40 +953,58 @@ describe('docs-check: feature pages', () => {
   describe('values YAML would misread', () => {
     const pitchOf = (value) => run(good.replace(/^pitch: .*/m, `pitch: ${value}`));
 
-    it('FAILs a pitch with a colon and a space, which YAML reads as a nested mapping', () => {
+    it('FAILs a value YAML cannot parse, and says why', () => {
       const { messages } = pitchOf('Give JellyRock your own look: pick a color theme.');
-      expect(messages).toMatch(/pitch: contains ": ", which YAML reads as a nested mapping/);
+      expect(messages).toMatch(/pitch: YAML can't read it \(Nested mappings are not allowed/);
     });
 
-    it('FAILs a value that ends in a colon', () => {
-      expect(pitchOf('Pick a theme:').messages).toMatch(/pitch: ends with ":"/);
-    });
-
-    it('FAILs a value that starts with a YAML indicator character', () => {
-      for (const start of ['- one', '[one]', '"one"', '*one', '%one', '`one`']) {
-        expect(pitchOf(start).messages).toMatch(/pitch: starts with ".", which YAML reads/);
+    it('FAILs every value that does not read back unchanged', () => {
+      // A hand-kept list of YAML's rules missed the second line of values.
+      for (const value of [
+        'Pick a theme:',
+        '#1 choice',
+        '# hash',
+        'foo\t#bar',
+        ',comma first',
+        ']close',
+        '}close',
+        '.inf',
+        '.nan',
+        '0x1F',
+        '0o17',
+        '- one',
+        '[one]',
+        '"one"',
+        '*one',
+        '%one',
+        '`one`',
+        '! bang first',
+        'Skip intros #1 and more',
+        'true',
+        'null',
+        '~',
+        '10.10',
+        '5',
+      ]) {
+        expect(pitchOf(value).found.filter((e) => e.target === 'pitch').length, value).toBe(1);
       }
     });
 
-    it('FAILs a value with " #", which YAML reads as a comment', () => {
+    it('says what YAML read instead', () => {
       expect(pitchOf('Skip intros #1 and more').messages).toMatch(
-        /pitch: contains " #", which YAML reads as a comment/,
+        /pitch: YAML reads it as "Skip intros"; reword it/,
       );
-    });
-
-    it('FAILs a value that starts with "!", which YAML reads as a tag', () => {
-      expect(pitchOf('! bang first').messages).toMatch(/pitch: starts with "!", which YAML reads/);
-    });
-
-    it('FAILs a value YAML reads as a number, boolean or null', () => {
-      for (const value of ['true', 'false', 'null', '~', '10.10', '1.0', '5']) {
-        expect(pitchOf(value).messages).toMatch(/pitch: .* YAML reads as/);
-      }
+      expect(pitchOf('#1 choice').messages).toMatch(/pitch: YAML reads it as null; reword it/);
     });
 
     it('names the offending field in a list value', () => {
       const { found } = run(good.replace('screenshots: osd, home', 'screenshots: osd: x, home'));
       expect(found.some((e) => e.target === 'screenshots' && /YAML/.test(e.message))).toBe(true);
+    });
+
+    it('FAILs a repeated key, which only the whole page shows', () => {
+      const { messages } = run(`${good}\nserver: 10.11.0`);
+      expect(messages).toMatch(/YAML can't read the frontmatter \(Map keys must be unique/);
     });
 
     it('passes values YAML reads back unchanged', () => {
@@ -998,10 +1016,17 @@ describe('docs-check: feature pages', () => {
         'Cast, then pause, seek and skip.',
         '3.3.0',
         'yes',
+        '-one',
         'Watch together. Join a group',
       ]) {
-        expect(pitchOf(value).found).toEqual([]);
+        expect(pitchOf(value).found, value).toEqual([]);
       }
+    });
+
+    it('checks a list as written, however it is spaced', () => {
+      expect(run(good.replace('screenshots: osd, home', 'screenshots: osd,home')).found).toEqual(
+        [],
+      );
     });
 
     it('still accepts a numeric `highlight:`', () => {

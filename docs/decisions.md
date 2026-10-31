@@ -2454,7 +2454,7 @@ Ruled out: a toast-only path, which leaves a halted member with no way back shor
 
 Each feature users can see has one page in `docs/user/features/`, and its frontmatter (`pitch`, `since`, `server`, `plugins`, `screenshots`) is the one place its facts are written. `npm run docs:features` derives the features list in the README, the docs site's `/features/` index and `docs/feature-catalog.json` for the marketing site, and `npm run lint:docs` checks every field against the app. Feature pages are user docs, so they sit under `docs/user/`, which the docs site already builds recursively.
 
-Ruled out: a separate root folder for features, which would need three pipeline changes on the docs site and split a user's docs in two; the marketing site keeping its own card list, which drifted (it said 99 languages; the app has 98); nested YAML frontmatter, which would need a YAML library in `docs-check.cjs`, a script that runs without `npm ci`.
+Ruled out: a separate root folder for features, which would need three pipeline changes on the docs site and split a user's docs in two; the marketing site keeping its own card list, which drifted (it said 99 languages; the app has 98); nested YAML frontmatter, which adds nothing: flat `key: value` lines hold every fact, and the generator reads them with no YAML library. `docs-check.cjs` loads the `yaml` package only to check that each value reads back unchanged, as the docs site's parser would read it.
 
 ## Migrated to ADRs
 

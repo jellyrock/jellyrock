@@ -892,30 +892,37 @@ function checkReadmeCounts() {
 const PITCH_LIMIT = 120;
 const VERSION_RE = /^\d+\.\d+\.\d+$/;
 
-// Why a frontmatter value would not read back as the same string through YAML,
-// or null when it does. The docs site parses the same frontmatter with real
-// YAML, but this check stays a flat, stdlib-only read (see the decision
-// `feature-pages-are-the-source`), so it rejects the shapes YAML misreads.
-const YAML_NUMBER_RE = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
-const YAML_NON_STRING = new Set(['true', 'false', 'null', '~']);
-function yamlMisreading(value, allowNumber) {
-  if (value.includes(': ')) return `contains ": ", which YAML reads as a nested mapping`;
-  if (value.endsWith(':')) return `ends with ":", which YAML reads as a mapping key`;
-  if (value.includes(' #')) return `contains " #", which YAML reads as a comment`;
-  const first = value[0];
-  if ('-?*&|>[{"\'%@`'.includes(first)) {
-    return `starts with "${first}", which YAML reads as syntax, not text`;
+// Why a frontmatter value would not read back unchanged through YAML, or null
+// when it does. The docs site parses these pages with real YAML while the
+// generator reads flat `key: value` lines, so the two must agree on every value.
+// `highlight` is the one number; every other value must stay a string.
+function yamlMisreading(YAML, key, raw) {
+  let read;
+  try {
+    read = YAML.parse(`${key}: ${raw}`, { logLevel: 'error' })[key];
+  } catch (err) {
+    return `YAML can't read it (${err.message.split('\n')[0]})`;
   }
-  if (first === '!') return `starts with "!", which YAML reads as a tag`;
-  if (!allowNumber && (YAML_NON_STRING.has(value.toLowerCase()) || YAML_NUMBER_RE.test(value))) {
-    return `is "${value}", which YAML reads as a number, boolean or null, not text`;
-  }
-  return null;
+  if (key === 'highlight' ? String(read) === raw : read === raw) return null;
+  return `YAML reads it as ${typeof read === 'string' ? JSON.stringify(read) : String(read)}`;
 }
 
 function checkFeaturePages() {
   const names = featurePageFiles(ROOT_DIR);
   if (names.length === 0) return; // silent when absent
+  // Loaded here so a bare clone still gets the rest of the checks and a clear reason.
+  let YAML;
+  try {
+    YAML = require('yaml');
+  } catch {
+    pushError({
+      category: 'feature-frontmatter',
+      file: FEATURES_DIR,
+      message: 'checking feature pages needs the yaml package: run npm ci',
+      target: 'yaml',
+    });
+    return;
+  }
   const version = appVersion(ROOT_DIR);
   const floor = readServerFloor(ROOT_DIR);
   const plugins = listedPlugins(ROOT_DIR);
@@ -925,7 +932,8 @@ function checkFeaturePages() {
     const file = path.join(FEATURES_DIR, name);
     const fail = (message, target) =>
       pushError({ category: 'feature-frontmatter', file, message, target });
-    const { fields, problems } = parseFeaturePage(fs.readFileSync(file, 'utf8'));
+    const content = fs.readFileSync(file, 'utf8');
+    const { fields, raw, problems } = parseFeaturePage(content);
     if (fields === null) {
       fail('has no frontmatter: a feature page needs pitch, since and server', 'frontmatter');
       continue;
@@ -934,11 +942,20 @@ function checkFeaturePages() {
     for (const [key, { required }] of Object.entries(FEATURE_FIELDS)) {
       if (required && !(key in fields)) fail(`missing \`${key}:\``, key);
     }
-    for (const [key, value] of Object.entries(fields)) {
-      const raw = Array.isArray(value) ? value.join(', ') : value;
-      const why = yamlMisreading(raw, key === 'highlight');
-      if (why)
-        fail(`${key}: ${why}; reword it (no quotes: the frontmatter is flat key: value)`, key);
+    const misread = Object.entries(raw)
+      .map(([key, value]) => [key, yamlMisreading(YAML, key, value)])
+      .filter(([, why]) => why);
+    for (const [key, why] of misread) {
+      fail(`${key}: ${why}; reword it (no quotes: the frontmatter is flat key: value)`, key);
+    }
+    // Each value reads back alone, so only the whole page can show what lines
+    // do to each other, such as a repeated key.
+    if (misread.length === 0 && problems.length === 0) {
+      try {
+        YAML.parse(readFrontmatter(content), { logLevel: 'error' });
+      } catch (err) {
+        fail(`YAML can't read the frontmatter (${err.message.split('\n')[0]})`, 'frontmatter');
+      }
     }
     const { pitch, since, server } = fields;
     if (pitch && Array.from(pitch).length > PITCH_LIMIT) {

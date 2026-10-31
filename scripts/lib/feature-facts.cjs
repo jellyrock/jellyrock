@@ -2,8 +2,8 @@
 // that guards them (scripts/lint/docs-check.cjs) and the generator that
 // publishes them (scripts/generate/feature-catalog.cjs).
 //
-// Stdlib only, like scripts/lib/frontmatter.cjs: docs-check.cjs runs without
-// `npm ci`.
+// Stdlib only, like scripts/lib/frontmatter.cjs. Reading a value as real YAML is
+// the check's job, not this file's: see yamlMisreading() in docs-check.cjs.
 
 'use strict';
 
@@ -99,8 +99,9 @@ function parseFeaturePage(content) {
   const body = fm === null ? content : content.slice(content.indexOf('\n---', 3) + 4);
   const h1 = body.match(/^#\s+(.+)$/m);
   const title = h1 ? h1[1].trim() : null;
-  if (fm === null) return { title, fields: null, problems: [] };
+  if (fm === null) return { title, fields: null, raw: null, problems: [] };
   const fields = {};
+  const raw = {}; // each value as written, a list still one string
   const problems = [];
   for (const line of fm.split(/\r?\n/)) {
     const match = line.match(/^([a-z]+): (.+)$/);
@@ -112,6 +113,7 @@ function parseFeaturePage(content) {
       );
     } else {
       const value = match[2].trim();
+      raw[match[1]] = value;
       fields[match[1]] = FEATURE_FIELDS[match[1]].list
         ? value
             .split(',')
@@ -120,7 +122,7 @@ function parseFeaturePage(content) {
         : value;
     }
   }
-  return { title, fields, problems };
+  return { title, fields, raw, problems };
 }
 
 module.exports = {
