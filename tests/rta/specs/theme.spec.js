@@ -33,6 +33,7 @@ import {
   waitFocused,
   waitFocusInside,
   waitFor,
+  walkOverhangRowTo,
 } from '../lib/steps.js';
 
 // The menu labels this file walks by are English.
@@ -52,8 +53,6 @@ const THEME_KEYS = ['uiTheme', ...Object.keys(COLOR_KEYS)];
 
 /** A color no preset in settings.json uses, so a preset and a custom value can never agree by chance. */
 const CUSTOM_PRIMARY = '123ABC';
-
-const atSearchIcon = (f) => f?.node?.id === 'searchIcon';
 
 /** The uiTheme options from settings.json, the same file the app reads its presets from. */
 function readThemeOptions() {
@@ -278,8 +277,9 @@ it('a preset picked in Settings applies at once when search opens over Settings,
   await waitMenuHas('User Interface', 'back at the top menu');
   await waitFocusInside('#settingsMenu', { label: 'the top menu' });
 
-  // Up from the menu's first entry enters the overhang, whose first icon is search. Settings'
-  // own exit never runs from here: search opens over it.
+  // Up from the menu's first entry enters the overhang, on its first icon: SyncPlay for an
+  // account that may use it, search otherwise. Settings' own exit never runs from here: search
+  // opens over it.
   await scrollFocus({
     keyPath: '#settingsMenu.itemFocused',
     target: 0,
@@ -291,7 +291,13 @@ it('a preset picked in Settings applies at once when search opens over Settings,
     label: 'the first menu entry',
   });
   await press(ecp.Key.Up);
-  await waitFocused(atSearchIcon, { timeout: 8000, interval: 250, label: 'the row from Settings' });
+  // Wait for any overhang icon before walking, so no Right can reach the Settings menu if Up is slow.
+  await waitFocused((f) => f?.node?.subtype === 'JROverhangIcon', {
+    timeout: 8000,
+    interval: 250,
+    label: 'the row from Settings',
+  });
+  await walkOverhangRowTo('searchIcon', { label: 'the search icon from Settings' });
   await press(ecp.Key.Ok);
   await waitFor('subtype()', (v) => v === 'SearchScreen', {
     read: getActiveVal,
