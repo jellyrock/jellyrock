@@ -7,11 +7,9 @@
     "field components/data/jellyfin/DeviceInfo.xml DeviceInfo.maxVideoHeight",
     "field components/data/jellyfin/DeviceInfo.xml DeviceInfo.maxVideoWidth",
     "field components/data/jellyfin/DeviceInfo.xml DeviceInfo.videoCodecs",
-    "field components/data/jellyfin/JellyfinBaseItem.xml JellyfinBaseItem.lyricsData",
     "function components/data/UserData.bs removeFromRegistry",
     "function source/showScenes.bs SendPerformanceBeacon",
     "function source/utils/displaySettings.bs deleteLibraryDisplaySettings",
-    "function source/utils/itemImageUrl.bs getProgramImageUrl",
-    "method source/data/JellyfinDataTransformer.bs JellyfinDataTransformer.populateLyrics"
+    "function source/utils/itemImageUrl.bs getProgramImageUrl"
   ]
 }

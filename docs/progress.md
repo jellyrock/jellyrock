@@ -583,29 +583,6 @@ A live `PlaybackInfo` now waits up to `timeouts.LIVE_OPEN_MS` (120 s) and keeps 
 
 **Fix shape:** probe on device which writes or events reach the observer (log `m.global.activeRoutedView` and the caller per fire), then record the cause in `docs/architecture/navigation.md` beside the measured count, and fix it if it is a real excess.
 
-#### Eight `DeviceInfo` fields are never read; `videoRefresh` and `videoBitDepth` are missing from #1072 `[fid: deviceinfo-unread-fields]` `[captured 2026-10-10]`
-
-`components/data/jellyfin/DeviceInfo.xml` declares eight fields that nothing in the app reads through `m.global.device`:
-
-- `canPlay4K`, `maxVideoHeight`, `maxVideoWidth`, `videoCodecs`, `audioCodecs` and `memoryTotal` are never written or read. Only `transformDeviceInfo` filled them, and #1103 removed it. They are already in `.dead-code-baseline.json` and in epic #1072's `DeviceInfo` Investigate item (which device fields to cache at startup and which to read live).
-- `videoRefresh` and `videoBitDepth` are written by `SaveDeviceToGlobal()` in `source/utils/globals.bs` and never read. They are in neither the baseline nor #1072.
-
-Only `ContentNodes.spec.bs` (field-assignment tests) and the mock device JSON files under `tests/source/mocks/devices/` use them. `docs/architecture/playback.md` claims Direct Play checks `m.global.device.videoBitDepth`. That is wrong, and the Phase D rewrite of that doc fixes it.
-
-Found 2026-10-10 while rewriting `global-state.md` (2dbe60d3), by `git grep` over every `.bs`, `.brs` and `.xml` file.
-
-Options weighed:
-
-- `track` (recommended): add `videoRefresh` and `videoBitDepth` to #1072's `DeviceInfo` item as a comment, drafted and approved before posting, so the epic's one decision covers all eight fields.
-- `followup`: keep the finding here only.
-- `remove`: delete the two writes and their fields now. Rejected for now: it settles #1072's open startup-or-live question by hand, and Direct Play may want 10-bit detection.
-
-Not filed now because the comment is a public post that needs the operator's approval, and nothing breaks meanwhile.
-
-Not checked: why the dead-code plugin doesn't flag the two written-but-unread fields. I assume it counts a write as a use, but I haven't read the plugin.
-
-Closes when #1072's `DeviceInfo` item names all eight fields, or they are removed.
-
 #### A server-allowed live channel in a non-manifest container (mp4, mkv, ism) still buffers when the TV cannot reach its URL `[fid: live-non-manifest-unreachable-url-buffers]` `[captured 2026-10-12]`
 
 The device check before an upstream direct play (`LoadVideoContentTask.upstreamManifestAnswers()`) runs only for HLS and DASH manifests: `getUpstreamManifestBlocker()` returns `NOT_MANIFEST` for anything else and the server's answer stands. The device profile still allows direct play of `mp4`, `mkv` and `ism` (`supportedContainers` in `GetDirectPlayProfiles`), so a live channel in one of those containers over HTTP that the TV cannot reach is still handed to the Video node, which buffers instead of failing, and the transcode retry does not run in time. MPEG-TS is unaffected: it is left out of the direct-play profiles, so the server always remuxes it.
