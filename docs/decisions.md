@@ -2456,6 +2456,16 @@ Each feature users can see has one page in `docs/user/features/`, and its frontm
 
 Ruled out: a separate root folder for features, which would need three pipeline changes on the docs site and split a user's docs in two; the marketing site keeping its own card list, which drifted (it said 99 languages; the app has 98); nested YAML frontmatter, which adds nothing: flat `key: value` lines hold every fact, and the generator reads them with no YAML library. `docs-check.cjs` loads the `yaml` package only to check that each value reads back unchanged, as the docs site's parser would read it.
 
+## decision-id: portrait-episode-shows-parent-poster
+
+**date**: 2026-10-31
+**status**: accepted
+**related-files**: `source/utils/rowItemImage.bs`, `source/home/latestRows.bs`, `components/ui/rowitem/JRRowItem.bs`
+
+An episode in a portrait slot shows a parent poster (the server's parent image, then the series poster) and ignores the **Episode Images Next Up** setting, because a wide image would be cropped. The spoiler blur is skipped on these posters, since a poster shows no spoilers. An episode with no parent poster shows its own image, fitted rather than cropped. Rows that bypass the setting (`shouldApplyEpisodeImageSetting = false`, the extras rows) keep the episode's own image, so playlist and box set rows don't change.
+
+Only Recently Added in TV libraries goes portrait; Next Up and Continue Watching stay wide. Ruled out: putting the series poster first, which would hide a season's own poster.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
