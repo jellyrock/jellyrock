@@ -213,6 +213,25 @@ namespace tests
       m.assertTrue(url.inStr("Thumb") > -1)
     end function
 
+    @it("shows the episode's own Primary image when the setting is bypassed, even on 'show'")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.type = "Episode"
+      item.primaryImageTag = "episodeprimary"
+      item.parentThumbImageTag = "seriesthumb"
+      item.parentThumbItemId = "series1"
+
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = "show"
+
+      url = getRowItemImageUrl(item, 468, 258, userSettings, false, false)
+
+      m.assertTrue(url.inStr("ep1") > -1, "should use the episode's own ID")
+      m.assertTrue(url.inStr("episodeprimary") > -1, "should use the episode primary tag")
+      m.assertFalse(url.inStr("seriesthumb") > -1, "must NOT use series art")
+    end function
+
     @it("falls back to wide poster when no settings provided for episode")
     function _()
       item = CreateObject("roSGNode", "JellyfinBaseItem")

@@ -1,0 +1,22 @@
+namespace tests
+
+  ' Favorites lists episodes beside movies and series. The "Episode Images Next Up" setting
+  ' covers only Next Up and Continue Watching, so the cells here must be the browse variant,
+  ' which skips that setting (see BrowseRowItem and getRowItemImageUrl()).
+  @suite("FavoritesRows - row cell component")
+  class FavoritesRowsCellTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("itemComponentName")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("renders its cells with BrowseRowItem so the episode image setting does not apply")
+    function _()
+      favoritesRows = CreateObject("roSGNode", "FavoritesRows")
+
+      m.assertEqual(favoritesRows.itemComponentName, "BrowseRowItem")
+    end function
+
+  end class
+
+end namespace
