@@ -190,7 +190,10 @@ function stampRelease(version, ref) {
   }
 }
 
-if (RELEASE !== undefined || RELEASE_REF !== undefined) stampRelease(RELEASE, RELEASE_REF);
+if (RELEASE !== undefined || RELEASE_REF !== undefined) {
+  if (CHECK_MODE) fail('--check writes nothing and --release writes pages: use one of them');
+  stampRelease(RELEASE, RELEASE_REF);
+}
 
 const features = readFeatures();
 const readmePath = path.join(ROOT_DIR, README_REL);

@@ -201,6 +201,22 @@ describe('feature-catalog', () => {
     );
   });
 
+  it('refuses --check with --release, and writes nothing', () => {
+    dir = setupTree();
+    const before = read(dir, 'docs/user/features/manage-subtitles.md');
+    const { exitCode, stderr } = spawnScript(SCRIPT, [
+      dir,
+      '--check',
+      '--release',
+      '3.4.0',
+      '--ref',
+      'v3.4.0',
+    ]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/use one of them/);
+    expect(read(dir, 'docs/user/features/manage-subtitles.md')).toBe(before);
+  });
+
   describe('--release: stamping `since: unreleased` when a release is published', () => {
     // Commits the tree, tags it, then applies `after` (pages added or changed on main after the tag).
     const git = (args) => execFileSync('git', args, { cwd: dir, env: gitSafeEnv(), stdio: 'pipe' });
