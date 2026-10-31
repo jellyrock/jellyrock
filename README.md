@@ -45,7 +45,7 @@ Every feature has a page on [docs.jellyrock.app](https://docs.jellyrock.app/feat
 [JellyRock Companion](https://github.com/jellyrock/jellyfin-plugin-jellyrock) is a plugin for your Jellyfin server. It adds:
 
 - **Cast to JellyRock while it's closed.** Your Roku shows up as a cast target and opens straight into what you picked. Your server must be on the same network as your Roku.
-- **Remote control on HTTPS servers.** On an HTTP server, this already works without the plugin.
+- **Remote control and SyncPlay on HTTPS servers.** On an HTTP server, these already work without the plugin.
 - **Fast cleanup after you press Home on HTTPS servers.** Jellyfin ends the playback session within about a minute and keeps the right resume point. On an HTTP server, this already works without the plugin.
 
 It needs Jellyfin server 10.11 or later. To install it, and to see the other plugins JellyRock supports, read [Jellyfin Server Plugins](docs/user/jellyfin-server-plugins.md).

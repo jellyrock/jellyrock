@@ -15,7 +15,7 @@ Features that depend on your server version rather than a plugin are in the [Jel
 
 The Jellyfin server version is the oldest server the JellyRock feature works with. Your server's catalog offers the plugin build that matches your server.
 
-On Jellyfin 10.9 and 10.10, the catalog offers an older JellyRock Companion release (0.2.x) that cannot cast to a closed app or run SyncPlay.
+On Jellyfin 10.9 and 10.10, the catalog offers an older JellyRock Companion release (0.2.x). JellyRock supports the plugin on Jellyfin 10.11 or later, so update your server to use its features.
 
 ## Install from your catalog
 

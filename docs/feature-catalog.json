@@ -16,7 +16,7 @@
       "plugins": [],
       "screenshots": [],
       "https": {
-        "server": "10.9.0",
+        "server": "10.11.0",
         "plugins": [
           "JellyRock Companion"
         ]
@@ -35,6 +35,18 @@
       "https": null,
       "page": "docs/user/features/themes.md",
       "url": "https://docs.jellyrock.app/features/themes/"
+    },
+    {
+      "slug": "servers",
+      "title": "Connect to your servers",
+      "pitch": "Find Jellyfin servers on your network or type an address, and switch between the ones you've saved.",
+      "since": "1.0.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "https": null,
+      "page": "docs/user/features/servers.md",
+      "url": "https://docs.jellyrock.app/features/servers/"
     },
     {
       "slug": "deep-linking",
@@ -83,6 +95,32 @@
       "https": null,
       "page": "docs/user/features/hdr-dolby-vision.md",
       "url": "https://docs.jellyrock.app/features/hdr-dolby-vision/"
+    },
+    {
+      "slug": "item-details",
+      "title": "Item details",
+      "pitch": "One details page for movies, shows, music, people and more, with its actions, tracks and related items.",
+      "since": "2.0.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [
+        "movieDetails"
+      ],
+      "https": null,
+      "page": "docs/user/features/item-details.md",
+      "url": "https://docs.jellyrock.app/features/item-details/"
+    },
+    {
+      "slug": "languages",
+      "title": "Languages",
+      "pitch": "Use JellyRock in your language, following your server or Roku, or pick any language yourself.",
+      "since": "2.10.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "https": null,
+      "page": "docs/user/features/languages.md",
+      "url": "https://docs.jellyrock.app/features/languages/"
     },
     {
       "slug": "live-tv",
@@ -148,6 +186,20 @@
       "https": null,
       "page": "docs/user/features/photos.md",
       "url": "https://docs.jellyrock.app/features/photos/"
+    },
+    {
+      "slug": "player-controls",
+      "title": "Player controls",
+      "pitch": "Pause, seek, jump to a chapter and switch audio or subtitles from one clean bar while you watch.",
+      "since": "1.0.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [
+        "osd"
+      ],
+      "https": null,
+      "page": "docs/user/features/player-controls.md",
+      "url": "https://docs.jellyrock.app/features/player-controls/"
     },
     {
       "slug": "quick-connect",
