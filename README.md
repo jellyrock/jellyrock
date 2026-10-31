@@ -8,17 +8,18 @@
 [![Build Status](https://img.shields.io/github/actions/workflow/status/jellyrock/jellyrock/build.yml?logo=github&branch=main "Build Status")](https://github.com/jellyrock/jellyrock/actions/workflows/build.yml?query=branch%3Amain)
 <!-- [![Translation Status](https://translate.jellyfin.org/widgets/jellyfin/-/jellyfin-roku/svg-badge.svg "Translation Status")](https://translate.jellyfin.org/projects/jellyfin/jellyfin-roku/?utm_source=widget) -->
 
-JellyRock is a Jellyfin client for Roku, from a former maintainer of the original Jellyfin Roku app. It is built to stay smooth: every request to your server runs in the background, so menus keep moving while things load. It plays your media in its original quality whenever your Roku can, and it comes in 98 languages. Free and open source, with no ads and no tracking. You need your own Jellyfin server.
+JellyRock is a Jellyfin client for Roku, from a former maintainer of the original Jellyfin Roku app. It is built to stay smooth: every request to your server runs in the background, so menus keep moving while things load. It plays your media in its original quality whenever your Roku can, and it comes in 98 languages. It is the first Roku client for Jellyfin with SyncPlay, casting from other Jellyfin apps and display mirroring, on HTTP servers, and on HTTPS servers with the JellyRock Companion plugin. Free and open source, with no ads and no tracking. You need your own Jellyfin server.
 
 ## Features
 
 <!-- BEGIN generated features (npm run docs:features) -->
 
-- **[Deep linking and casting to JellyRock](docs/user/features/deep-linking.md):** Open or play anything in JellyRock from another device, a script or a voice routine, with only the item's ID.
-- **[Delete media](docs/user/features/delete-media.md):** Delete a movie, an episode or any other item from your server, from its details page, when your account may.
-- **[Manage subtitles](docs/user/features/manage-subtitles.md):** Search your server's subtitle providers and download a subtitle onto a movie or episode from its page.
-- **[Media segments (skip intro and outro)](docs/user/features/media-segments.md):** Skip the intros, outros, recaps, previews and commercials your server has marked, or get a button to skip them.
 - **[SyncPlay (watch together)](docs/user/features/syncplay.md):** Watch together. Join a SyncPlay group and play, pause and seek in step with people on other Jellyfin apps.
+- **[Cast from another Jellyfin app](docs/user/features/cast-to-jellyrock.md):** Cast from a Jellyfin app on your phone or browser to your Roku, then pause, seek and skip from there.
+- **[Delete media](docs/user/features/delete-media.md):** Delete a movie, an episode or any other item from your server, right from your Roku, if your account allows it.
+- **[Watch in original quality](docs/user/features/original-quality.md):** Play your files as they are, with no conversion, whenever your Roku can, and see why when it can't.
+
+See [all features](docs/user/features/index.md).
 
 <!-- END generated features -->
 

@@ -2446,6 +2446,16 @@ A halted SyncPlay member (its player left the group's item on Back) follows the 
 
 Ruled out: a toast-only path, which leaves a halted member with no way back short of leaving or a play of its own; deferring the control to phase F's in-player surface, since a halted member has no player on screen; and keeping the confirm dialog while following, so the menu's shape would change with the member's state.
 
+## decision-id: feature-pages-are-the-source
+
+**date**: 2026-10-29
+**status**: accepted
+**related-files**: `docs/user/features`, `scripts/lib/feature-facts.cjs`, `scripts/generate/feature-catalog.cjs`, `scripts/lint/docs-check.cjs`
+
+Each feature users can see has one page in `docs/user/features/`, and its frontmatter (`pitch`, `since`, `server`, `plugins`, `screenshots`) is the one place its facts are written. `npm run docs:features` derives the features list in the README, the docs site's `/features/` index and `docs/feature-catalog.json` for the marketing site, and `npm run lint:docs` checks every field against the app. Feature pages are user docs, so they sit under `docs/user/`, which the docs site already builds recursively.
+
+Ruled out: a separate root folder for features, which would need three pipeline changes on the docs site and split a user's docs in two; the marketing site keeping its own card list, which drifted (it said 99 languages; the app has 98); nested YAML frontmatter, which adds nothing: flat `key: value` lines hold every fact, and the generator reads them with no YAML library. `docs-check.cjs` loads the `yaml` package only to check that each value reads back unchanged, as the docs site's parser would read it.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

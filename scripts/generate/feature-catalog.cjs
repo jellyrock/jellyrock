@@ -7,7 +7,8 @@
 //     for the marketing site to read at build time (a `schema` number marks
 //     changes to its shape).
 //   - docs/user/features/index.md: the features index on the docs site.
-//   - README.md: the features list between its generated markers.
+//   - README.md: the highlighted features, in their `highlight:` rank, between
+//     its generated markers, then a link to the features index.
 //
 // It refuses a page whose frontmatter is missing a required field or holds an
 // unknown one, rather than publish it; `npm run lint:docs` checks every value.
@@ -16,11 +17,16 @@
 // Run modes:
 //   node scripts/generate/feature-catalog.cjs           write (default)
 //   node scripts/generate/feature-catalog.cjs --check   fail if an output is stale, write nothing
+//   node scripts/generate/feature-catalog.cjs --release <x.y.z> --ref <tag>
+//       when a release is published: change `since: unreleased` to the version on each page
+//       that was unreleased in the tagged commit, then write the outputs. A page merged after
+//       the tag is not in the release, so it stays unreleased. Run by release-build.yml.
 
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
+const { git } = require('../lib/git-safe.cjs');
 const {
   FEATURES_REL,
   INDEX_FILE,
@@ -31,8 +37,17 @@ const {
 } = require('../lib/feature-facts.cjs');
 
 const args = process.argv.slice(2);
-const ROOT_DIR = args.find((a) => !a.startsWith('--')) || '.';
+// The flags that take a value, so the value is not read as the root folder.
+const VALUE_FLAGS = ['--release', '--ref'];
+const flagValue = (flag) => {
+  const i = args.indexOf(flag);
+  return i === -1 ? undefined : args[i + 1];
+};
+const ROOT_DIR =
+  args.find((a, i) => !a.startsWith('--') && !VALUE_FLAGS.includes(args[i - 1])) || '.';
 const CHECK_MODE = args.includes('--check');
+const RELEASE = flagValue('--release');
+const RELEASE_REF = flagValue('--ref');
 
 const CATALOG_REL = 'docs/feature-catalog.json';
 const INDEX_REL = `${FEATURES_REL}/${INDEX_FILE}`;
@@ -77,6 +92,10 @@ function readFeatures() {
       server: fields.server,
       plugins: fields.plugins || [],
       screenshots: fields.screenshots || [],
+      https: fields.httpsserver
+        ? { server: fields.httpsserver, plugins: fields.httpsplugins || [] }
+        : null,
+      highlight: fields.highlight ? Number(fields.highlight) : null,
       page: rel,
       url: `${DOCS_SITE}/features/${slug}/`,
     });
@@ -95,7 +114,8 @@ function buildCatalog(features) {
     _comment: `Generated from the frontmatter of ${FEATURES_REL}/*.md by npm run docs:features. Edit the pages, not this file.`,
     schema: 1,
     app: { languages, themes, serverFloor: floor },
-    features,
+    // The README's pick is not a fact about the feature: the site reads none of it.
+    features: features.map(({ highlight: _highlight, ...feature }) => feature),
   };
   return `${JSON.stringify(catalog, null, 2)}\n`;
 }
@@ -103,7 +123,9 @@ function buildCatalog(features) {
 function buildIndex(features) {
   const rows = features.map((f) => {
     const plugins = f.plugins.length ? f.plugins.join(' or ') : 'None';
-    return `| [${f.title}](${f.slug}.md) | ${f.pitch} | ${f.server} or later | ${plugins} |`;
+    const httpsServer = f.https ? ` (HTTPS: ${f.https.server} or later)` : '';
+    const httpsPlugins = f.https ? ` (HTTPS: ${f.https.plugins.join(' or ')})` : '';
+    return `| [${f.title}](${f.slug}.md) | ${f.pitch} | ${f.server} or later${httpsServer} | ${plugins}${httpsPlugins} |`;
   });
   return [
     '# Features',
@@ -125,9 +147,52 @@ function buildReadme(features, current) {
   if (begin === -1 || end === -1 || begin > end) {
     fail(`${README_REL} is missing its markers, in this order:\n${README_BEGIN}\n${README_END}`);
   }
-  const list = features.map((f) => `- **[${f.title}](${f.page}):** ${f.pitch}`);
-  const block = [README_BEGIN, '', ...list, '', README_END].join('\n');
+  const list = features
+    .filter((f) => f.highlight)
+    .sort((a, b) => a.highlight - b.highlight)
+    .map((f) => `- **[${f.title}](${f.page}):** ${f.pitch}`);
+  const all = `See [all features](${INDEX_REL}).`;
+  const block = [README_BEGIN, '', ...list, ...(list.length ? [''] : []), all, '', README_END].join(
+    '\n',
+  );
   return current.slice(0, begin) + block + current.slice(end + README_END.length);
+}
+
+// `since: unreleased` becomes the release's version on each page that was unreleased in the
+// tagged commit. Reading the tag, not the working tree, keeps a feature merged after the tag
+// unreleased: the release does not hold it.
+function stampRelease(version, ref) {
+  if (!/^\d+\.\d+\.\d+$/.test(version || '') || !ref) {
+    fail(
+      "--release takes a version x.y.z and --ref the release's tag, for example --release 3.4.0 --ref v3.4.0",
+    );
+  }
+  try {
+    git(ROOT_DIR, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+  } catch {
+    fail(`${ref} is not a commit in this repo`);
+  }
+  for (const name of featurePageFiles(ROOT_DIR)) {
+    const rel = `${FEATURES_REL}/${name}`;
+    let tagged;
+    try {
+      tagged = git(ROOT_DIR, ['show', `${ref}:${rel}`]);
+    } catch {
+      continue; // not in the release
+    }
+    if (parseFeaturePage(tagged).fields?.since !== 'unreleased') continue;
+    const file = path.join(ROOT_DIR, rel);
+    const current = fs.readFileSync(file, 'utf8');
+    const stamped = current.replace(/^since: unreleased$/m, `since: ${version}`);
+    if (stamped === current) continue;
+    fs.writeFileSync(file, stamped);
+    console.log(`docs:features: stamped since: ${version} on ${rel}`);
+  }
+}
+
+if (RELEASE !== undefined || RELEASE_REF !== undefined) {
+  if (CHECK_MODE) fail('--check writes nothing and --release writes pages: use one of them');
+  stampRelease(RELEASE, RELEASE_REF);
 }
 
 const features = readFeatures();

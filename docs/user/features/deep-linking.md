@@ -4,7 +4,7 @@ since: 2.22.0
 server: 10.7.0
 ---
 
-# Deep linking and casting to JellyRock
+# Deep links for scripts and smart homes
 
 You can open or play anything in JellyRock from another device: a browser bookmark, a shell script, a Home Assistant automation, a phone shortcut or a voice routine. You send your Roku one short command, and JellyRock goes to the item or starts playing it. You don't touch the remote.
 
@@ -26,7 +26,7 @@ To start playing it instead, add an action:
 curl -d '' "http://<roku-ip>:8060/input?contentId=<itemId>|action%3Dplay"
 ```
 
-The rest of this guide covers how to find those two values, the other actions, casting to a specific server, and ready-made recipes.
+The rest of this guide covers how to find those two values, the other actions, opening an item on a specific server, and ready-made recipes.
 
 ## Actions
 
@@ -56,7 +56,7 @@ Open the item in the Jellyfin web app in a browser. The address bar reads someth
 https://your-server/web/#/details?id=4f9c...&serverId=de50...
 ```
 
-Copy the value after `id=`. That is your `<itemId>`. You need the `serverId` next to it only to cast to a different server (see [Casting to a specific server](#casting-to-a-specific-server)).
+Copy the value after `id=`. That is your `<itemId>`. You need the `serverId` next to it only to open the item on a different server (see [Open an item on a specific server](#open-an-item-on-a-specific-server)).
 
 ### 3. JellyRock's channel ID, to start it from closed
 
@@ -89,7 +89,7 @@ curl -d '' "http://<roku-ip>:8060/input?contentId=<itemId>|action%3Dplay"
 
 The `-d ''` makes `curl` send a `POST`, which ECP requires. A `GET` returns 404.
 
-## Casting to a specific server
+## Open an item on a specific server
 
 JellyRock supports more than one server. A deep link can target one of them with `serverId`. This is the Jellyfin server ID (a GUID, the `serverId=` value from the web URL), not a server URL.
 

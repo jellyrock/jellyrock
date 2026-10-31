@@ -5,8 +5,8 @@
 // its own inlined parser; if it gets a bug fix here that it needs, migrate it at
 // that point rather than touching it speculatively.)
 //
-// Keep this module dependency-free (Node stdlib only): its callers use only the
-// stdlib, so they run without `npm ci`.
+// Keep this module dependency-free (Node stdlib only): some of its callers run
+// without `npm ci`.
 
 'use strict';
 

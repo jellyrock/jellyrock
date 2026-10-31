@@ -55,6 +55,7 @@ advertisable
 affordance
 agent-collaborative
 allowlist
+Anamorphic
 antialiases
 api
 api-layering-guide
@@ -251,6 +252,7 @@ DTO
 dts
 DTS
 DTS-HD
+DTS:X
 dtshd
 durations
 DX
@@ -328,9 +330,11 @@ hardcodes
 Hardcoding
 HD
 HDR
+HDR10
 HEVC
 HIG
 HK-specific
+HLG
 HLS
 Holm
 hostname
@@ -474,6 +478,7 @@ Params
 PascalCase
 passthrough
 pcm
+PCM
 PD-textlogo
 PDF
 PDFs

@@ -27,8 +27,9 @@ name: lint-docs
 # the gap.
 #
 # `npm ci` is needed because comment-voice-ratchet.js reads code comments with
-# the BrighterScript lexer, espree and yaml. The other scripts use only the
-# Node standard library, and voice-check.sh needs bash and git.
+# the BrighterScript lexer, espree and yaml, and docs-check.cjs reads feature
+# pages with yaml. The other scripts use only the Node standard library, and
+# voice-check.sh needs bash and git.
 
 on:
   workflow_call:

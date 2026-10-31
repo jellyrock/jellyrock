@@ -2,8 +2,8 @@
 // that guards them (scripts/lint/docs-check.cjs) and the generator that
 // publishes them (scripts/generate/feature-catalog.cjs).
 //
-// Stdlib only, like scripts/lib/frontmatter.cjs: docs-check.cjs runs without
-// `npm ci`.
+// Stdlib only, like scripts/lib/frontmatter.cjs. Reading a value as real YAML is
+// the check's job, not this file's: see yamlMisreading() in docs-check.cjs.
 
 'use strict';
 
@@ -22,7 +22,18 @@ const FEATURE_FIELDS = {
   server: { required: true },
   plugins: { required: false, list: true },
   screenshots: { required: false, list: true },
+  // What the feature needs on an HTTPS server when that differs from HTTP. Both or
+  // neither: Roku has no secure socket, so these features go through a plugin there.
+  httpsserver: { required: false },
+  httpsplugins: { required: false, list: true },
+  // A rank from 1 puts the page in the README's short list, in that order;
+  // the field left out means no.
+  highlight: { required: false },
 };
+
+// The most pages the README lists, so its features list stays a short pitch
+// and the full list lives in the features index. Ranks run 1 to this.
+const README_HIGHLIGHTS_MAX = 6;
 
 function readJson(root, rel) {
   return JSON.parse(fs.readFileSync(path.join(root, rel), 'utf8'));
@@ -92,8 +103,9 @@ function parseFeaturePage(content) {
   const body = fm === null ? content : content.slice(content.indexOf('\n---', 3) + 4);
   const h1 = body.match(/^#\s+(.+)$/m);
   const title = h1 ? h1[1].trim() : null;
-  if (fm === null) return { title, fields: null, problems: [] };
+  if (fm === null) return { title, fields: null, raw: null, problems: [] };
   const fields = {};
+  const raw = {}; // each value as written, a list still one string
   const problems = [];
   for (const line of fm.split(/\r?\n/)) {
     const match = line.match(/^([a-z]+): (.+)$/);
@@ -105,6 +117,7 @@ function parseFeaturePage(content) {
       );
     } else {
       const value = match[2].trim();
+      raw[match[1]] = value;
       fields[match[1]] = FEATURE_FIELDS[match[1]].list
         ? value
             .split(',')
@@ -113,13 +126,14 @@ function parseFeaturePage(content) {
         : value;
     }
   }
-  return { title, fields, problems };
+  return { title, fields, raw, problems };
 }
 
 module.exports = {
   FEATURES_REL,
   INDEX_FILE,
   FEATURE_FIELDS,
+  README_HIGHLIGHTS_MAX,
   readServerFloor,
   appFacts,
   appVersion,

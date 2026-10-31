@@ -88,6 +88,7 @@ const path = require('path');
 const { readFrontmatter, parseRelatedFiles, getLastUpdated } = require('../lib/frontmatter.cjs');
 const {
   FEATURE_FIELDS,
+  README_HIGHLIGHTS_MAX,
   appFacts,
   appVersion,
   compareVersions,
@@ -891,18 +892,48 @@ function checkReadmeCounts() {
 const PITCH_LIMIT = 120;
 const VERSION_RE = /^\d+\.\d+\.\d+$/;
 
+// Why a frontmatter value would not read back unchanged through YAML, or null
+// when it does. The docs site parses these pages with real YAML while the
+// generator reads flat `key: value` lines, so the two must agree on every value.
+// `highlight` is the one number; every other value must stay a string.
+function yamlMisreading(YAML, key, raw) {
+  let read;
+  try {
+    read = YAML.parse(`${key}: ${raw}`, { logLevel: 'error' })[key];
+  } catch (err) {
+    return `YAML can't read it (${err.message.split('\n')[0]})`;
+  }
+  if (key === 'highlight' ? String(read) === raw : read === raw) return null;
+  return `YAML reads it as ${typeof read === 'string' ? JSON.stringify(read) : String(read)}`;
+}
+
 function checkFeaturePages() {
   const names = featurePageFiles(ROOT_DIR);
   if (names.length === 0) return; // silent when absent
+  // Loaded here so a bare clone still gets the rest of the checks and a clear reason.
+  let YAML;
+  try {
+    YAML = require('yaml');
+  } catch {
+    pushError({
+      category: 'feature-frontmatter',
+      file: FEATURES_DIR,
+      message: 'checking feature pages needs the yaml package: run npm ci',
+      target: 'yaml',
+    });
+    return;
+  }
   const version = appVersion(ROOT_DIR);
   const floor = readServerFloor(ROOT_DIR);
   const plugins = listedPlugins(ROOT_DIR);
   const screens = screenshotKeys(ROOT_DIR);
+  const ranks = new Map(); // rank -> the first page that holds it
   for (const name of names) {
     const file = path.join(FEATURES_DIR, name);
     const fail = (message, target) =>
       pushError({ category: 'feature-frontmatter', file, message, target });
-    const { fields, problems } = parseFeaturePage(fs.readFileSync(file, 'utf8'));
+    const content = fs.readFileSync(file, 'utf8');
+    const { fields, raw, problems } = parseFeaturePage(content);
     if (fields === null) {
       fail('has no frontmatter: a feature page needs pitch, since and server', 'frontmatter');
       continue;
@@ -910,6 +941,21 @@ function checkFeaturePages() {
     for (const problem of problems) fail(problem, 'frontmatter');
     for (const [key, { required }] of Object.entries(FEATURE_FIELDS)) {
       if (required && !(key in fields)) fail(`missing \`${key}:\``, key);
+    }
+    const misread = Object.entries(raw)
+      .map(([key, value]) => [key, yamlMisreading(YAML, key, value)])
+      .filter(([, why]) => why);
+    for (const [key, why] of misread) {
+      fail(`${key}: ${why}; reword it (no quotes: the frontmatter is flat key: value)`, key);
+    }
+    // Each value reads back alone, so only the whole page can show what lines
+    // do to each other, such as a repeated key.
+    if (misread.length === 0 && problems.length === 0) {
+      try {
+        YAML.parse(readFrontmatter(content), { logLevel: 'error' });
+      } catch (err) {
+        fail(`YAML can't read the frontmatter (${err.message.split('\n')[0]})`, 'frontmatter');
+      }
     }
     const { pitch, since, server } = fields;
     if (pitch && Array.from(pitch).length > PITCH_LIMIT) {
@@ -930,14 +976,40 @@ function checkFeaturePages() {
         fail(`server: ${server} is older than the supported floor (${floor})`, 'server');
       }
     }
-    for (const plugin of fields.plugins || []) {
-      if (!plugins.has(plugin)) {
-        fail(`plugin "${plugin}" is not a row in docs/user/jellyfin-server-plugins.md`, 'plugins');
+    for (const target of ['plugins', 'httpsplugins']) {
+      for (const plugin of fields[target] || []) {
+        if (!plugins.has(plugin)) {
+          fail(`plugin "${plugin}" is not a row in docs/user/jellyfin-server-plugins.md`, target);
+        }
+      }
+    }
+    const { httpsserver, httpsplugins } = fields;
+    if (Boolean(httpsserver) !== Boolean(httpsplugins?.length)) {
+      fail('httpsserver and httpsplugins go together: set both or neither', 'httpsserver');
+    }
+    if (httpsserver) {
+      if (!VERSION_RE.test(httpsserver)) {
+        fail(`httpsserver: ${httpsserver} is not x.y.z`, 'httpsserver');
+      } else if (VERSION_RE.test(server || '') && compareVersions(httpsserver, server) < 0) {
+        fail(`httpsserver: ${httpsserver} is older than server (${server})`, 'httpsserver');
       }
     }
     for (const key of fields.screenshots || []) {
       if (!screens.has(key)) {
         fail(`screenshot "${key}" is not in docs/screenshots/screenshots.json`, 'screenshots');
+      }
+    }
+    if ('highlight' in fields) {
+      const rank = fields.highlight;
+      if (!/^\d+$/.test(rank) || Number(rank) < 1 || Number(rank) > README_HIGHLIGHTS_MAX) {
+        fail(
+          `highlight: ${rank} is not a whole number from 1 to ${README_HIGHLIGHTS_MAX} (leave the field out for no)`,
+          'highlight',
+        );
+      } else if (ranks.has(Number(rank))) {
+        fail(`highlight: ${rank} is also on ${ranks.get(Number(rank))}`, 'highlight');
+      } else {
+        ranks.set(Number(rank), name);
       }
     }
   }

@@ -2,16 +2,19 @@
 pitch: Watch together. Join a SyncPlay group and play, pause and seek in step with people on other Jellyfin apps.
 since: 3.3.0
 server: 10.7.0
+httpsserver: 10.11.0
+httpsplugins: JellyRock Companion
+highlight: 1
 ---
 
 # SyncPlay (watch together)
 
-SyncPlay keeps a group of people watching the same video at the same moment. When anyone in the group pauses, seeks or moves to the next item, everyone does. The others can be on JellyRock, the Jellyfin web app or any other Jellyfin app with SyncPlay.
+SyncPlay keeps a group of people watching the same video at the same moment. When anyone in the group pauses, seeks or moves to the next item, everyone does. The others can be on JellyRock, the Jellyfin web app or any other Jellyfin app with SyncPlay. JellyRock is the first Roku client for Jellyfin to support SyncPlay.
 
 ## What you need
 
 - **SyncPlay access on your Jellyfin account.** An admin sets it for each user in the Jellyfin dashboard. If your account has no SyncPlay access, JellyRock doesn't show the **SyncPlay** icon. To start a group, your account needs permission to create groups as well as join them.
-- **On an HTTPS server, the JellyRock Companion plugin.** On an HTTP server you need nothing else. See [Jellyfin server plugins](../jellyfin-server-plugins.md) to install it.
+- **On an HTTPS server, the JellyRock Companion plugin, on Jellyfin 10.11 or later.** On an HTTP server you need nothing else. See [Jellyfin server plugins](../jellyfin-server-plugins.md) to install it.
 
 SyncPlay plays videos: movies, episodes and other videos. If you play music or Live TV while you're in a group, it plays on your Roku alone, and you stop following the group.
 

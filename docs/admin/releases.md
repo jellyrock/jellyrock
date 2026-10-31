@@ -18,6 +18,7 @@ git push origin release-1.21.3
 # 4. Edit the draft release: add the scheduled release date, review the notes, publish
 
 # 5. Publishing creates the tag; CI turns [Unreleased] into the release's changelog section
+#    and stamps the version on feature pages that said `since: unreleased`
 ```
 
 ## Step by step
@@ -45,7 +46,7 @@ Merging a PR labeled `release-prep` into `main` starts `update-draft-release.yml
 
 Edit the draft release: set the scheduled release date and review the notes. Then publish it.
 
-Publishing creates the `vX.Y.Z` tag on `main`, which starts `release-build.yml`. It turns `[Unreleased]` in `CHANGELOG.md` into the release's section and commits that to `main`. How changelog entries are built, and how to fix one, is in [Changelog](changelog.md).
+Publishing creates the `vX.Y.Z` tag on `main`, which starts `release-build.yml`. It turns `[Unreleased]` in `CHANGELOG.md` into the release's section, changes `since: unreleased` to the version on each feature page that said so in the tagged commit, writes the feature catalog, the features index and the README list again, and commits all of it to `main`. A feature page merged after the tag stays `unreleased` for the next release. How changelog entries are built, and how to fix one, is in [Changelog](changelog.md).
 
 ## Files the release changes
 
@@ -54,6 +55,7 @@ Publishing creates the `vX.Y.Z` tag on `main`, which starts `release-build.yml`.
 | `package.json`, `package-lock.json` | The release workflow | `version` |
 | `manifest` | The release workflow | `major_version`, `minor_version`, `build_version` |
 | `CHANGELOG.md` | CI | `[Unreleased]` becomes the release's section at publish |
+| `docs/user/features/*.md`, `docs/feature-catalog.json`, `docs/user/features/index.md`, `README.md` | CI | `since: unreleased` becomes the version at publish, on pages that were unreleased in the tagged commit |
 | `Makefile` | Nobody | Its `VERSION` stays at 1.0.0 unless you change it by hand |
 | The draft release's notes | You | The scheduled release date |
 

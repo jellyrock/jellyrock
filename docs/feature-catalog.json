@@ -8,26 +8,93 @@
   },
   "features": [
     {
+      "slug": "cast-to-jellyrock",
+      "title": "Cast from another Jellyfin app",
+      "pitch": "Cast from a Jellyfin app on your phone or browser to your Roku, then pause, seek and skip from there.",
+      "since": "2.23.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "https": {
+        "server": "10.9.0",
+        "plugins": [
+          "JellyRock Companion"
+        ]
+      },
+      "page": "docs/user/features/cast-to-jellyrock.md",
+      "url": "https://docs.jellyrock.app/features/cast-to-jellyrock/"
+    },
+    {
+      "slug": "themes",
+      "title": "Color themes",
+      "pitch": "Pick a color theme for JellyRock, or set every color yourself.",
+      "since": "1.11.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "https": null,
+      "page": "docs/user/features/themes.md",
+      "url": "https://docs.jellyrock.app/features/themes/"
+    },
+    {
       "slug": "deep-linking",
-      "title": "Deep linking and casting to JellyRock",
+      "title": "Deep links for scripts and smart homes",
       "pitch": "Open or play anything in JellyRock from another device, a script or a voice routine, with only the item's ID.",
       "since": "2.22.0",
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
+      "https": null,
       "page": "docs/user/features/deep-linking.md",
       "url": "https://docs.jellyrock.app/features/deep-linking/"
     },
     {
       "slug": "delete-media",
       "title": "Delete media",
-      "pitch": "Delete a movie, an episode or any other item from your server, from its details page, when your account may.",
+      "pitch": "Delete a movie, an episode or any other item from your server, right from your Roku, if your account allows it.",
       "since": "1.13.0",
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
+      "https": null,
       "page": "docs/user/features/delete-media.md",
       "url": "https://docs.jellyrock.app/features/delete-media/"
+    },
+    {
+      "slug": "favorites",
+      "title": "Favorites",
+      "pitch": "Mark what you love as a favorite and find it all in one place, on its own tab on Home.",
+      "since": "1.0.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "https": null,
+      "page": "docs/user/features/favorites.md",
+      "url": "https://docs.jellyrock.app/features/favorites/"
+    },
+    {
+      "slug": "hdr-dolby-vision",
+      "title": "HDR and Dolby Vision",
+      "pitch": "Watch HDR10, HDR10+, HLG and Dolby Vision as they were made, on a 4K Roku and a TV that shows them.",
+      "since": "1.0.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "https": null,
+      "page": "docs/user/features/hdr-dolby-vision.md",
+      "url": "https://docs.jellyrock.app/features/hdr-dolby-vision/"
+    },
+    {
+      "slug": "live-tv",
+      "title": "Live TV and recordings",
+      "pitch": "Watch live channels from your Jellyfin server, browse the TV guide, and schedule recordings from your couch.",
+      "since": "1.0.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "https": null,
+      "page": "docs/user/features/live-tv.md",
+      "url": "https://docs.jellyrock.app/features/live-tv/"
     },
     {
       "slug": "manage-subtitles",
@@ -39,6 +106,7 @@
         "Open Subtitles"
       ],
       "screenshots": [],
+      "https": null,
       "page": "docs/user/features/manage-subtitles.md",
       "url": "https://docs.jellyrock.app/features/manage-subtitles/"
     },
@@ -53,8 +121,57 @@
         "Intro Skipper"
       ],
       "screenshots": [],
+      "https": null,
       "page": "docs/user/features/media-segments.md",
       "url": "https://docs.jellyrock.app/features/media-segments/"
+    },
+    {
+      "slug": "music",
+      "title": "Music",
+      "pitch": "Browse your music by artist, album or genre, play albums and instant mixes, and read a song's lyrics.",
+      "since": "1.0.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "https": null,
+      "page": "docs/user/features/music.md",
+      "url": "https://docs.jellyrock.app/features/music/"
+    },
+    {
+      "slug": "photos",
+      "title": "Photos",
+      "pitch": "Look through your photo albums on the TV, one by one or as a slideshow.",
+      "since": "1.0.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "https": null,
+      "page": "docs/user/features/photos.md",
+      "url": "https://docs.jellyrock.app/features/photos/"
+    },
+    {
+      "slug": "quick-connect",
+      "title": "Quick Connect (sign in with a code)",
+      "pitch": "Sign in with a short code from your phone or computer, instead of typing a password with the remote.",
+      "since": "1.0.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "https": null,
+      "page": "docs/user/features/quick-connect.md",
+      "url": "https://docs.jellyrock.app/features/quick-connect/"
+    },
+    {
+      "slug": "surround-sound",
+      "title": "Surround sound",
+      "pitch": "Hear 5.1 and 7.1 sound on your soundbar or receiver, kept as surround even when the server has to convert it.",
+      "since": "1.0.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "https": null,
+      "page": "docs/user/features/surround-sound.md",
+      "url": "https://docs.jellyrock.app/features/surround-sound/"
     },
     {
       "slug": "syncplay",
@@ -64,8 +181,52 @@
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
+      "https": {
+        "server": "10.11.0",
+        "plugins": [
+          "JellyRock Companion"
+        ]
+      },
       "page": "docs/user/features/syncplay.md",
       "url": "https://docs.jellyrock.app/features/syncplay/"
+    },
+    {
+      "slug": "trickplay",
+      "title": "Trickplay (preview thumbnails while seeking)",
+      "pitch": "See preview pictures of the scene you're skipping to while you fast-forward or rewind.",
+      "since": "1.9.0",
+      "server": "10.9.0",
+      "plugins": [],
+      "screenshots": [
+        "trickplay"
+      ],
+      "https": null,
+      "page": "docs/user/features/trickplay.md",
+      "url": "https://docs.jellyrock.app/features/trickplay/"
+    },
+    {
+      "slug": "voice-control",
+      "title": "Voice control",
+      "pitch": "Search by voice, and play, pause, seek, skip and replay with your Roku voice remote.",
+      "since": "1.0.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "https": null,
+      "page": "docs/user/features/voice-control.md",
+      "url": "https://docs.jellyrock.app/features/voice-control/"
+    },
+    {
+      "slug": "original-quality",
+      "title": "Watch in original quality",
+      "pitch": "Play your files as they are, with no conversion, whenever your Roku can, and see why when it can't.",
+      "since": "1.0.0",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "https": null,
+      "page": "docs/user/features/original-quality.md",
+      "url": "https://docs.jellyrock.app/features/original-quality/"
     }
   ]
 }

@@ -950,6 +950,144 @@ describe('docs-check: feature pages', () => {
     );
   });
 
+  describe('values YAML would misread', () => {
+    const pitchOf = (value) => run(good.replace(/^pitch: .*/m, `pitch: ${value}`));
+
+    it('FAILs a value YAML cannot parse, and says why', () => {
+      const { messages } = pitchOf('Give JellyRock your own look: pick a color theme.');
+      expect(messages).toMatch(/pitch: YAML can't read it \(Nested mappings are not allowed/);
+    });
+
+    it('FAILs every value that does not read back unchanged', () => {
+      // A hand-kept list of YAML's rules missed the second line of values.
+      for (const value of [
+        'Pick a theme:',
+        '#1 choice',
+        '# hash',
+        'foo\t#bar',
+        ',comma first',
+        ']close',
+        '}close',
+        '.inf',
+        '.nan',
+        '0x1F',
+        '0o17',
+        '- one',
+        '[one]',
+        '"one"',
+        '*one',
+        '%one',
+        '`one`',
+        '! bang first',
+        'Skip intros #1 and more',
+        'true',
+        'null',
+        '~',
+        '10.10',
+        '5',
+      ]) {
+        expect(pitchOf(value).found.filter((e) => e.target === 'pitch').length, value).toBe(1);
+      }
+    });
+
+    it('says what YAML read instead', () => {
+      expect(pitchOf('Skip intros #1 and more').messages).toMatch(
+        /pitch: YAML reads it as "Skip intros"; reword it/,
+      );
+      expect(pitchOf('#1 choice').messages).toMatch(/pitch: YAML reads it as null; reword it/);
+    });
+
+    it('names the offending field in a list value', () => {
+      const { found } = run(good.replace('screenshots: osd, home', 'screenshots: osd: x, home'));
+      expect(found.some((e) => e.target === 'screenshots' && /YAML/.test(e.message))).toBe(true);
+    });
+
+    it('FAILs a repeated key, which only the whole page shows', () => {
+      const { messages } = run(`${good}\nserver: 10.11.0`);
+      expect(messages).toMatch(/YAML can't read the frontmatter \(Map keys must be unique/);
+    });
+
+    it('passes values YAML reads back unchanged', () => {
+      for (const value of [
+        '100% free',
+        'key:value no space',
+        'C:\\path',
+        'SyncPlay (watch together)',
+        'Cast, then pause, seek and skip.',
+        '3.3.0',
+        'yes',
+        '-one',
+        'Watch together. Join a group',
+      ]) {
+        expect(pitchOf(value).found, value).toEqual([]);
+      }
+    });
+
+    it('checks a list as written, however it is spaced', () => {
+      expect(run(good.replace('screenshots: osd, home', 'screenshots: osd,home')).found).toEqual(
+        [],
+      );
+    });
+
+    it('still accepts a numeric `highlight:`', () => {
+      expect(run(`${good}\nhighlight: 3`).found).toEqual([]);
+    });
+  });
+
+  describe('what a feature needs on HTTPS', () => {
+    const https = 'httpsserver: 10.11.0\nhttpsplugins: Intro Skipper';
+
+    it('accepts the two fields together', () => {
+      expect(run(`${good}\n${https}`).found).toEqual([]);
+    });
+
+    it('FAILs one without the other', () => {
+      for (const line of ['httpsserver: 10.11.0', 'httpsplugins: Intro Skipper']) {
+        expect(run(`${good}\n${line}`).messages).toMatch(/set both or neither/);
+      }
+    });
+
+    it('FAILs a server older than the page server, or not a version', () => {
+      expect(run(`${good}\nhttpsserver: 10.9.0\nhttpsplugins: Intro Skipper`).messages).toMatch(
+        /httpsserver: 10\.9\.0 is older than server \(10\.10\.0\)/,
+      );
+      expect(run(`${good}\nhttpsserver: soon\nhttpsplugins: Intro Skipper`).messages).toMatch(
+        /httpsserver: soon is not x\.y\.z/,
+      );
+    });
+
+    it('FAILs a plugin the plugins page does not list', () => {
+      expect(run(`${good}\nhttpsserver: 10.11.0\nhttpsplugins: Ghost`).messages).toMatch(
+        /plugin "Ghost" is not a row/,
+      );
+    });
+  });
+
+  it('accepts a `highlight:` rank from 1 to 6 and FAILs anything else', () => {
+    expect(run(`${good}\nhighlight: 1`).found).toEqual([]);
+    expect(run(`${good}\nhighlight: 6`).found).toEqual([]);
+    for (const bad of ['yes', '0', '7', '1.5']) {
+      expect(run(`${good}\nhighlight: ${bad}`).messages).toMatch(
+        new RegExp(`highlight: ${bad.replace('.', '\\.')} is not a whole number from 1 to 6`),
+      );
+    }
+  });
+
+  it('FAILs two pages with the same highlight rank', () => {
+    dir = setup({
+      ...sources,
+      'docs/user/features/a.md': page(`${good}\nhighlight: 2`),
+      'docs/user/features/b.md': page(`${good}\nhighlight: 2`),
+    });
+    const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);
+    const messages = JSON.parse(stdout)
+      .errors.filter((e) => e.category === 'feature-frontmatter')
+      .map((e) => e.message)
+      .join('\n');
+    expect(messages).toMatch(/highlight: 2 is also on a\.md/);
+    expect(exitCode).toBe(1);
+  });
+
   it('checks only pages in docs/user/features/', () => {
     dir = setup({ ...sources, 'docs/user/app-settings.md': '# App settings\n' });
     const { exitCode, stdout } = spawnScript(SCRIPT, [dir, '--json']);

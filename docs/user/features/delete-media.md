@@ -1,7 +1,8 @@
 ---
-pitch: Delete a movie, an episode or any other item from your server, from its details page, when your account may.
+pitch: Delete a movie, an episode or any other item from your server, right from your Roku, if your account allows it.
 since: 1.13.0
 server: 10.7.0
+highlight: 3
 ---
 
 # Delete media
