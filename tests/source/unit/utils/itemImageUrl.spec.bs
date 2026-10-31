@@ -476,5 +476,21 @@ namespace tests
       m.assertTrue(getItemParentPosterUrl(item, imageSize.POSTER_MD).inStr("seasontag") > -1)
     end function
 
+    @it("finds the same poster source the URL uses")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.primaryImageTag = "eptag"
+      m.assertInvalid(getItemParentPosterSource(item))
+
+      item.seriesPrimaryImageTag = "seriestag"
+      item.seriesId = "series1"
+      m.assertEqual(getItemParentPosterSource(item), { id: "series1", tag: "seriestag" })
+
+      item.parentPrimaryImageTag = "seasontag"
+      item.parentPrimaryImageItemId = "season1"
+      m.assertEqual(getItemParentPosterSource(item), { id: "season1", tag: "seasontag" })
+    end function
+
   end class
 end namespace

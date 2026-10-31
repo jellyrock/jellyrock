@@ -242,12 +242,13 @@ sub renderStandardItem(item as object, slotWidth as float, posterHeight as float
     useEpisodeImages = (globalUser.config.useEpisodeImagesInNextUpAndResume = true)
   end if
 
-  posterUri = getRowItemImageUrl(item, int(slotWidth), int(posterHeight), userSettings, useEpisodeImages, m.top.shouldApplyEpisodeImageSetting)
+  shouldApplyEpisodeImageSetting = m.top.shouldApplyEpisodeImageSetting
+  art = getRowItemArt(item, int(slotWidth), int(posterHeight), shouldApplyEpisodeImageSetting)
+  posterUri = getRowItemImageUrl(item, int(slotWidth), int(posterHeight), userSettings, useEpisodeImages, shouldApplyEpisodeImageSetting)
 
-  ' Blur unwatched episodes when the user setting is enabled, unless the slot shows a poster.
   ' Guard posterUri <> "" to avoid appending to an empty string, which would produce
   ' the invalid URI "&blur=15" and trigger a bogus network request.
-  if isValid(userSettings) and userSettings.uiTvShowsBlurUnwatched and item.type = "Episode" and not item.isWatched and posterUri <> "" and not episodeShowsPosterInSlot(item, int(slotWidth), int(posterHeight), m.top.shouldApplyEpisodeImageSetting)
+  if isValid(userSettings) and userSettings.uiTvShowsBlurUnwatched and posterUri <> "" and shouldBlurRowItem(item.type, item.isWatched, art)
     posterUri = posterUri + "&blur=15"
   end if
 
@@ -256,13 +257,7 @@ sub renderStandardItem(item as object, slotWidth as float, posterHeight as float
     showPlaceholder(item.type)
     m.cachedPosterUri = ""
   else
-    ' TvChannel logos may be any aspect ratio, so use scaleToFit (letterbox) to show the full logo.
-    ' Audio album art is always square; scaleToFit prevents cropping when placed in a portrait slot
-    ' (for example, a mixed-content Playlist row). In a square slot the result is identical to scaleToZoom.
-    ' An episode's 16:9 still in a portrait slot is fitted too, for the same reason.
-    ' All other types use scaleToZoom (fill) since their images match the slot shape.
-    isFitted = item.type = "TvChannel" or item.type = "Audio" or item.type = "Chapter" or episodeShowsOwnImageInPortraitSlot(item, int(slotWidth), int(posterHeight), m.top.shouldApplyEpisodeImageSetting)
-    m.poster.loadDisplayMode = isFitted ? "scaleToFit" : "scaleToZoom"
+    m.poster.loadDisplayMode = isRowItemFitted(item.type, art) ? "scaleToFit" : "scaleToZoom"
     m.cachedPosterUri = posterUri
     m.cachedLoadDisplayMode = m.poster.loadDisplayMode
     ' Only fetch the image if this cell is on screen or in the buffer zone.

@@ -1,3 +1,4 @@
+import "pkg:/source/enums/RowItemArt.bs"
 import "pkg:/source/utils/rowItemImage.bs"
 
 namespace tests
@@ -581,47 +582,74 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("episodeShowsPosterInSlot()")
+    @describe("getRowItemArt()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("is true for a portrait episode with a parent or series poster")
+    @it("labels a portrait episode with a parent or series poster")
     function _()
-      m.assertTrue(episodeShowsPosterInSlot(m.portraitEpisode(true, false, true), 234, 351))
-      m.assertTrue(episodeShowsPosterInSlot(m.portraitEpisode(false, true, true), 234, 351))
+      m.assertEqual(getRowItemArt(m.portraitEpisode(true, false, true), 234, 351), RowItemArt.PARENT_POSTER)
+      m.assertEqual(getRowItemArt(m.portraitEpisode(false, true, true), 234, 351), RowItemArt.PARENT_POSTER)
     end function
 
-    @it("is false when a portrait episode has only its own image")
+    @it("labels a portrait episode with no poster as fitted")
     function _()
-      m.assertFalse(episodeShowsPosterInSlot(m.portraitEpisode(false, false, true), 234, 351))
+      m.assertEqual(getRowItemArt(m.portraitEpisode(false, false, true), 234, 351), RowItemArt.FITTED_OWN_IMAGE)
     end function
 
-    @it("is false when the row bypasses the setting")
+    @it("is standard when the row isn't a Home row")
     function _()
-      m.assertFalse(episodeShowsPosterInSlot(m.portraitEpisode(true, true, true), 234, 351, false))
-      m.assertFalse(episodeShowsOwnImageInPortraitSlot(m.portraitEpisode(false, false, true), 234, 351, false))
+      m.assertEqual(getRowItemArt(m.portraitEpisode(true, true, true), 234, 351, false), RowItemArt.STANDARD)
+      m.assertEqual(getRowItemArt(m.portraitEpisode(false, false, true), 234, 351, false), RowItemArt.STANDARD)
     end function
 
-    @it("is false in a wide slot")
-    function _()
-      m.assertFalse(episodeShowsPosterInSlot(m.portraitEpisode(true, true, true), 468, 264))
+    @it("is standard in a wide or square slot")
+    @params(468, 264)
+    @params(234, 234)
+    function _(slotWidth, posterHeight)
+      m.assertEqual(getRowItemArt(m.portraitEpisode(true, true, true), slotWidth, posterHeight), RowItemArt.STANDARD)
     end function
 
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("episodeShowsOwnImageInPortraitSlot()")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("is true when a portrait episode has no poster")
+    @it("is standard for another type")
     function _()
-      m.assertTrue(episodeShowsOwnImageInPortraitSlot(m.portraitEpisode(false, false, true), 234, 351))
-    end function
-
-    @it("is false with a poster, in a wide slot, or for another type")
-    function _()
-      m.assertFalse(episodeShowsOwnImageInPortraitSlot(m.portraitEpisode(true, true, true), 234, 351))
-      m.assertFalse(episodeShowsOwnImageInPortraitSlot(m.portraitEpisode(false, false, true), 468, 264))
       item = m.portraitEpisode(false, false, true)
       item.type = "Movie"
-      m.assertFalse(episodeShowsOwnImageInPortraitSlot(item, 234, 351))
+      m.assertEqual(getRowItemArt(item, 234, 351), RowItemArt.STANDARD)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shouldBlurRowItem()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("blurs an unwatched episode's own image")
+    function _()
+      m.assertTrue(shouldBlurRowItem("Episode", false, RowItemArt.STANDARD))
+      m.assertTrue(shouldBlurRowItem("Episode", false, RowItemArt.FITTED_OWN_IMAGE))
+    end function
+
+    @it("doesn't blur a poster, a watched episode or another type")
+    function _()
+      m.assertFalse(shouldBlurRowItem("Episode", false, RowItemArt.PARENT_POSTER))
+      m.assertFalse(shouldBlurRowItem("Episode", true, RowItemArt.STANDARD))
+      m.assertFalse(shouldBlurRowItem("Movie", false, RowItemArt.STANDARD))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isRowItemFitted()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("fits a channel logo, album art, a chapter and an episode's own image in a portrait slot")
+    function _()
+      m.assertTrue(isRowItemFitted("TvChannel", RowItemArt.STANDARD))
+      m.assertTrue(isRowItemFitted("Audio", RowItemArt.STANDARD))
+      m.assertTrue(isRowItemFitted("Chapter", RowItemArt.STANDARD))
+      m.assertTrue(isRowItemFitted("Episode", RowItemArt.FITTED_OWN_IMAGE))
+    end function
+
+    @it("fills the slot with everything else")
+    function _()
+      m.assertFalse(isRowItemFitted("Movie", RowItemArt.STANDARD))
+      m.assertFalse(isRowItemFitted("Episode", RowItemArt.STANDARD))
+      m.assertFalse(isRowItemFitted("Episode", RowItemArt.PARENT_POSTER))
     end function
 
     private function portraitEpisode(hasParent as boolean, hasSeries as boolean, hasOwn as boolean) as object
