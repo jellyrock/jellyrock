@@ -95,7 +95,7 @@ Layer 2 adds validation, defaults and graceful failure on top of layer 1. `Image
 
 Layer 3 answers "what is a sensible image for this item?" in one call, so no component re-implements the fallback chain. This is usually what a UI component wants.
 
-Each `getItem*Url()` in `source/utils/itemImageUrl.bs` takes a `JellyfinBaseItem` node and a size from the `imageSize` namespace, walks a fallback chain, and returns `""` when no image fits. `getItemPosterUrl()` tries the item's own primary image, then its parent's, then its series', then its album's (for an audio track with no art of its own). The same file has `getItemWidePosterUrl`, `getItemThumbnailUrl`, `getItemBackdropUrl` and `getItemParentWidePosterUrl`, and `getItemImageUrl` takes any image type (a logo, for example).
+Each `getItem*Url()` in `source/utils/itemImageUrl.bs` takes a `JellyfinBaseItem` node and a size from the `imageSize` namespace, walks a fallback chain, and returns `""` when no image fits. `getItemPosterUrl()` tries the item's own primary image, then its parent's, then its series', then its album's (for an audio track with no art of its own). The same file has `getItemWidePosterUrl`, `getItemBackdropUrl` and `getItemParentWidePosterUrl`, and `getItemImageUrl` takes any image type (a logo, for example).
 
 Row cells go through `getRowItemImageUrl()` in `rowItemImage.bs`, which picks the image by item type, slot size and user settings. `source/api/imageHelpers.bs` holds the user avatar helper, `GetUserAvatarURL`.
 

@@ -261,6 +261,94 @@ namespace tests
       m.assertTrue(url.inStr("Thumb") > -1)
     end function
 
+    @it("uses the episode's own Primary for 'episode' when it has only a Primary image")
+    function _()
+      item = m.createDemoEpisode()
+
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = "episode"
+
+      url = getRowItemImageUrl(item, 468, 258, userSettings)
+
+      m.assertTrue(url.inStr("ep1") > -1, "should use the episode's own ID")
+      m.assertTrue(url.inStr("episodeprimary") > -1, "should use the episode primary tag")
+      m.assertFalse(url.inStr("seriesposter") > -1, "must NOT use the series poster")
+    end function
+
+    @it("uses the episode's own Primary for 'webclient' with episode images on and only a Primary image")
+    function _()
+      item = m.createDemoEpisode()
+
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = "webclient"
+
+      url = getRowItemImageUrl(item, 468, 258, userSettings, true)
+
+      m.assertTrue(url.inStr("ep1") > -1, "should use the episode's own ID")
+      m.assertTrue(url.inStr("episodeprimary") > -1, "should use the episode primary tag")
+      m.assertFalse(url.inStr("seriesposter") > -1, "must NOT use the series poster")
+    end function
+
+    @it("uses series backdrop, not the series poster, when the setting is bypassed and the episode has no Primary")
+    function _()
+      item = m.createDemoEpisode()
+      item.primaryImageTag = ""
+
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = "episode"
+
+      url = getRowItemImageUrl(item, 468, 258, userSettings, false, false)
+
+      m.assertTrue(url.inStr("series1") > -1, "should use series item ID")
+      m.assertTrue(url.inStr("seriesback") > -1, "should use series backdrop tag")
+      m.assertTrue(url.inStr("Backdrop") > -1)
+      m.assertFalse(url.inStr("seriesposter") > -1, "must NOT use the portrait series poster")
+    end function
+
+    @it("prefers the episode's own Primary over its own Thumb for 'episode'")
+    function _()
+      item = m.createDemoEpisode()
+      item.thumbImageTag = "episodethumb"
+
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = "episode"
+
+      url = getRowItemImageUrl(item, 468, 258, userSettings)
+
+      m.assertTrue(url.inStr("episodeprimary") > -1, "should use the episode primary tag")
+      m.assertFalse(url.inStr("episodethumb") > -1, "must NOT use the episode thumb")
+    end function
+
+    @it("uses the series poster as the last resort when the episode has no Primary and no wide art")
+    function _()
+      item = m.createDemoEpisode()
+      item.primaryImageTag = ""
+      item.parentBackdropImageTags = []
+      item.parentBackdropItemId = ""
+
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = "episode"
+
+      url = getRowItemImageUrl(item, 468, 258, userSettings)
+
+      m.assertTrue(url.inStr("series1") > -1, "should use series item ID")
+      m.assertTrue(url.inStr("seriesposter") > -1, "should fall back to the series poster")
+    end function
+
+    ' An episode shaped like the public demo server's: own Primary only, a series backdrop
+    ' and a series Primary, no own Thumb or Backdrop and no series Thumb.
+    private function createDemoEpisode() as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "ep1"
+      item.type = "Episode"
+      item.primaryImageTag = "episodeprimary"
+      item.parentBackdropImageTags = ["seriesback"]
+      item.parentBackdropItemId = "series1"
+      item.parentPrimaryImageTag = "seriesposter"
+      item.parentPrimaryImageItemId = "series1"
+      return item
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("getRowItemImageUrl() - music types")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

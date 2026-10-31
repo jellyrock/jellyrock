@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-30
+last-updated: 2026-10-31
 ---
 
 # Progress
@@ -847,6 +847,12 @@ Not checked: whether the flash of the default background is visible on a device.
 Options: `reword` (recommended): make the one string true after every halt, for example "No longer following {0}. Pick Resume with Group in the SyncPlay menu to catch up." (`en_US.json` only). `split`: keep "What plays now is your own" for the local-play halt and give the other four a new message (a new key, `haltFollowing` passes which kind, `syncPlayMenu.toastFor`, both specs). Not offered: making a halted member's play local, which reverses the accepted decision.
 
 Not checked: how the toast looks on a device; whether jellyfin-web words this case differently.
+
+#### Recently Added in a library with no collection type follows the episode image setting `[fid: recently-added-follows-episode-image-setting]` `[captured 2026-10-31]`
+
+`HomeRows` uses `JRRowItem`, so an episode in a Recently Added row for a library with no collection type follows the **Episode Images Next Up** setting. The setting's text names only Next Up and Continue Watching, so what it covers and what it says differ. Surfaced while fixing the Favorites cell in #1290.
+
+Not fixed there because telling each cell its row adds work per cell in Home's hot path, and rewording is a separate product choice. Closes when the row stops following the setting, or the setting's text names it.
 
 ### source
 
