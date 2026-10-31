@@ -45,7 +45,7 @@ With the JellyRock Companion plugin on your server, your Roku shows up as a cast
 
 ## How it reaches your Roku
 
-Jellyfin sends cast commands over a connection that stays open. On an HTTP server, JellyRock opens that connection itself. Roku can't open a secure version of it, so on an HTTPS server the JellyRock Companion plugin holds the commands and JellyRock collects them over an ordinary secure connection, as soon as each one arrives. That's what makes casting and SyncPlay work on HTTPS servers, where no other Roku client for Jellyfin supports them.
+Jellyfin sends cast commands over a connection that stays open. On an HTTP server, JellyRock opens that connection itself. Roku can't open a secure version of it, so on an HTTPS server the JellyRock Companion plugin holds the commands and JellyRock collects them over an ordinary secure connection, as soon as each one arrives. That's what makes casting and SyncPlay work on HTTPS servers.
 
 ## Troubleshooting
 

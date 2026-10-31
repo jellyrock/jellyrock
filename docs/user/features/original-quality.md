@@ -34,7 +34,7 @@ On a slow connection, select the gear button next to the info button and set a *
 
 ## Settings
 
-- [Maximum Bitrate](../app-settings.md#playbackBitrateLimit), turned on with [Enable Limit](../app-settings.md#playbackBitrateMaxLimited), and [Maximum Resolution](../app-settings.md#playbackResolutionMax): caps for every video. Leave them off to get the original quality.
+- [Maximum Bitrate](../app-settings.md#playbackBitrateLimit), turned on with [Enable Limit](../app-settings.md#playbackBitrateMaxLimited), and [Maximum Resolution](../app-settings.md#playbackResolutionMax): caps for every video. For the original quality, leave the bitrate limit off and set Maximum Resolution to **Off**. **Auto**, the default, limits video to your Roku's video mode, and never below 1080p.
 - [Text Subtitles Only](../app-settings.md#playbackSubsOnlyText): shows only text subtitles, because picture-based subtitles make the server transcode the video to draw them in.
 - [MPEG-2](../app-settings.md#playbackMpeg2) and [MPEG-4](../app-settings.md#playbackMpeg4): whether your Roku plays these older formats itself.
 - [H.264](../app-settings.md#playbackTryDirectH264ProfileLevel) and [HEVC](../app-settings.md#playbackTryDirectHevcProfileLevel) profile levels: try a file your Roku might not support directly before falling back to transcoding.

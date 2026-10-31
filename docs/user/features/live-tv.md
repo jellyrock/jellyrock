@@ -56,7 +56,7 @@ Home has two Live TV rows when they have something to show:
 - **On Now**: programs airing now. Select one to open its page.
 - **Active Recordings**: what your server is recording right now.
 
-Both are part of the standard Home arrangement. If you use your web client's arrangement, add or remove them in your Jellyfin home screen settings.
+Both are part of the standard Home arrangement. By default Home follows your web client's arrangement, so add or remove them in your Jellyfin home screen settings.
 
 ## Settings
 

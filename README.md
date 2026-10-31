@@ -16,7 +16,7 @@ JellyRock is a Jellyfin client for Roku, from a former maintainer of the origina
 
 - **[SyncPlay (watch together)](docs/user/features/syncplay.md):** Watch together. Join a SyncPlay group and play, pause and seek in step with people on other Jellyfin apps.
 - **[Cast from another Jellyfin app](docs/user/features/cast-to-jellyrock.md):** Cast from a Jellyfin app on your phone or browser to your Roku, then pause, seek and skip from there.
-- **[Delete media](docs/user/features/delete-media.md):** Delete a movie, an episode or any other item from your server, from its details page, when your account may.
+- **[Delete media](docs/user/features/delete-media.md):** Delete a movie, an episode or any other item from your server, right from your Roku, if your account allows it.
 - **[Watch in original quality](docs/user/features/original-quality.md):** Play your files as they are, with no conversion, whenever your Roku can, and see why when it can't.
 
 See [all features](docs/user/features/index.md).

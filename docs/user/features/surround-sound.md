@@ -28,7 +28,7 @@ When you switch audio tracks during a video, the new track plays as it is if you
 ## Settings
 
 - [Decode Multichannel Audio](../app-settings.md#playbackDecodeMultichannelAudio): on by default. Turn it off if surround sound is garbled or distorted, or to have the server convert these formats into one your receiver plays itself.
-- [Preferred Surround Audio Codec](../app-settings.md#playbackPreferredMultichannelCodec): the format the server converts surround sound to: Dolby Digital Plus (EAC3), the default, or Dolby Digital (AC3) for older receivers.
+- [Preferred Surround Audio Codec](../app-settings.md#playbackPreferredMultichannelCodec): the format the server converts surround sound to: Dolby Digital Plus (EAC3), the default, or Dolby Digital (AC3) for older receivers. The menu also offers DTS, and picking it currently gets you Dolby Digital Plus.
 
 ## Troubleshooting
 

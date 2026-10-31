@@ -9,7 +9,7 @@ What JellyRock does, one page per feature. Each page says what the feature needs
 | [Cast from another Jellyfin app](cast-to-jellyrock.md) | Cast from a Jellyfin app on your phone or browser to your Roku, then pause, seek and skip from there. | 10.7.0 or later (HTTPS: 10.9.0 or later) | None (HTTPS: JellyRock Companion) |
 | [Color themes](themes.md) | Pick a color theme for JellyRock, or set every color yourself. | 10.7.0 or later | None |
 | [Deep links for scripts and smart homes](deep-linking.md) | Open or play anything in JellyRock from another device, a script or a voice routine, with only the item's ID. | 10.7.0 or later | None |
-| [Delete media](delete-media.md) | Delete a movie, an episode or any other item from your server, from its details page, when your account may. | 10.7.0 or later | None |
+| [Delete media](delete-media.md) | Delete a movie, an episode or any other item from your server, right from your Roku, if your account allows it. | 10.7.0 or later | None |
 | [Favorites](favorites.md) | Mark what you love as a favorite and find it all in one place, on its own tab on Home. | 10.7.0 or later | None |
 | [HDR and Dolby Vision](hdr-dolby-vision.md) | Watch HDR10, HDR10+, HLG and Dolby Vision as they were made, on a 4K Roku and a TV that shows them. | 10.7.0 or later | None |
 | [Live TV and recordings](live-tv.md) | Watch live channels from your Jellyfin server, browse the TV guide, and schedule recordings from your couch. | 10.7.0 or later | None |
