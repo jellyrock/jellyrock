@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   BrowseRowItem: JRRowItem variant for browse contexts (extras rows, search results, favorites).
-  Sets shouldApplyEpisodeImageSetting=false so episode screenshots are always shown, bypassing the
+  Sets usesHomeEpisodeArt=false so episode screenshots are always shown, bypassing the
   uiGeneralEpisodeImages setting and the portrait poster rule, which apply only to Home rows.
   Roku calls init() for each component in the chain (parent first), so this init()
   runs after JRRowItem's and safely overrides the field's default value.

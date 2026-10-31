@@ -242,9 +242,9 @@ sub renderStandardItem(item as object, slotWidth as float, posterHeight as float
     useEpisodeImages = (globalUser.config.useEpisodeImagesInNextUpAndResume = true)
   end if
 
-  shouldApplyEpisodeImageSetting = m.top.shouldApplyEpisodeImageSetting
-  art = getRowItemArt(item, int(slotWidth), int(posterHeight), shouldApplyEpisodeImageSetting)
-  posterUri = getRowItemImageUrl(item, int(slotWidth), int(posterHeight), userSettings, useEpisodeImages, shouldApplyEpisodeImageSetting)
+  usesHomeEpisodeArt = m.top.usesHomeEpisodeArt
+  art = getRowItemArt(item, int(slotWidth), int(posterHeight), usesHomeEpisodeArt)
+  posterUri = getRowItemImageUrl(item, int(slotWidth), int(posterHeight), userSettings, useEpisodeImages, usesHomeEpisodeArt)
 
   ' Guard posterUri <> "" to avoid appending to an empty string, which would produce
   ' the invalid URI "&blur=15" and trigger a bogus network request.

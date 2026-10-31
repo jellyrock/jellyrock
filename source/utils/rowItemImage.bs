@@ -15,13 +15,13 @@ import "pkg:/source/utils/misc.bs"
 ' @param userSettings - m.global.user.settings node (may be invalid)
 ' @param useEpisodeImages - pre-computed from m.global.user.config.useEpisodeImagesInNextUpAndResume;
 '                           only relevant when uiGeneralEpisodeImages = "webclient"
-' @param shouldApplyEpisodeImageSetting - whether this is a Home row, where the uiGeneralEpisodeImages user setting
+' @param usesHomeEpisodeArt - whether this is a Home row, where the uiGeneralEpisodeImages user setting
 '                             and the portrait poster rule apply. When false, use the default episode
 '                             image order (own Primary, then wide art, then the portrait poster). Use
 '                             false for browse rows (season episode lists, person TV shows, search,
 '                             favorites).
 ' @returns Image URL string, or "" if no image is available
-function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight as integer, userSettings as object, useEpisodeImages = false as boolean, shouldApplyEpisodeImageSetting = true as boolean) as string
+function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight as integer, userSettings as object, useEpisodeImages = false as boolean, usesHomeEpisodeArt = true as boolean) as string
   if not isValid(item) then return ""
   if not isValidAndNotEmpty(item.id) then return ""
 
@@ -57,10 +57,10 @@ function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight a
   ' Everything else, including browse rows and an empty or unknown setting, shares one image
   ' order below.
   if item.type = "Episode"
-    art = getRowItemArt(item, slotWidth, posterHeight, shouldApplyEpisodeImageSetting)
+    art = getRowItemArt(item, slotWidth, posterHeight, usesHomeEpisodeArt)
     if art = RowItemArt.PARENT_POSTER
       return getItemParentPosterUrl(item, size)
-    else if art = RowItemArt.STANDARD and shouldApplyEpisodeImageSetting and isValid(userSettings)
+    else if art = RowItemArt.STANDARD and usesHomeEpisodeArt and isValid(userSettings)
       episodeImageSetting = userSettings.uiGeneralEpisodeImages
       if episodeImageSetting = "show"
         return getItemParentWidePosterUrl(item, size)
@@ -127,10 +127,10 @@ end function
 ' @param item - JellyfinBaseItem content node
 ' @param slotWidth - width of the image area in pixels
 ' @param posterHeight - height of the image area in pixels
-' @param shouldApplyEpisodeImageSetting - see getRowItemImageUrl
+' @param usesHomeEpisodeArt - see getRowItemImageUrl
 ' @returns a RowItemArt value
-function getRowItemArt(item as object, slotWidth as integer, posterHeight as integer, shouldApplyEpisodeImageSetting = true as boolean) as string
-  if item.type <> "Episode" or not shouldApplyEpisodeImageSetting or posterHeight <= slotWidth then return RowItemArt.STANDARD
+function getRowItemArt(item as object, slotWidth as integer, posterHeight as integer, usesHomeEpisodeArt = true as boolean) as string
+  if item.type <> "Episode" or not usesHomeEpisodeArt or posterHeight <= slotWidth then return RowItemArt.STANDARD
   if isValid(getItemParentPosterSource(item)) then return RowItemArt.PARENT_POSTER
   return RowItemArt.FITTED_OWN_IMAGE
 end function
