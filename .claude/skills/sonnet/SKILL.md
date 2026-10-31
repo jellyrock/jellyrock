@@ -5,7 +5,7 @@ effort: low
 description: "Execute a procedural implementation plan on the Sonnet model for token savings. Runs when the user types /sonnet with a plan path, or as a Sonnet sub-agent that a parent (usually /focus, right after it saves the plan) starts and supervises. Checks the plan is for this repo, walks its Approach literally, runs its Verification, commits, records the landing in the plan's project, and stops before push for an explicit OK. Not for judgment-heavy work: if the plan still has open forks, architectural decisions or \"we need to figure out X\" gaps, stay on the judgment-grade model and finish the planning first. Not for investigation or recipe work that has its own skill (/ci-triage, /issue-triage, /new-setting and the like): the recipe is the better plan."
 ---
 
-# /sonnet: execute a procedural plan with token savings
+# /sonnet: execute a procedural plan on Sonnet
 
 ## This repo
 
@@ -16,7 +16,7 @@ description: "Execute a procedural implementation plan on the Sonnet model for t
 
 ## Contract
 
-**Goal.** A clear-spec implementation plan doesn't need a judgment-grade model's reasoning budget. It needs careful execution, and this skill is the cheap path for that half. There are two ways in. The user types `/sonnet {{plan-path}}`: the `model: sonnet` pin applies only then (invoked through the Skill tool, the skill would run on the caller's model). Or a parent (usually `/focus`, right after it saves its plan, where the user's choices are its fork questions and there is no separate approval) starts a sub-agent with its model set to Sonnet and these steps as its task, and supervises it: the parent answers what the plan already settles, brings everything else to the user, reviews the result before the user sees it, and turns what the run taught into proposals that improve the next plan. Either way the plan is the spec.
+**Goal.** Execute a clear-spec implementation plan carefully, on the Sonnet model. There are two ways in. The user types `/sonnet {{plan-path}}`: the `model: sonnet` pin applies only then (invoked through the Skill tool, the skill would run on the caller's model). Or a parent (usually `/focus`, right after it saves its plan, where the user's choices are its fork questions and there is no separate approval) starts a sub-agent with its model set to Sonnet and these steps as its task, and supervises it: the parent answers what the plan already settles, brings everything else to the user, and reviews the result before the user sees it. Either way the plan is the spec.
 
 **Inputs.** The arguments are the plan-file path: most often a `/focus` plan at this repo's plan path, but any markdown plan with the sections `Context`, `Approach`, `Critical files`, `Verification`, `Landing & closeout` and `What this plan deliberately does NOT do` works (a project's build spec too). A `/focus` plan carries a `**Project:** {{slug | n/a}}` line naming the tracked project it advances. Its `**Checkout:**` line says whether the run works in its own worktree (`worktree`, also the reading when the line is missing) or in the main clone. With no arguments, the steps list the plans at the plan path that are for this repo and ask which (or whether to cancel).
 
@@ -57,11 +57,11 @@ description: "Execute a procedural implementation plan on the Sonnet model for t
 
 **When not to use.**
 
-- The plan still has open architectural forks or unresolved questions. Stay on the judgment-grade model and finish the planning side first via `/focus`.
+- The plan still has open architectural forks or unresolved questions. Stay on the stronger model and finish the planning side first via `/focus`.
 - No written plan exists. "Implement feature X" without a spec is judgment-heavy by default; don't reach for `/sonnet`.
 - The work is so trivial it doesn't warrant a plan (typo, one-line config edit). Edit and commit directly; the skill overhead isn't worth it.
 - When this repo has a dedicated write skill for the work (a deploy, a secret rotation) with its own verify chain: use that skill. A generic plan run skips the chain it encodes.
-- The plan flags `Risk / blast radius: large` or touches critical infra (migrations, deploy scripts, secret-handling, backup and restore paths). Stay on the judgment-grade model for the implementation half too: the token savings aren't worth the marginal risk on infra changes. **This bullet is the one "must not be a Sonnet run" list; `/focus`'s implementation-tier choice checks it rather than keeping its own copy.**
+- The plan flags `Risk / blast radius: large` or touches critical infra (migrations, deploy scripts, secret-handling, backup and restore paths). Stay on the session's model for the implementation half too: infra changes carry too much risk. **This bullet is the one "must not be a Sonnet run" list; `/focus`'s implementation-tier choice checks it rather than keeping its own copy.**
 
 ## Implementation
 

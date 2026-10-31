@@ -12,9 +12,6 @@
 # and is NOT here; this script runs once the slug + a one-line goal are agreed,
 # then the skill fills the Charter body into the scaffolded PLAN.md.
 #
-# Zero token cost, deterministic, regression-testable, runs for humans + bots.
-# Cost-rule dogfood: see .claude/rules/cost-efficiency.md.
-#
 # PORTABLE AS-IS — no slots to fill. It also reads ../log/md-skip.awk (the log skill's), the one rule
 # for what is not a heading. The projects folder comes from projects-dir.sh
 # beside this script (the one place every lifecycle script asks), and it assumes only
