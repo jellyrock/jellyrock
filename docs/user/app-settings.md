@@ -97,6 +97,7 @@ Settings relating to playback and supported codec and media types.
 - [Preferred Surround Audio Codec](#playbackPreferredMultichannelCodec)
 - [Preserve DoVi](#playbackPreserveDovi)
 - [Still Watching Prompt](#playbackStillWatching)
+- [SyncPlay Time Offset](#playbackSyncPlayTimeOffsetMs)
 - [Text Subtitles Only](#playbackSubsOnlyText)
 - [Video Codec Support](#playback-video-codec-support)
   - [Force Transcode Anamorphic Video](#playbackForceTranscodeAnamorphic)
@@ -242,6 +243,19 @@ Ask if you're still watching when videos keep playing on their own with no butto
 | Type | `radio` |
 | Default | `default` |
 | Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Disabled</td><td><code>disabled</code></td></tr><tr><td>2 videos or 60 minutes</td><td><code>short</code></td></tr><tr><td>3 videos or 90 minutes</td><td><code>default</code></td></tr><tr><td>5 videos or 150 minutes</td><td><code>long</code></td></tr><tr><td>8 videos or 240 minutes</td><td><code>veryLong</code></td></tr></tbody></table> |
+
+<h3 id="playbackSyncPlayTimeOffsetMs">SyncPlay Time Offset</h3>
+
+<a href="#playback">Playback</a> › <a href="#playbackSyncPlayTimeOffsetMs">SyncPlay Time Offset</a>
+
+How many milliseconds ahead of the group this Roku plays while in a SyncPlay group, to make up for the delay your TV or sound system adds. Raise it if this Roku sounds behind the others. 0 keeps it on the group's clock.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `playbackSyncPlayTimeOffsetMs` |
+| Type | `integer` |
+| Default | `0` |
+| Range | `0` to `2000` |
 
 <h3 id="playbackSubsOnlyText">Text Subtitles Only</h3>
 

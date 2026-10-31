@@ -224,6 +224,115 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the settle correction")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' An Unpause at 60 s whose When is 10 s before the device "now" on the server's clock.
+    private function unpauseInForce() as object
+      return m.command("Unpause", "2026-10-23T20:47:20.000Z", 600000000)
+    end function
+
+    @it("driftMs is the estimated server position minus the player's: positive when this member is behind")
+    function _()
+      ' The group is at 70 s now; the player reads 69.5 s.
+      drift = syncPlayPlayback.driftMs(m.unpauseInForce(), m.estimator(), m.deviceNow, 695000000&)
+      m.assertEqual(drift, 500&)
+      ' Ahead of the group reads negative.
+      drift = syncPlayPlayback.driftMs(m.unpauseInForce(), m.estimator(), m.deviceNow, 701000000&)
+      m.assertEqual(drift, -100&)
+    end function
+
+    @it("driftMs is invalid with no Unpause in force, or before its When")
+    function _()
+      m.assertInvalid(syncPlayPlayback.driftMs(invalid, m.estimator(), m.deviceNow, 600000000&))
+      m.assertInvalid(syncPlayPlayback.driftMs(m.command("Pause", "2026-10-23T20:47:20.000Z", 600000000), m.estimator(), m.deviceNow, 600000000&))
+      future = m.command("Unpause", "2026-10-23T20:47:31.000Z", 600000000)
+      m.assertInvalid(syncPlayPlayback.driftMs(future, m.estimator(), m.deviceNow, 600000000&))
+    end function
+
+    @it("the viewer's extra offset moves the drift: a positive offset has this member play earlier")
+    function _()
+      est = m.estimator()
+      syncPlayOffset.setExtraOffsetMs(est, 200)
+      drift = syncPlayPlayback.driftMs(m.unpauseInForce(), est, m.deviceNow, 700000000&)
+      m.assertEqual(drift, 200&)
+    end function
+
+    @it("a correction is due once the node plays, two positions in, and the drift is past the threshold, then the check is spent")
+    function _()
+      check = syncPlayPlayback.newSettleCheck()
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 539&, "playing", "ready", false), "not armed")
+      syncPlayPlayback.armSettleCheck(check)
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 539&, "playing", "ready", false), "first position")
+      m.assertTrue(syncPlayPlayback.settleCorrectionDue(check, 539&, "playing", "ready", false), "second position")
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 539&, "playing", "ready", false), "spent")
+      m.assertFalse(check.armed)
+    end function
+
+    @it("a drift inside the threshold, or unknown, spends the check with no seek")
+    function _()
+      check = syncPlayPlayback.newSettleCheck()
+      syncPlayPlayback.armSettleCheck(check)
+      syncPlayPlayback.settleCorrectionDue(check, 120&, "playing", "ready", false)
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, -149&, "playing", "ready", false))
+      m.assertFalse(check.armed)
+      syncPlayPlayback.armSettleCheck(check)
+      syncPlayPlayback.settleCorrectionDue(check, invalid, "playing", "ready", false)
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, invalid, "playing", "ready", false))
+      m.assertFalse(check.armed)
+    end function
+
+    @it("nothing is counted while the group is paused, the node is not playing, or the tracker is not settled")
+    function _()
+      check = syncPlayPlayback.newSettleCheck()
+      syncPlayPlayback.armSettleCheck(check)
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 539&, "playing", "ready", true))
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 539&, "buffering", "ready", false))
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 539&, "paused", "ready", false))
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 539&, "playing", "seeking", false))
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 539&, "playing", "stalling", false))
+      m.assertEqual(check.positions, 0)
+      m.assertTrue(check.armed)
+      ' Still armed: the first two playing positions decide.
+      syncPlayPlayback.settleCorrectionDue(check, 539&, "playing", "ready", false)
+      m.assertTrue(syncPlayPlayback.settleCorrectionDue(check, 539&, "playing", "ready", false))
+    end function
+
+    @it("correctionPlan seeks the lead past the group's position and resumes when the group gets there")
+    function _()
+      ' The group is at 70 s now (Unpause at 60 s, When 10 s ago); the player reads 69.5 s.
+      plan = syncPlayPlayback.correctionPlan(500&, 695000000&, m.unpauseInForce(), m.estimator())
+      ' 69.5 s + 0.5 s drift + the 2 s lead.
+      m.assertEqual(plan.targetTicks, 720000000&)
+      ' The group reaches 72 s two seconds from now, on the device clock.
+      m.assertEqual(plan.resumeAtMs, m.deviceNow + 2000&)
+      m.assertEqual(syncPlayPlayback.correctionResumeDelayMs(plan, m.deviceNow), 2000&)
+      m.assertEqual(syncPlayPlayback.correctionResumeDelayMs(plan, m.deviceNow + 1500&), 500&)
+      m.assertEqual(syncPlayPlayback.correctionResumeDelayMs(plan, m.deviceNow + 2500&), 0&)
+    end function
+
+    @it("the viewer's extra offset moves the resume moment, not the target")
+    function _()
+      est = m.estimator()
+      syncPlayOffset.setExtraOffsetMs(est, 200)
+      plan = syncPlayPlayback.correctionPlan(700&, 695000000&, m.unpauseInForce(), est)
+      m.assertEqual(plan.targetTicks, 722000000&)
+      ' The server's clock reads 200 ms later, so the group reaches 72.2 s 200 ms sooner.
+      m.assertEqual(plan.resumeAtMs, m.deviceNow + 2000&)
+    end function
+
+    @it("arming again counts afresh")
+    function _()
+      check = syncPlayPlayback.newSettleCheck()
+      syncPlayPlayback.armSettleCheck(check)
+      syncPlayPlayback.settleCorrectionDue(check, 10&, "playing", "ready", false)
+      syncPlayPlayback.armSettleCheck(check)
+      m.assertEqual(check.positions, 0)
+      syncPlayPlayback.settleCorrectionDue(check, 300&, "playing", "ready", false)
+      m.assertTrue(syncPlayPlayback.settleCorrectionDue(check, 300&, "playing", "ready", false))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("trackPlayerEvent(): a load")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

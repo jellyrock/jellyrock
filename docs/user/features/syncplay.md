@@ -31,6 +31,7 @@ While you're in a group, the **SyncPlay** icon is highlighted.
 - **Play something as you usually would.** While you're in a group, it plays for the whole group.
 - **Use the remote as usual.** Play, pause, seeking, skipping and next or previous all go to the group, so everyone moves together.
 - **People coming and going.** A message tells you when someone joins or leaves the group.
+- **Staying in step.** JellyRock keeps your Roku on the group's clock by itself. If a resume leaves it noticeably behind, it catches up once: the picture holds for a moment and starts again in step with the group. If the sound from your TV still lags the other people's devices, raise **SyncPlay Time Offset** in **Settings → Playback** until they line up. It is in milliseconds, and 0 means no offset.
 
 So that one person's settings don't move everyone, a few things wait while you're in a group: JellyRock shows the skip button instead of skipping intros by itself, doesn't ask whether you're still watching, doesn't play Cinema Mode intros, and doesn't show its next-episode button. When a video ends, the group's playlist decides what plays next.
 
@@ -52,3 +53,4 @@ If you press **Home** on the remote while you're in a group, JellyRock leaves th
 - **"SyncPlay on an HTTPS server needs the JellyRock plugin installed on that server."** Install the JellyRock Companion plugin on your server, as [Jellyfin server plugins](../jellyfin-server-plugins.md) describes.
 - **"Permission required to create a group."** Your account can join groups but not start them. Join one, or ask your admin for permission to create groups.
 - **"That group no longer exists."** The group ended before you joined. Open the **SyncPlay** icon again to see the groups there are now.
+- **Your Roku sounds a little behind everyone else, every time.** That is the delay your TV or sound system adds. Raise **SyncPlay Time Offset** in **Settings → Playback** in small steps (try 100) until the sound lines up.

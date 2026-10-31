@@ -180,6 +180,24 @@ it("another member's Pause pauses this Roku with the OSD up, and its Unpause pla
   });
 });
 
+it("after the group's unpause this member settles within the correction threshold of the group's position", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  // `syncPlayPlayback.SETTLE_CORRECTION_MS`: past it the manager seeks once, so within it is
+  // where every path ends up (measured 2026-10-31 on a Stick 4K, four paths).
+  await waitFor(
+    'syncPlayManager.sync.playbackDiffMs',
+    (v) => typeof v === 'number' && Math.abs(v) <= 150,
+    {
+      read: getGlobalVal,
+      timeout: 20000,
+      label: "this member's drift from the group inside the correction threshold",
+    },
+  );
+});
+
 it("the Roku's Play key pauses the whole group, and a second press has it playing again", async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(

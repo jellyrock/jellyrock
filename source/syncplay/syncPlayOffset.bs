@@ -17,10 +17,17 @@ namespace syncPlayOffset
   const RING_SIZE = 8
   const BURST_INTERVAL_SECONDS = 60
 
-  ' A fresh estimator: no rounds, no estimate.
+  ' A fresh estimator: no rounds, no estimate, no extra offset.
   function newEstimator() as object
-    return { measurements: [], offsetMs: 0&, delayMs: 0&, hasEstimate: false }
+    return { measurements: [], offsetMs: 0&, delayMs: 0&, hasEstimate: false, extraOffsetMs: 0& }
   end function
+
+  ' The viewer's own correction, in ms, added to the measured offset in every conversion (web's
+  ' extraTimeOffset). It stands for the constant a device's audio and video output adds, which
+  ' no clock round trip can see: a positive value has this member play that much earlier.
+  sub setExtraOffsetMs(estimator as object, extraMs as dynamic)
+    estimator.extraOffsetMs = syncPlayTime.asLong(extraMs)
+  end sub
 
   ' One round's offset and delay, all times in ms since the epoch.
   function measure(txDeviceMs as longinteger, rxServerMs as longinteger, txServerMs as longinteger, rxDeviceMs as longinteger) as object
@@ -63,14 +70,20 @@ namespace syncPlayOffset
     estimator.hasEstimate = false
   end sub
 
-  ' The server's clock now, given the device's clock now.
+  ' The server's clock now, given the device's clock now, the extra offset included.
   function serverNowMs(estimator as object, deviceNowMs as longinteger) as longinteger
-    return deviceNowMs + estimator.offsetMs
+    return deviceNowMs + estimator.offsetMs + extraOffsetMs(estimator)
   end function
 
   ' The device clock reading at which the server's clock reads whenMs (a command's When).
   function deviceTimeForServerMs(estimator as object, whenMs as longinteger) as longinteger
-    return whenMs - estimator.offsetMs
+    return whenMs - estimator.offsetMs - extraOffsetMs(estimator)
+  end function
+
+  ' An estimator built before the field existed (a spec's literal) reads as no extra offset.
+  function extraOffsetMs(estimator as object) as longinteger
+    if not isValid(estimator.extraOffsetMs) then return 0&
+    return syncPlayTime.asLong(estimator.extraOffsetMs)
   end function
 
   ' Seconds until the next burst. Once there is an estimate, jellyfin-web's low-profile interval.

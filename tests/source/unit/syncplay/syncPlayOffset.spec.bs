@@ -130,6 +130,23 @@ namespace tests
       m.assertEqual(syncPlayOffset.deviceTimeForServerMs(est, 5086&), 5000&)
     end function
 
+    @it("adds the viewer's extra offset to every conversion, and an estimator without one reads as zero")
+    function _()
+      est = syncPlayOffset.newEstimator()
+      syncPlayOffset.addRound(est, 1000&, 1090&, 1092&, 1010&) ' offset 86
+      syncPlayOffset.setExtraOffsetMs(est, 250)
+      m.assertEqual(syncPlayOffset.extraOffsetMs(est), 250&)
+      m.assertEqual(syncPlayOffset.serverNowMs(est, 5000&), 5336&)
+      m.assertEqual(syncPlayOffset.deviceTimeForServerMs(est, 5336&), 5000&)
+      ' The measured offset is untouched: a new round still wins on delay alone.
+      m.assertEqual(est.offsetMs, 86&)
+      syncPlayOffset.setExtraOffsetMs(est, invalid)
+      m.assertEqual(syncPlayOffset.serverNowMs(est, 5000&), 5086&)
+      literal = { measurements: [], offsetMs: 86&, delayMs: 10&, hasEstimate: true }
+      m.assertEqual(syncPlayOffset.extraOffsetMs(literal), 0&)
+      m.assertEqual(syncPlayOffset.serverNowMs(literal, 5000&), 5086&)
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("nextBurstSeconds()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

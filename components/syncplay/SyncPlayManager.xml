@@ -22,7 +22,9 @@
     <field id="groupId" type="string" value="" />
     <field id="groupName" type="string" value="" />
     <field id="groupState" type="string" value="" />
-    <!-- { offsetMs, delayMs, hasEstimate, lastCommand, trackerPhase, playingItemId, loadNotice } -->
+    <!-- { offsetMs, delayMs, hasEstimate, lastCommand, trackerPhase, playingItemId, playingItemIndex,
+         playlistCount, loadNotice, playbackDiffMs (how far behind the group this member sits, ms, invalid
+         until an Unpause is in force), extraOffsetMs (the viewer's time offset setting) } -->
     <field id="sync" type="assocarray" />
     <!-- Something the viewer is told: { kind, groupName, userName }. kind is joined, left, leftStale,
          userJoined, userLeft, groupStarted, playedToGroup, followingAgain, halted, or a refusal's update type
@@ -68,5 +70,8 @@
     <Timer id="readyTimer" repeat="false" />
     <!-- Confirms a pause took while the group is paused: re-pauses a player that plays on. -->
     <Timer id="pauseTimer" repeat="false" />
+    <!-- A drift correction's resume: fires when the group reaches the position the member
+         seeked ahead to and paused at (syncPlayPlayback.correctionPlan). -->
+    <Timer id="correctionTimer" repeat="false" />
   </children>
 </component>

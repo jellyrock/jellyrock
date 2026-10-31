@@ -214,6 +214,33 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("The viewer's time offset")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the SyncPlay Time Offset setting reaches the clock at each frame and each player event, and is published")
+    function _()
+      settings = m.global.user.settings
+      before = settings.playbackSyncPlayTimeOffsetMs
+      settings.playbackSyncPlayTimeOffsetMs = 250
+      m.joinGroup()
+      m.assertEqual(m.manager.sync.extraOffsetMs, 250&)
+      settings.playbackSyncPlayTimeOffsetMs = 0
+      m.manager.callFunc("playerEvent", { kind: "position", position: 1.0 })
+      m.assertEqual(m.manager.sync.extraOffsetMs, 0&)
+      settings.playbackSyncPlayTimeOffsetMs = before
+    end function
+
+    @it("the drift is unknown until an Unpause is in force")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "state", state: "playing", position: 12.5 })
+      m.manager.callFunc("playerEvent", { kind: "position", position: 13.0 })
+      m.assertInvalid(m.manager.sync.playbackDiffMs)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Commands")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

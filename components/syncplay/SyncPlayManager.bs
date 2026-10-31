@@ -36,6 +36,8 @@ sub init()
   m.readyTimer.observeField("fire", "onReadyTimer")
   m.pauseTimer = m.top.findNode("pauseTimer")
   m.pauseTimer.observeField("fire", "onPauseTimer")
+  m.correctionTimer = m.top.findNode("correctionTimer")
+  m.correctionTimer.observeField("fire", "onCorrectionTimer")
   ' The working state is built on first use, not here. setGlobalNodes() creates this node from the main
   ' thread, so init() runs there, and the AAs it leaves in `m` reach the render thread (where
   ' every handler below runs) without their LongInteger and `invalid` entries: measured on the
@@ -103,6 +105,14 @@ sub ensureReady()
   ' Whether the follow under way is a Resume with Group the viewer chose, so a load that fails
   ' before it runs says so (haltFollowing); false once the load runs.
   m.resumeAsked = false
+  ' The correction each Unpause arms (syncPlayPlayback.settleCorrectionDue), and the drift last
+  ' read from a position notification, for the gear's readout and the RTA spec.
+  m.settle = syncPlayPlayback.newSettleCheck()
+  m.playbackDiffMs = invalid
+  ' The correction under way (syncPlayPlayback.correctionPlan): the node seeks ahead, pauses
+  ' at the target, and correctionTimer resumes it as the group arrives. Any group command
+  ' replaces it.
+  m.correction = invalid
   publish()
 end sub
 
@@ -166,6 +176,7 @@ end function
 function playerEvent(evt as object) as object
   ensureReady()
   if not isValid(evt) or not syncPlayTime.isText(evt.kind) then return { following: isFollowing() }
+  refreshExtraOffset()
   endUnansweredRefollow()
   kind = evt.kind
   if isValid(evt.position) then m.playerPositionTicks = syncPlayPlayback.secondsToTicks(evt.position)
@@ -189,13 +200,19 @@ function playerEvent(evt as object) as object
     end if
   else if kind = "state"
     if isFollowing()
+      phaseBefore = m.tracker.phase
       track({ kind: "state", state: m.playerState, positionTicks: m.playerPositionTicks })
+      ' A stall the server was told about can leave this member anywhere: check the drift again.
+      if phaseBefore = "rebuffering" and m.tracker.phase = "ready" then syncPlayPlayback.armSettleCheck(m.settle)
       ' Never written from here: the node passes through `buffering` for milliseconds on its own
       ' pause, and the timer lets that settle.
       if syncPlayPlayback.owesPause(m.groupPaused, m.playerState, m.tracker.phase) then armPauseTimer()
     end if
   else if kind = "position"
-    if isFollowing() then track({ kind: "position", positionTicks: m.playerPositionTicks })
+    if isFollowing()
+      track({ kind: "position", positionTicks: m.playerPositionTicks })
+      checkSettle()
+    end if
   else if kind = "finished"
     if isFollowing()
       ' The group moves on together: ask the server, which answers every member with a
@@ -215,6 +232,7 @@ function playerEvent(evt as object) as object
     m.commandTimer.control = "stop"
     m.readyTimer.control = "stop"
     m.pauseTimer.control = "stop"
+    dropCorrection()
     track({ kind: "unmounted" })
     if m.expectingRemount
       m.expectingRemount = false
@@ -249,6 +267,7 @@ sub haltFollowing(reason as string, tell = true as boolean)
   m.commandTimer.control = "stop"
   m.readyTimer.control = "stop"
   m.pauseTimer.control = "stop"
+  dropCorrection()
   m.tracker = syncPlayPlayback.newReadyTracker()
   dropClaimedPlay("stopped following")
   post("SetIgnoreWait", syncPlayRequests.setIgnoreWait(true))
@@ -356,8 +375,79 @@ end sub
 ' The event's own payload, never m.top.frame: the main thread writes frames back to back
 ' (GroupJoined, a command and a queue update arrive within milliseconds), and the field holds
 ' only the latest when a handler runs.
+' The viewer's own time offset, read from their settings at each entry point: the gear and the
+' Settings screen write it while a group plays, and the estimator applies it at once.
+sub refreshExtraOffset()
+  extraMs = 0
+  user = m.global.user
+  if isValid(user) and isValid(user.settings) and isValid(user.settings.playbackSyncPlayTimeOffsetMs) then extraMs = user.settings.playbackSyncPlayTimeOffsetMs
+  syncPlayOffset.setExtraOffsetMs(m.estimator, extraMs)
+end sub
+
+' A position notification while following: read the drift, publish it, and once per Unpause
+' correct a drift past the threshold with one silent exact seek (syncPlayPlayback).
+sub checkSettle()
+  drift = syncPlayPlayback.driftMs(m.lastCommand, m.estimator, syncPlayTime.nowMs(), m.playerPositionTicks)
+  m.playbackDiffMs = drift
+  if syncPlayPlayback.settleCorrectionDue(m.settle, drift, m.playerState, m.tracker.phase, m.groupPaused)
+    host = playerHost()
+    if isValid(host)
+      plan = syncPlayPlayback.correctionPlan(syncPlayTime.asLong(drift), m.playerPositionTicks, m.lastCommand, m.estimator)
+      m.correction = plan
+      m.log.info("drift correction started", "driftMs", syncPlayTime.asLong(drift).toStr(), "targetTicks", plan.targetTicks.toStr(), "resumeInMs", syncPlayPlayback.correctionResumeDelayMs(plan, syncPlayTime.nowMs()).toStr())
+      tellPlayer(host, { command: "seekto", position: syncPlayPlayback.ticksToSeconds(plan.targetTicks), report: false, thenPause: true })
+      track({ kind: "seek", positionTicks: plan.targetTicks, report: false, thenPause: true })
+    end if
+  end if
+  publish()
+end sub
+
+' The correction's seek settled: the node is paused at the target (the tracker's pause), so the
+' resume is scheduled for the moment the group reaches it. A landing that left the node anywhere
+' else (a settle timeout with no `playing`) ends the correction: a resume written to a buffering
+' node wedges it.
+sub scheduleCorrectionResume(pausedByTracker as boolean)
+  plan = m.correction
+  if not isValid(plan) then return
+  if not pausedByTracker and m.playerState <> "paused"
+    m.log.warn("drift correction dropped: the node did not land paused", "state", m.playerState)
+    m.correction = invalid
+    return
+  end if
+  delay& = syncPlayPlayback.correctionResumeDelayMs(plan, syncPlayTime.nowMs())
+  m.log.info("drift correction holding", "resumeInMs", delay&.toStr())
+  m.correctionTimer.control = "stop"
+  if delay& = 0
+    onCorrectionTimer()
+  else
+    m.correctionTimer.duration = delay& / 1000#
+    m.correctionTimer.control = "start"
+  end if
+end sub
+
+sub onCorrectionTimer()
+  ensureReady()
+  plan = m.correction
+  m.correction = invalid
+  if not isValid(plan) or not isFollowing() or m.groupPaused then return
+  host = playerHost()
+  if not isValid(host) then return
+  if m.playerState <> "paused"
+    m.log.warn("drift correction dropped at the resume: the node is not paused", "state", m.playerState)
+    return
+  end if
+  tellPlayer(host, { command: "resume" })
+  m.log.info("drift correction resumed", "positionTicks", m.playerPositionTicks.toStr())
+end sub
+
+sub dropCorrection()
+  m.correction = invalid
+  m.correctionTimer.control = "stop"
+end sub
+
 sub onFrame(event as object)
   ensureReady()
+  refreshExtraOffset()
   frame = event.getData()
   if not isValid(frame) or not syncPlayTime.isText(frame.kind) then return
   endUnansweredRefollow()
@@ -485,6 +575,8 @@ sub applyPendingPlan()
   end if
   ' A Seek leaves the player paused for the Unpause that follows.
   m.groupPaused = plan.action = "Pause" or plan.action = "Seek"
+  dropCorrection()
+  if plan.action = "Unpause" then syncPlayPlayback.armSettleCheck(m.settle)
   if m.groupPaused
     m.pauseAttempts = 0
     m.pauseGaveUp = false
@@ -649,11 +741,13 @@ sub track(evt as object)
   isPlaying = m.playerState = "playing"
   if result.pauseFirst
     ' A load's first frame: hold here and tell the server where we are. Its Unpause starts
-    ' everyone together (web pauses at playbackstart the same way).
+    ' everyone together (web pauses at playbackstart the same way). A correction's landing
+    ' pauses the same way, and then waits for the group.
     host = playerHost()
     if isValid(host) then tellPlayer(host, { command: "pause" })
     isPlaying = false
   end if
+  if isValid(m.correction) and m.tracker.phase = "ready" and phaseBefore <> "ready" then scheduleCorrectionResume(result.pauseFirst)
   if result.report <> ""
     if result.positionTicks >= 0 then report(result.report, isPlaying, result.positionTicks) else report(result.report, isPlaying)
   else if m.tracker.phase <> phaseBefore
@@ -808,6 +902,7 @@ sub leaveLocally()
   m.syncTimer.control = "stop"
   m.readyTimer.control = "stop"
   m.pauseTimer.control = "stop"
+  dropCorrection()
   m.groupPaused = false
   m.timeSyncTask = releaseTask(m.timeSyncTask, "results")
   m.state = syncPlayState.newState()
@@ -844,7 +939,9 @@ sub publish()
       playingItemId: m.state.playingItemId,
       playingItemIndex: m.state.playingItemIndex,
       playlistCount: m.state.playlist.count(),
-      loadNotice: m.loadNotice
+      loadNotice: m.loadNotice,
+      playbackDiffMs: m.playbackDiffMs,
+      extraOffsetMs: syncPlayOffset.extraOffsetMs(m.estimator)
     }
   })
 end sub

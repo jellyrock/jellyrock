@@ -34,6 +34,21 @@ namespace syncPlayPlayback
   const PAUSE_CONFIRM_MS = 1000
   ' The most pause writes the manager makes for one group command.
   const PAUSE_ATTEMPTS = 3
+  ' After an Unpause, once the node plays, a drift past this is corrected with one exact seek.
+  ' Measured 2026-10-31 on the Stick 4K: a resume left one transcode path 288 to 539 ms behind
+  ' the server's estimate while every other path settled within about 110 ms, and a seek lands
+  ' within about 125 ms on a transcode (exactly on direct play), so this has headroom over what a
+  ' correction itself leaves, or it would seek again for nothing.
+  const SETTLE_CORRECTION_MS = 150
+  ' Position notifications to let pass after `playing` before the drift is read: the node's
+  ' position field lags real playback by up to one notification interval.
+  const SETTLE_POSITIONS = 2
+  ' How far ahead of the group a correction seeks before it pauses and waits for the group to
+  ' arrive. A plain seek to the group's position lands behind by the seek's own latency (a
+  ' transcode resumed 364 and 667 ms late on a 2026-10-31 Stick 4K run, the drift it was meant
+  ' to fix), so the correction uses the protocol's own shape: seek past the group, pause there,
+  ' resume when the group reaches it. Over the slowest seek measured (1.3 s on a transcode).
+  const CORRECTION_LEAD_MS = 2000
 
   ' --- scheduling ---
 
@@ -120,6 +135,68 @@ namespace syncPlayPlayback
       if lastCommand.command = "Pause" or lastCommand.command = "Seek" then return syncPlayTime.asLong(lastCommand.positionTicks)
     end if
     return syncPlayTime.asLong(update.startPositionTicks)
+  end function
+
+  ' --- the settle correction ---
+
+  ' How far this member sits from the group, in ms, positive when it is behind: the last
+  ' Unpause's position run forward on the measured clock, minus the player's position (web's
+  ' playbackDiffMillis). Invalid while no Unpause is in force or its When has not come.
+  function driftMs(lastCommand as dynamic, estimator as object, nowMs as longinteger, playerPositionTicks as longinteger) as dynamic
+    if not isValid(lastCommand) or lastCommand.command <> "Unpause" then return invalid
+    serverNow& = syncPlayOffset.serverNowMs(estimator, nowMs)
+    whenMs& = syncPlayTime.asLong(lastCommand.whenMs)
+    if serverNow& < whenMs& then return invalid
+    estimated& = syncPlayTime.ticksToMs(syncPlayTime.asLong(lastCommand.positionTicks)) + (serverNow& - whenMs&)
+    return estimated& - syncPlayTime.ticksToMs(playerPositionTicks)
+  end function
+
+  ' The check an Unpause arms: once the node plays and SETTLE_POSITIONS notifications have come,
+  ' a drift past SETTLE_CORRECTION_MS is corrected with one silent seek, and then the check is
+  ' spent until the next Unpause (or a stall the member reported, which arms it again).
+  function newSettleCheck() as object
+    return { armed: false, positions: 0 }
+  end function
+
+  sub armSettleCheck(check as object)
+    check.armed = true
+    check.positions = 0
+  end sub
+
+  ' Feed one position notification. True when a correction is due now (correctionPlan says
+  ' where to seek and when to resume). Nothing is counted while the
+  ' group is paused, the node is not playing, or the tracker is not settled: the drift means
+  ' nothing there, and web gates its correction on the same three.
+  function settleCorrectionDue(check as object, drift as dynamic, playerState as string, trackerPhase as string, groupPaused as boolean) as boolean
+    if not check.armed then return false
+    if groupPaused or playerState <> "playing" or trackerPhase <> "ready" then return false
+    check.positions++
+    if check.positions < SETTLE_POSITIONS then return false
+    check.armed = false
+    if not isValid(drift) then return false
+    return Abs(drift) > SETTLE_CORRECTION_MS
+  end function
+
+  ' The correction for a drift the check found: seek to the group's position plus the lead,
+  ' pause once the node is there (the tracker's thenPause), and resume on the device clock at
+  ' the moment the group's own clock reaches that position.
+  ' @param drift - from driftMs
+  ' @param playerPositionTicks - the player's position the drift was read against
+  ' @param lastCommand - the Unpause in force
+  ' @returns an AA with targetTicks and resumeAtMs, the resume moment on the device clock
+  function correctionPlan(drift as longinteger, playerPositionTicks as longinteger, lastCommand as object, estimator as object) as object
+    targetTicks& = playerPositionTicks + syncPlayTime.msToTicks(drift) + syncPlayTime.msToTicks(CORRECTION_LEAD_MS)
+    commandMs& = syncPlayTime.ticksToMs(syncPlayTime.asLong(lastCommand.positionTicks))
+    reachesServerMs& = syncPlayTime.asLong(lastCommand.whenMs) + (syncPlayTime.ticksToMs(targetTicks&) - commandMs&)
+    return { targetTicks: targetTicks&, resumeAtMs: syncPlayOffset.deviceTimeForServerMs(estimator, reachesServerMs&) }
+  end function
+
+  ' Milliseconds until the correction's resume, 0 when the moment has passed (a seek slower than
+  ' the lead: the resume goes out at once and the member stays behind by the lateness).
+  function correctionResumeDelayMs(plan as object, nowMs as longinteger) as longinteger
+    delay& = syncPlayTime.asLong(plan.resumeAtMs) - nowMs
+    if delay& < 0 then return 0&
+    return delay&
   end function
 
   ' --- the ready tracker ---
