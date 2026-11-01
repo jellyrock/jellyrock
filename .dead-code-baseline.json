@@ -6,6 +6,7 @@
     "field components/data/jellyfin/DeviceInfo.xml DeviceInfo.canPlay4K",
     "field components/data/jellyfin/DeviceInfo.xml DeviceInfo.maxVideoHeight",
     "field components/data/jellyfin/DeviceInfo.xml DeviceInfo.maxVideoWidth",
+    "field components/data/jellyfin/DeviceInfo.xml DeviceInfo.memoryTotal",
     "field components/data/jellyfin/DeviceInfo.xml DeviceInfo.videoCodecs",
     "function components/data/UserData.bs removeFromRegistry",
     "function source/showScenes.bs SendPerformanceBeacon",

@@ -1,59 +1,33 @@
-' Memory monitoring through roAppMemoryMonitor (ifAppMemoryMonitor). Roku certification requires
-' an app to use its interface and events. Main() owns the monitor and the message port; these
-' functions hold the logic so a test can cover it without a device.
+' Registers roAppMemoryMonitor, which Roku certification requires an app to use. The app logs what
+' it reports and does not act on it yet: #1297 is the work to free memory near the limit.
 namespace memoryMonitor
 
-  ' Create the monitor and start its memory warning events on `port`.
-  '
-  ' Roku does not support roAppMemoryMonitor on the Liberty, Austin, Mustang and Littlefield
-  ' platforms, where CreateObject returns invalid.
+  ' Create the monitor and start its memory events on `port`.
   '
   ' @param port - the message port that receives roAppMemoryNotificationEvent
-  ' @return the monitor, which the caller must keep a reference to so events keep arriving, or invalid when the device does not support it
+  ' @return the monitor, or invalid when the device has none
   function start(port as object) as dynamic
-    ' Typed dynamic: the BrighterScript type data lists ifSetMessagePort for this component only
-    ' as an event, so setMessagePort fails the type check, though Roku's docs support it.
-    monitor as dynamic = CreateObject("roAppMemoryMonitor")
+    return memoryMonitor.register(CreateObject("roAppMemoryMonitor"), port)
+  end function
+
+  ' Connect a monitor to `port` and log its current values.
+  '
+  ' Roku lists platforms without these functions and does not say how they behave there, so a
+  ' failed call is logged rather than left to stop the app launching.
+  '
+  ' @param monitor - the object from CreateObject, typed dynamic so a test can pass a stand-in
+  ' @param port - the message port that receives roAppMemoryNotificationEvent
+  ' @return the monitor it was given
+  function register(monitor as dynamic, port as object) as dynamic
     if not isValid(monitor) then return invalid
-    monitor.setMessagePort(port)
-    monitor.EnableMemoryWarningEvent(true)
+    try
+      monitor.setMessagePort(port)
+      monitor.EnableMemoryWarningEvent(true)
+      print "memory monitor: limit="; monitor.GetChannelMemoryLimit().maxForegroundMemory; " usagePercent="; monitor.GetMemoryLimitPercent(); " available="; monitor.GetChannelAvailableMemory()
+    catch error
+      print "memory monitor failed: "; error.message
+    end try
     return monitor
-  end function
-
-  ' Read the monitor's current values as DeviceInfo fields.
-  '
-  ' A value the monitor does not return is left out, so a setFields call keeps the field's default.
-  '
-  ' @param monitor - the object start() returned
-  ' @return an AA with `memoryTotal` (the app's foreground memory limit), `memoryUsagePercent` and `memoryAvailable`, or an empty AA for an invalid monitor
-  function readSnapshot(monitor as dynamic) as object
-    fields = {}
-    if not isValid(monitor) then return fields
-
-    limit = monitor.GetChannelMemoryLimit()
-    if isValid(limit) and isValid(limit.maxForegroundMemory)
-      fields.memoryTotal = limit.maxForegroundMemory
-    end if
-
-    percent = monitor.GetMemoryLimitPercent()
-    if isValid(percent) then fields.memoryUsagePercent = percent
-
-    available = monitor.GetChannelAvailableMemory()
-    if isValid(available) then fields.memoryAvailable = available
-
-    return fields
-  end function
-
-  ' Turn the info of an roAppMemoryNotificationEvent into DeviceInfo fields.
-  '
-  ' @param info - the AA from the event's GetInfo()
-  ' @return an AA with `memoryUsagePercent`, or an empty AA when the info has no numeric value for it
-  function fieldsFromNotification(info as dynamic) as object
-    if not isValid(info) then return {}
-    percent = info.memoryUsagePercent
-    percentType = type(percent)
-    if percentType <> "Integer" and percentType <> "LongInteger" and percentType <> "Float" and percentType <> "Double" then return {}
-    return { memoryUsagePercent: Int(percent) }
   end function
 
 end namespace

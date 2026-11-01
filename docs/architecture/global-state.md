@@ -9,7 +9,7 @@ related-files:
   - components/data/Constants.xml
   - components/data/jellyfin/AppInfo.xml
   - components/data/jellyfin/DeviceInfo.xml
-last-reviewed: 2026-10-31
+last-reviewed: 2026-10-27
 ---
 
 # Global state
@@ -153,7 +153,6 @@ A component that copies a theme color when it is built keeps the old color until
 - **`serverDeviceName`**: the `DeviceId` JellyRock sends Jellyfin. `user.SetServerDeviceName()` sets it after sign-in, and the auth header, the remote-control socket and the session lookups all read it.
 - **`locale`**: the Roku's locale, used to pick translations before anyone signs in.
 - **`memoryLevel`**: updated by `main.bs` when Roku sends a general memory event.
-- **`memoryTotal`, `memoryUsagePercent` and `memoryAvailable`**: the app's foreground memory limit, the percent of it in use and the memory still available, read from `roAppMemoryMonitor` by `memoryMonitor.readSnapshot()` at start-up. `main.bs` refreshes `memoryUsagePercent` on each `roAppMemoryNotificationEvent`. They stay at 0 on platforms without the monitor.
 
 ## Manager nodes: `sceneManager`, `queueManager`, `audioPlayer`
 

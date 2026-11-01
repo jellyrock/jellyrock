@@ -2,86 +2,72 @@ import "pkg:/source/utils/memoryMonitor.bs"
 
 namespace tests
 
-  @suite("memoryMonitor - snapshot and notification fields")
+  @suite("memoryMonitor - registration")
   class MemoryMonitorTests extends tests.BaseTestSuite
 
-    protected override function setup()
-      super.setup()
-    end function
-
-    ' A stand-in for roAppMemoryMonitor: an AA with the three getters readSnapshot calls.
-    private function fakeMonitor(limit as dynamic, percent as dynamic, available as dynamic) as object
+    ' A stand-in for roAppMemoryMonitor that records what register() asked of it.
+    private function fakeMonitor(limit as dynamic) as object
       return {
         limit: limit,
-        percent: percent,
-        available: available,
+        portSet: false,
+        warningsEnabled: false,
+        setMessagePort: function(_port as object) as void
+          m.portSet = true
+        end function,
+        EnableMemoryWarningEvent: function(enable as boolean) as boolean
+          m.warningsEnabled = enable
+          return enable
+        end function,
         GetChannelMemoryLimit: function() as dynamic
           return m.limit
         end function,
-        GetMemoryLimitPercent: function() as dynamic
-          return m.percent
+        GetMemoryLimitPercent: function() as integer
+          return 3
         end function,
-        GetChannelAvailableMemory: function() as dynamic
-          return m.available
+        GetChannelAvailableMemory: function() as integer
+          return 1000
         end function
       }
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("readSnapshot()")
+    @describe("start()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("returns the limit, the usage percent and the available memory")
+    @it("returns a real monitor on this Roku")
     function _()
-      monitor = m.fakeMonitor({ maxForegroundMemory: 500000 }, 42, 123456)
-      m.assertEqual(memoryMonitor.readSnapshot(monitor), { memoryTotal: 500000, memoryUsagePercent: 42, memoryAvailable: 123456 })
-    end function
-
-    @it("returns an empty AA for an invalid monitor")
-    function _()
-      m.assertEqual(memoryMonitor.readSnapshot(invalid), {})
-    end function
-
-    @it("leaves memoryTotal out when the limit AA is invalid")
-    function _()
-      monitor = m.fakeMonitor(invalid, 42, 123456)
-      m.assertEqual(memoryMonitor.readSnapshot(monitor), { memoryUsagePercent: 42, memoryAvailable: 123456 })
-    end function
-
-    @it("leaves memoryTotal out when the limit AA has no maxForegroundMemory")
-    function _()
-      monitor = m.fakeMonitor({ other: 1 }, 42, 123456)
-      m.assertEqual(memoryMonitor.readSnapshot(monitor), { memoryUsagePercent: 42, memoryAvailable: 123456 })
-    end function
-
-    @it("leaves a field out when its getter returns invalid")
-    function _()
-      monitor = m.fakeMonitor({ maxForegroundMemory: 500000 }, invalid, invalid)
-      m.assertEqual(memoryMonitor.readSnapshot(monitor), { memoryTotal: 500000 })
+      monitor = memoryMonitor.start(CreateObject("roMessagePort"))
+      m.assertEqual(type(monitor), "roAppMemoryMonitor")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("fieldsFromNotification()")
+    @describe("register()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("returns the usage percent from the event info")
+    @it("returns invalid when the device has no monitor")
     function _()
-      m.assertEqual(memoryMonitor.fieldsFromNotification({ memoryUsagePercent: 87 }), { memoryUsagePercent: 87 })
+      m.assertInvalid(memoryMonitor.register(invalid, CreateObject("roMessagePort")))
     end function
 
-    @it("returns an empty AA when the key is missing")
+    @it("connects the port and enables memory warnings")
     function _()
-      m.assertEqual(memoryMonitor.fieldsFromNotification({ other: 1 }), {})
+      monitor = m.fakeMonitor({ maxForegroundMemory: 500000 })
+      m.assertEqual(memoryMonitor.register(monitor, CreateObject("roMessagePort")), monitor)
+      m.assertTrue(monitor.portSet)
+      m.assertTrue(monitor.warningsEnabled)
     end function
 
-    @it("returns an empty AA for invalid info")
+    @it("keeps events enabled when a value cannot be read")
     function _()
-      m.assertEqual(memoryMonitor.fieldsFromNotification(invalid), {})
+      monitor = m.fakeMonitor(invalid)
+      m.assertEqual(memoryMonitor.register(monitor, CreateObject("roMessagePort")), monitor)
+      m.assertTrue(monitor.warningsEnabled)
     end function
 
-    @it("returns an empty AA when the value is not a number")
+    @it("survives a monitor with none of the functions")
     function _()
-      m.assertEqual(memoryMonitor.fieldsFromNotification({ memoryUsagePercent: "high" }), {})
+      monitor = {}
+      m.assertEqual(memoryMonitor.register(monitor, CreateObject("roMessagePort")), monitor)
     end function
 
   end class

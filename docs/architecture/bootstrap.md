@@ -5,6 +5,7 @@ related-files:
   - source/loginRouter.bs
   - source/replayRoute.bs
   - source/utils/globals.bs
+  - source/utils/memoryMonitor.bs
   - components/JRScene.xml
   - components/JRScene.bs
 last-reviewed: 2026-10-31
@@ -154,7 +155,7 @@ Its `callFunc` functions:
 | `dispatchCommand` | A remote-control command from `RemoteControlTask` (see [`remote-control.md`](remote-control.md)). |
 | `reloadHomeRequested` | A theme or language change: `JRScene.reloadRoutedHome()` opens a new Home. |
 | `roDeviceInfoEvent` | A device event (see the next section). |
-| `roAppMemoryNotificationEvent` | The app's memory use crossed a warning level. Stores the usage percent in `m.global.device.memoryUsagePercent` and prints it. |
+| `roAppMemoryNotificationEvent` | The app's memory use crossed a warning level, going up or down. Prints it. Nothing else reacts ([#1297](https://github.com/jellyrock/jellyrock/issues/1297)). |
 | `roInputEvent` | A runtime deep link, or a voice transport command passed to `remoteDispatch.dispatchTransport()`. |
 
 Play presses, item selection and the favorite and watched buttons are not here. Each routed view handles its own on the render thread ([`user-journey.md`](user-journey.md)).
@@ -174,7 +175,7 @@ Play presses, item selection and the favorite and watched buttons are not here. 
 | App focus | Prints it. Roku sends it when a system overlay takes or returns focus. |
 | Link status | Prints it. The app does not show an offline state. |
 
-`Main()` also starts `roAppMemoryMonitor` (`memoryMonitor.start()` in `source/utils/memoryMonitor.bs`) and keeps it on `m`, so its events keep arriving. Roku requires apps to use it for certification. It returns `invalid` on the few older platforms Roku lists as unsupported, and the app skips it there. At start-up `Main()` stores a snapshot of the memory limit, usage percent and available memory in `m.global.device`.
+`Main()` also starts `roAppMemoryMonitor` (`memoryMonitor.start()` in `source/utils/memoryMonitor.bs`), which Roku requires for certification, and prints its memory limit, usage percent and available memory at start-up. Roku lists a few older platforms without these functions, and a failed call is printed rather than stopping the launch. The app stores none of these values.
 
 The 512 MB memory measures (a narrower API pool, half-size trickplay tiles) do not wait for a memory event: they key off `isLowMemoryDevice`, set at start-up ([`global-state.md`](global-state.md#app-and-device-mglobalapp-mglobaldevice)).
 
