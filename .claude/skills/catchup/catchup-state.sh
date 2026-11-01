@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# catchup-state.sh — the one read /catchup makes (and /focus through it). It prints the repo's git
+# catchup-state.sh: the one read /catchup makes (and /focus through it). It prints the repo's git
 # position, the journal, the projects, this repo's own reader, the recent commits and, when this
 # machine keeps a mailbox, the open messages other repos left this one and the work request parts
 # naming it,

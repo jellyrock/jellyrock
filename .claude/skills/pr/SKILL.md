@@ -30,7 +30,7 @@ allowed-tools: Bash(bash .claude/skills/pr/forge.sh pr view:*), Bash(bash .claud
 
 **Inputs.** No arguments: the skill operates on the current branch and its commits. It expects a non-default, non-detached branch with a clean working tree; the pre-flight pushes the branch and any unpushed commits. It reads the repo's PR template, its squash-merge settings, the branch's commit log and diff against the default branch, an existing PR's title, labels, body and notes comment (when one is open) including the render marker, and this skill's `## This repo` for the repo's title rules, labels, own journal passes, PR checks and required sections.
 
-**Outputs.** A created or updated pull request with: a title that passes the repo's title gate, names every user-visible change and backticks code identifiers; one label per kind of deliverable; a body that is the filled template, written for the reader the merge settings give it, listing each message or work request part from another repo that the branch handles; when the body becomes the commit message, one notes comment for reviewer-only detail; and a hidden render marker (a full `sha` and an ISO-8601 UTC timestamp) that lets the next run narrow the journal passes to "since last render". Also: drafted journal entries surfaced per candidate for the user to accept into `/log`; on the update path, a backup of the prior body and notes inside the git directory; and the PR URL printed. No journal entry is written without a per-candidate accept, and nothing on the PR is overwritten without confirmation.
+**Outputs.** A created or updated pull request with: a title that passes the repo's title gate, names every user-visible change and backticks code identifiers; one label per kind of deliverable; a body that is the filled template, written for the reader the merge settings give it, listing each message or work request part from another repo that the branch handles; when the body becomes the commit message, one notes comment for reviewer-only detail; and a hidden render marker (a full `sha` and an ISO-8601 UTC timestamp) that lets the next run narrow the journal passes to "since last render". Also: drafted journal entries surfaced per candidate for the user to accept into `/log`; on the update path, a backup of the prior body and notes inside the git directory; the PR URL printed, with a warning when the PR conflicts with its base or a journal pass did not finish. No journal entry is written without a per-candidate accept, and nothing on the PR is overwritten without confirmation.
 
 **Success criteria.**
 
@@ -38,9 +38,11 @@ allowed-tools: Bash(bash .claude/skills/pr/forge.sh pr view:*), Bash(bash .claud
 - Existing-PR routing is correct: an open PR takes the update path (diff, confirm, back up, apply); a merged or closed one aborts with the right recovery instruction; none takes the create path, and a merged or closed PR that only shares the branch's name counts as none.
 - What reaches `git log` is read from the repo's settings, not assumed: the body is written as a commit message only when the merge keeps it, and the title gets the most care where the merge keeps it.
 - The journal passes run against the resolved lower-bound commit (the prior render marker on update, the default branch on create), so the user isn't re-asked about candidates already handled, and each candidate is confirm/skip per item.
+- A journal pass that ends without its answer is reported as missing coverage, in chat and on the PR, never left to read as a clean pass.
 - The title passes the repo's title gate, backticks code identifiers and names every user-visible change; on the update path it is re-derived from the whole PR.
 - Labels come from the deliverables the title and the body's summary name, each shown to the user beside the phrase that earned it; tooling-only work is `dev-improvement`, `documentation` goes only on a PR that changes nothing but docs, and labels this skill does not manage are never removed.
 - The body passes the repo's own PR checks before it is posted, every issue reference points where its sentence means, and in a public repo nothing private is posted and the agent files appear only as a bare file list.
+- After posting, the skill reads whether the PR conflicts with its base and says so when it does or when it could not tell.
 - `forge.sh pr create`, `pr edit` and `pr comment` permission prompts are left intact: they are the user's gate on what gets posted, not friction to allowlist away.
 
 **Failure modes to avoid.**
@@ -48,6 +50,8 @@ allowed-tools: Bash(bash .claude/skills/pr/forge.sh pr view:*), Bash(bash .claud
 - **Writing for the wrong reader.** A body written as a reviewer's note when the merge makes it the permanent commit message, or a commit-message body on a repo whose merge discards it. Read the settings first.
 - **Polluting the skill's context with a ledger walk.** A pass that reads a large ledger runs as a sub-agent with an explicit model; reading the ledger inline is the context pollution the sub-agent exists to prevent, and narrating a sub-agent while the transcript shows an inline read is a false report.
 - **Auto-applying journal entries.** The passes produce drafts only; invoke `/log` (or apply a ledger edit) only on an explicit per-candidate accept.
+- **A pass that did not finish reading as a clean one.** A stopped or empty sub-agent, or a narrower stand-in, looks like a full pass in the PR unless the run says otherwise.
+- **Reading green checks on a conflicting PR as a pass.** A forge can skip most checks on a PR that conflicts with its base, so the few that report are all green. Read the conflict state; a check count varies too much from PR to PR to be the gate.
 - **Overwriting a PR without confirmation or backup.** On the update path, always diff, confirm and back up the prior body and notes before `forge.sh pr edit`; if an edit fails, the backup is the recovery path: surface it, don't claim success.
 - **Opening a duplicate on a merged or closed PR.** Abort with the recovery instruction; never silently create a second PR.
 - **A title that names only part of the PR.** Where the title becomes the commit subject or a changelog line it cannot be fixed after merge; re-derive it from every user-visible change, on the update path too. The likeliest omission is a behavioral fix delivered inside a refactor.
@@ -111,6 +115,8 @@ Each pass surfaces journal entries the user should write, one-line confirm/skip 
 - **Decision:** commits that close off alternatives or carry a non-obvious rationale (architectural, hard to reverse, cross-component). On accept, `/log decision`, which applies its own significance gate.
 - **Followup:** anything the branch defers, half-does or leaves for later, including what you are about to write as a follow-up in the body. On accept, `/log followup`, and the body cites the entry by its fid or title, never by its position in a list.
 - **This repo's own passes**, from this skill's `## This repo`, only for [capture types](../../../AGENTS.md#capture-types) or ledgers this repo keeps. A pass that reads a large ledger runs as a sub-agent with an explicit `model`, never as an inline read.
+
+A pass that ends without its answer (stopped, failed or returned nothing) is missing coverage, never a clean pass. Say in chat: `{{pass}} did not complete; its coverage is missing.` Repeat that line in the notes comment, or in the body when there is no notes comment (Step 3), so a reviewer sees it too.
 
 ### Step 5: Gather context (in parallel)
 
@@ -196,11 +202,11 @@ Default to non-draft; use `--draft` only when the work is incomplete and you wan
 **Update path:**
 
 1. **Render** the title, labels, body and notes the same way; the body describes the whole PR (`{{default}}..HEAD`), not the delta since the last render.
-2. **Compare** each with what the PR has now. When everything is unchanged (the marker's timestamp ignored), print `PR #{{N}} already up to date at {{url}}` and stop: no backup, no edit. Otherwise show a diff for each part that changed (title, labels added and removed, the body section by section, the notes), and say which body sections a person likely edited by hand.
+2. **Compare** each with what the PR has now. When everything is unchanged (the marker's timestamp ignored), print `PR #{{N}} already up to date at {{url}}` and go to Step 11: no backup, no edit. Otherwise show a diff for each part that changed (title, labels added and removed, the body section by section, the notes), and say which body sections a person likely edited by hand.
 3. **Confirm** in chat: `apply`, `skip` (print `{{url}}` and stop) or `edit` (take the user's changes, then ask again).
 4. **Back up** the prior body, then the prior notes if any, to `"$(git rev-parse --git-dir)/pr-backup-{{N}}-{{date -u +%Y%m%dT%H%M%SZ}}.md"`: inside the git directory it can never be committed. Outside auto mode Claude Code asks before any write there (a sensitive path), and a headless run refuses it: that approval is the last gate before the edit, so never skip the backup or move it elsewhere to avoid it.
 5. **Apply** only the parts that changed: `bash .claude/skills/pr/forge.sh pr edit {{N}} [--title "{{title}}"] [--add-label "{{a}},{{b}}"] [--remove-label "{{c}}"] [--body-file {{body-file}}]` (remove only a label from Step 7's table, or this repo's additions, that no longer applies); edit the notes comment by id with `bash .claude/skills/pr/forge.sh comment edit {{id}} --body-file {{notes-file}}`, or create it with `forge.sh pr comment` when there was none. If an edit fails, give the backup path and stop; the body is restored with `bash .claude/skills/pr/forge.sh pr edit {{N}} --body-file {{backup}}` after trimming the notes off its end.
 
 ### Step 11: After
 
-Print the PR URL; don't summarize the body. Apply the accepted journal drafts through `/log`. Then anything this skill's `## This repo` asks for after posting.
+Print the PR URL; don't summarize the body. Then run `bash .claude/skills/pr/forge.sh pr mergeable {{N}}`, which prints `MERGEABLE`, `CONFLICTING` or `UNKNOWN`. On `CONFLICTING`, print: `PR #{{N}} conflicts with {{default}}, so the forge may skip checks on it and its green checks may not be the full set. Merge or rebase {{default}}, then push.` On `UNKNOWN` or a failed call, print: `Could not tell whether PR #{{N}} conflicts with {{default}}: check before trusting its checks.` Apply the accepted journal drafts through `/log`. Then anything this skill's `## This repo` asks for after posting.

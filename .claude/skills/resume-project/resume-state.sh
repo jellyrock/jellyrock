@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# resume-state.sh — the one read /resume-project makes. It picks the project, records this
+# resume-state.sh: the one read /resume-project makes. It picks the project, records this
 # session's claim on it, prints the PLAN sections a resume needs in full (Status, the open
 # punch-list, the kickoff, the last session-log entry), resolves what the project waits on, says
 # the open messages other repos left about it when this machine keeps a mailbox, names the files another worktree of the repo has also changed (overlap.sh),
@@ -33,6 +33,7 @@
 #     first (remote-tracking refs only, under a timeout, RESUME_FETCH_SECONDS, default 10), unlike
 #     /sonnet's reader: it loads the PLAN a session works from, and a checkout behind
 #     its remote loads an old one. No timeout command, or a failed fetch: a NOTE, then the last fetch.
+#     It fetches origin too, when that is not the branch's remote, to compare the branch with the default branch.
 #
 # Usage (from inside the repo):
 #   bash .claude/skills/resume-project/resume-state.sh [<slug> [<starting point>…]]
@@ -40,6 +41,13 @@
 #       kickoff's Starts at: one open followup's fid (optionally fid:<fid>), or one open work request
 #       part's id naming this repo (optionally request:<id>), is shown in full; an id that is both is
 #       said, to ask which; anything else is the operator's words.
+#   … --handoff [<slug> [<starting point>…]]
+#       the same read, except that in the main checkout, with the project's worktree there and someone
+#       watching (CLAUDE_CODE_SESSION_ATTENDED is not 0), it first opens that worktree's window through
+#       the script the git setting handoff.script names, with /resume-project typed in and unsent. Opened:
+#       it prints that line and exits 4, before the claim, so only the new tab holds the project. Not
+#       opened: a NOTE, then the read. Only /resume-project passes it: /end-session runs the same read,
+#       and a window must never rise in the middle of a close.
 #   … --check [<slug>]     the PLAN check alone: FAIL lines exit 1; REVIEW lines ask the writer to
 #                          justify something (a landmine dropped since the last commit); NOTEs inform
 #   … --release [<slug>]   remove this session's claim (another session's is left alone). Like a
@@ -60,6 +68,10 @@
 #                          <name>, case ignored), inside a `<plan_section>` tag, or the ERROR line
 #                          when the PLAN has none; the project is picked as a resume picks it, but
 #                          nothing is claimed, fetched or written (for other readers: /focus)
+#   … --where <slug>       the folder a resume of that project runs in, as a `where: <folder>` line: the
+#                          project's worktree when it has one, else the main checkout; the project is
+#                          picked as a resume picks it, and nothing is claimed, fetched or written
+#                          (for other readers: /focus)
 #   … --claims             every claim on this machine an open tab holds, one tab-separated line
 #                          each: the PLAN's path, the tab's name, and busy, idle <n> min or this
 #                          session; only reads, and needs no repo (for other readers: /focus-all)
@@ -67,8 +79,8 @@
 # tests and dry runs). A value date cannot read is an ERROR and exit 2.
 # Exit: 0 done (a resume: a project was picked and every section printed; --holder: this session
 # holds it); 1 --check found a FAIL, or --holder: another session or none holds it; 2 no project could be picked (none active, several active, a slug matching none or several,
-# no projects folder, not a git repo: the SELECTION lines say which; --section with no name or no slug: a usage ERROR; --check run by a Verify first command: an ERROR); 3 the picked PLAN cannot be
-# read.
+# no projects folder, not a git repo: the SELECTION lines say which; --section with no name or no slug, or --where with no slug: a usage ERROR; --check run by a Verify first command: an ERROR); 3 the picked PLAN cannot be
+# read; 4 --handoff opened the project's worktree in a new tab: nothing was read or claimed here.
 #
 # Claims: a session is known by CLAUDE_CODE_SESSION_ID and CLAUDE_PID, which every command a
 # Claude Code session runs carries, and ~/.claude/sessions/<pid>.json (CLAIMS_SESSIONS_DIR in
@@ -78,10 +90,11 @@
 
 set -uo pipefail # not -e: one failed section must not stop the rest
 
-mode=resume
-case "${1:-}" in --check) mode=check; shift ;; --release) mode=release; shift ;; --holder) mode=holder; shift ;; --claims) mode=claims; shift ;; --waits) mode=waits; shift ;; --waits-list) mode=waitslist; shift ;; --plan-check) mode=plancheck; shift ;;
+mode=resume; handoff=""
+case "${1:-}" in --handoff) handoff=1; shift ;; --check) mode=check; shift ;; --release) mode=release; shift ;; --holder) mode=holder; shift ;; --claims) mode=claims; shift ;; --waits) mode=waits; shift ;; --waits-list) mode=waitslist; shift ;; --plan-check) mode=plancheck; shift ;;
   --section) mode=section; shift; secname="${1:-}"; [ $# -gt 0 ] && shift
     [ -n "$secname" ] && [ -n "${1:-}" ] || { echo "ERROR: usage: resume-state.sh --section <name> <slug>"; exit 2; } ;;
+  --where) mode=where; shift; [ -n "${1:-}" ] || { echo "ERROR: usage: resume-state.sh --where <slug>"; exit 2; } ;;
 esac
 # A Verify first command that runs --check again would recurse without end: verify_first marks its commands.
 [ "$mode" = check ] && [ -n "${RESUME_STATE_IN_CHECK:-}" ] && { echo "ERROR: a Verify first command runs the PLAN check itself"; exit 2; }
@@ -619,7 +632,8 @@ st="$(frontmatter "$plan" status)"; lu="$(frontmatter "$plan" last-updated)"
 # the worktree holds the newer PLAN, and the claim and every check belong to the folder the work
 # happens in, so a release or a holder question must look where the resume recorded the claim. The
 # script runs again there, with the picked folder's name so an auto-pick picks the same project
-# (a re-exec rather than a swapped path: every later line then reads one folder, whole).
+# (a re-exec rather than a swapped path: every later line then reads one folder, whole). It runs
+# by its absolute path: after the cd, a relative one would reach the worktree's own, maybe older, copy.
 # RESUME_STATE_REDIRECTED names the worktree it was sent to: it stops a second hop and lets that run
 # say where it came from. The other modes returned above or never get here.
 main_checkout=""
@@ -640,10 +654,33 @@ project_worktree() {
   [ "${RESUME_STATE_REDIRECTED:-}" != "$wt" ] || return 1
   printf '%s\n' "$wt"
 }
+# handoff_open <worktree>: see --handoff. Returns when no window opened; the read goes on.
+handoff_open() {
+  local wt="$1" script out hslug="$pslug" cmd why plans
+  [ "${CLAUDE_CODE_SESSION_ATTENDED:-1}" != 0 ] || return 1
+  # the short slug, which every older script in a worktree reads, unless two projects share it
+  plans=("$dir"/[0-9][0-9][0-9][0-9]-[0-9][0-9]-"$pslug"/PLAN.md)
+  [ "${#plans[@]}" -eq 1 ] || hslug="$name"
+  cmd="/resume-project $hslug${start:+ $start}"
+  script="$(git config --type=path --get handoff.script 2>/dev/null)"
+  if [ -f "$script" ]; then
+    out="$(bash "$script" "$wt" "$cmd" </dev/null 2>&1)" && { printf '%s\n' "$out"; exit 4; }
+    why="${out#not opened: }"
+  else
+    why="the setting handoff.script is missing or names no file (the global setup writes it)"
+  fi
+  echo "NOTE: no window opened for the project's worktree: $why. To work there, open $wt in VS Code and type: $cmd"
+}
+# --where: from any checkout of the repo, the folder the main checkout's resume would go to
+if [ "$mode" = where ]; then
+  top="$(dirname "$(cd "$(git rev-parse --git-common-dir)" && pwd -P)")"; main_checkout=1
+  if wt="$(project_worktree)"; then echo "where: $wt"; else echo "where: $top"; fi; exit 0
+fi
 case "$mode" in resume|release|holder)
   if wt="$(project_worktree)"; then
+    [ -n "$handoff" ] && handoff_open "$wt"
     flag=""; [ "$mode" = resume ] || flag="--$mode"
-    cd "$wt" && RESUME_STATE_REDIRECTED="$wt" exec bash "${BASH_SOURCE[0]}" ${flag:+"$flag"} "$name" ${start_words[@]+"${start_words[@]}"}
+    cd "$wt" && RESUME_STATE_REDIRECTED="$wt" exec bash "$here/$(basename "${BASH_SOURCE[0]}")" ${flag:+"$flag"} "$name" ${start_words[@]+"${start_words[@]}"}
   fi ;;
 esac
 age=""; e="$(date -d "$lu" +%s 2>/dev/null)" && age="$(( ($(date +%s) - e) / 86400 )) days ago"
@@ -705,16 +742,21 @@ case "$plan" in
        fi
      fi ;;
 esac
-if up="$(git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null)"; then
-  # Fetch first: a checkout behind its remote would load an old PLAN and kickoff with no word of
-  # it. Bounded, never prompting; a fetch that fails or cannot be bounded is said, never a stop.
-  remote="$(git config "branch.$branch.remote" 2>/dev/null)"; secs="${RESUME_FETCH_SECONDS:-10}"
-  if [ "${remote:-.}" = . ]; then :
-  elif ! command -v timeout >/dev/null; then
+# fetch_remote <remote>: fetch first: a checkout behind its remote would load an old PLAN and kickoff
+# with no word of it. Bounded, never prompting; a fetch that fails or cannot be bounded is said, never a stop.
+fetched=""
+fetch_remote() {
+  local secs="${RESUME_FETCH_SECONDS:-10}"
+  fetched="$1"
+  if ! command -v timeout >/dev/null; then
     echo "NOTE: no timeout command here: not fetched, so the checks below are as of the last fetch"
-  elif GIT_TERMINAL_PROMPT=0 timeout "$secs" git fetch -q "$remote" >/dev/null 2>&1 </dev/null; then
-    echo "fetched $remote"
-  else echo "NOTE: could not fetch $remote within $secs s: the checks below are as of the last fetch"; fi
+  elif GIT_TERMINAL_PROMPT=0 timeout "$secs" git fetch -q "$1" >/dev/null 2>&1 </dev/null; then
+    echo "fetched $1"
+  else echo "NOTE: could not fetch $1 within $secs s: the checks below are as of the last fetch"; fi
+}
+if up="$(git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null)"; then
+  remote="$(git config "branch.$branch.remote" 2>/dev/null)"
+  [ "${remote:-.}" = . ] || fetch_remote "$remote"
   behind="$(git rev-list --count 'HEAD..@{upstream}' 2>/dev/null)"
   [ "${behind:-0}" -gt 0 ] && echo "BANNER: $behind commit(s) on $up not in this checkout — pull before trusting this PLAN or running its Verify first commands: both are as of the old checkout"
   unpushed="$(git log --oneline '@{upstream}..HEAD' 2>/dev/null)"
@@ -723,6 +765,26 @@ if up="$(git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null)"; then
     printf '%s\n' "$unpushed"
   fi
 else echo "NOTE: ${branch:-this branch} has no upstream; unpushed commits not checked"; fi
+# A branch that does not track the default branch hears nothing when that branch moves on: a project
+# worktree that lands by pull request has no upstream, or tracks its own pushed branch. Only a branch
+# with nothing of its own to lose is offered the fast-forward, the one update that cannot conflict.
+if git remote get-url origin >/dev/null 2>&1; then
+  [ "$fetched" = origin ] || fetch_remote origin
+  def="$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)"
+  if [ -z "$def" ] || ! git rev-parse -q --verify "refs/remotes/$def^{commit}" >/dev/null; then
+    echo "NOTE: this repo has no origin/HEAD, so this branch is not compared with the default branch; set it with: git remote set-head origin --auto"
+  elif [ "$def" != "$up" ]; then
+    behind="$(git rev-list --count "HEAD..$def" 2>/dev/null)"
+    if [ "${behind:-0}" -gt 0 ]; then
+      ahead="$(git rev-list --count "$def..HEAD" 2>/dev/null)"
+      if [ "${ahead:-0}" -gt 0 ]; then then_what="It stays behind: it has $ahead commit(s) of its own"
+      elif [ -n "$dirty" ]; then then_what="It stays behind: it has uncommitted files"
+      elif [ "$branch" = HEAD ]; then then_what="It stays behind: it is on no branch"
+      else then_what="It can fast-forward: git merge --ff-only $def, then resume again"; fi
+      echo "BANNER: $behind commit(s) on $def not in this branch: its skills, rules and code, and any PLAN kept here, may lack their changes. $then_what"
+    fi
+  fi
+fi
 
 # The PLAN's last save: its last commit in the repo that holds it, else its file time. Commits made
 # in this repo after it are the work the kickoff has not seen; those naming the project mean the

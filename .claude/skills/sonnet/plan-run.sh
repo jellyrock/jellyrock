@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 #
-# plan-run.sh — the mechanical parts of running a written plan. /sonnet's steps, and the parent that
+# plan-run.sh: the mechanical parts of running a written plan. /sonnet's steps, and the parent that
 # supervises a /sonnet sub-agent, call it instead of doing these by hand.
 #
 # Usage (from inside the repo):
 #   bash .claude/skills/sonnet/plan-run.sh check <plan>
-#       before any edit: whether the plan is for this repo (a vote over its Critical files: each Edit
-#       or Delete row's file must be here, Create rows do not vote), which sections it has, and
+#       before any edit: whether the plan is for this repo (its **Repo:** line against this repo's key,
+#       and a vote over its Critical files: each Edit or Delete row's file must be here, Create rows do
+#       not vote; a line naming another repo overrides the vote, and a matching one places a plan that
+#       only creates files), which sections it has, and
 #       whether its **Project:** line names a PLAN that can take the landing record. Plans kept in
 #       one folder for every repo look alike, so a plan for another repo is a real risk.
 #   … check --list <plan folder>
-#       no plan named: the plans in that folder whose Critical files are all here, newest first
+#       no plan named: the plans in that folder that check would call local, newest first
 #   … scope <plan> <base>
 #       after the run: every file changed in <base>..HEAD with its lines added and removed, and
 #       any left uncommitted, against the plan's Critical files (a row ending in / covers every file
@@ -40,7 +42,9 @@
 #       copy of the working tree (tracked, edited and untracked files, not ignored ones), made into a
 #       one-commit repository with the mutation committed on top. The real tree is never written. The
 #       suite runs once on an unchanged copy first. A row counts only when the suite fails, every
-#       listed case is in a line starting FAIL, and no FAIL line is outside the list.
+#       listed case is in a failure line, and no failure line is outside the list. A failure line
+#       starts FAIL or FAILED, or is pytest's ERROR for a test: ERROR, one space, then an id holding
+#       ::. A log line (ERROR and padding) and a file that cannot be imported (no ::) are neither.
 # Exit: check  0 LOCAL; 2 no plan named (--list printed the candidates); 3 the plan cannot be read;
 #              4 locality FOREIGN, MIXED or UNKNOWN: confirm before any edit
 #       scope  0 matches the plan; 1 differs; 3 an unreadable plan, or no base
@@ -122,6 +126,25 @@ project_line() {
   awk "$MD_LIB"'{ if (md_skip($0, 0)) next } /^## / { exit } /^\*\*Project:\*\*/ { v = $0; sub(/^\*\*Project:\*\*[ \t]*/, "", v); sub(/[ \t].*$/, "", v); print v; exit }' "$1"
 }
 
+# repo_line <plan> -> the **Repo:** value from the header, lowercased as repo-key.sh prints a key;
+# nothing when there is none
+repo_line() {
+  awk "$MD_LIB"'{ if (md_skip($0, 0)) next } /^## / { exit } /^\*\*Repo:\*\*/ { v = $0; sub(/^\*\*Repo:\*\*[ \t]*/, "", v); sub(/[ \t].*$/, "", v); print tolower(v); exit }' "$1"
+}
+
+# repo_verdict <plan>: compares the plan's **Repo:** line with this repo's key. Sets REPO_SAID, REPO_KEY
+# (empty with no origin) and REPO_VERDICT: match, mismatch, or none (no line, or no key to compare it with)
+REPO_KEY_READ=0 REPO_KEY=""
+repo_verdict() {
+  REPO_SAID="$(repo_line "$1")"
+  if [ "$REPO_KEY_READ" = 0 ]; then
+    REPO_KEY_READ=1; REPO_KEY="$(bash "$here/../start-project/repo-key.sh" "$root" 2>/dev/null)" || REPO_KEY=""
+  fi
+  if [ -z "$REPO_SAID" ] || [ -z "$REPO_KEY" ]; then REPO_VERDICT=none
+  elif [ "$REPO_SAID" = "$REPO_KEY" ]; then REPO_VERDICT=match
+  else REPO_VERDICT=mismatch; fi
+}
+
 frontmatter() { awk -v f="$2" 'NR==1 && $0!="---" { exit } NR>1 && $0=="---" { exit } NR>1 && $1==f":" { print $2; exit }' "$1"; }
 
 # resolve <value>: sets PSTATE (na|none|found|archived|unknown|ambiguous|unreachable), PPLAN, PNAME, PMSG
@@ -171,6 +194,11 @@ do_list() {
   mapfile -t all < <(ls -1t "$dir"/*.md 2>/dev/null)
   for p in "${all[@]}"; do
     read -r h n < <(vote "$p")
+    repo_verdict "$p"
+    case "$REPO_VERDICT" in
+      mismatch) continue ;;
+      match) [ "$n" -eq 0 ] && [ -n "$(crit_rows "$p")" ] && { cands+=("$p"); continue; } ;;
+    esac
     [ "$n" -gt 0 ] && [ "$h" -eq "$n" ] && cands+=("$p")
   done
   echo "plan folder: $dir (${#all[@]} plan(s), ${#cands[@]} local to this repo)"
@@ -189,6 +217,12 @@ do_check() {
   echo "size: $(wc -l <"$plan") lines, $(wc -c <"$plan") bytes"
 
   section "LOCALITY"
+  repo_verdict "$plan"
+  case "$REPO_VERDICT" in
+    match) echo "repo: $REPO_KEY (the plan's **Repo:** line matches)" ;;
+    mismatch) echo "repo: $REPO_KEY, but the plan's **Repo:** line says $REPO_SAID" ;;
+    none) [ -z "$REPO_SAID" ] || echo "NOTE: the plan's **Repo:** line says $REPO_SAID, and this repo has no origin to compare it with" ;;
+  esac
   rows="$(crit_rows "$plan")"
   if [ -z "$rows" ]; then
     echo "NOTE: no parseable Critical files table"; locality=UNKNOWN
@@ -207,10 +241,16 @@ do_check() {
     done <<<"$rows"
     echo "ratio: $hit/$n existing (plus $new to be created)"
     [ "$unp" -gt 0 ] && echo "BANNER: $unp Critical files row(s) could not be parsed: read them by hand; the vote ran WITHOUT them"
-    [ "$n" -gt 0 ] && [ "$new" -gt "$n" ] && echo "BANNER: more files are created than exist to vote on: locality rests on thin evidence; confirm the repo"
-    if [ "$n" -eq 0 ]; then locality=UNKNOWN; echo "BANNER: every Critical file is a Create: locality UNKNOWN, confirm the repo"
+    [ "$n" -gt 0 ] && [ "$new" -gt "$n" ] && [ "$REPO_VERDICT" != match ] && echo "BANNER: more files are created than exist to vote on: locality rests on thin evidence; confirm the repo"
+    if [ "$REPO_VERDICT" = mismatch ]; then locality=FOREIGN
+      echo "BANNER: locality FOREIGN: the plan's **Repo:** line says $REPO_SAID and this repo is $REPO_KEY, so this plan is for another repo. Do NOT execute it; stop and confirm."
+    elif [ "$n" -eq 0 ]; then
+      if [ "$REPO_VERDICT" = match ]; then locality=LOCAL
+      elif [ -n "$REPO_KEY" ]; then locality=UNKNOWN
+        echo "BANNER: every Critical file is a Create: locality UNKNOWN, confirm the repo; if it is this one, add **Repo:** $REPO_KEY under the plan's title and run check again"
+      else locality=UNKNOWN; echo "BANNER: every Critical file is a Create: locality UNKNOWN, confirm the repo"; fi
     elif [ "$hit" -eq "$n" ]; then locality=LOCAL
-    elif [ "$hit" -eq 0 ]; then locality=FOREIGN
+    elif [ "$hit" -eq 0 ] && [ "$REPO_VERDICT" != match ]; then locality=FOREIGN
       echo "BANNER: locality FOREIGN: no Critical file is here, so this plan is almost certainly for another repo. Do NOT execute it; stop and confirm."
     else locality=MIXED
       echo "BANNER: locality MIXED: missing:$miss. Either the plan spans repos, or it edits a file that is not here: resolve each MISS before any edit."
@@ -576,7 +616,7 @@ do_mutate() {
     if [ "$rc" -eq 0 ]; then
       echo "SURVIVED $name: $(tail -n 1 "$out")"; rm -rf "$run"; continue
     fi
-    mapfile -t lines < <(sed -n 's/^[[:space:]]*\(FAIL .*\)$/\1/p' "$out")
+    mapfile -t lines < <(sed -nE 's/^[[:space:]]*((FAIL|FAILED) .*|ERROR [^[:space:]]+::.*)$/\1/p' "$out")
     missing=(); unexpected=()
     for c in "${cases[@]}"; do
       hit=0; for fl in "${lines[@]}"; do [[ "$fl" == *"$c"* ]] && hit=1; done
@@ -592,7 +632,7 @@ do_mutate() {
       echo "KILLED $name: $(tail -n 1 "$out")"; killed=$((killed+1))
     else
       if [ "${#missing[@]}" -gt 0 ]; then echo "MISSING $name: ${#missing[@]} listed case(s) did not fail"; quote_lines 20 "${missing[@]}"; fi
-      if [ "${#unexpected[@]}" -gt 0 ]; then echo "UNEXPECTED $name: ${#unexpected[@]} FAIL line(s) outside the list"; quote_lines 20 "${unexpected[@]}"; fi
+      if [ "${#unexpected[@]}" -gt 0 ]; then echo "UNEXPECTED $name: ${#unexpected[@]} failure line(s) outside the list"; quote_lines 20 "${unexpected[@]}"; fi
     fi
     rm -rf "$run"
   done

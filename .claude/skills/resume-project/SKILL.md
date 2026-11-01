@@ -10,22 +10,23 @@ description: This skill should be used ONLY when the user explicitly types "/res
 
 ## Contract
 
-**Goal.** Pick up an existing tracked project and bind the session to its lifecycle, loading enough context that work continues cold without re-reading everything by hand. The skill selects the project, reads the parts of its `PLAN.md` a resume needs, runs a continuity check that the prior session ended cleanly, and adopts the PLAN's "Next-session kickoff" as the effective starting prompt, or the starting point the user named after the slug. The work is read-and-orient (selecting, loading, sanity-checking, and reconciling the kickoff against the commits), and one tested script does the reading. It is **read-only by contract**: its own steps load and present state, then yield to the working session; it never changes the project, and the one thing it writes is this session's claim on the project, outside the repo. It does fetch the branch's remote first (remote-tracking refs only, under a timeout), since a checkout behind its remote would load an old PLAN and kickoff without a word.
+**Goal.** Pick up an existing tracked project and bind the session to its lifecycle, loading enough context that work continues cold without re-reading everything by hand. The skill selects the project, reads the parts of its `PLAN.md` a resume needs, runs a continuity check that the prior session ended cleanly, and adopts the PLAN's "Next-session kickoff" as the effective starting prompt, or the starting point the user named after the slug. The work is read-and-orient (selecting, loading, sanity-checking, and reconciling the kickoff against the commits), and one tested script does the reading. It is **read-only by contract**: its own steps load and present state, then yield to the working session; it never changes the project, and the one thing it writes is this session's claim on the project, outside the repo. In the repo's main checkout, when the project has a worktree, it opens that worktree's window instead, with the command typed in for the user to send, so the session runs with the worktree's instructions and skills; bringing a clean worktree up to date before that window opens is the one exception to read-only, and it moves a checkout, never project state. It does fetch the branch's remote first (remote-tracking refs only, under a timeout), since a checkout behind its remote would load an old PLAN and kickoff without a word.
 
 **Inputs.** The arguments are an optional project slug, then optionally where to start. With a slug, the skill picks the project whose folder is `YYYY-MM-{{slug}}`. The folder's whole name picks that folder alone, which also tells apart two projects that share a slug. Without one, it reads each project's `status:` and auto-selects when exactly one is `active`, asks when several are, and stops (routing to `/start-project`) when none are. Anything after the slug is this session's starting point in place of the kickoff's: an open followup's fid (as `/focus` hands off a pinned item a project tracks), an open work request part's id (as a part about the project is routed), or the user's own words. The skill expects the project's `PLAN.md` to carry a current Status section and a "Next-session kickoff."
 
 **Outputs.**
 
+- From the main checkout, when the project has a worktree and someone is watching: the worktree's window with `/resume-project` typed in and unsent, and this tab finished, holding no claim; a clean worktree with no commits of its own moves up to its remote's default branch first. When the window cannot open, the load below, with the reason and what to type.
 - The selected project's context loaded into the session: its Status, open punch-list, Next-session kickoff and last session-log entry read in full, what it waits on resolved, and any starting point from the arguments; any other PLAN section read by its heading when the work needs it, never the whole file; recent commits surfaced. The repo's root instructions and working-norms rules are already in scope.
 - This session recorded as the project's holder, with a warning when another live session already holds it.
-- A continuity report, compared with the freshly fetched remote: any anomalies from the check (a dirty working tree, files another worktree of the repo has also changed, a checkout behind its remote, commits never pushed, commits made since the PLAN was last saved (those naming the project mean the last session did not close), an unexpected branch, a PLAN whose kickoff contradicts its Status) surfaced as warnings for the user to weigh.
+- A continuity report, compared with the freshly fetched remote: any anomalies from the check (a dirty working tree, files another worktree of the repo has also changed, a checkout behind its remote, a branch behind the default branch, commits never pushed, commits made since the PLAN was last saved (those naming the project mean the last session did not close), an unexpected branch, a PLAN whose kickoff contradicts its Status) surfaced as warnings for the user to weigh.
 - The starting point confirmed with the user: the one the arguments named, else the kickoff's, anchored to the current phase.
 - The session-binding statement surfaced (this session must end with `/end-session`).
 
 **Success criteria.**
 
 - The right project is selected: an explicit slug is honored; a single active project is auto-picked; multiple actives prompt a choice; zero actives stop and redirect to `/start-project`; a slug matching nothing says so and lists the active projects.
-- The continuity check runs and *reports*: it never blocks. A dirty tree, a checkout behind its remote, unpushed commits, work since the PLAN was saved, a surprising branch, another live session on the project, or a PLAN that contradicts itself is surfaced as a warning the user decides on, not a refusal to load.
+- The continuity check runs and *reports*: it never blocks. A dirty tree, a checkout behind its remote, a branch behind the default branch, unpushed commits, work since the PLAN was saved, a surprising branch, another live session on the project, or a PLAN that contradicts itself is surfaced as a warning the user decides on, not a refusal to load.
 - A starting point the user gave wins over the kickoff's, and the skill says in one line what of the kickoff it puts off.
 - A project still waiting on something unmet is said to be waiting before any work starts; one whose every wait is met is said to be unblocked.
 - Documented facts (paths, flags, service names, counts) are treated as possibly stale and verified against the live repo before they're acted on.
@@ -34,6 +35,7 @@ description: This skill should be used ONLY when the user explicitly types "/res
 
 **Failure modes to avoid.**
 
+- **Carrying on after a handoff.** Once the new tab is open, a load here would run on the main checkout's instructions and hold a claim the new tab then warns about. Say the `opened:` line and stop.
 - **Blocking on a continuity anomaly.** The check is advisory. Surface the dirty tree or the unclosed session, ask whether to proceed, and let the user decide; do not refuse to load the project.
 - **Reading the whole PLAN.** A long-running project's PLAN passes 100KB, mostly session log and old detail; a whole read costs tens of thousands of tokens or is cut off. Read the sections the resume needs, and any other one by its heading.
 - **Trusting stale documentation as fact.** PLAN narrative and docs can lag reality. A path, flag, service name or count read from the PLAN is a hypothesis to verify against the current repo, not ground truth; when the kickoff hands you a command to measure something, run it.
@@ -56,13 +58,14 @@ Every read goes through one script, [`resume-state.sh`](resume-state.sh): it fin
 
 ### Step 1: Run the state read
 
-Run `bash .claude/skills/resume-project/resume-state.sh`, adding the slug when the user gave one, and after it every word the user put after the slug (the starting point). Its exit code routes the skill:
+Run `bash .claude/skills/resume-project/resume-state.sh --handoff`, adding the slug when the user gave one, and after it every word the user put after the slug (the starting point). Its exit code routes the skill:
 
 | Exit | Meaning | Do |
 |---|---|---|
 | `0` | a project was picked; every section printed | Step 2 |
 | `2` | no project could be picked | Read the SELECTION lines. Several active projects, or a slug matching several: list them, ask which, run again with the folder name the user picks. A slug matching nothing: say so and show the active projects it lists; a closed one says so in its banner. No active project, or no projects folder: stop and route to `/start-project`. |
 | `3` | the picked PLAN cannot be read | Stop and say so; do not improvise a substitute. |
+| `4` | the project's worktree opened in a new tab | Say the printed line word for word, then stop: Steps 2 to 5 do not run, since the new tab does the load and owes the `/end-session`. |
 
 Don't replace what the script prints with reads of your own. If its output is too long for the shell and is saved to a file, read that file.
 
@@ -76,10 +79,11 @@ An `ERROR:` line in place of a PLAN section means its heading was not found (ren
 
 Every `BANNER:` line is advice. Surface it, say what it probably means, and let the user decide:
 
-- **This resume runs in the repo's main checkout**: the project works in `.claude/worktrees/<slug>`, not here. When that worktree exists, the script reads the project from it and says so in a `NOTE:` line instead: the session's work goes on in that worktree. The banner means it has to be made (branch `worktree-<slug>`, or `claude --worktree <slug>`), or the folder there is not a worktree of this repo; ask before building in the main checkout.
+- **This resume runs in the repo's main checkout**: the project works in `.claude/worktrees/<slug>`, not here. A `NOTE:` that no window opened gives the reason and what to type: say both, and that this tab read the project from that worktree, so the work goes on in that folder. With nobody watching, the same read runs with no such `NOTE:`. The banner means the worktree has to be made (branch `worktree-<slug>`, or `claude --worktree <slug>`), or the folder there is not a worktree of this repo; ask before building in the main checkout.
 - **Working tree DIRTY**: show the paths and ask before building on them: they are a prior session's uncommitted work.
 - **Files another worktree also changed**: each `<overlap>` line is a file, the worktree that also changed it, and its branch. Say each one and read that worktree's change to the file (`git -C {{worktree}} diff origin/HEAD...HEAD -- {{path}}`, and its `git status`) before building on it: both changes land on the same branch in the end, and the second to land meets the first. A `NOTE:` there says what could not be compared.
 - **Commits on the remote not in this checkout**: ask before working whether to pull first and resume again. A `NOTE:` that the fetch failed or could not run means every remote comparison is as of the last fetch: say so once.
+- **Commits on the default branch not in this branch**: the banner ends by saying what can be done. `It can fast-forward` names the command: ask before working whether to run it and resume again. `It stays behind` means bringing the default branch in is a merge or rebase the user chooses when to make: say the count and the reason in one line and carry on, without asking.
 - **Commits since the PLAN was saved that name this project**: the kickoff has not seen that work (Step 4). "Other work since" is information, not an anomaly: say what landed, one line per commit, each described from its files (`git show --stat`), never from its subject alone. Its "other work on paths the kickoff names" lines are the overlap: for each, name the path, say what the kickoff plans there, and read the newest commit's change to that path (`git show {{sha}} -- {{path}}`) before building on it. While an overlap line is unaddressed, never say nothing touched the kickoff's paths.
 - **PLAN check: …**: the PLAN contradicts itself (the kickoff starts at a phase Status does not have in progress, or every phase is ✅). Say which half the commits support and start from that one; `/end-session` fixes the PLAN. A `NOTE:` that the kickoff predates the skeleton means: read it as prose.
 - **Every wait is met**: the project is unblocked: say what it was waiting on, now done. A WAITS line still `waiting:` means the work this kickoff plans may be blocked: say so before starting.

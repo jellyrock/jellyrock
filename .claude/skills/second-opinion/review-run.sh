@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# review-run.sh — the mechanical parts of a review. /second-opinion's steps call it instead of doing
+# review-run.sh: the mechanical parts of a review. /second-opinion's steps call it instead of doing
 # these by hand.
 #
 # Usage:
@@ -222,7 +222,7 @@ cmd_cost() {
       if (match(r, /"model":"[^"]*"/)) { md = substr(r, RSTART + 9, RLENGTH - 10); if (!(md in models)) { models[md] = 1; ml = ml (ml == "" ? "" : ",") md } }
       # a line with a stop_reason other than null (it comes before usage) holds the final count of its message
       sr = ""; if (match(r, /"stop_reason":(null|"[^"]*")/)) sr = substr(r, RSTART + 14, RLENGTH - 14)
-      # each count is the first after "usage":{ — the top-level four come before the nested
+      # each count is the first after "usage":{ since the top-level four come before the nested
       # iterations, which repeat them
       u = index(r, "\"usage\":{"); if (!u) next
       r = substr(r, u + 8)
