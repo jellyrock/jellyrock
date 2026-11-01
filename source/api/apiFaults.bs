@@ -2,8 +2,9 @@ import "pkg:/source/utils/misc.bs"
 
 ' Requests an RTA spec makes fail, answer slowly or answer empty on purpose, so a spec can
 ' drive a screen's failure, slow-server and nothing-there paths against a server that is
-' healthy, fast and full. Pure: the API coordinator holds the list and calls these from its
-' own thread, and the only caller is compiled in under ENABLE_RTA (ApiQueueTask).
+' healthy, fast and full. Pure: the API coordinator and the side-effect writer each hold the list
+' and call these from their own thread, and both callers are compiled in under ENABLE_RTA
+' (ApiQueueTask, SideEffectTask).
 '
 ' A spec writes rules to m.global.rtaFailRequests:
 '   { prefix: "itemQuery_usersItems", kind: "timeout" | "http" | "slow" | "empty", status: 500, ms: 20000, times: 1, after: 0 }
@@ -22,6 +23,10 @@ import "pkg:/source/utils/misc.bs"
 ' request expects. Nothing marks any of them as injected: code that could tell them apart
 ' could handle a test differently from the real thing, which is what these specs exist to
 ' catch.
+'
+' A side effect (SideEffectTask) takes a rule too, matched on the requestId its builder set
+' (`syncPlay<Action>` for SyncPlay). It has no reader to answer, so a timeout, http or empty rule
+' drops the request unsent, and a slow rule sends it `ms` late.
 namespace apiFaults
 
   ' The rules a spec wrote, checked. A rule that cannot be honored exactly is dropped rather

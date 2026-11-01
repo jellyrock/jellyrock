@@ -23,12 +23,14 @@ import {
   postJson,
   tokenHeader,
 } from '../lib/jellyfin.js';
+import { failRequests } from '../lib/failRequests.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
 import {
   getGlobalVal,
   press,
   readPlayer,
+  sleep,
   stopPlayback,
   waitFor,
   waitMediaPlaying,
@@ -248,7 +250,7 @@ it('a trickplay scrub confirmed with OK seeks the whole group, and this member l
   });
   await press(ecp.Key.Ok);
   // Three Right presses read about 30 s ahead on a Stick 4K (2026-10-28); the server's Seek
-  // lands this member there, and the bar closes on the way (a seek to the node's own position).
+  // lands this member there, and the bar closes through that Seek.
   await waitFor('position', (v) => typeof v === 'number' && v > before + 20, {
     read: playerPosition,
     timeout: 20000,
@@ -265,6 +267,61 @@ it('a trickplay scrub confirmed with OK seeks the whole group, and this member l
     label: "playing again after the group's Seek and Unpause",
   });
   expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+});
+
+it('a scrub confirmed with OK whose Seek the server never answers still closes the bar, without moving this member', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const before = await playerPosition();
+  const lastEmitted = await getGlobalVal('syncPlayManager.sync.lastCommand.emittedAtMs');
+  // The app's Seek request is dropped unsent, once (`SideEffectTask.droppedOnPurpose`), so no
+  // group command comes back: the bar must close by its own fallback.
+  await failRequests([{ prefix: 'syncPlaySeek', kind: 'http', status: 403, times: 1 }]);
+  try {
+    await ecp.sendKeypressSequence([ecp.Key.Right, ecp.Key.Right, ecp.Key.Right], { wait: 400 });
+    await waitFor('trickPlayBar.visible', (v) => v === true, {
+      read: barVisible,
+      timeout: 10000,
+      label: 'the trick-play bar up after three Right presses',
+    });
+    await press(ecp.Key.Ok);
+    // Shorter than the fallback timer: until then nothing may seek this member. A local seek
+    // written at once (the old behavior) shows as the bar closing or the node buffering.
+    const sampleUntil = Date.now() + 3000;
+    while (Date.now() < sampleUntil) {
+      const bar = await barVisible();
+      const state = await playerState();
+      expect(bar, 'the bar stays up while the group answers').toBe(true);
+      expect(state, 'no local seek started').not.toBe('buffering');
+      await sleep(250);
+    }
+    await waitFor('trickPlayBar.visible', (v) => v === false, {
+      read: barVisible,
+      timeout: 10000,
+      label: 'the trick-play bar closed by the fallback, with no group Seek',
+    });
+    await waitFor('state', (s) => s === 'playing', {
+      read: playerState,
+      timeout: 15000,
+      label: 'playing again after the fallback',
+    });
+    expect(
+      await getGlobalVal('syncPlayManager.sync.lastCommand.emittedAtMs'),
+      'no group command came, so the Seek was dropped and the rule fired',
+    ).toBe(lastEmitted);
+    expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+    expect(await getGlobalVal('syncPlayManager.groupState'), 'the group still plays').toBe(
+      'Playing',
+    );
+    // Three Right presses read about 30 s ahead: the node did not go to the target.
+    expect(await playerPosition(), 'the node did not move to the scrub target').toBeLessThan(
+      before + 20,
+    );
+  } finally {
+    await failRequests([]);
+  }
 });
 
 it("the remote's Replay key seeks the whole group back, not this Roku alone", async (testCtx) => {

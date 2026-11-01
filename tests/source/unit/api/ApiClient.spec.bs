@@ -999,6 +999,7 @@ namespace tests
       route = "/SyncPlay/" + action
       m.assertEqual(result.method, "POST")
       m.assertEqual(Right(result.url, Len(route)), route, result.url)
+      m.assertEqual(result.requestId, "syncPlay" + action)
     end function
 
     @it("sends the body as JSON in the spec's casing")

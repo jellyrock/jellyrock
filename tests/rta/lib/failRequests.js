@@ -5,6 +5,13 @@
  * the pool itself would deliver, instead of sending it, or sends a slowed one and holds its
  * answer (`source/api/apiFaults.bs`, `ApiQueueTask.answeredOnPurpose`).
  *
+ * A side-effect write (`SideEffectTask`, fire-and-forget, no answer to read) takes a rule too,
+ * when its request carries an id: the SyncPlay actions do, as `syncPlay<Action>`
+ * (`syncPlaySeek`). Any failing kind (`timeout`, `http`, `empty`) drops it unsent, since nobody
+ * reads the answer, so a spec sees a request the server never got. `slow` sends it `ms` late,
+ * holding that thread as a slow server would. Check the effect, not the rule: a rule that never
+ * matched leaves the request going through.
+ *
  * A rule: `{ prefix, kind: 'timeout' | 'http' | 'slow' | 'empty', status, ms, times, after }`.
  *  - `prefix` matches the start of the request id the app passes to fetchRes / fetchAsync
  *    (`itemQuery_usersItems`, `itemMetaData`, …).

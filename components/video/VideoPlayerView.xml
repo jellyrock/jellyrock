@@ -68,6 +68,7 @@
     <TrickplayCarousel id="trickplayCarousel" visible="false" />
     <timer id="playbackTimer" repeat="true" />
     <timer id="pauseConfirmTimer" repeat="false" />
+    <timer id="groupSeekFallbackTimer" repeat="false" duration="5" />
     <timer id="bufferCheckTimer" repeat="true" />
     <OSD id="osd" visible="false" inactiveTimeout="5" />
 

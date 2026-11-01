@@ -345,7 +345,7 @@ await openLibraryByType('movies', moviesId);
 - **`after`** is how many matching requests pass first, for an ID that repeats faster than a spec can act: a grid's page 2 follows page 1 within a fraction of a second under the same ID, so `{ …, times: 1, after: 1 }` fails page 2 alone.
 - **A rule the app can't honor exactly is dropped,** so a typo fails your assertions, not another request.
 
-The API coordinator answers a failed request itself and never sends it; a slowed one it sends and holds ([`api.md`](../architecture/api.md#a-request-a-test-makes-fail-or-slow-rta-builds-only)). Only pooled requests are covered, not the start-up sync calls (`getJson`) or `SideEffectTask` writes. [`specs/fail-requests.spec.js`](../../tests/rta/specs/fail-requests.spec.js) is the reference. When the failure you want is a request failing, use this rather than a new `DebugFlags` flag.
+The API coordinator answers a failed request itself and never sends it; a slowed one it sends and holds ([`api.md`](../architecture/api.md#a-request-a-test-makes-fail-or-slow-rta-builds-only)). Pooled requests are covered, and so are the `SideEffectTask` writes that carry a request id (the SyncPlay actions, as `syncPlay<Action>`, for example `syncPlaySeek`). A side effect has no answer to read, so any failing kind drops it unsent, and `slow` sends it late. The start-up sync calls (`getJson`) are not covered. [`specs/fail-requests.spec.js`](../../tests/rta/specs/fail-requests.spec.js) is the reference. When the failure you want is a request failing, use this rather than a new `DebugFlags` flag.
 
 ## Adding a screen
 
