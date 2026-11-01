@@ -107,6 +107,9 @@ The app shell's fields answer on every screen. Each prints only when set:
 | `player=<state>` | The OS media player (`ecp.getMediaPlayer()`) | What the Roku player thinks is happening. `buffer` counts as playing while the app may still refuse to open the OSD |
 | `videoNode=<state>` | The app's Video node | The app's side, so a mismatch with `player` says which side an unopened OSD is stuck on |
 | `playerError=true` | The OS media player | The player itself faulted |
+| `dialog=<type>("<title>")` | The open overlay dialog (`#jrDialog`) | Which dialog was up when the wait gave up. Focus alone only says `#jrDialog.#buttonRow.0` |
+
+The dialog's `message` is never read: it can hold a search term or cast text, and CI uploads the run records.
 
 `input=BLOCKED` is the most useful. `JRScene.onKeyEvent` returns `true` while `isRemoteDisabled` is set, so every key sent was consumed: the "we pressed before it was ready" failure [`tests/rta/CLAUDE.md`](../../tests/rta/CLAUDE.md) opens with.
 
