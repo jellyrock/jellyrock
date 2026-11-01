@@ -1586,3 +1586,15 @@ To close it, as its own project:
 - Check the new text on a Roku for fit, and confirm what Weblate does to existing translations when an English value changes.
 
 `settingName`, `type` and the generated-file note stay on the page: it serves users and contributors alike (decided 2026-10-09).
+
+### ci
+
+#### Commits from a cloud session can carry a Claude identity and add a Claude co-author on squash `[fid: cloud-commit-identity-anthropic]` `[captured 2026-11-01]`
+
+Five commits on #1299's branch had `noreply@anthropic.com` as author and committer, with the user's name. GitHub showed them under the `claude` account. Squashing #1073, whose branch commits had that identity and no trailers, put `Co-authored-by: Claude <noreply@anthropic.com>` on `main` in `0deef5b2`. The `attribution` setting in `.claude/settings.json` controls trailers and session links, and nothing shows it changes the git identity.
+
+**Options:** `gate`: fail a PR in CI when a commit's author or committer is `noreply@anthropic.com`, and name the commits to fix. `setup`: set the git identity in the cloud environment, if it allows that. `manual`: check before each merge.
+
+**Recommended:** `gate`, because it holds wherever a commit was made.
+
+**Not checked:** where cloud sessions get this identity; whether the environment can override it; whether GitHub adds the line on every squash, since #1073 is the only example found.
