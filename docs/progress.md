@@ -1064,17 +1064,21 @@ Also unchecked: voice fast-forward and rewind still write the node (`control` se
 
 Closes when the queue-edit and shuffle design ships or is declined in a decision note, and a device check shows a voice scrub in a group either reaches the group or cannot land without an OK.
 
-#### A SyncPlay correction whose seek outlasts the lead twice stays late until the next resume `[fid: syncplay-correction-late-seek-stays-late]` `[captured 2026-11-01]`
-
-`SyncPlayManager.scheduleCorrectionResume` resumes at once when a correction's seek outlasts `CORRECTION_LEAD_MS`, so the member lands late, and the one retry (`retrySettleCheck`) can land late the same way. It then stays late until the next `Unpause`. Seen on the Stick 4K against a local HTTP 12.2 server on 2026-10-31, on direct play: a second correction's seek outlasted the 2 s lead (`holding resumeInMs 0`), leaving the member 274 ms behind, and `syncplay-correction.spec.js` failed on it in one of 14 runs. Not fixed now: the right lead needs seek times from slow paths, and a longer lead skips and holds longer on every correction for a member behind. Closes with those measured, and a lead that fits them or a decision that the limit stands, with the spec's wait matching it.
-
 #### A group command landing just after a SyncPlay correction's pause write can leave the node paused `[fid: syncplay-correction-pause-in-flight]` `[captured 2026-11-01]`
 
 `applyPlan` and `releaseCorrection` read `m.playerState`, which lags a pause write. A group `Unpause` or a halt landing after a correction writes its pause but before the `paused` event finds the node "playing", writes no resume, and has dropped the correction, so the node stays paused with nothing to resume it. Read from the code in PR #1296's review, never reproduced; a pause lands in under 10 ms (2026-10-23). Not fixed now: the fix is a new self-healing check for a window nobody has seen. Closes with a forced reproduction and that check, or a log line from a real run showing it, or a decision to drop it.
 
-#### A large SyncPlay Time Offset should turn every resume into a seek `[fid: syncplay-large-offset-seeks-each-resume]` `[captured 2026-11-01]`
+#### A SyncPlay member past the server's group wait can repeat seek, stall and resume on a slow file `[fid: syncplay-slow-seek-catch-up-unbounded]` `[captured 2026-11-01]`
 
-The server's `Unpause` lead is at least 500 ms (`DefaultPing`) and `SKIP_TO_SYNC_MIN_MS` is 400 ms, so a **SyncPlay Time Offset** above roughly 900 ms should turn every resume into a silent seek plus a correction, and a paused `Ready` carrying 500 ms or more on **Resume with Group** should draw a corrective `Seek`. The setting allows 2000, as web's field has no upper limit. Read from the server source in PR #1296's review, not run. Not fixed now: nothing shows real device delays that large. Closes by running offsets of 1000 and 1500 on a device, then lowering `max` in `settings/settings.json` or documenting the cost.
+Past the 30 s group wait on 12.1 and later, the group plays on while a member with slow seeks repeats a silent seek, a `Buffering`, a `Ready` and the server's `Unpause`. On a 25 Mbps 4K HEVC MKV (Stick 4K, 12.2 server, 2026-11-01) seeks took 19 s, 12 s, then 3 s; one of three rounds settled in step, and two were still catching up when the sample ended. Nothing bounds the cycle, though only this member pays for it. Not fixed now: every round observed was converging, and a limit needs a choice of what the member does instead. Closes with a run to the end on such a file, then a limit or a decision that none is needed.
+
+#### A group Seek during a SyncPlay load repeats until the node lands `[fid: syncplay-group-seek-during-load]` `[captured 2026-11-01]`
+
+A `Seek` during a load is written to the loading node, its budget ends, and `Ready` goes out at position 0, which draws another `Seek`. Two rounds on a slow file (Stick 4K, 12.2 server, 2026-11-01) repeated about four times and ended correct in about 27 s. Not fixed now: the outcome is right and the code predates this work. Closes by holding the seek for the first frame, as an `Unpause` during a load now does, if that shortens it on a device.
+
+#### A SyncPlay correction's seek can close a scrub bar the viewer just opened `[fid: syncplay-correction-closes-scrub-bar]` `[captured 2026-11-01]`
+
+`checkSettle` cannot see the trick-play bar, and the node's seek closes it. Seen in 1 of 4 rounds that pressed Right as a correction fired (Stick 4K, 12.2 server, 2026-11-01); the bar did not open in the other three, so this evidence is weak. Not fixed now: the window is about a second after a resume. Closes with a forced reproduction and a gate on the open bar, or a decision to drop it.
 
 ### api
 

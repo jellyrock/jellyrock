@@ -587,7 +587,7 @@
         "type": "integer",
         "default": "0",
         "min": 0,
-        "max": 2000,
+        "max": 500,
         "titleKey": "LabelSyncPlayTimeOffset",
         "descriptionKey": "MessageSyncPlayTimeOffset"
       },

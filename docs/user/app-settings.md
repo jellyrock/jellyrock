@@ -255,7 +255,7 @@ How many milliseconds ahead of the group this Roku plays while in a SyncPlay gro
 | Setting Name | `playbackSyncPlayTimeOffsetMs` |
 | Type | `integer` |
 | Default | `0` |
-| Range | `0` to `2000` |
+| Range | `0` to `500` |
 
 <h3 id="playbackSubsOnlyText">Text Subtitles Only</h3>
 
