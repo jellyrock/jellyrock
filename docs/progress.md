@@ -1072,6 +1072,8 @@ Closes when the queue-edit and shuffle design ships or is declined in a decision
 
 Past the 30 s group wait on 12.1 and later, the group plays on while a member with slow seeks repeats a silent seek, a `Buffering`, a `Ready` and the server's `Unpause`. On a 25 Mbps 4K HEVC MKV (Stick 4K, 12.2 server, 2026-11-01) seeks took 19 s, 12 s, then 3 s; one of three rounds settled in step, and two were still catching up when the sample ended. Nothing bounds the cycle, though only this member pays for it. Not fixed now: every round observed was converging, and a limit needs a choice of what the member does instead. Closes with a run to the end on such a file, then a limit or a decision that none is needed.
 
+The low-end Stick shows the same shape harder (12.2, 2026-11-01): readings of 5905, 6973, 8261 and 9092 ms behind after a correction's seek, one case left 1274 ms behind once its corrections were spent, against 3708 ms at most on a Stick 4K across 14 runs of the same specs.
+
 #### A group Seek during a SyncPlay load repeats until the node lands `[fid: syncplay-group-seek-during-load]` `[captured 2026-11-01]`
 
 A `Seek` during a load is written to the loading node, its budget ends, and `Ready` goes out at position 0, which draws another `Seek`. Two rounds on a slow file (Stick 4K, 12.2 server, 2026-11-01) repeated about four times and ended correct in about 27 s. Not fixed now: the outcome is right and the code predates this work. Closes by holding the seek for the first frame, as an `Unpause` during a load now does, if that shortens it on a device.
@@ -1079,6 +1081,22 @@ A `Seek` during a load is written to the loading node, its budget ends, and `Rea
 #### A SyncPlay correction's seek can close a scrub bar the viewer just opened `[fid: syncplay-correction-closes-scrub-bar]` `[captured 2026-11-01]`
 
 `checkSettle` cannot see the trick-play bar, and the node's seek closes it. Seen in 1 of 4 rounds that pressed Right as a correction fired (Stick 4K, 12.2 server, 2026-11-01); the bar did not open in the other three, so this evidence is weak. Not fixed now: the window is about a second after a resume. Closes with a forced reproduction and a gate on the open bar, or a decision to drop it.
+
+#### A SyncPlay hold can leave a small lead unchanged, spending both corrections `[fid: syncplay-hold-leaves-lead]` `[captured 2026-11-01]`
+
+A hold that should close a small lead on a SyncPlay member can leave the lead where it was, and the two corrections an `Unpause` allows are then spent. Measured 2026-11-01: on the low-end Stick (12.2) one `Unpause` read -877, then -329, and ended at -321 ms, and another read -362, then -344 ms. On the Stick 4K it failed one case across 14 runs and 259 corrections (10.9.11): 2246 behind, then -229, then -246 ms.
+
+The member stays inside the server's 500 ms tolerance and nothing hangs, but `syncPlayPlayback.SETTLE_CORRECTION_MS` promises 150 ms ahead, the viewer sees up to two freezes for no gain, and `syncplay-controls` fails its drift bound on that Stick.
+
+Not checked: whether the picture really runs ahead or the node's `position` over-reads after a resume. No camera measurement exists, and the reading alone cannot tell them apart. Measure the position across a short pause and resume on that Stick first. Closes with either a hold that converges there, or a threshold per device class, with the measurement that justifies it.
+
+#### A SyncPlay join the server records can leave the Roku's icon inactive, intermittently `[fid: syncplay-join-frame-never-seen]` `[captured 2026-11-01]`
+
+A SyncPlay join in the RTA specs occasionally never turns the icon active, though the server records the join. On 10.10.7 (Stick 4K, 2026-11-01) the server logged `joined group`, `syncplay-menu` timed out on "the icon turns active on the join" with `last=false`, and the next case's direct join failed the same way, so the fault lasted the run. The same wait failed in earlier matrix runs that day on 10.9.11 and 12.2. It did not recur in 11 later `syncplay-menu` runs, 9 of them with the console captured.
+
+That failing run had no console capture, so nothing shows whether the `GroupJoined` frame reached the app. Not checked: the socket's state in that run, and whether a viewer can hit this outside the test sign-in (`authenticateForPush`). If they can, pressing OK on a group gives no feedback for as long as it lasts.
+
+Closes with a console capture of a failure and either a fix, or a proof it comes from the test's sign-in. Whichever way it goes, decide what a viewer sees when the frame never comes.
 
 ### api
 
@@ -1388,7 +1406,11 @@ The spec presses Back from the library grid, then awaits `waitHome()`, and only 
 
 #### Every OSD RTA spec fails on the 512 MB Stick (`3600X`): the video plays, but the OSD never comes up. `[fid: osd-specs-fail-on-512mb-stick]` `[captured 2026-09-25]`
 
-Found 2026-09-25 in a full `test:rta` run on `.176` (Roku OS 15.3.4, demo server): `screens` "osd" and "trickplay", and the five `dialogs` specs that open the OSD first, all time out in `waitOsdUp` with `#osd.visible` false while `player=play` / `videoNode=playing`. **Pre-existing, not device noise:** `screens -t 'screen "osd" loads'` fails the same way on `main` (`9c43ebad`) on the same device, and passes on a Stick 4K (`.177`). Unknown yet whether the app misses the Up press there (`stateAllowsOSD`, the key reaching `VideoPlayerView`) or the spec's input timing does — read the console for the key event before changing either.
+Found 2026-09-25 in a full `test:rta` run on the low-end Stick (Roku OS 15.3.4, demo server): `screens` "osd" and "trickplay", and the five `dialogs` specs that open the OSD first, all time out in `waitOsdUp` with `#osd.visible` false while `player=play` / `videoNode=playing`. **Pre-existing, not device noise:** `screens -t 'screen "osd" loads'` fails the same way on `main` (`9c43ebad`) on the same device, and passes on a Stick 4K.
+
+**The key never reaches the app** (measured 2026-11-01, Roku OS 15.3.4). With a temporary `print` at the top of `onKeyEvent` in `VideoPlayerView`, `OSD` and `JRScene`, a Play press during playback printed nothing on this Stick, in `syncplay-controls` and in `playback-check-in`, and printed every key on a Stick 4K. ECP answers 200, and a key on Home does change the screen, so only playback loses them. The same cause takes out every key-driven case in `syncplay-controls` and `syncplay-correction` on this Stick, and both cases of `playback-check-in`.
+
+Not checked: whether a physical remote works there, and whether the cause is the OS, the model or the way ECP reaches the node. Closes when a press during playback reaches `onKeyEvent` on this Stick, or the cause is shown to be the device and the suite says so instead of timing out.
 
 #### Gate that a render-thread callback is not split by a Task's node access (from ADR 0045). `[fid: gate-callback-split-by-task-node-access]` `[captured 2026-09-26]`
 

@@ -31,15 +31,18 @@ import {
 } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
+import { focusIsInHomeContent } from '../lib/home-list.js';
 import { focusOverhangIcon, startPlayback } from '../lib/nav.js';
 import { failRequests } from '../lib/failRequests.js';
 import {
+  focusIsInside,
   getActiveVal,
   getGlobalVal,
   getVal,
   getVals,
   press,
   readPlayer,
+  resendUntilFocused,
   stopPlayback,
   waitDialogClosed,
   waitFocused,
@@ -107,11 +110,13 @@ afterAll(async () => {
   await syncPlay(member, 'Leave').catch(() => {});
 });
 
-/** `count` movies of the movies library other than the hero, in the grid's order. */
+/**
+ * `count` movies other than the hero, by SortName, from every library: a cast names its items, so
+ * they need no grid, and the hero's own library can hold too few.
+ */
 async function moviesOtherThanHero(count) {
   const query = new URLSearchParams({
     userId: session.userId,
-    ParentId: libraryIdFor(ctx.libraries, 'movies'),
     IncludeItemTypes: 'Movie',
     Recursive: 'true',
     // A library that groups movies into collections answers with the BoxSet itself, which the
@@ -128,11 +133,37 @@ async function moviesOtherThanHero(count) {
     ).toBe('Movie');
   }
   const ids = res.Items.map((i) => i.Id).filter((id) => id !== ctx.heroId);
-  expect(
-    ids.length,
-    `the movies library holds ${count} movies besides the hero`,
-  ).toBeGreaterThanOrEqual(count);
+  expect(ids.length, `the server holds ${count} movies besides the hero`).toBeGreaterThanOrEqual(
+    count,
+  );
   return ids.slice(0, count);
+}
+
+/**
+ * Back to Home from the player's exit. `stopPlayback` presses Back again while the media player
+ * still reads as playing, so that exit can end on the details screen or on the grid behind it.
+ * A view's `subtype()` changes before its Back has finished, and one Back too many on Home opens
+ * the exit dialog, so each press waits for focus to settle on the next screen.
+ */
+async function backOutToHome() {
+  const screenOf = (f) => {
+    if (focusIsInHomeContent(f)) return 'Home';
+    if (focusIsInside(f.keyPath, 'itemGrid')) return 'grid';
+    return focusIsInside(f.keyPath, 'buttons') ? 'details' : '';
+  };
+  let from = '';
+  while (from !== 'Home') {
+    if (from) await press(ecp.Key.Back);
+    const left = from;
+    // A screen can swallow a Back as it arrives, so focus still on it after a tick earns another.
+    const focused = await waitFocused((f) => ![left, ''].includes(screenOf(f)), {
+      timeout: 15000,
+      interval: 1500,
+      action: left ? resendUntilFocused(ecp.Key.Back, (f) => screenOf(f) !== left) : undefined,
+      label: `focus settled on the screen behind ${left || 'the player'}`,
+    });
+    from = screenOf(focused);
+  }
 }
 
 /** The list dialog's rows, once it holds `count` of them. */
@@ -464,8 +495,8 @@ it('while halted the menu offers Resume with Group, which opens the player follo
     );
   // The case above leaves the Roku halted in the group, the group still on its movie.
   expect(await getGlobalVal('syncPlayManager.following'), 'halted by its Back').toBe(false);
-  // Back left the player on the details screen; the walk to the icon starts from Home.
-  await press(ecp.Key.Back);
+  // The walk to the icon starts from Home.
+  await backOutToHome();
   await waitHome();
   await focusOverhangIcon('syncplayIcon');
   await press(ecp.Key.Ok);
