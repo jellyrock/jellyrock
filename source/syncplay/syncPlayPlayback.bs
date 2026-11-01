@@ -1,9 +1,10 @@
 ' The SyncPlay coordinator's decisions, pure: no node, no Timer, no HTTP. SyncPlayManager holds
 ' the clocks and the player, asks these functions what to do, and does it.
 '
-' Three concerns live here:
+' Four concerns live here:
 '   - scheduleCommand: when (on the device clock) a server command applies, and at what position.
 '   - applyPlan: the transport verbs that carry a command out on the player, in order.
+'   - the settle correction: how far this member sits from the group, and how it corrects that.
 '   - the ready tracker: when to tell the server this member is Buffering, and when it is Ready.
 '
 ' The rules follow jellyfin-web's PlaybackCore (read at v10.11.0, unchanged since 10.7.0) where
@@ -34,7 +35,7 @@ namespace syncPlayPlayback
   const PAUSE_CONFIRM_MS = 1000
   ' The most pause writes the manager makes for one group command.
   const PAUSE_ATTEMPTS = 3
-  ' After an Unpause, once the node plays, a drift past this is corrected once.
+  ' After an Unpause, once the node plays, a drift past this is corrected (settleCorrectionDue).
   ' Measured 2026-10-31 on the Stick 4K: a resume left one transcode path 288 to 539 ms behind
   ' the server's estimate while every other path settled within about 110 ms, and a seek lands
   ' within about 125 ms on a transcode (exactly on direct play), so this has headroom over what a
@@ -141,6 +142,16 @@ namespace syncPlayPlayback
 
   ' --- the settle correction ---
 
+  ' The command that says where the group is now, or invalid when none does. A new item's load runs
+  ' under the last item's Unpause, so only a command for the playing item counts. A Buffering this
+  ' member reported ends it too: the group waits for this member, and a server from 12.1 answers
+  ' its recovery with an Unpause to the others alone, so the last Unpause would run on through a
+  ' wait this member never hears of. The next command it schedules says where the group is again.
+  function clockReference(lastCommand as dynamic, playingItemId as string, reportedBuffering as boolean) as dynamic
+    if reportedBuffering or not isValid(lastCommand) or lastCommand.playlistItemId <> playingItemId then return invalid
+    return lastCommand
+  end function
+
   ' How far this member sits from the group, in ms, positive when it is behind: the last
   ' Unpause's position run forward on the measured clock, minus the player's position (web's
   ' playbackDiffMillis). Invalid while no Unpause is in force or its When has not come.
@@ -155,8 +166,8 @@ namespace syncPlayPlayback
 
   ' The check an Unpause arms: once the node plays and SETTLE_POSITIONS notifications have come,
   ' a drift past SETTLE_CORRECTION_MS is corrected, and then the check is spent until the next
-  ' Unpause (or a stall the member reported, which arms it again). A correction gets one reading
-  ' after it (retrySettleCheck), so the most an Unpause can cost is two.
+  ' Unpause. A correction gets one reading after it (retrySettleCheck), so the most an Unpause can
+  ' cost is two.
   function newSettleCheck() as object
     return { armed: false, positions: 0, retried: false }
   end function
@@ -228,7 +239,7 @@ namespace syncPlayPlayback
   ' Whether a seek would run off the item. The player turns a target at or past the end into a seek
   ' 30 s short of it (voiceTransport.computeSeekStatus), so the correction skips it; the item is
   ' about to end anyway.
-  ' @param durationSeconds - the Video node's `duration`; 0 or invalid while unknown
+  ' @param durationSeconds - the player's effective duration; 0 or invalid while unknown
   function seekPastEnd(targetTicks as longinteger, durationSeconds as dynamic) as boolean
     if not isValid(durationSeconds) or durationSeconds <= 0 then return false
     return ticksToSeconds(targetTicks) >= durationSeconds

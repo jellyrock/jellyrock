@@ -70,8 +70,9 @@
     <Timer id="readyTimer" repeat="false" />
     <!-- Confirms a pause took while the group is paused: re-pauses a player that plays on. -->
     <Timer id="pauseTimer" repeat="false" />
-    <!-- A drift correction's resume: fires when the group reaches the position the member
-         seeked ahead to and paused at (syncPlayPlayback.correctionPlan). -->
+    <!-- A drift correction's resume: fires when the group reaches where the member paused, after
+         a seek ahead when it was behind (syncPlayPlayback.correctionPlan). Until the node reports
+         `paused`, it ends a correction whose pause never lands. -->
     <Timer id="correctionTimer" repeat="false" />
   </children>
 </component>

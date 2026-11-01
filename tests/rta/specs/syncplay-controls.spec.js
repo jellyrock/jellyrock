@@ -185,7 +185,7 @@ it("after the group's unpause this member settles within the correction threshol
     testCtx.skip(
       'the server has no command channel to this Roku (https without the companion plugin)',
     );
-  // `syncPlayPlayback.SETTLE_CORRECTION_MS`: past it the manager seeks once, so within it is
+  // `syncPlayPlayback.SETTLE_CORRECTION_MS`: past it the manager corrects, so within it is
   // where every path ends up (measured 2026-10-31 on a Stick 4K, four paths).
   await waitFor(
     'syncPlayManager.sync.playbackDiffMs',

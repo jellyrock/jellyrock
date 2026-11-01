@@ -3,6 +3,7 @@
  * project):
  * - a member ahead of the group holds where it is and lands in step;
  * - a member behind it seeks past the group, holds and lands in step;
+ * - a member's own stall recovery keeps its place, since the group waited for it;
  * - a correction whose seek would run off the item is skipped, so the player does not jump back;
  * - the drift reads unknown once a group command or a leave has made it meaningless.
  * The **SyncPlay Time Offset** setting makes the drift on demand: the offset moves this member's
@@ -58,6 +59,8 @@ const setOffset = (value) =>
 const player = () => readPlayer(heroId);
 const playerState = () => player()('state');
 const playerPosition = () => player()('position');
+const setPlayerControl = (value) =>
+  odc.setValue({ base: 'scene', keyPath: `#${heroId}.control`, value });
 const waitLastCommand = (name) =>
   waitFor('syncPlayManager.sync.lastCommand.command', (v) => v === name, {
     read: getGlobalVal,
@@ -192,6 +195,53 @@ it('a member behind the group lands in step', async (testCtx) => {
   await setOffset(BEHIND_OFFSET_MS);
   await expectCorrected((v) => v > THRESHOLD_MS, 'this member reading behind the group');
   await setOffset(0);
+});
+
+it("a member's own stall recovery keeps its place, with the drift unknown until the group's next command", async (testCtx) => {
+  skipWithoutPush(testCtx);
+  // Twice the group's highest ping decides the server's recovery branch. A real client's ping sends
+  // the Unpause to the others alone, so this member's last command stays the one before the stall.
+  await syncPlay(member, 'Ping', { Ping: 20 });
+  const lastEmitted = () => getGlobalVal('syncPlayManager.sync.lastCommand.emittedAtMs');
+  const commandBeforeStall = await lastEmitted();
+  // The node stops moving, and the manager hears the buffering the host would pass on.
+  await setPlayerControl('pause');
+  const frozenAt = await playerPosition();
+  await managerCall('playerEvent', { kind: 'state', state: 'buffering', position: frozenAt });
+  await waitFor('syncPlayManager.sync.trackerPhase', (v) => v === 'rebuffering', {
+    read: getGlobalVal,
+    timeout: 5000,
+    label: 'the stall reported to the server',
+  });
+  // The group waits while the stall lasts: long enough that a wrong reading is seconds off.
+  const stalled = Date.now();
+  while (Date.now() - stalled < 3000) await playerPosition();
+  await setPlayerControl('resume');
+  await waitPlaying();
+  // Two notifications decide a correction: this outlasts them, the seek and its hold.
+  const positions = [];
+  const recovered = Date.now();
+  while (Date.now() - recovered < 6000) positions.push(await playerPosition());
+  const longestStep = Math.max(...positions.slice(1).map((p, i) => p - positions[i]));
+  expect(longestStep, 'no jump after the recovery').toBeLessThan(2);
+  // A server before 12.1 answers with a corrective Seek, a command that says where the group is.
+  const heardNoCommand = (await lastEmitted()) === commandBeforeStall;
+  const drift = await getGlobalVal('syncPlayManager.sync.playbackDiffMs');
+  expect(heardNoCommand ? drift : undefined, 'no drift to read until the next command').toBeFalsy();
+  // The server computes the group's position into its Pause, so that is the group's own word.
+  await syncPlay(member, 'Pause');
+  await waitLastCommand('Pause');
+  const groupAt =
+    Number(await getGlobalVal('syncPlayManager.sync.lastCommand.positionTicks')) / 10_000_000;
+  await waitPaused();
+  expect(
+    Math.abs((await playerPosition()) - groupAt),
+    "this member's distance from the group, in seconds",
+  ).toBeLessThan(1);
+  await syncPlay(member, 'Unpause');
+  await waitLastCommand('Unpause');
+  await waitPlaying();
+  await waitDriftInside();
 });
 
 it('a correction whose seek would run off the item is skipped, with no jump back', async (testCtx) => {

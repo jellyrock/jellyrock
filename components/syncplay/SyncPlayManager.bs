@@ -107,9 +107,12 @@ sub ensureReady()
   m.resumeAsked = false
   ' The correction each Unpause arms (syncPlayPlayback.settleCorrectionDue), and the drift last
   ' read from a position notification, for the RTA spec. Cleared whenever it stops meaning
-  ' anything: a group command, a load, a halt or a leave.
+  ' anything: a group command, a load, a halt, a leave or a Buffering this member reported.
   m.settle = syncPlayPlayback.newSettleCheck()
   m.playbackDiffMs = invalid
+  ' Whether this member reported Buffering since the group's last command it scheduled
+  ' (syncPlayPlayback.clockReference).
+  m.reportedBuffering = false
   ' The playing item's length in the Video node's seconds; 0 while unknown.
   m.playerDurationSeconds = 0
   ' The correction under way (syncPlayPlayback.correctionPlan): the node pauses ahead of the
@@ -207,10 +210,7 @@ function playerEvent(evt as object) as object
     end if
   else if kind = "state"
     if isFollowing()
-      phaseBefore = m.tracker.phase
       track({ kind: "state", state: m.playerState, positionTicks: m.playerPositionTicks })
-      ' A stall the server was told about can leave this member anywhere: check the drift again.
-      if phaseBefore = "rebuffering" and m.tracker.phase = "ready" then syncPlayPlayback.armSettleCheck(m.settle)
       ' Never written from here: the node passes through `buffering` for milliseconds on its own
       ' pause, and the timer lets that settle.
       if syncPlayPlayback.owesPause(m.groupPaused, m.playerState, m.tracker.phase) then armPauseTimer()
@@ -391,11 +391,10 @@ sub refreshExtraOffset()
 end sub
 
 ' A position notification while following: read the drift, publish it, and correct a drift past
-' the threshold (syncPlayPlayback.settleCorrectionDue, correctionPlan). Only a command for the item
-' now playing says where the group is: a new item's load runs under the last item's Unpause.
+' the threshold (syncPlayPlayback.settleCorrectionDue, correctionPlan), against the command that
+' still says where the group is (syncPlayPlayback.clockReference).
 sub checkSettle()
-  inForce = m.lastCommand
-  if isValid(inForce) and inForce.playlistItemId <> m.state.playingItemId then inForce = invalid
+  inForce = syncPlayPlayback.clockReference(m.lastCommand, m.state.playingItemId, m.reportedBuffering)
   drift = syncPlayPlayback.driftMs(inForce, m.estimator, syncPlayTime.nowMs(), m.playerPositionTicks)
   m.playbackDiffMs = drift
   if syncPlayPlayback.settleCorrectionDue(m.settle, drift, m.playerState, m.tracker.phase, m.groupPaused)
@@ -603,6 +602,7 @@ end sub
 
 sub scheduleCommand(command as object)
   m.lastCommand = command
+  m.reportedBuffering = false
   plan = syncPlayPlayback.scheduleCommand(m.estimator, command, syncPlayTime.nowMs())
   m.pendingPlan = plan
   m.commandTimer.control = "stop"
@@ -859,6 +859,7 @@ sub report(kind as string, isPlaying as boolean, positionTicks = invalid as dyna
   if kind = "ready"
     post("Ready", syncPlayRequests.ready(whenMs&, reported&, isPlaying, m.state.playingItemId))
   else
+    m.reportedBuffering = true
     post("Buffering", syncPlayRequests.buffering(whenMs&, reported&, isPlaying, m.state.playingItemId))
   end if
   m.log.info("reported", "kind", kind, "positionTicks", reported&.toStr(), "isPlaying", isPlaying)

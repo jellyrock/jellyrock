@@ -232,6 +232,20 @@ namespace tests
       return m.command("Unpause", "2026-10-23T20:47:20.000Z", 600000000)
     end function
 
+    @it("clockReference is the last command for the playing item")
+    function _()
+      unpause = m.unpauseInForce()
+      m.assertEqual(syncPlayPlayback.clockReference(unpause, unpause.playlistItemId, false).command, "Unpause")
+      m.assertInvalid(syncPlayPlayback.clockReference(unpause, "another-item", false), "another item's")
+      m.assertInvalid(syncPlayPlayback.clockReference(invalid, unpause.playlistItemId, false), "no command yet")
+    end function
+
+    @it("clockReference has nothing once this member reported Buffering: the group waited for it")
+    function _()
+      unpause = m.unpauseInForce()
+      m.assertInvalid(syncPlayPlayback.clockReference(unpause, unpause.playlistItemId, true))
+    end function
+
     @it("driftMs is the estimated server position minus the player's: positive when this member is behind")
     function _()
       ' The group is at 70 s now; the player reads 69.5 s.

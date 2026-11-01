@@ -1754,15 +1754,15 @@ sub onPositionChanged()
 
   if isLiveTvPlayback() then trackLiveProgress()
 
+  effectiveDuration = getEffectiveDuration()
+
   ' A SyncPlay member confirms a seek landed from a position notification, never at the
   ' `playing` edge (syncPlayPlayback.bs). Nothing is sent while not following.
-  syncPlayHooks.notify({ kind: "position", position: m.top.position, duration: m.top.duration })
+  syncPlayHooks.notify({ kind: "position", position: m.top.position, duration: effectiveDuration })
 
   ' Without the content.length fallback (see getEffectiveDuration), progressPercentage stays
   ' pinned at 0 on live-transcoded MKV, and since the OSD only observes progressPercentage,
   ' the progress bar never advances and timestamps never refresh.
-  effectiveDuration = getEffectiveDuration()
-
   if effectiveDuration <= 0
     m.osd.progressPercentage = 0
   else

@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-10-31
+last-updated: 2026-11-01
 ---
 
 # Progress
@@ -344,6 +344,10 @@ Closes with a lint in `npm run lint` and its CI home that fails a tracked code c
 #### The RTA runner captures no device console, so an app crash during a spec reads as a wait timeout `[fid: rta-run-hides-device-crash]` `[captured 2026-10-24]`
 
 A BrightScript runtime error during an RTA spec suspends the app in the micro debugger, and every later wait in the run times out with `last={}` and no hint of the crash. [`scripts/rta-run.js`](../scripts/rta-run.js) and [`tests/rta/lib/driver.js`](../tests/rta/lib/driver.js) open no console tail; `driver.js` only names the telnet command in its deploy-timeout message. **Evidence:** SyncPlay phase C (2026-10-23, Streaming Stick 4K): a type mismatch in `syncPlayQueue.isStaleQueueUpdate` failed seven of eight specs as plain timeouts, and the backtrace surfaced only after a rerun with `nc` on port 8085 held open by hand. Not done in that PR: it is a runner change with its own tests. **Close:** have `rta-run.js` hold a console tail for the run (share the reader `two-roku-console-readers` proposes rather than writing a third), surface any `runtime error` or `Backtrace:` lines seen since the spec started in the failed wait's diagnosis, and save the tail beside the run record.
+
+#### An RTA run whose named specs skip every case looks like a pass `[fid: rta-run-silent-skips]` `[captured 2026-11-01]`
+
+With no `RTA_SERVER_*` set, `npm run test:rta` targets the public demo, which has no push channel, so `syncplay-controls` and `syncplay-correction` skip every case and the run exits 0 (10 of 10 skipped, 2026-10-31). A reader takes that for a pass, and CI runs no RTA. Not fixed now: it is a change to `scripts/rta-run.js` with its own tests, unrelated to PR #1296. Closes when the run's summary names how many cases skipped and why, or fails when a named spec ran nothing.
 
 ### components
 
@@ -1057,6 +1061,18 @@ Phase E (#1276) chose honor-only for the group's modes: the server applies shuff
 Also unchecked: voice fast-forward and rewind still write the node (`control` set to `fastforward` or `rewind` in `VideoPlayerView.handleTransport`) instead of going to the group. The remote's OK on the trick-play bar posts the group seek, but nobody has checked on a device whether a voice scrub can land with no OK, which would move this member alone.
 
 Closes when the queue-edit and shuffle design ships or is declined in a decision note, and a device check shows a voice scrub in a group either reaches the group or cannot land without an OK.
+
+#### A SyncPlay correction whose seek outlasts the lead twice stays late until the next resume `[fid: syncplay-correction-late-seek-stays-late]` `[captured 2026-11-01]`
+
+`SyncPlayManager.scheduleCorrectionResume` resumes at once when a correction's seek outlasts `CORRECTION_LEAD_MS`, so the member lands late, and the one retry (`retrySettleCheck`) can land late the same way. It then stays late until the next `Unpause`. Seen on the Stick 4K against a local HTTP 12.2 server on 2026-10-31, on direct play: a second correction's seek outlasted the 2 s lead (`holding resumeInMs 0`), leaving the member 274 ms behind, and `syncplay-correction.spec.js` failed on it in one of 14 runs. Not fixed now: the right lead needs seek times from slow paths, and a longer lead skips and holds longer on every correction for a member behind. Closes with those measured, and a lead that fits them or a decision that the limit stands, with the spec's wait matching it.
+
+#### A group command landing just after a SyncPlay correction's pause write can leave the node paused `[fid: syncplay-correction-pause-in-flight]` `[captured 2026-11-01]`
+
+`applyPlan` and `releaseCorrection` read `m.playerState`, which lags a pause write. A group `Unpause` or a halt landing after a correction writes its pause but before the `paused` event finds the node "playing", writes no resume, and has dropped the correction, so the node stays paused with nothing to resume it. Read from the code in PR #1296's review, never reproduced; a pause lands in under 10 ms (2026-10-23). Not fixed now: the fix is a new self-healing check for a window nobody has seen. Closes with a forced reproduction and that check, or a log line from a real run showing it, or a decision to drop it.
+
+#### A large SyncPlay Time Offset should turn every resume into a seek `[fid: syncplay-large-offset-seeks-each-resume]` `[captured 2026-11-01]`
+
+The server's `Unpause` lead is at least 500 ms (`DefaultPing`) and `SKIP_TO_SYNC_MIN_MS` is 400 ms, so a **SyncPlay Time Offset** above roughly 900 ms should turn every resume into a silent seek plus a correction, and a paused `Ready` carrying 500 ms or more on **Resume with Group** should draw a corrective `Seek`. The setting allows 2000, as web's field has no upper limit. Read from the server source in PR #1296's review, not run. Not fixed now: nothing shows real device delays that large. Closes by running offsets of 1000 and 1500 on a device, then lowering `max` in `settings/settings.json` or documenting the cost.
 
 ### api
 
