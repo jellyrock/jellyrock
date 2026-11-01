@@ -634,6 +634,13 @@ sub applyPendingPlan()
   ' A Seek leaves the player paused for the Unpause that follows.
   m.groupPaused = plan.action = "Pause" or plan.action = "Seek"
   dropCorrection()
+  ' A Pause that finds a seek in flight is left to the seek's landing. An Unpause that follows
+  ' it must take that pause back, or the node would land paused with nothing to resume it.
+  if plan.action = "Pause" and syncPlayPlayback.pauseWaitsForSeek(m.tracker.phase)
+    syncPlayPlayback.pauseAfterSeek(m.tracker)
+  else if plan.action = "Unpause"
+    syncPlayPlayback.abandonSeekPause(m.tracker)
+  end if
   m.playbackDiffMs = invalid
   if plan.action = "Unpause" then syncPlayPlayback.armSettleCheck(m.settle)
   if m.groupPaused
@@ -804,7 +811,12 @@ sub track(evt as object)
     ' everyone together (web pauses at playbackstart the same way). A correction's landing
     ' pauses the same way, and then waits for the group (onCorrectionLanded).
     host = playerHost()
-    if isValid(host) then tellPlayer(host, { command: "pause" })
+    if isValid(host) then tellPlayer(host, { command: "pause", showOsd: result.showOsd })
+    ' A pause the node swallowed is caught by no other check: count the write like a group Pause's.
+    if m.groupPaused
+      m.pauseAttempts++
+      armPauseTimer()
+    end if
     isPlaying = false
   end if
   if isValid(m.correction) and m.tracker.phase = "ready" and (phaseBefore = "seeking" or phaseBefore = "landing") then onCorrectionLanded(result.pauseFirst)

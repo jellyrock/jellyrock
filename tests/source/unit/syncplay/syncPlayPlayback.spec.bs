@@ -126,6 +126,22 @@ namespace tests
       m.assertEqual(syncPlayPlayback.applyPlan(pausePlan, "buffering", 600000000&, "loading").count(), 0)
     end function
 
+    @it("Pause during a seek writes nothing, whatever the node reads, and the seek's landing pauses")
+    function _()
+      pausePlan = { action: "Pause", delayMs: 0&, positionTicks: 600000000& }
+      for each phase in ["seeking", "landing"]
+        for each state in ["playing", "buffering"]
+          m.assertEqual(syncPlayPlayback.applyPlan(pausePlan, state, 600000000&, phase).count(), 0, phase + " " + state)
+        end for
+      end for
+      for each phase in ["ready", "stalling"]
+        steps = syncPlayPlayback.applyPlan(pausePlan, "playing", 600000000&, phase)
+        m.assertEqual(steps.count(), 1, phase)
+        m.assertEqual(steps[0].command, "pause")
+        m.assertTrue(steps[0].showOsd)
+      end for
+    end function
+
     @it("Seek on a playing player is one reported seek that pauses once it lands")
     function _()
       steps = syncPlayPlayback.applyPlan({ action: "Seek", delayMs: 0&, positionTicks: 1200000000& }, "playing", 600000000&)
@@ -360,6 +376,42 @@ namespace tests
       result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 700000000& })
       m.assertEqual(tracker.phase, "ready")
       m.assertFalse(result.pauseFirst)
+    end function
+
+    @it("a silent seek given a pause afterward lands with the pause and the OSD")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 700000000&, report: false, thenPause: false })
+      syncPlayPlayback.pauseAfterSeek(tracker)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 600000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 700000000& })
+      m.assertEqual(tracker.phase, "ready")
+      m.assertTrue(result.pauseFirst)
+      m.assertTrue(result.showOsd)
+      m.assertFalse(tracker.showOsd, "cleared once used")
+      m.assertFalse(tracker.thenPause)
+    end function
+
+    @it("a plain Seek's landing pauses without the OSD")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 700000000&, report: true, thenPause: true })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 600000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 700000000& })
+      m.assertTrue(result.pauseFirst)
+      m.assertFalse(result.showOsd)
+    end function
+
+    @it("a pause given after a seek and then abandoned lands without a pause")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 700000000&, report: false, thenPause: false })
+      syncPlayPlayback.pauseAfterSeek(tracker)
+      syncPlayPlayback.abandonSeekPause(tracker)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 600000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 700000000& })
+      m.assertFalse(result.pauseFirst)
+      m.assertFalse(result.showOsd)
     end function
 
     @it("nothing is counted while the group is paused, the node is not playing, or the tracker is not settled")

@@ -90,7 +90,10 @@ namespace syncPlayPlayback
   ' at once and stays there (measured 2026-10-24, direct play, a seek to 150 s, two runs): the
   ' wedge of 2026-10-23 came from a `play` or `resume` written while buffering, so a Pause
   ' pauses a buffering node too. A load is the exception: its first-frame pause (the tracker's
-  ' `pauseFirst`) owns that, and a pause during a load was never measured.
+  ' `pauseFirst`) owns that, and a pause during a load was never measured. A seek in flight is
+  ' the other: a `pause` written there can leave the node buffering for good (the node can still
+  ' read `playing` right after the seek write), so a Pause writes nothing and the seek's landing
+  ' pauses instead, with the OSD up (the manager calls `pauseAfterSeek`).
   ' @param plan - from scheduleCommand
   ' @param playerState - the Video node's `state`
   ' @param playerPositionTicks - the player's last known position
@@ -103,7 +106,11 @@ namespace syncPlayPlayback
       if needsSeek then steps.push(target)
       if playerState = "paused" and not needsSeek then steps.push({ command: "resume" })
     else if plan.action = "Pause"
-      if playerState = "playing" or (playerState = "buffering" and trackerPhase <> "loading") then steps.push({ command: "pause", showOsd: true })
+      if pauseWaitsForSeek(trackerPhase)
+        ' The seek's landing pauses.
+      else if playerState = "playing" or (playerState = "buffering" and trackerPhase <> "loading")
+        steps.push({ command: "pause", showOsd: true })
+      end if
     else if plan.action = "Seek"
       target.report = true
       target.thenPause = true
@@ -112,6 +119,12 @@ namespace syncPlayPlayback
       steps.push({ command: "stop" })
     end if
     return steps
+  end function
+
+  ' Whether a seek is in flight, so a Pause is left to the seek's landing (pauseAfterSeek) and
+  ' writes nothing of its own.
+  function pauseWaitsForSeek(trackerPhase as string) as boolean
+    return trackerPhase = "seeking" or trackerPhase = "landing"
   end function
 
   ' Whether the player owes the group a pause: the group is paused and the node plays on. The
@@ -262,7 +275,7 @@ namespace syncPlayPlayback
   ' "ready" (the server has this member's position), "stalling" (buffering after ready, not yet
   ' long enough to report), "rebuffering" (a stall the server was told about).
   function newReadyTracker() as object
-    return { phase: "idle", targetTicks: 0&, lastPositionTicks: 0&, lastState: "", reportSeek: false, thenPause: false, loadStartTicks: 0& }
+    return { phase: "idle", targetTicks: 0&, lastPositionTicks: 0&, lastState: "", reportSeek: false, thenPause: false, showOsd: false, loadStartTicks: 0& }
   end function
 
   ' Feed one player or coordinator event; get back what to send and what to wait for.
@@ -272,16 +285,19 @@ namespace syncPlayPlayback
   '   `startTicks` the load was asked to start at (absent when it starts at the beginning), and for
   '   "seek" the plan step's `report` and `thenPause` }. A silent seek (report false) still enters
   '   the seeking phase, so the buffering and playing it causes are not taken for a stall.
-  ' @returns an AA with report ("", "buffering" or "ready"), waitMs, pauseFirst and positionTicks:
+  ' @returns an AA with report ("", "buffering" or "ready"), waitMs, pauseFirst, showOsd and
+  '   positionTicks:
   '   `waitMs` above 0 asks for a one-shot timer that feeds back { kind: "timeout" }; `pauseFirst`
   '   says to pause the player before the Ready goes out (a load's first frame: web pauses at
   '   playbackstart and reports Ready, and the server's Unpause then starts everyone together);
+  '   `showOsd` says that pause is a group Pause that waited for the seek (pauseAfterSeek), so
+  '   it shows the OSD as the Play key does;
   '   `positionTicks` is the position to put in the report, or -1 to use the player's own. A load
   '   that started partway in has a Video node still reading 0 at its first `playing` (a probe on
   '   2026-10-23 read 0.0 while buffering and 349.0 right after), and a Ready at 0 makes the server
   '   send a corrective Seek, so that first Ready carries the start instead.
   function trackPlayerEvent(tracker as object, evt as object) as object
-    result = { report: "", waitMs: 0, pauseFirst: false, positionTicks: -1& }
+    result = { report: "", waitMs: 0, pauseFirst: false, showOsd: false, positionTicks: -1& }
     if not isValid(evt) or not syncPlayTime.isText(evt.kind) then return result
     kind = evt.kind
     if syncPlayTime.isWholeNumber(evt.positionTicks) then tracker.lastPositionTicks = syncPlayTime.asLong(evt.positionTicks)
@@ -357,6 +373,14 @@ namespace syncPlayPlayback
   ' node, since nothing would resume it and the server does not wait on it.
   sub abandonSeekPause(tracker as object)
     tracker.thenPause = false
+    tracker.showOsd = false
+  end sub
+
+  ' A group Pause came in while a seek was in flight: the seek's landing pauses the node, with
+  ' the OSD up, in place of a pause written to a node that is still seeking.
+  sub pauseAfterSeek(tracker as object)
+    tracker.thenPause = true
+    tracker.showOsd = true
   end sub
 
   ' Ready again: reported, and preceded by a pause, when the step asked for them.
@@ -364,8 +388,10 @@ namespace syncPlayPlayback
     tracker.phase = "ready"
     if tracker.reportSeek then result.report = "ready"
     result.pauseFirst = tracker.thenPause and pauseNow
+    result.showOsd = tracker.showOsd
     tracker.reportSeek = false
     tracker.thenPause = false
+    tracker.showOsd = false
   end sub
 
   ' --- units ---
