@@ -175,7 +175,7 @@ Play presses, item selection and the favorite and watched buttons are not here. 
 | App focus | Prints it. Roku sends it when a system overlay takes or returns focus. |
 | Link status | Prints it. The app does not show an offline state. |
 
-`Main()` also starts `roAppMemoryMonitor` (`memoryMonitor.start()` in `source/utils/memoryMonitor.bs`), which Roku requires for certification, and prints its memory limit, usage percent and available memory at start-up. Roku lists a few older platforms without these functions, and a failed call is printed rather than stopping the launch. The app stores none of these values.
+`Main()` also starts `roAppMemoryMonitor` (`memoryMonitor.start()` in `source/utils/memoryMonitor.bs`), which Roku requires for certification, and prints whether warning events were enabled, its memory limit, usage percent and available memory at start-up. Roku lists a few older platforms without these functions, and a failed call is printed rather than stopping the launch. The app stores none of these values.
 
 The 512 MB memory measures (a narrower API pool, half-size trickplay tiles) do not wait for a memory event: they key off `isLowMemoryDevice`, set at start-up ([`global-state.md`](global-state.md#app-and-device-mglobalapp-mglobaldevice)).
 

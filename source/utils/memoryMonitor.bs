@@ -22,8 +22,8 @@ namespace memoryMonitor
     if not isValid(monitor) then return invalid
     try
       monitor.setMessagePort(port)
-      monitor.EnableMemoryWarningEvent(true)
-      print "memory monitor: limit="; monitor.GetChannelMemoryLimit().maxForegroundMemory; " usagePercent="; monitor.GetMemoryLimitPercent(); " available="; monitor.GetChannelAvailableMemory()
+      warningsEnabled = monitor.EnableMemoryWarningEvent(true)
+      print "memory monitor: warningsEnabled="; warningsEnabled; " limit="; monitor.GetChannelMemoryLimit().maxForegroundMemory; " usagePercent="; monitor.GetMemoryLimitPercent(); " available="; monitor.GetChannelAvailableMemory()
     catch error
       print "memory monitor failed: "; error.message
     end try
