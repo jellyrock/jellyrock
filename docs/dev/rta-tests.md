@@ -109,7 +109,7 @@ The app shell's fields answer on every screen. Each prints only when set:
 | `playerError=true` | The OS media player | The player itself faulted |
 | `dialog=<type>("<title>")` | The open overlay dialog (`#jrDialog`) | Which dialog was up when the wait gave up. Focus alone only says `#jrDialog.#buttonRow.0` |
 
-The dialog's `message` is never read: it can hold a search term or cast text, and CI uploads the run records.
+The dialog's `message` is never read: it can hold a search term or cast text, and CI uploads the run records. Its title can hold server data, such as an item name or a SyncPlay group, so keep waits behind their seed. Keyboard dialogs open through `scene.dialog` without the overlay id, so they aren't named.
 
 `input=BLOCKED` is the most useful. `JRScene.onKeyEvent` returns `true` while `isRemoteDisabled` is set, so every key sent was consumed: the "we pressed before it was ready" failure [`tests/rta/CLAUDE.md`](../../tests/rta/CLAUDE.md) opens with.
 

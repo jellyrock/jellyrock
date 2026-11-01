@@ -45,7 +45,10 @@
  * The open dialog is read by type and title only. Its `message` can hold a search term or
  * cast text, and `runs.jsonl`, which carries these records, is uploaded by CI on a public
  * repo (`rta-functional-tests.yml`). A read that is never made cannot leak, so the message is
- * never requested.
+ * never requested. A title can still hold server data (an item name, a SyncPlay group and its
+ * members), which is safe only because of the rule above: keep waits behind their seed, so the
+ * server is the demo one. Keyboard dialogs open through `scene.dialog` without the overlay id,
+ * so the record does not name them.
  *
  * ## Two load signals, and why both
  *
