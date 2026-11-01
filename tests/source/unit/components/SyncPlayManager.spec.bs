@@ -227,7 +227,8 @@ namespace tests
       m.joinGroup()
       m.assertEqual(m.manager.sync.extraOffsetMs, 250&)
       settings.playbackSyncPlayTimeOffsetMs = 0
-      m.manager.callFunc("playerEvent", { kind: "position", position: 1.0 })
+      ' A mount publishes in every build; a position notification publishes only in an RTA build.
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
       m.assertEqual(m.manager.sync.extraOffsetMs, 0&)
     end function
 

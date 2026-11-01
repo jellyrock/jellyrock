@@ -2619,6 +2619,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
     if isValid(m.trickplayCarousel)
       m.trickplayCarousel.isVisible = true
     end if
+    ' The viewer is scrubbing again, so the fallback must not close the bar under them; another OK restarts it.
+    m.groupSeekFallbackTimer.control = "stop"
     return false
   end if
 
@@ -2935,7 +2937,7 @@ function handleTransport(evt as object) as object
   if cmd = "playpause"
     if syncPlayHooks.pausedForViewer(m.top.state)
       resumePlayer()
-    else if m.top.state = "playing" or m.top.state = "paused"
+    else if m.top.state = "playing" or m.top.state = "paused" or m.top.state = "buffering"
       pausePlayer(false)
     else
       m.top.control = "play"

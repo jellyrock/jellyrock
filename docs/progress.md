@@ -863,6 +863,10 @@ TV libraries no longer have this gap: their Recently Added rows use a portrait s
 
 Not fixed there because telling each cell its row adds work per cell in Home's hot path, and rewording is a separate product choice. Closes when the row stops following the setting, or the setting's text names it.
 
+#### The trick-play carousel's seek flag can never reset once an OK sets it `[fid: trickplay-carousel-flag-never-resets]` `[captured 2026-11-01]`
+
+`VideoPlayerView.onPositionChanged` resets `m.carouselHiddenForSeek` inside a branch that runs only while that flag is false, so once an OK on the trick-play bar sets it, it stays set. Its comment expects the reset when the bar closes. The same branch resets `m.trickSeekTarget`, so that value also stays from the last scrub until the bar's text next changes. Read from the code in the branch review (2026-11-01), present since `fc1d48fab`; the effect on screen is unmeasured. The carousel may stop hiding when a later scrub is canceled, since only the key handler then drives it. Not fixed now: it needs a device run to see what the viewer gets, and it is older than the work that found it. Closes with that run and a reset outside the guard, or a decision to drop it.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -1064,15 +1068,17 @@ Also unchecked: voice fast-forward and rewind still write the node (`control` se
 
 Closes when the queue-edit and shuffle design ships or is declined in a decision note, and a device check shows a voice scrub in a group either reaches the group or cannot land without an OK.
 
-#### A group command landing just after a SyncPlay correction's pause write can leave the node paused `[fid: syncplay-correction-pause-in-flight]` `[captured 2026-11-01]`
+#### A halt landing just after a SyncPlay correction's pause write can leave the node paused `[fid: syncplay-correction-pause-in-flight]` `[captured 2026-11-01]`
 
-`applyPlan` and `releaseCorrection` read `m.playerState`, which lags a pause write. A group `Unpause` or a halt landing after a correction writes its pause but before the `paused` event finds the node "playing", writes no resume, and has dropped the correction, so the node stays paused with nothing to resume it. Read from the code in PR #1296's review, never reproduced; a pause lands in under 10 ms (2026-10-23). Not fixed now: the fix is a new self-healing check for a window nobody has seen. Closes with a forced reproduction and that check, or a log line from a real run showing it, or a decision to drop it.
+`releaseCorrection` reads `m.playerState`, which lags a pause write. A halt landing after a correction writes its pause but before the `paused` event finds the node "playing", writes no resume, and drops the correction, so the node stays paused with nothing to resume it. Read from the code in PR #1296's review, never reproduced; a pause lands in under 10 ms (2026-10-23). The same window for a group `Unpause`, and a watchdog that ends the correction early, now resume the node through `syncPlayPlayback.owesCorrectionResume`; a halt clears that flag, since this member no longer answers to the group. Not fixed now: a halted member's node is the viewer's own from there, and pressing Play recovers it. Closes with a forced reproduction and a resume on release, or a decision to drop it.
 
 #### A SyncPlay member past the server's group wait can repeat seek, stall and resume on a slow file `[fid: syncplay-slow-seek-catch-up-unbounded]` `[captured 2026-11-01]`
 
 Past the 30 s group wait on 12.1 and later, the group plays on while a member with slow seeks repeats a silent seek, a `Buffering`, a `Ready` and the server's `Unpause`. On a 25 Mbps 4K HEVC MKV (Stick 4K, 12.2 server, 2026-11-01) seeks took 19 s, 12 s, then 3 s; one of three rounds settled in step, and two were still catching up when the sample ended. Nothing bounds the cycle, though only this member pays for it. Not fixed now: every round observed was converging, and a limit needs a choice of what the member does instead. Closes with a run to the end on such a file, then a limit or a decision that none is needed.
 
 The low-end Stick shows the same shape harder (12.2, 2026-11-01): readings of 5905, 6973, 8261 and 9092 ms behind after a correction's seek, one case left 1274 ms behind once its corrections were spent, against 3708 ms at most on a Stick 4K across 14 runs of the same specs.
+
+Two related points, read from the code in the branch review (2026-11-01), neither reproduced. The `Ready` after a slow silent seek goes out at the `playing` edge with the node's own position, which `playback.md` says can still read from before the seek, and a position off by more than 500 ms can draw a corrective `Seek`. `correctionLeadMs` has no upper bound and counts a seek's time through both settle budgets, so one slow seek gives the next short correction a lead of about 6.5 s and a frozen picture for most of it.
 
 #### A group Seek during a SyncPlay load repeats until the node lands `[fid: syncplay-group-seek-during-load]` `[captured 2026-11-01]`
 
@@ -1081,6 +1087,8 @@ A `Seek` during a load is written to the loading node, its budget ends, and `Rea
 #### A SyncPlay correction's seek can close a scrub bar the viewer just opened `[fid: syncplay-correction-closes-scrub-bar]` `[captured 2026-11-01]`
 
 `checkSettle` cannot see the trick-play bar, and the node's seek closes it. Seen in 1 of 4 rounds that pressed Right as a correction fired (Stick 4K, 12.2 server, 2026-11-01); the bar did not open in the other three, so this evidence is weak. Not fixed now: the window is about a second after a resume. Closes with a forced reproduction and a gate on the open bar, or a decision to drop it.
+
+Two more of the same shape, both read from the code in the branch review (2026-11-01), neither reproduced. `onCorrectionTimer` can write its `resume` under a bar the viewer opened during a hold. A scrub the viewer cancels may leave this member behind the group by however long the bar was up, with no correction unless the drift check is still armed; a scrub whose Seek was lost left a member 8.7 s behind (Stick 4K, 12.2 server, 2026-11-01), and the fallback now re-arms the check for that case only. The gate needs a way for the manager to see the bar.
 
 #### A SyncPlay hold can leave a small lead unchanged, spending both corrections `[fid: syncplay-hold-leaves-lead]` `[captured 2026-11-01]`
 
@@ -1094,9 +1102,15 @@ Not checked: whether the picture really runs ahead or the node's `position` over
 
 A SyncPlay join in the RTA specs occasionally never turns the icon active, though the server records the join. On 10.10.7 (Stick 4K, 2026-11-01) the server logged `joined group`, `syncplay-menu` timed out on "the icon turns active on the join" with `last=false`, and the next case's direct join failed the same way, so the fault lasted the run. The same wait failed in earlier matrix runs that day on 10.9.11 and 12.2. It did not recur in 11 later `syncplay-menu` runs, 9 of them with the console captured.
 
-That failing run had no console capture, so nothing shows whether the `GroupJoined` frame reached the app. Not checked: the socket's state in that run, and whether a viewer can hit this outside the test sign-in (`authenticateForPush`). If they can, pressing OK on a group gives no feedback for as long as it lasts.
+A later failure on 10.10.7 had the console captured (2026-11-01, `syncplay-correction`'s setup): the session socket opened, `SyncPlay/Join` answered 204, and no `GroupJoined` reached the app before the wait ended. So the frame is lost or never sent, not misread after arrival. All 10 of that spec's cases skipped with its setup. Joins after the next relaunch worked.
 
-Closes with a console capture of a failure and either a fix, or a proof it comes from the test's sign-in. Whichever way it goes, decide what a viewer sees when the frame never comes.
+Not checked: whether the server sent the frame, or to which socket; and whether a viewer can hit this outside the test sign-in (`authenticateForPush`). If they can, pressing OK on a group gives no feedback for as long as it lasts.
+
+Closes with the server's side of a failure and either a fix, or a proof it comes from the test's sign-in. Whichever way it goes, decide what a viewer sees when the frame never comes.
+
+#### A SyncPlay group Pause landing as a correction's hold resumes shows no OSD `[fid: syncplay-pause-at-hold-resume-no-osd]` `[captured 2026-11-01]`
+
+A group `Pause` that lands as a correction's hold writes its resume shows no OSD. The node still reads `paused` and `m.correction` is already gone, so `applyPlan` sees a paused node and no hold and writes no verb; `owesPause` then pauses the node with the OSD down. Seen once in `syncplay-correction`'s "another member's Pause during a correction's hold brings up the OSD" on 12.2 (Stick 4K, 2026-11-01), with a hold of 83 ms. The group stays correct, and the viewer sees a frozen picture with no controls until a key press. Not fixed now: `applyPlan` writes nothing for a paused node on purpose, and showing the OSD there touches the first-frame hold that `syncplay-pause-during-start-hold-no-osd` is about, so the two want one decision. The spec fails about once in 30 runs for this reason. Closes with that decision and a spec whose hold is long enough to rule the race out.
 
 ### api
 

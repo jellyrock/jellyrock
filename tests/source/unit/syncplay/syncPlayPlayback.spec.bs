@@ -243,6 +243,29 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("owesCorrectionResume()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a correction's pause left on a paused node, with no correction and a playing group, is owed a resume")
+    function _()
+      m.assertTrue(syncPlayPlayback.owesCorrectionResume(true, false, false, "paused"))
+    end function
+
+    @it("nothing is owed without the pause, or while a correction or a paused group owns the node")
+    function _()
+      m.assertFalse(syncPlayPlayback.owesCorrectionResume(false, false, false, "paused"), "no pause owed")
+      m.assertFalse(syncPlayPlayback.owesCorrectionResume(true, true, false, "paused"), "the correction resumes it")
+      m.assertFalse(syncPlayPlayback.owesCorrectionResume(true, false, true, "paused"), "the group is paused")
+    end function
+
+    @it("nothing is owed to a node that is not paused, a buffering one least of all")
+    function _()
+      for each nodeState in ["playing", "buffering", "stopped", ""]
+        m.assertFalse(syncPlayPlayback.owesCorrectionResume(true, false, false, nodeState), nodeState)
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("startPositionTicks()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -1020,6 +1043,28 @@ namespace tests
       m.assertInvalid(result.nextSeek)
       m.assertEqual(result.report, "ready")
       m.assertEqual(tracker.phase, "ready")
+    end function
+
+    @it("a pause given while a seek is held goes with the held seek, though it asked for none")
+    function _()
+      tracker = m.heldTracker()
+      held = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "holdSeek", targetTicks: 600000000&, report: true, thenPause: false })
+      m.assertEqual(held.report, "")
+      syncPlayPlayback.pauseAfterSeek(tracker)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertTrue(isValid(result.nextSeek), "the held seek goes next")
+      if isValid(result.nextSeek) then m.assertTrue(result.nextSeek.thenPause, "it pauses at its landing")
+    end function
+
+    @it("a silent held seek hands back the Ready owed for the seek it replaces")
+    function _()
+      tracker = m.heldTracker(true, true)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "holdSeek", targetTicks: 600000000&, report: false, thenPause: true })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertTrue(isValid(result.nextSeek), "the held seek goes next")
+      if isValid(result.nextSeek) then m.assertTrue(result.nextSeek.report, "the Ready still owed goes out at its landing")
     end function
 
     @it("an unknown or empty event reports nothing")

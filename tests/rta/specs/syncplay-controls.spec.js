@@ -319,6 +319,16 @@ it('a scrub confirmed with OK whose Seek the server never answers still closes t
     expect(await playerPosition(), 'the node did not move to the scrub target').toBeLessThan(
       before + 20,
     );
+    // The scrub left this member behind the group; the armed check corrects it.
+    await waitFor(
+      'syncPlayManager.sync.playbackDiffMs',
+      (v) => typeof v === 'number' && v >= -500 && v <= 1000,
+      {
+        read: getGlobalVal,
+        timeout: 25000,
+        label: "this member back with the group after the scrub's lost Seek",
+      },
+    );
   } finally {
     await failRequests([]);
   }
@@ -333,16 +343,29 @@ it("the remote's Replay key seeks the whole group back, not this Roku alone", as
   expect(before, 'far enough in for a replay to go back').toBeGreaterThan(15);
   const lastEmitted = await getGlobalVal('syncPlayManager.sync.lastCommand.emittedAtMs');
   await press(ecp.Key.Replay);
-  // A replay the group took comes back as the server's Seek (then its Unpause): a newer group
-  // command. A seek of this Roku alone brings none.
-  await waitFor('syncPlayManager.sync.lastCommand.emittedAtMs', (v) => v !== lastEmitted, {
-    read: getGlobalVal,
-    timeout: 10000,
-    label: 'a group command answering the replay',
-  });
+  // A replay the group took comes back as the server's Seek, then its Unpause once this member is
+  // ready, and the Unpause replaces the Seek in `lastCommand`. So a new Seek counts, and so does a
+  // new Unpause that carries a position behind where the replay started; a poll that missed the
+  // Seek still sees the one that follows. A seek of this Roku alone brings neither. The command is
+  // read whole, so its name, time and position come from one command; ODC lowercases the keys of
+  // a record it reads whole.
+  const answer = await waitFor(
+    'syncPlayManager.sync.lastCommand',
+    (c) =>
+      Boolean(c) &&
+      c.emittedatms !== lastEmitted &&
+      (c.command === 'Seek' || c.command === 'Unpause') &&
+      c.positionticks / 10_000_000 < before,
+    {
+      read: getGlobalVal,
+      timeout: 10000,
+      label: 'a group Seek (or the Unpause after it) answering the replay',
+    },
+  );
   // Seek and Unpause both carry the group's position: behind where the replay started.
-  const ticks = await getGlobalVal('syncPlayManager.sync.lastCommand.positionTicks');
-  expect(ticks / 10_000_000, "the group's position after the replay").toBeLessThan(before);
+  expect(answer.positionticks / 10_000_000, "the group's position after the replay").toBeLessThan(
+    before,
+  );
   await waitFor('state', (s) => s === 'playing', {
     read: playerState,
     timeout: 15000,
@@ -378,6 +401,44 @@ it('two member Seeks close together, to different targets, leave the group playi
     read: playerPosition,
     timeout: 20000,
     label: 'this member at the second Seek target',
+  });
+  expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+});
+
+// A play/pause toggle on a node that is buffering for the group's Seek used to write
+// `control = "play"` to it, which leaves it buffering for good. It must pause the group instead.
+it("the remote's play/pause during a group Seek pauses the group and does not wedge the node", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const before = await playerPosition();
+  try {
+    await syncPlay(member, 'Seek', { PositionTicks: Math.round((before + 40) * 10_000_000) });
+    await waitFor('state', (s) => s === 'buffering', {
+      read: playerState,
+      timeout: 10000,
+      interval: 100,
+      label: "the node buffering on the group's Seek",
+    });
+    await playerCall(heroId, 'playpause');
+    await waitFor('syncPlayManager.groupState', (s) => s === 'Paused', {
+      read: getGlobalVal,
+      timeout: 15000,
+      label: 'the group paused by the toggle pressed during the Seek',
+    });
+    await waitFor('state', (s) => s === 'paused', {
+      read: playerState,
+      timeout: 15000,
+      label: "the node paused at the Seek's landing, not buffering for good",
+    });
+  } finally {
+    await syncPlay(member, 'Unpause').catch(() => {});
+  }
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 20000,
+    label: "the node playing on the group's Unpause",
   });
   expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
 });

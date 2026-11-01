@@ -123,6 +123,9 @@ sub ensureReady()
   ' group, after a seek when it was behind, and correctionTimer resumes it as the group arrives.
   ' Any group command or a pause the viewer presses replaces it.
   m.correction = invalid
+  ' Whether a correction wrote a pause that nothing has resumed or replaced yet, so one that ends
+  ' before the node reports `paused` still gets its resume (syncPlayPlayback.owesCorrectionResume).
+  m.correctionPauseOwed = false
   publish()
 end sub
 
@@ -200,6 +203,7 @@ function playerEvent(evt as object) as object
     m.playerDurationSeconds = 0
     m.lastSeekMs = 0&
     m.playbackDiffMs = invalid
+    m.correctionPauseOwed = false
     syncPlayPlayback.disarmSettleCheck(m.settle)
     if isFollowing()
       ' Only the group's item answers to the group. Anything else the viewer started plays
@@ -219,14 +223,28 @@ function playerEvent(evt as object) as object
       ' Never written from here: the node passes through `buffering` for milliseconds on its own
       ' pause, and the timer lets that settle.
       if syncPlayPlayback.owesPause(m.groupPaused, m.playerState, m.tracker.phase) then armPauseTimer()
+      ' The correction's timer owns the pause from here.
+      if isValid(m.correction) and m.playerState = "paused" then m.correctionPauseOwed = false
       if isValid(m.correction) and m.playerState = "paused" and m.tracker.phase = "ready" then scheduleCorrectionResume()
+      ' A correction that ended before its pause landed (the watchdog, or an Unpause) left the
+      ' node paused while the group plays.
+      if syncPlayPlayback.owesCorrectionResume(m.correctionPauseOwed, isValid(m.correction), m.groupPaused, m.playerState)
+        host = playerHost()
+        if isValid(host) then tellPlayer(host, { command: "resume" })
+        m.log.info("drift correction's pause resumed after the correction ended", "positionTicks", m.playerPositionTicks.toStr())
+        m.correctionPauseOwed = false
+      end if
     end if
   else if kind = "localSeek"
     ' The fallback wrote a seek of its own (VideoPlayerView.onGroupSeekOverdue): the tracker must
     ' know it, or a group Seek that comes next would run beside it. Only a stall the server was
     ' told about is owed a Ready at the landing. A load or an idle tracker is left alone, since a seek
     ' event there would take a load out of its first-frame pause and Ready.
-    if isFollowing() and m.tracker.phase <> "loading" and m.tracker.phase <> "idle" then track({ kind: "seek", positionTicks: m.playerPositionTicks, report: m.tracker.phase = "rebuffering", thenPause: false })
+    if isFollowing() and m.tracker.phase <> "loading" and m.tracker.phase <> "idle"
+      track({ kind: "seek", positionTicks: m.playerPositionTicks, report: m.tracker.phase = "rebuffering", thenPause: false })
+      ' A scrub whose Seek was lost leaves this member behind the group, and a correction only catches it up if the check is armed.
+      syncPlayPlayback.armSettleCheck(m.settle)
+    end if
   else if kind = "position"
     if isFollowing()
       track({ kind: "position", positionTicks: m.playerPositionTicks })
@@ -342,6 +360,7 @@ sub followAgain()
   m.log.info("following again", "groupId", m.state.groupId)
   syncPlayState.resume(m.state)
   m.tracker = syncPlayPlayback.newReadyTracker()
+  m.correctionPauseOwed = false
   post("SetIgnoreWait", syncPlayRequests.setIgnoreWait(false))
   publish()
 end sub
@@ -403,7 +422,7 @@ sub refreshExtraOffset()
   syncPlayOffset.setExtraOffsetMs(m.estimator, extraMs)
 end sub
 
-' A position notification while following: read the drift, publish it, and correct a drift past
+' A position notification while following: read the drift (published only in RTA builds), and correct a drift past
 ' the threshold (syncPlayPlayback.settleCorrectionDue, correctionPlan), against the command that
 ' still says where the group is (syncPlayPlayback.clockReference).
 sub checkSettle()
@@ -429,7 +448,10 @@ sub checkSettle()
       end if
     end if
   end if
-  publish()
+  ' Only the RTA specs read the drift, so a release build skips a publish per position notification.
+  #if ENABLE_RTA
+    publish()
+  #end if
 end sub
 
 ' The correction's seek settled. The tracker's pause is written, and the node's `paused` state
@@ -449,6 +471,7 @@ end sub
 ' A pause was written for the correction: its `paused` state replaces this with the resume, so a
 ' node that never gets there ends the correction when this fires (onCorrectionTimer).
 sub armCorrectionWatchdog()
+  m.correctionPauseOwed = true
   m.correctionTimer.control = "stop"
   m.correctionTimer.duration = syncPlayPlayback.PAUSE_CONFIRM_MS / 1000#
   m.correctionTimer.control = "start"
@@ -482,6 +505,7 @@ sub onCorrectionTimer()
     return
   end if
   tellPlayer(host, { command: "resume" })
+  m.correctionPauseOwed = false
   m.log.info("drift correction resumed", "positionTicks", m.playerPositionTicks.toStr())
   m.correction = invalid
   syncPlayPlayback.retrySettleCheck(m.settle)
@@ -504,6 +528,7 @@ end sub
 ' This member stops answering to the group: a node held for the correction has no one left to
 ' resume it, and the viewer never paused it.
 sub releaseCorrection()
+  m.correctionPauseOwed = false
   if isValid(m.correction) and m.playerState = "paused"
     host = playerHost()
     if isValid(host) then tellPlayer(host, { command: "resume" })
@@ -558,6 +583,7 @@ sub onGroupUpdate(update as object)
     m.playbackDiffMs = invalid
     m.groupPaused = false
     m.tracker = syncPlayPlayback.newReadyTracker()
+    m.correctionPauseOwed = false
     m.failedBursts = 0
     startTimeSync(FIRST_SYNC_ROUNDS)
   else if updateType = "GroupLeft" or updateType = "NotInGroup"
@@ -646,6 +672,8 @@ sub applyPendingPlan()
   end if
   ' A Seek leaves the player paused for the Unpause that follows.
   m.groupPaused = plan.action = "Pause" or plan.action = "Seek"
+  ' A paused node is resumed by the plan itself (a resume or a seek), so nothing stays owed.
+  if m.groupPaused or m.playerState = "paused" then m.correctionPauseOwed = false
   heldForCorrection = isValid(m.correction) and m.playerState = "paused"
   dropCorrection()
   ' A Pause that finds a seek in flight is left to the seek's landing. An Unpause that follows
@@ -1076,6 +1104,7 @@ function viewerPause() as boolean
   if not isFollowing() then return true
   control({ kind: "pause" })
   dropCorrection()
+  m.correctionPauseOwed = false
   if not syncPlayPlayback.pauseWaitsForSeek(m.tracker.phase) then return true
   syncPlayPlayback.pauseAfterSeek(m.tracker)
   return false

@@ -135,6 +135,15 @@ namespace syncPlayPlayback
     return trackerPhase = "seeking" or trackerPhase = "landing"
   end function
 
+  ' Whether a drift correction wrote a pause it no longer owns the resume of: the watchdog ended
+  ' the correction, or an Unpause dropped it, before the node reported `paused`, so the node stays
+  ' paused while the group plays. Never true for a buffering node, which a resume would wedge.
+  ' @param pauseOwed - a correction wrote a pause and nothing has resumed or replaced it
+  ' @param correctionActive - a correction is under way, so its own timer resumes the node
+  function owesCorrectionResume(pauseOwed as boolean, correctionActive as boolean, groupPaused as boolean, playerState as string) as boolean
+    return pauseOwed and not correctionActive and not groupPaused and playerState = "paused"
+  end function
+
   ' Whether the player owes the group a pause: the group is paused and the node plays on. The
   ' load and seek phases pause by themselves (pauseFirst, thenPause), so only a settled phase
   ' counts.
@@ -436,6 +445,8 @@ namespace syncPlayPlayback
   function releaseHeldSeek(tracker as object, result as object) as boolean
     if not isValid(tracker.heldSeek) then return false
     result.nextSeek = tracker.heldSeek
+    ' A Ready owed for the seek this replaces goes out at the held one's landing, silent or not.
+    result.nextSeek.report = result.nextSeek.report or tracker.reportSeek
     tracker.heldSeek = invalid
     tracker.phase = "seeking"
     return true
@@ -451,6 +462,8 @@ namespace syncPlayPlayback
   sub pauseAfterSeek(tracker as object)
     tracker.thenPause = true
     tracker.showOsd = true
+    ' A seek held behind the one in flight would overwrite the pause when it is released.
+    if isValid(tracker.heldSeek) then tracker.heldSeek.thenPause = true
   end sub
 
   ' Ready again: reported, and preceded by a pause, when the step asked for them.

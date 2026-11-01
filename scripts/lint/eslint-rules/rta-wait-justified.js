@@ -155,6 +155,13 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // command is newer, so its `emittedAtMs` never returns to an earlier value within a membership.
   // `syncplay-controls.spec.js` waits for it to differ from a value read before a key press.
   'syncPlayManager.sync.lastCommand.emittedAtMs',
+  // The whole command, read in one piece so its name, `emittedAtMs` and position belong to one
+  // command. `SyncPlayManager.scheduleCommand` replaces it on each command, so a Seek is
+  // overwritten by the Unpause that follows it (the Seek is not terminal): the one wait on it
+  // (`syncplay-controls.spec.js`'s Replay case) accepts the Seek or that Unpause, both
+  // carrying the replay's position. Read against the app source 2026-11-01 (scheduleCommand,
+  // onCommand's halted branch, the join and leave resets).
+  'syncPlayManager.sync.lastCommand',
   // `SyncPlayManager.scheduleCommand` sets the last group command and publishes it; it holds until
   // the group's next command, and in the `beforeAll` of `syncplay-controls.spec.js` nothing sends
   // one between the Unpause and the first case.
@@ -164,7 +171,7 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // REST member queues an item.
   'syncPlayManager.sync.playlistCount',
   // `SyncPlayManager.checkSettle` publishes the drift from the group on every position
-  // notification while an Unpause is in force (every 0.5 s), and a group command or a Buffering
+  // notification while an Unpause is in force (every 0.5 s, in RTA builds only), and a group command or a Buffering
   // report clears it. Past its thresholds the manager corrects it, and it then holds inside them,
   // so "inside the thresholds" is recurrent, not a pulse. `syncplay-controls.spec.js` and
   // `syncplay-correction.spec.js` wait on it.
