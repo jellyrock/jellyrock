@@ -15,7 +15,8 @@
 #   prose-arrow    the right-arrow character, outside **bold** spans (a bold UI path is allowed)
 #   latin-abbrev   the two Latin abbreviations for "for example" and "that is" (any case)
 #   line-citation  file.ext:123 or file.ext:12-14 (counted inside backticks too, fences removed
-#                  only) and the shorthand :123 or :12-14 after whitespace, a backtick, [ or (
+#                  only) and the shorthand (a colon, then a line number or range) after whitespace,
+#                  a backtick, [ or (
 #
 # Scope: tracked Markdown files (git ls-files '*.md') except any file named CHANGELOG.md and any
 # file the optional <repo root>/.voice-ignore matches: gitignore patterns, matched by git itself,
@@ -27,8 +28,9 @@
 # for that reason only: the voice check is not part of the journal.
 # The baseline is <repo root>/.voice-baseline.tsv: lines path<TAB>category<TAB>count, sorted.
 #
-# Usage: bash voice-check.sh [<file.md>...]      check; paths limit the run (non-.md and
-#                                                untracked paths are skipped silently)
+# Usage: bash voice-check.sh [<file.md>...]      check; paths limit the run. A named file is read
+#                                                even when untracked, with the verdict it gets once
+#                                                staged. named_path() says what else a path can do
 #        bash voice-check.sh --init              write the baseline from the current counts
 #        bash voice-check.sh --lower             lower allowances to the current counts
 #        bash voice-check.sh --counts <file>...  print each category's count per file
@@ -134,8 +136,9 @@ function voiceprose(t) {
   return dashcells(t)
 }
 
-# The shorthand :123 or :12-14: preceded by line start, whitespace, a backtick, [ or (; not
-# followed by a digit, colon or letter (when -14 is followed by one, :12 alone still counts).
+# The shorthand (a colon, then a line number or range): preceded by line start, whitespace, a
+# backtick, [ or (; not followed by a digit, colon or letter (when the end of a range is followed by
+# one, its start alone still counts).
 function shorthand(line,   i, q, c, j, k, nx, n, endp) {
   n = 0; i = 1
   while ((q = index(substr(line, i), ":")) > 0) {
@@ -254,15 +257,38 @@ counts)
 esac
 ignore_notes
 
+skip_note() { printf 'voice-check: NOTE: %s not checked: %s\n' "$1" "$2" >&2; }
+
+out_of_scope() { # <root-relative path> : CHANGELOG.md or a .voice-ignore match, tracked or not
+  case "$1" in CHANGELOG.md|*/CHANGELOG.md) return 0 ;; esac
+  [ -f "$ignorefile" ] || return 1
+  [ -n "$(git -C "$root" ls-files -c -o -i --exclude-from="$ignorefile" -- ":(literal)$1")" ]
+}
+
+# named_path <path as given> : adds it to the run, says why it is not checked, or stops the run.
+# A hook can pass the skipped kinds, so they never fail a commit; a path that names nothing can only
+# be a mistake, and a pass on it would read as a check that never ran.
+named_path() {
+  local p="$1" r
+  case "$p" in *.md) ;; *) skip_note "$p" "not Markdown"; return ;; esac
+  r="$(realpath -m --relative-to="$root" -- "$p" 2>/dev/null)" || die "cannot resolve the path $p"
+  case "$r" in
+    ..|../*)
+      if [ -L "$p" ]; then skip_note "$p" "a symlink that leaves this repo"; return; fi
+      die "$p is outside this repo: its baseline cannot answer for that file" ;;
+  esac
+  if out_of_scope "$r"; then skip_note "$p" "out of scope (CHANGELOG.md or $IGNORE_NAME)"; return; fi
+  if [ -f "$root/$r" ]; then printf '%s\n' "$r" >>"$tmp/named"; return; fi
+  if [ -L "$p" ]; then skip_note "$p" "a symlink to a missing file"; return; fi
+  if grep -Fxq -- "$r" "$tmp/scope"; then skip_note "$p" "tracked, but not on disk"; return; fi
+  die "no such file: $p"
+}
+
 # the files this run looks at
 if [ "$mode" = check ] && [ "${#paths[@]}" -gt 0 ]; then
-  : >"$tmp/want"
-  for p in "${paths[@]}"; do
-    case "$p" in *.md) ;; *) continue ;; esac
-    r="$(realpath -m --relative-to="$root" -- "$p" 2>/dev/null)" || continue
-    printf '%s\n' "$r" >>"$tmp/want"
-  done
-  LC_ALL=C sort -u "$tmp/want" | LC_ALL=C comm -12 - "$tmp/scope" >"$tmp/run"
+  : >"$tmp/named"
+  for p in "${paths[@]}"; do named_path "$p"; done
+  LC_ALL=C sort -u "$tmp/named" >"$tmp/run"
 else
   cp "$tmp/scope" "$tmp/run"
 fi

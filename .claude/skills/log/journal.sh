@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# journal.sh — the one tool that reads and writes this repo's followup journal. /log adds, /done
+# journal.sh: the one tool that reads and writes this repo's followup journal. /log adds, /done
 # closes, /catchup lists and counts; the model only picks the category and writes the words, and
 # this script does everything that has one right answer: where an entry goes, its markers, the
 # date line, the checks, and the path-restricted commit.

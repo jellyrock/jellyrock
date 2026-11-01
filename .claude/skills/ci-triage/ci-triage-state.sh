@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# ci-triage-state.sh — the one read /ci-triage makes. Fetches one CI run, finds every job and step
+# ci-triage-state.sh: the one read /ci-triage makes. Fetches one CI run, finds every job and step
 # that failed, prints each failed job's diagnostic tail, and classifies each against this repo's
 # gates.tsv, so the session spends its effort on the diagnosis rather than on forge calls and a log
 # scroll. What to do about a failure stays with the skill.
