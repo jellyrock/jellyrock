@@ -41,6 +41,7 @@ These are not the Rooibos tests ([`unit-tests.md`](unit-tests.md)), which are co
 | `npm run test:rta` | Builds (dev), deploys the RTA build and runs every screen test. The regression command |
 | `npm run test:rta:tdd` | Watch mode: deploys once and re-runs specs on save |
 | `npm run test:rta:fast` | `RTA_NO_DEPLOY=1`: runs against the build already on the device |
+| `npm run test:rta:servers -- <filter>` | Runs the suite once per server in `JELLYFIN_VERSION_SERVERS`. See [One run across several servers](#one-run-across-several-servers) |
 | `npm run test:rta:capture` | Also saves a raw screenshot per screen to `out/rta-captures/` |
 | `RTA_BENCH=1 npm run test:rta` | Also runs the measurement specs (`task-ledger-bench`, `task-ledger-screen-cost`, `overhang-ink`), which report numbers and gate nothing. Add `-- overhang-ink` to run one |
 | `RTA_SERVER_URL=… RTA_SERVER_USER=… RTA_SERVER_PASS=… npm run test:rta` | Runs against another server. The demo server is a control, not a substitute: it has a few libraries where a real server has about ten, so anything that scales with library count reads low on it |
@@ -295,6 +296,16 @@ On macOS, stdout from an `exit` handler is asynchronous for pipes, so a piped, i
 The summary reports the run's window and flags a run that crossed the top of the hour, when the demo server resets its content (playlists, and anything the run marked watched). A change landing mid-run fails as an unrelated nav timeout. Each failure carries `afterHourBoundary`, so you can tell which side of the reset it landed on.
 
 In watch mode (`test:rta:tdd`) the window spans the whole session, so both the run flag and the per-failure stamp are off, and `afterHourBoundary` is absent rather than `false`: the reset may well have happened. `beginRun` writes `cumulative` into the record at open time so the Vitest child can see it.
+
+## The device console of a run
+
+Every RTA run copies the device's debug console (port 8085) to `console.log` in the run's record folder, `.device-runs/rta/runs/<device key>/`, from before the deploy until the process exits. A failed run prints the path. The next run on the same device overwrites the file, so copy it if you need it. If the connection is refused or drops, the run logs one line and goes on, and a drop is retried for a short while.
+
+The file holds auth tokens the app printed. It lives in the gitignored `.device-runs/`. Never paste it into an issue, a PR or any public place; cut out the lines you need and check them first.
+
+## One run across several servers
+
+`npm run test:rta:servers -- <vitest filter>` builds once, then runs `scripts/rta-run.js` for each URL in `JELLYFIN_VERSION_SERVERS`, signed in with `JELLYFIN_VERSION_SERVERS_USER` and `_PASS` (see `.env.example`). Everything after `--` goes to Vitest. If the [device lock](#the-device-lock) refuses a run, it waits 30 seconds and tries again, up to 20 times. Any other failure is recorded and the next server runs. It ends with one table: server number, Jellyfin version, Vitest's `Tests` line and the console file, and exits 1 if any server failed. Each server's console goes to `.device-runs/rta/servers/`, which keeps the newest 12. A spec that expects demo-server content fails on a server without it; that is a finding about the spec, not the script.
 
 ## Test hooks in RTA builds
 

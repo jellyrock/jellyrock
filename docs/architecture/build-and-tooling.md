@@ -99,7 +99,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-10-31
+last-reviewed: 2026-11-01
 ---
 
 # Build and tooling
@@ -378,7 +378,7 @@ One makes it report more. A name built at runtime from a variable (`setField(nam
 | Build | `build` (dev), `build:prod` (then [manifest hardening](#production-hardening)), `build:analysis`, `build:tests`, `build:tests-unit`, `build:tests-integration`, `build:tests-complete`, `build:tdd`, `validate` (`bsc --noEmit`) | [bsconfig variants](#bsconfig-variants) |
 | Package | `package` (sideload ZIP), `package:signed` (signed `.pkg`) | [Roku signing pipeline](#roku-signing-pipeline) |
 | Device tests | `test:unit`, `test:integration`, `test:all`, `test:complete`, `test:tdd`, `device:check` | [unit-tests-tdd.md](../dev/unit-tests-tdd.md) |
-| RTA | `test:rta`, `test:rta:tdd`, `test:rta:fast`, `test:rta:capture`, `demo`, `rta:restore`, `screenshots:*`, `device:status`, `device:release` | [rta-tests.md](../dev/rta-tests.md) |
+| RTA | `test:rta`, `test:rta:tdd`, `test:rta:fast`, `test:rta:servers`, `test:rta:capture`, `demo`, `rta:restore`, `screenshots:*`, `device:status`, `device:release` | [rta-tests.md](../dev/rta-tests.md) |
 | Measurement | `measure`, `measure:*`, `flake-baseline` | [measuring-performance.md](../dev/measuring-performance.md) |
 | Script tests | `test:scripts`, `test:scripts:tdd` (watch) | [scripts-development.md](../dev/scripts-development.md) |
 | Format | `format`, `check-formatting`, each with `:bs` (`bsfmt`) and `:js` (Prettier) | [Surfaces for JS and JSON](#surfaces-for-js-and-json) |
