@@ -29,6 +29,14 @@ const ALLOWED_EXTENSIONS = new Set(['.bs', '.brs', '.xml', '.json', '.png', '.jp
 const ALLOWED_NAMES = new Set(['manifest']);
 // Folders that only the test suites or the tooling use.
 const EXCLUDED_DIRS = ['components/testing/', 'locale/seed/'];
+// Files the app reads by path at runtime. bsc checks code references, so an exclusion
+// that catches one of these would still build, and the app would fail on a device.
+const REQUIRED_FILES = [
+  'manifest',
+  'settings/settings.json',
+  'locale/custom/en_US.json',
+  'locale/languages.json',
+];
 
 async function releaseFiles() {
   const config = JSON.parse(readFileSync(join(ROOT, 'bsconfig-prod.json'), 'utf8'));
@@ -50,5 +58,10 @@ describe('release package contents', () => {
     const files = await releaseFiles();
     const excluded = files.filter((file) => EXCLUDED_DIRS.some((dir) => file.startsWith(dir)));
     expect(excluded).toEqual([]);
+  });
+
+  it('keeps the files the app reads by path', async () => {
+    const files = await releaseFiles();
+    expect(REQUIRED_FILES.filter((file) => !files.includes(file))).toEqual([]);
   });
 });
