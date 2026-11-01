@@ -18,6 +18,7 @@ import { odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import {
   authenticate,
+  authenticateForPush,
   commandChannelAvailable,
   getJson,
   postJson,
@@ -112,7 +113,9 @@ async function expectCorrected(isOff, label) {
 }
 
 beforeAll(async () => {
-  session = await authenticate(RTA_CONFIG.server);
+  session = await authenticateForPush(RTA_CONFIG.server, () =>
+    getGlobalVal('device.serverDeviceName'),
+  );
   member = await authenticate(RTA_CONFIG.server, { role: 'member' });
   pushAvailable = await commandChannelAvailable(session);
   const query = new URLSearchParams({

@@ -19,6 +19,7 @@ import { RTA_CONFIG } from '../config.js';
 import {
   appSession,
   authenticate,
+  authenticateForPush,
   commandChannelAvailable,
   getHero,
   getJson,
@@ -81,7 +82,9 @@ const syncPlay = (who, action, body = {}) =>
 const listGroups = (who) => getJson(`${who.serverUrl}/SyncPlay/List`, tokenHeader(who.token));
 
 beforeAll(async () => {
-  session = await authenticate(RTA_CONFIG.server);
+  session = await authenticateForPush(RTA_CONFIG.server, () =>
+    getGlobalVal('device.serverDeviceName'),
+  );
   member = await authenticate(RTA_CONFIG.server, { role: 'member' });
   // The join's GroupJoined update is pushed to the Roku: without a channel for it the
   // manager never learns of the group, so the second test skips visibly rather than wait.

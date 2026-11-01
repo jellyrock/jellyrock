@@ -17,6 +17,7 @@ import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import {
   authenticate,
+  authenticateForPush,
   commandChannelAvailable,
   getJson,
   postJson,
@@ -97,7 +98,9 @@ const osdVisible = () => player()('#osd.visible');
 const barVisible = () => player()('trickPlayBar.visible');
 
 beforeAll(async () => {
-  session = await authenticate(RTA_CONFIG.server);
+  session = await authenticateForPush(RTA_CONFIG.server, () =>
+    getGlobalVal('device.serverDeviceName'),
+  );
   member = await authenticate(RTA_CONFIG.server, { role: 'member' });
   pushAvailable = await commandChannelAvailable(session);
   // A movie at least ten minutes long, found by order, never by name: the seek case scrubs
