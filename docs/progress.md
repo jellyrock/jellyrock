@@ -344,6 +344,18 @@ Closes with a lint in `npm run lint` and its CI home that fails a tracked code c
 
 A BrightScript runtime error during an RTA spec suspends the app in the micro debugger, and every later wait in the run times out with `last={}` and no hint of the crash. [`scripts/rta-run.js`](../scripts/rta-run.js) and [`tests/rta/lib/driver.js`](../tests/rta/lib/driver.js) open no console tail; `driver.js` only names the telnet command in its deploy-timeout message. **Evidence:** SyncPlay phase C (2026-10-23, Streaming Stick 4K): a type mismatch in `syncPlayQueue.isStaleQueueUpdate` failed seven of eight specs as plain timeouts, and the backtrace surfaced only after a rerun with `nc` on port 8085 held open by hand. Not done in that PR: it is a runner change with its own tests. **Close:** have `rta-run.js` hold a console tail for the run (share the reader `two-roku-console-readers` proposes rather than writing a third), surface any `runtime error` or `Backtrace:` lines seen since the spec started in the failed wait's diagnosis, and save the tail beside the run record.
 
+#### The Rooibos runner prints a stack trace when the device lock refuses `[fid: test-runner-lock-refusal-trace]` `[captured 2026-11-01]`
+
+`main()` in `scripts/run-roku-tests.js` calls `acquireDeviceLock()` outside its `try`, so a busy device ends the run in an unhandled stack trace, with no run record. Seen 2026-11-01 while other sessions' RTA runs held the lock. The lock itself worked: nothing deployed.
+
+**Fix shape:** catch the refusal and print its message with a non-zero exit, using `refusalLine()` from `scripts/device-lock.js`.
+
+#### A change to the Rooibos runner skips the device tests `[fid: device-tests-skip-runner-changes]` `[captured 2026-11-01]`
+
+The `Detect test-relevant changes` pattern in `device-unit-tests.yml` leaves out `scripts/`, so a change to the runner skips the device suite. #1301 changed `scripts/run-roku-tests.js` and its device job reported success in 13 s without running a test.
+
+**Fix shape:** add `scripts/run-roku-tests.js`, `scripts/lib/rooibos-summary.cjs` and the patches the run applies to the pattern.
+
 ### components
 
 #### The `cell-load` counters are silently zeroed whenever a screen replaces its content root, so any measurement of a session that does so under-reports. `[fid: cell-load-counters-zeroed-by-root-swap]` `[captured 2026-08-22]`
@@ -1034,11 +1046,23 @@ Also unchecked: voice fast-forward and rewind still write the node (`control` se
 
 Closes when the queue-edit and shuffle design ships or is declined in a decision note, and a device check shows a voice scrub in a group either reaches the group or cannot land without an OK.
 
-#### Type the memory monitor once BrighterScript knows its `setMessagePort` `[fid: bsc-types-app-memory-monitor-port]` `[captured 2026-10-31]`
+#### Roku's analyzer still flags the custom locale folder and a deprecated API `[fid: analyzer-remaining-warnings]` `[captured 2026-11-01]`
 
-`memoryMonitor.start()` in `source/utils/memoryMonitor.bs` types its `roAppMemoryMonitor` as `dynamic`, because the BrighterScript type data bundled in `node_modules` lacks `setMessagePort` on `roAppMemoryMonitor`. Roku's docs (rokudev/dev-doc `roappmemorymonitor.md`) list `ifSetMessagePort` as supported. Found 2026-10-31 while registering the memory monitor for #1072.
+Roku's analyzer on #1299's branch (2026-11-01) still warns `Unsupported or incorrectly configured locales found: custom`, because `translate.bs` reads `pkg:/locale/custom/` and Roku treats folders under `locale/` as locales. It also warns that `InitClientCertificates()` is deprecated, in `TimeSyncTask` and the vendored `rr` module. The analyzer exits 0 on all of them. Whether any blocks publishing was not checked.
 
-**Check:** after a `brighterscript` bump, type the variable as the component and run `npm run validate`. **When it passes:** drop the `dynamic` and its comment.
+**Fix shape:** moving the folder touches `translate.bs`, the seed and Weblate scripts and about 40 files naming the path, so it needs its own design. Check first whether the warning ever blocks a submission.
+
+#### The app never fires the dialog beacons Roku requires before Home `[fid: appdialog-beacons-certification]` `[captured 2026-11-01]` `[pinned]`
+
+Roku's analyzer (2026-11-01) warns that the app must fire `AppDialogInitiate` and `AppDialogComplete` if it shows a login, user selection or other dialog before the home page (certification requirement 3.2), and Roku's static analysis docs say the same. `source/` and `components/` fire neither, and the pre-login screens wait for input before `HomeRows` signals `AppLaunchComplete`. It is a warning today (exit 0). Whether it blocks publishing was not checked.
+
+**Fix shape:** fire the pair around each pre-login view (`SetServerScreen`, `UserSelect`, `LoginScene`), then re-run the `Roku static analysis` workflow.
+
+#### Partial lists of number type names may reject real values `[fid: number-type-name-lists]` `[captured 2026-11-01]`
+
+Several checks compare a number's `type()` against a partial list of names. On a Stick 4K (Roku OS 15.3.4, measured 2026-10-31) an AA value reports `roInteger`, a value from a native AA or a node field `roInt`, a `ParseJson` value and a local literal `Integer`. These lists leave out at least one: `setFieldTextValue()` in `misc.bs` and `setFieldText()` in `ItemDetails.bs` (no `roInteger`), the query builder in `baseRequest.bs` (no `Integer`), and `ProgramDetails.bs` (only `roInt`). None is shown to misbehave yet: each depends on where its value comes from. `isIntSafe()` and `mediaNumber()` already handle every name.
+
+**Fix shape:** check each site's real value on a device and move the wrong ones to those helpers. A build plugin rule only if the mistake recurs: this shape has now shipped in `GetBitRateLimit` and been caught in #1299.
 
 ### api
 
@@ -1501,6 +1525,12 @@ Closes when those steps are tracked specs under `tests/rta/specs/` (folded into 
 Options: `pause` (recommended): find which step resumes playback, then have `navOsd()` wait for the player to read `paused` after the seek, pressing Play again if the seek resumed it; if the Play press itself no longer pauses, that is an app bug to raise separately. `guard`: `capture()` refuses an OSD shot unless `#osd.visible` is true, so the capture retries; it does not fix the cause.
 
 Not checked: which of the two (the Play press or the seek) leaves it playing; whether #1276 changed it; whether a real viewer's Play press during playback still pauses.
+
+#### A time-suffix spec fails in the first hour of the day daylight saving ends `[fid: spec-disambiguated-time-dst]` `[captured 2026-11-01]`
+
+`misc-disambiguatedTime.spec.bs` assumes now + 12 hours is always the opposite half of the day. On the day daylight saving ends that fails for the first hour: at 00:57 EDT on 2026-11-01, +12 hours is 11:57 AM EST, so `getDisambiguatingTimePeriod()` correctly returns `""` and two cases fail ("suffixes a time in the opposite half of the day", "appends a space-separated suffix when it isn't"). The same run passed once that hour ended. The spring change was not checked.
+
+**Fix shape:** build the anchor and target times from fixed values, or skip the opposite-half cases when the offset between now and the target changes.
 
 ### docs
 
