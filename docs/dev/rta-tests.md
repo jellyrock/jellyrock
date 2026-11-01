@@ -511,6 +511,19 @@ For an account with a password, set `MEASURE_SIGNIN_PASSWORD` in `.env` rather t
 
 When GitHub is unreachable or you aren't signed in, a run warns and proceeds without the lock, and records `locked: false` in `run-meta.json` and in its `runs.jsonl` line. Set `RTA_REQUIRE_LOCK=1` to make that a failure, or `RTA_SKIP_LOCK=1` to bypass the lock on purpose. CI doesn't set `RTA_REQUIRE_LOCK`: it is alone on its device, so the flag would only turn a GitHub outage into a red run.
 
+## Stress a SyncPlay race (`syncplay-stress`)
+
+[`syncplay-stress.spec.js`](../../tests/rta/specs/syncplay-stress.spec.js) repeats one input that races the player's own seek and counts how each round ends. It is skipped unless `RTA_STRESS_ROUNDS` is set, so a normal run pays nothing for it. It needs a server with a push channel to the Roku, and a second member of the same account over REST, as [`syncplay-controls.spec.js`](../../tests/rta/specs/syncplay-controls.spec.js) does.
+
+```bash
+RTA_STRESS_ROUNDS=40 RTA_STRESS_CASE=scrub npm run test:rta -- syncplay-stress
+```
+
+- `RTA_STRESS_CASE` is one of `scrub` (the default), `double-ok`, `replay-twice`, `member-seeks` or `late-seek`. `RTA_STRESS_LATE_MS` sets how late the `late-seek` Seek request leaves the app (5500 by default).
+- Each round ends as `ok`, `frozen` (the node is not playing and the group is not Playing when the settle window ends) or `paused` (the group is Paused). A frozen round fails the test after the run; a paused round is only reported.
+- Vitest hides a passing test's console output, so each round line and the closing `SUMMARY` line (the counts, plus the bar's minimum, median and maximum close time for the scrub cases) go to `.device-runs/syncplay-stress-<case>.log`, which is gitignored. The run prints the path, and a red run carries the `SUMMARY` in its failure message. The test also fails when the rounds counted are not `RTA_STRESS_ROUNDS`.
+- One pass of a race proves little. Count rounds, and read the summary rather than the verdict.
+
 ## Notes
 
 - **Seeds write the real `JellyRock` registry,** not a `test-` section, because the app reads real keys to choose a screen. This is the accepted exception to the `test-` rule, which is for Rooibos tests. [Leaving the device as you found it](#leaving-the-device-as-you-found-it) covers what puts it back.
