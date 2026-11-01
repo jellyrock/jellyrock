@@ -16,7 +16,7 @@
  * ignores the wait, as in `syncplay-controls.spec.js`. The suite skips on a server with no push
  * channel to the Roku (https without the companion plugin).
  */
-import { afterAll, beforeAll, it, expect } from 'vitest';
+import { afterAll, afterEach, beforeAll, it, expect } from 'vitest';
 import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import {
@@ -49,6 +49,9 @@ const BEHIND_THRESHOLD_MS = 400;
 const AHEAD_OFFSET_MS = 400;
 // Well past the threshold, since a resume can start a few hundred ms ahead on its own.
 const BEHIND_OFFSET_MS = 1000;
+// Past the Unpause's own lead by more than `SKIP_TO_SYNC_MIN_MS`, so every resume seeks. The lead
+// can reach most of a second, which is why `BEHIND_OFFSET_MS` does not always do it.
+const RESUME_SEEKS_OFFSET_MS = 2000;
 
 let session;
 let member;
@@ -136,11 +139,20 @@ async function forceCorrectionSeek() {
   }
   throw new Error('no correction went out in four resumes');
 }
-/** The node held for a correction: past its seek, paused, the group still playing. */
+/**
+ * The node held for a correction: past its seek, paused, the group still playing. A hold is what
+ * the seek left of the lead, so it can be a pulse too short for `waitFor`: this reads as fast as the
+ * device answers, and resumes again when the seek took all of it.
+ */
 async function forceCorrectionHold() {
-  await forceCorrectionSeek();
-  await waitPaused();
-  expect(await getGlobalVal('syncPlayManager.groupState'), 'the group plays on').toBe('Playing');
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await forceCorrectionSeek();
+    const t0 = Date.now();
+    while (Date.now() - t0 < 5000) {
+      if ((await playerState()) === 'paused') return;
+    }
+  }
+  throw new Error('no correction held the node in four tries');
 }
 /** The node stays paused through more than a correction's lead: nothing resumes it. */
 async function expectStaysPaused() {
@@ -219,6 +231,11 @@ afterAll(async () => {
   await stopPlayback().catch(() => {});
   await managerCall('leave').catch(() => {});
   await syncPlay(member, 'Leave').catch(() => {});
+});
+
+// A failed case must not leave the next one reading a drift it did not ask for.
+afterEach(async () => {
+  await setOffset(0).catch(() => {});
 });
 
 const skipWithoutPush = (testCtx) => {
@@ -356,9 +373,8 @@ it("another member's Pause during a correction's hold brings up the OSD", async 
 
 it('a resume that seeks reports no stall, so the group does not wait', async (testCtx) => {
   skipWithoutPush(testCtx);
-  // Past the Unpause's own lead, so the resume seeks. The offset is above the setting's range: a
-  // keypad cannot reach this, and it makes the seek happen on every path.
-  await setOffset(BEHIND_OFFSET_MS);
+  // Above the setting's range: a keypad cannot reach this, and it makes the seek happen.
+  await setOffset(RESUME_SEEKS_OFFSET_MS);
   const phases = new Set();
   const groupStates = new Set();
   for (let round = 0; round < 4; round++) {
