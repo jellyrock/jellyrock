@@ -8,7 +8,15 @@
 // that fail on its fake tag.
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SourceMapGenerator } from 'source-map';
@@ -2333,19 +2341,26 @@ describe('CLI: plan subcommand', () => {
     const dashPath = join(dir, 'dashboard.csv');
     writeFileSync(dashPath, SAMPLE_DASHBOARD_CSV);
     const csvPath = join(dir, 'sample.csv');
-    const r = spawnScript('scripts/crash-report.js', [
-      'plan',
-      '--input',
-      csvPath,
-      '--dashboard-csv',
-      dashPath,
-      '--no-build',
-    ]);
+    // plan still searches GitHub for each signature even with --no-build, and the
+    // spawned process cannot take an injected ghExec. A fake gh on PATH keeps the
+    // case offline; it logs each call so the test fails if the stub goes unused.
+    const fakeBin = join(dir, 'fake-gh-bin');
+    const ghLog = join(dir, 'fake-gh.log');
+    mkdirSync(fakeBin, { recursive: true });
+    writeFileSync(join(fakeBin, 'gh'), `#!/bin/sh\necho "$@" >> "${ghLog}"\necho '[]'\n`, {
+      mode: 0o755,
+    });
+    const r = spawnScript(
+      'scripts/crash-report.js',
+      ['plan', '--input', csvPath, '--dashboard-csv', dashPath, '--no-build'],
+      { env: { PATH: `${fakeBin}:${process.env.PATH}` } },
+    );
     // --no-build skips builds, so no source resolution and no backtrace resolution
     // (since both need a build dir). But the flag itself must parse cleanly
     // and the dashboard CSV must parse without throwing.
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toMatch(/"actions":/);
+    expect(existsSync(ghLog) ? readFileSync(ghLog, 'utf8').trim().split('\n') : []).toHaveLength(3);
   });
 
   it('errors clearly when --dashboard-csv points at a non-dashboard CSV', () => {
