@@ -1528,7 +1528,7 @@ Not checked: which of the two (the Play press or the seek) leaves it playing; wh
 
 #### A time-suffix spec fails in the first hour of the day daylight saving ends `[fid: spec-disambiguated-time-dst]` `[captured 2026-11-01]`
 
-`misc-disambiguatedTime.spec.bs` assumes now + 12 hours is always the opposite half of the day. On the day daylight saving ends that fails for the first hour: at 00:57 EDT on 2026-11-01, +12 hours is 11:57 AM EST, so `getDisambiguatingTimePeriod()` correctly returns `""` and two cases fail ("suffixes a time in the opposite half of the day", "appends a space-separated suffix when it isn't"). The same run passed once that hour ended. The spring change was not checked.
+`misc-disambiguatedTime.spec.bs` assumes now + 12 hours is always the opposite half of the day. On the day daylight saving ends that fails for the first hour: at 00:57 EDT on 2026-11-01, +12 hours is 11:57 AM EST, so `getDisambiguatingTimePeriod()` correctly returns `""` and two cases fail ("suffixes a time in the opposite half of the day", "appends a space-separated suffix when it isn't"). Both cases passed in a `test:unit` run at 01:09 EDT that day, once that hour had ended. The spring change was not checked.
 
 **Fix shape:** build the anchor and target times from fixed values, or skip the opposite-half cases when the offset between now and the target changes.
 
