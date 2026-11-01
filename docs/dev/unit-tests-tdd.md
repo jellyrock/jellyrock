@@ -5,7 +5,7 @@ related-files:
   - scripts/run-roku-tests.js
   - scripts/lib/env-config.cjs
   - tests/source/BaseTestSuite.spec.bs
-last-reviewed: 2026-10-09
+last-reviewed: 2026-11-01
 ---
 
 # Test-driven development (TDD)
@@ -155,7 +155,7 @@ These notes are for running tests outside Visual Studio Code, for example from a
 
 - One spec file: `npm run test:tdd`. It builds with `bsconfig-tdd.json` and runs on the Roku at `ROKU_IP`.
 - Wider runs: `npm run test:unit`, `npm run test:integration`, `npm run test:all`.
-- The runner, [`scripts/run-roku-tests.js`](../../scripts/run-roku-tests.js), zips the build, installs it on the Roku and reads the Roku's debug console until it sees `[Rooibos Result]: PASS` or `FAIL`. It saves the full log to `roku-test-output.log`.
+- The runner, [`scripts/run-roku-tests.js`](../../scripts/run-roku-tests.js), opens the Roku's debug console, zips the build with a run id added to the app's title, installs it and reads the console until it sees `[Rooibos Result]: PASS` or `FAIL`. The console replays the previous app's output when you connect, so the runner ignores every line before the `Running dev` line that carries this run's id. It saves the full log, replay included, to `roku-test-output.log`.
 
 ### Roku settings: `.env` and your per-user file
 

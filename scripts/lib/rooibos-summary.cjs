@@ -38,4 +38,34 @@ function unaccountedTests({ total, passed, crashed, failed, ignored }) {
   return total - (passed + crashed + failed + ignored);
 }
 
-module.exports = { createSummaryCollector, unaccountedTests };
+/**
+ * Marks the manifest's `title=` value with this run's id. The device prints the
+ * sideloaded app's title in its `Running dev` line, which is how the runner tells this
+ * run's output from a replay of the previous app's.
+ */
+function stampManifestTitle(manifestText, runId) {
+  const titleLine = /^(title=.*?)[ \t]*(\r?)$/m;
+  if (!titleLine.test(manifestText)) {
+    throw new Error('manifest has no title= line to stamp');
+  }
+  return manifestText.replace(titleLine, `$1 run-${runId}$2`);
+}
+
+/**
+ * Says which console lines belong to this run. The Roku replays its buffer when the
+ * console connects, so lines from the previous app can arrive first. Nothing counts
+ * until the `Running dev` line carrying this run's stamped title appears.
+ */
+function createRunGate(runId) {
+  const marker = new RegExp(`^------ Running dev '.* run-${runId}' main ------`);
+  let open = false;
+  return {
+    accepts(line) {
+      if (open) return true;
+      if (marker.test(line.trim())) open = true;
+      return open;
+    },
+  };
+}
+
+module.exports = { createSummaryCollector, unaccountedTests, stampManifestTitle, createRunGate };
