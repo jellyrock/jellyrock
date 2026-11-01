@@ -16,6 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - (home) Show episode images in Favorites tab ([#1290](https://github.com/jellyrock/jellyrock/pull/1290))
 - Correct the canceled-recording toast ([#1288](https://github.com/jellyrock/jellyrock/pull/1288))
 
+### Dependencies
+
+- Lock file maintenance ([#1300](https://github.com/jellyrock/jellyrock/pull/1300))
+
 ## [3.3.1](https://github.com/jellyrock/jellyrock/compare/v3.3.0...v3.3.1) - 2026-10-30
 
 ### Fixed
