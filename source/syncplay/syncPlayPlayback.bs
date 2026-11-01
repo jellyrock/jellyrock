@@ -130,7 +130,7 @@ namespace syncPlayPlayback
   end function
 
   ' Whether a seek is in flight, so a Pause is left to the seek's landing (pauseAfterSeek) and
-  ' writes nothing of its own.
+  ' writes nothing of its own, and a Seek waits for it (the tracker's "holdSeek").
   function pauseWaitsForSeek(trackerPhase as string) as boolean
     return trackerPhase = "seeking" or trackerPhase = "landing"
   end function
@@ -294,36 +294,47 @@ namespace syncPlayPlayback
   ' which confirms the position before the pause),
   ' "ready" (the server has this member's position), "stalling" (buffering after ready, not yet
   ' long enough to report), "rebuffering" (a stall the server was told about).
+  '
+  ' `heldSeek` is a seek that came in while another was in flight ({ targetTicks, report,
+  ' thenPause }, or invalid). The node never runs two seeks at once, because two overlapping
+  ' ones can leave it buffering for good: the newest wins, and it goes out as the seek in flight
+  ' ends (the result's `nextSeek`).
   function newReadyTracker() as object
-    return { phase: "idle", targetTicks: 0&, lastPositionTicks: 0&, lastState: "", reportSeek: false, thenPause: false, showOsd: false, loadStartTicks: 0& }
+    return { phase: "idle", targetTicks: 0&, lastPositionTicks: 0&, lastState: "", reportSeek: false, thenPause: false, showOsd: false, loadStartTicks: 0&, heldSeek: invalid }
   end function
 
   ' Feed one player or coordinator event; get back what to send and what to wait for.
   ' @param tracker - from newReadyTracker, mutated in place
-  ' @param evt - { kind: "mounted" | "seek" | "state" | "position" | "timeout" | "unmounted",
+  ' @param evt - { kind: "mounted" | "seek" | "holdSeek" | "state" | "position" | "timeout" | "unmounted",
   '   state (for "state"), positionTicks (for "seek", "state" and "position"), for "mounted" the
   '   `startTicks` the load was asked to start at (absent when it starts at the beginning), and for
   '   "seek" the plan step's `report` and `thenPause` }. A silent seek (report false) still enters
   '   the seeking phase, so the buffering and playing it causes are not taken for a stall.
-  ' @returns an AA with report ("", "buffering" or "ready"), waitMs, pauseFirst, showOsd and
+  '   "holdSeek" carries `targetTicks` (not `positionTicks`, which every event copies into the
+  '   tracker's last position), `report` and `thenPause`: a seek due while one is in flight.
+  ' @returns an AA with report ("", "buffering" or "ready"), waitMs, pauseFirst, showOsd, nextSeek and
   '   positionTicks:
   '   `waitMs` above 0 asks for a one-shot timer that feeds back { kind: "timeout" }; `pauseFirst`
   '   says to pause the player before the Ready goes out (a load's first frame: web pauses at
   '   playbackstart and reports Ready, and the server's Unpause then starts everyone together);
   '   `showOsd` says that pause is a group Pause that waited for the seek (pauseAfterSeek), so
   '   it shows the OSD as the Play key does;
+  '   `nextSeek` is the held seek ({ targetTicks, report, thenPause }) to write now that the one in
+  '   flight is over, or invalid. The phase stays "seeking" and nothing else is reported, so the
+  '   caller writes it and feeds it back as a "seek" event;
   '   `positionTicks` is the position to put in the report, or -1 to use the player's own. A load
   '   that started partway in has a Video node still reading 0 at its first `playing` (a probe on
   '   2026-10-23 read 0.0 while buffering and 349.0 right after), and a Ready at 0 makes the server
   '   send a corrective Seek, so that first Ready carries the start instead.
   function trackPlayerEvent(tracker as object, evt as object) as object
-    result = { report: "", waitMs: 0, pauseFirst: false, showOsd: false, positionTicks: -1& }
+    result = { report: "", waitMs: 0, pauseFirst: false, showOsd: false, positionTicks: -1&, nextSeek: invalid }
     if not isValid(evt) or not syncPlayTime.isText(evt.kind) then return result
     kind = evt.kind
     if syncPlayTime.isWholeNumber(evt.positionTicks) then tracker.lastPositionTicks = syncPlayTime.asLong(evt.positionTicks)
 
     if kind = "mounted"
       tracker.phase = "loading"
+      tracker.heldSeek = invalid
       tracker.loadStartTicks = 0&
       if syncPlayTime.isWholeNumber(evt.startTicks) then tracker.loadStartTicks = syncPlayTime.asLong(evt.startTicks)
       result.report = "buffering"
@@ -337,6 +348,16 @@ namespace syncPlayPlayback
       tracker.lastState = ""
       if tracker.reportSeek then result.report = "buffering"
       result.waitMs = SEEK_SETTLE_MS
+    else if kind = "holdSeek"
+      held = { targetTicks: syncPlayTime.asLong(evt.targetTicks), report: evt.report = true, thenPause: evt.thenPause = true }
+      if Abs(held.targetTicks - tracker.targetTicks) <= syncPlayTime.msToTicks(READY_TOLERANCE_MS)
+        ' The seek in flight already goes there: it takes on what this one asked for.
+        tracker.reportSeek = tracker.reportSeek or held.report
+        tracker.thenPause = held.thenPause
+        tracker.heldSeek = invalid
+      else
+        tracker.heldSeek = held
+      end if
     else if kind = "state"
       state = ""
       if syncPlayTime.isText(evt.state) then state = evt.state
@@ -365,6 +386,7 @@ namespace syncPlayPlayback
       if tracker.phase = "seeking"
         seekLanded(tracker, result)
       else if tracker.phase = "landing"
+        if releaseHeldSeek(tracker, result) then return result
         if tracker.lastState = "buffering" and not tracker.reportSeek
           ' A silent seek this slow is a stall: the group waits, as for any other, rather than
           ' play on while this member falls behind in silence. The Ready that ends it goes out at
@@ -383,6 +405,7 @@ namespace syncPlayPlayback
       end if
     else if kind = "unmounted"
       tracker.phase = "idle"
+      tracker.heldSeek = invalid
     end if
     return result
   end function
@@ -407,6 +430,22 @@ namespace syncPlayPlayback
     tracker.showOsd = false
   end sub
 
+  ' The seek in flight is over and a newer one was held: it goes next, in its place. The phase stays
+  ' "seeking", with no report, pause or Ready, so the group sees one seek that ends where the newest does.
+  ' @returns true when a held seek was released into result.nextSeek
+  function releaseHeldSeek(tracker as object, result as object) as boolean
+    if not isValid(tracker.heldSeek) then return false
+    result.nextSeek = tracker.heldSeek
+    tracker.heldSeek = invalid
+    tracker.phase = "seeking"
+    return true
+  end function
+
+  ' A held seek no longer stands: an Unpause says where the group is now.
+  sub dropHeldSeek(tracker as object)
+    tracker.heldSeek = invalid
+  end sub
+
   ' A group Pause came in while a seek was in flight: the seek's landing pauses the node, with
   ' the OSD up, in place of a pause written to a node that is still seeking.
   sub pauseAfterSeek(tracker as object)
@@ -416,6 +455,7 @@ namespace syncPlayPlayback
 
   ' Ready again: reported, and preceded by a pause, when the step asked for them.
   sub seekSettled(tracker as object, result as object, pauseNow as boolean)
+    if releaseHeldSeek(tracker, result) then return
     tracker.phase = "ready"
     if tracker.reportSeek then result.report = "ready"
     result.pauseFirst = tracker.thenPause and pauseNow

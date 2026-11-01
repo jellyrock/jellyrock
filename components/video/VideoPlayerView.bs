@@ -2182,6 +2182,8 @@ end sub
 
 ' No group Seek answered the OK on the trick-play bar in time (it was refused or lost), so the bar
 ' would stay up. Only this path writes the node: a local seek that overlaps a group Seek can wedge it.
+' The manager is told of the seek first, so a group Seek that comes next waits for it
+' (SyncPlayManager.applyPendingPlan) instead of running beside it.
 sub onGroupSeekOverdue()
   if not m.top.trickPlayBar.visible then return
   ' A seek in flight may have begun before this bar opened, so look again once it lands, rather
@@ -2190,6 +2192,7 @@ sub onGroupSeekOverdue()
     m.groupSeekFallbackTimer.control = "start"
     return
   end if
+  syncPlayHooks.notify({ kind: "localSeek", position: m.top.position })
   m.top.seek = m.top.position
 end sub
 

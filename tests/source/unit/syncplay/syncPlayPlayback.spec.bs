@@ -858,6 +858,170 @@ namespace tests
       m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& }).report, "")
     end function
 
+    ' A seek due while one is in flight waits (kind "holdSeek") and goes next when the first lands.
+    private function heldTracker(report = true as boolean, thenPause = true as boolean) as object
+      tracker = m.readyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000&, report: report, thenPause: thenPause })
+      return tracker
+    end function
+
+    private sub holdSecond(tracker as object, targetTicks = 600000000& as longinteger)
+      held = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "holdSeek", targetTicks: targetTicks, report: true, thenPause: true })
+      m.assertEqual(held.report, "", "a hold reports nothing")
+      m.assertEqual(held.waitMs, 0, "a hold starts no timer")
+    end sub
+
+    private sub assertReleased(result as object, tracker as object, targetTicks = 600000000& as longinteger)
+      m.assertTrue(isValid(result.nextSeek), "the held seek goes next")
+      if isValid(result.nextSeek)
+        m.assertEqual(result.nextSeek.targetTicks, targetTicks)
+        m.assertTrue(result.nextSeek.report)
+        m.assertTrue(result.nextSeek.thenPause)
+      end if
+      m.assertEqual(result.report, "")
+      m.assertFalse(result.pauseFirst)
+      m.assertEqual(tracker.phase, "seeking")
+      m.assertInvalid(tracker.heldSeek)
+    end sub
+
+    @it("a seek held in flight goes next when the first lands through a position and playing, with no report or pause")
+    function _()
+      tracker = m.heldTracker()
+      m.holdSecond(tracker)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertReleased(result, tracker)
+    end function
+
+    @it("a seek held in flight goes next when the first lands paused")
+    function _()
+      tracker = m.heldTracker()
+      m.holdSecond(tracker)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "paused", positionTicks: 1245000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertReleased(result, tracker)
+    end function
+
+    @it("a seek held in flight goes next from the landing phase, at playing")
+    function _()
+      tracker = m.heldTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 1245000000& })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertEqual(tracker.phase, "landing")
+      m.holdSecond(tracker)
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 300000000& })
+      m.assertReleased(result, tracker)
+    end function
+
+    @it("a seek held in flight goes next when the settle time is up, in seeking and in landing")
+    function _()
+      seeking = m.heldTracker()
+      syncPlayPlayback.trackPlayerEvent(seeking, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      m.holdSecond(seeking)
+      m.assertReleased(syncPlayPlayback.trackPlayerEvent(seeking, { kind: "timeout" }), seeking)
+
+      landing = m.heldTracker()
+      syncPlayPlayback.trackPlayerEvent(landing, { kind: "state", state: "buffering", positionTicks: 1245000000& })
+      syncPlayPlayback.trackPlayerEvent(landing, { kind: "timeout" })
+      m.assertEqual(landing.phase, "landing")
+      m.holdSecond(landing)
+      m.assertReleased(syncPlayPlayback.trackPlayerEvent(landing, { kind: "timeout" }), landing)
+    end function
+
+    @it("a silent seek that would become a stall at its time goes next instead, and reports nothing")
+    function _()
+      tracker = m.heldTracker(false, true)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 300000000& })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "timeout" })
+      m.assertEqual(tracker.phase, "landing")
+      m.holdSecond(tracker)
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "timeout" })
+      m.assertReleased(result, tracker)
+    end function
+
+    @it("two held seeks: the newest wins")
+    function _()
+      tracker = m.heldTracker()
+      m.holdSecond(tracker, 600000000&)
+      m.holdSecond(tracker, 900000000&)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertReleased(result, tracker, 900000000&)
+    end function
+
+    @it("a seek held within 500 ms of the one in flight merges into it: no second seek, the report kept")
+    function _()
+      tracker = m.heldTracker(false, false)
+      held = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "holdSeek", targetTicks: 303000000&, report: true, thenPause: true })
+      m.assertEqual(held.report, "")
+      m.assertInvalid(tracker.heldSeek)
+      m.assertTrue(tracker.reportSeek)
+      m.assertTrue(tracker.thenPause)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertInvalid(result.nextSeek)
+      m.assertEqual(result.report, "ready")
+      m.assertTrue(result.pauseFirst)
+      m.assertEqual(tracker.phase, "ready")
+    end function
+
+    @it("a merging hold drops a seek already held, since it is newer")
+    function _()
+      tracker = m.heldTracker()
+      m.holdSecond(tracker, 600000000&)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "holdSeek", targetTicks: 300000000&, report: true, thenPause: true })
+      m.assertInvalid(tracker.heldSeek)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      m.assertInvalid(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& }).nextSeek)
+    end function
+
+    @it("the seek that goes next lands and pauses as any seek does, with the report and pause it carries")
+    function _()
+      tracker = m.heldTracker()
+      m.holdSecond(tracker)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      released = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertReleased(released, tracker)
+      queued = { targetTicks: 600000000&, report: true, thenPause: true }
+      if isValid(released.nextSeek) then queued = released.nextSeek
+      sent = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: queued.targetTicks, report: queued.report, thenPause: queued.thenPause })
+      m.assertEqual(sent.report, "buffering")
+      m.assertEqual(sent.waitMs, 3000)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 300000000& })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 300000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 600000000& })
+      m.assertInvalid(result.nextSeek)
+      m.assertEqual(result.report, "ready")
+      m.assertTrue(result.pauseFirst)
+      m.assertEqual(tracker.phase, "ready")
+    end function
+
+    @it("a mount or an unmount clears a held seek")
+    function _()
+      mounted = m.heldTracker()
+      m.holdSecond(mounted)
+      syncPlayPlayback.trackPlayerEvent(mounted, { kind: "mounted" })
+      m.assertInvalid(mounted.heldSeek)
+
+      unmounted = m.heldTracker()
+      m.holdSecond(unmounted)
+      syncPlayPlayback.trackPlayerEvent(unmounted, { kind: "unmounted" })
+      m.assertInvalid(unmounted.heldSeek)
+    end function
+
+    @it("dropHeldSeek clears a held seek, so the first seek lands as it would alone")
+    function _()
+      tracker = m.heldTracker()
+      m.holdSecond(tracker)
+      syncPlayPlayback.dropHeldSeek(tracker)
+      m.assertInvalid(tracker.heldSeek)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertInvalid(result.nextSeek)
+      m.assertEqual(result.report, "ready")
+      m.assertEqual(tracker.phase, "ready")
+    end function
+
     @it("an unknown or empty event reports nothing")
     function _()
       tracker = m.readyTracker()

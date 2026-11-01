@@ -221,6 +221,12 @@ function playerEvent(evt as object) as object
       if syncPlayPlayback.owesPause(m.groupPaused, m.playerState, m.tracker.phase) then armPauseTimer()
       if isValid(m.correction) and m.playerState = "paused" and m.tracker.phase = "ready" then scheduleCorrectionResume()
     end if
+  else if kind = "localSeek"
+    ' The fallback wrote a seek of its own (VideoPlayerView.onGroupSeekOverdue): the tracker must
+    ' know it, or a group Seek that comes next would run beside it. Only a stall the server was
+    ' told about is owed a Ready at the landing. A load or an idle tracker is left alone, since a seek
+    ' event there would take a load out of its first-frame pause and Ready.
+    if isFollowing() and m.tracker.phase <> "loading" and m.tracker.phase <> "idle" then track({ kind: "seek", positionTicks: m.playerPositionTicks, report: m.tracker.phase = "rebuffering", thenPause: false })
   else if kind = "position"
     if isFollowing()
       track({ kind: "position", positionTicks: m.playerPositionTicks })
@@ -648,6 +654,8 @@ sub applyPendingPlan()
     syncPlayPlayback.pauseAfterSeek(m.tracker)
   else if plan.action = "Unpause"
     syncPlayPlayback.abandonSeekPause(m.tracker)
+    ' An Unpause says where the group is now, so a Seek held behind the one in flight is stale.
+    syncPlayPlayback.dropHeldSeek(m.tracker)
   end if
   m.playbackDiffMs = invalid
   if plan.action = "Unpause" then syncPlayPlayback.armSettleCheck(m.settle)
@@ -660,6 +668,10 @@ sub applyPendingPlan()
     if verb.command = "stop"
       m.expectingRemount = true
       host.callFunc("exitPlayback")
+    else if verb.command = "seekto" and syncPlayPlayback.pauseWaitsForSeek(m.tracker.phase)
+      ' The node never runs two seeks at once: this one waits for the one in flight, the newest
+      ' wins, and the tracker hands it back at the landing (track).
+      track({ kind: "holdSeek", targetTicks: plan.positionTicks, report: verb.report, thenPause: verb.thenPause })
     else
       tellPlayer(host, verb)
       if verb.command = "pause"
@@ -845,6 +857,18 @@ sub track(evt as object)
   else if m.tracker.phase <> phaseBefore
     ' A phase change that sends no report still reaches the published field.
     publish()
+  end if
+  ' The seek in flight ended and a newer one was held: write it now. The phase stayed "seeking",
+  ' so no pause timer or correction landing fired above.
+  queued = result.nextSeek
+  if isValid(queued)
+    host = playerHost()
+    if isValid(host)
+      tellPlayer(host, { command: "seekto", position: syncPlayPlayback.ticksToSeconds(queued.targetTicks), report: queued.report, thenPause: queued.thenPause })
+      track({ kind: "seek", positionTicks: queued.targetTicks, report: queued.report, thenPause: queued.thenPause })
+    else
+      m.log.warn("held seek dropped: no player mounted", "targetTicks", queued.targetTicks.toStr())
+    end if
   end if
 end sub
 

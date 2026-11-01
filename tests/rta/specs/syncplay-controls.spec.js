@@ -351,6 +351,37 @@ it("the remote's Replay key seeks the whole group back, not this Roku alone", as
   expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
 });
 
+// A guard against a race, so one pass proves little: two seeks that overlap on the node could
+// leave it buffering for good, with the group waiting on it. The tracker's unit cases hold the
+// logic (syncPlayPlayback.spec.bs); this one only watches the group survive the real timing.
+it('two member Seeks close together, to different targets, leave the group playing at the second', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const before = await playerPosition();
+  const ticksAt = (seconds) => Math.round(seconds * 10_000_000);
+  await syncPlay(member, 'Seek', { PositionTicks: ticksAt(before + 30) });
+  await sleep(300);
+  await syncPlay(member, 'Seek', { PositionTicks: ticksAt(before + 60) });
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 30000,
+    label: 'the node playing after two close Seeks',
+  });
+  await waitFor('syncPlayManager.groupState', (s) => s === 'Playing', {
+    read: getGlobalVal,
+    timeout: 30000,
+    label: 'the group playing after two close Seeks',
+  });
+  await waitFor('position', (v) => typeof v === 'number' && v > before + 50, {
+    read: playerPosition,
+    timeout: 20000,
+    label: 'this member at the second Seek target',
+  });
+  expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+});
+
 it("next and previous from the remote step the whole group, with one item in this Roku's queue", async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(
