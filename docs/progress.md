@@ -1532,6 +1532,18 @@ Not checked: which of the two (the Play press or the seek) leaves it playing; wh
 
 **Fix shape:** build the anchor and target times from fixed values, or skip the opposite-half cases when the offset between now and the target changes.
 
+#### RTA: the playback report test can time out with an unnamed dialog over a stopped player `[fid: rta-playback-report-dialog-over-stopped-player]` `[captured 2026-11-01]`
+
+The test "the playback report scrolls, hands focus to OK, and only closes from the button" (`tests/rta/specs/dialogs.spec.js`) can time out in `pausedOsd()` at `waitOsdUp`, with a dialog over a stopped player. On 2026-11-01 at 05:46 UTC, in a full run at `8a1c3cd4`, it reported `nav timed out waiting for player playable (pre-OSD) (last="stopped")` with focus on `#jrDialog.#buttonRow.0`, before the hourly reset (`afterHourBoundary: false`). It then passed 3 of 3 alone at `07fddb62`. The same wait failed in this test on 2026-10-23 at `d963b1ee`, after a reset, and in `osd gear caps the bitrate for this playback without saving it` the same day. The sibling followup `dialogs-bitrate-test-order-dependent` records a test with the same 1 Mbps cap that passes alone and fails in the suite, so order may matter here too.
+
+Cause not confirmed. A playback error dialog is only a guess, because the records so far don't name the dialog. The failure record now does (`dialog=<type>("<title>")`), so this can't be taken further until the next failure, and it isn't worth holding the shared Roku for repeated runs before then.
+
+**To close:** at the next failure, read the `dialog=` value. If it is "Error during playback", the dialog's `message` holds the cause and error code but is left out of the record on purpose (see "What it never reads" in `tests/rta/lib/diagnostics.js`), so capture the console for that run. Then fix the cause, or show it belongs to `dialogs-bitrate-test-order-dependent` and fold this entry into it.
+
+**Also seen in the same run, 05:48 UTC:** "Play on a song's details opens the audio player" timed out waiting for focus in `#extrasGrid` (`wait-focused-timeout`, view `ItemDetails`, focus on an `IconButton`), then passed 3 of 3 alone. Cause not found, and this exact timeout has no earlier record. File it separately if it comes back.
+
+**Not checked:** which dialog appeared; whether the failure repeats in `dialogs.spec.js` run alone; whether the sibling followup has the same cause; whether the memory monitor plays any part, though the same wait failed on a commit without it.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`
