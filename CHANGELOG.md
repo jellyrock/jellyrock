@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Register Roku's memory monitor and ship only runtime files ([#1299](https://github.com/jellyrock/jellyrock/pull/1299))
 - (home) Show episode images in Favorites tab ([#1290](https://github.com/jellyrock/jellyrock/pull/1290))
 - Correct the canceled-recording toast ([#1288](https://github.com/jellyrock/jellyrock/pull/1288))
 
