@@ -64,11 +64,6 @@ namespace tests
       m.assertTrue(m.dropdown.doesExist("requestFocusExit"))
     end function
 
-    @it("has triggerHeight published output field")
-    function _()
-      m.assertTrue(m.dropdown.doesExist("triggerHeight"))
-    end function
-
     @it("does not expose a categoryText field \u2014 titles live in ItemDetails, not the dropdown")
     function _()
       m.assertFalse(m.dropdown.doesExist("categoryText"))

@@ -371,6 +371,7 @@ class JellyfinDataTransformer
   ' Populate lyrics from a separate API call result.
   ' @param item - JellyfinBaseItem node (already transformed)
   ' @param response - LyricDto response from GET /Audio/{itemId}/Lyrics
+  ' bsc-disable-next-line dead-code keep: planned: synced lyrics in the audio player, #1298
   sub populateLyrics(item as object, response as object)
     if not isValid(item) or not isValid(response)
       return

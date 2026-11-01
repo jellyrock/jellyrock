@@ -13,7 +13,6 @@
 <component name="VideoNotification" extends="Group">
   <interface>
     <field id="text" type="string" value="" />
-    <field id="notificationType" type="string" value="" />
     <field id="action" type="string" value="" alwaysNotify="true" />
     <field id="autoDismissSeconds" type="integer" value="0" />
     <field id="state" type="string" value="hidden" />

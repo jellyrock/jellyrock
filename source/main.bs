@@ -101,6 +101,10 @@ sub Main (args as dynamic) as void
   device.EnableCodecCapChangedEvent(true)
   device.EnableAudioGuideChangedEvent(true)
 
+  ' Roku certification requires the app to use roAppMemoryMonitor's interface and events. Held
+  ' on m so it lives as long as the app does.
+  m.memoryMonitor = memoryMonitor.start(m.port)
+
   ' Enter the login flow. reenterLogin() re-resolves the pre-login locale, then beginLogin()
   ' runs the saved-server + saved-token fast path (sync, no UI). On success it brings up Home;
   ' otherwise it routes to the right pre-login screen (/server, /users, /login), whose views
@@ -198,6 +202,9 @@ sub Main (args as dynamic) as void
         print "Unhandled roDeviceInfoEvent:"
         print msg.GetInfo()
       end if
+    else if type(msg) = "roAppMemoryNotificationEvent"
+      ' The app's memory use crossed a warning level, going up or down.
+      print "memory event:"; msg.GetInfo()
     else if type(msg) = "roInputEvent"
       if msg.IsInput()
         info = msg.GetInfo()

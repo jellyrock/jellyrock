@@ -11,6 +11,9 @@
       "src": "resources/branding/release/*.*",
       "dest": "images/branding"
     },
+    "!**/*.md",
+    "!components/testing/**",
+    "!locale/seed/**",
     "!**/*.map"
   ],
   "plugins": [

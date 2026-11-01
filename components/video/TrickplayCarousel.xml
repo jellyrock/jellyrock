@@ -4,7 +4,6 @@
     <field id="trickplayConfig" type="assocarray" />
     <field id="thumbnailIndex" type="integer" value="-1" />
     <field id="playbackPosition" type="float" value="0" />
-    <field id="videoDuration" type="float" />
     <field id="isVisible" type="boolean" value="false" />
     <function name="onDestroy" />
     <function name="reset" />
