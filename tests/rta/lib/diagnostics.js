@@ -42,6 +42,14 @@
  * developer's own server URL and user id into `runs.jsonl`, which is never reset.
  * Both are gitignored; keep it that way, and keep waits behind their seed.
  *
+ * The open dialog is read by type and title only. Its `message` can hold a search term or
+ * cast text, and `runs.jsonl`, which carries these records, is uploaded by CI on a public
+ * repo (`rta-functional-tests.yml`). A read that is never made cannot leak, so the message is
+ * never requested. A title can still hold server data (an item name, a SyncPlay group and its
+ * members), which is safe only because of the rule above: keep waits behind their seed, so the
+ * server is the demo one. Keyboard dialogs open through `scene.dialog` without the overlay id,
+ * so the record does not name them.
+ *
  * ## Two load signals, and why both
  *
  * `loadState` is GRID-ONLY. It is declared on `BaseGridView` alone
@@ -124,6 +132,12 @@ const CORE_REQUESTS = {
     base: 'global',
     keyPath: 'activeRoutedView.#extrasGrid.content.getChildCount()',
   },
+  // The open overlay dialog, by type and title. `OVERLAY_DIALOG_ID` stamps `jrDialog` on
+  // every overlay (`source/utils/dialogs.bs`), so one id covers the whole family; with none
+  // open both reads answer `found: false`.
+  // Never its `message`: see "What it never reads" in the header.
+  dialogSubtype: { base: 'scene', keyPath: '#jrDialog.subtype()' },
+  dialogTitle: { base: 'scene', keyPath: '#jrDialog.title' },
   // Named fields only, never the node. See the header.
   serverId: { base: 'global', keyPath: 'server.id' },
   serverUrl: { base: 'global', keyPath: 'server.serverUrl' },
@@ -284,6 +298,11 @@ export async function captureFailureState() {
           error: mediaPlayer.error || undefined,
         }
       : undefined,
+    // Present only when a dialog is open, for the same reason as `screensaver`.
+    dialog:
+      unwrap(results, 'dialogSubtype') || unwrap(results, 'dialogTitle')
+        ? { subtype: unwrap(results, 'dialogSubtype'), title: unwrap(results, 'dialogTitle') }
+        : undefined,
     // Present only when one is running, so the field's existence is the
     // finding and every other record stays the shape it was.
     screensaver: activeApp?.screensaver
@@ -377,6 +396,10 @@ function formatState(state, observed) {
     shell.isRemoteDisabled === true ? 'input=BLOCKED' : null,
     shell.isLoading === true
       ? `spinner=on${shell.loadingText ? `("${shell.loadingText}")` : ''}`
+      : null,
+    // Which overlay is up. Focus alone only says `#jrDialog.#buttonRow.0`.
+    state.dialog
+      ? `dialog=${state.dialog.subtype ?? '?'}${state.dialog.title ? `("${state.dialog.title}")` : ''}`
       : null,
     // A screen's own waits show the spinner without `isLoading` (screenWaits).
     shell.activeWaits?.length ? `waits=[${shell.activeWaits.join(',')}]` : null,

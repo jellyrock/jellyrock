@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 #
-# start-project scaffolder — the deterministic mechanics behind /start-project.
-# Keep it present in this directory — a SKILL.md that names a co-located script
+# start-project scaffolder: the deterministic mechanics behind /start-project.
+# Keep it present in this directory: a SKILL.md that names a co-located script
 # missing from its own dir is broken on arrival.
 #
-# Does ONLY the parts with exactly one correct output given (slug, goal):
+# Does only the parts with exactly one correct output given (slug, goal):
 # collision-check, mkdir, copy the PLAN template, fill dated frontmatter (real
 # dates from `date`, not a model guess), and append the README active-projects
-# row. The *judgment* half of /start-project — co-designing the Charter
-# (Goal/Success/Out-of-scope/Phases) with the user — stays in the skill prose
-# and is NOT here; this script runs once the slug + a one-line goal are agreed,
+# row. The *judgment* half of /start-project, co-designing the Charter
+# (Goal/Success/Out-of-scope/Phases) with the user, stays in the skill prose
+# and is not here; this script runs once the slug + a one-line goal are agreed,
 # then the skill fills the Charter body into the scaffolded PLAN.md.
 #
-# PORTABLE AS-IS — no slots to fill. It also reads ../log/md-skip.awk (the log skill's), the one rule
+# Portable as is, with no slots to fill. It also reads ../log/md-skip.awk (the log skill's), the one rule
 # for what is not a heading. The projects folder comes from projects-dir.sh
 # beside this script (the one place every lifecycle script asks), and it assumes only
 # the two project-lifecycle conventions inside that folder:
@@ -22,7 +22,7 @@
 # Usage: bash .claude/skills/start-project/scaffold-project.sh <slug> <goal-oneliner>
 #        bash .claude/skills/start-project/scaffold-project.sh --check <slug>
 #        bash .claude/skills/start-project/scaffold-project.sh --commit <slug> --subject <text> [--with <path>]...
-#   slug:  kebab-case project slug (no date prefix — the script adds YYYY-MM-)
+#   slug:  kebab-case project slug (no date prefix: the script adds YYYY-MM-)
 #   goal:  one-line goal for the README row (the full Charter is filled by the skill)
 #   --check: only say whether the slug is free, by the same rule the scaffold uses; writes nothing
 #   --commit: commit the scaffolded stub (the PLAN, the README, each --with file) path-restricted, so
@@ -34,10 +34,10 @@
 #     committed and the stub stays in the home, uncommitted (exit 1).
 #
 # Exit 1 (no mutation) on: missing args or a slug collision (an existing
-# *-<slug>/ dir, active OR archived) — so the skill can never scaffold over a
-# real project's history. A missing template/README is NOT fatal: the script
-# self-bootstraps minimal defaults (for a repo whose project tree is gitignored
-# — see below). --commit exits 1 with nothing staged on: a missing --subject, no
+# *-<slug>/ dir, active or archived), so the skill can never scaffold over a
+# real project's history. A missing template/README is not fatal: the script
+# self-bootstraps minimal defaults (for a repo whose project tree is gitignored,
+# see below). --commit exits 1 with nothing staged on: a missing --subject, no
 # or several PLANs for the slug, a --with path that does not exist, or other
 # uncommitted edits in the README; and with nothing committed when a hook refuses.
 
@@ -55,7 +55,7 @@ MD_LIB="$(cat "$MD_SKIP")"$'\n'
 # projects" section: after its last table row, dropping a placeholder that says there are none (a
 # `_None active._` line, or a row whose first cell is `—`/`-`), and creating the table when the section
 # has none. The section ends at the next `## ` heading, so the row can never land in a later table
-# (e.g. Archived). Lines inside a fenced code block are copied through untouched: a heading-like line
+# (for example Archived). Lines inside a fenced code block are copied through untouched: a heading-like line
 # there ends no section and starts none. The scaffold writes its README with this, and --commit
 # rebuilds the committed README with it to find edits that are not this project's row: one rule.
 readme_with_row() {
@@ -160,7 +160,7 @@ if [ "$COMMIT" -eq 1 ]; then
   exit 0
 fi
 
-# Collision check — active and archived, any month prefix. Atomic guard against
+# Collision check: active and archived, any month prefix. Atomic guard against
 # the "scaffold over an existing slug" failure mode, run before anything is
 # written. The prefix is matched as YYYY-MM-, so a slug that only ends another
 # project's name (cache vs redis-cache) is not a collision.
@@ -172,7 +172,7 @@ if [ "$CHECK" -eq 1 ]; then printf "slug '%s' is free in %s\n" "$SLUG" "$PROJECT
 
 # Self-bootstrap the lifecycle infra if absent. Where the project tree is
 # gitignored (PLANs are local agent-continuity, like .claude/handoffs), a fresh
-# clone won't carry these — create defaults instead of failing. The default
+# clone won't carry these, so create defaults instead of failing. The default
 # template is the shared PLAN template word for word (a test holds them equal),
 # so a PLAN scaffolded here has the same sections as one scaffolded anywhere.
 # Where they're committed they're already present, so this never fires and the

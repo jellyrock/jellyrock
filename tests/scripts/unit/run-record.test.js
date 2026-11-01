@@ -1400,6 +1400,34 @@ describe('formatRunSummary', () => {
     expect(lines).toContain('input=BLOCKED');
   });
 
+  it('names the open dialog in the roll-up, with or without a title', () => {
+    // Focus alone only says a dialog is up; the roll-up is what gets read after a run.
+    const lines = formatRunSummary(
+      rta({
+        startedAt: '2026-08-10T14:02:00Z',
+        endedAt: '2026-08-10T14:14:00Z',
+        failures: [
+          {
+            at: '2026-08-10T14:10:00Z',
+            kind: WAIT_FOCUSED_TIMEOUT,
+            state: { dialog: { subtype: 'JRDialog', title: 'Watched' } },
+          },
+          {
+            at: '2026-08-10T14:11:00Z',
+            kind: WAIT_FOCUSED_TIMEOUT,
+            state: { dialog: { subtype: 'QuickConnectDialog' } },
+          },
+          { at: '2026-08-10T14:12:00Z', kind: WAIT_FOCUSED_TIMEOUT, state: {} },
+        ],
+      }),
+    );
+    const failureLines = lines.filter((line) => line.includes(WAIT_FOCUSED_TIMEOUT));
+    expect(failureLines).toHaveLength(3);
+    expect(failureLines[0]).toContain('dialog=JRDialog("Watched")');
+    expect(failureLines[1]).toMatch(/dialog=QuickConnectDialog( |$)/);
+    expect(failureLines[2]).not.toContain('dialog=');
+  });
+
   it('names the attempt for a screenshot retry, so a recovered screen reads as one', () => {
     const lines = formatRunSummary(
       rta({

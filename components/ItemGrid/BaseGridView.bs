@@ -462,10 +462,6 @@ sub loadInitialItems()
   prepareDataLoad(false)
   m.top.loadState = "loading"
 
-  if m.top.parentItem.type = "CollectionFolder"
-    m.top.HomeLibraryItem = m.top.parentItem.id
-  end if
-
   ' Load saved display settings
   libraryId = m.top.parentItem.Id
   m.sortField = getLibraryDisplaySetting(libraryId, "sortField", "SortName")

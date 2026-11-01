@@ -1,0 +1,75 @@
+import "pkg:/source/utils/memoryMonitor.bs"
+
+namespace tests
+
+  @suite("memoryMonitor - registration")
+  class MemoryMonitorTests extends tests.BaseTestSuite
+
+    ' A stand-in for roAppMemoryMonitor that records what register() asked of it.
+    private function fakeMonitor(limit as dynamic) as object
+      return {
+        limit: limit,
+        portSet: false,
+        warningsEnabled: false,
+        setMessagePort: function(_port as object) as void
+          m.portSet = true
+        end function,
+        EnableMemoryWarningEvent: function(enable as boolean) as boolean
+          m.warningsEnabled = enable
+          return enable
+        end function,
+        GetChannelMemoryLimit: function() as dynamic
+          return m.limit
+        end function,
+        GetMemoryLimitPercent: function() as integer
+          return 3
+        end function,
+        GetChannelAvailableMemory: function() as integer
+          return 1000
+        end function
+      }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("start()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns a real monitor on this Roku")
+    function _()
+      monitor = memoryMonitor.start(CreateObject("roMessagePort"))
+      m.assertEqual(type(monitor), "roAppMemoryMonitor")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("register()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns invalid when the device has no monitor")
+    function _()
+      m.assertInvalid(memoryMonitor.register(invalid, CreateObject("roMessagePort")))
+    end function
+
+    @it("connects the port and enables memory warnings")
+    function _()
+      monitor = m.fakeMonitor({ maxForegroundMemory: 500000 })
+      m.assertEqual(memoryMonitor.register(monitor, CreateObject("roMessagePort")), monitor)
+      m.assertTrue(monitor.portSet)
+      m.assertTrue(monitor.warningsEnabled)
+    end function
+
+    @it("keeps events enabled when a value cannot be read")
+    function _()
+      monitor = m.fakeMonitor(invalid)
+      m.assertEqual(memoryMonitor.register(monitor, CreateObject("roMessagePort")), monitor)
+      m.assertTrue(monitor.warningsEnabled)
+    end function
+
+    @it("survives a monitor with none of the functions")
+    function _()
+      monitor = {}
+      m.assertEqual(memoryMonitor.register(monitor, CreateObject("roMessagePort")), monitor)
+    end function
+
+  end class
+
+end namespace

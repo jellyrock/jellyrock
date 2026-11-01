@@ -63,7 +63,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 #### `mainbs-event-loop-fan-out`
 
 - **area**: `source/main.bs`
-- **issue**: `Main()` holds both the bootstrap and the main event loop. The bootstrap runs `setGlobals()`, loads translations and defaults, runs migrations, creates `JRScene`, runs `setGlobalNodes()`, wires the port observers, stashes a launch deep link, then calls `reenterLogin()`. The loop handles screen close, `exit`, `preLoginIntent`, `isFontDownloadCompleted`, `reachable`, `userMenuAction`, `roDeviceInfoEvent`, `roInputEvent` (a deep link, or voice transport through `remoteDispatch.dispatchTransport`), `result`, `dispatchCommand` and `reloadHomeRequested`. Some heavy work is in helpers (`handleFontDownloadCompletion`, `handleMenuAction`, and `handlePreLoginIntent` in `loginRouter.bs`). The `result` branch is one line that hands off to `onServerSwitchDialogResult`, which holds the identity check that keeps a second main-thread dialog safe.
+- **issue**: `Main()` holds both the bootstrap and the main event loop. The bootstrap runs `setGlobals()`, loads translations and defaults, runs migrations, creates `JRScene`, runs `setGlobalNodes()`, wires the port observers, stashes a launch deep link, then calls `reenterLogin()`. The loop handles screen close, `exit`, `preLoginIntent`, `isFontDownloadCompleted`, `reachable`, `userMenuAction`, `roDeviceInfoEvent`, `roAppMemoryNotificationEvent` (printed), `roInputEvent` (a deep link, or voice transport through `remoteDispatch.dispatchTransport`), `result`, `dispatchCommand` and `reloadHomeRequested`. Some heavy work is in helpers (`handleFontDownloadCompletion`, `handleMenuAction`, and `handlePreLoginIntent` in `loginRouter.bs`). The `result` branch is one line that hands off to `onServerSwitchDialogResult`, which holds the identity check that keeps a second main-thread dialog safe.
 - **direction**: Extract the bootstrap into `source/bootstrap.bs`, so `Main()` becomes `bootstrap()` plus a thin dispatch loop. Do not build a `source/handlers/dialogs.bs` dialog registry: with one main-thread dialog there is nothing to fan out. Revisit that only if a second main-thread flow starts observing `result` on the port.
 
 #### `task-thread-budget`
@@ -653,12 +653,6 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 - **area**: [`scripts/lint/docs-check.cjs`](../../scripts/lint/docs-check.cjs)
 - **issue**: `lint:docs` skips every directory whose name starts with a dot, so links and anchors in `.claude/` (skills, rules, agents) are never checked. They were probed by hand once, on 2026-10-11 for #1161.
 - **direction**: Scan `.claude/` too, or record the exclusion as a decision if scanning it costs more than it finds.
-
-#### `dead-selecteditem-fields`
-
-- **area**: `components/home/Home.xml`
-- **issue**: `Home.selectedItem` is declared, and nothing writes or observes it. A reader can wire to a field that never fires. (`SearchResults.selectedItem` went with that screen; `SearchScreen` declares none.)
-- **direction**: Remove the field, or list it in the dead-code epic #1072.
 
 #### `path-normalization-triplicated`
 

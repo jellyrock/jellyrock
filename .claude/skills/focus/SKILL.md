@@ -25,9 +25,9 @@ effort: high
 
 **Outputs.**
 
-- A triage block: the **Recommended** pick, **Why** (the ranking rule that won, and the state behind it, cited), its route with the one command to type in its own copyable block (or "reply `ok` to plan it"), and 1-3 **Alternatives**, one line each, with a command route's command in its own block under its line. Nothing else happens until the user replies.
-- **On a non-plan route:** only that printed command. `/focus` writes nothing.
-- **On the plan route:** a plan file at this repo's plan path with a required `**Project:** {{slug | n/a}}` line, a required `**Checkout:** {{worktree | main clone: reason}}` line and the sections `Context`, `Approach`, `Critical files`, `Verification`, `Landing & closeout` and `What this plan deliberately does NOT do`, saved without a separate approval (the user's choices are the fork questions before it, with the plan's Always ask call; after it, the push stop, or in a `gated` repo whose plan touches nothing on its Always ask list, the review, the checks and `/sonnet`'s gate), then a hand-off block, in a message of its own before anything runs: the one line to paste in a fresh session, alone in its own block, for the implementation tier `/focus` classified (`/sonnet {{plan-path}}` by default). On the default tier the run follows at once: a Sonnet sub-agent supervised to a reviewed ready-to-push message (`/sonnet`'s `## Sub-agent invocation`).
+- A triage block: the **Recommended** pick, **Why** (the ranking rule that won, and the state behind it, cited), its route with the one command to type in its own copyable block (or "reply `ok` to plan it"), and 1-3 **Alternatives**, one line each, with a command route's command in its own block under its line. Nothing else happens until the user replies. A command's line names the folder it runs in.
+- **On a non-plan route:** only that printed command, and on a reply of `open` a new Claude Code tab with it typed in and not sent. `/focus` writes nothing.
+- **On the plan route:** a plan file at this repo's plan path with a required `**Project:** {{slug | n/a}}` line, a required `**Repo:** {{owner/name}}` line, a required `**Checkout:** {{worktree | main clone: reason}}` line and the sections `Context`, `Approach`, `Critical files`, `Verification`, `Landing & closeout` and `What this plan deliberately does NOT do`, saved without a separate approval (the user's choices are the fork questions before it, with the plan's Always ask call; after it, the push stop, or in a `gated` repo whose plan touches nothing on its Always ask list, the review, the checks and `/sonnet`'s gate), then a hand-off block, in a message of its own before anything runs: the one line to paste in a fresh session, alone in its own block, for the implementation tier `/focus` classified (`/sonnet {{plan-path}}` by default). On the default tier the run follows at once: a Sonnet sub-agent supervised to a reviewed ready-to-push message (`/sonnet`'s `## Sub-agent invocation`).
 - A `Captures for /log` tail listing anything journal-worthy that surfaced and isn't captured yet, using the types `/log` records. Omit it when there are none.
 
 **Success criteria.**
@@ -36,6 +36,8 @@ effort: high
 - With a fid, a request id or a message id, the pick is that item and nothing else: no triage runs, and an id that is closed, unknown, open as more than one kind, or tracked by a project is said in one line (a tracked one with its `/resume-project` command), never replaced by another pick. The pick's block, naming its route, opens the message that ends the turn (on the plan route, the fork questions or the final report), the point where the user replies, since text mid-turn is easily skipped.
 - Each pick is classified into exactly one route; a resume route names the slug. Disclosure stays flat: one recommendation, a command for it and for each command-route alternative, one reply.
 - Every command handed to the user sits alone in its own `text` block, so the copy button copies exactly the command.
+- A resume command names the folder it runs in, the project's worktree when it has one, from the script that decides it, so the session starts in the right place.
+- A tab opens only on the user's `open`, through the script the git setting `handoff.script` names, with the command typed in and never sent.
 - Every choice with two or more viable answers is asked as a chat question (the decision, the options, a **Recommended** option with why, the reply words), and the turn ends there. Never a pop-up, never a loose prose question.
 - Plan content is drafted internally and never rendered to the conversation: the hand-off links the saved file. Its Approach is one recommended path, not a menu.
 - The plan's Verification uses [this repo's verification commands](../../../AGENTS.md#verification-commands), never bare runners, and states their standing gotchas when the plan touches them.
@@ -47,7 +49,7 @@ effort: high
 - **Rendering plan content to conversation.** Plan headers, a critical-files table, numbered verification steps, before/after code of the change, or "I'll show it inline first" re-invent an approval gate. Self-check before any text while drafting: is it a fork question or a status sentence? If not, it belongs in the plan file.
 - **Loose prose questions, or a pop-up.** "Want me to Y?", "let me know", "does X feel right" re-invent an approval gate; a pop-up covers the message it refers to. A choice with two or more viable answers is a structured chat question; one with a single viable answer is decided.
 - **Guessing on forks.** A plan is the spec a fresh agent executes: a guessed vendor, shape or scope boundary ships as fact. When the research doesn't settle it, ask.
-- **Invoking the next skill instead of printing it.** It runs on this skill's tier, not its own pin, and takes the user's choice of when to start it away from them. That includes `/snag` for a flaw found during the triage: it is a candidate (Step 2).
+- **Invoking the next skill instead of printing it.** It runs on this skill's tier, not its own pin, and takes the user's choice of when to start it away from them. That includes `/snag` for a flaw found during the triage: it is a candidate (Step 2). An `open` reply is not invoking: the tab waits for the user's Enter, so the command runs as typed and its pin applies.
 - **Nesting a routing wizard.** One recommendation, one reply; the next skill runs its own flow.
 - **Implementing in the planning session's own context, or running a write skill there.** The sub-agent (or the fresh session) implements; this session plans, supervises and reviews. A deploy, a migration or a secret rotation belongs to that run, as the plan's Landing & closeout assigns it.
 - **Re-deriving a plan for work a recipe skill covers.** The recipe is the plan; a fresh one duplicates a maintained artifact and drifts from it.
@@ -112,7 +114,7 @@ Show it in this shape, with real names only:
 
 **Why:** {{for a picked line: "the reader's first candidate", or "its first after" the skipped line and why, with the line quoted; for a judgment slot: rank n and the rule}}: {{the state behind it: `[fid: …]`, backlog row or commit, cited}}.
 
-**Route:** {{resume | scaffold | another skill | plan}}. {{For a command route:}} Type this to take it:
+**Route:** {{resume | scaffold | another skill | plan}}. {{For a command route:}} Type this to take it, in a session in `{{its folder}}`, or reply `open`:
 
 ```text
 {{the one command, for example /resume-project and its slug}}
@@ -121,7 +123,7 @@ Show it in this shape, with real names only:
 {{For the plan route instead:}} Reply `ok` to plan it.
 
 **Alternatives:**
-1. {{the pick}}: {{trade-off against the recommendation}}; route: {{route}}
+1. {{the pick}}: {{trade-off against the recommendation}}; route: {{route}}{{for a command route:}}; folder: `{{its folder}}`
 
    ```text
    {{its command, for a command route}}
@@ -129,8 +131,10 @@ Show it in this shape, with real names only:
 
 2. …
 
-Reply: type a command (the recommendation's or an alternative's); `ok` for a plan-route recommendation; a number for a plan-route alternative; or say what you'd rather do.
+Reply: `open` opens the recommendation's command in a new tab, and `open <n>` alternative n's; or type a command (the recommendation's or an alternative's); `ok` for a plan-route recommendation; a number for a plan-route alternative; or say what you'd rather do.
 ````
+
+**A command's folder.** For each `/resume-project {{slug}}` you print, run `bash .claude/skills/resume-project/resume-state.sh --where {{slug}}`: its `where:` line is the folder. If it exits nonzero, the folder is this session's, and say so beside that command. Any other command's folder is this session's (`git rev-parse --show-toplevel`).
 
 Render it as Markdown, never inside a code fence of its own: only the command sits in a block, so the copy button copies exactly the command. Then end the turn.
 
@@ -138,6 +142,7 @@ Render it as Markdown, never inside a code fence of its own: only the command si
 
 - **The user typed the command:** that skill runs; `/focus` is done.
 - **A number:** on a command route, its command is already printed under it: point to it in one line and end the turn. On a plan route, go to Step 4.
+- **`open` or `open <n>`:** hand off that command. Read the script with `git config --type=path --get handoff.script`. If that prints nothing or names no file, say in one line that no tab opened because the setting is missing, and the printed command stands. Otherwise run `bash {{script}} {{its folder}} '{{the command}}'` and show its one line. `opened:` means the tab waits in that window for the user's Enter. `not opened:` names why, and the printed command stands. Run it once and never retry a refusal in another shape: each refusal is a case where the tab could land in the wrong window. On a plan-route pick there is no command to open: say so in one line and point to `ok`.
 - **`ok`** on a plan route: go to Step 4.
 - **A redirect:** re-rank with what the user said and show Step 2's block again.
 
@@ -164,6 +169,8 @@ Draft with this structure:
 
 **Project:** {{slug of the tracked project this plan advances | n/a}}
 
+**Repo:** {{the repo this plan runs in, as bash .claude/skills/start-project/repo-key.sh prints it; when that is not this repo, pass the script its clone folder}}
+
 **Checkout:** {{worktree | main clone: why this plan must run in the main clone}}
 
 ## Context
@@ -183,7 +190,7 @@ Draft with this structure:
 
 ## Verification
 
-{{Numbered checks: which command, what evidence, what must pass — this repo's verification commands, never bare runners, and any standing gotcha they name that this change touches. An expected count or output comes from the command whose rule defines it (the engine's or checker's own), run against the current files while drafting, never from memory or a stand-in such as a grep. A test suite that one of those commands already runs on the changed files (a commit hook prints a suite's output only when it fails) is checked by that command alone: a second, direct run repeats every passing line into the run's context, so list one only for what that command cannot give (other arguments, a special environment), naming that reason in the step. When that command does not exist yet, the count is an estimate: name the method and what it misses, and say what a different count does — before a bulk or hard-to-undo step, stop and show the list; otherwise, report it in the ready-to-push message. A mutation check is one call: `bash .claude/skills/sonnet/plan-run.sh mutate {{table}} --suite '{{suite command}}'`, with the table saved beside the plan, one tab-separated row per mutation (name, file, the exact text to find, its replacement, then each case that must fail). Never write a loop for the run to type, because a worktree-isolated run's checks refuse one. While drafting, check that each find text occurs once in its file.}}
+{{Numbered checks: which command, what evidence, what must pass — this repo's verification commands, never bare runners, and any standing gotcha they name that this change touches. An expected count or output comes from the command whose rule defines it (the engine's or checker's own), run against the current files while drafting, never from memory or a stand-in such as a grep. A test suite that one of those commands already runs on the changed files (a commit hook prints a suite's output only when it fails) is checked by that command alone: a second, direct run repeats every passing line into the run's context, so list one only for what that command cannot give (other arguments, a special environment), naming that reason in the step. When that command does not exist yet, the count is an estimate: name the method and what it misses, and say what a different count does — before a bulk or hard-to-undo step, stop and show the list; otherwise, report it in the ready-to-push message. A mutation check is one call: `bash .claude/skills/sonnet/plan-run.sh mutate {{table}} --suite '{{suite command}}'`, with the table saved beside the plan, one tab-separated row per mutation (name, file, the exact text to find, its replacement, then each case that must fail: every case that asserts the mutated line or depends on what the mutation breaks, such as a limit or a rerun that must change nothing, not only the one written for that mutation). Never write a loop for the run to type, because a worktree-isolated run's checks refuse one. While drafting, check that each find text occurs once in its file.}}
 
 ## Landing & closeout
 
@@ -197,6 +204,8 @@ Draft with this structure:
 ```
 
 The `**Project:**` line is required: a run outside that project's session never reaches its `/end-session`, so the line is how the project's PLAN learns the work landed (`plan-run.sh land` records it, and leaves it to `/end-session` when this session holds the project).
+
+The `**Repo:**` line names the repo the plan runs in, as the script prints it, never typed from memory. A plan written here to run in another repo names that repo, so it passes the check there. `plan-run.sh check` compares it with the repo a run starts in, so a plan for another repo stops even when its files exist there, and a plan that only creates files can still be placed.
 
 The `**Checkout:**` line says where the run works. `worktree` (the default) gives the run its own short-lived worktree off the fresh default branch, so the main clone stays clean on its default branch. `main clone` is only for a plan whose steps must write the main clone itself (for example a step that runs a script which writes the main clone even when started from a worktree); the line then names that reason.
 

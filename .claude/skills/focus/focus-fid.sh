@@ -79,18 +79,18 @@ if [ "${#forms[@]}" = 0 ]; then
   exit 1
 fi
 
-resume="When the entry says a project tracks it, print /resume-project {{slug}} $fid alone in its own text block instead, and stop."
+resume="When the entry says a project tracks it, print /resume-project {{slug}} $fid alone in its own text block instead, with Step 2's folder line and open reply, and stop."
 if [ -n "$row" ]; then
   kind=request; entry="$(bash "$mbox" requests show "$fid" 2>/dev/null </dev/null)"
   IFS=$'\037' read -r _ from sent _ proj title _ <<<"$(tr '\t' '\037' <<<"$row")"
   why="[request: $fid] from $from, sent $sent"; resume=""
-  [ -z "$proj" ] || resume="The request says this part is about project $proj: print /resume-project ${proj#[0-9][0-9][0-9][0-9]-[0-9][0-9]-} $fid alone in its own text block instead, and stop."
+  [ -z "$proj" ] || resume="The request says this part is about project $proj: print /resume-project ${proj#[0-9][0-9][0-9][0-9]-[0-9][0-9]-} $fid alone in its own text block instead, with Step 2's folder line and open reply, and stop."
 elif [ -n "$mrow" ]; then
   # the resume command names no id: /resume-project lists a message about its project by itself
   kind=message; entry="$(bash "$mbox" show "$fid" 2>/dev/null </dev/null)"
   IFS=$'\037' read -r _ from sent _ proj title _ <<<"$(tr '\t' '\037' <<<"$mrow")"
   why="[message: $fid] from $from, sent $sent"; resume=""
-  [ -z "$proj" ] || resume="The message is about project $proj: print /resume-project ${proj#[0-9][0-9][0-9][0-9]-[0-9][0-9]-} alone in its own text block instead, and stop."
+  [ -z "$proj" ] || resume="The message is about project $proj: print /resume-project ${proj#[0-9][0-9][0-9][0-9]-[0-9][0-9]-} alone in its own text block instead, with Step 2's folder line and open reply, and stop."
 else
   kind=followup
   heading="$(head -n 1 <<<"$entry")"
@@ -116,5 +116,5 @@ case "$kind" in
 esac
 printf '**Recommended:** %s\n' "$title"
 printf '**Why:** you named it: %s.\n' "$why"
-printf '**Route:** {{resume | scaffold | another skill | plan}}. {{for a command route: "Type this to take it:", then its one command alone in a text block}}\n'
+printf '**Route:** {{resume | scaffold | another skill | plan}}. {{for a command route: the line naming its folder, then its one command alone in a text block, then the reply line, as Step 2 shows them}}\n'
 printf '=== END ===\n'

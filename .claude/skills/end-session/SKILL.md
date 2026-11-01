@@ -22,6 +22,7 @@ description: "This skill should be used when the user explicitly types \"/end-se
 - An updated `PLAN.md`: Status holding live state only (the current phase with its id first, one line per phase, today's dated decisions prepended with the ones past the list's size moved (never deleted) to `DECISIONS.md` beside the PLAN, open questions still open, `waits-on:` current, `last-updated:` today), detail moved to its `## Reference` section, a kickoff rewritten in the template's skeleton, and one appended Session-log line.
 - Cross-cutting deferred tails routed through `/log` (written to the journal and committed on their own, or left to ride with the change that prompted them where this repo commits journal writes that way), and a `Cross-cutting tails routed: {{N}}` line. Project-scoped tails stay in the PLAN, never double-booked.
 - The project's end-of-session status set (`active` by default; `paused` / `completed` / `abandoned` only on a real signal, with archival for the terminal states).
+- On a terminal close, each open message or work request part the project dealt with closed or marked handled through `/done`, and an `Open mail settled: {{N}} closed or handled, {{M}} left open` line.
 - A PLAN that passes `resume-state.sh --check`, committed and pushed by explicit pathspec in the repo that holds the projects folder (through `projects-write.sh` when that is a projects home, a repo of its own; nothing to commit where that folder is gitignored), a clean cold load, and the claim released. A push to a projects home that fails never stops the close: the PLAN stays written there, and the next resume shows it as a pending sync.
 
 **Success criteria.**
@@ -33,6 +34,7 @@ description: "This skill should be used when the user explicitly types \"/end-se
 - Deferred tails are sorted by scope, and every cross-cutting one is actually written to the journal, never claimed-captured in the PLAN narrative but lost at the boundary.
 - The commit lands on the intended branch, staged by explicit pathspec, with no foreign files swept in; a terminal close moves the project directory into `_archive/` inside that same commit, both paths staged.
 - The end-of-session status is correct and low-friction: `active` is inferred silently when obvious; the choice is asked in chat only on a genuine ending or pausing signal.
+- A terminal close leaves no message or work request part open that the project dealt with, and in a public repo this step writes no item's id, title or sender to anything this repo tracks.
 - The next `/resume-project` would load with no banner: this skill ran the reader itself and fixed what it named.
 
 **Failure modes to avoid.**
@@ -162,6 +164,23 @@ When the projects folder sits in another repo than this one (a projects home: `g
 ### Step 10: Prove it loads cold, then release the claim
 
 Run `bash .claude/skills/resume-project/resume-state.sh {{slug}}` once more: it is what the next session will see. Every `BANNER:` line is something to fix now (a dirty tree, an unpushed commit, a commit after the PLAN's save, a PLAN check), not to hand on. After a push to a projects home that failed in Step 9, its pending-sync banner is expected: run its command once more, and if it still cannot push, leave it and say so in the report. After a terminal close its `is closed (archived)` banner is the cold load, the one `BANNER:` to leave, and the read stops before its own checks, so check them by hand: `git status --short` lists nothing of yours, and `git status -sb` shows no `ahead`. Then `bash .claude/skills/resume-project/resume-state.sh --release {{slug}}`, so the next session is not warned about this one.
+
+### Step 11: On a terminal close, settle the mail this project dealt with
+
+Skip this step unless Step 7 set `completed` or `abandoned`. A message or work request part that started a project, or that it dealt with on the way, stays open until someone closes it, and no other step does. It runs after the push because `/done` proves the work on the remote.
+
+Run `bash .claude/skills/start-project/mailbox.sh list` and `bash .claude/skills/start-project/mailbox.sh requests`. Nothing printed means nothing to settle, as on a machine with no mailbox. Read each line against the Charter and what shipped:
+
+- **The project dealt with it:** follow `/done`'s steps for `/done message {{id}}` or `/done request {{id}}`. Read each line it prints: work still on a branch is marked handled until the branch lands, not closed.
+- **It did not, or you cannot tell:** leave it open and name it in the report.
+
+When [this repo's public posture](../../../AGENTS.md#public-posture) is `public`, an item's id, title and sender go only in the session's report and in `/done`'s closing line, never in the PLAN, the README, a commit or a pull request this step writes.
+
+Close the step with the line, printed on every terminal close, and carry it into the session's final summary:
+
+```text
+Open mail settled: {{N}} closed or handled, {{M}} left open
+```
 
 ### Notes
 

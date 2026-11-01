@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# forge.sh — the one door the forge skills (pr, create-issue, ci-triage, issue-triage) use to reach
+# forge.sh: the one door the forge skills (pr, create-issue, ci-triage, issue-triage) use to reach
 # the repo's forge: pull requests, issues, labels, comments and CI runs. Each verb is one fixed
 # operation with fixed fields, so a skill never builds a forge call of its own and every repo's
 # skills make the same calls.
@@ -47,6 +47,9 @@ F_ISSUE_LIST="number,title,state,labels"
 F_LABEL_LIST="name,description"
 F_RUN_LIST="databaseId,workflowName,displayTitle,createdAt,url"
 F_RUN_VIEW="status,conclusion,name,event,headBranch,url,createdAt,headSha,jobs"
+# pr mergeable reads this many times before it settles; the wait is seconds between reads
+MERGEABLE_TRIES=5
+MERGEABLE_WAIT="${FORGE_MERGEABLE_WAIT:-3}"
 
 # One line per verb: <noun verb>;<arguments>;<output>;<what it does>
 SPEC="repo default-branch;;text: the branch name;The repo's default branch.
@@ -56,6 +59,7 @@ user login;;text: the login;The account this session acts as.
 pr view;[<N>];JSON: $F_PR_VIEW;PR <N>, or the current branch's PR. Exit 4 when the branch has none, or only a merged or closed PR that shares just its name.
 pr comments;<N>;JSON: comments;The PR's comments.
 pr commits;<N>;JSON: commits;The PR's commits.
+pr mergeable;<N>;text: MERGEABLE, CONFLICTING or UNKNOWN;Whether PR <N> can merge with its base, reading again for a few seconds while the forge works it out.
 pr list;[--state open|closed|merged|all] [--search <q>] [--limit <n>];JSON: $F_PR_LIST;PRs matching a search.
 pr for-commit;<sha>;JSON: [$F_PR_FOR_COMMIT];The merged PRs holding the commit, squash merges too; [] when none, or the forge never saw it.
 pr create;--base <branch> --title <t> [--label <l>]... [--draft] --body-file <file>;text: the PR's URL;Open a PR from the current branch, as a draft with --draft.
@@ -161,7 +165,7 @@ case "$cmd" in
     uri_path "$fpath" ;;
   "pr view")
     parse "" "$@"; positional 0 1; [ "${#pos[@]}" = 0 ] || number "<N>" "${pos[0]}" ;;
-  "pr comments"|"pr commits"|"pr reopen"|"issue view")
+  "pr comments"|"pr commits"|"pr mergeable"|"pr reopen"|"issue view")
     parse "" "$@"; positional 1 1; number "<N>" "${pos[0]}" ;;
   "run view"|"run log"|"run rerun")
     parse "" "$@"; positional 1 1; number "<id>" "${pos[0]}" ;;
@@ -422,6 +426,17 @@ if [ "$backend" = forgejo ]; then
       pr_by_name "$pnum" "$pst" "$purl" "$phead"
       jq -c "$prmap" <<<"$found" ;;
     "pr comments")  fj GET "$rapi/issues/$n/comments"; jq -c "{comments: $cmap}" "$resp" ;;
+    "pr mergeable")
+      # false also means still checking, so read again; a draft is always false, so it says nothing
+      tries=0
+      while :; do
+        fj GET "$rapi/pulls/$n"
+        mstate="$(jq -r 'if .mergeable then "MERGEABLE" elif .draft then "UNKNOWN" else "CONFLICTING" end' "$resp")" || die 1 "unreadable PR answer"
+        tries=$((tries + 1))
+        { [ "$mstate" != CONFLICTING ] || [ "$tries" -ge "$MERGEABLE_TRIES" ]; } && break
+        sleep "$MERGEABLE_WAIT"
+      done
+      printf '%s\n' "$mstate"; exit 0 ;;
     "pr commits")
       # Forgejo lists newest first; gh lists the first commit first
       pages "$rapi/pulls/$n/commits?stat=false&files=false&verification=false&limit=50" 0 \
@@ -547,6 +562,16 @@ case "$cmd" in
     printf '%s\n' "$out"; exit 0 ;;
   "pr comments")         gh_run pr view "$n" --json comments ;;
   "pr commits")          gh_run pr view "$n" --json commits ;;
+  "pr mergeable")
+    # GitHub answers UNKNOWN until it has worked out a changed PR
+    tries=0
+    while :; do
+      mstate="$(gh pr view "$n" --json mergeable --jq .mergeable 2>"$err")" || { cat "$err" >&2; exit 1; }
+      tries=$((tries + 1))
+      { [ "$mstate" != UNKNOWN ] || [ "$tries" -ge "$MERGEABLE_TRIES" ]; } && break
+      sleep "$MERGEABLE_WAIT"
+    done
+    printf '%s\n' "$mstate"; exit 0 ;;
   "pr for-commit")
     # GitHub maps any commit of a PR to it; a commit it never saw (amended, never pushed) is a 422
     out="$(gh api "repos/{owner}/{repo}/commits/$n/pulls" \

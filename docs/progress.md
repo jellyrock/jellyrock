@@ -26,6 +26,8 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-01: fix: Register Roku's memory monitor and ship only runtime files
+- 2026-11-01: ci: Make the device test run read only its own result
 - 2026-10-31: update(home): Show vertical posters in TV Recently Added rows
 - 2026-10-31: fix(home): Show episode images in Favorites tab
 - 2026-10-31: fix: Correct the canceled-recording toast
@@ -67,8 +69,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-20: feat(search): Pull-down keyboard, live suggestions and recent searches
 - 2026-10-19: chore(device-lock): Hold the device lock for `F5` and `package:signed`
 - 2026-10-18: fix(search): Show a row for every result type, up to 50 items each
-- 2026-10-17: fix(search): Find the Live TV programs that match a search
-- 2026-10-17: fix: Treat the 512 MB Roku Express `3900X`, `3910X` and `3930X` as low memory
 
 ## Open followups
 
@@ -351,6 +351,18 @@ A BrightScript runtime error during an RTA spec suspends the app in the micro de
 
 With no `RTA_SERVER_*` set, `npm run test:rta` targets the public demo, which has no push channel, so `syncplay-controls` and `syncplay-correction` skip every case and the run exits 0 (10 of 10 skipped, 2026-10-31). A reader takes that for a pass, and CI runs no RTA. Not fixed now: it is a change to `scripts/rta-run.js` with its own tests, unrelated to PR #1296. Closes when the run's summary names how many cases skipped and why, or fails when a named spec ran nothing.
 
+#### The Rooibos runner prints a stack trace when the device lock refuses `[fid: test-runner-lock-refusal-trace]` `[captured 2026-11-01]`
+
+`main()` in `scripts/run-roku-tests.js` calls `acquireDeviceLock()` outside its `try`, so a busy device ends the run in an unhandled stack trace, with no run record. Seen 2026-11-01 while other sessions' RTA runs held the lock. The lock itself worked: nothing deployed.
+
+**Fix shape:** catch the refusal and print its message with a non-zero exit, using `refusalLine()` from `scripts/device-lock.js`.
+
+#### A change to the Rooibos runner skips the device tests `[fid: device-tests-skip-runner-changes]` `[captured 2026-11-01]`
+
+The `Detect test-relevant changes` pattern in `device-unit-tests.yml` leaves out `scripts/`, so a change to the runner skips the device suite. #1301 changed `scripts/run-roku-tests.js` and its device job reported success in 13 s without running a test.
+
+**Fix shape:** add `scripts/run-roku-tests.js`, `scripts/lib/rooibos-summary.cjs` and the patches the run applies to the pattern.
+
 ### components
 
 #### The `cell-load` counters are silently zeroed whenever a screen replaces its content root, so any measurement of a session that does so under-reports. `[fid: cell-load-counters-zeroed-by-root-swap]` `[captured 2026-08-22]`
@@ -588,29 +600,6 @@ A live `PlaybackInfo` now waits up to `timeouts.LIVE_OPEN_MS` (120 s) and keeps 
 `JRScene.onActiveRoutedViewChanged()` ran 23 to 46 times for one navigation (measured 2026-10-07 on a Streaming Stick 4K, while building PR #1137). The field is declared `addField("activeRoutedView", "node", false)` in `source/utils/globals.bs`, so a write of the same node should not notify, and only `JRScreen.onViewOpen()`, `JRScreen.onViewResume()` and `JRScene.resetRouter()` write it. PR #1137 made the handler return early when the node has not changed, so nothing breaks, but the cause is unknown and may mean something else fires too often too.
 
 **Fix shape:** probe on device which writes or events reach the observer (log `m.global.activeRoutedView` and the caller per fire), then record the cause in `docs/architecture/navigation.md` beside the measured count, and fix it if it is a real excess.
-
-#### Eight `DeviceInfo` fields are never read; `videoRefresh` and `videoBitDepth` are missing from #1072 `[fid: deviceinfo-unread-fields]` `[captured 2026-10-10]`
-
-`components/data/jellyfin/DeviceInfo.xml` declares eight fields that nothing in the app reads through `m.global.device`:
-
-- `canPlay4K`, `maxVideoHeight`, `maxVideoWidth`, `videoCodecs`, `audioCodecs` and `memoryTotal` are never written or read. Only `transformDeviceInfo` filled them, and #1103 removed it. They are already in `.dead-code-baseline.json` and in epic #1072's `DeviceInfo` Investigate item (which device fields to cache at startup and which to read live).
-- `videoRefresh` and `videoBitDepth` are written by `SaveDeviceToGlobal()` in `source/utils/globals.bs` and never read. They are in neither the baseline nor #1072.
-
-Only `ContentNodes.spec.bs` (field-assignment tests) and the mock device JSON files under `tests/source/mocks/devices/` use them. `docs/architecture/playback.md` claims Direct Play checks `m.global.device.videoBitDepth`. That is wrong, and the Phase D rewrite of that doc fixes it.
-
-Found 2026-10-10 while rewriting `global-state.md` (2dbe60d3), by `git grep` over every `.bs`, `.brs` and `.xml` file.
-
-Options weighed:
-
-- `track` (recommended): add `videoRefresh` and `videoBitDepth` to #1072's `DeviceInfo` item as a comment, drafted and approved before posting, so the epic's one decision covers all eight fields.
-- `followup`: keep the finding here only.
-- `remove`: delete the two writes and their fields now. Rejected for now: it settles #1072's open startup-or-live question by hand, and Direct Play may want 10-bit detection.
-
-Not filed now because the comment is a public post that needs the operator's approval, and nothing breaks meanwhile.
-
-Not checked: why the dead-code plugin doesn't flag the two written-but-unread fields. I assume it counts a write as a use, but I haven't read the plugin.
-
-Closes when #1072's `DeviceInfo` item names all eight fields, or they are removed.
 
 #### A server-allowed live channel in a non-manifest container (mp4, mkv, ism) still buffers when the TV cannot reach its URL `[fid: live-non-manifest-unreachable-url-buffers]` `[captured 2026-10-12]`
 
@@ -1116,6 +1105,24 @@ A group `Pause` that lands as a correction's hold writes its resume shows no OSD
 
 A SyncPlay group can sit in `Waiting` with this member's node playing. Seen once, in round 0 of `syncplay-stress`'s `replay-twice` case (Stick 4K, 12.2, 2026-11-01): `state=playing group=Waiting phase=ready` at the end of the 12 s settle window, after a member moved the position and Replay was pressed twice. A node playing means no freeze on screen, but the group waits on this member. It did not recur in the next 30 rounds of that case. That run had no console capture, so the cause is unknown; it could be a Ready lost after the held seek, or a settle window too short for that round. Not fixed now: nothing shows a cause to fix. Closes with a recurrence read from the run's console, or a decision to drop it.
 
+#### Roku's analyzer still flags the custom locale folder and a deprecated API `[fid: analyzer-remaining-warnings]` `[captured 2026-11-01]`
+
+Roku's analyzer on #1299's branch (2026-11-01) still warns `Unsupported or incorrectly configured locales found: custom`, because `translate.bs` reads `pkg:/locale/custom/` and Roku treats folders under `locale/` as locales. It also warns that `InitClientCertificates()` is deprecated, in `TimeSyncTask` and the vendored `rr` module. The analyzer exits 0 on all of them. Whether any blocks publishing was not checked.
+
+**Fix shape:** moving the folder touches `translate.bs`, the seed and Weblate scripts and about 40 files naming the path, so it needs its own design. Check first whether the warning ever blocks a submission.
+
+#### The app never fires the dialog beacons Roku requires before Home `[fid: appdialog-beacons-certification]` `[captured 2026-11-01]` `[pinned]`
+
+Roku's analyzer (2026-11-01) warns that the app must fire `AppDialogInitiate` and `AppDialogComplete` if it shows a login, user selection or other dialog before the home page (certification requirement 3.2), and Roku's static analysis docs say the same. `source/` and `components/` fire neither, and the pre-login screens wait for input before `HomeRows` signals `AppLaunchComplete`. It is a warning today (exit 0). Whether it blocks publishing was not checked.
+
+**Fix shape:** fire the pair around each pre-login view (`SetServerScreen`, `UserSelect`, `LoginScene`), then re-run the `Roku static analysis` workflow.
+
+#### Partial lists of number type names may reject real values `[fid: number-type-name-lists]` `[captured 2026-11-01]`
+
+Several checks compare a number's `type()` against a partial list of names. On a Stick 4K (Roku OS 15.3.4, measured 2026-10-31) an AA value reports `roInteger`, a value from a native AA or a node field `roInt`, a `ParseJson` value and a local literal `Integer`. These lists leave out at least one: `setFieldTextValue()` in `misc.bs` and `setFieldText()` in `ItemDetails.bs` (no `roInteger`), the query builder in `baseRequest.bs` (no `Integer`), and `ProgramDetails.bs` (only `roInt`). None is shown to misbehave yet: each depends on where its value comes from. `isIntSafe()` and `mediaNumber()` already handle every name.
+
+**Fix shape:** check each site's real value on a device and move the wrong ones to those helpers. A build plugin rule only if the mistake recurs: this shape has now shipped in `GetBitRateLimit` and been caught in #1299.
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`
@@ -1582,6 +1589,24 @@ Options: `pause` (recommended): find which step resumes playback, then have `nav
 
 Not checked: which of the two (the Play press or the seek) leaves it playing; whether #1276 changed it; whether a real viewer's Play press during playback still pauses.
 
+#### A time-suffix spec fails in the first hour of the day daylight saving ends `[fid: spec-disambiguated-time-dst]` `[captured 2026-11-01]`
+
+`misc-disambiguatedTime.spec.bs` assumes now + 12 hours is always the opposite half of the day. On the day daylight saving ends that fails for the first hour: at 00:57 EDT on 2026-11-01, +12 hours is 11:57 AM EST, so `getDisambiguatingTimePeriod()` correctly returns `""` and two cases fail ("suffixes a time in the opposite half of the day", "appends a space-separated suffix when it isn't"). Both cases passed in a `test:unit` run at 01:09 EDT that day, once that hour had ended. The spring change was not checked.
+
+**Fix shape:** build the anchor and target times from fixed values, or skip the opposite-half cases when the offset between now and the target changes.
+
+#### RTA: the playback report test can time out with an unnamed dialog over a stopped player `[fid: rta-playback-report-dialog-over-stopped-player]` `[captured 2026-11-01]`
+
+The test "the playback report scrolls, hands focus to OK, and only closes from the button" (`tests/rta/specs/dialogs.spec.js`) can time out in `pausedOsd()` at `waitOsdUp`, with a dialog over a stopped player. On 2026-11-01 at 05:46 UTC, in a full run on #1299's branch, it reported `nav timed out waiting for player playable (pre-OSD) (last="stopped")` with focus on `#jrDialog.#buttonRow.0`, before the hourly reset (`afterHourBoundary: false`). It then passed 3 of 3 alone on that branch. The same wait failed in this test on 2026-10-23 at `d963b1ee`, after a reset, and in `osd gear caps the bitrate for this playback without saving it` the same day. The sibling followup `dialogs-bitrate-test-order-dependent` records a test with the same 1 Mbps cap that passes alone and fails in the suite, so order may matter here too.
+
+Cause not confirmed. A playback error dialog is only a guess, because the records so far don't name the dialog. The failure record now does (`dialog=<type>("<title>")`), so this can't be taken further until the next failure, and it isn't worth holding the shared Roku for repeated runs before then.
+
+**To close:** at the next failure, read the `dialog=` value. If it is "Error during playback", the dialog's `message` holds the cause and error code but is left out of the record on purpose (see "What it never reads" in `tests/rta/lib/diagnostics.js`), so capture the console for that run. Then fix the cause, or show it belongs to `dialogs-bitrate-test-order-dependent` and fold this entry into it.
+
+**Also seen in the same run, 05:48 UTC:** "Play on a song's details opens the audio player" timed out waiting for focus in `#extrasGrid` (`wait-focused-timeout`, view `ItemDetails`, focus on an `IconButton`), then passed 3 of 3 alone. Cause not found, and this exact timeout has no earlier record. File it separately if it comes back.
+
+**Not checked:** which dialog appeared; whether the failure repeats in `dialogs.spec.js` run alone; whether the sibling followup has the same cause; whether the memory monitor plays any part, though the same wait failed on a commit without it.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`
@@ -1624,3 +1649,15 @@ To close it, as its own project:
 - Check the new text on a Roku for fit, and confirm what Weblate does to existing translations when an English value changes.
 
 `settingName`, `type` and the generated-file note stay on the page: it serves users and contributors alike (decided 2026-10-09).
+
+### ci
+
+#### Commits from a cloud session can carry a Claude identity and add a Claude co-author on squash `[fid: cloud-commit-identity-anthropic]` `[captured 2026-11-01]`
+
+Five commits on #1299's branch had `noreply@anthropic.com` as author and committer, with the user's name. GitHub showed them under the `claude` account. Squashing #1073, whose branch commits had that identity and no trailers, put `Co-authored-by: Claude <noreply@anthropic.com>` on `main` in `0deef5b2`. The `attribution` setting in `.claude/settings.json` controls trailers and session links, and nothing shows it changes the git identity.
+
+**Options:** `gate`: fail a PR in CI when a commit's author or committer is `noreply@anthropic.com`, and name the commits to fix. `setup`: set the git identity in the cloud environment, if it allows that. `manual`: check before each merge.
+
+**Recommended:** `gate`, because it holds wherever a commit was made.
+
+**Not checked:** where cloud sessions get this identity; whether the environment can override it; whether GitHub adds the line on every squash, since #1073 is the only example found.

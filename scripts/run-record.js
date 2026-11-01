@@ -1137,11 +1137,15 @@ export function formatRunSummary(summary, file = failuresPath()) {
       const attempt = f.context?.attempt ? ` (attempt ${f.context.attempt})` : '';
       const view = f.state?.view;
       const focus = f.state?.focus;
+      const dialog = f.state?.dialog;
       lines.push(
         `${tag}   ${clock(f.at)} ${where}${attempt} — ${f.kind || 'failure'}` +
           (view?.subtype ? `; view=${view.subtype}` : '') +
           (view?.loadState ? ` loadState=${view.loadState}` : '') +
           (focus ? ` focus=${focus.subtype}` : '') +
+          (dialog
+            ? ` dialog=${dialog.subtype ?? '?'}${dialog.title ? `("${dialog.title}")` : ''}`
+            : '') +
           (f.state?.shell?.isRemoteDisabled === true ? ' input=BLOCKED' : '') +
           (f.afterHourBoundary ? ' [AFTER the hourly reset]' : ''),
       );

@@ -1,0 +1,33 @@
+' Registers roAppMemoryMonitor, which Roku certification requires an app to use. The app logs what
+' it reports and does not act on it yet: #1297 is the work to free memory near the limit.
+namespace memoryMonitor
+
+  ' Create the monitor and start its memory events on `port`.
+  '
+  ' @param port - the message port that receives roAppMemoryNotificationEvent
+  ' @return the monitor, or invalid when the device has none
+  function start(port as object) as dynamic
+    return memoryMonitor.register(CreateObject("roAppMemoryMonitor"), port)
+  end function
+
+  ' Connect a monitor to `port` and log its current values.
+  '
+  ' Roku lists platforms without these functions and does not say how they behave there, so a
+  ' failed call is logged rather than left to stop the app launching.
+  '
+  ' @param monitor - the object from CreateObject, typed dynamic so a test can pass a stand-in
+  ' @param port - the message port that receives roAppMemoryNotificationEvent
+  ' @return the monitor it was given
+  function register(monitor as dynamic, port as object) as dynamic
+    if not isValid(monitor) then return invalid
+    try
+      monitor.setMessagePort(port)
+      warningsEnabled = monitor.EnableMemoryWarningEvent(true)
+      print "memory monitor: warningsEnabled="; warningsEnabled; " limit="; monitor.GetChannelMemoryLimit().maxForegroundMemory; " usagePercent="; monitor.GetMemoryLimitPercent(); " available="; monitor.GetChannelAvailableMemory()
+    catch error
+      print "memory monitor failed: "; error.message
+    end try
+    return monitor
+  end function
+
+end namespace

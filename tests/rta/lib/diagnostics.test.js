@@ -47,6 +47,8 @@ describe('the FAILURE_KINDS re-export', () => {
 
 describe('diagnosedError — the message a human reads and the record a baseline reads', () => {
   let tmpDir;
+  /** The request set the last `diagnose` sent to ODC's `getValues`. */
+  let sentRequests;
 
   /** ECP's `query/active-app` on a device running the channel and nothing else. */
   const NO_SCREENSAVER = { app: { id: 'dev', type: 'appl', title: 'JellyRock' } };
@@ -91,7 +93,10 @@ describe('diagnosedError — the message a human reads and the record a baseline
     vi.doMock('roku-test-automation', () => ({
       odc: {
         getFocusedNode: async () => focused ?? null,
-        getValues: async () => (results instanceof Error ? Promise.reject(results) : { results }),
+        getValues: async ({ requests }) => {
+          sentRequests = requests;
+          return results instanceof Error ? Promise.reject(results) : { results };
+        },
       },
       // The OS media player is read from ECP, not ODC. Defaulting to null keeps
       // every existing case describing a run with no playback, which is what they
@@ -302,6 +307,61 @@ describe('diagnosedError — the message a human reads and the record a baseline
     });
     expect(error.message).not.toContain('SCREENSAVER');
     expect(error.message).toContain('view=BaseGridView');
+  });
+
+  it('names the open dialog by type and title, on the line and in the record', async () => {
+    // A timeout with a dialog up used to show only focus on `#jrDialog.#buttonRow.0`, which
+    // says a dialog is there and not which one.
+    const { error, record } = await diagnose('timed out', BASE, {
+      results: {
+        ...HEALTHY,
+        ...found({ dialogSubtype: 'JRDialog', dialogTitle: 'Error during playback' }),
+      },
+    });
+    expect(error.message).toContain('dialog=JRDialog("Error during playback")');
+    expect(record.state.dialog).toEqual({ subtype: 'JRDialog', title: 'Error during playback' });
+  });
+
+  it('records only the dialog type and title, and never asks for its message', async () => {
+    // The privacy rule: a message can hold a search term or cast text, and the records are
+    // uploaded by CI. A read that is never made cannot leak, so assert the request set,
+    // not only the record.
+    const { record } = await diagnose('timed out', BASE, {
+      results: {
+        ...HEALTHY,
+        ...found({
+          dialogSubtype: 'JRDialog',
+          dialogTitle: 'Remove',
+          dialogMessage: 'secret term',
+        }),
+      },
+    });
+    expect(record.state.dialog).toBeDefined();
+    expect(Object.keys(record.state.dialog).sort()).toEqual(['subtype', 'title']);
+    expect(JSON.stringify(record)).not.toContain('secret term');
+    const paths = Object.values(sentRequests).map((r) => r.keyPath);
+    expect(paths.filter((p) => p.endsWith('.message'))).toEqual([]);
+  });
+
+  it('still names the dialog type when it has no title', async () => {
+    const { error, record } = await diagnose('timed out', BASE, {
+      results: { ...HEALTHY, ...found({ dialogSubtype: 'QuickConnectDialog' }) },
+    });
+    expect(error.message).toContain('dialog=QuickConnectDialog');
+    expect(record.state.dialog).toEqual({ subtype: 'QuickConnectDialog', title: undefined });
+  });
+
+  it('says nothing about a dialog when none is open', async () => {
+    // `getValues` answers `found: false` for `#jrDialog` when no overlay is mounted.
+    const { error, record } = await diagnose('timed out', BASE, {
+      results: {
+        ...HEALTHY,
+        dialogSubtype: { found: false },
+        dialogTitle: { found: false },
+      },
+    });
+    expect(error.message).not.toContain('dialog=');
+    expect('dialog' in record.state).toBe(false);
   });
 
   it('never throws, even when every device read fails', async () => {
