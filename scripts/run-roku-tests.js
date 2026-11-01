@@ -7,11 +7,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import net from 'node:net';
+import { randomBytes } from 'node:crypto';
 import './lib/load-env.cjs';
 import * as rokuDeploy from 'roku-deploy';
 import { acquireDeviceLock } from './device-lock.js';
 import { beginRun, RUN_OUTCOMES } from './run-record.js';
-import { createSummaryCollector, unaccountedTests } from './lib/rooibos-summary.cjs';
+import {
+  createSummaryCollector,
+  unaccountedTests,
+  stampManifestTitle,
+  createRunGate,
+} from './lib/rooibos-summary.cjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -27,12 +33,19 @@ if (!ROKU_IP || !ROKU_PASSWORD) {
   process.exit(1);
 }
 
-async function deployToRoku() {
+async function deployToRoku(runId) {
   console.log(`📱 Deploying to Roku at ${ROKU_IP}...`);
   const rootDir = path.join(__dirname, '..');
   const BUILD_DIR = path.join(rootDir, 'build');
   const OUT_DIR = path.join(rootDir, 'out');
   try {
+    // The device prints the app's title in its `Running dev` line, and
+    // startCapture() waits for the one carrying this run's id. build/ is rebuilt by
+    // every build, so the source manifest is never touched.
+    const manifestPath = path.join(BUILD_DIR, 'manifest');
+    const manifestText = fs.readFileSync(manifestPath, 'utf8');
+    fs.writeFileSync(manifestPath, stampManifestTitle(manifestText, runId));
+
     // BSC v1 only compiles to build/: zip it for roku-deploy
     await rokuDeploy.zipPackage({
       stagingDir: BUILD_DIR,
@@ -60,119 +73,156 @@ async function deployToRoku() {
   }
 }
 
-async function captureConsole() {
+/**
+ * Opens the console connection and reads it until the run ends. The console replays its
+ * buffer on connect, so lines from the previous app can arrive first: nothing counts
+ * until the line announcing this run's stamped title (see `createRunGate`). The log file
+ * and stdout still get every line.
+ *
+ * Connect before the sideload so the small console buffer cannot lose that line. Returns
+ * `connected` (settles when the socket is open), `watch()` (arms the idle timer, call it
+ * once the sideload has returned), `cancel()` (tears the connection down) and `result`.
+ */
+function startCapture(runId) {
   console.log('🔌 Connecting to Roku debug console...');
-  return new Promise((resolve, reject) => {
-    const logFile = 'roku-test-output.log';
-    const writeStream = fs.createWriteStream(logFile);
-    const socket = new net.Socket();
-    let idleTimeoutId;
-    let lineBuffer = '';
-    const results = [];
-    const summary = createSummaryCollector();
+  const logFile = 'roku-test-output.log';
+  const writeStream = fs.createWriteStream(logFile);
+  const socket = new net.Socket();
+  const gate = createRunGate(runId);
+  const results = [];
+  const summary = createSummaryCollector();
+  let idleTimeoutId;
+  let lineBuffer = '';
+  let markerSeen = false;
+  let watching = false;
+  let settled = false;
+  let resolveResult;
+  let rejectResult;
 
-    function resetIdleTimer() {
-      clearTimeout(idleTimeoutId);
-      idleTimeoutId = setTimeout(() => {
-        socket.destroy();
-        writeStream.end();
-
-        const lastResult = results.length > 0 ? results[results.length - 1] : null;
-        if (lastResult) {
-          resolve({ passed: lastResult === 'PASS', logFile, summary: summary.summary() });
-        } else {
-          reject(
-            new Error(
-              `No console output for ${IDLE_TIMEOUT_MS / 1000} seconds — Roku appears hung`,
-            ),
-          );
-        }
-      }, IDLE_TIMEOUT_MS);
-    }
-
-    socket.connect(8085, ROKU_IP, () => {
-      console.log('✅ Connected to Roku console');
-      resetIdleTimer();
-    });
-
-    // Helper to process a single line for results and shutdown
-    function processLine(line) {
-      // Normalize line endings (handle CRLF from Roku console)
-      const cleanLine = line.replace(/\r+$/, '');
-
-      // Capture test results in-memory to avoid file read race condition
-      const resultMatch = cleanLine.match(/^\[Rooibos Result\]: (PASS|FAIL)$/);
-      if (resultMatch) {
-        results.push(resultMatch[1]);
-      }
-      summary.addLine(cleanLine);
-
-      // Check for shutdown signal
-      if (cleanLine.includes('[Rooibos Shutdown]')) {
-        clearTimeout(idleTimeoutId);
-        socket.destroy();
-        writeStream.end();
-
-        const lastResult = results.length > 0 ? results[results.length - 1] : null;
-        if (lastResult) {
-          resolve({ passed: lastResult === 'PASS', logFile, summary: summary.summary() });
-        } else {
-          reject(new Error('Test run completed without result'));
-        }
-        return true; // Signal that shutdown was detected
-      }
-      return false;
-    }
-
-    socket.on('data', (data) => {
-      resetIdleTimer();
-      const chunk = data.toString();
-      writeStream.write(data);
-      process.stdout.write(data);
-
-      // Line buffering to handle TCP chunk boundaries
-      lineBuffer += chunk;
-      const lines = lineBuffer.split('\n');
-      lineBuffer = lines.pop(); // Keep incomplete line for next chunk
-
-      for (const line of lines) {
-        if (processLine(line)) {
-          return; // Shutdown detected
-        }
-      }
-    });
-
-    socket.on('error', (err) => {
-      clearTimeout(idleTimeoutId);
-      socket.destroy();
-      writeStream.end();
-
-      const lastResult = results.length > 0 ? results[results.length - 1] : null;
-      if (lastResult) {
-        console.warn('Connection error, but result found:', err.message);
-        resolve({ passed: lastResult === 'PASS', logFile, summary: summary.summary() });
-      } else {
-        reject(new Error(`Console connection error: ${err.message}`));
-      }
-    });
-
-    socket.on('close', () => {
-      clearTimeout(idleTimeoutId);
-      writeStream.end();
-
-      // Process any remaining content in lineBuffer (handles shutdown without trailing newline)
-      if (lineBuffer.length > 0 && processLine(lineBuffer)) {
-        return; // Shutdown was detected and handled
-      }
-
-      const lastResult = results.length > 0 ? results[results.length - 1] : null;
-      if (lastResult) {
-        resolve({ passed: lastResult === 'PASS', logFile, summary: summary.summary() });
-      } else {
-        reject(new Error('Console connection closed without test result'));
-      }
-    });
+  const result = new Promise((resolve, reject) => {
+    resolveResult = resolve;
+    rejectResult = reject;
   });
+  // A failure can arrive while main() is still deploying, before it awaits `result`.
+  result.catch(() => {});
+
+  function settle(settleFn, value) {
+    if (settled) return;
+    settled = true;
+    clearTimeout(idleTimeoutId);
+    socket.destroy();
+    writeStream.end();
+    settleFn(value);
+  }
+
+  // The reason a run that ended with no result gives, which differs when the new build
+  // never started.
+  function noResultError(message) {
+    return new Error(
+      markerSeen
+        ? message
+        : `${message}. The new build never started: its Running dev line never appeared`,
+    );
+  }
+
+  function settleFromResults(message) {
+    const lastResult = results.length > 0 ? results[results.length - 1] : null;
+    if (lastResult) {
+      settle(resolveResult, { passed: lastResult === 'PASS', logFile, summary: summary.summary() });
+    } else {
+      settle(rejectResult, noResultError(message));
+    }
+  }
+
+  function resetIdleTimer() {
+    if (!watching) return;
+    clearTimeout(idleTimeoutId);
+    idleTimeoutId = setTimeout(() => {
+      settleFromResults(
+        `No console output for ${IDLE_TIMEOUT_MS / 1000} seconds, Roku appears hung`,
+      );
+    }, IDLE_TIMEOUT_MS);
+  }
+
+  const connected = new Promise((resolve, reject) => {
+    socket.once('connect', resolve);
+    socket.once('error', reject);
+  });
+  connected.catch(() => {});
+  socket.connect(8085, ROKU_IP, () => {
+    console.log('✅ Connected to Roku console');
+  });
+
+  // Helper to process a single line for results and shutdown
+  function processLine(line) {
+    // Normalize line endings (handle CRLF from Roku console)
+    const cleanLine = line.replace(/\r+$/, '');
+
+    // Lines before this run's marker are the previous app's replay.
+    if (!gate.accepts(cleanLine)) return false;
+    markerSeen = true;
+
+    // Capture test results in-memory to avoid file read race condition
+    const resultMatch = cleanLine.match(/^\[Rooibos Result\]: (PASS|FAIL)$/);
+    if (resultMatch) {
+      results.push(resultMatch[1]);
+    }
+    summary.addLine(cleanLine);
+
+    // Check for shutdown signal
+    if (cleanLine.includes('[Rooibos Shutdown]')) {
+      settleFromResults('Test run completed without result');
+      return true; // Signal that shutdown was detected
+    }
+    return false;
+  }
+
+  socket.on('data', (data) => {
+    resetIdleTimer();
+    const chunk = data.toString();
+    writeStream.write(data);
+    process.stdout.write(data);
+
+    // Line buffering to handle TCP chunk boundaries
+    lineBuffer += chunk;
+    const lines = lineBuffer.split('\n');
+    lineBuffer = lines.pop(); // Keep incomplete line for next chunk
+
+    for (const line of lines) {
+      if (processLine(line)) {
+        return; // Shutdown detected
+      }
+    }
+  });
+
+  socket.on('error', (err) => {
+    if (results.length > 0) {
+      console.warn('Connection error, but result found:', err.message);
+      settleFromResults('');
+    } else {
+      settle(rejectResult, noResultError(`Console connection error: ${err.message}`));
+    }
+  });
+
+  socket.on('close', () => {
+    // Process any remaining content in lineBuffer (handles shutdown without trailing newline)
+    if (lineBuffer.length > 0 && processLine(lineBuffer)) {
+      return; // Shutdown was detected and handled
+    }
+    settleFromResults('Console connection closed without test result');
+  });
+
+  return {
+    connected,
+    result,
+    watch() {
+      watching = true;
+      resetIdleTimer();
+    },
+    cancel() {
+      settle(rejectResult, new Error('Console capture cancelled'));
+    },
+  };
 }
 
 async function main() {
@@ -214,11 +264,20 @@ async function main() {
   }
 
   try {
-    await deployToRoku();
-    console.log('⏳ Waiting for app to start...');
-    await new Promise((resolve) => setTimeout(resolve, 5000));
+    const runId = randomBytes(4).toString('hex');
+    const capture = startCapture(runId);
+    await capture.connected;
+    try {
+      await deployToRoku(runId);
+    } catch (error) {
+      capture.cancel();
+      throw error;
+    }
+    // The sideload prints nothing and can outlast the idle timeout, so the timer
+    // starts only now.
+    capture.watch();
 
-    const result = await captureConsole();
+    const result = await capture.result;
     console.log(`📝 Full log saved to ${result.logFile}`);
 
     // Every test in Total must land in exactly one reported bucket. One that does
