@@ -60,6 +60,14 @@
          the viewer pressed while following, posted to the group in place of the player; a seek's
          position in the Video node's float seconds. True when posted. -->
     <function name="control" />
+    <!-- viewerPause(): the viewer pressed pause while following. Posts it and answers whether the
+         player should pause the node itself; false while a seek's landing will. -->
+    <function name="viewerPause" />
+    <!-- pausedForViewer(nodeState): whether the viewer should take this member as paused, which a
+         drift correction's hold is not. -->
+    <function name="pausedForViewer" />
+    <!-- seekInFlight(): whether a pause pressed now can wait for a seek's landing. -->
+    <function name="seekInFlight" />
   </interface>
   <children>
     <!-- The one scheduled command: a new command replaces a pending one. -->

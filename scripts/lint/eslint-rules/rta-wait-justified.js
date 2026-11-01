@@ -165,8 +165,8 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   'syncPlayManager.sync.playlistCount',
   // `SyncPlayManager.checkSettle` publishes the drift from the group on every position
   // notification while an Unpause is in force (every 0.5 s), and a group command or a Buffering
-  // report clears it. Past the threshold the manager corrects it, and it then holds inside the
-  // threshold, so "inside the threshold" is recurrent, not a pulse. `syncplay-controls.spec.js` and
+  // report clears it. Past its thresholds the manager corrects it, and it then holds inside them,
+  // so "inside the thresholds" is recurrent, not a pulse. `syncplay-controls.spec.js` and
   // `syncplay-correction.spec.js` wait on it.
   'syncPlayManager.sync.playbackDiffMs',
   // `SyncPlayManager.publish` writes the ready tracker's phase. `rebuffering` holds until the node

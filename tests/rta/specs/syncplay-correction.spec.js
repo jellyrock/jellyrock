@@ -4,6 +4,9 @@
  * - a member ahead of the group holds where it is and lands in step;
  * - a member behind it seeks past the group, holds and lands in step;
  * - a member's own stall recovery keeps its place, since the group waited for it;
+ * - the viewer's Pause during a correction's seek or hold pauses the group and stays paused;
+ * - another member's Pause during a hold brings up the OSD;
+ * - a resume that seeks reports no stall to the group;
  * - a correction whose seek would run off the item is skipped, so the player does not jump back;
  * - the drift reads unknown once a group command or a leave has made it meaningless.
  * The **SyncPlay Time Offset** setting makes the drift on demand: the offset moves this member's
@@ -14,7 +17,7 @@
  * channel to the Roku (https without the companion plugin).
  */
 import { afterAll, beforeAll, it, expect } from 'vitest';
-import { odc } from 'roku-test-automation';
+import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import {
   authenticate,
@@ -26,12 +29,21 @@ import {
 } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
-import { getGlobalVal, readPlayer, stopPlayback, waitFor, waitMediaPlaying } from '../lib/steps.js';
+import {
+  getGlobalVal,
+  press,
+  readPlayer,
+  stopPlayback,
+  waitFor,
+  waitMediaPlaying,
+} from '../lib/steps.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
 const GROUP_NAME = `RTA correction party ${Date.now()}`;
-// `syncPlayPlayback.SETTLE_CORRECTION_MS`.
+// `syncPlayPlayback.SETTLE_CORRECTION_MS`, the bar for a member ahead, and `SKIP_TO_SYNC_MIN_MS`,
+// the bar for a member behind: past them the manager corrects.
 const THRESHOLD_MS = 150;
+const BEHIND_THRESHOLD_MS = 400;
 // Under one notification interval, so the second of the two readings the check counts always
 // falls after the Unpause's `When` on the clock the offset no longer moves.
 const AHEAD_OFFSET_MS = 400;
@@ -71,13 +83,20 @@ const waitLastCommand = (name) =>
 const waitDriftInside = () =>
   waitFor(
     'syncPlayManager.sync.playbackDiffMs',
-    (v) => typeof v === 'number' && Math.abs(v) <= THRESHOLD_MS,
+    (v) => typeof v === 'number' && v >= -THRESHOLD_MS && v <= BEHIND_THRESHOLD_MS,
     {
       read: getGlobalVal,
       timeout: 20000,
-      label: "this member's drift from the group inside the correction threshold",
+      label: "this member's drift from the group inside the correction thresholds",
     },
   );
+const osdVisible = () => player()('#osd.visible');
+const waitGroup = (state) =>
+  waitFor('syncPlayManager.groupState', (s) => s === state, {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: `the group ${state}`,
+  });
 const waitPaused = () =>
   waitFor('state', (s) => s === 'paused', {
     read: playerState,
@@ -90,6 +109,44 @@ const waitPlaying = () =>
     timeout: 15000,
     label: 'the node playing',
   });
+/** The player's phase once a correction's seek is out, or undefined if none went out. */
+async function correctionSeekOut() {
+  const t0 = Date.now();
+  while (Date.now() - t0 < 5000) {
+    const phase = await getGlobalVal('syncPlayManager.sync.trackerPhase');
+    if (phase === 'seeking' || phase === 'landing') return phase;
+  }
+  return undefined;
+}
+/**
+ * Plays on from a resume, reading behind the group, until a correction's seek is out. Two
+ * notifications decide the check, so an offset raised after the second leaves it spent: resume
+ * again rather than fail on that timing.
+ */
+async function forceCorrectionSeek() {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await setOffset(0);
+    await syncPlay(member, 'Pause');
+    await waitPaused();
+    await syncPlay(member, 'Unpause');
+    await waitLastCommand('Unpause');
+    await waitPlaying();
+    await setOffset(BEHIND_OFFSET_MS);
+    if (await correctionSeekOut()) return;
+  }
+  throw new Error('no correction went out in four resumes');
+}
+/** The node held for a correction: past its seek, paused, the group still playing. */
+async function forceCorrectionHold() {
+  await forceCorrectionSeek();
+  await waitPaused();
+  expect(await getGlobalVal('syncPlayManager.groupState'), 'the group plays on').toBe('Playing');
+}
+/** The node stays paused through more than a correction's lead: nothing resumes it. */
+async function expectStaysPaused() {
+  const t0 = Date.now();
+  while (Date.now() - t0 < 3500) expect(await playerState(), 'still paused').toBe('paused');
+}
 /**
  * The drift past the threshold first, so a reading from before the correction cannot pass; then
  * back inside it, and moving, since a frozen node keeps its last reading.
@@ -196,7 +253,7 @@ it('a member behind the group lands in step', async (testCtx) => {
   await waitLastCommand('Unpause');
   await waitPlaying();
   await setOffset(BEHIND_OFFSET_MS);
-  await expectCorrected((v) => v > THRESHOLD_MS, 'this member reading behind the group');
+  await expectCorrected((v) => v > BEHIND_THRESHOLD_MS, 'this member reading behind the group');
   await setOffset(0);
 });
 
@@ -230,7 +287,8 @@ it("a member's own stall recovery keeps its place, with the drift unknown until 
   // A server before 12.1 answers with a corrective Seek, a command that says where the group is.
   const heardNoCommand = (await lastEmitted()) === commandBeforeStall;
   const drift = await getGlobalVal('syncPlayManager.sync.playbackDiffMs');
-  expect(heardNoCommand ? drift : undefined, 'no drift to read until the next command').toBeFalsy();
+  if (heardNoCommand)
+    expect([undefined, null], 'no drift to read until the next command').toContain(drift);
   // The server computes the group's position into its Pause, so that is the group's own word.
   await syncPlay(member, 'Pause');
   await waitLastCommand('Pause');
@@ -245,6 +303,79 @@ it("a member's own stall recovery keeps its place, with the drift unknown until 
   await waitLastCommand('Unpause');
   await waitPlaying();
   await waitDriftInside();
+});
+
+it("the viewer's Play key during a correction's seek pauses the group at the landing, and a second press plays on", async (testCtx) => {
+  skipWithoutPush(testCtx);
+  // Three rounds: the press can land while the node still reads `playing` or once it buffers.
+  for (let round = 0; round < 3; round++) {
+    await forceCorrectionSeek();
+    await press(ecp.Key.Play);
+    await setOffset(0);
+    await waitGroup('Paused');
+    await waitPaused();
+    expect(await osdVisible(), 'the OSD up, as for any pause on the Play key').toBe(true);
+    await expectStaysPaused();
+    expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+    await press(ecp.Key.Play);
+    await waitGroup('Playing');
+    await waitPlaying();
+    await waitDriftInside();
+  }
+});
+
+it("the viewer's Play key during a correction's hold means pause: the group pauses and nothing resumes it", async (testCtx) => {
+  skipWithoutPush(testCtx);
+  await forceCorrectionHold();
+  await press(ecp.Key.Play);
+  await setOffset(0);
+  await waitGroup('Paused');
+  expect(await osdVisible(), 'the OSD up').toBe(true);
+  await expectStaysPaused();
+  await syncPlay(member, 'Unpause');
+  await waitGroup('Playing');
+  await waitPlaying();
+  await waitDriftInside();
+});
+
+it("another member's Pause during a correction's hold brings up the OSD", async (testCtx) => {
+  skipWithoutPush(testCtx);
+  await forceCorrectionHold();
+  await syncPlay(member, 'Pause');
+  await setOffset(0);
+  await waitFor('#osd.visible', (v) => v === true, {
+    read: player(),
+    timeout: 5000,
+    label: 'the OSD up on the group pause',
+  });
+  await syncPlay(member, 'Unpause');
+  await waitGroup('Playing');
+  await waitPlaying();
+  await waitDriftInside();
+});
+
+it('a resume that seeks reports no stall, so the group does not wait', async (testCtx) => {
+  skipWithoutPush(testCtx);
+  // Past the Unpause's own lead, so the resume seeks. The offset is above the setting's range: a
+  // keypad cannot reach this, and it makes the seek happen on every path.
+  await setOffset(BEHIND_OFFSET_MS);
+  const phases = new Set();
+  const groupStates = new Set();
+  for (let round = 0; round < 4; round++) {
+    await syncPlay(member, 'Pause');
+    await waitPaused();
+    await syncPlay(member, 'Unpause');
+    const t0 = Date.now();
+    while (Date.now() - t0 < 8000) {
+      phases.add(await getGlobalVal('syncPlayManager.sync.trackerPhase'));
+      groupStates.add(await getGlobalVal('syncPlayManager.groupState'));
+    }
+  }
+  await setOffset(0);
+  expect(phases.has('seeking') || phases.has('landing'), 'a resume did seek').toBe(true);
+  expect(phases.has('rebuffering'), 'no stall reported').toBe(false);
+  expect(groupStates.has('Waiting'), 'the group never waited').toBe(false);
+  expect(groupStates.has('Playing'), 'the read saw the group').toBe(true);
 });
 
 it('a correction whose seek would run off the item is skipped, with no jump back', async (testCtx) => {
@@ -273,5 +404,5 @@ it('a leave leaves the drift unknown', async (testCtx) => {
     timeout: 10000,
     label: 'this member out of the group',
   });
-  expect(await getGlobalVal('syncPlayManager.sync.playbackDiffMs')).toBeFalsy();
+  expect([undefined, null]).toContain(await getGlobalVal('syncPlayManager.sync.playbackDiffMs'));
 });

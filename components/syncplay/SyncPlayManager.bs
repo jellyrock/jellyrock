@@ -113,11 +113,15 @@ sub ensureReady()
   ' Whether this member reported Buffering since the group's last command it scheduled
   ' (syncPlayPlayback.clockReference).
   m.reportedBuffering = false
+  ' When the last seek went out and how long the last one took to land, for the next correction's
+  ' lead (syncPlayPlayback.correctionLeadMs). 0 until one has landed on this player.
+  m.seekWrittenAtMs = 0&
+  m.lastSeekMs = 0&
   ' The playing item's length in the Video node's seconds; 0 while unknown.
   m.playerDurationSeconds = 0
   ' The correction under way (syncPlayPlayback.correctionPlan): the node pauses ahead of the
   ' group, after a seek when it was behind, and correctionTimer resumes it as the group arrives.
-  ' Any group command replaces it.
+  ' Any group command or a pause the viewer presses replaces it.
   m.correction = invalid
   publish()
 end sub
@@ -194,6 +198,7 @@ function playerEvent(evt as object) as object
     m.playerState = ""
     m.groupPaused = false
     m.playerDurationSeconds = 0
+    m.lastSeekMs = 0&
     m.playbackDiffMs = invalid
     syncPlayPlayback.disarmSettleCheck(m.settle)
     if isFollowing()
@@ -236,6 +241,7 @@ function playerEvent(evt as object) as object
   else if kind = "unmounted"
     m.playerState = ""
     m.groupPaused = false
+    m.playbackDiffMs = invalid
     m.pendingPlan = invalid
     m.commandTimer.control = "stop"
     m.readyTimer.control = "stop"
@@ -342,6 +348,7 @@ end sub
 function resumeFollowing() as boolean
   ensureReady()
   if not m.state.inGroup or m.state.following then return false
+  refreshExtraOffset()
   followAgain()
   if m.state.playingItemId = ""
     notify("followingAgain", m.state.groupName, "")
@@ -400,7 +407,7 @@ sub checkSettle()
   if syncPlayPlayback.settleCorrectionDue(m.settle, drift, m.playerState, m.tracker.phase, m.groupPaused)
     host = playerHost()
     if isValid(host)
-      plan = syncPlayPlayback.correctionPlan(syncPlayTime.asLong(drift), m.playerPositionTicks, inForce, m.estimator)
+      plan = syncPlayPlayback.correctionPlan(syncPlayTime.asLong(drift), m.playerPositionTicks, inForce, m.estimator, syncPlayPlayback.correctionLeadMs(m.lastSeekMs))
       if plan.seek and syncPlayPlayback.seekPastEnd(plan.targetTicks, m.playerDurationSeconds)
         m.log.info("drift correction skipped: its seek would run off the item", "driftMs", syncPlayTime.asLong(drift).toStr())
       else
@@ -633,6 +640,7 @@ sub applyPendingPlan()
   end if
   ' A Seek leaves the player paused for the Unpause that follows.
   m.groupPaused = plan.action = "Pause" or plan.action = "Seek"
+  heldForCorrection = isValid(m.correction) and m.playerState = "paused"
   dropCorrection()
   ' A Pause that finds a seek in flight is left to the seek's landing. An Unpause that follows
   ' it must take that pause back, or the node would land paused with nothing to resume it.
@@ -647,7 +655,7 @@ sub applyPendingPlan()
     m.pauseAttempts = 0
     m.pauseGaveUp = false
   end if
-  steps = syncPlayPlayback.applyPlan(plan, m.playerState, m.playerPositionTicks, m.tracker.phase)
+  steps = syncPlayPlayback.applyPlan(plan, m.playerState, m.playerPositionTicks, m.tracker.phase, heldForCorrection)
   for each verb in steps
     if verb.command = "stop"
       m.expectingRemount = true
@@ -799,6 +807,7 @@ end sub
 
 sub track(evt as object)
   phaseBefore = m.tracker.phase
+  if evt.kind = "seek" then m.seekWrittenAtMs = syncPlayTime.nowMs()
   result = syncPlayPlayback.trackPlayerEvent(m.tracker, evt)
   if result.waitMs > 0
     m.readyTimer.control = "stop"
@@ -819,7 +828,18 @@ sub track(evt as object)
     end if
     isPlaying = false
   end if
-  if isValid(m.correction) and m.tracker.phase = "ready" and (phaseBefore = "seeking" or phaseBefore = "landing") then onCorrectionLanded(result.pauseFirst)
+  seekEnded = syncPlayPlayback.seekEnded(phaseBefore, m.tracker.phase)
+  if seekEnded and m.tracker.phase = "ready" then m.lastSeekMs = syncPlayTime.nowMs() - m.seekWrittenAtMs
+  ' A pause left to a landing that wrote none: the node is already paused, so the viewer only
+  ' needs telling, or it is somewhere only the pause check can catch it.
+  if seekEnded and not result.pauseFirst
+    if result.showOsd and m.playerState = "paused"
+      host = playerHost()
+      if isValid(host) then tellPlayer(host, { command: "pause", showOsd: true })
+    end if
+    if m.groupPaused then armPauseTimer()
+  end if
+  if isValid(m.correction) and seekEnded then onCorrectionLanded(result.pauseFirst)
   if result.report <> ""
     if result.positionTicks >= 0 then report(result.report, isPlaying, result.positionTicks) else report(result.report, isPlaying)
   else if m.tracker.phase <> phaseBefore
@@ -1021,6 +1041,34 @@ sub publish()
 end sub
 
 ' --- the viewer's controls ---
+
+' The viewer pressed pause while following: the group is asked, and whatever this member was doing
+' for the group gives way to it. A correction under way ends, or its timer would resume them. A seek
+' in flight keeps the pause for its landing: a pause written to it can leave the node buffering for
+' good (syncPlayPlayback.applyPlan).
+' @returns whether the player should pause the node itself; true when not following
+function viewerPause() as boolean
+  ensureReady()
+  if not isFollowing() then return true
+  control({ kind: "pause" })
+  dropCorrection()
+  if not syncPlayPlayback.pauseWaitsForSeek(m.tracker.phase) then return true
+  syncPlayPlayback.pauseAfterSeek(m.tracker)
+  return false
+end function
+
+' Whether the viewer should take this member as paused (syncPlayPlayback.pausedForViewer).
+' @param nodeState - the Video node's `state`
+function pausedForViewer(nodeState as string) as boolean
+  ensureReady()
+  return syncPlayPlayback.pausedForViewer(nodeState, isValid(m.correction), m.tracker.showOsd)
+end function
+
+' Whether a seek is in flight, so a pause the viewer presses now can wait for its landing.
+function seekInFlight() as boolean
+  ensureReady()
+  return isFollowing() and syncPlayPlayback.pauseWaitsForSeek(m.tracker.phase)
+end function
 
 ' A control the viewer pressed while following, asked of the group in place of the player:
 ' { kind: "pause" | "unpause" | "seek" | "next" | "previous", position }, the seek's position in
