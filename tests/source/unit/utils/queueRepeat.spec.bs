@@ -1,0 +1,118 @@
+import "pkg:/source/utils/queueRepeat.bs"
+
+namespace tests
+
+  @suite("queueRepeat.bs - what a finished item moves on to under each repeat mode")
+  class QueueRepeatTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("normalize")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads the server's three values and makes anything else off")
+    function _()
+      m.assertEqual(queueRepeat.normalize("RepeatAll"), queueRepeat.ALL)
+      m.assertEqual(queueRepeat.normalize("RepeatOne"), queueRepeat.ONE)
+      m.assertEqual(queueRepeat.normalize("RepeatNone"), queueRepeat.OFF)
+      m.assertEqual(queueRepeat.normalize(""), queueRepeat.OFF)
+      m.assertEqual(queueRepeat.normalize(invalid), queueRepeat.OFF)
+      m.assertEqual(queueRepeat.normalize("all"), queueRepeat.OFF, "the audio player's words are not these")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("afterFinish")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("moves on to the next item and ends the queue when off")
+    function _()
+      m.assertEqual(queueRepeat.afterFinish(queueRepeat.OFF, 0, 3), 1)
+      m.assertEqual(queueRepeat.afterFinish(queueRepeat.OFF, 2, 3), -1)
+      m.assertEqual(queueRepeat.afterFinish(queueRepeat.OFF, 0, 1), -1, "a single video ends")
+    end function
+
+    @it("plays the same item again under RepeatOne")
+    function _()
+      m.assertEqual(queueRepeat.afterFinish(queueRepeat.ONE, 0, 1), 0)
+      m.assertEqual(queueRepeat.afterFinish(queueRepeat.ONE, 1, 3), 1)
+    end function
+
+    @it("wraps to the first item under RepeatAll")
+    function _()
+      m.assertEqual(queueRepeat.afterFinish(queueRepeat.ALL, 0, 3), 1)
+      m.assertEqual(queueRepeat.afterFinish(queueRepeat.ALL, 2, 3), 0)
+      m.assertEqual(queueRepeat.afterFinish(queueRepeat.ALL, 0, 1), 0, "a single video plays again")
+    end function
+
+    @it("ends on an index outside the queue")
+    function _()
+      m.assertEqual(queueRepeat.afterFinish(queueRepeat.ALL, -1, 3), -1)
+      m.assertEqual(queueRepeat.afterFinish(queueRepeat.ALL, 3, 3), -1)
+      m.assertEqual(queueRepeat.afterFinish(queueRepeat.ONE, 0, 0), -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("stepNext and stepPrevious")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("steps inside the queue when off")
+    function _()
+      m.assertEqual(queueRepeat.stepNext(queueRepeat.OFF, 0, 3), 1)
+      m.assertEqual(queueRepeat.stepPrevious(queueRepeat.OFF, 2, 3), 1)
+    end function
+
+    ' jellyfin-web's next and the SyncPlay server's Next() and Previous() replay under RepeatOne,
+    ' so a press reads the same in and out of a group.
+    @it("plays this item again under RepeatOne, a single video included")
+    function _()
+      m.assertEqual(queueRepeat.stepNext(queueRepeat.ONE, 0, 3), 0)
+      m.assertEqual(queueRepeat.stepNext(queueRepeat.ONE, 2, 3), 2)
+      m.assertEqual(queueRepeat.stepPrevious(queueRepeat.ONE, 2, 3), 2)
+      m.assertEqual(queueRepeat.stepNext(queueRepeat.ONE, 0, 1), 0)
+    end function
+
+    @it("stops at either end unless RepeatAll wraps it")
+    function _()
+      m.assertEqual(queueRepeat.stepNext(queueRepeat.OFF, 2, 3), -1)
+      m.assertEqual(queueRepeat.stepNext(queueRepeat.ALL, 2, 3), 0)
+      m.assertEqual(queueRepeat.stepNext(queueRepeat.ALL, 0, 1), 0, "a single video wraps to itself")
+      m.assertEqual(queueRepeat.stepPrevious(queueRepeat.OFF, 0, 3), -1)
+      m.assertEqual(queueRepeat.stepPrevious(queueRepeat.ALL, 0, 3), 2)
+    end function
+
+    @it("has nowhere to step in an empty queue")
+    function _()
+      m.assertEqual(queueRepeat.stepNext(queueRepeat.ALL, 0, 0), -1)
+      m.assertEqual(queueRepeat.stepPrevious(queueRepeat.ALL, 0, 0), -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hasPicks")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is false with no cap and repeat off")
+    function _()
+      m.assertFalse(queueRepeat.hasPicks(invalid, queueRepeat.OFF))
+      m.assertFalse(queueRepeat.hasPicks({}, ""))
+    end function
+
+    @it("is true on a cap or a repeat mode")
+    function _()
+      m.assertTrue(queueRepeat.hasPicks({ maxBitrateMbps: 4 }, queueRepeat.OFF))
+      m.assertTrue(queueRepeat.hasPicks(invalid, queueRepeat.ALL))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("label")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("names each mode briefly")
+    function _()
+      m.assertEqual(queueRepeat.label(queueRepeat.OFF), "Off")
+      m.assertEqual(queueRepeat.label(queueRepeat.ALL), "All")
+      m.assertEqual(queueRepeat.label(queueRepeat.ONE), "One")
+      m.assertEqual(queueRepeat.label(invalid), "Off")
+    end function
+
+  end class
+
+end namespace

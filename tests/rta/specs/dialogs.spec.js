@@ -37,6 +37,7 @@ import {
   waitMediaPlaying,
   waitOsdUp,
   stopPlayback,
+  scrollFocus,
   PLAYING_STATES,
   getVal,
   getActiveVals,
@@ -846,6 +847,75 @@ it('osd gear caps the bitrate for this playback without saving it, and Back step
 
   await stopPlayback();
 }, 300000);
+
+// The gear's Repeat row: the third row, reading the queue's mode, whose picker offers Off,
+// All and One. A pick records on the queue and reloads nothing, so the row reads the pick on
+// the next open, and lights the gear. What a finish does under each mode is unit-gated
+// (queueRepeat.spec.bs); the step buttons' rules are in OSDRepeatSteps.spec.bs.
+it('osd gear repeat row offers Off, All and One, and reads the pick back without a reload', async () => {
+  await pausedOsd();
+  await pressOsdButton('showPlaybackSettings');
+  const gearMenuOpen = (label) =>
+    waitFor(
+      '#optionList.content.0.title',
+      (t) => typeof t === 'string' && t.startsWith('Maximum Bitrate ('),
+      { label, timeout: 10000 },
+    );
+  await gearMenuOpen('gear menu open');
+  await waitFocusInside('#optionList', { label: 'gear menu focused', timeout: 5000 });
+  const rows = await getVal('#optionList.content.getChildCount()');
+  const repeatIndex = rows - 1;
+  expect(await getVal(`#optionList.content.${repeatIndex}.title`)).toBe('Repeat (Off)');
+  expect(await getVal(`#optionList.content.${repeatIndex}.icon`)).toContain('repeat_');
+
+  await scrollFocus({
+    keyPath: '#optionList.itemFocused',
+    target: repeatIndex,
+    forwardKey: ecp.Key.Down,
+    backKey: ecp.Key.Up,
+    label: 'repeat row focused',
+  });
+  await press(ecp.Key.Ok);
+  await waitFor('#optionList.content.0.title', (t) => t === 'Off', {
+    label: 'repeat picker open',
+    timeout: 10000,
+  });
+  await waitFocusInside('#optionList', { label: 'repeat picker focused', timeout: 5000 });
+  const [all, one, offSelected] = await getVals([
+    '#optionList.content.1.title',
+    '#optionList.content.2.title',
+    '#optionList.content.0.isSelected',
+  ]);
+  expect(all).toBe('All');
+  expect(one).toBe('One');
+  expect(offSelected, 'Off is the current mode').toBe(true);
+  if (CAPTURE) await captureRawUI('playbackSettingsRepeat');
+
+  // Pick All: the picker closes and nothing reloads, so the OSD is still up and paused.
+  await press(ecp.Key.Down);
+  await waitFor('#optionList.itemFocused', (n) => n === 1, { label: 'All focused', timeout: 5000 });
+  await press(ecp.Key.Ok);
+  await waitDialogClosed('the pick closed the picker', { timeout: 10000 });
+  await waitFocused((f) => f.node?.id === 'showPlaybackSettings', {
+    label: 'focus restored to the gear',
+    timeout: 8000,
+  });
+  expect(await getVal('#osd.visible'), 'no reload: the OSD stays up').toBe(true);
+  // The hero plays alone: under RepeatAll it wraps to itself, so next is a replay and stays
+  // enabled; and the gear lights up while a gear row differs from the defaults.
+  expect(await getVal('#itemNext.isEnabled')).toBe(true);
+  expect(await getVal('#showPlaybackSettings.isButtonSelected')).toBe(true);
+  if (CAPTURE) await captureRawUI('playbackSettingsGearLit');
+
+  // The row reads the pick back.
+  await press(ecp.Key.Ok);
+  await gearMenuOpen('gear menu open after the pick');
+  expect(await getVal(`#optionList.content.${repeatIndex}.title`)).toBe('Repeat (All)');
+  await press(ecp.Key.Back);
+  await waitDialogClosed('gear menu dismissed', { timeout: 10000 });
+
+  await stopPlayback();
+}, 240000);
 
 // The report's KEY MODEL, driven for real rather than inspected. The focus-ring
 // fix above is about appearance; this asserts the dialog actually WORKS: that it

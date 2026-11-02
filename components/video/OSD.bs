@@ -9,6 +9,7 @@ import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/playbackCaps.bs"
 import "pkg:/source/utils/playbackSettingsMenu.bs"
+import "pkg:/source/utils/queueRepeat.bs"
 import "pkg:/source/utils/translate.bs"
 
 sub init()
@@ -202,10 +203,14 @@ sub applyStepButtons()
   if not isValid(m.itemData) then return
   ' Keep prev/next enabled for TvChannel: channel list loads async after init
   if m.itemData.type = "TvChannel" then return
-  queueCount = m.global.queueManager.callFunc("getCount")
-  queueIndex = m.global.queueManager.callFunc("getPosition")
-  hasPrevious = queueCount > 1 and queueIndex > 0
-  hasNext = queueIndex + 1 < queueCount
+  queueManager = m.global.queueManager
+  queueCount = queueManager.callFunc("getCount")
+  queueIndex = queueManager.callFunc("getPosition")
+  ' Under RepeatOne a press replays, and under RepeatAll a single video wraps to itself, so both
+  ' stay enabled there; off, a single video has no step (queueRepeat.bs).
+  repeatMode = queueManager.callFunc("getRepeatMode")
+  hasPrevious = queueRepeat.stepPrevious(repeatMode, queueIndex, queueCount) >= 0
+  hasNext = queueRepeat.stepNext(repeatMode, queueIndex, queueCount) >= 0
   ' In a SyncPlay group the local queue holds the playing item alone: previous and next read the
   ' group's playlist, and a press asks the group (VideoPlayerView.handleItemSkipAction).
   group = syncPlayHooks.groupQueue()
@@ -228,6 +233,7 @@ sub setButtonStates()
 
   isTvChannel = m.itemData.type = "TvChannel"
   applyStepButtons()
+  applyGearState()
 
   ' Remove these buttons as needed
 
@@ -293,7 +299,7 @@ sub setButtonStates()
 
   ' Playback settings: the gear stays only while its menu has a row to show. Removed before
   ' applyOverflow below, because the right group's width sets the left row's cap.
-  if playbackSettingsMenu.rows(isTvChannel, 0, "auto", invalid).ids.count() = 0
+  if playbackSettingsMenu.rows(isTvChannel, 0, "auto", invalid, queueRepeat.OFF).ids.count() = 0
     gearButton = m.buttonMenuRight.findNode("showPlaybackSettings")
     if isValid(gearButton) then m.buttonMenuRight.removeChild(gearButton)
   end if
@@ -741,9 +747,25 @@ sub resetFocusToDefaultButton()
   m.buttonMenuLeft.buttonFocused = m.defaultButtonIndex
 end sub
 
+' The gear lights up (the icon button's selected tint) while a gear row differs from the viewer's
+' defaults, so a glance says something is set for this queue; the rows inside say what.
+sub applyGearState()
+  gearButton = m.buttonMenuRight.findNode("showPlaybackSettings")
+  if not isValid(gearButton) then return
+  queueManager = m.global.queueManager
+  gearButton.isButtonSelected = queueRepeat.hasPicks(queueManager.callFunc("getPlaybackCaps"), queueManager.callFunc("getRepeatMode"))
+end sub
+
+' What the queue decides for the OSD, read again: the step buttons and the gear's tint. Run as the
+' OSD opens and after each gear pick (VideoPlayerView), since the OSD caches neither.
+sub refreshFromQueue()
+  applyStepButtons()
+  applyGearState()
+end sub
+
 sub onVisibleChanged()
   if m.top.visible
-    applyStepButtons()
+    refreshFromQueue()
     resetFocusToDefaultButton()
 
     ' Timer runs even while paused so the live TV behind-live counter keeps ticking
@@ -996,7 +1018,7 @@ end function
 ' @param {string} focusRowId - the row to focus, for Back from one of its pickers
 sub openSettingsMenu(focusRowId = "" as string)
   current = effectiveCaps()
-  menu = playbackSettingsMenu.rows(isLiveTvItem(), current.bitrateMbps, current.resolution, resolutionSetting())
+  menu = playbackSettingsMenu.rows(isLiveTvItem(), current.bitrateMbps, current.resolution, resolutionSetting(), currentRepeatMode())
   if menu.ids.count() = 0 then return
 
   focusIndex = 0
@@ -1025,11 +1047,19 @@ sub onSettingsMenuResult()
     openCapPicker(rowId, translationKeys.LabelMaximumBitrate, playbackSettingsMenu.bitrateOptions(current.bitrateMbps, m.top.sourceVideoBitrate), current.bitrateMbps)
   else if rowId = playbackSettingsMenu.ROW_MAX_RESOLUTION
     openCapPicker(rowId, translationKeys.LabelMaximumResolution, playbackSettingsMenu.resolutionOptions(current.resolution, resolutionSetting()), current.resolution)
+  else if rowId = playbackSettingsMenu.ROW_REPEAT
+    repeatMode = currentRepeatMode()
+    openCapPicker(rowId, translationKeys.LabelRepeat, playbackSettingsMenu.repeatOptions(repeatMode), repeatMode)
   end if
 end sub
 
+' The queue's repeat mode, read on each open and never cached: the queue is the one holder.
+function currentRepeatMode() as string
+  return m.global.queueManager.callFunc("getRepeatMode")
+end function
+
 ' One picker for every gear row. `field` is the row id, which is also the playbackCaps field
-' a pick sets.
+' a pick sets; the Repeat row's pick goes out on repeatModePick instead.
 sub openCapPicker(field as string, titleKey as string, options as object, current as dynamic)
   m.capPicker = { field: field, options: options, current: current }
   m.capPickerDialog = showListDialog(translate(titleKey), options.labels, "onCapPicked", options.defaultIndex, options.selectedIndex)
@@ -1055,7 +1085,12 @@ sub onCapPicked()
   if not isValid(index) or index < 0 or index >= picker.options.values.count() then return
   picked = picker.options.values[index]
   m.log.info("onCapPicked", "field", picker.field, "picked", picked, "current", picker.current)
-  if picked <> picker.current then m.top.playbackCapsPick = { field: picker.field, value: picked }
+  if picked = picker.current then return
+  if picker.field = playbackSettingsMenu.ROW_REPEAT
+    m.top.repeatModePick = picked
+  else
+    m.top.playbackCapsPick = { field: picker.field, value: picked }
+  end if
 end sub
 
 function createSubtitleLabelNode(labelId as string) as object

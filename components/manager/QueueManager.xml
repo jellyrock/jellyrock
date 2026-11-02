@@ -16,6 +16,7 @@
     <function name="getQueueUniqueTypes" />
     <function name="getUnshuffledQueue" />
     <function name="getPlaybackCaps" />
+    <function name="getRepeatMode" />
     <function name="getVersionPreference" />
     <function name="insertAfterCurrent" />
     <function name="isPrerollActive" />
@@ -32,6 +33,7 @@
     <function name="setPosition" />
     <function name="setPrerollStatus" />
     <function name="setPlaybackCaps" />
+    <function name="setRepeatMode" />
     <function name="setVersionPreference" />
     <function name="startCurrentFresh" />
     <function name="toggleShuffle" />

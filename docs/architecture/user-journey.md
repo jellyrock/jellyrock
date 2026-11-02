@@ -10,7 +10,7 @@ related-files:
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
   - source/utils/playKind.bs
-last-reviewed: 2026-10-27
+last-reviewed: 2026-11-02
 ---
 
 # The user journey
@@ -274,8 +274,8 @@ When the player's state becomes `finished`, `PlayerHostView.onPlayerStateChange(
 | Case | What happens |
 |---|---|
 | A Live TV channel | `restartLiveChannel()` mounts the same channel again, unless it keeps ending without playing; then the playback error shows ([`playback.md`](playback.md)) |
-| More items in the queue | The queue manager's `advanceTo` moves to the next item, then `playCurrentQueueItem()` mounts it from its start. After enough videos with no key press, the next one plays under an "Are you still watching?" prompt ([`playback.md`](playback.md#are-you-still-watching)) |
-| The queue is done | `exitPlayback()` calls `sgrouter.goBack()`, and the details screen that started it, or Home, shows again |
+| Something to play next | `queueRepeat.afterFinish()` picks it from the queue's repeat mode: the next item, this one again (Repeat One) or the first after the last (Repeat All), and the queue manager's `advanceTo` moves there, then `playCurrentQueueItem()` mounts it from its start. After enough videos with no key press, the next one plays under an "Are you still watching?" prompt ([`playback.md`](playback.md#are-you-still-watching)) |
+| The queue is done (repeat off, last item) | `exitPlayback()` calls `sgrouter.goBack()`, and the details screen that started it, or Home, shows again |
 
 Two `finished` states are not the end of playback and return before any of that: a Dolby Vision fallback retry (`isRetrying`), and an error dialog that owns the exit (`errorDialogOwnsExit`). Both reach this handler because the player itself called `stop`, and that stop arrived as `finished` rather than `stopped`. [`playback.md`](playback.md) covers the second.
 

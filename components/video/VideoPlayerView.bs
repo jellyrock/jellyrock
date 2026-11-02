@@ -27,6 +27,7 @@ import "pkg:/source/utils/playbackCheckIn.bs"
 import "pkg:/source/utils/playbackEnd.bs"
 import "pkg:/source/utils/playbackErrorInfo.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
+import "pkg:/source/utils/queueRepeat.bs"
 import "pkg:/source/utils/screenReadiness.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamOrigin.bs"
@@ -122,6 +123,7 @@ sub init()
   m.osd = m.top.findNode("osd")
   m.osd.observeField("action", "onOSDAction")
   m.osd.observeField("playbackCapsPick", "onPlaybackCapsPicked")
+  m.osd.observeField("repeatModePick", "onRepeatModePicked")
   m.trickplayCarousel = m.top.findNode("trickplayCarousel")
 
   ' Trickplay seek position tracking - we parse Roku's trickPlayBar text to get
@@ -314,38 +316,29 @@ sub handleItemSkipAction(action as string)
   queueCount = queueManager.callFunc("getCount")
   queuePosition = queueManager.callFunc("getPosition")
 
-  ' Live TV wraps around at both ends; regular content stops at boundaries
+  ' Live TV wraps around at both ends, as does a queue on RepeatAll; under RepeatOne a press
+  ' replays this item; anything else stops at the ends (queueRepeat.bs).
   isTvChannel = isLiveTvPlayback() and m.channelListLoaded and queueCount > 1
+  repeatMode = queueManager.callFunc("getRepeatMode")
 
+  targetPosition = -1
   if action = "itemnext"
-    targetPosition = -1
-    if queuePosition < queueCount - 1
-      targetPosition = queuePosition + 1
-    else if isTvChannel
-      targetPosition = 0
-    end if
-
-    if targetPosition >= 0
-      switchToQueueItem(queueManager, targetPosition)
-    end if
-
+    targetPosition = queueRepeat.stepNext(repeatMode, queuePosition, queueCount)
+    if targetPosition < 0 and isTvChannel then targetPosition = 0
+  else if action = "itemback"
+    targetPosition = queueRepeat.stepPrevious(repeatMode, queuePosition, queueCount)
+    if targetPosition < 0 and isTvChannel then targetPosition = queueCount - 1
+  else
     return
   end if
+  if targetPosition < 0 then return
 
-  if action = "itemback"
-    targetPosition = -1
-    if queuePosition > 0
-      targetPosition = queuePosition - 1
-    else if isTvChannel
-      targetPosition = queueCount - 1
-    end if
-
-    if targetPosition >= 0
-      switchToQueueItem(queueManager, targetPosition)
-    end if
-
-    return
+  ' A press that plays this item again says why, once: the viewer asked for the next item and
+  ' gets this one. An automatic replay at the end says nothing, since that is what repeat is for.
+  if targetPosition = queuePosition and not isTvChannel
+    displayToast(translate(translationKeys.MessageRepeatPlayingAgain), "info")
   end if
+  switchToQueueItem(queueManager, targetPosition)
 end sub
 
 ' The channel's playback start is opened before this player stops, and the player mounted next
@@ -782,6 +775,7 @@ sub onPlaybackCapsPicked()
   caps = playbackCaps.withPick(m.global.user.settings, queueManager.callFunc("getPlaybackCaps"), pick.field, pick.value)
   queueManager.callFunc("setPlaybackCaps", caps)
   m.log.info("Playback cap picked", "field", pick.field, "value", pick.value, "isTranscoded", m.top.isTranscoded, "position", m.top.position)
+  m.osd.callFunc("refreshFromQueue")
 
   ' The menu offers no rows for Live TV, and before the content loads nothing is playing to
   ' reload; either way the pick applies to the next load.
@@ -795,6 +789,18 @@ sub onPlaybackCapsPicked()
   end if
 
   reloadAtCurrentPosition()
+end sub
+
+' The viewer picked a repeat mode in the OSD's gear menu. It belongs to this queue, is not
+' saved, and nothing reloads: the host reads it when this item finishes, and the OSD's step
+' buttons read it as the OSD opens.
+sub onRepeatModePicked()
+  mode = m.osd.repeatModePick
+  if not isValidAndNotEmpty(mode) then return
+  m.global.queueManager.callFunc("setRepeatMode", mode)
+  m.log.info("Repeat mode picked", "mode", mode)
+  ' A replay at the end hides the Next Up prompt; a change back may show it again (checkTimeToDisplayNextEpisode).
+  m.osd.callFunc("refreshFromQueue")
 end sub
 
 ' onVideoSourceChange: Handles video source switching from OSD
@@ -1511,6 +1517,11 @@ sub checkTimeToDisplayNextEpisode()
   if m.nextupbuttonseconds = 0 then return ' is the button disabled?
   ' In a SyncPlay group the next item is the server's call, so the button stays down.
   if syncPlayHooks.following() then return
+  ' Under RepeatOne the end replays this episode: there is no next to offer.
+  if m.global.queueManager.callFunc("getRepeatMode") = queueRepeat.ONE
+    if isNotificationVisible(m.nextEpisodeNotification) then hideNextEpisodeButton()
+    return
+  end if
 
   ' Don't show Next Episode button if trickPlayBar is visible
   if m.top.trickPlayBar.visible then return
@@ -2678,6 +2689,7 @@ sub onDestroy()
   if isValid(m.osd)
     m.osd.unobserveField("action")
     m.osd.unobserveField("playbackCapsPick")
+    m.osd.unobserveField("repeatModePick")
     m.osd.callFunc("onDestroy")
   end if
 

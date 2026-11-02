@@ -1,0 +1,50 @@
+import "pkg:/source/utils/queueRepeat.bs"
+
+namespace tests
+
+  ' The repeat mode belongs to the queue: it survives set() (a shuffle toggle reorders through
+  ' it) and dies with clear() (a new queue), the way the quality caps and the version pick do.
+  @suite("QueueManager - the queue's repeat mode")
+  class QueueManagerRepeatTests extends tests.BaseTestSuite
+
+    private queueManager as object
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.queueManager = CreateObject("roSGNode", "QueueManager")
+    end function
+
+    protected override function afterEach()
+      m.queueManager = invalid
+      super.afterEach()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("setRepeatMode and getRepeatMode")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("starts off")
+    function _()
+      m.assertEqual(m.queueManager.callFunc("getRepeatMode"), queueRepeat.OFF)
+    end function
+
+    @it("keeps a mode and makes an unknown one off")
+    function _()
+      m.queueManager.callFunc("setRepeatMode", queueRepeat.ONE)
+      m.assertEqual(m.queueManager.callFunc("getRepeatMode"), queueRepeat.ONE)
+      m.queueManager.callFunc("setRepeatMode", "loop")
+      m.assertEqual(m.queueManager.callFunc("getRepeatMode"), queueRepeat.OFF)
+    end function
+
+    @it("survives set and dies with clear")
+    function _()
+      m.queueManager.callFunc("setRepeatMode", queueRepeat.ALL)
+      m.queueManager.callFunc("set", [{ id: "test-a", type: "Episode" }, { id: "test-b", type: "Episode" }])
+      m.assertEqual(m.queueManager.callFunc("getRepeatMode"), queueRepeat.ALL, "a reorder keeps the viewer's pick")
+      m.queueManager.callFunc("clear")
+      m.assertEqual(m.queueManager.callFunc("getRepeatMode"), queueRepeat.OFF, "a new queue starts without one")
+    end function
+
+  end class
+
+end namespace

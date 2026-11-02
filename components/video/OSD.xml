@@ -111,5 +111,10 @@
          ("maxBitrateMbps", "maxResolution"). Written only when it differs from the value
          that applies; VideoPlayerView applies it to this queue and reloads the stream. -->
     <field id="playbackCapsPick" type="assocarray" alwaysNotify="true" />
+    <!-- A pick in the gear menu's Repeat row: a queueRepeat mode. Written only when it differs
+         from the queue's; VideoPlayerView records it on the queue. -->
+    <field id="repeatModePick" type="string" alwaysNotify="true" />
+    <!-- Read the queue again for previous and next and the gear's tint: a gear pick changes both. -->
+    <function name="refreshFromQueue" />
   </interface>
 </component>

@@ -24,7 +24,7 @@ While a video plays, one bar holds everything you need: where you are, what's ne
 
 Move along the row with **Left** and **Right**, and press **OK** to select. A button shows only when it applies to what's playing:
 
-- **Previous and next:** go to the previous or next item in your queue. They're grayed out when there is none.
+- **Previous and next:** go to the previous or next item in your queue. They're grayed out when there is none. With **Repeat** set to **All**, they wrap around at both ends of the queue; set to **One**, either plays the same video again and a message says so.
 - **Play and pause.**
 - **Version:** switch between the versions of a video that has more than one.
 - **Audio:** switch to another audio track.
@@ -34,7 +34,16 @@ Move along the row with **Left** and **Right**, and press **OK** to select. A bu
 
 When the row doesn't fit on screen, the last buttons move into a **More** menu.
 
-Two more buttons sit at the right of the bar. The gear lowers the quality for this video, and the info button opens **Playback Info**. See [Watch in original quality](original-quality.md).
+Two more buttons sit at the right of the bar. The gear lowers the quality for this video and sets **Repeat**, and the info button opens **Playback Info**. See [Watch in original quality](original-quality.md).
+
+## Repeat
+
+In the gear menu, pick **Repeat**, then **Off**, **All** or **One**:
+
+- **All** plays the queue again from its first item when the last one ends. A single video plays again.
+- **One** plays the video that is on again when it ends, and the **Next Episode** prompt stays away.
+
+Your pick lasts for this video and the rest of what you queued with it; the next thing you play starts with repeat off. While repeat is on, or a quality cap is set, the gear shows in the highlight color. Music has its own repeat button on the [now-playing screen](music.md).
 
 ## Seek
 
