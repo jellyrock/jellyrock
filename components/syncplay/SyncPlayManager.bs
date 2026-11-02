@@ -114,8 +114,9 @@ sub ensureReady()
   ' Whether this member reported Buffering since the group's last command it scheduled
   ' (syncPlayPlayback.clockReference).
   m.reportedBuffering = false
-  ' When the last seek went out and how long the last one took to land, for the next correction's
-  ' lead (syncPlayPlayback.correctionLeadMs). 0 until one has landed on this player.
+  ' When the last seek went out and how long the last one took to land or to run out its budgets,
+  ' for the next correction's lead (syncPlayPlayback.correctionLeadMs) and whether it seeks at all
+  ' (syncPlayPlayback.seekOutlastsBudgets). 0 until one has ended on this player.
   m.seekWrittenAtMs = 0&
   m.lastSeekMs = 0&
   ' The playing item's length in the Video node's seconds; 0 while unknown.
@@ -127,6 +128,10 @@ sub ensureReady()
   ' Whether a correction wrote a pause that nothing has resumed or replaced yet, so one that ends
   ' before the node reports `paused` still gets its resume (syncPlayPlayback.owesCorrectionResume).
   m.correctionPauseOwed = false
+  ' Whether this member already made the group wait on it (checkSettle's Seek to its own position)
+  ' since the last group Pause: once per pause chain, or a member that keeps falling behind would
+  ' rewind the group every few seconds.
+  m.waitedOnMe = false
   publish()
 end sub
 
@@ -205,6 +210,7 @@ function playerEvent(evt as object) as object
     m.lastSeekMs = 0&
     m.playbackDiffMs = invalid
     m.correctionPauseOwed = false
+    m.waitedOnMe = false
     syncPlayPlayback.disarmSettleCheck(m.settle)
     if isFollowing()
       ' Only the group's item answers to the group. Anything else the viewer started plays
@@ -423,7 +429,17 @@ sub checkSettle()
     host = playerHost()
     if isValid(host)
       plan = syncPlayPlayback.correctionPlan(syncPlayTime.asLong(drift), m.playerPositionTicks, inForce, m.estimator, syncPlayPlayback.correctionLeadMs(m.lastSeekMs))
-      if plan.seek and syncPlayPlayback.seekPastEnd(plan.targetTicks, m.playerDurationSeconds)
+      if plan.seek and syncPlayPlayback.seekOutlastsBudgets(m.lastSeekMs)
+        ' A seek on this node cannot land in time, so the group comes to this member instead: a
+        ' Seek to its own position makes the server pause the others and bring them here, and the
+        ' Seek that comes back finds the node where it asked (seekIsWhereWeAre), so it writes none.
+        if not m.waitedOnMe and post("Seek", syncPlayRequests.seek(m.playerPositionTicks))
+          m.waitedOnMe = true
+          m.log.info("drift correction asks the group to wait: the last seek on this node outlasted the settle budgets", "driftMs", syncPlayTime.asLong(drift).toStr(), "lastSeekMs", m.lastSeekMs.toStr(), "positionTicks", m.playerPositionTicks.toStr())
+        else
+          m.log.info("drift correction skipped: the last seek on this node outlasted the settle budgets, and the group waited once already", "driftMs", syncPlayTime.asLong(drift).toStr(), "lastSeekMs", m.lastSeekMs.toStr())
+        end if
+      else if plan.seek and syncPlayPlayback.seekPastEnd(plan.targetTicks, m.playerDurationSeconds)
         m.log.info("drift correction skipped: its seek would run off the item", "driftMs", syncPlayTime.asLong(drift).toStr())
       else
         m.correction = plan
@@ -536,6 +552,7 @@ sub resetPlaybackTracking()
   m.commandTimer.control = "stop"
   m.readyTimer.control = "stop"
   m.pauseTimer.control = "stop"
+  m.waitedOnMe = false
   dropCorrection()
 end sub
 
@@ -695,6 +712,18 @@ sub applyPendingPlan()
   if m.groupPaused
     m.pauseAttempts = 0
     m.pauseGaveUp = false
+  end if
+  ' A Pause starts a new chain: this member may ask the group to wait on it once more.
+  if plan.action = "Pause" then m.waitedOnMe = false
+  if plan.action = "Seek" and syncPlayPlayback.seekIsWhereWeAre(plan.positionTicks, m.playerPositionTicks, m.playerState, m.tracker.phase)
+    ' The group is coming to where this node is (its own wait-on-me Seek, or another member's
+    ' to the same place): no seek, a pause, and Ready from here.
+    tellPlayer(host, { command: "pause", showOsd: true })
+    m.pauseAttempts++
+    armPauseTimer()
+    report("ready", false, m.playerPositionTicks)
+    publish()
+    return
   end if
   steps = syncPlayPlayback.applyPlan(plan, m.playerState, m.playerPositionTicks, m.tracker.phase, heldForCorrection)
   for each verb in steps
@@ -874,7 +903,9 @@ sub track(evt as object)
     isPlaying = false
   end if
   seekEnded = syncPlayPlayback.seekEnded(phaseBefore, m.tracker.phase)
-  if seekEnded and m.tracker.phase = "ready" then m.lastSeekMs = syncPlayTime.nowMs() - m.seekWrittenAtMs
+  ' A seek that ends at `rebuffering` took both budgets: its time is what tells the next
+  ' correction not to seek (syncPlayPlayback.seekOutlastsBudgets).
+  if seekEnded then m.lastSeekMs = syncPlayTime.nowMs() - m.seekWrittenAtMs
   ' A pause left to a landing that wrote none: the node is already paused, so the viewer only
   ' needs telling, or it is somewhere only the pause check can catch it.
   if seekEnded and not result.pauseFirst

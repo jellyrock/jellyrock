@@ -523,6 +523,25 @@ namespace tests
       m.assertEqual(syncPlayPlayback.correctionLeadMs(2600&), 3100&)
     end function
 
+    @it("seekOutlastsBudgets is true once the last seek took both settle budgets, so a seek-correction is not tried")
+    function _()
+      m.assertFalse(syncPlayPlayback.seekOutlastsBudgets(0&))
+      m.assertFalse(syncPlayPlayback.seekOutlastsBudgets(5999&))
+      m.assertTrue(syncPlayPlayback.seekOutlastsBudgets(6000&))
+      m.assertTrue(syncPlayPlayback.seekOutlastsBudgets(10400&))
+    end function
+
+    @it("seekIsWhereWeAre: a group Seek within the ready tolerance of a playing, ready node needs no seek")
+    function _()
+      ' 60.0 s asked, the node at 60.2 s: a wait-on-me Seek come back after the round trip.
+      m.assertTrue(syncPlayPlayback.seekIsWhereWeAre(600000000&, 602000000&, "playing", "ready"))
+      m.assertTrue(syncPlayPlayback.seekIsWhereWeAre(600000000&, 598000000&, "playing", "ready"))
+      m.assertFalse(syncPlayPlayback.seekIsWhereWeAre(600000000&, 606000000&, "playing", "ready"))
+      m.assertFalse(syncPlayPlayback.seekIsWhereWeAre(600000000&, 602000000&, "paused", "ready"))
+      m.assertFalse(syncPlayPlayback.seekIsWhereWeAre(600000000&, 602000000&, "playing", "seeking"))
+      m.assertFalse(syncPlayPlayback.seekIsWhereWeAre(600000000&, 602000000&, "playing", "loading"))
+    end function
+
     @it("a longer lead seeks further and resumes that much later")
     function _()
       plan = syncPlayPlayback.correctionPlan(500&, 695000000&, m.unpauseInForce(), m.estimator(), 3100&)
