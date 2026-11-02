@@ -338,7 +338,8 @@ sub handleItemSkipAction(action as string)
 
   ' A press that plays this item again says why, once: the viewer asked for the next item and
   ' gets this one. An automatic replay at the end says nothing, since that is what repeat is for.
-  if targetPosition = queuePosition and not isTvChannel
+  ' A press on an intro moves to the launched item, the next thing to play, so it says nothing.
+  if targetPosition = queuePosition and not isTvChannel and not m.isIntro
     displayToast(translate(translationKeys.MessageRepeatPlayingAgain), "info")
   end if
   switchToQueueItem(queueManager, targetPosition)

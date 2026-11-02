@@ -216,6 +216,77 @@ it('an episode behind a Cinema Mode intro has no stale slot before it', async (t
   }
 }, 300000);
 
+// A Repeat One pick while the intro plays used to leave the launched item twice in the queue:
+// the intro's end replayed index 0, the slot the intro played in, which loaded as the episode
+// while the tagged copy stayed behind it (QueueManager.advanceTo drops the slot on arrival).
+// Needs a server whose Intros plugin answers for the episode, so the case skips elsewhere.
+it('a Repeat One pick during a Cinema Mode intro plays the episode once, with no slot before it', async (testCtx) => {
+  const introsUrl = `${session.serverUrl}/Users/${session.userId}/Items/${episode.id}/Intros`;
+  const intros = (await getJson(introsUrl, tokenHeader(session.token)))?.Items ?? [];
+  if (intros.length === 0) testCtx.skip(`${session.serverUrl} serves no intro for the episode`);
+  const introId = intros[0].Id;
+  // The loader asks for an intro only on a play from the start, so reset the resume position.
+  await postJson(
+    `${session.serverUrl}/UserItems/${episode.id}/UserData?userId=${session.userId}`,
+    { ...tokenHeader(session.token), 'Content-Type': 'application/json' },
+    { PlaybackPositionTicks: 0, Played: false },
+  );
+
+  const expectedServer = await seedHome(session, LOCALE);
+  await odc.writeRegistry({
+    values: {
+      [session.userId]: { playbackPlayNextEpisode: 'enabled', playbackCinemaMode: 'true' },
+    },
+  });
+  await hardRelaunch(); // never plain relaunch: only hardRelaunch confirms the cold start
+  await assertSeedTookEffect(expectedServer, 'playback-advance cinema mode repeat one');
+  await waitHome();
+
+  try {
+    await ecp.sendInput({ params: { contentId: `id=${episode.id}|action=play` } });
+    await waitFor('videoId', (v) => v === introId, {
+      timeout: 90000,
+      interval: 1000,
+      label: `intro playing before ${episode.seriesName}`,
+      read: readPlayer(episode.id),
+    });
+    await odc.setValue({ base: 'scene', keyPath: '#osd.repeatModePick', value: 'RepeatOne' });
+    await waitFor('#showPlaybackSettings.isButtonSelected', (v) => v === true, {
+      timeout: 10000,
+      label: 'Repeat One recorded on the queue',
+    });
+    await waitFor('videoId', (v) => v === episode.id, {
+      timeout: ADVANCE_TIMEOUT_MS,
+      interval: 2000,
+      label: `episode playing after its intro (${episode.seriesName})`,
+      read: readPlayer(episode.id),
+    });
+    await odc.setValue({ base: 'scene', keyPath: '#osd.repeatModePick', value: 'RepeatNone' });
+    await waitFor('#showPlaybackSettings.isButtonSelected', (v) => v === false, {
+      timeout: 10000,
+      label: 'Repeat off recorded on the queue',
+    });
+    await waitOsdUp('osd up on the episode', { itemId: episode.id });
+    const [hasPrevious, hasNext] = await Promise.all([
+      odc.getValue({ base: 'scene', keyPath: '#itemBack.isEnabled' }).then((r) => r.value),
+      odc.getValue({ base: 'scene', keyPath: '#itemNext.isEnabled' }).then((r) => r.value),
+    ]);
+    expect(hasPrevious, 'nothing before the episode once its intro slot is gone').toBe(false);
+    expect(hasNext, 'the next episode is still queued behind it').toBe(true);
+    // The stale slot sits at position 1, so Previous reads false either way. It shows when the
+    // episode ends: the queue moves to that copy and replays the episode, never reaching the next.
+    await seekNearEnd();
+    await waitFor('state', (v) => v === 'playing', {
+      timeout: ADVANCE_TIMEOUT_MS,
+      interval: 2000,
+      label: `advanced to the next episode, not a second copy (${episode.nextId})`,
+      read: readPlayer(episode.nextId),
+    });
+  } finally {
+    await stopPlayback();
+  }
+}, 300000);
+
 // Cinema Mode is spent by the first load of a queue, intro or not (jellyfin-web decides once
 // per play request, for the first item only, and returns no intros on a resume). A resumed
 // launch plays no intro, so the flag must not wait for the next item: left armed, the next

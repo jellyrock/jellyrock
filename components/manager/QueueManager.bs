@@ -148,14 +148,25 @@ end sub
 ' positions) while every other item started at 0.
 '
 ' Not an arrival: the item behind a Cinema Mode intro (followsIntro), which is the one the
-' viewer launched, and Live TV, which has no position to start from. Moving onto that item
-' also drops the slot the intro played in (the one before it), so the queue holds the
-' launched item once, and Repeat all, Previous and the OSD count see no stale copy.
+' viewer launched, and Live TV, which has no position to start from. The slot the intro played
+' in is dropped whichever way the queue reaches the launched item: moving on from the intro,
+' or a move back onto the intro's slot (a replay under Repeat one, a Repeat all wrap). The
+' queue then holds the launched item once, and Repeat all, Previous and the OSD count see no
+' stale copy.
 '
 ' Audio moves with moveForward / moveBack / setPosition and is untouched.
 '
 ' @param {integer} index - the queue position to move to
 sub advanceTo(index as integer)
+  following = invalid
+  if index + 1 < getCount() then following = getItemByIndex(index + 1)
+  if isValid(following) and following.followsIntro = true
+    ' Arriving at the slot the intro played in: the launched item behind it takes the slot.
+    following.delete("followsIntro")
+    removeAt(index)
+    setPosition(index)
+    return
+  end if
   setPosition(index)
   item = getCurrentItem()
   if not isValid(item) then return
