@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-01
+last-updated: 2026-11-02
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-02: feat(syncplay): Stay in step, stop seek freezes, add a time offset
 - 2026-11-01: fix: Register Roku's memory monitor and ship only runtime files
 - 2026-11-01: ci: Make the device test run read only its own result
 - 2026-10-31: update(home): Show vertical posters in TV Recently Added rows
@@ -68,7 +69,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-20: chore(catchup): Stop the reader rewriting `docs/signals-backlog.md`
 - 2026-10-20: feat(search): Pull-down keyboard, live suggestions and recent searches
 - 2026-10-19: chore(device-lock): Hold the device lock for `F5` and `package:signed`
-- 2026-10-18: fix(search): Show a row for every result type, up to 50 items each
 
 ## Open followups
 
