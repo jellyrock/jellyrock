@@ -93,7 +93,7 @@ namespace playbackSettingsMenu
   function repeatLabel(mode as dynamic) as string
     repeat = queueRepeat.normalize(mode)
     if repeat = queueRepeat.ALL then return translate(translationKeys.LabelRepeatRowAll)
-    if repeat = queueRepeat.ONE then return translate(translationKeys.LabelRepeatRowOne)
+    if repeat = queueRepeat.ONE then return translate(translationKeys.LabelRepeatRowSingle)
     return translate(translationKeys.LabelRepeatOff)
   end function
 
@@ -104,7 +104,7 @@ namespace playbackSettingsMenu
   function repeatOptions(currentMode as string) as object
     options = { labels: [], values: [], defaultIndex: 0, selectedIndex: 0 }
     current = queueRepeat.normalize(currentMode)
-    titles = [translationKeys.LabelRepeatOff, translationKeys.LabelRepeatAll, translationKeys.LabelRepeatOne]
+    titles = [translationKeys.LabelRepeatOff, translationKeys.LabelRepeatAll, translationKeys.LabelRepeatSingle]
     modes = [queueRepeat.OFF, queueRepeat.ALL, queueRepeat.ONE]
     for i = 0 to modes.count() - 1
       if modes[i] = current then options.selectedIndex = i

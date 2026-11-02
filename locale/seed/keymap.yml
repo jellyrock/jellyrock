@@ -511,7 +511,7 @@ LabelRepeatAll:
   from:
     jellyfin-web: { key: RepeatAll, en: Repeat all }
 
-LabelRepeatOne:
+LabelRepeatSingle:
   en: Repeat one
   from:
     jellyfin-web:
