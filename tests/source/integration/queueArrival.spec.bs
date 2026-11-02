@@ -85,23 +85,61 @@ namespace tests
 
       m.queue.callFunc("advanceTo", 1)
 
-      m.assertFalse(m.item(1).DoesExist("startsFresh"))
-      m.assertFalse(m.item(1).startingPointIsExact)
-      m.assertFalse(m.item(1).DoesExist("followsIntro"))
+      ' The intro's slot is dropped, so the launched item is now first.
+      m.assertFalse(m.item(0).DoesExist("startsFresh"))
+      m.assertFalse(m.item(0).startingPointIsExact)
+      m.assertFalse(m.item(0).DoesExist("followsIntro"))
     end function
 
-    @it("treats a later move to the item behind an intro as an arrival")
-    ' followsIntro is consumed by the first move, so previous-then-next is a real arrival.
+    @it("drops the intro's slot once it moves to the item behind it")
+    ' The intro plays in the launched item's own slot, so once the viewer is past it the slot is
+    ' a stale copy of the episode: Repeat all would play the episode twice per loop and Previous
+    ' would replay the episode instead of reaching the intro.
     function _()
       launched = m.episode("e1")
       launched.followsIntro = true
-      m.queue.callFunc("set", [m.episode("intro-slot"), launched])
+      m.queue.callFunc("set", [m.episode("e1"), launched, m.episode("e2")])
+
       m.queue.callFunc("advanceTo", 1)
+
+      m.assertEqual(m.queue.callFunc("getCount"), 2)
+      m.assertEqual(m.queue.callFunc("getQueueTypes").count(), 2)
+      m.assertEqual(m.queue.callFunc("getPosition"), 0)
+      m.assertEqual(m.queue.callFunc("getCurrentItem").id, "e1")
+      m.assertEqual(m.item(0).id, "e1")
+      m.assertEqual(m.item(1).id, "e2")
+      m.assertFalse(m.item(0).DoesExist("followsIntro"))
+    end function
+
+    @it("keeps the other items in place when it drops the intro's slot")
+    function _()
+      launched = m.episode("e2")
+      launched.followsIntro = true
+      m.queue.callFunc("set", [m.episode("e1"), m.episode("e2"), launched, m.episode("e3")])
+      m.queue.callFunc("setPosition", 1)
+
+      m.queue.callFunc("advanceTo", 2)
+
+      m.assertEqual(m.queue.callFunc("getCount"), 3)
+      m.assertEqual(m.queue.callFunc("getPosition"), 1)
+      m.assertEqual(m.item(0).id, "e1")
+      m.assertEqual(m.item(1).id, "e2")
+      m.assertEqual(m.item(2).id, "e3")
+    end function
+
+    @it("treats a later move to the item behind an intro as an arrival")
+    ' followsIntro is consumed by the first move, so next-then-previous is a real arrival.
+    function _()
+      launched = m.episode("e1")
+      launched.followsIntro = true
+      m.queue.callFunc("set", [m.episode("e1"), launched, m.episode("e2")])
+      m.queue.callFunc("advanceTo", 1)
+      m.queue.callFunc("advanceTo", 1)
+
       m.queue.callFunc("advanceTo", 0)
 
-      m.queue.callFunc("advanceTo", 1)
-
-      m.assertTrue(m.item(1).startsFresh)
+      m.assertEqual(m.item(0).id, "e1")
+      m.assertTrue(m.item(0).startsFresh)
     end function
 
     @it("leaves Live TV alone, which has no position to start from")

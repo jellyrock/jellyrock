@@ -13,12 +13,18 @@
  *
  * Requires a reachable device + .env (ROKU_IP / ROKU_PASSWORD), same as screens.spec.
  */
-import { beforeAll, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
-import { authenticate, findEpisodeWithNext } from '../lib/jellyfin.js';
+import {
+  authenticate,
+  findEpisodeWithNext,
+  getJson,
+  postJson,
+  tokenHeader,
+} from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch, ecp, odc } from '../lib/driver.js';
-import { waitFor, waitHome, readPlayer, stopPlayback } from '../lib/steps.js';
+import { waitFor, waitHome, waitOsdUp, readPlayer, stopPlayback } from '../lib/steps.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
 
@@ -42,6 +48,17 @@ beforeAll(async () => {
     throw new Error(
       `playback-advance setup: no series on ${session.serverUrl} has two episodes, so there is nothing to advance to`,
     );
+  }
+});
+
+// The settings these cases pin outlive the file otherwise: the registry is restored only once
+// the whole run ends, so every spec after this one would queue the next episode and play a
+// Cinema Mode intro first. Delete the keys (null) so they start from the defaults.
+afterAll(async () => {
+  if (session) {
+    await odc.writeRegistry({
+      values: { [session.userId]: { playbackPlayNextEpisode: null, playbackCinemaMode: null } },
+    });
   }
 });
 
@@ -80,6 +97,141 @@ it('an episode that ends naturally advances to the next episode', async () => {
       label: `advanced to the next episode (${episode.nextId})`,
       read: readPlayer(episode.nextId),
     });
+  } finally {
+    await stopPlayback();
+  }
+}, 300000);
+
+// Cinema Mode plays an intro in the launched episode's own queue slot and keeps the episode
+// behind it, so the slot has to go once the episode plays: left in, the queue reads
+// [episode, episode, next], Previous is enabled on the episode and goes back to a copy of
+// it, and a repeat of the queue plays the episode twice per loop (QueueManager.advanceTo
+// drops the slot). Needs a server whose Intros plugin answers for the episode; the public
+// demo does not, so the case skips there with the server named.
+it('an episode behind a Cinema Mode intro has no stale slot before it', async (testCtx) => {
+  const introsUrl = `${session.serverUrl}/Users/${session.userId}/Items/${episode.id}/Intros`;
+  const intros = (await getJson(introsUrl, tokenHeader(session.token)))?.Items ?? [];
+  if (intros.length === 0) testCtx.skip(`${session.serverUrl} serves no intro for the episode`);
+  const introId = intros[0].Id;
+  // The loader asks for an intro only on a play from the start (jellyfin-web draws the same
+  // line), and the advance case above leaves the episode with a resume position, so reset
+  // it on the server first. The route is 10.9 and later, which a server with the plugin is.
+  await postJson(
+    `${session.serverUrl}/UserItems/${episode.id}/UserData?userId=${session.userId}`,
+    { ...tokenHeader(session.token), 'Content-Type': 'application/json' },
+    { PlaybackPositionTicks: 0, Played: false },
+  );
+
+  const expectedServer = await seedHome(session, LOCALE);
+  await odc.writeRegistry({
+    values: {
+      [session.userId]: { playbackPlayNextEpisode: 'enabled', playbackCinemaMode: 'true' },
+    },
+  });
+  await hardRelaunch(); // never plain relaunch: only hardRelaunch confirms the cold start
+  await assertSeedTookEffect(expectedServer, 'playback-advance cinema mode');
+  await waitHome();
+
+  try {
+    await ecp.sendInput({ params: { contentId: `id=${episode.id}|action=play` } });
+    // The player node carries the queue item's id while it plays the intro; its videoId
+    // carries the intro's. Both mounts are read by the episode's id.
+    await waitFor('videoId', (v) => v === introId, {
+      timeout: 90000,
+      interval: 1000,
+      label: `intro playing before ${episode.seriesName}`,
+      read: readPlayer(episode.id),
+    });
+    // A reload during the intro (a retry, or a track or gear change) loads the intro again,
+    // not the episode with the intro's version, which the server refuses. A gear pick is the
+    // reload a viewer can make, with a cap too high to change the intro's direct play, and
+    // every load answers with a new PlaySessionId.
+    const introSession = await readPlayer(episode.id)('PlaySessionId');
+    await odc.setValue({
+      base: 'scene',
+      keyPath: '#osd.playbackCapsPick',
+      value: { field: 'maxBitrateMbps', value: 120 },
+    });
+    await waitFor('PlaySessionId', (v) => Boolean(v) && v !== introSession, {
+      timeout: 30000,
+      interval: 1000,
+      label: `intro reloaded by a gear pick (${episode.seriesName})`,
+      read: readPlayer(episode.id),
+    });
+    expect(await readPlayer(episode.id)('videoId'), 'the reload loads the intro again').toBe(
+      introId,
+    );
+    await waitFor('videoId', (v) => v === episode.id, {
+      timeout: ADVANCE_TIMEOUT_MS,
+      interval: 2000,
+      label: `episode playing after its intro (${episode.seriesName})`,
+      read: readPlayer(episode.id),
+    });
+    await waitOsdUp('osd up on the episode', { itemId: episode.id });
+    const [hasPrevious, hasNext] = await Promise.all([
+      odc.getValue({ base: 'scene', keyPath: '#itemBack.isEnabled' }).then((r) => r.value),
+      odc.getValue({ base: 'scene', keyPath: '#itemNext.isEnabled' }).then((r) => r.value),
+    ]);
+    expect(hasPrevious, 'nothing before the episode once its intro slot is gone').toBe(false);
+    expect(hasNext, 'the next episode is still queued behind it').toBe(true);
+  } finally {
+    await stopPlayback();
+  }
+}, 300000);
+
+// Cinema Mode is spent by the first load of a queue, intro or not (jellyfin-web decides once
+// per play request, for the first item only, and returns no intros on a resume). A resumed
+// launch plays no intro, so the flag must not wait for the next item: left armed, the next
+// episode the queue reaches plays an intro mid-binge. Needs a server whose Intros plugin
+// answers for the next episode, so the case skips elsewhere with the server named.
+it('a resumed launch spends Cinema Mode, so the next episode plays no intro', async (testCtx) => {
+  const introsUrl = `${session.serverUrl}/Users/${session.userId}/Items/${episode.nextId}/Intros`;
+  const intros = (await getJson(introsUrl, tokenHeader(session.token)))?.Items ?? [];
+  if (intros.length === 0)
+    testCtx.skip(`${session.serverUrl} serves no intro for the next episode`);
+  const userDataHeaders = { ...tokenHeader(session.token), 'Content-Type': 'application/json' };
+  // Resume the launched episode near its end, and play the next one from the start, so the
+  // only reason the next episode could get an intro is a Cinema Mode flag left armed.
+  await postJson(
+    `${session.serverUrl}/UserItems/${episode.id}/UserData?userId=${session.userId}`,
+    userDataHeaders,
+    { PlaybackPositionTicks: (episode.runTimeSeconds - 20) * 10000000, Played: false },
+  );
+  await postJson(
+    `${session.serverUrl}/UserItems/${episode.nextId}/UserData?userId=${session.userId}`,
+    userDataHeaders,
+    { PlaybackPositionTicks: 0, Played: false },
+  );
+
+  const expectedServer = await seedHome(session, LOCALE);
+  await odc.writeRegistry({
+    values: {
+      [session.userId]: { playbackPlayNextEpisode: 'enabled', playbackCinemaMode: 'true' },
+    },
+  });
+  await hardRelaunch(); // never plain relaunch: only hardRelaunch confirms the cold start
+  await assertSeedTookEffect(expectedServer, 'playback-advance cinema mode resume');
+  await waitHome();
+
+  try {
+    // The deep link resumes from the saved position, so no intro plays first.
+    await ecp.sendInput({ params: { contentId: `id=${episode.id}|action=play` } });
+    await waitFor('videoId', (v) => v === episode.id, {
+      timeout: 90000,
+      interval: 1000,
+      label: `resumed episode playing with no intro (${episode.seriesName})`,
+      read: readPlayer(episode.id),
+    });
+    await waitFor('videoId', (v) => Boolean(v), {
+      timeout: ADVANCE_TIMEOUT_MS,
+      interval: 2000,
+      label: `next episode loaded (${episode.nextId})`,
+      read: readPlayer(episode.nextId),
+    });
+    expect(
+      await readPlayer(episode.nextId)('videoId'),
+      'the next episode plays itself, not a Cinema Mode intro',
+    ).toBe(episode.nextId);
   } finally {
     await stopPlayback();
   }

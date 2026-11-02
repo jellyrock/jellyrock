@@ -143,7 +143,9 @@ end sub
 ' positions) while every other item started at 0.
 '
 ' Not an arrival: the item behind a Cinema Mode intro (followsIntro), which is the one the
-' viewer launched, and Live TV, which has no position to start from.
+' viewer launched, and Live TV, which has no position to start from. Moving onto that item
+' also drops the slot the intro played in (the one before it), so the queue holds the
+' launched item once, and Repeat all, Previous and the OSD count see no stale copy.
 '
 ' Audio moves with moveForward / moveBack / setPosition and is untouched.
 '
@@ -154,6 +156,10 @@ sub advanceTo(index as integer)
   if not isValid(item) then return
   if item.followsIntro = true
     item.delete("followsIntro")
+    if index > 0
+      removeAt(index - 1)
+      setPosition(index - 1)
+    end if
     return
   end if
   startFresh(item)
@@ -520,6 +526,15 @@ sub insertAfterCurrent(newItem)
   end for
   m.queue = queue
   m.queueTypes = types
+end sub
+
+' removeAt: Take one slot out of the queue, keeping queueTypes in step.
+'
+' @param {integer} index - the slot to remove
+sub removeAt(index as integer)
+  if index < 0 or index >= m.queue.count() then return
+  m.queue.delete(index)
+  m.queueTypes.delete(index)
 end sub
 
 ' Set the queue position
