@@ -1062,14 +1062,6 @@ Closes when the queue-edit and shuffle design ships or is declined in a decision
 
 `releaseCorrection` reads `m.playerState`, which lags a pause write. A halt landing after a correction writes its pause but before the `paused` event finds the node "playing", writes no resume, and drops the correction, so the node stays paused with nothing to resume it. Read from the code in PR #1296's review, never reproduced; a pause lands in under 10 ms (2026-10-23). The same window for a group `Unpause`, and a watchdog that ends the correction early, now resume the node through `syncPlayPlayback.owesCorrectionResume`; a halt clears that flag, since this member no longer answers to the group. Not fixed now: a halted member's node is the viewer's own from there, and pressing Play recovers it. Closes with a forced reproduction and a resume on release, or a decision to drop it.
 
-#### A SyncPlay member past the server's group wait can repeat seek, stall and resume on a slow file `[fid: syncplay-slow-seek-catch-up-unbounded]` `[captured 2026-11-01]`
-
-Past the 30 s group wait on 12.1 and later, the group plays on while a member with slow seeks repeats a silent seek, a `Buffering`, a `Ready` and the server's `Unpause`. On a 25 Mbps 4K HEVC MKV (Stick 4K, 12.2 server, 2026-11-01) seeks took 19 s, 12 s, then 3 s; one of three rounds settled in step, and two were still catching up when the sample ended. Nothing bounds the cycle, though only this member pays for it. Not fixed now: every round observed was converging, and a limit needs a choice of what the member does instead. Closes with a run to the end on such a file, then a limit or a decision that none is needed.
-
-The low-end Stick shows the same shape harder (12.2, 2026-11-01): readings of 5905, 6973, 8261 and 9092 ms behind after a correction's seek, one case left 1274 ms behind once its corrections were spent, against 3708 ms at most on a Stick 4K across 14 runs of the same specs.
-
-Two related points, read from the code in the branch review (2026-11-01), neither reproduced. The `Ready` after a slow silent seek goes out at the `playing` edge with the node's own position, which `playback.md` says can still read from before the seek, and a position off by more than 500 ms can draw a corrective `Seek`. `correctionLeadMs` has no upper bound and counts a seek's time through both settle budgets, so one slow seek gives the next short correction a lead of about 6.5 s and a frozen picture for most of it.
-
 #### A group Seek during a SyncPlay load repeats until the node lands `[fid: syncplay-group-seek-during-load]` `[captured 2026-11-01]`
 
 A `Seek` during a load is written to the loading node, its budget ends, and `Ready` goes out at position 0, which draws another `Seek`. Two rounds on a slow file (Stick 4K, 12.2 server, 2026-11-01) repeated about four times and ended correct in about 27 s. Not fixed now: the outcome is right and the code predates this work. Closes by holding the seek for the first frame, as an `Unpause` during a load now does, if that shortens it on a device.
@@ -1123,6 +1115,10 @@ Roku's analyzer (2026-11-01) warns that the app must fire `AppDialogInitiate` an
 Several checks compare a number's `type()` against a partial list of names. On a Stick 4K (Roku OS 15.3.4, measured 2026-10-31) an AA value reports `roInteger`, a value from a native AA or a node field `roInt`, a `ParseJson` value and a local literal `Integer`. These lists leave out at least one: `setFieldTextValue()` in `misc.bs` and `setFieldText()` in `ItemDetails.bs` (no `roInteger`), the query builder in `baseRequest.bs` (no `Integer`), and `ProgramDetails.bs` (only `roInt`). None is shown to misbehave yet: each depends on where its value comes from. `isIntSafe()` and `mediaNumber()` already handle every name.
 
 **Fix shape:** check each site's real value on a device and move the wrong ones to those helpers. A build plugin rule only if the mistake recurs: this shape has now shipped in `GetBitRateLimit` and been caught in #1299.
+
+#### A SyncPlay Ready after a slow silent seek can carry the position from before the seek and draw a corrective Seek `[fid: syncplay-ready-stale-position-after-slow-seek]` `[captured 2026-11-02]`
+
+After a slow silent seek on a SyncPlay member, the `Ready` goes out at the `playing` edge with the node's own position, which `docs/architecture/playback.md` says can still read the position from before the seek; a position off by more than 500 ms draws a corrective `Seek` from the server. Read from the code in PR #1296's review (2026-11-01), never reproduced; refiled from `syncplay-slow-seek-catch-up-unbounded` when the SyncPlay project's consolidation step closed it (the unbounded lead and the seek-stall cycle end with the wait-on-me correction, commit `a151efbc`). Closes with a device capture of a `Ready` after a slow seek compared against the seek's target, and a read of the position from a later notification when they differ, or a decision to drop it.
 
 ### api
 
