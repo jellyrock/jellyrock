@@ -868,10 +868,13 @@ describe('docs-check: feature pages', () => {
   });
 
   // What a feature page's frontmatter is checked against: the app's version,
-  // the oldest supported server, the plugins page's table and the screenshot list.
+  // the release headings, the oldest supported server and the newest verified
+  // line, the plugins page's table and the screenshot list.
   const sources = {
     'package.json': JSON.stringify({ version: '3.2.0' }),
-    'docs/dev/jellyfin-version-boundaries.yml': "floor: '10.7.0'\n",
+    'CHANGELOG.md':
+      '# Changelog\n\n## [Unreleased]\n\n## [2.9.0](https://example.com/compare) - 2026-04-02\n',
+    'docs/dev/jellyfin-version-boundaries.yml': "floor: '10.7.0'\nnewest: '12'\n",
     'docs/user/jellyfin-server-plugins.md':
       '# Jellyfin server plugins\n\n## Supported plugins\n\n| Plugin | What you get |\n| --- | --- |\n' +
       '| [Open Subtitles](https://example.com/os) | Subtitles |\n| [Intro Skipper](https://example.com/is) | Skips |\n',
@@ -930,6 +933,36 @@ describe('docs-check: feature pages', () => {
     expect(run(good.replace('since: 2.9.0', 'since: 3.3.0')).messages).toMatch(
       /since: 3\.3\.0 is newer than the app \(3\.2\.0\)/,
     );
+  });
+
+  it('FAILs a released since with no release heading in CHANGELOG.md', () => {
+    expect(run(good.replace('since: 2.9.0', 'since: 2.8.0')).messages).toMatch(
+      /since: 2\.8\.0 has no release heading in CHANGELOG\.md/,
+    );
+  });
+
+  it('passes an unreleased page, which has no heading yet', () => {
+    expect(run(good.replace('since: 2.9.0', 'since: unreleased')).found).toEqual([]);
+  });
+
+  it('FAILs a server newer than the newest verified line', () => {
+    expect(run(good.replace('server: 10.10.0', 'server: 13.0.0')).messages).toMatch(
+      /server: 13\.0\.0 is newer than the newest line JellyRock is verified on \(12\)/,
+    );
+    expect(run(good.replace('server: 10.10.0', 'server: 12.4.0')).found).toEqual([]);
+  });
+
+  it('FAILs the pages, once, when no release heading in CHANGELOG.md reads', () => {
+    dir = setup({
+      ...sources,
+      'CHANGELOG.md': '# Changelog\n\n## [2.9.0] 2026-04-02\n',
+      'docs/user/features/a-feature.md': page(good),
+    });
+    const { stdout } = spawnScript(SCRIPT, [dir, '--json']);
+    const found = JSON.parse(stdout).errors.filter((e) => e.category === 'feature-frontmatter');
+    expect(found.map((e) => e.message)).toEqual([
+      expect.stringMatching(/release date comes from CHANGELOG\.md: .*none reads as/),
+    ]);
   });
 
   it('FAILs a server below the floor', () => {

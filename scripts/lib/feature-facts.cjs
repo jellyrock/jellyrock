@@ -49,6 +49,35 @@ function readServerFloor(root) {
   return match[1];
 }
 
+// The newest Jellyfin major line JellyRock is verified on: the top-level
+// `newest:` in the same map, read the same way.
+function readServerNewest(root) {
+  const map = fs.readFileSync(path.join(root, 'docs/dev/jellyfin-version-boundaries.yml'), 'utf8');
+  const match = map.match(/^newest: '(\d+)'$/m);
+  if (!match) throw new Error('no `newest:` in docs/dev/jellyfin-version-boundaries.yml');
+  return match[1];
+}
+
+// Each release's date, from the `## [x.y.z](<compare link>) - YYYY-MM-DD`
+// headings that scripts/changelog-syncer.js writes when a release is published.
+// The date is read from the end of the line, since a link can hold dates too.
+// CHANGELOG.md is in every checkout, where tags may not be, so this needs no
+// git and no network.
+const RELEASE_HEADING = /^## \[(\d+\.\d+\.\d+)\]\(.*\) - (\d{4}-\d{2}-\d{2})$/gm;
+
+function releaseDates(root) {
+  const changelog = fs.readFileSync(path.join(root, 'CHANGELOG.md'), 'utf8');
+  const dates = new Map([...changelog.matchAll(RELEASE_HEADING)].map((m) => [m[1], m[2]]));
+  // A changelog with releases but no heading read means the heading format
+  // changed: fail rather than publish every feature without a date.
+  if (dates.size === 0 && /^## \[\d/m.test(changelog)) {
+    throw new Error(
+      'CHANGELOG.md has release headings, but none reads as `## [x.y.z](<link>) - YYYY-MM-DD`',
+    );
+  }
+  return dates;
+}
+
 // Languages: the entries in locale/languages.json with a code ("Automatic" has
 // none and is not a language). Themes: the uiTheme presets, without Custom,
 // which is the viewer's own colors.
@@ -135,6 +164,8 @@ module.exports = {
   FEATURE_FIELDS,
   README_HIGHLIGHTS_MAX,
   readServerFloor,
+  readServerNewest,
+  releaseDates,
   appFacts,
   appVersion,
   compareVersions,

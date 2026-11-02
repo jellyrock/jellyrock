@@ -12,8 +12,12 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createRequire } from 'node:module';
 import { spawnScript } from './_helpers/spawn-script.js';
 import { createGitFixture } from './_helpers/temp-git-fixture.js';
+
+// The feature catalog dates each release from the headings this script writes.
+const { releaseDates } = createRequire(import.meta.url)('../../../scripts/lib/feature-facts.cjs');
 
 const SCRIPT = 'scripts/changelog-syncer.js';
 
@@ -278,6 +282,24 @@ describe('changelog-syncer.js', () => {
         '## [1.0.0](https://github.com/jellyrock/jellyrock/releases/tag/v1.0.0)',
       );
       expect(changelog).not.toMatch(/\/compare\//);
+    });
+
+    it('writes a heading the feature catalog reads the release date from, with or without [Unreleased]', () => {
+      const today = new Date().toISOString().slice(0, 10);
+      for (const body of ['## [Unreleased]\n\n### Added\n\n- thing\n', '']) {
+        fixture = createGitFixture();
+        fixture.commit('chore: initial');
+        fixture.tag('v1.2.2');
+        fixture.commit('feat: thing');
+        fixture.tag('v1.2.3');
+        writeChangelog(fixture.dir, VALID_HEADER + body);
+        expect(spawnScript(SCRIPT, ['sync-release', '1.2.3'], { cwd: fixture.dir }).exitCode).toBe(
+          0,
+        );
+        expect(releaseDates(fixture.dir).get('1.2.3')).toBe(today);
+        fixture.cleanup();
+        fixture = null;
+      }
     });
 
     it('exits 1 with a format error on an invalid version string', () => {

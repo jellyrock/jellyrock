@@ -44,11 +44,25 @@ const subtitles = [
   '',
 ].join('\n');
 
+// Release headings as scripts/changelog-syncer.js writes them. The 1.0.0 heading's
+// link holds dates of its own, as the real one does.
+const changelog = [
+  '# Changelog',
+  '',
+  '## [Unreleased]',
+  '',
+  '## [2.9.0](https://github.com/jellyrock/jellyrock/compare/v2.8.0...v2.9.0) - 2026-04-02',
+  '',
+  '## [1.0.0](https://example.com/commits/?since=2025-06-28&until=2025-08-24) - 2025-08-24',
+  '',
+].join('\n');
+
 function setupTree(pages = { 'media-segments.md': segments, 'manage-subtitles.md': subtitles }) {
   const dir = mkdtempSync(join(tmpdir(), 'jellyrock-feature-catalog-'));
   const files = {
     'package.json': JSON.stringify({ version: '3.2.0' }),
-    'docs/dev/jellyfin-version-boundaries.yml': "floor: '10.7.0'\n",
+    'docs/dev/jellyfin-version-boundaries.yml': "floor: '10.7.0'\nnewest: '12'\n",
+    'CHANGELOG.md': changelog,
     'locale/languages.json': JSON.stringify([{ code: '' }, { code: 'en_US' }, { code: 'fr' }]),
     'settings/settings.json': JSON.stringify([
       { settingName: 'uiTheme', options: [{ id: 'jellyrock' }, { id: 'custom' }] },
@@ -79,13 +93,19 @@ describe('feature-catalog', () => {
     expect(exitCode).toBe(0);
     const catalog = JSON.parse(read(dir, 'docs/feature-catalog.json'));
     expect(catalog.schema).toBe(1);
-    expect(catalog.app).toEqual({ languages: 2, themes: 1, serverFloor: '10.7.0' });
+    expect(catalog.app).toEqual({
+      languages: 2,
+      themes: 1,
+      serverFloor: '10.7.0',
+      serverNewest: '12',
+    });
     expect(catalog.features.map((f) => f.slug)).toEqual(['manage-subtitles', 'media-segments']);
     expect(catalog.features[1]).toEqual({
       slug: 'media-segments',
       title: 'Media segments',
       pitch: 'Skip the intros your server has marked.',
       since: '2.9.0',
+      sinceDate: '2026-04-02',
       server: '10.10.0',
       plugins: ['Intro Skipper'],
       screenshots: [],
@@ -94,6 +114,39 @@ describe('feature-catalog', () => {
       url: 'https://docs.jellyrock.app/features/media-segments/',
     });
     expect(catalog.features[0].since).toBe('unreleased');
+    expect(catalog.features[0].sinceDate).toBeNull();
+  });
+
+  it("dates a feature from the end of its release's heading, not from dates in the link", () => {
+    dir = setupTree({ 'servers.md': segments.replace('since: 2.9.0', 'since: 1.0.0') });
+    expect(spawnScript(SCRIPT, [dir]).exitCode).toBe(0);
+    const catalog = JSON.parse(read(dir, 'docs/feature-catalog.json'));
+    expect(catalog.features[0].sinceDate).toBe('2025-08-24');
+  });
+
+  it('refuses a released feature whose release has no heading, rather than publish no date', () => {
+    dir = setupTree({ 'media-segments.md': segments.replace('since: 2.9.0', 'since: 2.8.0') });
+    const { exitCode, stderr } = spawnScript(SCRIPT, [dir]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(
+      /media-segments\.md: since: 2\.8\.0 has no release heading in CHANGELOG\.md/,
+    );
+  });
+
+  it('fails when no release heading reads, so a format change cannot drop every date', () => {
+    dir = setupTree();
+    writeFileSync(join(dir, 'CHANGELOG.md'), '# Changelog\n\n## [2.9.0] 2026-04-02\n');
+    const { exitCode, stderr } = spawnScript(SCRIPT, [dir]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/none reads as/);
+  });
+
+  it('fails when the version map has no newest line', () => {
+    dir = setupTree();
+    writeFileSync(join(dir, 'docs/dev/jellyfin-version-boundaries.yml'), "floor: '10.7.0'\n");
+    const { exitCode, stderr } = spawnScript(SCRIPT, [dir]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/no `newest:`/);
   });
 
   it('writes the features index page, which lists every page', () => {
@@ -232,10 +285,20 @@ describe('feature-catalog', () => {
       }
     }
     const lateFeature = subtitles.replace('# Manage subtitles', '# Late feature');
+    // The changelog step writes the release's heading before the catalog step runs.
+    const addHeading = (version, date) =>
+      writeFileSync(
+        join(dir, 'CHANGELOG.md'),
+        changelog.replace(
+          '## [Unreleased]\n',
+          `## [Unreleased]\n\n## [${version}](https://example.com/compare) - ${date}\n`,
+        ),
+      );
 
     it('stamps a page that was unreleased in the tagged commit, then regenerates the outputs', () => {
       dir = setupTree();
       tagTree('v3.4.0');
+      addHeading('3.4.0', '2026-11-02');
       const { exitCode, stdout } = spawnScript(SCRIPT, [
         dir,
         '--release',
@@ -249,12 +312,30 @@ describe('feature-catalog', () => {
       );
       expect(read(dir, 'docs/user/features/manage-subtitles.md')).toContain('\nsince: 3.4.0\n');
       const catalog = JSON.parse(read(dir, 'docs/feature-catalog.json'));
-      expect(catalog.features.find((f) => f.slug === 'manage-subtitles').since).toBe('3.4.0');
+      const stamped = catalog.features.find((f) => f.slug === 'manage-subtitles');
+      expect(stamped.since).toBe('3.4.0');
+      expect(stamped.sinceDate).toBe('2026-11-02');
+    });
+
+    it('fails, writing nothing, when the changelog has no heading for the release', () => {
+      dir = setupTree();
+      tagTree('v3.4.0');
+      const { exitCode, stderr } = spawnScript(SCRIPT, [
+        dir,
+        '--release',
+        '3.4.0',
+        '--ref',
+        'v3.4.0',
+      ]);
+      expect(exitCode).toBe(1);
+      expect(stderr).toMatch(/CHANGELOG\.md has no heading for 3\.4\.0/);
+      expect(read(dir, 'docs/user/features/manage-subtitles.md')).toBe(subtitles);
     });
 
     it('leaves a page with a version alone', () => {
       dir = setupTree();
       tagTree('v3.4.0');
+      addHeading('3.4.0', '2026-11-02');
       spawnScript(SCRIPT, [dir, '--release', '3.4.0', '--ref', 'v3.4.0']);
       expect(read(dir, 'docs/user/features/media-segments.md')).toBe(segments);
     });
@@ -262,6 +343,7 @@ describe('feature-catalog', () => {
     it('leaves unreleased a page merged after the tag, which the release does not hold', () => {
       dir = setupTree();
       tagTree('v3.4.0', { 'late-feature.md': lateFeature });
+      addHeading('3.4.0', '2026-11-02');
       const { exitCode } = spawnScript(SCRIPT, [dir, '--release', '3.4.0', '--ref', 'v3.4.0']);
       expect(exitCode).toBe(0);
       expect(read(dir, 'docs/user/features/late-feature.md')).toContain('\nsince: unreleased\n');

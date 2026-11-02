@@ -12,7 +12,7 @@ related-files:
   - docs/dev/jellyfin-endpoint-availability.yml
   - docs/dev/jellyfin-version-boundaries.yml
   - scripts/lint/apiversion-consistency-check.js
-last-reviewed: 2026-10-09
+last-reviewed: 2026-11-02
 ---
 
 # Jellyfin server versions
@@ -172,6 +172,16 @@ On 10.7 only, `QuickConnectResult` also has `Error` and `Authentication`; 10.8.0
 The server-upgrade pipeline diffs the API between two server versions ([`server-upgrade-automation.md`](../architecture/server-upgrade-automation.md)). Run `/server-upgrade <from> <to>` when a stable release lands.
 
 You can also triage before the release. `<to>` can be a release candidate (`10.12.0-rc1`), `unstable` or `master` (the latest datestamped build), or a datestamp. A pre-release triage writes a note to `.claude/handoffs/` and files no GitHub issues. CI opens a `server-upgrade:rc` issue for each release candidate, naming the command: the next one diffs from the previous release candidate's issue, so it shows only what changed since. Close the issue once triaged. A release candidate can still change, so triage the final release again when it ships.
+
+### Claim a new major line
+
+`newest:` in [`jellyfin-version-boundaries.yml`](jellyfin-version-boundaries.yml) is the newest Jellyfin major line JellyRock is verified on. The feature catalog publishes it, and the website reads it to say which servers work ("Jellyfin 10.7 to 12"). A spec diff can't verify a line, so a person does:
+
+1. Add a server of the new line to `JELLYFIN_VERSION_SERVERS` and run `npm run test:rta:servers`.
+2. Fix what breaks, as for any release.
+3. Raise `newest:` to the new major version, run `npm run docs:features`, and commit both together.
+
+The release tracker keeps the digest of a release above `newest` open, even when nothing JellyRock calls changed, until you close it.
 
 ### Add a guard
 

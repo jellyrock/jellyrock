@@ -53,6 +53,7 @@ import { dirname, join, resolve, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { normalizeSpecPath } from './lib/spec-path.cjs';
 import { compareSemverBase, isReleaseVersionBase } from './lib/signals-fetch.cjs';
+import { isAboveNewest, loadBoundaries } from './lib/version-boundaries.cjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -607,7 +608,7 @@ export function clearedThroughFrom(issues, version) {
   return best;
 }
 
-function digestHeader(version, acknowledged, floor, clearedThrough) {
+function digestHeader(version, acknowledged, floor, clearedThrough, newest) {
   const rows = [
     '| | Version |',
     '| --- | --- |',
@@ -622,6 +623,7 @@ function digestHeader(version, acknowledged, floor, clearedThrough) {
     rows.push(`| Mechanically cleared through | \`${clearedThrough}\` |`);
   }
   rows.push(`| Supported floor | \`${floor ?? 'unknown'}\` |`);
+  if (newest) rows.push(`| Newest verified line | \`${newest}\` |`);
   return rows.join('\n');
 }
 
@@ -706,13 +708,26 @@ function digestLegend() {
 
 // The MECHANICAL digest body the CI tracker opens with (zero judgment). A clean
 // report (0 needsInvestigation) renders the "nothing touches us" record: the
-// open-then-close audit trail. Otherwise renders the candidate checklist.
-export function renderDigestBody({ version, acknowledged, floor, report, clearedThrough }) {
+// open-then-close audit trail. Otherwise renders the candidate checklist. A
+// release on a line above `newest` adds the step a person takes before closing
+// it, and never reads as auto-closed: the tracker keeps it open for triage.
+export function renderDigestBody({ version, acknowledged, floor, report, clearedThrough, newest }) {
   const counts = report?.counts ?? null;
   const candidates = investigationCandidates(report ?? {});
+  const aboveNewest = Boolean(newest) && isAboveNewest({ newest }, version);
   const lines = [];
-  lines.push(digestHeader(version, acknowledged, floor, clearedThrough));
+  lines.push(digestHeader(version, acknowledged, floor, clearedThrough, newest));
   lines.push('');
+  if (aboveNewest) {
+    const line = version.split('.')[0];
+    lines.push(
+      `🆕 **New major line**: JellyRock is verified on Jellyfin ${newest} and older. Run it on ` +
+        `a ${line} server (\`npm run test:rta:servers\` with one in \`JELLYFIN_VERSION_SERVERS\`), ` +
+        `then set \`newest: '${line}'\` in \`docs/dev/jellyfin-version-boundaries.yml\` and close ` +
+        'this issue. The feature catalog publishes it, so the website says which servers work.',
+    );
+    lines.push('');
+  }
 
   if (!counts) {
     lines.push(
@@ -735,16 +750,23 @@ export function renderDigestBody({ version, acknowledged, floor, report, cleared
     lines.push('');
     lines.push(digestLegend());
     lines.push('');
-    lines.push(
-      '_This is a judgment-free claim (0 findings need investigation), so CI closes this issue ' +
-        'automatically as a record. No triage needed._',
-    );
-    lines.push('');
-    lines.push(
-      '> 🧰 **Maintainers**: this release auto-closed as clean, but you can still run ' +
-        '**`/server-upgrade`** to double-check the mechanical call against real app usage ' +
-        '(and to acknowledge the new spec). Optional — no action is required.',
-    );
+    if (aboveNewest) {
+      lines.push(
+        '_Nothing JellyRock calls changed, but a new major line is checked on a device before ' +
+          'JellyRock claims it, so this issue stays open until the step above is done._',
+      );
+    } else {
+      lines.push(
+        '_This is a judgment-free claim (0 findings need investigation), so CI closes this issue ' +
+          'automatically as a record. No triage needed._',
+      );
+      lines.push('');
+      lines.push(
+        '> 🧰 **Maintainers**: this release auto-closed as clean, but you can still run ' +
+          '**`/server-upgrade`** to double-check the mechanical call against real app usage ' +
+          '(and to acknowledge the new spec). Optional — no action is required.',
+      );
+    }
   } else {
     lines.push(
       '**Mechanical candidates** — a first pass over what intersects code we ship. NOT verdicts:',
@@ -864,6 +886,7 @@ export function executePlan(
     digest = null,
     closeDigest = false,
     triagedOn = null,
+    newest = null,
   } = {},
 ) {
   const results = [];
@@ -945,7 +968,16 @@ export function executePlan(
       const unresolved = results.filter(
         (r) => r.action === 'missing-verdict' || r.action === 'invalid-verdict',
       );
-      if (closeDigest && unresolved.length === 0) {
+      // A release above the newest verified line stays open until a person runs
+      // JellyRock on it and raises `newest:`, which the website reads.
+      const aboveNewest = Boolean(newest) && isAboveNewest({ newest }, plan.toVersion);
+      if (closeDigest && aboveNewest) {
+        logger(
+          `[server-upgrade] NOTE: NOT closing digest #${digest}: Jellyfin ${plan.toVersion} is above ` +
+            `the newest verified line (${newest}). Run JellyRock on it, raise \`newest:\` in ` +
+            'docs/dev/jellyfin-version-boundaries.yml, then close the digest.',
+        );
+      } else if (closeDigest && unresolved.length === 0) {
         ghExec([
           'issue',
           'close',
@@ -1158,7 +1190,13 @@ function cmdExecute(args) {
   const digest = args.flags.digest ? Number(args.flags.digest) : null;
   const closeDigest = !!args.flags['close-digest'];
   const createdAt = nowStamp();
-  const results = executePlan(plan, { digest, closeDigest, triagedOn: createdAt.slice(0, 10) });
+  const { newest } = loadBoundaries(REPO_ROOT);
+  const results = executePlan(plan, {
+    digest,
+    closeDigest,
+    triagedOn: createdAt.slice(0, 10),
+    newest,
+  });
   const summary = renderRunSummary(plan, results, { createdAt, digest });
   const stamp = createdAt.replace(/[-:]/g, '').replace(/\..*$/, '').replace('T', '-');
   const handoffPath = join(handoffDir, `server-upgrade-${stamp}.md`);

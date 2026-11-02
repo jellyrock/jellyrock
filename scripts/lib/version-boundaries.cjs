@@ -28,8 +28,9 @@ const MAP_REL = 'docs/dev/jellyfin-version-boundaries.yml';
 const VALID_STATUSES = new Set(['frozen', 'active']);
 
 // Validate the parsed map shape, throwing a one-line error on any violation.
-// Returns the validated object: { floor, tiers: { <n>: { minServer, maxServer,
-// status } } } with integer tier keys preserved as-is from YAML (string keys).
+// Returns the validated object: { floor, newest, tiers: { <n>: { minServer,
+// maxServer, status } } } with integer tier keys preserved as-is from YAML
+// (string keys).
 function validateBoundaries(raw) {
   if (!raw || typeof raw !== 'object') {
     throw new Error('version-boundaries: map is empty or not an object');
@@ -84,6 +85,20 @@ function validateBoundaries(raw) {
   if (active[1].maxServer !== null) {
     throw new Error('version-boundaries: the active tier must have maxServer: null');
   }
+  // A major line only, so a new minor release never makes the claim stale. It
+  // can't sit below a line the map already supports.
+  if (typeof raw.newest !== 'string' || !/^\d+$/.test(raw.newest)) {
+    throw new Error(
+      `version-boundaries: newest must be a major version in quotes, such as '12', got ${raw.newest}`,
+    );
+  }
+  const major = (version) => Number(version.split('.')[0]);
+  const lowest = Math.max(major(raw.floor), major(active[1].minServer));
+  if (Number(raw.newest) < lowest) {
+    throw new Error(
+      `version-boundaries: newest (${raw.newest}) is below a line the map already supports (${lowest})`,
+    );
+  }
   return raw;
 }
 
@@ -132,6 +147,16 @@ function isTierFrozen(boundaries, tier) {
   return !!t && t.status === 'frozen';
 }
 
+// True when a release is on a major line above `newest`, the newest line
+// JellyRock is verified on. Such a release needs a person, never an auto-close:
+// a spec that changed nothing we call is not a check that JellyRock runs there.
+function isAboveNewest(boundaries, version) {
+  if (typeof version !== 'string' || !isReleaseVersionBase(version.replace(/-.*$/, ''))) {
+    return false;
+  }
+  return Number(version.split('.')[0]) > Number(boundaries.newest);
+}
+
 module.exports = {
   MAP_REL,
   loadBoundaries,
@@ -139,4 +164,5 @@ module.exports = {
   serverToTier,
   activeTier,
   isTierFrozen,
+  isAboveNewest,
 };
