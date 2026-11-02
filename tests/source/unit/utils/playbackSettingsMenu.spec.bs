@@ -48,6 +48,7 @@ namespace tests
     function _()
       menu = playbackSettingsMenu.rows(false, 0, "off", m.resolutionSetting(), queueRepeat.OFF)
       m.assertEqual(menu.labels[1], "Maximum Resolution (Off)")
+      m.assertEqual(menu.labels[1], "Maximum Resolution (" + translate(translationKeys.LabelResolutionOff) + ")", "the row's own off, not the subtitles' LabelOff")
     end function
 
     @it("leaves the resolution row out when the setting's options cannot be read")

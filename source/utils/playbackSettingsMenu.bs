@@ -47,7 +47,7 @@ namespace playbackSettingsMenu
   ' @param {string} resolutionId - a playbackResolutionMax option id
   ' @param {dynamic} resolutionSetting - the playbackResolutionMax entry of settings.json
   function resolutionLabel(resolutionId as string, resolutionSetting as dynamic) as string
-    if resolutionId = "off" then return translate(translationKeys.LabelOff)
+    if resolutionId = "off" then return translate(translationKeys.LabelResolutionOff)
     if resolutionId = "auto" then return translate(translationKeys.LabelAuto)
     for each option in settingOptions(resolutionSetting)
       if option.id = resolutionId then return optionTitle(option)
