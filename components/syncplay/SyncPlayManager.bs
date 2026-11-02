@@ -106,8 +106,9 @@ sub ensureReady()
   ' before it runs says so (haltFollowing); false once the load runs.
   m.resumeAsked = false
   ' The correction each Unpause arms (syncPlayPlayback.settleCorrectionDue), and the drift last
-  ' read from a position notification, for the RTA spec. Cleared whenever it stops meaning
-  ' anything: a group command, a load, a halt, a leave or a Buffering this member reported.
+  ' read from a position notification, for the RTA spec. A halt or a leave leaves the check as
+  ' it is: it fires only with the tracker at `ready`, which only a mount reaches, and the mount
+  ' disarms it first; a group Pause or Seek holds it until the next Unpause arms it again.
   m.settle = syncPlayPlayback.newSettleCheck()
   m.playbackDiffMs = invalid
   ' Whether this member reported Buffering since the group's last command it scheduled
@@ -689,6 +690,8 @@ sub applyPendingPlan()
   end if
   m.playbackDiffMs = invalid
   if plan.action = "Unpause" then syncPlayPlayback.armSettleCheck(m.settle)
+  ' The one reset the pause counters need: the pause check reads them only while groupPaused
+  ' holds, and this is the one place that sets it.
   if m.groupPaused
     m.pauseAttempts = 0
     m.pauseGaveUp = false
