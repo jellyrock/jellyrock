@@ -49,7 +49,8 @@ namespace syncPlayPlayback
   ' to fix), so the correction uses the protocol's own shape: seek past the group, pause there,
   ' resume when the group reaches it. A seek can take longer (a correction's outlasted this on
   ' direct play and left the member 1.9 s behind, Stick 4K, 2026-10-31), so the lead grows to
-  ' what the last seek on this node took (correctionLeadMs). This is the shortest it gets.
+  ' what the last seek on this node took (correctionLeadMs). This is the shortest it gets; a seek
+  ' that took both settle budgets stops the next seek-correction instead (seekOutlastsBudgets).
   const CORRECTION_LEAD_MS = 2000
   ' What a lead keeps over the last seek's time, for a seek a little slower than the one before.
   const CORRECTION_LEAD_MARGIN_MS = 500
@@ -266,6 +267,26 @@ namespace syncPlayPlayback
     leadMs& = lastSeekMs + CORRECTION_LEAD_MARGIN_MS
     if leadMs& < CORRECTION_LEAD_MS then return CORRECTION_LEAD_MS
     return leadMs&
+  end function
+
+  ' Whether the last seek on this node ran past both settle budgets (trackPlayerEvent gives up
+  ' a seek's pause there), so a correction that seeks cannot land its hold: the member plays on
+  ' behind instead, until the group's next Pause or Unpause lines everyone up, or a faster seek
+  ' (a group Seek, a scrub) says the node can land again. A seek this slow froze the picture for
+  ' the budgets and reported a stall the group waited on, and landed behind anyway (Stick 4K, a
+  ' direct-played 100 Mbps file, 2026-11-01). This also bounds the lead above: it grows only
+  ' from a seek that landed inside the budgets.
+  function seekOutlastsBudgets(lastSeekMs as longinteger) as boolean
+    return lastSeekMs >= 2 * SEEK_SETTLE_MS
+  end function
+
+  ' Whether a group Seek asks for where this node already is: within the ready tolerance, playing
+  ' and tracked ready. The Seek this member posts to make the group wait on it (the manager's
+  ' waitOnMe) comes back this way after the round trip, and a seek written for it would cost the
+  ' slow node the very freeze the wait avoids: the node pauses and reports Ready where it is.
+  function seekIsWhereWeAre(targetTicks as longinteger, playerPositionTicks as longinteger, playerState as string, trackerPhase as string) as boolean
+    if playerState <> "playing" or trackerPhase <> "ready" then return false
+    return Abs(playerPositionTicks - targetTicks) <= syncPlayTime.msToTicks(READY_TOLERANCE_MS)
   end function
 
   ' Move the resume to where the node stopped: a seek lands off its target (up to 36 ms in the logs

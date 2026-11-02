@@ -2486,6 +2486,14 @@ A SyncPlay node never runs two seeks at once. A `Seek` due while one is in fligh
 
 Ruled out: a watchdog that nudges a stuck node, which recovers but leaves the group frozen for seconds; and ignoring a second key press, which leaves two `Seek`s from another member freezing and stops a second Replay stepping back. Recheck if a seek outlasting its settle budget is seen overlapping a held one.
 
+## decision-id: syncplay-slow-seek-waits-on-member
+
+**date**: 2026-11-01
+**status**: accepted
+**related-files**: `components/syncplay/SyncPlayManager.bs`, `source/syncplay/syncPlayPlayback.bs`
+
+A SyncPlay member behind the group whose last seek ran past both 3 s settle budgets (`syncPlayPlayback.seekOutlastsBudgets`) does not seek to catch up: it posts a Seek to its own position, so the server brings the others to it, and the Seek that comes back finds the node where it asked (`seekIsWhereWeAre`), so the node pauses and reports Ready with no seek. Once per pause chain, so a member that keeps falling behind rewinds the group once, not every few seconds; after that the correction is skipped until a group Pause. The hold for a member ahead is unchanged. On a direct-played 100 Mbps file (Stick 4K, local 12.2 server, 2026-11-01) every seek-correction outlasted the budgets: a frozen picture for them, a stall the whole group waited on, and the member behind anyway; with this, the group's Seek came back to the member's position, no seek was written, and the drift settled at 0 to 4 ms. Ruled out: a cap on the lead alone (only a seek that landed recorded its time, so the lead was already bounded at about 6.5 s by accident, and the freeze and the stall stay); a plain skip (the member stays behind until the next command); Buffering then Ready (`WaitingGroupState.HandleRequest(ReadyGroupRequest)` answers a Ready more than 500 ms off the group's position with a corrective Seek, the slow seek this avoids). Playback-rate catch-up, web's speed-to-sync, has no Roku `Video` field to drive it.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

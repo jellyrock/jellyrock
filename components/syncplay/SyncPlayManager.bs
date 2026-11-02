@@ -106,15 +106,17 @@ sub ensureReady()
   ' before it runs says so (haltFollowing); false once the load runs.
   m.resumeAsked = false
   ' The correction each Unpause arms (syncPlayPlayback.settleCorrectionDue), and the drift last
-  ' read from a position notification, for the RTA spec. Cleared whenever it stops meaning
-  ' anything: a group command, a load, a halt, a leave or a Buffering this member reported.
+  ' read from a position notification, for the RTA spec. A halt or a leave leaves the check as
+  ' it is: it fires only with the tracker at `ready`, which only a mount reaches, and the mount
+  ' disarms it first; a group Pause or Seek holds it until the next Unpause arms it again.
   m.settle = syncPlayPlayback.newSettleCheck()
   m.playbackDiffMs = invalid
   ' Whether this member reported Buffering since the group's last command it scheduled
   ' (syncPlayPlayback.clockReference).
   m.reportedBuffering = false
-  ' When the last seek went out and how long the last one took to land, for the next correction's
-  ' lead (syncPlayPlayback.correctionLeadMs). 0 until one has landed on this player.
+  ' When the last seek went out and how long the last one took to land or to run out its budgets,
+  ' for the next correction's lead (syncPlayPlayback.correctionLeadMs) and whether it seeks at all
+  ' (syncPlayPlayback.seekOutlastsBudgets). 0 until one has ended on this player.
   m.seekWrittenAtMs = 0&
   m.lastSeekMs = 0&
   ' The playing item's length in the Video node's seconds; 0 while unknown.
@@ -126,6 +128,10 @@ sub ensureReady()
   ' Whether a correction wrote a pause that nothing has resumed or replaced yet, so one that ends
   ' before the node reports `paused` still gets its resume (syncPlayPlayback.owesCorrectionResume).
   m.correctionPauseOwed = false
+  ' Whether this member already made the group wait on it (checkSettle's Seek to its own position)
+  ' since the last group Pause: once per pause chain, or a member that keeps falling behind would
+  ' rewind the group every few seconds.
+  m.waitedOnMe = false
   publish()
 end sub
 
@@ -204,6 +210,7 @@ function playerEvent(evt as object) as object
     m.lastSeekMs = 0&
     m.playbackDiffMs = invalid
     m.correctionPauseOwed = false
+    m.waitedOnMe = false
     syncPlayPlayback.disarmSettleCheck(m.settle)
     if isFollowing()
       ' Only the group's item answers to the group. Anything else the viewer started plays
@@ -264,13 +271,7 @@ function playerEvent(evt as object) as object
     end if
   else if kind = "unmounted"
     m.playerState = ""
-    m.groupPaused = false
-    m.playbackDiffMs = invalid
-    m.pendingPlan = invalid
-    m.commandTimer.control = "stop"
-    m.readyTimer.control = "stop"
-    m.pauseTimer.control = "stop"
-    dropCorrection()
+    resetPlaybackTracking()
     track({ kind: "unmounted" })
     if m.expectingRemount
       m.expectingRemount = false
@@ -298,15 +299,10 @@ sub haltFollowing(reason as string, tell = true as boolean)
   if syncPlayTime.isText(m.loadNotice) and m.loadNotice = "followingAgain" then tell = false
   if tell and isFollowing() then notify("halted", m.state.groupName, "")
   syncPlayState.halt(m.state)
-  m.pendingPlan = invalid
   m.owedLoad = invalid
   m.loadNotice = invalid
-  m.groupPaused = false
-  m.commandTimer.control = "stop"
-  m.readyTimer.control = "stop"
-  m.pauseTimer.control = "stop"
   releaseCorrection()
-  m.playbackDiffMs = invalid
+  resetPlaybackTracking()
   m.tracker = syncPlayPlayback.newReadyTracker()
   dropClaimedPlay("stopped following")
   post("SetIgnoreWait", syncPlayRequests.setIgnoreWait(true))
@@ -433,7 +429,17 @@ sub checkSettle()
     host = playerHost()
     if isValid(host)
       plan = syncPlayPlayback.correctionPlan(syncPlayTime.asLong(drift), m.playerPositionTicks, inForce, m.estimator, syncPlayPlayback.correctionLeadMs(m.lastSeekMs))
-      if plan.seek and syncPlayPlayback.seekPastEnd(plan.targetTicks, m.playerDurationSeconds)
+      if plan.seek and syncPlayPlayback.seekOutlastsBudgets(m.lastSeekMs)
+        ' A seek on this node cannot land in time, so the group comes to this member instead: a
+        ' Seek to its own position makes the server pause the others and bring them here, and the
+        ' Seek that comes back finds the node where it asked (seekIsWhereWeAre), so it writes none.
+        if not m.waitedOnMe and post("Seek", syncPlayRequests.seek(m.playerPositionTicks))
+          m.waitedOnMe = true
+          m.log.info("drift correction asks the group to wait: the last seek on this node outlasted the settle budgets", "driftMs", syncPlayTime.asLong(drift).toStr(), "lastSeekMs", m.lastSeekMs.toStr(), "positionTicks", m.playerPositionTicks.toStr())
+        else
+          m.log.info("drift correction skipped: the last seek on this node outlasted the settle budgets, and the group waited once already", "driftMs", syncPlayTime.asLong(drift).toStr(), "lastSeekMs", m.lastSeekMs.toStr())
+        end if
+      else if plan.seek and syncPlayPlayback.seekPastEnd(plan.targetTicks, m.playerDurationSeconds)
         m.log.info("drift correction skipped: its seek would run off the item", "driftMs", syncPlayTime.asLong(drift).toStr())
       else
         m.correction = plan
@@ -526,13 +532,27 @@ sub dropCorrection()
 end sub
 
 ' This member stops answering to the group: a node held for the correction has no one left to
-' resume it, and the viewer never paused it.
+' resume it, and the viewer never paused it. The correction itself goes with resetPlaybackTracking.
 sub releaseCorrection()
   m.correctionPauseOwed = false
   if isValid(m.correction) and m.playerState = "paused"
     host = playerHost()
     if isValid(host) then tellPlayer(host, { command: "resume" })
   end if
+end sub
+
+' The playback the manager was tracking is over: a halt, the player's unmount or a leave. Drops
+' the plan a command timer would apply, the waits on the player, the group's pause and the
+' correction under way, and the drift the specs read. A fresh follow (followAgain, GroupJoined)
+' replaces the tracker instead, since no playback of the group's is under way yet.
+sub resetPlaybackTracking()
+  m.pendingPlan = invalid
+  m.groupPaused = false
+  m.playbackDiffMs = invalid
+  m.commandTimer.control = "stop"
+  m.readyTimer.control = "stop"
+  m.pauseTimer.control = "stop"
+  m.waitedOnMe = false
   dropCorrection()
 end sub
 
@@ -687,9 +707,23 @@ sub applyPendingPlan()
   end if
   m.playbackDiffMs = invalid
   if plan.action = "Unpause" then syncPlayPlayback.armSettleCheck(m.settle)
+  ' The one reset the pause counters need: the pause check reads them only while groupPaused
+  ' holds, and this is the one place that sets it.
   if m.groupPaused
     m.pauseAttempts = 0
     m.pauseGaveUp = false
+  end if
+  ' A Pause starts a new chain: this member may ask the group to wait on it once more.
+  if plan.action = "Pause" then m.waitedOnMe = false
+  if plan.action = "Seek" and syncPlayPlayback.seekIsWhereWeAre(plan.positionTicks, m.playerPositionTicks, m.playerState, m.tracker.phase)
+    ' The group is coming to where this node is (its own wait-on-me Seek, or another member's
+    ' to the same place): no seek, a pause, and Ready from here.
+    tellPlayer(host, { command: "pause", showOsd: true })
+    m.pauseAttempts++
+    armPauseTimer()
+    report("ready", false, m.playerPositionTicks)
+    publish()
+    return
   end if
   steps = syncPlayPlayback.applyPlan(plan, m.playerState, m.playerPositionTicks, m.tracker.phase, heldForCorrection)
   for each verb in steps
@@ -869,7 +903,9 @@ sub track(evt as object)
     isPlaying = false
   end if
   seekEnded = syncPlayPlayback.seekEnded(phaseBefore, m.tracker.phase)
-  if seekEnded and m.tracker.phase = "ready" then m.lastSeekMs = syncPlayTime.nowMs() - m.seekWrittenAtMs
+  ' A seek that ends at `rebuffering` took both budgets: its time is what tells the next
+  ' correction not to seek (syncPlayPlayback.seekOutlastsBudgets).
+  if seekEnded then m.lastSeekMs = syncPlayTime.nowMs() - m.seekWrittenAtMs
   ' A pause left to a landing that wrote none: the node is already paused, so the viewer only
   ' needs telling, or it is somewhere only the pause check can catch it.
   if seekEnded and not result.pauseFirst
@@ -1043,20 +1079,15 @@ function syncPlayRequest(action as string, body as dynamic, isLastForSession = f
 end function
 
 sub leaveLocally()
-  m.commandTimer.control = "stop"
   m.syncTimer.control = "stop"
-  m.readyTimer.control = "stop"
-  m.pauseTimer.control = "stop"
   releaseCorrection()
-  m.playbackDiffMs = invalid
-  m.groupPaused = false
+  resetPlaybackTracking()
   m.timeSyncTask = releaseTask(m.timeSyncTask, "results")
   m.state = syncPlayState.newState()
   syncPlayOffset.reset(m.estimator)
   m.tracker = syncPlayPlayback.newReadyTracker()
   m.heldCommand = invalid
   m.lastCommand = invalid
-  m.pendingPlan = invalid
   m.owedLoad = invalid
   m.expectingRemount = false
   m.claimedStart = invalid
