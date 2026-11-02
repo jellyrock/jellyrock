@@ -102,12 +102,18 @@ describe('decideDigestAction', () => {
   it("ahead + report unavailable (degraded) → 'triage' (can't claim clean)", () => {
     expect(decideDigestAction('ahead', null)).toBe('triage');
   });
+
+  it("ahead + above the newest verified line → 'triage', even with 0 candidates", () => {
+    const clean = { counts: { needsInvestigation: 0 } };
+    expect(decideDigestAction('ahead', clean, { aboveNewest: true })).toBe('triage');
+    expect(decideDigestAction('caught-up', clean, { aboveNewest: true })).toBe('none');
+  });
 });
 
 // ── Offline report computation + CLI ─────────────────────────────────────────
 
 const BOUNDARIES_YML =
-  'floor: "10.7.0"\ntiers:\n  1:\n    minServer: "10.7.0"\n    maxServer: "10.8.13"\n    status: frozen\n  2:\n    minServer: "10.9.0"\n    maxServer: null\n    status: active\n';
+  'floor: "10.7.0"\nnewest: "12"\ntiers:\n  1:\n    minServer: "10.7.0"\n    maxServer: "10.8.13"\n    status: frozen\n  2:\n    minServer: "10.9.0"\n    maxServer: null\n    status: active\n';
 
 function fp(specVersion, operations = {}) {
   return { schemaVersion: 1, specVersion, operations, schemas: {} };
@@ -227,6 +233,31 @@ describe('computeReport + CLI (offline, injected toSpec)', () => {
     const decision = JSON.parse(res.stdout);
     expect(decision.action).toBe('clean');
     expect(decision.needsInvestigation).toBe(0);
+  });
+
+  it('CLI keeps a clean release on a new major line open for triage, and says what to do', () => {
+    scaffoldRepo();
+    const bodyOut = join(dir, 'body.md');
+    const toFile = join(dir, 'to-spec.json');
+    writeFileSync(toFile, JSON.stringify(TO_SPEC_CLEAN));
+    const res = spawnScript(SCRIPT, [
+      '--root',
+      dir,
+      '--latest',
+      '13.0',
+      '--to-file',
+      toFile,
+      '--body-out',
+      bodyOut,
+    ]);
+    expect(res.exitCode).toBe(0);
+    const decision = JSON.parse(res.stdout);
+    expect(decision.needsInvestigation).toBe(0);
+    expect(decision.action).toBe('triage');
+    const body = readFileSync(bodyOut, 'utf8');
+    expect(body).toContain('| Newest verified line | `12` |');
+    expect(body).toContain("set `newest: '13'` in `docs/dev/jellyfin-version-boundaries.yml`");
+    expect(body).not.toContain('auto-closed as clean');
   });
 
   it('CLI --tracker-issues feeds clearedThrough into the decision + the rendered body', () => {

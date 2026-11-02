@@ -986,6 +986,26 @@ describe('executePlan — digest edit + sub-issue attach + close guard (Phase 6)
     expect(calls.some((c) => c[0] === 'issue' && c[1] === 'close')).toBe(false); // but does not close
   });
 
+  it('does not close the digest of a release above the newest verified line, and says why', () => {
+    const calls = [];
+    const logs = [];
+    executePlan(
+      { ...planWith(), toVersion: '13.0' },
+      {
+        ghExec: fakeGh(calls),
+        digest: 840,
+        closeDigest: true,
+        newest: '12',
+        logger: (line) => logs.push(line),
+      },
+    );
+    expect(calls.some((c) => c[0] === 'issue' && c[1] === 'edit')).toBe(true);
+    expect(calls.some((c) => c[0] === 'issue' && c[1] === 'close')).toBe(false);
+    expect(logs.join('\n')).toMatch(
+      /NOT closing digest #840: Jellyfin 13\.0 is above the newest verified line \(12\)/,
+    );
+  });
+
   it('records a sub-issue link failure without aborting (promotion still filed)', () => {
     const calls = [];
     const ghExec = (args) => {

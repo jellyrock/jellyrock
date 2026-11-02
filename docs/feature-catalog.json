@@ -4,7 +4,8 @@
   "app": {
     "languages": 98,
     "themes": 9,
-    "serverFloor": "10.7.0"
+    "serverFloor": "10.7.0",
+    "serverNewest": "12"
   },
   "features": [
     {
@@ -12,6 +13,7 @@
       "title": "Cast from another Jellyfin app",
       "pitch": "Cast from a Jellyfin app on your phone or browser to your Roku, then pause, seek and skip from there.",
       "since": "2.23.0",
+      "sinceDate": "2026-07-16",
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
@@ -29,6 +31,7 @@
       "title": "Color themes",
       "pitch": "Pick a color theme for JellyRock, or set every color yourself.",
       "since": "1.11.0",
+      "sinceDate": "2026-02-02",
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
@@ -41,6 +44,7 @@
       "title": "Connect to your servers",
       "pitch": "Find Jellyfin servers on your network or type an address, and switch between the ones you've saved.",
       "since": "1.0.0",
+      "sinceDate": "2025-08-24",
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
@@ -53,6 +57,7 @@
       "title": "Deep links for scripts and smart homes",
       "pitch": "Open or play anything in JellyRock from another device, a script or a voice routine, with only the item's ID.",
       "since": "2.22.0",
+      "sinceDate": "2026-07-09",
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
@@ -65,6 +70,7 @@
       "title": "Delete media",
       "pitch": "Delete a movie, an episode or any other item from your server, right from your Roku, if your account allows it.",
       "since": "1.13.0",
+      "sinceDate": "2026-02-09",
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
@@ -77,6 +83,7 @@
       "title": "Favorites",
       "pitch": "Mark what you love as a favorite and find it all in one place, on its own tab on Home.",
       "since": "1.0.0",
+      "sinceDate": "2025-08-24",
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
@@ -89,6 +96,7 @@
       "title": "HDR and Dolby Vision",
       "pitch": "Watch HDR10, HDR10+, HLG and Dolby Vision as they were made, on a 4K Roku and a TV that shows them.",
       "since": "1.0.0",
+      "sinceDate": "2025-08-24",
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
@@ -101,6 +109,7 @@
       "title": "Item details",
       "pitch": "One details page for movies, shows, music, people and more, with its actions, tracks and related items.",
       "since": "2.0.0",
+      "sinceDate": "2026-03-09",
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [
@@ -111,10 +120,24 @@
       "url": "https://docs.jellyrock.app/features/item-details/"
     },
     {
+      "slug": "jellyfin-12",
+      "title": "Jellyfin 12",
+      "pitch": "Works with Jellyfin 12 and uses what's new in it, from collections and language filters to episode versions.",
+      "since": "2.30.0",
+      "sinceDate": "2026-09-17",
+      "server": "12.0.0",
+      "plugins": [],
+      "screenshots": [],
+      "https": null,
+      "page": "docs/user/features/jellyfin-12.md",
+      "url": "https://docs.jellyrock.app/features/jellyfin-12/"
+    },
+    {
       "slug": "languages",
       "title": "Languages",
       "pitch": "Use JellyRock in your language, following your server or Roku, or pick any language yourself.",
       "since": "2.10.0",
+      "sinceDate": "2026-04-06",
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
@@ -127,6 +150,7 @@
       "title": "Live TV and recordings",
       "pitch": "Watch live channels from your Jellyfin server, browse the TV guide, and schedule recordings from your couch.",
       "since": "1.0.0",
+      "sinceDate": "2025-08-24",
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
@@ -139,6 +163,7 @@
       "title": "Manage subtitles",
       "pitch": "Search your server's subtitle providers and download a subtitle onto a movie or episode from its page.",
       "since": "2.29.0",
+      "sinceDate": "2026-09-15",
       "server": "10.7.0",
       "plugins": [
         "Open Subtitles"
@@ -153,6 +178,7 @@
       "title": "Media segments (skip intro and outro)",
       "pitch": "Skip the intros, outros, recaps, previews and commercials your server has marked, or get a button to skip them.",
       "since": "2.9.0",
+      "sinceDate": "2026-04-02",
       "server": "10.10.0",
       "plugins": [
         "Chapter Segments Provider",
@@ -168,6 +194,7 @@
       "title": "Music",
       "pitch": "Browse your music by artist, album or genre, play albums and instant mixes, and read a song's lyrics.",
       "since": "1.0.0",
+      "sinceDate": "2025-08-24",
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
@@ -180,6 +207,7 @@
       "title": "Photos",
       "pitch": "Look through your photo albums on the TV, one by one or as a slideshow.",
       "since": "1.0.0",
+      "sinceDate": "2025-08-24",
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
@@ -192,6 +220,7 @@
       "title": "Player controls",
       "pitch": "Pause, seek, jump to a chapter and switch audio or subtitles from one clean bar while you watch.",
       "since": "1.0.0",
+      "sinceDate": "2025-08-24",
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [
@@ -206,6 +235,7 @@
       "title": "Quick Connect (sign in with a code)",
       "pitch": "Sign in with a short code from your phone or computer, instead of typing a password with the remote.",
       "since": "1.0.0",
+      "sinceDate": "2025-08-24",
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
@@ -214,10 +244,28 @@
       "url": "https://docs.jellyrock.app/features/quick-connect/"
     },
     {
+      "slug": "search",
+      "title": "Search",
+      "pitch": "Find anything on your server as you type, with live suggestions, your recent searches and a row for each kind of result.",
+      "since": "1.0.0",
+      "sinceDate": "2025-08-24",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [
+        "search",
+        "searchTyping",
+        "searchRecent"
+      ],
+      "https": null,
+      "page": "docs/user/features/search.md",
+      "url": "https://docs.jellyrock.app/features/search/"
+    },
+    {
       "slug": "surround-sound",
       "title": "Surround sound",
       "pitch": "Hear 5.1 and 7.1 sound on your soundbar or receiver, kept as surround even when the server has to convert it.",
       "since": "1.0.0",
+      "sinceDate": "2025-08-24",
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
@@ -230,6 +278,7 @@
       "title": "SyncPlay (watch together)",
       "pitch": "Watch together. Join a SyncPlay group and play, pause and seek in step with people on other Jellyfin apps.",
       "since": "3.3.0",
+      "sinceDate": "2026-10-29",
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
@@ -247,6 +296,7 @@
       "title": "Trickplay (preview thumbnails while seeking)",
       "pitch": "See preview pictures of the scene you're skipping to while you fast-forward or rewind.",
       "since": "1.9.0",
+      "sinceDate": "2026-01-19",
       "server": "10.9.0",
       "plugins": [],
       "screenshots": [
@@ -261,6 +311,7 @@
       "title": "Voice control",
       "pitch": "Search by voice, and play, pause, seek, skip and replay with your Roku voice remote.",
       "since": "1.0.0",
+      "sinceDate": "2025-08-24",
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],
@@ -273,6 +324,7 @@
       "title": "Watch in original quality",
       "pitch": "Play your files as they are, with no conversion, whenever your Roku can, and see why when it can't.",
       "since": "1.0.0",
+      "sinceDate": "2025-08-24",
       "server": "10.7.0",
       "plugins": [],
       "screenshots": [],

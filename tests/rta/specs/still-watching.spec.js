@@ -13,7 +13,7 @@
  *
  * Requires a reachable device + .env (ROKU_IP / ROKU_PASSWORD), same as screens.spec.
  */
-import { beforeAll, it, expect } from 'vitest';
+import { afterAll, beforeAll, it, expect } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
 import { authenticate, findEpisodeWithNext } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
@@ -48,6 +48,15 @@ beforeAll(async () => {
     throw new Error(
       `still-watching setup: no series on ${session.serverUrl} has two episodes, so nothing advances`,
     );
+  }
+});
+
+// The setting this file pins outlives it otherwise: the registry is restored only once the
+// whole run ends, so every spec after this one would queue the next episode. Delete the key
+// (null) so they start from the default.
+afterAll(async () => {
+  if (session) {
+    await odc.writeRegistry({ values: { [session.userId]: { playbackPlayNextEpisode: null } } });
   }
 });
 

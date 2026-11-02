@@ -5,7 +5,8 @@
 // What it writes:
 //   - docs/feature-catalog.json: every feature's facts and the app's counts,
 //     for the marketing site to read at build time (a `schema` number marks
-//     changes to its shape).
+//     changes to its shape). A feature's `sinceDate` is its release's date in
+//     CHANGELOG.md, and `app.serverNewest` is `newest:` in the version map.
 //   - docs/user/features/index.md: the features index on the docs site.
 //   - README.md: the highlighted features, in their `highlight:` rank, between
 //     its generated markers, then a link to the features index.
@@ -20,7 +21,8 @@
 //   node scripts/generate/feature-catalog.cjs --release <x.y.z> --ref <tag>
 //       when a release is published: change `since: unreleased` to the version on each page
 //       that was unreleased in the tagged commit, then write the outputs. A page merged after
-//       the tag is not in the release, so it stays unreleased. Run by release-build.yml.
+//       the tag is not in the release, so it stays unreleased. Run by release-build.yml, after
+//       the changelog step writes the release's heading, which the stamped pages' dates need.
 
 'use strict';
 
@@ -34,6 +36,8 @@ const {
   appFacts,
   featurePageFiles,
   parseFeaturePage,
+  readServerNewest,
+  releaseDates,
 } = require('../lib/feature-facts.cjs');
 
 const args = process.argv.slice(2);
@@ -64,6 +68,12 @@ function fail(message) {
 function readFeatures() {
   const problems = [];
   const features = [];
+  let dates;
+  try {
+    dates = releaseDates(ROOT_DIR);
+  } catch (err) {
+    fail(err.message);
+  }
   for (const name of featurePageFiles(ROOT_DIR)) {
     const rel = `${FEATURES_REL}/${name}`;
     const {
@@ -79,6 +89,12 @@ function readFeatures() {
       }
     }
     if (!title) found.push('has no # title');
+    // A released feature's date comes from its release's heading. None means the
+    // page names a release that never happened, so refuse it rather than publish null.
+    const sinceDate = fields?.since === 'unreleased' ? null : dates.get(fields?.since);
+    if (fields && 'since' in fields && sinceDate === undefined) {
+      found.push(`since: ${fields.since} has no release heading in CHANGELOG.md`);
+    }
     if (found.length) {
       problems.push(...found.map((p) => `${rel}: ${p}`));
       continue;
@@ -89,6 +105,7 @@ function readFeatures() {
       title,
       pitch: fields.pitch,
       since: fields.since,
+      sinceDate,
       server: fields.server,
       plugins: fields.plugins || [],
       screenshots: fields.screenshots || [],
@@ -110,10 +127,16 @@ function readFeatures() {
 
 function buildCatalog(features) {
   const { languages, themes, floor } = appFacts(ROOT_DIR);
+  let newest;
+  try {
+    newest = readServerNewest(ROOT_DIR);
+  } catch (err) {
+    fail(err.message);
+  }
   const catalog = {
     _comment: `Generated from the frontmatter of ${FEATURES_REL}/*.md by npm run docs:features. Edit the pages, not this file.`,
     schema: 1,
-    app: { languages, themes, serverFloor: floor },
+    app: { languages, themes, serverFloor: floor, serverNewest: newest },
     // The README's pick is not a fact about the feature: the site reads none of it.
     features: features.map(({ highlight: _highlight, ...feature }) => feature),
   };
@@ -171,6 +194,18 @@ function stampRelease(version, ref) {
     git(ROOT_DIR, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
   } catch {
     fail(`${ref} is not a commit in this repo`);
+  }
+  // The stamped pages take their date from this heading, so check it before writing any page.
+  let dates;
+  try {
+    dates = releaseDates(ROOT_DIR);
+  } catch (err) {
+    fail(err.message);
+  }
+  if (!dates.has(version)) {
+    fail(
+      `CHANGELOG.md has no heading for ${version}: write it first (changelog-syncer.js sync-release)`,
+    );
   }
   for (const name of featurePageFiles(ROOT_DIR)) {
     const rel = `${FEATURES_REL}/${name}`;

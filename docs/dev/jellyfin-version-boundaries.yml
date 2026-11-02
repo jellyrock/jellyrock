@@ -20,8 +20,14 @@
 #       active: the current top tier; the latest release lands here.
 #   - A future V3 is added as tier `3` here, alongside the `>= 3` dispatch in
 #     source/api/ApiClient.bs, with tier 2 flipped to frozen + a maxServer set.
+#   - `newest` is the newest Jellyfin major line JellyRock is verified on. It is
+#     a claim a person makes after running JellyRock on that line, not a range
+#     any tier computes, and the feature catalog publishes it as `serverNewest`.
+#     Raise it when a new major line ships and passes on a device; the release
+#     tracker keeps that release's digest open until you do.
 
 floor: '10.7.0'
+newest: '12'
 
 tiers:
   # apiVersion 1: legacy user endpoints (/Users/{userId}/ path prefix).

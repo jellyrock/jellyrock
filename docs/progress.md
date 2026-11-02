@@ -26,6 +26,8 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-02: fix(playback): Play Cinema Mode intros, drop the stale queue slot
+- 2026-11-02: docs(catalog): Publish the newest Jellyfin line and release dates
 - 2026-11-02: fix(syncplay): Ask the group to wait after a seek that cannot land
 - 2026-11-02: test(rta): Capture the device console and run specs across servers
 - 2026-11-02: feat(syncplay): Stay in step, stop seek freezes, add a time offset

@@ -15,9 +15,14 @@ Features that need a server plugin are in [Jellyfin server plugins](jellyfin-ser
 | Collections row | ❌ | ❌ | ❌ | ❌ | ✅ | The collections an item is in, on its details page |
 | Collections view | ❌ | ❌ | ❌ | ❌ | ✅ | Browse one library's collections from its **View** menu |
 | Language filters | ❌ | ❌ | ❌ | ❌ | ✅ | Filter a library by audio or subtitle language |
+| Episode versions | ❌ | ❌ | ❌ | ❌ | ✅ | An episode's files shown as one episode, with a version to pick |
+| Resume per version | ❌ | ❌ | ❌ | ❌ | ✅ | Each version keeps its own resume point |
+| Original language audio | ❌ | ❌ | ❌ | ❌ | ✅ | Plays the audio in the language the item was made in |
 | SyncPlay | ✅ | ✅ | ✅ | ✅ | ✅ | Watch together: join a group from the **SyncPlay** icon and play in step with its members |
 
 ✅ means the feature works on that version. ❌ means it is not available.
+
+What Jellyfin 12 adds, and how to use it, is in [Jellyfin 12](features/jellyfin-12.md).
 
 The SyncPlay row is for HTTP servers. On an HTTPS server, SyncPlay needs Jellyfin 10.11 or later and the [JellyRock Companion](jellyfin-server-plugins.md) plugin.
 

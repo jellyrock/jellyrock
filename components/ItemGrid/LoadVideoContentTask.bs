@@ -38,14 +38,19 @@ end sub
 sub loadItems()
   queueManager = m.global.queueManager
 
-  ' Reset per-run fields in case task gets reused
-  m.top.isIntro = false
+  ' Reset per-run fields in case task gets reused. Not isIntro: a reload of an intro arrives
+  ' with it set (VideoPlayerView.startVideoLoad), and Cinema Mode is spent by then, so the
+  ' intro lookup below cannot run and set it again.
   m.top.errorMsg = ""
   ' This run has opened no live stream yet (liveStreamHandoff.bs).
   m.top.liveStream = { stage: LiveStreamStage.NONE, id: "" }
 
-  ' Only show preroll once per queue
+  ' Cinema Mode gets one chance per queue, like jellyfin-web, which decides once per play
+  ' request for the first item only. The first load spends it whether or not an intro plays:
+  ' a resumed launch plays none, and a flag left armed would give the next item the queue
+  ' reaches an intro mid-binge.
   if queueManager.callFunc("isPrerollActive")
+    queueManager.callFunc("setPrerollStatus", false)
     ' Prerolls not allowed if we're resuming video.
     '
     ' startingPoint alone no longer answers that on a per-version server: the item's own
@@ -68,12 +73,12 @@ sub loadItems()
           ' The item plays after its intro, so it goes directly after the slot the intro plays
           ' in: appending it would play the rest of the queue first. Moving on to it reaches
           ' the same item, not a new one, so it keeps the start it was launched with
-          ' (QueueManager.advanceTo consumes followsIntro).
+          ' (QueueManager.advanceTo consumes followsIntro, and drops the intro's slot once it
+          ' has moved on, so the queue holds the item once).
           followingItem = queueManager.callFunc("getCurrentItem")
           if isValid(followingItem) then followingItem.followsIntro = true
           queueManager.callFunc("insertAfterCurrent", followingItem)
           m.top.itemId = preRoll.items[0].id
-          queueManager.callFunc("setPrerollStatus", false)
           m.top.isIntro = true
         end if
       end if
@@ -81,8 +86,11 @@ sub loadItems()
   end if
 
   id = m.top.itemId
+  ' The version named on the load is the launched item's (every item carries its first source as
+  ' mediaSourceId). An intro is another item, so it loads with no version: the server answers a
+  ' foreign MediaSourceId with NoCompatibleStream and no sources, and the intro never plays.
   mediaSourceId = invalid
-  if m.top.mediaSourceId <> "" then mediaSourceId = m.top.mediaSourceId
+  if m.top.mediaSourceId <> "" and not m.top.isIntro then mediaSourceId = m.top.mediaSourceId
   audioStreamIdx = m.top.selectedAudioStreamIndex
   forceTranscoding = m.top.shouldForceTranscoding
   bypassDoviPreservation = m.top.shouldBypassDoviPreservation

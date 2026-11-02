@@ -18,6 +18,7 @@ const {
   serverToTier,
   activeTier,
   isTierFrozen,
+  isAboveNewest,
 } = require('../../../../scripts/lib/version-boundaries.cjs');
 
 const REPO_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..', '..');
@@ -26,6 +27,7 @@ const REPO_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..'
 function validMap() {
   return {
     floor: '10.7.0',
+    newest: '12',
     tiers: {
       1: { minServer: '10.7.0', maxServer: '10.8.13', status: 'frozen' },
       2: { minServer: '10.9.0', maxServer: null, status: 'active' },
@@ -51,6 +53,24 @@ describe('validateBoundaries', () => {
     m.tiers[1].maxServer = '10.8';
     m.tiers[2].minServer = '12.0';
     expect(() => validateBoundaries(m)).not.toThrow();
+  });
+
+  it('rejects a newest that is not a quoted major version', () => {
+    for (const bad of [undefined, 12, '12.0', '12.0.0', 'latest']) {
+      const m = validMap();
+      m.newest = bad;
+      expect(() => validateBoundaries(m)).toThrow(/newest must be a major version/);
+    }
+  });
+
+  it('rejects a newest below a line the map already supports', () => {
+    const m = validMap();
+    m.newest = '10';
+    expect(() => validateBoundaries(m)).not.toThrow();
+    m.tiers[2].minServer = '12.0';
+    expect(() => validateBoundaries(m)).toThrow(
+      /newest \(10\) is below a line the map already supports \(12\)/,
+    );
   });
 
   it('rejects a non-integer tier key', () => {
@@ -161,6 +181,21 @@ describe('isTierFrozen', () => {
     expect(isTierFrozen(m, 1)).toBe(true);
     expect(isTierFrozen(m, 2)).toBe(false);
     expect(isTierFrozen(m, 99)).toBe(false); // unknown tier
+  });
+});
+
+describe('isAboveNewest', () => {
+  const m = validMap();
+  it('is true only for a release on a major line above newest', () => {
+    expect(isAboveNewest(m, '13.0')).toBe(true);
+    expect(isAboveNewest(m, '13.0-rc1')).toBe(true);
+    expect(isAboveNewest(m, '12.4')).toBe(false);
+    expect(isAboveNewest(m, '10.11.11')).toBe(false);
+  });
+
+  it('is false for what is not a release version', () => {
+    expect(isAboveNewest(m, '20240402201942')).toBe(false);
+    expect(isAboveNewest(m, null)).toBe(false);
   });
 });
 

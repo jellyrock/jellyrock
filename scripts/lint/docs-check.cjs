@@ -96,6 +96,8 @@ const {
   listedPlugins,
   parseFeaturePage,
   readServerFloor,
+  readServerNewest,
+  releaseDates,
   screenshotKeys,
 } = require('../lib/feature-facts.cjs');
 
@@ -925,6 +927,19 @@ function checkFeaturePages() {
   }
   const version = appVersion(ROOT_DIR);
   const floor = readServerFloor(ROOT_DIR);
+  const newest = readServerNewest(ROOT_DIR);
+  let dates;
+  try {
+    dates = releaseDates(ROOT_DIR);
+  } catch (err) {
+    pushError({
+      category: 'feature-frontmatter',
+      file: path.join(ROOT_DIR, 'CHANGELOG.md'),
+      message: `a feature's release date comes from CHANGELOG.md: ${err.message}`,
+      target: 'since',
+    });
+    dates = null;
+  }
   const plugins = listedPlugins(ROOT_DIR);
   const screens = screenshotKeys(ROOT_DIR);
   const ranks = new Map(); // rank -> the first page that holds it
@@ -968,12 +983,19 @@ function checkFeaturePages() {
       if (!VERSION_RE.test(since)) fail(`since: ${since} is not x.y.z or \`unreleased\``, 'since');
       else if (compareVersions(since, version) > 0) {
         fail(`since: ${since} is newer than the app (${version})`, 'since');
+      } else if (dates && !dates.has(since)) {
+        fail(`since: ${since} has no release heading in CHANGELOG.md`, 'since');
       }
     }
     if (server) {
       if (!VERSION_RE.test(server)) fail(`server: ${server} is not x.y.z`, 'server');
       else if (compareVersions(server, floor) < 0) {
         fail(`server: ${server} is older than the supported floor (${floor})`, 'server');
+      } else if (Number(server.split('.')[0]) > Number(newest)) {
+        fail(
+          `server: ${server} is newer than the newest line JellyRock is verified on (${newest})`,
+          'server',
+        );
       }
     }
     for (const target of ['plugins', 'httpsplugins']) {

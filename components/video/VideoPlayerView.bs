@@ -87,6 +87,9 @@ sub init()
 
   ' Load meta data
   m.isIntro = false
+  ' The item each run of the video load loads (startVideoLoad): the queue item, later the one
+  ' that loaded, which is a Cinema Mode intro's own id while the intro plays.
+  m.loadItemId = m.currentItem.id
   ' The version each run of the video load asks for (startVideoLoad): the one the queue item names,
   ' later the one that loaded or the one the viewer switched to. "" lets the load choose.
   m.videoLoadMediaSourceId = ""
@@ -1168,9 +1171,12 @@ sub onVideoContentLoaded(event as object)
   videoContent = m.LoadMetaDataTask.content
   m.LoadMetaDataTask.content = []
   loadedLiveStream = m.LoadMetaDataTask.liveStream
-  ' Kept here rather than read off the node: the next reload replaces the node, and its run
-  ' starts with isIntro unset.
+  ' Kept here rather than read off the node: the next reload replaces the node. A reload (a
+  ' retry, or a track or gear change) loads what this run loaded: a Cinema Mode intro is
+  ' another item than the queue's, and loading the queue item with the intro's version gets
+  ' NoCompatibleStream from the server.
   m.isIntro = m.LoadMetaDataTask.isIntro
+  m.loadItemId = m.LoadMetaDataTask.itemId
 
   ' If we have nothing to play, show an error dialog and return.
   ' Prefer the task's specific errorMsg (for example NoCompatibleStream) over the generic fallback
@@ -1956,7 +1962,8 @@ end function
 ' bare STOP, because it may be opening a Live TV stream that only its answer names.
 '
 ' A new node starts with every field at its default, so this passes the full input set each
-' time. The version is m.videoLoadMediaSourceId; the retry flags apply to one run only.
+' time. The item is m.loadItemId and the version m.videoLoadMediaSourceId, with m.isIntro
+' marking a Cinema Mode intro; the retry flags apply to one run only.
 '
 ' @param {integer} audioStreamIndex - server index of the audio stream; 0 lets the load pick
 ' @param {integer} subtitleIndex - server index of the subtitle stream, or a SubtitleSelection value
@@ -1970,8 +1977,9 @@ sub startVideoLoad(audioStreamIndex as integer, subtitleIndex as integer, bypass
   ' invalid, not the old node: releaseVideoLoad has already let it go, and replaceTask's own
   ' release is the bare STOP the live-stream rule forbids.
   m.LoadMetaDataTask = replaceTask(invalid, "LoadVideoContentTask", "content", {
-    itemId: m.currentItem.id,
+    itemId: m.loadItemId,
     itemType: m.currentItem.type,
+    isIntro: m.isIntro,
     selectedAudioStreamIndex: audioStreamIndex,
     selectedSubtitleIndex: subtitleIndex,
     mediaSourceId: m.videoLoadMediaSourceId,

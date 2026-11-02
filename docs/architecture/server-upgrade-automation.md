@@ -26,7 +26,7 @@ related-files:
   - docs/dev/jellyfin-version-boundaries.yml
   - docs/dev/jellyfin-server-versioning.md
   - source/api/ApiClient.bs
-last-reviewed: 2026-10-23
+last-reviewed: 2026-11-02
 ---
 
 # Jellyfin server-upgrade automation
@@ -143,7 +143,7 @@ node scripts/server-upgrade.js execute --plan <plan.json> [--digest <issue#>] [-
 | --- | --- | --- |
 | `scaffold` | Lists every candidate with `needsInvestigation` in a verdict template, each keyed by a `findingKey` the script derives. The agent fills `real`, `severity`, `recommendedAction` (`file`, `skip` or `monitor`), `labels`, `rationale` and `draftIssueBody`. | No |
 | `plan` | Joins the verdicts back by `findingKey`, searches GitHub for existing issues (read-only) and sorts each finding into `create`, `comment`, `reopen`, `skip`, `monitor`, `missing-verdict` or `invalid-verdict` | No |
-| `execute` | Creates, comments on or reopens the issues, links each as a sub-issue of the digest, rewrites the digest with the verdict checklist and adds `server-upgrade:triaging`. With `--close-digest` it closes the digest, but only when no `missing-verdict` or `invalid-verdict` is left. It writes a run summary to `.claude/handoffs/`. | Yes |
+| `execute` | Creates, comments on or reopens the issues, links each as a sub-issue of the digest, rewrites the digest with the verdict checklist and adds `server-upgrade:triaging`. With `--close-digest` it closes the digest, but only when no `missing-verdict` or `invalid-verdict` is left and the release is not above the `newest` line. It writes a run summary to `.claude/handoffs/`. | Yes |
 
 Why it is shaped this way ([ADR 0008](../adr/0008-server-upgrade-issue-filing.md)):
 
@@ -181,10 +181,10 @@ The script compares the latest stable release (`fetchJellyfinVersions().stable`,
 | Action | When | What the workflow does |
 | --- | --- | --- |
 | `none` | No stable release newer than the anchor | Nothing |
-| `clean` | Newer release, and no candidate needs investigation | Opens the digest, comments that it is clean, and closes it, as a record. This is the only digest CI closes. |
-| `triage` | Newer release with at least one candidate to investigate, or the report could not be built | Opens the digest, or refreshes its body while it is open and not yet triaged |
+| `clean` | Newer release on a line JellyRock is verified on, and no candidate needs investigation | Opens the digest, comments that it is clean, and closes it, as a record. This is the only digest CI closes. |
+| `triage` | Newer release with at least one candidate to investigate, a release above the `newest` line, or the report could not be built | Opens the digest, or refreshes its body while it is open and not yet triaged |
 
-A `clean` release can still carry `floor-known`, `frozen-skip` or suppressed candidates: only `needsInvestigation` counts. When the spec fetch fails or a committed fingerprint is missing, the digest says so and announces the release without counts, because it cannot claim the release is clean.
+A `clean` release can still carry `floor-known`, `frozen-skip` or suppressed candidates: only `needsInvestigation` counts. A release on a major line above `newest:` in the version map is never `clean`. An unchanged spec doesn't show that JellyRock runs on the new line, and the website states that line, so the digest stays open with the step that raises `newest` ([Claim a new major line](../dev/jellyfin-server-versioning.md#claim-a-new-major-line)). When the spec fetch fails or a committed fingerprint is missing, the digest says so and announces the release without counts, because it cannot claim the release is clean.
 
 The workflow finds this version's digest by its exact title among all `server-upgrade:tracker` issues, open or closed, since `gh --search` would mangle the brackets and dash in the title. Once `/server-upgrade` adds `server-upgrade:triaging`, CI leaves the digest alone. A candidate-bearing digest is closed only by a person or by `execute --close-digest`. If someone closes it before triage, CI leaves it closed. Clean digests outlive the 90-day retention of GitHub Actions logs, so each release keeps a record of what the mechanical pass found ([ADR 0011](../adr/0011-server-upgrade-phase6.md)).
 

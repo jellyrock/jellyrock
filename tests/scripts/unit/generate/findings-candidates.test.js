@@ -33,6 +33,7 @@ const SCRIPT = 'scripts/generate/findings-candidates.js';
 // Two-tier boundary map matching the real one (tier 1 frozen, tier 2 active).
 const BOUNDARIES = {
   floor: '10.7.0',
+  newest: '12',
   tiers: {
     1: { minServer: '10.7.0', maxServer: '10.8.13', status: 'frozen' },
     2: { minServer: '10.9.0', maxServer: null, status: 'active' },
@@ -733,7 +734,7 @@ describe('CLI --stdout against committed fixtures', () => {
     );
     write(
       'docs/dev/jellyfin-version-boundaries.yml',
-      'floor: "10.7.0"\ntiers:\n  1:\n    minServer: "10.7.0"\n    maxServer: "10.8.13"\n    status: frozen\n  2:\n    minServer: "10.9.0"\n    maxServer: null\n    status: active\n',
+      'floor: "10.7.0"\nnewest: "12"\ntiers:\n  1:\n    minServer: "10.7.0"\n    maxServer: "10.8.13"\n    status: frozen\n  2:\n    minServer: "10.9.0"\n    maxServer: null\n    status: active\n',
     );
     write('.api-watch/suppressions.yml', 'rules: []\n');
 
@@ -762,7 +763,7 @@ describe('CLI --stdout against committed fixtures', () => {
     );
     write(
       'docs/dev/jellyfin-version-boundaries.yml',
-      'floor: "10.7.0"\ntiers:\n  1:\n    minServer: "10.7.0"\n    maxServer: "10.8.13"\n    status: frozen\n  2:\n    minServer: "10.9.0"\n    maxServer: null\n    status: active\n',
+      'floor: "10.7.0"\nnewest: "12"\ntiers:\n  1:\n    minServer: "10.7.0"\n    maxServer: "10.8.13"\n    status: frozen\n  2:\n    minServer: "10.9.0"\n    maxServer: null\n    status: active\n',
     );
     write('.api-watch/suppressions.yml', 'rules: []\n');
     // an alternate manifest that uses nothing: the same diff yields 0 breaking.

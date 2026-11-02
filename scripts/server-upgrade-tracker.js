@@ -94,7 +94,7 @@ const {
   compareSemverBase,
   isReleaseVersionBase,
 } = require('./lib/signals-fetch.cjs');
-const { loadBoundaries } = require('./lib/version-boundaries.cjs');
+const { loadBoundaries, isAboveNewest } = require('./lib/version-boundaries.cjs');
 
 // The per-version digest label, single-sourced from the filer (server-upgrade.js).
 const TRACKER_LABEL = DIGEST_LABEL;
@@ -117,9 +117,10 @@ export function decideVersionState({ latestStable, acknowledged }) {
 //   ahead + report unavailable      gives 'triage' (announce-only; can't claim clean)
 //   ahead + 0 candidates            gives 'clean'  (judgment-free, so CI opens-then-closes a record)
 //   ahead + ≥1 candidate            gives 'triage' (CI opens/refreshes until first triage)
-export function decideDigestAction(versionState, report) {
+//   ahead + above the newest line   gives 'triage' (a person verifies the line and raises `newest`)
+export function decideDigestAction(versionState, report, { aboveNewest = false } = {}) {
   if (versionState === 'caught-up') return 'none';
-  if (!report) return 'triage';
+  if (!report || aboveNewest) return 'triage';
   return (report.counts?.needsInvestigation ?? 0) > 0 ? 'triage' : 'clean';
 }
 
@@ -253,7 +254,8 @@ async function main() {
     console.error(`server-upgrade-tracker: report computation degraded — ${err.message}`);
   }
 
-  const action = decideDigestAction(versionState, report);
+  const aboveNewest = isAboveNewest(boundaries, latestStable);
+  const action = decideDigestAction(versionState, report, { aboveNewest });
   const title = digestTitle(latestStable);
   // How far prior releases have been resolved (clean auto-close or human triage),
   // derived from the per-version digest issues the workflow lists and passes in.
@@ -269,6 +271,7 @@ async function main() {
     floor,
     report,
     clearedThrough,
+    newest: boundaries.newest,
   });
   if (flags['body-out']) {
     writeFileSync(flags['body-out'], body);
