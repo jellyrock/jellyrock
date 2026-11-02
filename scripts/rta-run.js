@@ -47,6 +47,7 @@ import {
   wasBlocked,
 } from './run-record.js';
 import { acquireDeviceLock } from './device-lock.js';
+import { startConsoleCapture } from './lib/console-capture.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const watch = process.argv.includes('--watch');
@@ -139,6 +140,13 @@ const run = beginRun({ lock, run: runName, cumulative: watch, runnerArgs: passth
 // costs one round trip) but never allowed to fail the run: `probeFixture` resolves on
 // every path, and nothing here reads its result to decide anything.
 recordFixtureReading(await probeFixture(RTA_CONFIG.server.url, { phase: 'start' }));
+
+// Copy the device console to a file for the whole run (the deploy included, so the new
+// build's first lines are kept). `RTA_CONSOLE_LOG` lets a wrapper choose the path.
+// Closed on every exit path: the socket must not outlive the process.
+const consoleFile = process.env.RTA_CONSOLE_LOG || path.join(run.recordDir, 'console.log');
+const consoleCapture = startConsoleCapture({ host: process.env.ROKU_IP, file: consoleFile });
+process.on('exit', () => consoleCapture.close());
 
 if (process.env.RTA_NO_DEPLOY === '1') {
   console.log('[rta] RTA_NO_DEPLOY=1 — skipping deploy, using the already-sideloaded build');
@@ -233,6 +241,9 @@ const redOutcome = wasBlocked(readFailures()) ? RUN_OUTCOMES.BLOCKED : RUN_OUTCO
 run.close(
   interrupting ? RUN_OUTCOMES.INTERRUPTED : exitCode === 0 ? RUN_OUTCOMES.PASSED : redOutcome,
 );
+
+if (exitCode !== 0)
+  console.log(`[rta] device console: ${consoleFile} (holds auth tokens, keep it private)`);
 
 try {
   await restoreRegistry(saved);

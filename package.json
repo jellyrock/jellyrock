@@ -137,6 +137,7 @@
     "test:rta": "npm run build && node scripts/rta-run.js",
     "test:rta:tdd": "node scripts/rta-run.js --watch",
     "test:rta:fast": "RTA_NO_DEPLOY=1 node scripts/rta-run.js",
+    "test:rta:servers": "node scripts/rta-servers.js",
     "test:rta:capture": "npm run build && RTA_CAPTURE=1 node scripts/rta-run.js",
     "demo": "node tests/rta/demos/run.mjs",
     "rta:restore": "node scripts/rta-restore.js",
