@@ -506,7 +506,7 @@ function choicesFitAsButtons(choices as object) as boolean
 
   reg = CreateObject("roFontRegistry")
   font = reg.GetDefaultFont(m.global.constants.fontSizeMedium, false, false)
-  buttonPadding = 60 ' TextButton default padding (30) * 2
+  buttonPadding = DIALOG_BUTTON_PADDING * 2
   spacing = 24
   totalWidth = 0
   for each label in choices

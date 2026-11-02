@@ -1,0 +1,52 @@
+import "pkg:/source/utils/dialogLayout.bs"
+
+namespace tests
+
+  ' dialogLayout.bs holds a copy of how TextButton sizes itself. These cases fail
+  ' when the two differ.
+  @suite("TextButton - dialogLayout.bs mirrors its geometry")
+  class TextButtonDialogFallbackTests extends tests.BaseTestSuite
+
+    private button as object
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.button = CreateObject("roSGNode", "TextButton")
+    end function
+
+    protected override function afterEach()
+      m.button = invalid
+      super.afterEach()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("geometry")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps the default padding dialogLayout.bs mirrors")
+    function _()
+      m.assertEqual(m.button.padding, DIALOG_BUTTON_PADDING)
+    end function
+
+    ' TextButton sizes itself only once it has rendered, so the button goes on the
+    ' scene and `wait` yields the render thread until `isReady` fires. A timeout
+    ' leaves the height at 0, which fails.
+    @it("measures the height dialogButtonFallbackHeight predicts")
+    function _()
+      scene = m.top.getScene()
+      port = CreateObject("roMessagePort")
+      m.button.observeField("isReady", port)
+      scene.appendChild(m.button)
+      m.button.text = "OK"
+      wait(1500, port)
+
+      height = int(m.button.findNode("buttonBackground").height)
+      fontSize = int(m.button.findNode("buttonText").font.size)
+      scene.removeChild(m.button)
+
+      m.assertEqual(height, dialogButtonFallbackHeight(fontSize))
+    end function
+
+  end class
+
+end namespace
