@@ -523,6 +523,17 @@ namespace tests
       m.assertEqual(syncPlayPlayback.correctionLeadMs(2600&), 3100&)
     end function
 
+    @it("seekIsWhereWeAre: a group Seek within the ready tolerance of a playing, ready node needs no seek")
+    function _()
+      ' 60.0 s asked, the node at 60.2 s: a wait-on-me Seek come back after the round trip.
+      m.assertTrue(syncPlayPlayback.seekIsWhereWeAre(600000000&, 602000000&, "playing", "ready"))
+      m.assertTrue(syncPlayPlayback.seekIsWhereWeAre(600000000&, 598000000&, "playing", "ready"))
+      m.assertFalse(syncPlayPlayback.seekIsWhereWeAre(600000000&, 606000000&, "playing", "ready"))
+      m.assertFalse(syncPlayPlayback.seekIsWhereWeAre(600000000&, 602000000&, "paused", "ready"))
+      m.assertFalse(syncPlayPlayback.seekIsWhereWeAre(600000000&, 602000000&, "playing", "seeking"))
+      m.assertFalse(syncPlayPlayback.seekIsWhereWeAre(600000000&, 602000000&, "playing", "loading"))
+    end function
+
     @it("a longer lead seeks further and resumes that much later")
     function _()
       plan = syncPlayPlayback.correctionPlan(500&, 695000000&, m.unpauseInForce(), m.estimator(), 3100&)
@@ -723,6 +734,42 @@ namespace tests
       m.assertEqual(playing.report, "ready")
       m.assertTrue(playing.pauseFirst)
       m.assertEqual(tracker.phase, "ready")
+    end function
+
+    @it("a seek whose position lands at once but never reaches playing is given up: the stall is reported and seekGaveUp is true")
+    function _()
+      tracker = m.readyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000&, report: false, thenPause: true })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 1245000000& })
+      landed = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertEqual(tracker.phase, "landing")
+      m.assertEqual(landed.seekGaveUp, false)
+      gaveUp = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "timeout" })
+      m.assertEqual(gaveUp.report, "buffering")
+      m.assertEqual(tracker.phase, "rebuffering")
+      m.assertEqual(gaveUp.seekGaveUp, true)
+    end function
+
+    @it("a seek that lands but whose node never reaches playing settles by the landing timeout, and seekGaveUp is true")
+    function _()
+      tracker = m.readyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000&, report: false, thenPause: true })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertEqual(tracker.phase, "landing")
+      gaveUp = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "timeout" })
+      m.assertEqual(tracker.phase, "ready")
+      m.assertEqual(gaveUp.seekGaveUp, true)
+    end function
+
+    @it("a seek that lands and settles at playing is not given up")
+    function _()
+      tracker = m.readyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000&, report: false, thenPause: true })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 1245000000& })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      playing = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 300000000& })
+      m.assertEqual(tracker.phase, "ready")
+      m.assertEqual(playing.seekGaveUp, false)
     end function
 
     @it("a position that lands before the node reports buffering still waits for playing before the pause and the Ready")

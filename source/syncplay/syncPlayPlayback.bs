@@ -49,7 +49,8 @@ namespace syncPlayPlayback
   ' to fix), so the correction uses the protocol's own shape: seek past the group, pause there,
   ' resume when the group reaches it. A seek can take longer (a correction's outlasted this on
   ' direct play and left the member 1.9 s behind, Stick 4K, 2026-10-31), so the lead grows to
-  ' what the last seek on this node took (correctionLeadMs). This is the shortest it gets.
+  ' what the last seek on this node took (correctionLeadMs). This is the shortest it gets; a seek
+  ' the tracker gave up stops the next seek-correction instead (trackPlayerEvent's seekGaveUp).
   const CORRECTION_LEAD_MS = 2000
   ' What a lead keeps over the last seek's time, for a seek a little slower than the one before.
   const CORRECTION_LEAD_MARGIN_MS = 500
@@ -259,13 +260,22 @@ namespace syncPlayPlayback
   end function
 
   ' How far past the group a correction's seek goes: long enough to land before the group arrives,
-  ' judged by the last seek on this node. A seek too slow for any lead becomes a stall the server
-  ' hears of (trackPlayerEvent), so it never reaches this.
+  ' judged by the last seek on this node. The manager does not ask for a seek after one the tracker
+  ' gave up (its lastSeekGaveUp), so the time of a given-up seek does not set a lead.
   ' @param lastSeekMs - how long the last seek took; 0 while none has landed on this player
   function correctionLeadMs(lastSeekMs as longinteger) as longinteger
     leadMs& = lastSeekMs + CORRECTION_LEAD_MARGIN_MS
     if leadMs& < CORRECTION_LEAD_MS then return CORRECTION_LEAD_MS
     return leadMs&
+  end function
+
+  ' Whether a group Seek asks for where this node already is: within the ready tolerance, playing
+  ' and tracked ready. The Seek this member posts to make the group wait on it (the manager's
+  ' waitOnMe) comes back this way after the round trip, and a seek written for it would cost the
+  ' slow node the very freeze the wait avoids: the node pauses and reports Ready where it is.
+  function seekIsWhereWeAre(targetTicks as longinteger, playerPositionTicks as longinteger, playerState as string, trackerPhase as string) as boolean
+    if playerState <> "playing" or trackerPhase <> "ready" then return false
+    return Abs(playerPositionTicks - targetTicks) <= syncPlayTime.msToTicks(READY_TOLERANCE_MS)
   end function
 
   ' Move the resume to where the node stopped: a seek lands off its target (up to 36 ms in the logs
@@ -321,8 +331,8 @@ namespace syncPlayPlayback
   '   the seeking phase, so the buffering and playing it causes are not taken for a stall.
   '   "holdSeek" carries `targetTicks` (not `positionTicks`, which every event copies into the
   '   tracker's last position), `report` and `thenPause`: a seek due while one is in flight.
-  ' @returns an AA with report ("", "buffering" or "ready"), waitMs, pauseFirst, showOsd, nextSeek and
-  '   positionTicks:
+  ' @returns an AA with report ("", "buffering" or "ready"), waitMs, pauseFirst, showOsd, nextSeek,
+  '   seekGaveUp and positionTicks:
   '   `waitMs` above 0 asks for a one-shot timer that feeds back { kind: "timeout" }; `pauseFirst`
   '   says to pause the player before the Ready goes out (a load's first frame: web pauses at
   '   playbackstart and reports Ready, and the server's Unpause then starts everyone together);
@@ -334,9 +344,12 @@ namespace syncPlayPlayback
   '   `positionTicks` is the position to put in the report, or -1 to use the player's own. A load
   '   that started partway in has a Video node still reading 0 at its first `playing` (a probe on
   '   2026-10-23 read 0.0 while buffering and 349.0 right after), and a Ready at 0 makes the server
-  '   send a corrective Seek, so that first Ready carries the start instead.
+  '   send a corrective Seek, so that first Ready carries the start instead;
+  '   `seekGaveUp` says the tracker gave the seek in flight up at this event: the landing budget ran
+  '   out with the node still buffering (a stall it reports), or without it ever reaching `playing`.
+  '   A seek that lands and settles on its own is never given up, however long it took.
   function trackPlayerEvent(tracker as object, evt as object) as object
-    result = { report: "", waitMs: 0, pauseFirst: false, showOsd: false, positionTicks: -1&, nextSeek: invalid }
+    result = { report: "", waitMs: 0, pauseFirst: false, showOsd: false, positionTicks: -1&, nextSeek: invalid, seekGaveUp: false }
     if not isValid(evt) or not syncPlayTime.isText(evt.kind) then return result
     kind = evt.kind
     if syncPlayTime.isWholeNumber(evt.positionTicks) then tracker.lastPositionTicks = syncPlayTime.asLong(evt.positionTicks)
@@ -404,9 +417,11 @@ namespace syncPlayPlayback
           tracker.thenPause = false
           tracker.showOsd = false
           result.report = "buffering"
+          result.seekGaveUp = true
         else
           ' The node never reached playing: report what there is, and pause nothing.
           seekSettled(tracker, result, false)
+          result.seekGaveUp = true
         end if
       else if tracker.phase = "stalling"
         tracker.phase = "rebuffering"
