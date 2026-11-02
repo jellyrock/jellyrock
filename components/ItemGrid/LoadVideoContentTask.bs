@@ -45,8 +45,12 @@ sub loadItems()
   ' This run has opened no live stream yet (liveStreamHandoff.bs).
   m.top.liveStream = { stage: LiveStreamStage.NONE, id: "" }
 
-  ' Only show preroll once per queue
+  ' Cinema Mode gets one chance per queue, like jellyfin-web, which decides once per play
+  ' request for the first item only. The first load spends it whether or not an intro plays:
+  ' a resumed launch plays none, and a flag left armed would give the next item the queue
+  ' reaches an intro mid-binge.
   if queueManager.callFunc("isPrerollActive")
+    queueManager.callFunc("setPrerollStatus", false)
     ' Prerolls not allowed if we're resuming video.
     '
     ' startingPoint alone no longer answers that on a per-version server: the item's own
@@ -75,7 +79,6 @@ sub loadItems()
           if isValid(followingItem) then followingItem.followsIntro = true
           queueManager.callFunc("insertAfterCurrent", followingItem)
           m.top.itemId = preRoll.items[0].id
-          queueManager.callFunc("setPrerollStatus", false)
           m.top.isIntro = true
         end if
       end if
