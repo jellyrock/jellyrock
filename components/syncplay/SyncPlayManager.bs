@@ -264,13 +264,7 @@ function playerEvent(evt as object) as object
     end if
   else if kind = "unmounted"
     m.playerState = ""
-    m.groupPaused = false
-    m.playbackDiffMs = invalid
-    m.pendingPlan = invalid
-    m.commandTimer.control = "stop"
-    m.readyTimer.control = "stop"
-    m.pauseTimer.control = "stop"
-    dropCorrection()
+    resetPlaybackTracking()
     track({ kind: "unmounted" })
     if m.expectingRemount
       m.expectingRemount = false
@@ -298,15 +292,10 @@ sub haltFollowing(reason as string, tell = true as boolean)
   if syncPlayTime.isText(m.loadNotice) and m.loadNotice = "followingAgain" then tell = false
   if tell and isFollowing() then notify("halted", m.state.groupName, "")
   syncPlayState.halt(m.state)
-  m.pendingPlan = invalid
   m.owedLoad = invalid
   m.loadNotice = invalid
-  m.groupPaused = false
-  m.commandTimer.control = "stop"
-  m.readyTimer.control = "stop"
-  m.pauseTimer.control = "stop"
   releaseCorrection()
-  m.playbackDiffMs = invalid
+  resetPlaybackTracking()
   m.tracker = syncPlayPlayback.newReadyTracker()
   dropClaimedPlay("stopped following")
   post("SetIgnoreWait", syncPlayRequests.setIgnoreWait(true))
@@ -526,13 +515,26 @@ sub dropCorrection()
 end sub
 
 ' This member stops answering to the group: a node held for the correction has no one left to
-' resume it, and the viewer never paused it.
+' resume it, and the viewer never paused it. The correction itself goes with resetPlaybackTracking.
 sub releaseCorrection()
   m.correctionPauseOwed = false
   if isValid(m.correction) and m.playerState = "paused"
     host = playerHost()
     if isValid(host) then tellPlayer(host, { command: "resume" })
   end if
+end sub
+
+' The playback the manager was tracking is over: a halt, the player's unmount or a leave. Drops
+' the plan a command timer would apply, the waits on the player, the group's pause and the
+' correction under way, and the drift the specs read. A fresh follow (followAgain, GroupJoined)
+' replaces the tracker instead, since no playback of the group's is under way yet.
+sub resetPlaybackTracking()
+  m.pendingPlan = invalid
+  m.groupPaused = false
+  m.playbackDiffMs = invalid
+  m.commandTimer.control = "stop"
+  m.readyTimer.control = "stop"
+  m.pauseTimer.control = "stop"
   dropCorrection()
 end sub
 
@@ -1043,20 +1045,15 @@ function syncPlayRequest(action as string, body as dynamic, isLastForSession = f
 end function
 
 sub leaveLocally()
-  m.commandTimer.control = "stop"
   m.syncTimer.control = "stop"
-  m.readyTimer.control = "stop"
-  m.pauseTimer.control = "stop"
   releaseCorrection()
-  m.playbackDiffMs = invalid
-  m.groupPaused = false
+  resetPlaybackTracking()
   m.timeSyncTask = releaseTask(m.timeSyncTask, "results")
   m.state = syncPlayState.newState()
   syncPlayOffset.reset(m.estimator)
   m.tracker = syncPlayPlayback.newReadyTracker()
   m.heldCommand = invalid
   m.lastCommand = invalid
-  m.pendingPlan = invalid
   m.owedLoad = invalid
   m.expectingRemount = false
   m.claimedStart = invalid
