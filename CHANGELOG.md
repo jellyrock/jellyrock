@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- (syncplay) Stay in step, stop seek freezes, add a time offset ([#1296](https://github.com/jellyrock/jellyrock/pull/1296))
+
 ### Changed
 
 - (home) Show vertical posters in TV Recently Added rows ([#1295](https://github.com/jellyrock/jellyrock/pull/1295))
