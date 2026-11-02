@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-02: test(rta): Capture the device console and run specs across servers
 - 2026-11-02: feat(syncplay): Stay in step, stop seek freezes, add a time offset
 - 2026-11-01: fix: Register Roku's memory monitor and ship only runtime files
 - 2026-11-01: ci: Make the device test run read only its own result
