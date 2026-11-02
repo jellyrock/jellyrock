@@ -12,10 +12,13 @@ Do these before you file. They solve many "no sound" and "won't play" reports on
 2. **Check your Roku's audio output setting** (for no-sound problems). On your Roku, go to **Settings → Audio → HDMI** (or **S/PDIF and ARC**). Try each of "Auto detect", "Dolby Digital Plus", "Dolby Digital" and "Stereo". A surround setting your TV or soundbar can't decode is a common cause of silence, and the app doesn't control it.
 3. **Does it happen on every file, or only some?** If some videos are silent and others are fine, a specific codec or container is the likely cause, and that is what we need to know (see below). If everything is silent, look at the audio setting in step 2.
 4. **Does the same file play with sound in the Jellyfin web player or the official Roku app?** If it does but JellyRock is silent, say so. It tells us the server can produce sound for this file, so the difference is in JellyRock. If the file is silent there too, the problem is likely on the server (transcoding or ffmpeg), not in JellyRock.
+5. **Open Playback Info while the file plays.** Press **Up** or **Down** to show the player controls, then select the info button at the right. It shows whether the video is direct playing or transcoding, and what the server converts each track to. Take a photo for your report. See [how something is playing](features/original-quality.md#see-how-something-is-playing).
 
 ## The three things that let us fix it
 
 For a playback issue, and above all for no sound on some files, these three things turn a report we can't reproduce into one we can fix. Even one or two of them helps.
+
+If some files are silent and others won't play, describe each one separately, with its own file. They can have different causes.
 
 ### 1. The media info for one file that fails
 

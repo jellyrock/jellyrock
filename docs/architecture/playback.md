@@ -559,6 +559,24 @@ The client overrides the server's answer in three places:
 
 MPEG-TS is left out of the direct-play profiles (`GetDirectPlayProfiles`), so the server remuxes every TS source, recordings included, to HLS.
 
+### Which HLS container the server picks
+
+`getTranscodingProfiles()` emits one HLS video profile per container, `ts` first and then `mp4`. Keep `ts` first: `fmp4` HLS plays silent on some Roku hardware (#620), and a spec in `deviceCapabilities-transcodingProfile.spec.bs` fails if the order flips.
+
+The server's `StreamBuilder` chooses a profile this way (read from each release's source, and the outcomes measured 2026-11-01 on the seven local test servers):
+
+| Server | How it picks |
+| --- | --- |
+| 10.7 | The first matching profile. A `ts` profile that lacks the source's codec still wins, so the server re-encodes. |
+| 10.8 and 10.9 | The best video rank, then array order. |
+| 10.10 and later | The best video and audio rank, then array order. |
+
+- **From 10.8, order only breaks a tie.** If the `ts` profile lacks the source's video codec and the `mp4` profile has it, the server picks `mp4`. An empty `VideoCodec` matches every codec.
+- **Dolby Vision is the exception by design.** Its transcode uses the `fmp4` profile (decision [`audio-profile-documented-and-reported`](../decisions.md#decision-id-audio-profile-documented-and-reported)).
+- **Account permissions did not change the container** in those measurements.
+
+To see what the server chose, open **Playback Info**: its container row shows the source and the target.
+
 ### Audio
 
 The profile rules for audio live in `source/utils/deviceCapabilities.bs` and `source/api/items.bs`:
