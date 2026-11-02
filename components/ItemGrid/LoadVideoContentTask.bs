@@ -82,8 +82,11 @@ sub loadItems()
   end if
 
   id = m.top.itemId
+  ' The version named on the load is the launched item's (every item carries its first source as
+  ' mediaSourceId). An intro is another item, so it loads with no version: the server answers a
+  ' foreign MediaSourceId with NoCompatibleStream and no sources, and the intro never plays.
   mediaSourceId = invalid
-  if m.top.mediaSourceId <> "" then mediaSourceId = m.top.mediaSourceId
+  if m.top.mediaSourceId <> "" and not m.top.isIntro then mediaSourceId = m.top.mediaSourceId
   audioStreamIdx = m.top.selectedAudioStreamIndex
   forceTranscoding = m.top.shouldForceTranscoding
   bypassDoviPreservation = m.top.shouldBypassDoviPreservation
