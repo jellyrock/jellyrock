@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (playback) Play Cinema Mode intros, drop the stale queue slot ([#1312](https://github.com/jellyrock/jellyrock/pull/1312))
 - (syncplay) Ask the group to wait after a seek that cannot land ([#1306](https://github.com/jellyrock/jellyrock/pull/1306))
 - Register Roku's memory monitor and ship only runtime files ([#1299](https://github.com/jellyrock/jellyrock/pull/1299))
 - (home) Show episode images in Favorites tab ([#1290](https://github.com/jellyrock/jellyrock/pull/1290))
