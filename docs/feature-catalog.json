@@ -120,6 +120,19 @@
       "url": "https://docs.jellyrock.app/features/item-details/"
     },
     {
+      "slug": "jellyfin-12",
+      "title": "Jellyfin 12",
+      "pitch": "Works with Jellyfin 12 and uses what's new in it, from collections and language filters to episode versions.",
+      "since": "2.30.0",
+      "sinceDate": "2026-09-17",
+      "server": "12.0.0",
+      "plugins": [],
+      "screenshots": [],
+      "https": null,
+      "page": "docs/user/features/jellyfin-12.md",
+      "url": "https://docs.jellyrock.app/features/jellyfin-12/"
+    },
+    {
       "slug": "languages",
       "title": "Languages",
       "pitch": "Use JellyRock in your language, following your server or Roku, or pick any language yourself.",
@@ -229,6 +242,23 @@
       "https": null,
       "page": "docs/user/features/quick-connect.md",
       "url": "https://docs.jellyrock.app/features/quick-connect/"
+    },
+    {
+      "slug": "search",
+      "title": "Search",
+      "pitch": "Find anything on your server as you type, with live suggestions, your recent searches and a row for each kind of result.",
+      "since": "1.0.0",
+      "sinceDate": "2025-08-24",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [
+        "search",
+        "searchTyping",
+        "searchRecent"
+      ],
+      "https": null,
+      "page": "docs/user/features/search.md",
+      "url": "https://docs.jellyrock.app/features/search/"
     },
     {
       "slug": "surround-sound",
