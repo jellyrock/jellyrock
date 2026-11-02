@@ -14,7 +14,7 @@ A Roku voice remote. Roku decides which words it understands; JellyRock acts on 
 
 ## Search by voice
 
-- **On the Search screen**, speak instead of typing. JellyRock waits until you finish speaking, then searches for the whole phrase.
+- **On the [Search](search.md) screen**, speak instead of typing. JellyRock waits until you finish speaking, then searches for the whole phrase.
 - **In a library**, speak while the library is open to show only the items whose names match. In the Live TV guide, the same narrows the channel list.
 
 ## Control playback by voice

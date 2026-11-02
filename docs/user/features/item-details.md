@@ -33,4 +33,4 @@ When the row doesn't fit on screen, the last buttons move into a **More** menu.
 
 The rows depend on the item, and a row with nothing to show stays hidden. A movie can have **Chapters**, **Additional Parts**, **Cast & Crew**, **Special Features** and **More Like This**. A show has its **Seasons**, a person their movies and episodes, and an artist their albums and songs.
 
-On Jellyfin 12.0 or later, **Collections** lists the collections the item is in.
+On Jellyfin 12.0 or later, **Collections** lists the collections the item is in. See [Jellyfin 12](jellyfin-12.md).
