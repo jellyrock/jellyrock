@@ -320,6 +320,10 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // read under the same id, so each value holds until the next load: terminal. Read
   // 2026-11-02.
   'videoId',
+  // The player's `PlaySessionId`, read off it by id (playback-advance.spec.js, Cinema Mode).
+  // VideoPlayerView.onVideoContentLoaded sets it once per load from the server's answer, so a
+  // value holds until the next load: terminal. Read 2026-11-02.
+  'PlaySessionId',
   // The app's session on the server, read over REST (playback-check-in.spec.js). Jellyfin 12.4
   // writes `PlayState.IsPaused` only from a report (SessionManager.UpdateNowPlayingItem), so
   // while the player stays paused and keeps reporting it stays true: terminal. And

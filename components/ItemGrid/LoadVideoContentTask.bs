@@ -38,8 +38,9 @@ end sub
 sub loadItems()
   queueManager = m.global.queueManager
 
-  ' Reset per-run fields in case task gets reused
-  m.top.isIntro = false
+  ' Reset per-run fields in case task gets reused. Not isIntro: a reload of an intro arrives
+  ' with it set (VideoPlayerView.startVideoLoad), and Cinema Mode is spent by then, so the
+  ' intro lookup below cannot run and set it again.
   m.top.errorMsg = ""
   ' This run has opened no live stream yet (liveStreamHandoff.bs).
   m.top.liveStream = { stage: LiveStreamStage.NONE, id: "" }

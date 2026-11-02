@@ -142,6 +142,25 @@ it('an episode behind a Cinema Mode intro has no stale slot before it', async (t
       label: `intro playing before ${episode.seriesName}`,
       read: readPlayer(episode.id),
     });
+    // A reload during the intro (a retry, or a track or gear change) loads the intro again,
+    // not the episode with the intro's version, which the server refuses. A gear pick is the
+    // reload a viewer can make, with a cap too high to change the intro's direct play, and
+    // every load answers with a new PlaySessionId.
+    const introSession = await readPlayer(episode.id)('PlaySessionId');
+    await odc.setValue({
+      base: 'scene',
+      keyPath: '#osd.playbackCapsPick',
+      value: { field: 'maxBitrateMbps', value: 120 },
+    });
+    await waitFor('PlaySessionId', (v) => Boolean(v) && v !== introSession, {
+      timeout: 30000,
+      interval: 1000,
+      label: `intro reloaded by a gear pick (${episode.seriesName})`,
+      read: readPlayer(episode.id),
+    });
+    expect(await readPlayer(episode.id)('videoId'), 'the reload loads the intro again').toBe(
+      introId,
+    );
     await waitFor('videoId', (v) => v === episode.id, {
       timeout: ADVANCE_TIMEOUT_MS,
       interval: 2000,
