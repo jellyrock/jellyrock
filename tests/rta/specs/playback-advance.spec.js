@@ -13,7 +13,7 @@
  *
  * Requires a reachable device + .env (ROKU_IP / ROKU_PASSWORD), same as screens.spec.
  */
-import { beforeAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
 import {
   authenticate,
@@ -48,6 +48,17 @@ beforeAll(async () => {
     throw new Error(
       `playback-advance setup: no series on ${session.serverUrl} has two episodes, so there is nothing to advance to`,
     );
+  }
+});
+
+// The settings these cases pin outlive the file otherwise: the registry is restored only once
+// the whole run ends, so every spec after this one would queue the next episode and play a
+// Cinema Mode intro first. Delete the keys (null) so they start from the defaults.
+afterAll(async () => {
+  if (session) {
+    await odc.writeRegistry({
+      values: { [session.userId]: { playbackPlayNextEpisode: null, playbackCinemaMode: null } },
+    });
   }
 });
 
