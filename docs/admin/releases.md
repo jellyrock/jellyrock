@@ -46,7 +46,7 @@ Merging a PR labeled `release-prep` into `main` starts `update-draft-release.yml
 
 Edit the draft release: set the scheduled release date and review the notes. Then publish it.
 
-Publishing creates the `vX.Y.Z` tag on `main`, which starts `release-build.yml`. It turns `[Unreleased]` in `CHANGELOG.md` into the release's section, changes `since: unreleased` to the version on each feature page that said so in the tagged commit, writes the feature catalog, the features index and the README list again, and commits all of it to `main`. A feature page merged after the tag stays `unreleased` for the next release. How changelog entries are built, and how to fix one, is in [Changelog](changelog.md).
+Publishing creates the `vX.Y.Z` tag on `main`, which starts `release-build.yml`. It turns `[Unreleased]` in `CHANGELOG.md` into the release's section, changes `since: unreleased` to the version on each feature page that said so in the tagged commit, writes the feature catalog, the features index and the README list again, and commits all of it to `main`. The catalog dates each feature from its release's heading in `CHANGELOG.md`, so the changelog step runs first, and the catalog step fails if the heading is missing. A feature page merged after the tag stays `unreleased` for the next release. How changelog entries are built, and how to fix one, is in [Changelog](changelog.md).
 
 ## Files the release changes
 

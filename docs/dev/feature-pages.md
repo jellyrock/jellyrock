@@ -5,7 +5,7 @@ related-files:
   - docs/user/jellyfin-server-plugins.md
   - docs/screenshots/screenshots.json
   - scripts/lint/docs-check.cjs
-last-reviewed: 2026-10-29
+last-reviewed: 2026-11-02
 ---
 
 # Document a feature
@@ -54,7 +54,14 @@ plugins: Chapter Segments Provider, Intro Skipper
 | `httpsserver`, `httpsplugins` | no | What the feature needs on an HTTPS server when that differs from HTTP: the oldest Jellyfin server and the plugins, named as for `plugins`. Set both or neither. |
 | `highlight` | no | A rank from 1 to 6: the README lists the ranked features in that order, then links the features index. Leave it out otherwise. Rank the features that best say what JellyRock does, the strongest first; no two pages share a rank. |
 
-Write one `key: value` per line, with no quotes and no nesting. `npm run lint:docs` fails when a page has no frontmatter, misses a required field, has a field not in this table, or holds a value that doesn't match the app: a `since` newer than the app's version, a `server` older than the floor in [`jellyfin-version-boundaries.yml`](jellyfin-version-boundaries.yml), a plugin or screenshot key that isn't listed, a `highlight` that is not a rank from 1 to 6 or repeats another page's, or a value that YAML reads differently, such as one with a colon and a space. Reword that value.
+Write one `key: value` per line, with no quotes and no nesting. `npm run lint:docs` fails when a page has no frontmatter, misses a required field, has a field not in this table, or holds a value that doesn't match the app: a `since` newer than the app's version or with no release heading in `CHANGELOG.md`, a `server` older than the floor or above the `newest` line in [`jellyfin-version-boundaries.yml`](jellyfin-version-boundaries.yml), a plugin or screenshot key that isn't listed, a `highlight` that is not a rank from 1 to 6 or repeats another page's, or a value that YAML reads differently, such as one with a colon and a space. Reword that value.
+
+## What the catalog adds
+
+`npm run docs:features` writes the pages' facts to `docs/feature-catalog.json`, which the website reads. It adds two facts no page holds, so never write them in frontmatter:
+
+- `sinceDate`: the date of the feature's `since` release, read from that release's heading in `CHANGELOG.md`, or `null` while the page says `unreleased`. The website marks a feature new for a while after this date.
+- `app.serverNewest`: the `newest:` line in the version map. See [Claim a new major line](jellyfin-server-versioning.md#claim-a-new-major-line).
 
 ## Move or rename a page
 

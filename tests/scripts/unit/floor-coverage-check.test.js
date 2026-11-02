@@ -18,7 +18,7 @@ import { spawnScript } from './_helpers/spawn-script.js';
 const LINT = 'scripts/lint/floor-coverage-check.js';
 
 const BOUNDARIES_YML =
-  'floor: "10.7.0"\ntiers:\n  1:\n    minServer: "10.7.0"\n    maxServer: "10.8.13"\n    status: frozen\n  2:\n    minServer: "10.9.0"\n    maxServer: null\n    status: active\n';
+  'floor: "10.7.0"\nnewest: "12"\ntiers:\n  1:\n    minServer: "10.7.0"\n    maxServer: "10.8.13"\n    status: frozen\n  2:\n    minServer: "10.9.0"\n    maxServer: null\n    status: active\n';
 
 function fp(specVersion, operations = {}) {
   return { schemaVersion: 1, specVersion, operations, schemas: {} };
