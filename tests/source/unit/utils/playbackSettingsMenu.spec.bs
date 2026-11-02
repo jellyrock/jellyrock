@@ -67,11 +67,12 @@ namespace tests
     @describe("repeatOptions")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("offers Off, All and One as the queueRepeat modes")
+    ' The row carries the short form ("Repeat (All)"); the picker carries the full titles.
+    @it("offers Off, Repeat all and Repeat one as the queueRepeat modes")
     function _()
       options = playbackSettingsMenu.repeatOptions(queueRepeat.OFF)
       m.assertEqual(options.values, [queueRepeat.OFF, queueRepeat.ALL, queueRepeat.ONE])
-      m.assertEqual(options.labels, ["Off", "All", "One"])
+      m.assertEqual(options.labels, ["Off", "Repeat all", "Repeat one"])
       m.assertEqual(options.selectedIndex, 0)
       m.assertEqual(options.defaultIndex, 0)
     end function
@@ -83,6 +84,22 @@ namespace tests
       m.assertEqual(options.defaultIndex, 2)
       options = playbackSettingsMenu.repeatOptions("")
       m.assertEqual(options.selectedIndex, 0, "an empty mode is off")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hasPicks")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is false with no cap and repeat off")
+    function _()
+      m.assertFalse(playbackSettingsMenu.hasPicks(invalid, queueRepeat.OFF))
+      m.assertFalse(playbackSettingsMenu.hasPicks({}, ""))
+    end function
+
+    @it("is true on a cap or a repeat mode")
+    function _()
+      m.assertTrue(playbackSettingsMenu.hasPicks({ maxBitrateMbps: 4 }, queueRepeat.OFF))
+      m.assertTrue(playbackSettingsMenu.hasPicks(invalid, queueRepeat.ALL))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

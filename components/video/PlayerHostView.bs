@@ -275,9 +275,9 @@ sub onPlayerStateChange()
 
   ' More items in the queue -> advance and play the next one, from its beginning. Under
   ' RepeatOne the next one is this one again, and under RepeatAll the last wraps to the first
-  ' (queueRepeat.afterFinish); advanceTo starts either from its beginning.
+  ' (queueRepeat.nextIndex); advanceTo starts either from its beginning.
   position = queueManager.callFunc("getPosition")
-  nextPosition = queueRepeat.afterFinish(queueManager.callFunc("getRepeatMode"), position, queueManager.callFunc("getCount"))
+  nextPosition = queueRepeat.nextIndex(queueManager.callFunc("getRepeatMode"), position, queueManager.callFunc("getCount"))
   if nextPosition >= 0
     askStillWatching = shouldAskStillWatching(queueManager.callFunc("getItemByIndex", nextPosition))
     queueManager.callFunc("advanceTo", nextPosition)

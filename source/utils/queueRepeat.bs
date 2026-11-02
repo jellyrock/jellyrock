@@ -1,13 +1,12 @@
-' Repeat for the queue being played: what a finished item moves on to, and where the player's
-' previous and next may step, under each mode.
+' Repeat for the queue being played: where next and previous go under each mode, for an item
+' that finishes and for a press of the player's buttons alike.
 '
 ' The modes are the server's own RepeatMode values, so a SyncPlay group's queue update and the
 ' viewer's pick in the OSD gear read the same words. The mode belongs to the queue
 ' (QueueManager.setRepeatMode), is never saved, and a new queue starts without one. The audio
-' player keeps its own loop (AudioPlayer.loopMode): music does not play through this.
-import "pkg:/source/translationKeys.bs"
+' player keeps its own loop (AudioPlayer.loopMode): music does not play through this. What the
+' gear shows for a mode is playbackSettingsMenu.bs's.
 import "pkg:/source/utils/misc.bs"
-import "pkg:/source/utils/translate.bs"
 
 namespace queueRepeat
 
@@ -23,21 +22,11 @@ namespace queueRepeat
     return OFF
   end function
 
-  ' The index to play once the item at `index` finishes, or -1 when the queue is done: the same
-  ' item under RepeatOne, the next one, the first again under RepeatAll.
-  function afterFinish(mode as dynamic, index as integer, count as integer) as integer
-    if count <= 0 or index < 0 or index >= count then return -1
-    repeat = normalize(mode)
-    if repeat = ONE then return index
-    if index + 1 < count then return index + 1
-    if repeat = ALL then return 0
-    return -1
-  end function
-
-  ' The index a press of next goes to, or -1 when it has nowhere to go. Under RepeatOne the
-  ' press plays this item again, as jellyfin-web's next and the SyncPlay server's Next() do, so
-  ' the control reads the same in and out of a group. RepeatAll wraps at the end.
-  function stepNext(mode as dynamic, index as integer, count as integer) as integer
+  ' The index to play after the item at `index`, or -1 when there is none: the same item under
+  ' RepeatOne, the next one, the first again under RepeatAll. One rule for a finish and a press
+  ' of next, as jellyfin-web's next and the SyncPlay server's Next() have, so the player reads
+  ' the same in and out of a group.
+  function nextIndex(mode as dynamic, index as integer, count as integer) as integer
     if count <= 0 or index < 0 or index >= count then return -1
     repeat = normalize(mode)
     if repeat = ONE then return index
@@ -48,29 +37,13 @@ namespace queueRepeat
 
   ' The index a press of previous goes to, or -1: this item again under RepeatOne, else the one
   ' before, or the last under RepeatAll.
-  function stepPrevious(mode as dynamic, index as integer, count as integer) as integer
+  function previousIndex(mode as dynamic, index as integer, count as integer) as integer
     if count <= 0 or index < 0 or index >= count then return -1
     repeat = normalize(mode)
     if repeat = ONE then return index
     if index > 0 then return index - 1
     if repeat = ALL then return count - 1
     return -1
-  end function
-
-  ' Whether a gear row differs from the viewer's defaults: a quality cap picked for this queue
-  ' (playbackCaps records only a pick that differs from Settings) or repeat on. The OSD tints
-  ' the gear on it, the way the music screen lights its repeat and shuffle buttons.
-  function hasPicks(caps as dynamic, mode as dynamic) as boolean
-    if isValid(caps) and type(caps) = "roAssociativeArray" and caps.count() > 0 then return true
-    return normalize(mode) <> OFF
-  end function
-
-  ' The mode's short name for the gear row and its picker: "Off", "All" or "One".
-  function label(mode as dynamic) as string
-    repeat = normalize(mode)
-    if repeat = ALL then return translate(translationKeys.LabelAll)
-    if repeat = ONE then return translate(translationKeys.LabelRepeatSingle)
-    return translate(translationKeys.LabelOff)
   end function
 
 end namespace

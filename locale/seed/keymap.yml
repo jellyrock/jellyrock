@@ -491,3 +491,47 @@ MessageSyncPlayUserLeft:
   en: "{0} has left the group."
   from:
     jellyfin-web: { key: MessageSyncPlayUserLeft, en: "{0} has left the group." }
+
+# ── OSD gear: Repeat (source/utils/playbackSettingsMenu.bs) ───────────────────────
+# web's RepeatAll and RepeatOne title the choices of its player settings menu's repeat
+# picker (playersettingsmenu.js showRepeatModeMenu), the same picker as ours. Many of
+# web's RepeatOne cells say "repeat once", which is not what this mode does, so read every
+# value again when the source moves forward.
+
+LabelRepeat:
+  en: Repeat
+  reject:
+    - { source: jellyfin-web, key: Repeat, reason: "the TV guide's rerun badge (guide.js), not the player's repeat" }
+    - { source: jellyfin-androidtv, key: lbl_repeat, reason: "the program guide's rerun badge (ProgramGridCell)" }
+    - { source: jellyfin-roku, key: Repeat, reason: "a rerun: 'If TV Shows has previously been broadcasted'" }
+    - { source: jellyfin-web, key: RepeatMode, reason: "names the same row, but its text adds Mode, which ours does not say" }
+
+LabelRepeatAll:
+  en: Repeat all
+  from:
+    jellyfin-web: { key: RepeatAll, en: Repeat all }
+
+LabelRepeatOne:
+  en: Repeat one
+  from:
+    jellyfin-web:
+      key: RepeatOne
+      en: Repeat one
+      exclude:
+        bg: "means repeat once; ours loops this item"
+        eo: "means repeat once; ours loops this item"
+        fo: "means repeat once; ours loops this item"
+        gl: "means repeat once; ours loops this item"
+        he: "means repeat once; ours loops this item"
+        hr: "means repeat once; ours loops this item"
+        id: "means repeat once; ours loops this item"
+        ja: "reads only Repeat; the one is lost"
+        kk: "means repeat once; ours loops this item"
+        ko: "reads only Repeat; the one is lost"
+        pt_BR: "means repeat once; ours loops this item"
+        ru: "means repeat once; ours loops this item"
+        sv: "means repeat once; ours loops this item"
+        ta: "means repeat once; ours loops this item"
+        tr: "means repeat once; ours loops this item"
+        vi: "means repeat once; ours loops this item"
+        zh_Hant_HK: "means repeat once; ours loops this item"

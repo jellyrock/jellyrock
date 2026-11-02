@@ -209,8 +209,8 @@ sub applyStepButtons()
   ' Under RepeatOne a press replays, and under RepeatAll a single video wraps to itself, so both
   ' stay enabled there; off, a single video has no step (queueRepeat.bs).
   repeatMode = queueManager.callFunc("getRepeatMode")
-  hasPrevious = queueRepeat.stepPrevious(repeatMode, queueIndex, queueCount) >= 0
-  hasNext = queueRepeat.stepNext(repeatMode, queueIndex, queueCount) >= 0
+  hasPrevious = queueRepeat.previousIndex(repeatMode, queueIndex, queueCount) >= 0
+  hasNext = queueRepeat.nextIndex(repeatMode, queueIndex, queueCount) >= 0
   ' In a SyncPlay group the local queue holds the playing item alone: previous and next read the
   ' group's playlist, and a press asks the group (VideoPlayerView.handleItemSkipAction).
   group = syncPlayHooks.groupQueue()
@@ -753,7 +753,7 @@ sub applyGearState()
   gearButton = m.buttonMenuRight.findNode("showPlaybackSettings")
   if not isValid(gearButton) then return
   queueManager = m.global.queueManager
-  gearButton.isButtonSelected = queueRepeat.hasPicks(queueManager.callFunc("getPlaybackCaps"), queueManager.callFunc("getRepeatMode"))
+  gearButton.isButtonSelected = playbackSettingsMenu.hasPicks(queueManager.callFunc("getPlaybackCaps"), queueManager.callFunc("getRepeatMode"))
 end sub
 
 ' What the queue decides for the OSD, read again: the step buttons and the gear's tint. Run as the

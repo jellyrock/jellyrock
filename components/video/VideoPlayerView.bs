@@ -323,10 +323,10 @@ sub handleItemSkipAction(action as string)
 
   targetPosition = -1
   if action = "itemnext"
-    targetPosition = queueRepeat.stepNext(repeatMode, queuePosition, queueCount)
+    targetPosition = queueRepeat.nextIndex(repeatMode, queuePosition, queueCount)
     if targetPosition < 0 and isTvChannel then targetPosition = 0
   else if action = "itemback"
-    targetPosition = queueRepeat.stepPrevious(repeatMode, queuePosition, queueCount)
+    targetPosition = queueRepeat.previousIndex(repeatMode, queuePosition, queueCount)
     if targetPosition < 0 and isTvChannel then targetPosition = queueCount - 1
   else
     return
@@ -799,7 +799,8 @@ sub onRepeatModePicked()
   if not isValidAndNotEmpty(mode) then return
   m.global.queueManager.callFunc("setRepeatMode", mode)
   m.log.info("Repeat mode picked", "mode", mode)
-  ' A replay at the end hides the Next Up prompt; a change back may show it again (checkTimeToDisplayNextEpisode).
+  ' The step buttons and the gear's tint read the mode: show the pick now. The Next Episode
+  ' prompt reads it on each position tick (checkTimeToDisplayNextEpisode).
   m.osd.callFunc("refreshFromQueue")
 end sub
 

@@ -280,6 +280,10 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   '#quickConnectCode.text',
   '#scrollContent.translation',
   '#scrollTrack.visible',
+  // The OSD gear's tint. Only OSD.applyGearState writes it (on the OSD's setup and on
+  // refreshFromQueue after a gear pick), so a value holds until the next pick: terminal.
+  // Read 2026-11-02.
+  '#showPlaybackSettings.isButtonSelected',
   // Roku's LabelList sets it as focus moves between rows. SearchSuggestionList writes it only
   // through jumpToItem (Up from Clear History, focusItem when the overlay reopens), and an
   // unfocused list applies that only when focus enters it; a content swap leaves it as it
@@ -313,7 +317,9 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   'loadState',
   // Roku's `Video.position`, read off the player by id. While the video plays it only
   // climbs, so a `>= target` predicate stays true once true. Read 2026-10-02 against the
-  // one gate using it (playback-notifications.spec.js, which seeks before it waits).
+  // one gate using it (playback-notifications.spec.js, which seeks before it waits). A
+  // `< target` after a remount (playback-advance.spec.js, Repeat One) holds from the
+  // replay's start until it climbs past the target, minutes on any episode. Read 2026-11-02.
   'position',
   // The app's session on the server, read over REST (playback-check-in.spec.js). Jellyfin 12.4
   // writes `PlayState.IsPaused` only from a report (SessionManager.UpdateNowPlayingItem), so

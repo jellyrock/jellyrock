@@ -849,10 +849,11 @@ it('osd gear caps the bitrate for this playback without saving it, and Back step
 }, 300000);
 
 // The gear's Repeat row: the third row, reading the queue's mode, whose picker offers Off,
-// All and One. A pick records on the queue and reloads nothing, so the row reads the pick on
-// the next open, and lights the gear. What a finish does under each mode is unit-gated
-// (queueRepeat.spec.bs); the step buttons' rules are in OSDRepeatSteps.spec.bs.
-it('osd gear repeat row offers Off, All and One, and reads the pick back without a reload', async () => {
+// Repeat all and Repeat one. A pick records on the queue and reloads nothing, so the row
+// reads the pick on the next open, and lights the gear. Where next and previous go under
+// each mode is unit-gated (queueRepeat.spec.bs), the step buttons in OSDRepeatSteps.spec.bs,
+// and the replay at the end of an item in playback-advance.spec.js.
+it('osd gear repeat row offers Off, Repeat all and Repeat one, and reads the pick back without a reload', async () => {
   await pausedOsd();
   await pressOsdButton('showPlaybackSettings');
   const gearMenuOpen = (label) =>
@@ -886,14 +887,17 @@ it('osd gear repeat row offers Off, All and One, and reads the pick back without
     '#optionList.content.2.title',
     '#optionList.content.0.isSelected',
   ]);
-  expect(all).toBe('All');
-  expect(one).toBe('One');
+  expect(all).toBe('Repeat all');
+  expect(one).toBe('Repeat one');
   expect(offSelected, 'Off is the current mode').toBe(true);
   if (CAPTURE) await captureRawUI('playbackSettingsRepeat');
 
-  // Pick All: the picker closes and nothing reloads, so the OSD is still up and paused.
+  // Pick Repeat all: the picker closes and nothing reloads, so the OSD is still up and paused.
   await press(ecp.Key.Down);
-  await waitFor('#optionList.itemFocused', (n) => n === 1, { label: 'All focused', timeout: 5000 });
+  await waitFor('#optionList.itemFocused', (n) => n === 1, {
+    label: 'Repeat all focused',
+    timeout: 5000,
+  });
   await press(ecp.Key.Ok);
   await waitDialogClosed('the pick closed the picker', { timeout: 10000 });
   await waitFocused((f) => f.node?.id === 'showPlaybackSettings', {

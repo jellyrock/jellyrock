@@ -82,26 +82,49 @@ namespace playbackSettingsMenu
       menu.icons.push(ICON_MAX_RESOLUTION)
     end if
 
-    menu.labels.push(rowLabel(translationKeys.LabelRepeat, queueRepeat.label(repeatMode)))
+    menu.labels.push(rowLabel(translationKeys.LabelRepeat, repeatLabel(repeatMode)))
     menu.ids.push(ROW_REPEAT)
     menu.icons.push(ICON_REPEAT)
     return menu
   end function
 
-  ' The Repeat picker: Off, All, One, with `values` the queueRepeat modes.
+  ' A repeat mode's short name for the gear row: "Off", "All" or "One". The picker shows
+  ' the full titles instead (repeatOptions).
+  function repeatLabel(mode as dynamic) as string
+    repeat = queueRepeat.normalize(mode)
+    if repeat = queueRepeat.ALL then return translate(translationKeys.LabelRepeatRowAll)
+    if repeat = queueRepeat.ONE then return translate(translationKeys.LabelRepeatRowOne)
+    return translate(translationKeys.LabelRepeatOff)
+  end function
+
+  ' The Repeat picker: Off, Repeat all, Repeat one, with `values` the queueRepeat modes.
   '
   ' @param {string} currentMode - QueueManager.getRepeatMode()
   ' @returns {object} - { labels, values, defaultIndex, selectedIndex }
   function repeatOptions(currentMode as string) as object
     options = { labels: [], values: [], defaultIndex: 0, selectedIndex: 0 }
     current = queueRepeat.normalize(currentMode)
-    for each mode in [queueRepeat.OFF, queueRepeat.ALL, queueRepeat.ONE]
-      if mode = current then options.selectedIndex = options.values.count()
-      options.labels.push(queueRepeat.label(mode))
-      options.values.push(mode)
+    titles = [translationKeys.LabelRepeatOff, translationKeys.LabelRepeatAll, translationKeys.LabelRepeatOne]
+    modes = [queueRepeat.OFF, queueRepeat.ALL, queueRepeat.ONE]
+    for i = 0 to modes.count() - 1
+      if modes[i] = current then options.selectedIndex = i
+      options.labels.push(translate(titles[i]))
+      options.values.push(modes[i])
     end for
     options.defaultIndex = options.selectedIndex
     return options
+  end function
+
+  ' Whether a gear row differs from the viewer's defaults: a quality cap picked for this queue
+  ' (playbackCaps records only a pick that differs from Settings) or repeat on. The OSD lights
+  ' the gear on it, the way the music screen lights its repeat and shuffle buttons. A new row
+  ' that can differ from its default adds its check here.
+  '
+  ' @param {dynamic} caps - QueueManager.getPlaybackCaps()
+  ' @param {dynamic} repeatMode - QueueManager.getRepeatMode()
+  function hasPicks(caps as dynamic, repeatMode as dynamic) as boolean
+    if type(caps) = "roAssociativeArray" and caps.count() > 0 then return true
+    return queueRepeat.normalize(repeatMode) <> queueRepeat.OFF
   end function
 
   ' The Maximum Bitrate picker, in the shape trackPickerOptions builds:
