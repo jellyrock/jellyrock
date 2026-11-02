@@ -68,7 +68,8 @@ sub loadItems()
           ' The item plays after its intro, so it goes directly after the slot the intro plays
           ' in: appending it would play the rest of the queue first. Moving on to it reaches
           ' the same item, not a new one, so it keeps the start it was launched with
-          ' (QueueManager.advanceTo consumes followsIntro).
+          ' (QueueManager.advanceTo consumes followsIntro, and drops the intro's slot once it
+          ' has moved on, so the queue holds the item once).
           followingItem = queueManager.callFunc("getCurrentItem")
           if isValid(followingItem) then followingItem.followsIntro = true
           queueManager.callFunc("insertAfterCurrent", followingItem)
