@@ -114,11 +114,13 @@ sub ensureReady()
   ' Whether this member reported Buffering since the group's last command it scheduled
   ' (syncPlayPlayback.clockReference).
   m.reportedBuffering = false
-  ' When the last seek went out and how long the last one took to land or to run out its budgets,
-  ' for the next correction's lead (syncPlayPlayback.correctionLeadMs) and whether it seeks at all
-  ' (syncPlayPlayback.seekOutlastsBudgets). 0 until one has ended on this player.
+  ' When the last seek went out and how long the tracker took to end it, for the next
+  ' correction's lead (syncPlayPlayback.correctionLeadMs). 0 until one has ended on this player.
   m.seekWrittenAtMs = 0&
   m.lastSeekMs = 0&
+  ' Whether the tracker gave the last seek on this node up (trackPlayerEvent's seekGaveUp), which
+  ' tells the next correction not to seek.
+  m.lastSeekGaveUp = false
   ' The playing item's length in the Video node's seconds; 0 while unknown.
   m.playerDurationSeconds = 0
   ' The correction under way (syncPlayPlayback.correctionPlan): the node pauses ahead of the
@@ -208,6 +210,7 @@ function playerEvent(evt as object) as object
     m.groupPaused = false
     m.playerDurationSeconds = 0
     m.lastSeekMs = 0&
+    m.lastSeekGaveUp = false
     m.playbackDiffMs = invalid
     m.correctionPauseOwed = false
     m.waitedOnMe = false
@@ -429,15 +432,16 @@ sub checkSettle()
     host = playerHost()
     if isValid(host)
       plan = syncPlayPlayback.correctionPlan(syncPlayTime.asLong(drift), m.playerPositionTicks, inForce, m.estimator, syncPlayPlayback.correctionLeadMs(m.lastSeekMs))
-      if plan.seek and syncPlayPlayback.seekOutlastsBudgets(m.lastSeekMs)
-        ' A seek on this node cannot land in time, so the group comes to this member instead: a
-        ' Seek to its own position makes the server pause the others and bring them here, and the
-        ' Seek that comes back finds the node where it asked (seekIsWhereWeAre), so it writes none.
+      if plan.seek and m.lastSeekGaveUp
+        ' The tracker gave up the last seek on this node, so another cannot land in time. The group
+        ' comes to this member instead: a Seek to its own position makes the server pause the others
+        ' and bring them here, and the Seek that comes back finds the node where it asked
+        ' (seekIsWhereWeAre), so it writes none.
         if not m.waitedOnMe and post("Seek", syncPlayRequests.seek(m.playerPositionTicks))
           m.waitedOnMe = true
-          m.log.info("drift correction asks the group to wait: the last seek on this node outlasted the settle budgets", "driftMs", syncPlayTime.asLong(drift).toStr(), "lastSeekMs", m.lastSeekMs.toStr(), "positionTicks", m.playerPositionTicks.toStr())
+          m.log.info("drift correction asks the group to wait: the tracker gave up the last seek on this node", "driftMs", syncPlayTime.asLong(drift).toStr(), "lastSeekMs", m.lastSeekMs.toStr(), "positionTicks", m.playerPositionTicks.toStr())
         else
-          m.log.info("drift correction skipped: the last seek on this node outlasted the settle budgets, and the group waited once already", "driftMs", syncPlayTime.asLong(drift).toStr(), "lastSeekMs", m.lastSeekMs.toStr())
+          m.log.info("drift correction skipped: the tracker gave up the last seek on this node, and the group waited once already", "driftMs", syncPlayTime.asLong(drift).toStr(), "lastSeekMs", m.lastSeekMs.toStr())
         end if
       else if plan.seek and syncPlayPlayback.seekPastEnd(plan.targetTicks, m.playerDurationSeconds)
         m.log.info("drift correction skipped: its seek would run off the item", "driftMs", syncPlayTime.asLong(drift).toStr())
@@ -903,9 +907,13 @@ sub track(evt as object)
     isPlaying = false
   end if
   seekEnded = syncPlayPlayback.seekEnded(phaseBefore, m.tracker.phase)
-  ' A seek that ends at `rebuffering` took both budgets: its time is what tells the next
-  ' correction not to seek (syncPlayPlayback.seekOutlastsBudgets).
-  if seekEnded then m.lastSeekMs = syncPlayTime.nowMs() - m.seekWrittenAtMs
+  ' How long the tracker took to end the seek sets the next correction's lead. That is not how long
+  ' the seek took: a position that lands at once leaves only the landing budget to run. Whether the
+  ' tracker gave the seek up is what tells the next correction not to seek.
+  if seekEnded
+    m.lastSeekMs = syncPlayTime.nowMs() - m.seekWrittenAtMs
+    m.lastSeekGaveUp = result.seekGaveUp
+  end if
   ' A pause left to a landing that wrote none: the node is already paused, so the viewer only
   ' needs telling, or it is somewhere only the pause check can catch it.
   if seekEnded and not result.pauseFirst
