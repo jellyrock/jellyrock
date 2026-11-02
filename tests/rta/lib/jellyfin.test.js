@@ -26,6 +26,7 @@ import {
   JellyfinRequestError,
   appSession,
   authenticate,
+  authenticateForPush,
   findEpisodeWithNext,
   findMovie,
   getBuffer,
@@ -238,6 +239,60 @@ describe('authenticate', () => {
 
     server.removeAllListeners('request');
     server.on('request', prev);
+  });
+});
+
+describe('authenticateForPush', () => {
+  // Answers sign-in as a server of this version, and records the header it was asked with.
+  const serverOfVersion = (version) => {
+    const seen = {};
+    routes['/System/Info/Public'] = [200, { Version: version, ServerName: 'x' }];
+    routes['/Users/AuthenticateByName'] = [
+      200,
+      { User: { Id: 'u1', Name: 'demo' }, AccessToken: 'tok', ServerId: 's1' },
+    ];
+    server.prependListener('request', (req) => {
+      if (req.url.includes('AuthenticateByName')) seen.auth = req.headers.authorization;
+    });
+    return seen;
+  };
+  const target = () => ({ url: base, username: 'demo', password: '' });
+
+  afterEach(() => {
+    // serverOfVersion's listener is the first of two; the route handler stays.
+    const listeners = server.listeners('request');
+    if (listeners.length > 1) server.removeListener('request', listeners[0]);
+  });
+
+  for (const version of ['10.7.7', '10.8.13', '10.9.11', '10.10.7']) {
+    it(`signs in as the app on ${version}, whose socket binds from the token's app name`, async () => {
+      const seen = serverOfVersion(version);
+      const s = await authenticateForPush(target(), async () => 'app-device');
+      expect(seen.auth).toContain('Client="JellyRock"');
+      expect(seen.auth).toContain('DeviceId="app-device"');
+      expect(s.deviceId).toBe('app-device');
+    });
+  }
+
+  for (const version of ['10.11.0', '10.11.11', '12.0.0', '12.4.0']) {
+    it(`keeps its own identity on ${version}, so the app's session there is not ended`, async () => {
+      const seen = serverOfVersion(version);
+      let asked = false;
+      await authenticateForPush(target(), async () => {
+        asked = true;
+        return 'app-device';
+      });
+      expect(asked).toBe(false);
+      expect(seen.auth).toContain('Client="JellyRock-rta"');
+      expect(seen.auth).not.toContain('app-device');
+    });
+  }
+
+  it('refuses to sign in with no device id to use', async () => {
+    serverOfVersion('10.10.7');
+    await expect(authenticateForPush(target(), async () => undefined)).rejects.toThrow(
+      /serverDeviceName/,
+    );
   });
 });
 

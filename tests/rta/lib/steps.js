@@ -1301,6 +1301,9 @@ export async function walkOverhangRowTo(
 /** Roku media-player states that mean playback is live. Frozen: it is a shared registry now. */
 export const PLAYING_STATES = Object.freeze(['startup', 'buffer', 'play', 'pause']);
 
+/** The routed views a Back stops playback from. */
+const PLAYER_VIEWS = Object.freeze(['PlayerHostView', 'AudioPlayerView']);
+
 /**
  * Poll the device media-player until it reaches an active playback state.
  *
@@ -1441,6 +1444,9 @@ export async function stopPlayback() {
   while (Date.now() - start < 10000) {
     const mp = await ecp.getMediaPlayer().catch(() => null);
     if (!mp || !PLAYING_STATES.includes(mp.state)) return;
+    // The OS can go on reporting `startup` once the player has closed, and a Back then walks out
+    // of the screens behind it, as far as Home's exit dialog.
+    if (mp.state === 'startup' && !PLAYER_VIEWS.includes(await getActiveVal('subtype()'))) return;
     await press(ecp.Key.Back);
     await sleep(1200);
   }

@@ -121,6 +121,12 @@ export const BUDGETS = new Map([
   // signal would change what is measured.
   ['tests/rta/specs/task-ledger-screen-cost.spec.js', 1],
   ['tests/rta/specs/task-thread-peak.spec.js', 1],
+  // The gap between two member Seeks is the race being exercised: gating it on a signal would
+  // close the window the case exists to hit.
+  ['tests/rta/specs/syncplay-controls.spec.js', 1],
+  // The same gap, in `syncplay-stress.spec.js`'s `gap()`: the 300 ms between the two inputs of a
+  // pair (two OKs, two Replays, two member Seeks) is the race that tool repeats.
+  ['tests/rta/specs/syncplay-stress.spec.js', 1],
 
   // Demo footage: `hold(ms, label)` is a shot-list beat for the camera, not a wait for
   // app state. Not a test.

@@ -15,6 +15,7 @@ namespace tests
     private previousQueue as object
     private previousSideEffectTask as object
     private isCapturingPosts as boolean
+    private previousTimeOffset as integer
 
     ' beforeEach, not setup: every test moves the node's state (tests/CLAUDE.md).
     protected override function beforeEach()
@@ -31,11 +32,13 @@ namespace tests
       m.global.queueManager = CreateObject("roSGNode", "QueueManager")
       m.manager = CreateObject("roSGNode", "SyncPlayManager")
       m.isCapturingPosts = false
+      m.previousTimeOffset = m.global.user.settings.playbackSyncPlayTimeOffsetMs
     end function
 
     protected override function afterEach()
       m.manager.callFunc("reset")
       m.manager = invalid
+      m.global.user.settings.playbackSyncPlayTimeOffsetMs = m.previousTimeOffset
       ' Here rather than in the test, so a failed assertion cannot leave the capture in place.
       if m.isCapturingPosts then m.global.sideEffectTask = m.previousSideEffectTask
       m.previousSideEffectTask = invalid
@@ -211,6 +214,32 @@ namespace tests
       m.manager.frame = m.command("Stop")
       m.playGroupItem()
       m.assertEqual(m.manager.sync.loadNotice, "groupStarted")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("The viewer's time offset")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the SyncPlay Time Offset setting reaches the clock at each frame and each player event, and is published")
+    function _()
+      settings = m.global.user.settings
+      settings.playbackSyncPlayTimeOffsetMs = 250
+      m.joinGroup()
+      m.assertEqual(m.manager.sync.extraOffsetMs, 250&)
+      settings.playbackSyncPlayTimeOffsetMs = 0
+      ' A mount publishes in every build; a position notification publishes only in an RTA build.
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.assertEqual(m.manager.sync.extraOffsetMs, 0&)
+    end function
+
+    @it("the drift is unknown until an Unpause is in force")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "state", state: "playing", position: 12.5 })
+      m.manager.callFunc("playerEvent", { kind: "position", position: 13.0 })
+      m.assertInvalid(m.manager.sync.playbackDiffMs)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

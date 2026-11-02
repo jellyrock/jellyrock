@@ -581,6 +581,17 @@
         "descriptionKey": "MessageAskIfYoureStillWatchingWhen"
       },
       {
+        "title": "SyncPlay Time Offset",
+        "description": "How many milliseconds ahead of the group this Roku plays while in a SyncPlay group, to make up for the delay your TV or sound system adds. Raise it if this Roku sounds behind the others. 0 keeps it on the group's clock.",
+        "settingName": "playbackSyncPlayTimeOffsetMs",
+        "type": "integer",
+        "default": "0",
+        "min": 0,
+        "max": 500,
+        "titleKey": "LabelSyncPlayTimeOffset",
+        "descriptionKey": "MessageSyncPlayTimeOffset"
+      },
+      {
         "title": "Text Subtitles Only",
         "description": "Only display text subtitles to minimize transcoding.",
         "settingName": "playbackSubsOnlyText",

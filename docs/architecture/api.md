@@ -17,7 +17,7 @@ related-files:
   - components/api/ApiResultNode.xml
   - components/api/SideEffectTask.bs
   - components/home/LoadLatestRowsTask.bs
-last-reviewed: 2026-10-17
+last-reviewed: 2026-11-01
 ---
 
 # API layer and task pool
@@ -215,6 +215,8 @@ Only reads are stopped, for the same reason as skipping. The Live TV `PlaybackIn
 ### A request a test makes fail or slow (RTA builds only)
 
 On-device specs need a screen's failure and slow-server paths against a healthy, fast server. So RTA builds (`ENABLE_RTA`) let a spec make chosen requests fail or answer slowly. The coordinator holds the rules from `m.global.rtaFailRequests`, reading the field only when a spec writes it. It checks each request as it takes it off its children (`processNewChildren`, then `answeredOnPurpose`).
+
+A side effect takes a rule too. `SideEffectTask` reads the same field and checks each request that carries a `requestId` (`droppedOnPurpose`; the SyncPlay builder names its requests `syncPlay<Action>`). It has no reader to answer, so a failing kind drops the request unsent, and `slow` holds that one thread for `ms` and then sends.
 
 A failure is answered at once and never reaches a slot. The answer is the one the pool itself delivers for that failure, built by [`apiFaults.responseFor()`](../../source/api/apiFaults.bs): a `roku-requests` timeout is `ok = false` with no `statusCode` or body, and an HTTP failure keeps its status. Nothing marks it as injected, because code that could tell the two apart could handle a test failure differently from a real one.
 

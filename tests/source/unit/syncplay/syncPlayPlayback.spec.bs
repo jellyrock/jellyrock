@@ -126,6 +126,61 @@ namespace tests
       m.assertEqual(syncPlayPlayback.applyPlan(pausePlan, "buffering", 600000000&, "loading").count(), 0)
     end function
 
+    @it("Pause during a seek writes nothing, whatever the node reads, and the seek's landing pauses")
+    function _()
+      pausePlan = { action: "Pause", delayMs: 0&, positionTicks: 600000000& }
+      for each phase in ["seeking", "landing"]
+        for each state in ["playing", "buffering"]
+          m.assertEqual(syncPlayPlayback.applyPlan(pausePlan, state, 600000000&, phase).count(), 0, phase + " " + state)
+        end for
+      end for
+      for each phase in ["ready", "stalling"]
+        steps = syncPlayPlayback.applyPlan(pausePlan, "playing", 600000000&, phase)
+        m.assertEqual(steps.count(), 1, phase)
+        m.assertEqual(steps[0].command, "pause")
+        m.assertTrue(steps[0].showOsd)
+      end for
+    end function
+
+    @it("pausedForViewer follows the node, except for a correction's hold and a pause waiting on a landing")
+    function _()
+      m.assertTrue(syncPlayPlayback.pausedForViewer("paused", false, false))
+      m.assertFalse(syncPlayPlayback.pausedForViewer("playing", false, false))
+      m.assertFalse(syncPlayPlayback.pausedForViewer("buffering", false, false))
+      m.assertFalse(syncPlayPlayback.pausedForViewer("paused", true, false), "a hold")
+      m.assertFalse(syncPlayPlayback.pausedForViewer("playing", true, false), "a correction's seek")
+      m.assertTrue(syncPlayPlayback.pausedForViewer("playing", false, true), "a pause waiting on the landing")
+      m.assertTrue(syncPlayPlayback.pausedForViewer("buffering", false, true), "the same, the node buffering")
+    end function
+
+    @it("seekEnded is a seek phase moving to a settled one, and nothing else")
+    function _()
+      m.assertTrue(syncPlayPlayback.seekEnded("seeking", "ready"))
+      m.assertTrue(syncPlayPlayback.seekEnded("landing", "ready"))
+      m.assertTrue(syncPlayPlayback.seekEnded("landing", "rebuffering"))
+      m.assertFalse(syncPlayPlayback.seekEnded("seeking", "landing"))
+      m.assertFalse(syncPlayPlayback.seekEnded("ready", "ready"))
+      m.assertFalse(syncPlayPlayback.seekEnded("stalling", "rebuffering"))
+    end function
+
+    @it("Unpause during a load writes nothing, whatever the node reads")
+    function _()
+      plan = { action: "Unpause", delayMs: 0&, positionTicks: 600000000& }
+      m.assertEqual(syncPlayPlayback.applyPlan(plan, "buffering", 0&, "loading").count(), 0)
+      m.assertEqual(syncPlayPlayback.applyPlan(plan, "", 0&, "loading").count(), 0)
+    end function
+
+    @it("Pause on a node a correction holds shows the OSD; on any other paused node it writes nothing")
+    function _()
+      plan = { action: "Pause", delayMs: 0&, positionTicks: 600000000& }
+      steps = syncPlayPlayback.applyPlan(plan, "paused", 600000000&, "ready", true)
+      m.assertEqual(steps.count(), 1)
+      m.assertEqual(steps[0].command, "pause")
+      m.assertTrue(steps[0].showOsd)
+      m.assertEqual(syncPlayPlayback.applyPlan(plan, "paused", 600000000&, "ready", false).count(), 0)
+      m.assertEqual(syncPlayPlayback.applyPlan(plan, "paused", 600000000&, "ready").count(), 0)
+    end function
+
     @it("Seek on a playing player is one reported seek that pauses once it lands")
     function _()
       steps = syncPlayPlayback.applyPlan({ action: "Seek", delayMs: 0&, positionTicks: 1200000000& }, "playing", 600000000&)
@@ -188,6 +243,29 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("owesCorrectionResume()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a correction's pause left on a paused node, with no correction and a playing group, is owed a resume")
+    function _()
+      m.assertTrue(syncPlayPlayback.owesCorrectionResume(true, false, false, "paused"))
+    end function
+
+    @it("nothing is owed without the pause, or while a correction or a paused group owns the node")
+    function _()
+      m.assertFalse(syncPlayPlayback.owesCorrectionResume(false, false, false, "paused"), "no pause owed")
+      m.assertFalse(syncPlayPlayback.owesCorrectionResume(true, true, false, "paused"), "the correction resumes it")
+      m.assertFalse(syncPlayPlayback.owesCorrectionResume(true, false, true, "paused"), "the group is paused")
+    end function
+
+    @it("nothing is owed to a node that is not paused, a buffering one least of all")
+    function _()
+      for each nodeState in ["playing", "buffering", "stopped", ""]
+        m.assertFalse(syncPlayPlayback.owesCorrectionResume(true, false, false, nodeState), nodeState)
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("startPositionTicks()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -221,6 +299,270 @@ namespace tests
       ' A Stop says nothing about a position: the update's start stands.
       stopped = m.command("Stop", "2026-10-23T20:47:28.000Z", 0&)
       m.assertEqual(syncPlayPlayback.startPositionTicks(update, stopped, m.estimator(), m.deviceNow), 300000000&)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the settle correction")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' An Unpause at 60 s whose When is 10 s before the device "now" on the server's clock.
+    private function unpauseInForce() as object
+      return m.command("Unpause", "2026-10-23T20:47:20.000Z", 600000000)
+    end function
+
+    @it("clockReference is the last command for the playing item")
+    function _()
+      unpause = m.unpauseInForce()
+      m.assertEqual(syncPlayPlayback.clockReference(unpause, unpause.playlistItemId, false).command, "Unpause")
+      m.assertInvalid(syncPlayPlayback.clockReference(unpause, "another-item", false), "another item's")
+      m.assertInvalid(syncPlayPlayback.clockReference(invalid, unpause.playlistItemId, false), "no command yet")
+    end function
+
+    @it("clockReference has nothing once this member reported Buffering: the group waited for it")
+    function _()
+      unpause = m.unpauseInForce()
+      m.assertInvalid(syncPlayPlayback.clockReference(unpause, unpause.playlistItemId, true))
+    end function
+
+    @it("driftMs is the estimated server position minus the player's: positive when this member is behind")
+    function _()
+      ' The group is at 70 s now; the player reads 69.5 s.
+      drift = syncPlayPlayback.driftMs(m.unpauseInForce(), m.estimator(), m.deviceNow, 695000000&)
+      m.assertEqual(drift, 500&)
+      ' Ahead of the group reads negative.
+      drift = syncPlayPlayback.driftMs(m.unpauseInForce(), m.estimator(), m.deviceNow, 701000000&)
+      m.assertEqual(drift, -100&)
+    end function
+
+    @it("driftMs is invalid with no Unpause in force, or before its When")
+    function _()
+      m.assertInvalid(syncPlayPlayback.driftMs(invalid, m.estimator(), m.deviceNow, 600000000&))
+      m.assertInvalid(syncPlayPlayback.driftMs(m.command("Pause", "2026-10-23T20:47:20.000Z", 600000000), m.estimator(), m.deviceNow, 600000000&))
+      future = m.command("Unpause", "2026-10-23T20:47:31.000Z", 600000000)
+      m.assertInvalid(syncPlayPlayback.driftMs(future, m.estimator(), m.deviceNow, 600000000&))
+    end function
+
+    @it("the viewer's extra offset moves the drift: a positive offset has this member play earlier")
+    function _()
+      est = m.estimator()
+      syncPlayOffset.setExtraOffsetMs(est, 200)
+      drift = syncPlayPlayback.driftMs(m.unpauseInForce(), est, m.deviceNow, 700000000&)
+      m.assertEqual(drift, 200&)
+    end function
+
+    @it("a correction is due once the node plays, two positions in, and the drift is past the threshold, then the check is spent")
+    function _()
+      check = syncPlayPlayback.newSettleCheck()
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 539&, "playing", "ready", false), "not armed")
+      syncPlayPlayback.armSettleCheck(check)
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 539&, "playing", "ready", false), "first position")
+      m.assertTrue(syncPlayPlayback.settleCorrectionDue(check, 539&, "playing", "ready", false), "second position")
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 539&, "playing", "ready", false), "spent")
+      m.assertFalse(check.armed)
+    end function
+
+    @it("a member behind is corrected only past the seek threshold, a member ahead past the hold threshold")
+    function _()
+      for each row in [{ drift: 399&, due: false }, { drift: 400&, due: false }, { drift: 401&, due: true }, { drift: -150&, due: false }, { drift: -151&, due: true }]
+        check = syncPlayPlayback.newSettleCheck()
+        syncPlayPlayback.armSettleCheck(check)
+        syncPlayPlayback.settleCorrectionDue(check, row.drift, "playing", "ready", false)
+        m.assertEqual(syncPlayPlayback.settleCorrectionDue(check, row.drift, "playing", "ready", false), row.due, row.drift.toStr())
+      end for
+    end function
+
+    @it("a drift inside the threshold spends the check with no seek")
+    function _()
+      check = syncPlayPlayback.newSettleCheck()
+      syncPlayPlayback.armSettleCheck(check)
+      syncPlayPlayback.settleCorrectionDue(check, 120&, "playing", "ready", false)
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, -149&, "playing", "ready", false))
+      m.assertFalse(check.armed)
+    end function
+
+    @it("an unknown drift counts for nothing and does not spend the check")
+    function _()
+      check = syncPlayPlayback.newSettleCheck()
+      syncPlayPlayback.armSettleCheck(check)
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, invalid, "playing", "ready", false))
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, invalid, "playing", "ready", false))
+      m.assertEqual(check.positions, 0)
+      m.assertTrue(check.armed)
+    end function
+
+    @it("a disarmed check never fires, whatever it had counted")
+    function _()
+      check = syncPlayPlayback.newSettleCheck()
+      syncPlayPlayback.armSettleCheck(check)
+      syncPlayPlayback.settleCorrectionDue(check, 3354&, "playing", "ready", false)
+      syncPlayPlayback.disarmSettleCheck(check)
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 3354&, "playing", "ready", false))
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 3354&, "playing", "ready", false))
+    end function
+
+    @it("a correction gets one more reading after it, once per arming")
+    function _()
+      check = syncPlayPlayback.newSettleCheck()
+      syncPlayPlayback.armSettleCheck(check)
+      syncPlayPlayback.settleCorrectionDue(check, 500&, "playing", "ready", false)
+      m.assertTrue(syncPlayPlayback.settleCorrectionDue(check, 500&, "playing", "ready", false))
+      syncPlayPlayback.retrySettleCheck(check)
+      syncPlayPlayback.settleCorrectionDue(check, 500&, "playing", "ready", false)
+      m.assertTrue(syncPlayPlayback.settleCorrectionDue(check, 500&, "playing", "ready", false), "the second reading")
+      syncPlayPlayback.retrySettleCheck(check)
+      m.assertFalse(check.armed, "no third")
+      syncPlayPlayback.armSettleCheck(check)
+      syncPlayPlayback.settleCorrectionDue(check, 500&, "playing", "ready", false)
+      syncPlayPlayback.settleCorrectionDue(check, 500&, "playing", "ready", false)
+      syncPlayPlayback.retrySettleCheck(check)
+      m.assertTrue(check.armed, "a new arming allows another")
+    end function
+
+    @it("a landing near its target moves the resume by the error, and a far one leaves it")
+    function _()
+      plan = syncPlayPlayback.correctionPlan(500&, 695000000&, m.unpauseInForce(), m.estimator(), 2000&)
+      syncPlayPlayback.landCorrection(plan, 723000000&)
+      m.assertEqual(plan.resumeAtMs, m.deviceNow + 2300&, "300 ms past the target")
+      syncPlayPlayback.landCorrection(plan, 723000000&)
+      m.assertEqual(plan.resumeAtMs, m.deviceNow + 2300&, "a second call moves nothing")
+      plan = syncPlayPlayback.correctionPlan(500&, 695000000&, m.unpauseInForce(), m.estimator(), 2000&)
+      syncPlayPlayback.landCorrection(plan, 695000000&)
+      m.assertEqual(plan.resumeAtMs, m.deviceNow + 2000&, "2.5 s off is not a landing")
+    end function
+
+    @it("seekPastEnd is true at or past the duration, and false while it is unknown")
+    function _()
+      m.assertTrue(syncPlayPlayback.seekPastEnd(100000000&, 10.0))
+      m.assertTrue(syncPlayPlayback.seekPastEnd(110000000&, 10.0))
+      m.assertFalse(syncPlayPlayback.seekPastEnd(90000000&, 10.0))
+      m.assertFalse(syncPlayPlayback.seekPastEnd(100000000&, 0))
+      m.assertFalse(syncPlayPlayback.seekPastEnd(100000000&, invalid))
+    end function
+
+    @it("an abandoned correction seek lands without pausing the node")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 700000000&, report: false, thenPause: true })
+      syncPlayPlayback.abandonSeekPause(tracker)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 600000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 700000000& })
+      m.assertEqual(tracker.phase, "ready")
+      m.assertFalse(result.pauseFirst)
+    end function
+
+    @it("a silent seek given a pause afterward lands with the pause and the OSD")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 700000000&, report: false, thenPause: false })
+      syncPlayPlayback.pauseAfterSeek(tracker)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 600000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 700000000& })
+      m.assertEqual(tracker.phase, "ready")
+      m.assertTrue(result.pauseFirst)
+      m.assertTrue(result.showOsd)
+      m.assertFalse(tracker.showOsd, "cleared once used")
+      m.assertFalse(tracker.thenPause)
+    end function
+
+    @it("a plain Seek's landing pauses without the OSD")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 700000000&, report: true, thenPause: true })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 600000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 700000000& })
+      m.assertTrue(result.pauseFirst)
+      m.assertFalse(result.showOsd)
+    end function
+
+    @it("a pause given after a seek and then abandoned lands without a pause")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 700000000&, report: false, thenPause: false })
+      syncPlayPlayback.pauseAfterSeek(tracker)
+      syncPlayPlayback.abandonSeekPause(tracker)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 600000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 700000000& })
+      m.assertFalse(result.pauseFirst)
+      m.assertFalse(result.showOsd)
+    end function
+
+    @it("nothing is counted while the group is paused, the node is not playing, or the tracker is not settled")
+    function _()
+      check = syncPlayPlayback.newSettleCheck()
+      syncPlayPlayback.armSettleCheck(check)
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 539&, "playing", "ready", true))
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 539&, "buffering", "ready", false))
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 539&, "paused", "ready", false))
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 539&, "playing", "seeking", false))
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 539&, "playing", "stalling", false))
+      m.assertEqual(check.positions, 0)
+      m.assertTrue(check.armed)
+      ' Still armed: the first two playing positions decide.
+      syncPlayPlayback.settleCorrectionDue(check, 539&, "playing", "ready", false)
+      m.assertTrue(syncPlayPlayback.settleCorrectionDue(check, 539&, "playing", "ready", false))
+    end function
+
+    @it("correctionPlan seeks the lead past the group's position and resumes when the group gets there")
+    function _()
+      ' The group is at 70 s now (Unpause at 60 s, When 10 s ago); the player reads 69.5 s.
+      plan = syncPlayPlayback.correctionPlan(500&, 695000000&, m.unpauseInForce(), m.estimator(), 2000&)
+      ' 69.5 s + 0.5 s drift + the 2 s lead.
+      m.assertEqual(plan.targetTicks, 720000000&)
+      ' The group reaches 72 s two seconds from now, on the device clock.
+      m.assertEqual(plan.resumeAtMs, m.deviceNow + 2000&)
+      m.assertEqual(syncPlayPlayback.correctionResumeDelayMs(plan, m.deviceNow), 2000&)
+      m.assertEqual(syncPlayPlayback.correctionResumeDelayMs(plan, m.deviceNow + 1500&), 500&)
+      m.assertEqual(syncPlayPlayback.correctionResumeDelayMs(plan, m.deviceNow + 2500&), 0&)
+    end function
+
+    @it("correctionLeadMs is the shortest lead until the last seek took longer, then that and a margin")
+    function _()
+      m.assertEqual(syncPlayPlayback.correctionLeadMs(0&), 2000&)
+      m.assertEqual(syncPlayPlayback.correctionLeadMs(1500&), 2000&)
+      m.assertEqual(syncPlayPlayback.correctionLeadMs(1501&), 2001&)
+      m.assertEqual(syncPlayPlayback.correctionLeadMs(2600&), 3100&)
+    end function
+
+    @it("a longer lead seeks further and resumes that much later")
+    function _()
+      plan = syncPlayPlayback.correctionPlan(500&, 695000000&, m.unpauseInForce(), m.estimator(), 3100&)
+      m.assertEqual(plan.targetTicks, 731000000&)
+      m.assertEqual(plan.resumeAtMs, m.deviceNow + 3100&)
+    end function
+
+    @it("correctionPlan holds a member ahead of the group where it is, with no seek")
+    function _()
+      ' The group is at 70 s now; the player reads 70.3 s.
+      plan = syncPlayPlayback.correctionPlan(-300&, 703000000&, m.unpauseInForce(), m.estimator(), 2000&)
+      m.assertFalse(plan.seek)
+      m.assertEqual(plan.targetTicks, 703000000&)
+      m.assertEqual(plan.resumeAtMs, m.deviceNow + 300&)
+    end function
+
+    @it("correctionPlan seeks for a member behind the group")
+    function _()
+      m.assertTrue(syncPlayPlayback.correctionPlan(300&, 697000000&, m.unpauseInForce(), m.estimator(), 2000&).seek)
+    end function
+
+    @it("the viewer's extra offset moves the resume moment, not the target")
+    function _()
+      est = m.estimator()
+      syncPlayOffset.setExtraOffsetMs(est, 200)
+      plan = syncPlayPlayback.correctionPlan(700&, 695000000&, m.unpauseInForce(), est, 2000&)
+      m.assertEqual(plan.targetTicks, 722000000&)
+      ' The server's clock reads 200 ms later, so the group reaches 72.2 s 200 ms sooner.
+      m.assertEqual(plan.resumeAtMs, m.deviceNow + 2000&)
+    end function
+
+    @it("arming again counts afresh")
+    function _()
+      check = syncPlayPlayback.newSettleCheck()
+      syncPlayPlayback.armSettleCheck(check)
+      syncPlayPlayback.settleCorrectionDue(check, 10&, "playing", "ready", false)
+      syncPlayPlayback.armSettleCheck(check)
+      m.assertEqual(check.positions, 0)
+      syncPlayPlayback.settleCorrectionDue(check, 500&, "playing", "ready", false)
+      m.assertTrue(syncPlayPlayback.settleCorrectionDue(check, 500&, "playing", "ready", false))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -417,13 +759,55 @@ namespace tests
       m.assertEqual(tracker.phase, "ready")
     end function
 
-    @it("a silent seek settles at once on a position that lands first")
+    @it("a silent seek whose position lands first waits for playing, so its buffering is not a stall")
     function _()
       tracker = m.readyTracker()
       syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000&, report: false, thenPause: false })
       landed = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
       m.assertEqual(landed.report, "")
-      m.assertFalse(landed.pauseFirst)
+      m.assertEqual(tracker.phase, "landing")
+      m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 300000000& }).waitMs, 0, "no stall timer")
+      m.assertEqual(tracker.phase, "landing")
+      settled = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 300000000& })
+      m.assertEqual(settled.report, "")
+      m.assertFalse(settled.pauseFirst)
+      m.assertEqual(tracker.phase, "ready")
+    end function
+
+    @it("a silent seek still buffering when its time is up is a stall the server hears of")
+    function _()
+      tracker = m.readyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000&, report: false, thenPause: true })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 300000000& })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "timeout" })
+      m.assertEqual(tracker.phase, "landing")
+      stalled = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "timeout" })
+      m.assertEqual(stalled.report, "buffering")
+      m.assertFalse(stalled.pauseFirst)
+      m.assertEqual(tracker.phase, "rebuffering")
+      m.assertFalse(tracker.thenPause, "the seek's own pause is dropped with it")
+      recovered = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 300000000& })
+      m.assertEqual(recovered.report, "ready")
+      m.assertEqual(tracker.phase, "ready")
+    end function
+
+    @it("a silent seek that reported no state by the time it is up settles quietly: the node never buffered")
+    function _()
+      tracker = m.readyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000&, report: false, thenPause: false })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "timeout" })
+      quiet = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "timeout" })
+      m.assertEqual(quiet.report, "")
+      m.assertEqual(tracker.phase, "ready")
+    end function
+
+    @it("a reported seek that outlasts its time reports ready as before, never a second Buffering")
+    function _()
+      tracker = m.readyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000&, report: true, thenPause: true })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 300000000& })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "timeout" })
+      m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "timeout" }).report, "ready")
       m.assertEqual(tracker.phase, "ready")
     end function
 
@@ -472,10 +856,11 @@ namespace tests
       m.assertEqual(result.report, "")
     end function
 
-    @it("the settle timeout reports ready with the position in hand")
+    @it("the settle timeouts report ready with the position in hand")
     function _()
       tracker = m.readyTracker()
-      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000&, report: true })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000&, report: true, thenPause: true })
+      m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "timeout" }).report, "", "the seek's budget, then the landing's")
       result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "timeout" })
       m.assertEqual(result.report, "ready")
       m.assertEqual(tracker.phase, "ready")
@@ -494,6 +879,192 @@ namespace tests
       syncPlayPlayback.trackPlayerEvent(tracker, { kind: "unmounted" })
       m.assertEqual(tracker.phase, "idle")
       m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& }).report, "")
+    end function
+
+    ' A seek due while one is in flight waits (kind "holdSeek") and goes next when the first lands.
+    private function heldTracker(report = true as boolean, thenPause = true as boolean) as object
+      tracker = m.readyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: 300000000&, report: report, thenPause: thenPause })
+      return tracker
+    end function
+
+    private sub holdSecond(tracker as object, targetTicks = 600000000& as longinteger)
+      held = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "holdSeek", targetTicks: targetTicks, report: true, thenPause: true })
+      m.assertEqual(held.report, "", "a hold reports nothing")
+      m.assertEqual(held.waitMs, 0, "a hold starts no timer")
+    end sub
+
+    private sub assertReleased(result as object, tracker as object, targetTicks = 600000000& as longinteger)
+      m.assertTrue(isValid(result.nextSeek), "the held seek goes next")
+      if isValid(result.nextSeek)
+        m.assertEqual(result.nextSeek.targetTicks, targetTicks)
+        m.assertTrue(result.nextSeek.report)
+        m.assertTrue(result.nextSeek.thenPause)
+      end if
+      m.assertEqual(result.report, "")
+      m.assertFalse(result.pauseFirst)
+      m.assertEqual(tracker.phase, "seeking")
+      m.assertInvalid(tracker.heldSeek)
+    end sub
+
+    @it("a seek held in flight goes next when the first lands through a position and playing, with no report or pause")
+    function _()
+      tracker = m.heldTracker()
+      m.holdSecond(tracker)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertReleased(result, tracker)
+    end function
+
+    @it("a seek held in flight goes next when the first lands paused")
+    function _()
+      tracker = m.heldTracker()
+      m.holdSecond(tracker)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "paused", positionTicks: 1245000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertReleased(result, tracker)
+    end function
+
+    @it("a seek held in flight goes next from the landing phase, at playing")
+    function _()
+      tracker = m.heldTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 1245000000& })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertEqual(tracker.phase, "landing")
+      m.holdSecond(tracker)
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 300000000& })
+      m.assertReleased(result, tracker)
+    end function
+
+    @it("a seek held in flight goes next when the settle time is up, in seeking and in landing")
+    function _()
+      seeking = m.heldTracker()
+      syncPlayPlayback.trackPlayerEvent(seeking, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      m.holdSecond(seeking)
+      m.assertReleased(syncPlayPlayback.trackPlayerEvent(seeking, { kind: "timeout" }), seeking)
+
+      landing = m.heldTracker()
+      syncPlayPlayback.trackPlayerEvent(landing, { kind: "state", state: "buffering", positionTicks: 1245000000& })
+      syncPlayPlayback.trackPlayerEvent(landing, { kind: "timeout" })
+      m.assertEqual(landing.phase, "landing")
+      m.holdSecond(landing)
+      m.assertReleased(syncPlayPlayback.trackPlayerEvent(landing, { kind: "timeout" }), landing)
+    end function
+
+    @it("a silent seek that would become a stall at its time goes next instead, and reports nothing")
+    function _()
+      tracker = m.heldTracker(false, true)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 300000000& })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "timeout" })
+      m.assertEqual(tracker.phase, "landing")
+      m.holdSecond(tracker)
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "timeout" })
+      m.assertReleased(result, tracker)
+    end function
+
+    @it("two held seeks: the newest wins")
+    function _()
+      tracker = m.heldTracker()
+      m.holdSecond(tracker, 600000000&)
+      m.holdSecond(tracker, 900000000&)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertReleased(result, tracker, 900000000&)
+    end function
+
+    @it("a seek held within 500 ms of the one in flight merges into it: no second seek, the report kept")
+    function _()
+      tracker = m.heldTracker(false, false)
+      held = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "holdSeek", targetTicks: 303000000&, report: true, thenPause: true })
+      m.assertEqual(held.report, "")
+      m.assertInvalid(tracker.heldSeek)
+      m.assertTrue(tracker.reportSeek)
+      m.assertTrue(tracker.thenPause)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertInvalid(result.nextSeek)
+      m.assertEqual(result.report, "ready")
+      m.assertTrue(result.pauseFirst)
+      m.assertEqual(tracker.phase, "ready")
+    end function
+
+    @it("a merging hold drops a seek already held, since it is newer")
+    function _()
+      tracker = m.heldTracker()
+      m.holdSecond(tracker, 600000000&)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "holdSeek", targetTicks: 300000000&, report: true, thenPause: true })
+      m.assertInvalid(tracker.heldSeek)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      m.assertInvalid(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& }).nextSeek)
+    end function
+
+    @it("the seek that goes next lands and pauses as any seek does, with the report and pause it carries")
+    function _()
+      tracker = m.heldTracker()
+      m.holdSecond(tracker)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      released = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertReleased(released, tracker)
+      queued = { targetTicks: 600000000&, report: true, thenPause: true }
+      if isValid(released.nextSeek) then queued = released.nextSeek
+      sent = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "seek", positionTicks: queued.targetTicks, report: queued.report, thenPause: queued.thenPause })
+      m.assertEqual(sent.report, "buffering")
+      m.assertEqual(sent.waitMs, 3000)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 300000000& })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 300000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 600000000& })
+      m.assertInvalid(result.nextSeek)
+      m.assertEqual(result.report, "ready")
+      m.assertTrue(result.pauseFirst)
+      m.assertEqual(tracker.phase, "ready")
+    end function
+
+    @it("a mount or an unmount clears a held seek")
+    function _()
+      mounted = m.heldTracker()
+      m.holdSecond(mounted)
+      syncPlayPlayback.trackPlayerEvent(mounted, { kind: "mounted" })
+      m.assertInvalid(mounted.heldSeek)
+
+      unmounted = m.heldTracker()
+      m.holdSecond(unmounted)
+      syncPlayPlayback.trackPlayerEvent(unmounted, { kind: "unmounted" })
+      m.assertInvalid(unmounted.heldSeek)
+    end function
+
+    @it("dropHeldSeek clears a held seek, so the first seek lands as it would alone")
+    function _()
+      tracker = m.heldTracker()
+      m.holdSecond(tracker)
+      syncPlayPlayback.dropHeldSeek(tracker)
+      m.assertInvalid(tracker.heldSeek)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertInvalid(result.nextSeek)
+      m.assertEqual(result.report, "ready")
+      m.assertEqual(tracker.phase, "ready")
+    end function
+
+    @it("a pause given while a seek is held goes with the held seek, though it asked for none")
+    function _()
+      tracker = m.heldTracker()
+      held = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "holdSeek", targetTicks: 600000000&, report: true, thenPause: false })
+      m.assertEqual(held.report, "")
+      syncPlayPlayback.pauseAfterSeek(tracker)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertTrue(isValid(result.nextSeek), "the held seek goes next")
+      if isValid(result.nextSeek) then m.assertTrue(result.nextSeek.thenPause, "it pauses at its landing")
+    end function
+
+    @it("a silent held seek hands back the Ready owed for the seek it replaces")
+    function _()
+      tracker = m.heldTracker(true, true)
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "holdSeek", targetTicks: 600000000&, report: false, thenPause: true })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 1245000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "position", positionTicks: 300000000& })
+      m.assertTrue(isValid(result.nextSeek), "the held seek goes next")
+      if isValid(result.nextSeek) then m.assertTrue(result.nextSeek.report, "the Ready still owed goes out at its landing")
     end function
 
     @it("an unknown or empty event reports nothing")

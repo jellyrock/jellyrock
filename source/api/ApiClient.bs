@@ -559,6 +559,9 @@ class ApiClient
 
     req = m.validatedReq("POST", buildURL(path))
     if not isValid(req) then return invalid
+    ' Named for the action so an RTA spec can fail one (SideEffectTask.droppedOnPurpose). The
+    ' pool's fetchRes and submitApiRequest overwrite it with their own id, and nothing else reads it.
+    req.requestId = "syncPlay" + action
     if isValid(body)
       req.body = FormatJson(body)
       req.headers = { "Content-Type": "application/json" }

@@ -274,18 +274,48 @@ export function sessionDeviceId(role, deviceKey) {
  * two callers must never share one). Defaults to `rta` because the suite is the
  * caller that matters most; the other entry points name themselves.
  *
- * ⚠️ **Not usable for asserting "Cast to JellyRock" on servers older than 10.11.** The token
- * this mints belongs to `Client="JellyRock-<role>"`, and before 10.11 Jellyfin binds the
- * app's session socket to the session keyed on the TOKEN's app name, so the socket lands
- * on a `JellyRock-rta` session while the app's capabilities sit on the `JellyRock` one, and
- * the app never reports `SupportsRemoteControl`. Casting works for real users (their token
- * is minted by the app itself); only this seeded token breaks it. A cast test must mint its
- * token as `Client="JellyRock"` with the app's own `serverDeviceName` as DeviceId.
+ * ⚠️ **Not usable for anything the server pushes to the app on servers older than 10.11:** a
+ * cast, or a SyncPlay frame. The token this mints belongs to `Client="JellyRock-<role>"`, and
+ * before 10.11 Jellyfin binds the app's session socket to the session keyed on the TOKEN's
+ * app name, so the socket lands on a `JellyRock-rta` session while the app's requests sit on
+ * the `JellyRock` one, and nothing sent to that session reaches the socket. Both work for real
+ * users (their token is minted by the app itself); only this seeded token breaks them. Use
+ * `authenticateForPush` for those.
  */
 export async function authenticate(server, { role = 'rta', deviceKey } = {}) {
-  const deviceId = sessionDeviceId(role, deviceKey);
+  return signIn(server, {
+    client: `JellyRock-${role}`,
+    device: role,
+    deviceId: sessionDeviceId(role, deviceKey),
+  });
+}
+
+/**
+ * A session the server's pushes reach: on a server older than 10.11, its token is minted as
+ * the app mints its own (`Client="JellyRock"`, the app's DeviceId), so the app's socket and its
+ * requests share one session. From 10.11 the socket binds from the app's own header, so
+ * `authenticate` serves. Only the older servers get the app's identity: signing in under a
+ * DeviceId ends that device's other sessions, and on a server someone uses, that would sign
+ * the Roku out once the run restored its registry.
+ *
+ * @param {() => Promise<string>} readAppDeviceId - reads `device.serverDeviceName` off the app
+ */
+export async function authenticateForPush(server, readAppDeviceId) {
+  const info = await getJson(`${server.url}/System/Info/Public`, {});
+  if (!isBefore10_11(info?.Version)) return authenticate(server);
+  const deviceId = await readAppDeviceId();
+  if (!deviceId) throw new Error('The app answered with no device.serverDeviceName to sign in as');
+  return signIn(server, { client: 'JellyRock', device: 'Roku', deviceId });
+}
+
+function isBefore10_11(version) {
+  const [major, minor] = String(version).split('.').map(Number);
+  return major === 10 && minor < 11;
+}
+
+async function signIn(server, { client, device, deviceId }) {
   const auth =
-    `MediaBrowser Client="JellyRock-${role}", Device="${role}", ` +
+    `MediaBrowser Client="${client}", Device="${device}", ` +
     `DeviceId="${deviceId}", Version="1.0.0"`;
   const d = await postJson(
     `${server.url}/Users/AuthenticateByName`,

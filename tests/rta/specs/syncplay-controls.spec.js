@@ -17,17 +17,20 @@ import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import {
   authenticate,
+  authenticateForPush,
   commandChannelAvailable,
   getJson,
   postJson,
   tokenHeader,
 } from '../lib/jellyfin.js';
+import { failRequests } from '../lib/failRequests.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
 import {
   getGlobalVal,
   press,
   readPlayer,
+  sleep,
   stopPlayback,
   waitFor,
   waitMediaPlaying,
@@ -97,7 +100,9 @@ const osdVisible = () => player()('#osd.visible');
 const barVisible = () => player()('trickPlayBar.visible');
 
 beforeAll(async () => {
-  session = await authenticate(RTA_CONFIG.server);
+  session = await authenticateForPush(RTA_CONFIG.server, () =>
+    getGlobalVal('device.serverDeviceName'),
+  );
   member = await authenticate(RTA_CONFIG.server, { role: 'member' });
   pushAvailable = await commandChannelAvailable(session);
   // A movie at least ten minutes long, found by order, never by name: the seek case scrubs
@@ -180,6 +185,24 @@ it("another member's Pause pauses this Roku with the OSD up, and its Unpause pla
   });
 });
 
+it("after the group's unpause this member settles within the correction thresholds of the group's position", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  // `syncPlayPlayback.SETTLE_CORRECTION_MS` ahead and `SKIP_TO_SYNC_MIN_MS` behind: past them
+  // the manager corrects, so within them is where every path ends up.
+  await waitFor(
+    'syncPlayManager.sync.playbackDiffMs',
+    (v) => typeof v === 'number' && v >= -150 && v <= 400,
+    {
+      read: getGlobalVal,
+      timeout: 20000,
+      label: "this member's drift from the group inside the correction thresholds",
+    },
+  );
+});
+
 it("the Roku's Play key pauses the whole group, and a second press has it playing again", async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(
@@ -227,7 +250,7 @@ it('a trickplay scrub confirmed with OK seeks the whole group, and this member l
   });
   await press(ecp.Key.Ok);
   // Three Right presses read about 30 s ahead on a Stick 4K (2026-10-28); the server's Seek
-  // lands this member there, and the bar closes on the way (a seek to the node's own position).
+  // lands this member there, and the bar closes through that Seek.
   await waitFor('position', (v) => typeof v === 'number' && v > before + 20, {
     read: playerPosition,
     timeout: 20000,
@@ -246,6 +269,71 @@ it('a trickplay scrub confirmed with OK seeks the whole group, and this member l
   expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
 });
 
+it('a scrub confirmed with OK whose Seek the server never answers still closes the bar, without moving this member', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const before = await playerPosition();
+  const lastEmitted = await getGlobalVal('syncPlayManager.sync.lastCommand.emittedAtMs');
+  // The app's Seek request is dropped unsent, once (`SideEffectTask.droppedOnPurpose`), so no
+  // group command comes back: the bar must close by its own fallback.
+  await failRequests([{ prefix: 'syncPlaySeek', kind: 'http', status: 403, times: 1 }]);
+  try {
+    await ecp.sendKeypressSequence([ecp.Key.Right, ecp.Key.Right, ecp.Key.Right], { wait: 400 });
+    await waitFor('trickPlayBar.visible', (v) => v === true, {
+      read: barVisible,
+      timeout: 10000,
+      label: 'the trick-play bar up after three Right presses',
+    });
+    await press(ecp.Key.Ok);
+    // Shorter than the fallback timer: until then nothing may seek this member. A local seek
+    // written at once (the old behavior) shows as the bar closing or the node buffering.
+    const sampleUntil = Date.now() + 3000;
+    while (Date.now() < sampleUntil) {
+      const bar = await barVisible();
+      const state = await playerState();
+      expect(bar, 'the bar stays up while the group answers').toBe(true);
+      expect(state, 'no local seek started').not.toBe('buffering');
+      await sleep(250);
+    }
+    await waitFor('trickPlayBar.visible', (v) => v === false, {
+      read: barVisible,
+      timeout: 10000,
+      label: 'the trick-play bar closed by the fallback, with no group Seek',
+    });
+    await waitFor('state', (s) => s === 'playing', {
+      read: playerState,
+      timeout: 15000,
+      label: 'playing again after the fallback',
+    });
+    expect(
+      await getGlobalVal('syncPlayManager.sync.lastCommand.emittedAtMs'),
+      'no group command came, so the Seek was dropped and the rule fired',
+    ).toBe(lastEmitted);
+    expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+    expect(await getGlobalVal('syncPlayManager.groupState'), 'the group still plays').toBe(
+      'Playing',
+    );
+    // Three Right presses read about 30 s ahead: the node did not go to the target.
+    expect(await playerPosition(), 'the node did not move to the scrub target').toBeLessThan(
+      before + 20,
+    );
+    // The scrub left this member behind the group; the armed check corrects it.
+    await waitFor(
+      'syncPlayManager.sync.playbackDiffMs',
+      (v) => typeof v === 'number' && v >= -500 && v <= 1000,
+      {
+        read: getGlobalVal,
+        timeout: 25000,
+        label: "this member back with the group after the scrub's lost Seek",
+      },
+    );
+  } finally {
+    await failRequests([]);
+  }
+});
+
 it("the remote's Replay key seeks the whole group back, not this Roku alone", async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(
@@ -255,20 +343,102 @@ it("the remote's Replay key seeks the whole group back, not this Roku alone", as
   expect(before, 'far enough in for a replay to go back').toBeGreaterThan(15);
   const lastEmitted = await getGlobalVal('syncPlayManager.sync.lastCommand.emittedAtMs');
   await press(ecp.Key.Replay);
-  // A replay the group took comes back as the server's Seek (then its Unpause): a newer group
-  // command. A seek of this Roku alone brings none.
-  await waitFor('syncPlayManager.sync.lastCommand.emittedAtMs', (v) => v !== lastEmitted, {
-    read: getGlobalVal,
-    timeout: 10000,
-    label: 'a group command answering the replay',
-  });
+  // A replay the group took comes back as the server's Seek, then its Unpause once this member is
+  // ready, and the Unpause replaces the Seek in `lastCommand`. So a new Seek counts, and so does a
+  // new Unpause that carries a position behind where the replay started; a poll that missed the
+  // Seek still sees the one that follows. A seek of this Roku alone brings neither. The command is
+  // read whole, so its name, time and position come from one command; ODC lowercases the keys of
+  // a record it reads whole.
+  const answer = await waitFor(
+    'syncPlayManager.sync.lastCommand',
+    (c) =>
+      Boolean(c) &&
+      c.emittedatms !== lastEmitted &&
+      (c.command === 'Seek' || c.command === 'Unpause') &&
+      c.positionticks / 10_000_000 < before,
+    {
+      read: getGlobalVal,
+      timeout: 10000,
+      label: 'a group Seek (or the Unpause after it) answering the replay',
+    },
+  );
   // Seek and Unpause both carry the group's position: behind where the replay started.
-  const ticks = await getGlobalVal('syncPlayManager.sync.lastCommand.positionTicks');
-  expect(ticks / 10_000_000, "the group's position after the replay").toBeLessThan(before);
+  expect(answer.positionticks / 10_000_000, "the group's position after the replay").toBeLessThan(
+    before,
+  );
   await waitFor('state', (s) => s === 'playing', {
     read: playerState,
     timeout: 15000,
     label: "playing again after the group's Seek and Unpause",
+  });
+  expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+});
+
+// A guard against a race, so one pass proves little: two seeks that overlap on the node could
+// leave it buffering for good, with the group waiting on it. The tracker's unit cases hold the
+// logic (syncPlayPlayback.spec.bs); this one only watches the group survive the real timing.
+it('two member Seeks close together, to different targets, leave the group playing at the second', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const before = await playerPosition();
+  const ticksAt = (seconds) => Math.round(seconds * 10_000_000);
+  await syncPlay(member, 'Seek', { PositionTicks: ticksAt(before + 30) });
+  await sleep(300);
+  await syncPlay(member, 'Seek', { PositionTicks: ticksAt(before + 60) });
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 30000,
+    label: 'the node playing after two close Seeks',
+  });
+  await waitFor('syncPlayManager.groupState', (s) => s === 'Playing', {
+    read: getGlobalVal,
+    timeout: 30000,
+    label: 'the group playing after two close Seeks',
+  });
+  await waitFor('position', (v) => typeof v === 'number' && v > before + 50, {
+    read: playerPosition,
+    timeout: 20000,
+    label: 'this member at the second Seek target',
+  });
+  expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+});
+
+// A play/pause toggle on a node that is buffering for the group's Seek used to write
+// `control = "play"` to it, which leaves it buffering for good. It must pause the group instead.
+it("the remote's play/pause during a group Seek pauses the group and does not wedge the node", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const before = await playerPosition();
+  try {
+    await syncPlay(member, 'Seek', { PositionTicks: Math.round((before + 40) * 10_000_000) });
+    await waitFor('state', (s) => s === 'buffering', {
+      read: playerState,
+      timeout: 10000,
+      interval: 100,
+      label: "the node buffering on the group's Seek",
+    });
+    await playerCall(heroId, 'playpause');
+    await waitFor('syncPlayManager.groupState', (s) => s === 'Paused', {
+      read: getGlobalVal,
+      timeout: 15000,
+      label: 'the group paused by the toggle pressed during the Seek',
+    });
+    await waitFor('state', (s) => s === 'paused', {
+      read: playerState,
+      timeout: 15000,
+      label: "the node paused at the Seek's landing, not buffering for good",
+    });
+  } finally {
+    await syncPlay(member, 'Unpause').catch(() => {});
+  }
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 20000,
+    label: "the node playing on the group's Unpause",
   });
   expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
 });

@@ -1,3 +1,4 @@
+import "pkg:/source/api/apiFaults.bs"
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
@@ -25,6 +26,11 @@ sub runSideEffectLoop()
 
   port = CreateObject("roMessagePort")
   m.top.observeField("enqueue", port)
+  #if ENABLE_RTA
+    ' Requests an RTA spec drops or slows (see droppedOnPurpose). Read here and on each change.
+    m.failRequests = apiFaults.fromRules(m.global.rtaFailRequests)
+    m.global.observeField("rtaFailRequests", port)
+  #end if
 
   ' Process any children appended before the observer was registered (SubmitSideEffect
   ' may have appended + pulsed 'enqueue' while this thread was still starting up; that
@@ -35,7 +41,15 @@ sub runSideEffectLoop()
     msg = wait(0, port)
     ' Any wake (even coalesced enqueue events) drains the full backlog: read ALL
     ' unprocessed children from the tree, not the event payload.
-    if type(msg) = "roSGNodeEvent" then processNewChildren()
+    if type(msg) = "roSGNodeEvent"
+      #if ENABLE_RTA
+        if msg.getField() = "rtaFailRequests"
+          m.failRequests = apiFaults.fromRules(msg.getData())
+          m.log.info("request failure rules set", "rules", m.failRequests.count())
+        end if
+      #end if
+      processNewChildren()
+    end if
   end while
 end sub
 
@@ -56,7 +70,11 @@ sub processNewChildren()
       ' self-healed on the next submit; the persistent loop has no such reset, which makes
       ' per-request isolation essential rather than defensive nicety.
       try
-        executeHttpRequest(child.request, "POST", "[SideEffectTask]")
+        skipped = false
+        #if ENABLE_RTA
+          skipped = droppedOnPurpose(child.request)
+        #end if
+        if not skipped then executeHttpRequest(child.request, "POST", "[SideEffectTask]")
       catch error
         m.log.error("side-effect request threw; continuing drain", { message: error.message })
       end try
@@ -71,3 +89,25 @@ sub processNewChildren()
     m.processedIndex = 0
   end if
 end sub
+
+#if ENABLE_RTA
+  ' An RTA spec's rule for this request (m.global.rtaFailRequests, matched on the request's
+  ' requestId). A side effect has no reader to answer, so every failing kind (timeout, http,
+  ' empty) drops it unsent. A slow one holds this thread for `ms`, as a slow server would, then
+  ' sends; a timeout given `ms` holds it the same way, then drops. True when the request must not be sent.
+  function droppedOnPurpose(req as object) as boolean
+    if m.failRequests.count() = 0 then return false
+    if not isValid(req.requestId) then return false
+    fault = apiFaults.take(m.failRequests, req.requestId)
+    if not isValid(fault) then return false
+
+    if apiFaults.isSlow(fault)
+      m.log.info("slowing a side effect on purpose", req.requestId, "ms", fault.ms)
+      sleep(fault.ms)
+      if fault.kind = "slow" then return false
+    end if
+
+    m.log.info("dropped a side effect on purpose", req.requestId, "kind", fault.kind)
+    return true
+  end function
+#end if

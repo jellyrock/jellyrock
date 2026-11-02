@@ -33,6 +33,30 @@ namespace syncPlayHooks
     return { index: sync.playingItemIndex, count: sync.playlistCount, hasPrevious: bounds.hasPrevious, hasNext: bounds.hasNext }
   end function
 
+  ' The viewer pressed pause: true when the player should pause the node itself, always so while not
+  ' following. False means a seek's landing will (SyncPlayManager.viewerPause).
+  function viewerPause() as boolean
+    manager = m.global.syncPlayManager
+    if not isValid(manager) or manager.following <> true then return true
+    return manager.callFunc("viewerPause") = true
+  end function
+
+  ' Whether the viewer should take the player as paused. While following, a drift correction's hold
+  ' is not their pause, and a pause waiting on a seek's landing is (SyncPlayManager.pausedForViewer).
+  ' @param nodeState - the Video node's `state`
+  function pausedForViewer(nodeState as string) as boolean
+    manager = m.global.syncPlayManager
+    if not isValid(manager) or manager.following <> true then return nodeState = "paused"
+    return manager.callFunc("pausedForViewer", nodeState) = true
+  end function
+
+  ' Whether a seek for the group is in flight, so a pause pressed now can wait for its landing.
+  function seekInFlight() as boolean
+    manager = m.global.syncPlayManager
+    if not isValid(manager) or manager.following <> true then return false
+    return manager.callFunc("seekInFlight") = true
+  end function
+
   ' Ask the group for a control the viewer pressed (SyncPlayManager.control has the shapes): true
   ' when the request was posted, so the server's command will move every member, false when the
   ' player should act on its own. The server's answer comes later, as a command or not at all. A pause is the one control the player also applies at once.

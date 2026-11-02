@@ -22,7 +22,10 @@
     <field id="groupId" type="string" value="" />
     <field id="groupName" type="string" value="" />
     <field id="groupState" type="string" value="" />
-    <!-- { offsetMs, delayMs, hasEstimate, lastCommand, trackerPhase, playingItemId, loadNotice } -->
+    <!-- { offsetMs, delayMs, hasEstimate, lastCommand, trackerPhase, playingItemId, playingItemIndex,
+         playlistCount, loadNotice, playbackDiffMs (how far behind the group this member sits, ms, invalid
+         until an Unpause is in force; refreshed per position only in RTA builds, otherwise whenever
+         something else publishes), extraOffsetMs (the viewer's time offset setting) } -->
     <field id="sync" type="assocarray" />
     <!-- Something the viewer is told: { kind, groupName, userName }. kind is joined, left, leftStale,
          userJoined, userLeft, groupStarted, playedToGroup, followingAgain, halted, or a refusal's update type
@@ -58,6 +61,14 @@
          the viewer pressed while following, posted to the group in place of the player; a seek's
          position in the Video node's float seconds. True when posted. -->
     <function name="control" />
+    <!-- viewerPause(): the viewer pressed pause while following. Posts it and answers whether the
+         player should pause the node itself; false while a seek's landing will. -->
+    <function name="viewerPause" />
+    <!-- pausedForViewer(nodeState): whether the viewer should take this member as paused, which a
+         drift correction's hold is not. -->
+    <function name="pausedForViewer" />
+    <!-- seekInFlight(): whether a pause pressed now can wait for a seek's landing. -->
+    <function name="seekInFlight" />
   </interface>
   <children>
     <!-- The one scheduled command: a new command replaces a pending one. -->
@@ -68,5 +79,9 @@
     <Timer id="readyTimer" repeat="false" />
     <!-- Confirms a pause took while the group is paused: re-pauses a player that plays on. -->
     <Timer id="pauseTimer" repeat="false" />
+    <!-- A drift correction's resume: fires when the group reaches where the member paused, after
+         a seek ahead when it was behind (syncPlayPlayback.correctionPlan). Until the node reports
+         `paused`, it ends a correction whose pause never lands. -->
+    <Timer id="correctionTimer" repeat="false" />
   </children>
 </component>
