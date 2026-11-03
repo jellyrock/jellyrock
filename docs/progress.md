@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-02
+last-updated: 2026-11-03
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-03: feat(player): Repeat a video or the queue from the OSD gear
 - 2026-11-02: fix(playback): Play Cinema Mode intros, drop the stale queue slot
 - 2026-11-02: docs(catalog): Publish the newest Jellyfin line and release dates
 - 2026-11-02: fix(syncplay): Ask the group to wait after a seek that cannot land
@@ -72,7 +73,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-20: chore(journal): Retire the signals journal; watch upstreams from CI
 - 2026-10-20: chore(catchup): Stop the reader rewriting `docs/signals-backlog.md`
 - 2026-10-20: feat(search): Pull-down keyboard, live suggestions and recent searches
-- 2026-10-19: chore(device-lock): Hold the device lock for `F5` and `package:signed`
 
 ## Open followups
 
