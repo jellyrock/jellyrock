@@ -111,6 +111,41 @@ namespace tests
       m.assertFalse(m.item(0).DoesExist("followsIntro"))
     end function
 
+    @it("drops the intro's slot when a replay lands back on it")
+    ' Repeat One replays index 0 while the intro's slot is still there: the queue arrives at the
+    ' slot itself, and the launched item behind it must take its place with its launched start.
+    function _()
+      launched = m.episode("e1")
+      launched.followsIntro = true
+      launched.startingPoint = 5000
+      m.queue.callFunc("set", [m.episode("e1"), launched, m.episode("e2")])
+
+      m.queue.callFunc("advanceTo", 0)
+
+      m.assertEqual(m.queue.callFunc("getCount"), 2)
+      m.assertEqual(m.queue.callFunc("getPosition"), 0)
+      m.assertEqual(m.item(0).id, "e1")
+      m.assertFalse(m.item(0).DoesExist("followsIntro"))
+      m.assertEqual(m.item(0).startingPoint, 5000)
+      m.assertEqual(m.item(1).id, "e2")
+    end function
+
+    @it("drops the intro's slot when a RepeatAll wrap comes back to it")
+    function _()
+      launched = m.episode("e1")
+      launched.followsIntro = true
+      m.queue.callFunc("set", [m.episode("e1"), launched, m.episode("e2")])
+
+      m.queue.callFunc("advanceTo", 2)
+      m.queue.callFunc("advanceTo", 0)
+
+      m.assertEqual(m.queue.callFunc("getCount"), 2)
+      m.assertEqual(m.queue.callFunc("getPosition"), 0)
+      m.assertEqual(m.item(0).id, "e1")
+      m.assertFalse(m.item(0).DoesExist("followsIntro"))
+      m.assertEqual(m.item(1).id, "e2")
+    end function
+
     @it("keeps the other items in place when it drops the intro's slot")
     function _()
       launched = m.episode("e2")
