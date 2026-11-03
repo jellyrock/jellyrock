@@ -43,6 +43,8 @@ In the gear menu, pick **Repeat**, then **Off**, **Repeat all** or **Repeat one*
 - **Repeat all** plays the queue again from its first item when the last one ends. A single video plays again.
 - **Repeat one** plays the video that is on again when it ends, and the **Next Episode** prompt stays away.
 
+During a Cinema Mode intro, **Repeat one** plays the video the intro is for, not the intro. Previous and next start that video too, with no message.
+
 Your pick lasts for this video and the rest of what you queued with it; the next thing you play starts with repeat off. While repeat is on, or a quality cap is set, the gear shows in the highlight color. Music has its own repeat button on the [now-playing screen](music.md).
 
 ## Seek
