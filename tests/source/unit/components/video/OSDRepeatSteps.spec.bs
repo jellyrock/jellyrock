@@ -1,0 +1,142 @@
+import "pkg:/source/utils/queueRepeat.bs"
+
+namespace tests
+
+  ' The OSD's previous and next outside a group read the queue's repeat mode: RepeatAll wraps,
+  ' RepeatOne replays on a press, and off, a single video has no step. The gear lights up while a
+  ' gear row differs from the defaults. Both are read on each OSD open and on refreshFromQueue,
+  ' which a gear pick calls.
+  @suite("OSD - previous and next under the queue's repeat mode")
+  class OSDRepeatStepsTests extends tests.BaseTestSuite
+
+    private osd as object
+    private previousQueue as object
+
+    protected override function beforeEach()
+      super.beforeEach()
+      if not m.global.doesExist("queueManager") then m.global.addField("queueManager", "node", false)
+      m.previousQueue = m.global.queueManager
+      m.global.queueManager = CreateObject("roSGNode", "QueueManager")
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+      m.osd = CreateObject("roSGNode", "OSD")
+      m.osd.visible = false
+    end function
+
+    protected override function afterEach()
+      m.osd = invalid
+      m.global.queueManager = m.previousQueue
+      m.previousQueue = invalid
+      super.afterEach()
+    end function
+
+    private sub localQueueAt(index as integer, count as integer, repeatMode as string)
+      items = []
+      for i = 1 to count
+        items.push({ id: "test-episode-" + i.toStr(), type: "Episode" })
+      end for
+      m.global.queueManager.callFunc("set", items)
+      m.global.queueManager.callFunc("setPosition", index)
+      m.global.queueManager.callFunc("setRepeatMode", repeatMode)
+    end sub
+
+    private function item() as object
+      node = CreateObject("roSGNode", "JellyfinBaseItem")
+      node.setFields({ id: "test-episode", type: "Episode" })
+      return node
+    end function
+
+    private function button(id as string) as object
+      return m.osd.findNode(id)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the enabled state")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("stops at the ends when repeat is off")
+    function _()
+      m.localQueueAt(1, 2, queueRepeat.OFF)
+      m.osd.itemData = m.item()
+      m.assertFalse(m.button("itemNext").isEnabled)
+      m.assertTrue(m.button("itemBack").isEnabled)
+    end function
+
+    @it("wraps at both ends under RepeatAll")
+    function _()
+      m.localQueueAt(1, 2, queueRepeat.ALL)
+      m.osd.itemData = m.item()
+      m.assertTrue(m.button("itemNext").isEnabled)
+      m.localQueueAt(0, 2, queueRepeat.ALL)
+      m.osd.callFunc("applyStepButtons")
+      m.assertTrue(m.button("itemBack").isEnabled)
+    end function
+
+    @it("gives a single video no step when off, and a replay under All or One")
+    function _()
+      m.localQueueAt(0, 1, queueRepeat.OFF)
+      m.osd.itemData = m.item()
+      m.assertFalse(m.button("itemNext").isEnabled)
+      m.assertFalse(m.button("itemBack").isEnabled)
+      m.localQueueAt(0, 1, queueRepeat.ALL)
+      m.osd.callFunc("refreshFromQueue")
+      m.assertTrue(m.button("itemNext").isEnabled)
+      m.localQueueAt(0, 1, queueRepeat.ONE)
+      m.osd.callFunc("refreshFromQueue")
+      m.assertTrue(m.button("itemNext").isEnabled)
+      m.assertTrue(m.button("itemBack").isEnabled)
+    end function
+
+    @it("keeps both enabled at the last item under RepeatOne, since a press replays")
+    function _()
+      m.localQueueAt(1, 2, queueRepeat.ONE)
+      m.osd.itemData = m.item()
+      m.assertTrue(m.button("itemNext").isEnabled)
+      m.assertTrue(m.button("itemBack").isEnabled)
+    end function
+
+    @it("reads a repeat pick again through refreshFromQueue")
+    function _()
+      m.localQueueAt(1, 2, queueRepeat.OFF)
+      m.osd.itemData = m.item()
+      m.assertFalse(m.button("itemNext").isEnabled)
+      m.global.queueManager.callFunc("setRepeatMode", queueRepeat.ALL)
+      m.osd.callFunc("refreshFromQueue")
+      m.assertTrue(m.button("itemNext").isEnabled)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the gear's tint")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("stays plain with nothing picked")
+    function _()
+      m.localQueueAt(0, 1, queueRepeat.OFF)
+      m.osd.itemData = m.item()
+      m.assertFalse(m.button("showPlaybackSettings").isButtonSelected)
+    end function
+
+    @it("lights up on a repeat mode and goes plain when it is set off again")
+    function _()
+      m.localQueueAt(0, 1, queueRepeat.ONE)
+      m.osd.itemData = m.item()
+      m.assertTrue(m.button("showPlaybackSettings").isButtonSelected)
+      m.global.queueManager.callFunc("setRepeatMode", queueRepeat.OFF)
+      m.osd.callFunc("refreshFromQueue")
+      m.assertFalse(m.button("showPlaybackSettings").isButtonSelected)
+    end function
+
+    @it("lights up on a quality cap")
+    function _()
+      m.localQueueAt(0, 1, queueRepeat.OFF)
+      m.osd.itemData = m.item()
+      m.global.queueManager.callFunc("setPlaybackCaps", { maxBitrateMbps: 4 })
+      m.osd.callFunc("refreshFromQueue")
+      m.assertTrue(m.button("showPlaybackSettings").isButtonSelected)
+    end function
+
+  end class
+
+end namespace

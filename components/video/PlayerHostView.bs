@@ -10,6 +10,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/playbackCaps.bs"
 import "pkg:/source/utils/playbackReport.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
+import "pkg:/source/utils/queueRepeat.bs"
 import "pkg:/source/utils/stillWatching.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/tasks.bs"
@@ -272,11 +273,14 @@ sub onPlayerStateChange()
     end if
   end if
 
-  ' More items in the queue -> advance and play the next one, from its beginning
+  ' More items in the queue -> advance and play the next one, from its beginning. Under
+  ' RepeatOne the next one is this one again, and under RepeatAll the last wraps to the first
+  ' (queueRepeat.nextIndex); advanceTo starts either from its beginning.
   position = queueManager.callFunc("getPosition")
-  if position < queueManager.callFunc("getCount") - 1
-    askStillWatching = shouldAskStillWatching(queueManager.callFunc("getItemByIndex", position + 1))
-    queueManager.callFunc("advanceTo", position + 1)
+  nextPosition = queueRepeat.nextIndex(queueManager.callFunc("getRepeatMode"), position, queueManager.callFunc("getCount"))
+  if nextPosition >= 0
+    askStillWatching = shouldAskStillWatching(queueManager.callFunc("getItemByIndex", nextPosition))
+    queueManager.callFunc("advanceTo", nextPosition)
     updateQueueBackdrop()
     playCurrentQueueItem()
     ' After the remount: destroyPlayer clears it, and it belongs to the newly mounted player.

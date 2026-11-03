@@ -8,6 +8,7 @@
 ' the default (see playbackCaps.bs).
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/queueRepeat.bs"
 import "pkg:/source/utils/translate.bs"
 
 namespace playbackSettingsMenu
@@ -15,11 +16,16 @@ namespace playbackSettingsMenu
   ' Row ids, which the OSD dispatches on. Each is also the playbackCaps field its pick sets.
   const ROW_MAX_BITRATE = "maxBitrateMbps"
   const ROW_MAX_RESOLUTION = "maxResolution"
+  ' The repeat row: its pick is a queueRepeat value, not a playbackCaps field.
+  const ROW_REPEAT = "repeatMode"
 
   ' Each row's glyph, drawn in the list row's gutter the way the More menu's rows wear
   ' their buttons' icons.
   const ICON_MAX_BITRATE = "pkg:/images/icons/speed_$$RES$$.png"
   const ICON_MAX_RESOLUTION = "pkg:/images/icons/hd_$$RES$$.png"
+  ' The music screen's repeat glyph, padded to the canvas of the two above so the three rows
+  ' read at one size (repeat_ fills its canvas; speed_ and hd_ leave a margin).
+  const ICON_REPEAT = "pkg:/images/icons/repeat_menu_$$RES$$.png"
 
   ' The Maximum Bitrate choices, in Mbps, highest first. Modeled on jellyfin-web's
   ' quality ladder, kept to whole numbers because playbackBitrateLimit stores whole Mbps.
@@ -41,7 +47,7 @@ namespace playbackSettingsMenu
   ' @param {string} resolutionId - a playbackResolutionMax option id
   ' @param {dynamic} resolutionSetting - the playbackResolutionMax entry of settings.json
   function resolutionLabel(resolutionId as string, resolutionSetting as dynamic) as string
-    if resolutionId = "off" then return translate(translationKeys.LabelOff)
+    if resolutionId = "off" then return translate(translationKeys.LabelResolutionOff)
     if resolutionId = "auto" then return translate(translationKeys.LabelAuto)
     for each option in settingOptions(resolutionSetting)
       if option.id = resolutionId then return optionTitle(option)
@@ -53,14 +59,16 @@ namespace playbackSettingsMenu
   ' the gear button.
   '
   ' Live TV gets no rows: a reload there opens a new live stream, and the
-  ' one-release-per-stream rule has not been checked for that path yet.
+  ' one-release-per-stream rule has not been checked for that path yet, and a channel has no
+  ' end to repeat from.
   '
   ' @param {boolean} isLiveTv - the playing item is a TvChannel
   ' @param {integer} bitrateMbps - playbackCaps.bitrateMbps()
   ' @param {string} resolutionId - playbackCaps.resolution()
   ' @param {dynamic} resolutionSetting - the playbackResolutionMax entry of settings.json
+  ' @param {string} repeatMode - QueueManager.getRepeatMode()
   ' @returns {object} - { labels: [string], ids: [string], icons: [string] }
-  function rows(isLiveTv as boolean, bitrateMbps as integer, resolutionId as string, resolutionSetting as dynamic) as object
+  function rows(isLiveTv as boolean, bitrateMbps as integer, resolutionId as string, resolutionSetting as dynamic, repeatMode as string) as object
     menu = { labels: [], ids: [], icons: [] }
     if isLiveTv then return menu
 
@@ -73,7 +81,50 @@ namespace playbackSettingsMenu
       menu.ids.push(ROW_MAX_RESOLUTION)
       menu.icons.push(ICON_MAX_RESOLUTION)
     end if
+
+    menu.labels.push(rowLabel(translationKeys.LabelRepeat, repeatLabel(repeatMode)))
+    menu.ids.push(ROW_REPEAT)
+    menu.icons.push(ICON_REPEAT)
     return menu
+  end function
+
+  ' A repeat mode's short name for the gear row: "Off", "All" or "One". The picker shows
+  ' the full titles instead (repeatOptions).
+  function repeatLabel(mode as dynamic) as string
+    repeat = queueRepeat.normalize(mode)
+    if repeat = queueRepeat.ALL then return translate(translationKeys.LabelRepeatRowAll)
+    if repeat = queueRepeat.ONE then return translate(translationKeys.LabelRepeatRowSingle)
+    return translate(translationKeys.LabelRepeatOff)
+  end function
+
+  ' The Repeat picker: Off, Repeat all, Repeat one, with `values` the queueRepeat modes.
+  '
+  ' @param {string} currentMode - QueueManager.getRepeatMode()
+  ' @returns {object} - { labels, values, defaultIndex, selectedIndex }
+  function repeatOptions(currentMode as string) as object
+    options = { labels: [], values: [], defaultIndex: 0, selectedIndex: 0 }
+    current = queueRepeat.normalize(currentMode)
+    titles = [translationKeys.LabelRepeatOff, translationKeys.LabelRepeatAll, translationKeys.LabelRepeatSingle]
+    modes = [queueRepeat.OFF, queueRepeat.ALL, queueRepeat.ONE]
+    for i = 0 to modes.count() - 1
+      if modes[i] = current then options.selectedIndex = i
+      options.labels.push(translate(titles[i]))
+      options.values.push(modes[i])
+    end for
+    options.defaultIndex = options.selectedIndex
+    return options
+  end function
+
+  ' Whether a gear row differs from the viewer's defaults: a quality cap picked for this queue
+  ' (playbackCaps records only a pick that differs from Settings) or repeat on. The OSD lights
+  ' the gear on it, the way the music screen lights its repeat and shuffle buttons. A new row
+  ' that can differ from its default adds its check here.
+  '
+  ' @param {dynamic} caps - QueueManager.getPlaybackCaps()
+  ' @param {dynamic} repeatMode - QueueManager.getRepeatMode()
+  function hasPicks(caps as dynamic, repeatMode as dynamic) as boolean
+    if type(caps) = "roAssociativeArray" and caps.count() > 0 then return true
+    return queueRepeat.normalize(repeatMode) <> queueRepeat.OFF
   end function
 
   ' The Maximum Bitrate picker, in the shape trackPickerOptions builds:

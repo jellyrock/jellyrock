@@ -1,5 +1,6 @@
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/playbackSettingsMenu.bs"
+import "pkg:/source/utils/queueRepeat.bs"
 import "pkg:/source/utils/translate.bs"
 
 namespace tests
@@ -25,33 +26,81 @@ namespace tests
 
     @it("shows each cap with its value in parentheses")
     function _()
-      menu = playbackSettingsMenu.rows(false, 0, "auto", m.resolutionSetting())
-      m.assertEqual(menu.ids, [playbackSettingsMenu.ROW_MAX_BITRATE, playbackSettingsMenu.ROW_MAX_RESOLUTION])
-      m.assertEqual(menu.labels, ["Maximum Bitrate (No limit)", "Maximum Resolution (Auto)"])
-      m.assertEqual(menu.icons, [playbackSettingsMenu.ICON_MAX_BITRATE, playbackSettingsMenu.ICON_MAX_RESOLUTION], "each row wears its glyph, one per row")
+      menu = playbackSettingsMenu.rows(false, 0, "auto", m.resolutionSetting(), queueRepeat.OFF)
+      m.assertEqual(menu.ids, [playbackSettingsMenu.ROW_MAX_BITRATE, playbackSettingsMenu.ROW_MAX_RESOLUTION, playbackSettingsMenu.ROW_REPEAT])
+      m.assertEqual(menu.labels, ["Maximum Bitrate (No limit)", "Maximum Resolution (Auto)", "Repeat (Off)"])
+      m.assertEqual(menu.icons, [playbackSettingsMenu.ICON_MAX_BITRATE, playbackSettingsMenu.ICON_MAX_RESOLUTION, playbackSettingsMenu.ICON_REPEAT], "each row wears its glyph, one per row")
 
-      menu = playbackSettingsMenu.rows(false, 2, "720", m.resolutionSetting())
-      m.assertEqual(menu.labels, ["Maximum Bitrate (2 Mbps)", "Maximum Resolution (720p)"])
+      menu = playbackSettingsMenu.rows(false, 2, "720", m.resolutionSetting(), queueRepeat.ALL)
+      m.assertEqual(menu.labels, ["Maximum Bitrate (2 Mbps)", "Maximum Resolution (720p)", "Repeat (All)"])
+    end function
+
+    @it("names the repeat mode that applies, and off for a mode it does not know")
+    function _()
+      menu = playbackSettingsMenu.rows(false, 0, "auto", m.resolutionSetting(), queueRepeat.ONE)
+      m.assertEqual(menu.labels[2], "Repeat (One)")
+      menu = playbackSettingsMenu.rows(false, 0, "auto", m.resolutionSetting(), "")
+      m.assertEqual(menu.labels[2], "Repeat (Off)")
     end function
 
     ' The row carries the short form; the picker carries the setting's full titles.
     @it("names the off resolution briefly")
     function _()
-      menu = playbackSettingsMenu.rows(false, 0, "off", m.resolutionSetting())
+      menu = playbackSettingsMenu.rows(false, 0, "off", m.resolutionSetting(), queueRepeat.OFF)
       m.assertEqual(menu.labels[1], "Maximum Resolution (Off)")
+      m.assertEqual(menu.labels[1], "Maximum Resolution (" + translate(translationKeys.LabelResolutionOff) + ")", "the row's own off, not the subtitles' LabelOff")
     end function
 
     @it("leaves the resolution row out when the setting's options cannot be read")
     function _()
-      menu = playbackSettingsMenu.rows(false, 0, "auto", invalid)
-      m.assertEqual(menu.ids, [playbackSettingsMenu.ROW_MAX_BITRATE])
+      menu = playbackSettingsMenu.rows(false, 0, "auto", invalid, queueRepeat.OFF)
+      m.assertEqual(menu.ids, [playbackSettingsMenu.ROW_MAX_BITRATE, playbackSettingsMenu.ROW_REPEAT])
     end function
 
     @it("has no rows for Live TV, so the OSD drops the gear")
     function _()
-      menu = playbackSettingsMenu.rows(true, 0, "auto", m.resolutionSetting())
+      menu = playbackSettingsMenu.rows(true, 0, "auto", m.resolutionSetting(), queueRepeat.OFF)
       m.assertEqual(menu.ids.count(), 0)
       m.assertEqual(menu.labels.count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("repeatOptions")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The row carries the short form ("Repeat (All)"); the picker carries the full titles.
+    @it("offers Off, Repeat all and Repeat one as the queueRepeat modes")
+    function _()
+      options = playbackSettingsMenu.repeatOptions(queueRepeat.OFF)
+      m.assertEqual(options.values, [queueRepeat.OFF, queueRepeat.ALL, queueRepeat.ONE])
+      m.assertEqual(options.labels, ["Off", "Repeat all", "Repeat one"])
+      m.assertEqual(options.selectedIndex, 0)
+      m.assertEqual(options.defaultIndex, 0)
+    end function
+
+    @it("checks and focuses the mode that applies")
+    function _()
+      options = playbackSettingsMenu.repeatOptions(queueRepeat.ONE)
+      m.assertEqual(options.selectedIndex, 2)
+      m.assertEqual(options.defaultIndex, 2)
+      options = playbackSettingsMenu.repeatOptions("")
+      m.assertEqual(options.selectedIndex, 0, "an empty mode is off")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hasPicks")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is false with no cap and repeat off")
+    function _()
+      m.assertFalse(playbackSettingsMenu.hasPicks(invalid, queueRepeat.OFF))
+      m.assertFalse(playbackSettingsMenu.hasPicks({}, ""))
+    end function
+
+    @it("is true on a cap or a repeat mode")
+    function _()
+      m.assertTrue(playbackSettingsMenu.hasPicks({ maxBitrateMbps: 4 }, queueRepeat.OFF))
+      m.assertTrue(playbackSettingsMenu.hasPicks(invalid, queueRepeat.ALL))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

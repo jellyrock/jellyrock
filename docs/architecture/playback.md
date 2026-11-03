@@ -13,6 +13,7 @@ related-files:
   - source/utils/trackPickerOptions.bs
   - source/utils/playbackSettingsMenu.bs
   - source/utils/playbackCaps.bs
+  - source/utils/queueRepeat.bs
   - source/utils/playbackInfo.bs
   - source/utils/deviceCapabilities.bs
   - source/utils/playbackErrorInfo.bs
@@ -111,6 +112,7 @@ A launcher whose Task finds nothing to play ends its start and shows a toast (`s
 | Shuffle | `toggleShuffle()`, `getIsShuffled()`, `getUnshuffledQueue()` |
 | Resume | `setCurrentStartingPoint(positionTicks, isExact = false)` |
 | Version pick | `setVersionPreference(pref)`, `getVersionPreference()`: the viewer's explicit version pick, carried to later items; `clear()` forgets it |
+| Repeat | `setRepeatMode(mode)`, `getRepeatMode()`: the viewer's pick in the gear, one of the server's `RepeatMode` values (`queueRepeat.bs`); `set()` keeps it and `clear()` forgets it |
 | Cinema Mode | `isPrerollActive()`, `setPrerollStatus(status)` |
 | Start | `launchItem`, `launchQuickPlayAction`, `launchShuffle`, `launchPhotoAlbum`, `beginPlaybackStart`, `takePlaybackStart`, `failPendingPlaybackStart`, `playQueue` |
 
@@ -208,8 +210,10 @@ The poll pauses while the device would otherwise show its screensaver, using `Lo
 - **A Live TV channel that finished:** `restartLiveChannel()`, the same channel, remounted. A live feed that drops mid-stream surfaces as `finished`. So does a stream that ends without ever playing (an on-demand playlist listed as a channel, joined at its end), so restarts are budgeted: an end after `LIVE_RESTART_HEALTHY_MS` of progress resets the count, any other end adds one, and past `LIVE_RESTART_MAX` the player shows the error. Progress is counted by the player from its `position` notifications (`liveProgressOnPosition()`): only small forward steps past the furthest position count, so pauses, buffering, the jump to the live edge and a seek do not. The host reads `liveProgressMs()` at the end; `liveRestartOnMount()`, `liveRestartOnEnd()` and `liveRestartOnStall()` in `source/utils/liveTv.bs` hold the rule (decision [`live-restart-progress-and-stall-rule`](../decisions.md#decision-id-live-restart-progress-and-stall-rule)).
 - **A Live TV stream that stalled** (not an end): `VideoPlayerView.bufferCheck` sees no buffering progress across a tick (`classifyBufferCheck()` in `source/utils/bufferStall.bs`) and calls the host's `onLiveStreamStalled()`. A mount that had made `LIVE_RESTART_HEALTHY_MS` of progress restarts; any other stall shows the error and stops the stream. A mount that a stall restart started must play `LIVE_STALL_REPROVE_MS` before its own stall restarts again, because a restart into a playlist that stopped growing plays its leftover segments. A movie or episode that stalls shows the error directly.
 - **The give-up error's wording** (`liveGiveUpCauseKey()`): "This channel isn't sending any video" when no mount since the viewer chose the channel made progress, "This channel's stream stopped" when one did.
-- **More items in the queue:** `advanceTo(position + 1)` and `playCurrentQueueItem()`; the next item starts fresh ([below](#items-a-queue-arrives-at)). First, `shouldAskStillWatching()` decides whether it plays under the still-watching prompt.
+- **Something to play next** (`queueRepeat.nextIndex()` on the queue's repeat mode: the next item; the same item again under `RepeatOne`; the first item after the last under `RepeatAll`): `advanceTo()` and `playCurrentQueueItem()`; the item starts fresh ([below](#items-a-queue-arrives-at)), a replay included. First, `shouldAskStillWatching()` decides whether it plays under the still-watching prompt.
 - **The queue is done:** the audio player's `loopMode` is cleared, then `exitPlayback()` calls `sgrouter.goBack()`, and the screen beneath (the details screen, or Home) resumes.
+
+The same rule decides where the previous and next buttons of the OSD may step (`nextIndex()` and `previousIndex()`, read by `OSD.applyStepButtons` and `VideoPlayerView.handleItemSkipAction`): under `RepeatOne` a press plays this item again, as next in jellyfin-web and the SyncPlay server's `Next()` do, so the control reads the same in and out of a group, and a toast says so once (an automatic replay at the end says nothing); `RepeatAll` wraps at either end, a single video to itself; off, a single video has no step. `RepeatOne` also keeps the Next Episode prompt down (`checkTimeToDisplayNextEpisode`), since the end replays the episode. The gear lights up (`IconButton.isButtonSelected`, the music screen's idiom for its repeat and shuffle buttons) while a gear row differs from the viewer's defaults (`playbackSettingsMenu.hasPicks`: a cap on the queue, or repeat on); `OSD.refreshFromQueue` reads the step buttons and the tint again as the OSD opens and after each gear pick. The mode belongs to the queue and uses the server's words so that a SyncPlay group's `PlayQueue` update can carry the same value; the audio player's `loopMode` is a separate, older loop for music.
 
 `destroyPlayer()` reports the stop: it removes the `state` observer, sets `m.view.control = "stop"` (the `Video` node's own teardown reports nothing), then calls the player's `onDestroy` and removes the child. So Jellyfin records the stop whether the viewer backs out (`goBack`, `beforeViewClose`, `onDestroy`, `destroyPlayer`) or the queue ends.
 
@@ -456,14 +460,14 @@ The on-screen display: title, current time, position bar, end time and play stat
 
 ### Playback settings (the gear)
 
-The gear sits in the right-hand group, left of playback info, and opens a menu of quality caps for this playback. Each row shows the value that applies in parentheses: `Maximum Bitrate (No limit)`, `Maximum Resolution (720p)`.
+The gear sits in the right-hand group, left of playback info, and opens a menu of quality caps for this playback, then the queue's repeat mode. Each row shows the value that applies in parentheses: `Maximum Bitrate (No limit)`, `Maximum Resolution (720p)`, `Repeat (Off)`. The Repeat picker shows the full titles (`Off`, `Repeat all`, `Repeat one`) and the row the short ones.
 
 | Step | What happens |
 | --- | --- |
 | OK on the gear | `OSD.openSettingsMenu()` opens the rows from `playbackSettingsMenu.rows()` as a menu anchored to the gear, the way **More** opens |
-| OK on a row | `openCapPicker()` opens that cap's choices with the current one checked: `bitrateOptions()` for Maximum Bitrate, `resolutionOptions()` for Maximum Resolution |
+| OK on a row | `openCapPicker()` opens that row's choices with the current one checked: `bitrateOptions()` for Maximum Bitrate, `resolutionOptions()` for Maximum Resolution, `repeatOptions()` for Repeat |
 | Back in a picker | The gear menu opens again on that row; Back there returns focus to the gear |
-| A pick that differs from the value that applies | The OSD writes `playbackCapsPick` (`{ field, value }`). `VideoPlayerView.onPlaybackCapsPicked()` records it on the queue and reloads at the current position through `reloadAtCurrentPosition()`, the same path an audio or subtitle change takes |
+| A pick that differs from the value that applies | The OSD writes `playbackCapsPick` (`{ field, value }`). `VideoPlayerView.onPlaybackCapsPicked()` records it on the queue and reloads at the current position through `reloadAtCurrentPosition()`, the same path an audio or subtitle change takes. A Repeat pick goes out on `repeatModePick` instead: `onRepeatModePicked()` records it on the queue and reloads nothing. Either pick then has the OSD read its step buttons and the gear's tint again (`refreshFromQueue`) |
 
 **A pick lasts for the playback and the rest of its queue, and is never saved.** `QueueManager` holds it beside the version pick (`setPlaybackCaps`, built by `playbackCaps.withPick()`), so `clear()` forgets it when a new queue starts and `set()` keeps it through a shuffle. Settings stays the default, so a bitrate dropped for one bad connection does not follow the viewer into the next thing they play. A pick equal to the Settings value records nothing.
 

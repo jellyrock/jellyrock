@@ -2504,6 +2504,16 @@ The feature catalog dates each feature (`sinceDate`, which the website uses to m
 
 `newest:` in the version map is the newest Jellyfin major line JellyRock is verified on, published as `app.serverNewest`. It is a major line, so a minor release never makes it stale, and a person sets it, because a spec diff can't show JellyRock runs on a new line. So a release above it is never auto-closed as clean, and `execute --close-digest` leaves its digest open until `newest` is raised. Ruled out: reading it from `JELLYFIN_VERSION_SERVERS` (local, not committed); a full version such as 12.4 (stale at every minor release, and it reads as an upper limit); a bump step in prose only (the 12.4 digest, #1271, closed with no person, so a clean 13.0 would too).
 
+## decision-id: video-repeat-belongs-to-queue
+
+**date**: 2026-11-02
+**status**: accepted
+**related-files**: `components/manager/QueueManager.bs`, `source/utils/queueRepeat.bs`, `components/video/PlayerHostView.bs`, `components/video/OSD.bs`
+
+Video repeat is a property of the queue being played, held beside the quality caps (`QueueManager.setRepeatMode`: kept through `set()`, forgotten by `clear()`), and never saved. Its values are the server's own `RepeatMode` words (`RepeatNone`, `RepeatAll`, `RepeatOne`), so a SyncPlay group's `PlayQueue` update and the viewer's pick in the OSD gear read the same value with no mapping. `queueRepeat.bs` holds one rule per direction, `nextIndex` and `previousIndex`, for an item that finishes and a press of the player's buttons alike: `RepeatAll` wraps, and under `RepeatOne` both play this item again, as `getNextItemInfo` in jellyfin-web and the SyncPlay server's `Next()` and `Previous()` do, so the control reads the same in and out of a group; a toast says so on the manual replay only, never on the automatic one. The gear lights up (`IconButton.isButtonSelected`, the music screen's idiom) while a gear row differs from the defaults (`playbackSettingsMenu.hasPicks`, beside the repeat labels in the gear's own module).
+
+Ruled out: sharing the audio player's `loopMode` (a video queue would inherit a loop set on the music screen, the audio exit paths clear that field, and its words would need a mapping at the group boundary); a press that steps under `RepeatOne`, which the music screen does but web and the server do not; a badge count on the gear (says how many, not what, and a notification idiom on a settings control); a persistent repeat glyph in the OSD bar (the bar holds controls, not status). The operator chose `queue` over `shared`, then `replay` over `step` (project `2026-10-syncplay`, phase F step 2, 2026-11-02).
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

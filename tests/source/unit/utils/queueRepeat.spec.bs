@@ -1,0 +1,86 @@
+import "pkg:/source/utils/queueRepeat.bs"
+
+namespace tests
+
+  @suite("queueRepeat.bs - where next and previous go under each repeat mode")
+  class QueueRepeatTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("normalize")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads the server's three values and makes anything else off")
+    function _()
+      m.assertEqual(queueRepeat.normalize("RepeatAll"), queueRepeat.ALL)
+      m.assertEqual(queueRepeat.normalize("RepeatOne"), queueRepeat.ONE)
+      m.assertEqual(queueRepeat.normalize("RepeatNone"), queueRepeat.OFF)
+      m.assertEqual(queueRepeat.normalize(""), queueRepeat.OFF)
+      m.assertEqual(queueRepeat.normalize(invalid), queueRepeat.OFF)
+      m.assertEqual(queueRepeat.normalize("all"), queueRepeat.OFF, "the audio player's words are not these")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("nextIndex")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("moves on to the next item and ends the queue when off")
+    function _()
+      m.assertEqual(queueRepeat.nextIndex(queueRepeat.OFF, 0, 3), 1)
+      m.assertEqual(queueRepeat.nextIndex(queueRepeat.OFF, 2, 3), -1)
+      m.assertEqual(queueRepeat.nextIndex(queueRepeat.OFF, 0, 1), -1, "a single video ends")
+    end function
+
+    ' jellyfin-web's next and the SyncPlay server's Next() keep the index under RepeatOne, for a
+    ' finish and a press alike, so the player reads the same in and out of a group.
+    @it("plays the same item again under RepeatOne, a single video included")
+    function _()
+      m.assertEqual(queueRepeat.nextIndex(queueRepeat.ONE, 0, 1), 0)
+      m.assertEqual(queueRepeat.nextIndex(queueRepeat.ONE, 0, 3), 0)
+      m.assertEqual(queueRepeat.nextIndex(queueRepeat.ONE, 2, 3), 2)
+    end function
+
+    @it("wraps to the first item under RepeatAll")
+    function _()
+      m.assertEqual(queueRepeat.nextIndex(queueRepeat.ALL, 0, 3), 1)
+      m.assertEqual(queueRepeat.nextIndex(queueRepeat.ALL, 2, 3), 0)
+      m.assertEqual(queueRepeat.nextIndex(queueRepeat.ALL, 0, 1), 0, "a single video plays again")
+    end function
+
+    @it("has nowhere to go from an index outside the queue")
+    function _()
+      m.assertEqual(queueRepeat.nextIndex(queueRepeat.ALL, -1, 3), -1)
+      m.assertEqual(queueRepeat.nextIndex(queueRepeat.ALL, 3, 3), -1)
+      m.assertEqual(queueRepeat.nextIndex(queueRepeat.ONE, 0, 0), -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("previousIndex")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("steps back inside the queue and stops at the first item when off")
+    function _()
+      m.assertEqual(queueRepeat.previousIndex(queueRepeat.OFF, 2, 3), 1)
+      m.assertEqual(queueRepeat.previousIndex(queueRepeat.OFF, 0, 3), -1)
+    end function
+
+    @it("plays this item again under RepeatOne")
+    function _()
+      m.assertEqual(queueRepeat.previousIndex(queueRepeat.ONE, 2, 3), 2)
+      m.assertEqual(queueRepeat.previousIndex(queueRepeat.ONE, 0, 1), 0)
+    end function
+
+    @it("wraps to the last item under RepeatAll")
+    function _()
+      m.assertEqual(queueRepeat.previousIndex(queueRepeat.ALL, 0, 3), 2)
+      m.assertEqual(queueRepeat.previousIndex(queueRepeat.ALL, 0, 1), 0, "a single video wraps to itself")
+    end function
+
+    @it("has nowhere to go in an empty queue")
+    function _()
+      m.assertEqual(queueRepeat.previousIndex(queueRepeat.ALL, 0, 0), -1)
+      m.assertEqual(queueRepeat.previousIndex(queueRepeat.ALL, 3, 3), -1)
+    end function
+
+  end class
+
+end namespace
