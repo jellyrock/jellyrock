@@ -21,7 +21,7 @@ related-files:
   - source/utils/appWaits.bs
   - components/AppWaitHost.bs
   - components/AppWaitHost.xml
-last-reviewed: 2026-10-28
+last-reviewed: 2026-11-03
 ---
 
 # Navigation (sgRouter)

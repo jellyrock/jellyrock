@@ -6,7 +6,7 @@ related-files:
   - components/JRScene.bs
   - components/ItemDetails.bs
   - components/auth/AuthManager.bs
-last-reviewed: 2026-10-22
+last-reviewed: 2026-11-03
 ---
 
 # Deep linking and casting

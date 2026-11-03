@@ -148,7 +148,8 @@ it('a server with no users lands on the user picker with Quick Connect focused',
 // The availability probe answers after the picker opens, while Quick Connect holds focus.
 // Removing the focused button must hand focus to the one left, or the remote does nothing.
 it('Quick Connect turned off moves focus to Manual Login, not to nothing', async () => {
-  // `empty` answers the probe ok with no body, which UserSelect reads as disabled.
+  // `empty` answers the probe ok with an empty query body, not a boolean, so UserSelect's
+  // fallback reads it as disabled (a real server sends a plain `false`).
   await submitServerWithNoUsers(() =>
     failRequests([{ prefix: 'quickConnectEnabled', kind: 'empty' }]),
   );

@@ -8,7 +8,7 @@ related-files:
   - source/utils/memoryMonitor.bs
   - components/JRScene.xml
   - components/JRScene.bs
-last-reviewed: 2026-10-31
+last-reviewed: 2026-11-03
 ---
 
 # Bootstrap and lifecycle
