@@ -47,6 +47,8 @@ During a Cinema Mode intro, **Repeat one** plays the video the intro is for, not
 
 Your pick lasts for this video and the rest of what you queued with it; the next thing you play starts with repeat off. While repeat is on, or a quality cap is set, the gear shows in the highlight color. Music has its own repeat button on the [now-playing screen](music.md).
 
+In a [SyncPlay](syncplay.md) group, **Repeat** sets the group's repeat mode, so it changes what plays next for everyone, and the gear gains **Shuffle**, **SyncPlay Time Offset** and **Leave Group**.
+
 ## Seek
 
 With the controls hidden, press **Left**, **Right**, **Fast Forward** or **Rewind** to seek. When your server has the images, you see [preview pictures](trickplay.md) as you go.

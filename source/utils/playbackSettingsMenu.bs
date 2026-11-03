@@ -6,6 +6,7 @@
 '
 ' A pick applies to this playback and the rest of its queue, and is never saved; Settings is
 ' the default (see playbackCaps.bs).
+import "pkg:/source/syncplay/syncPlayQueue.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/queueRepeat.bs"
@@ -18,6 +19,19 @@ namespace playbackSettingsMenu
   const ROW_MAX_RESOLUTION = "maxResolution"
   ' The repeat row: its pick is a queueRepeat value, not a playbackCaps field.
   const ROW_REPEAT = "repeatMode"
+  ' The SyncPlay rows, shown while following a group: the group's shuffle (a syncPlayQueue
+  ' shuffle word), the viewer's SyncPlay Time Offset setting (ms) and Leave Group (no picker).
+  const ROW_SHUFFLE = "shuffleMode"
+  const ROW_TIME_OFFSET = "syncPlayTimeOffsetMs"
+  const ROW_LEAVE_GROUP = "leaveGroup"
+
+  ' The time offset picker's steps, in ms: the setting's range (0 to 500 in settings.json), coarse
+  ' enough to pick with a remote while listening for the echo.
+  const TIME_OFFSET_STEP_MS = 50
+  const TIME_OFFSET_MAX_MS = 500
+  ' A drift this small reads as in step: under the correction's own bars (150 ms ahead, 400 ms
+  ' behind) and inside the few ms the clock estimate wobbles, it is nothing to tune for.
+  const TIME_OFFSET_IN_STEP_MS = 25
 
   ' Each row's glyph, drawn in the list row's gutter the way the More menu's rows wear
   ' their buttons' icons.
@@ -26,6 +40,11 @@ namespace playbackSettingsMenu
   ' The music screen's repeat glyph, padded to the canvas of the two above so the three rows
   ' read at one size (repeat_ fills its canvas; speed_ and hd_ leave a margin).
   const ICON_REPEAT = "pkg:/images/icons/repeat_menu_$$RES$$.png"
+  ' The SyncPlay rows' glyphs, rendered at the same density as the rows above (shuffle_ and
+  ' groups_ themselves are pinned to the overhang's density).
+  const ICON_SHUFFLE = "pkg:/images/icons/shuffle_menu_$$RES$$.png"
+  const ICON_TIME_OFFSET = "pkg:/images/icons/timer_$$RES$$.png"
+  const ICON_LEAVE_GROUP = "pkg:/images/icons/groups_menu_$$RES$$.png"
 
   ' The Maximum Bitrate choices, in Mbps, highest first. Modeled on jellyfin-web's
   ' quality ladder, kept to whole numbers because playbackBitrateLimit stores whole Mbps.
@@ -67,8 +86,11 @@ namespace playbackSettingsMenu
   ' @param {string} resolutionId - playbackCaps.resolution()
   ' @param {dynamic} resolutionSetting - the playbackResolutionMax entry of settings.json
   ' @param {string} repeatMode - QueueManager.getRepeatMode()
+  ' @param {dynamic} group - while following a SyncPlay group, { shuffleMode, offsetMs, driftMs }:
+  '   the group's shuffle word, the viewer's time offset setting and how far behind the group this
+  '   member sits (syncPlayHooks.groupModes); invalid outside a group, and the SyncPlay rows stay out
   ' @returns {object} - { labels: [string], ids: [string], icons: [string] }
-  function rows(isLiveTv as boolean, bitrateMbps as integer, resolutionId as string, resolutionSetting as dynamic, repeatMode as string) as object
+  function rows(isLiveTv as boolean, bitrateMbps as integer, resolutionId as string, resolutionSetting as dynamic, repeatMode as string, group = invalid as dynamic) as object
     menu = { labels: [], ids: [], icons: [] }
     if isLiveTv then return menu
 
@@ -85,8 +107,79 @@ namespace playbackSettingsMenu
     menu.labels.push(rowLabel(translationKeys.LabelRepeat, repeatLabel(repeatMode)))
     menu.ids.push(ROW_REPEAT)
     menu.icons.push(ICON_REPEAT)
+
+    if type(group) = "roAssociativeArray"
+      menu.labels.push(rowLabel(translationKeys.LabelShuffle, shuffleLabel(group.shuffleMode)))
+      menu.ids.push(ROW_SHUFFLE)
+      menu.icons.push(ICON_SHUFFLE)
+      menu.labels.push(rowLabel(translationKeys.LabelSyncPlayTimeOffset, timeOffsetLabel(group.offsetMs, group.driftMs)))
+      menu.ids.push(ROW_TIME_OFFSET)
+      menu.icons.push(ICON_TIME_OFFSET)
+      menu.labels.push(translate(translationKeys.ButtonLeaveGroup))
+      menu.ids.push(ROW_LEAVE_GROUP)
+      menu.icons.push(ICON_LEAVE_GROUP)
+    end if
     return menu
   end function
+
+  ' The group's shuffle for the gear row: "Off" or "On".
+  function shuffleLabel(mode as dynamic) as string
+    if syncPlayQueue.normalizeShuffle(mode) = syncPlayQueue.SHUFFLE_ON then return translate(translationKeys.LabelShuffleOn)
+    return translate(translationKeys.LabelShuffleOff)
+  end function
+
+  ' The Shuffle picker: Off, On, with `values` the server's shuffle words.
+  ' @param {dynamic} currentMode - the group's ShuffleMode
+  ' @returns {object} - { labels, values, defaultIndex, selectedIndex }
+  function shuffleOptions(currentMode as dynamic) as object
+    options = { labels: [translate(translationKeys.LabelShuffleOff), translate(translationKeys.LabelShuffleOn)], values: [syncPlayQueue.SHUFFLE_OFF, syncPlayQueue.SHUFFLE_ON], defaultIndex: 0, selectedIndex: 0 }
+    if syncPlayQueue.normalizeShuffle(currentMode) = syncPlayQueue.SHUFFLE_ON then options.selectedIndex = 1
+    options.defaultIndex = options.selectedIndex
+    return options
+  end function
+
+  ' The time offset row's value: the setting, then how this member sits against the group while
+  ' a reading exists ("100 ms, 35 ms behind"). The reading is the drift the manager publishes:
+  ' positive behind the group, negative ahead, within a few ms in step. Tuned by ear: the viewer
+  ' raises the offset until the sound lines up, and the reading says what the clock sees.
+  ' @param {dynamic} offsetMs - the SyncPlay Time Offset setting
+  ' @param {dynamic} driftMs - sync.playbackDiffMs, or invalid while no Unpause is in force
+  function timeOffsetLabel(offsetMs as dynamic, driftMs as dynamic) as string
+    offset = 0
+    if isValid(offsetMs) then offset = int(offsetMs)
+    label = translate(translationKeys.LabelMilliseconds, [offset.toStr()])
+    if not isValid(driftMs) then return label
+    drift = int(driftMs)
+    if abs(drift) < TIME_OFFSET_IN_STEP_MS then return label + ", " + translate(translationKeys.LabelSyncPlayInStep)
+    if drift > 0 then return label + ", " + translate(translationKeys.LabelSyncPlayBehindGroup, [drift.toStr()])
+    return label + ", " + translate(translationKeys.LabelSyncPlayAheadOfGroup, [abs(drift).toStr()])
+  end function
+
+  ' The time offset picker: every TIME_OFFSET_STEP_MS from 0 to TIME_OFFSET_MAX_MS, with the
+  ' current value added in its place when Settings holds one off the grid, so the checked row
+  ' is always the value that applies. `values` are the ms the setting takes.
+  ' @param {dynamic} currentMs - the SyncPlay Time Offset setting
+  ' @returns {object} - { labels, values, defaultIndex, selectedIndex }
+  function timeOffsetOptions(currentMs as dynamic) as object
+    options = { labels: [], values: [], defaultIndex: 0, selectedIndex: 0 }
+    current = 0
+    if isValid(currentMs) then current = int(currentMs)
+    ms = 0
+    while ms <= TIME_OFFSET_MAX_MS
+      if current > ms - TIME_OFFSET_STEP_MS and current < ms then pushOffset(options, current, current)
+      pushOffset(options, ms, current)
+      ms += TIME_OFFSET_STEP_MS
+    end while
+    if current > TIME_OFFSET_MAX_MS then pushOffset(options, current, current)
+    options.defaultIndex = options.selectedIndex
+    return options
+  end function
+
+  sub pushOffset(options as object, ms as integer, current as integer)
+    if ms = current then options.selectedIndex = options.values.count()
+    options.labels.push(translate(translationKeys.LabelMilliseconds, [ms.toStr()]))
+    options.values.push(ms)
+  end sub
 
   ' A repeat mode's short name for the gear row: "Off", "All" or "One". The picker shows
   ' the full titles instead (repeatOptions).
@@ -122,8 +215,11 @@ namespace playbackSettingsMenu
   '
   ' @param {dynamic} caps - QueueManager.getPlaybackCaps()
   ' @param {dynamic} repeatMode - QueueManager.getRepeatMode()
-  function hasPicks(caps as dynamic, repeatMode as dynamic) as boolean
+  ' @param {dynamic} shuffleMode - the group's ShuffleMode while following, else invalid; the
+  '   time offset is a saved setting, so it is the viewer's default and never lights the gear
+  function hasPicks(caps as dynamic, repeatMode as dynamic, shuffleMode = invalid as dynamic) as boolean
     if type(caps) = "roAssociativeArray" and caps.count() > 0 then return true
+    if syncPlayQueue.normalizeShuffle(shuffleMode) = syncPlayQueue.SHUFFLE_ON then return true
     return queueRepeat.normalize(repeatMode) <> queueRepeat.OFF
   end function
 

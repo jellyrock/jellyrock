@@ -6,7 +6,11 @@
  * - the Roku's Play key pauses the whole group (the server's state reads Paused) and a second
  *   press has it playing again;
  * - a trickplay scrub confirmed with OK seeks the whole group: the bar closes and this member
- *   lands at the target through the server's Seek.
+ *   lands at the target through the server's Seek;
+ * - the group's repeat mode rides on this Roku's queue (phase F step 2), a Repeat pick here sets
+ *   the group's, a finished item starts over for everyone under RepeatOne, and the OSD gear shows
+ *   the group's rows (Shuffle, SyncPlay Time Offset, Leave Group), the last of which leaves the
+ *   group with the video playing on.
  * A second member of the same account, over REST, creates the group, ignores the wait (it never
  * reports Ready) and queues the item; the Roku joins directly, as the menu spec's join case
  * already drives the menu. The join needs the server's push channel to the Roku, so the suite
@@ -26,17 +30,27 @@ import {
 import { failRequests } from '../lib/failRequests.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
+import { captureRawUI } from '../capture.js';
 import {
   getGlobalVal,
+  getVal,
+  getVals,
   press,
   readPlayer,
+  scrollFocus,
   sleep,
   stopPlayback,
+  waitDialogClosed,
+  waitFocused,
+  waitFocusInside,
   waitFor,
   waitMediaPlaying,
+  waitOsdUp,
+  walkFocusUntil,
 } from '../lib/steps.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
+const CAPTURE = process.env.RTA_CAPTURE === '1';
 const GROUP_NAME = 'RTA controls party';
 
 let session;
@@ -93,6 +107,13 @@ const localQueueCount = async () =>
   (
     await odc.callFunc(
       { base: 'global', keyPath: 'queueManager', funcName: 'getCount' },
+      { timeout: 10000 },
+    )
+  ).value;
+const localRepeatMode = async () =>
+  (
+    await odc.callFunc(
+      { base: 'global', keyPath: 'queueManager', funcName: 'getRepeatMode' },
       { timeout: 10000 },
     )
   ).value;
@@ -488,4 +509,157 @@ it("next and previous from the remote step the whole group, with one item in thi
     label: 'the first movie playing again on this Roku',
   });
   expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+});
+
+// The group's repeat mode is written onto this Roku's queue (SyncPlayManager.syncGroupModes), so
+// the OSD reads one holder in and out of a group, and the step buttons follow the server's rule:
+// under RepeatAll the first item has a previous (the wrap). The REST member sets the mode, as
+// another app's viewer would.
+it("the group's repeat mode reaches this Roku's queue, and the OSD's steps follow it", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  expect(await getGlobalVal('syncPlayManager.sync.playingItemIndex'), 'on the first item').toBe(0);
+  expect(await getVal('#itemBack.isEnabled'), 'no previous at the first item while off').toBe(
+    false,
+  );
+  await syncPlay(member, 'SetRepeatMode', { Mode: 'RepeatAll' });
+  await waitFor('syncPlayManager.sync.repeatMode', (v) => v === 'RepeatAll', {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: "the group's RepeatAll reached this Roku",
+  });
+  expect(await localRepeatMode(), "the queue holds the group's mode").toBe('RepeatAll');
+  expect(
+    await getVal('#itemBack.isEnabled'),
+    'the first item wraps to the last under RepeatAll',
+  ).toBe(true);
+});
+
+// A Repeat pick in the gear goes to the group (control({ kind: "repeat" })), not the local queue:
+// the server answers every member with the mode, this Roku included. The manager's control is
+// called directly, as the OSD's pick calls it, so the case is about the round trip, not the menu.
+it("a Repeat pick on this Roku sets the group's mode, which comes back onto its queue", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  expect(
+    (await managerCall('control', { kind: 'repeat', mode: 'RepeatOne' })).value,
+    'the pick was posted to the group',
+  ).toBe(true);
+  await waitFor('syncPlayManager.sync.repeatMode', (v) => v === 'RepeatOne', {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: "the group's RepeatOne reached this Roku",
+  });
+  expect(await localRepeatMode(), "the queue holds the group's mode").toBe('RepeatOne');
+});
+
+// Under RepeatOne the server keeps the index on NextItem, sends the update and waits on every
+// member's Ready (WaitingGroupState.HandleRequest, read 2026-11-03), so the finished item starts
+// over for the whole group. Before this, the Roku treated a same-id NextItem as nothing to load
+// and sat on a finished player while the group waited on it (followup syncplay-repeat-modes).
+it('under RepeatOne a finished item starts over for the group, on the same item', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  expect(
+    await getGlobalVal('syncPlayManager.sync.repeatMode'),
+    'RepeatOne from the case before',
+  ).toBe('RepeatOne');
+  const item = await getJson(
+    `${session.serverUrl}/Users/${session.userId}/Items/${heroId}`,
+    tokenHeader(session.token),
+  );
+  const durationSeconds = (item?.RunTimeTicks ?? 0) / 10_000_000;
+  expect(durationSeconds, 'the movie has a known length').toBeGreaterThan(60);
+  const playingItemId = await getGlobalVal('syncPlayManager.sync.playingItemId');
+  // Inside the item: a target at or past the end would be clamped 30 s short by the player.
+  await syncPlay(member, 'Seek', {
+    PositionTicks: Math.round((durationSeconds - 12) * 10_000_000),
+  });
+  await waitFor('position', (v) => typeof v === 'number' && v > durationSeconds - 30, {
+    read: playerPosition,
+    timeout: 30000,
+    label: "this member near the end through the group's Seek",
+  });
+  // The restart: the same item, from its start, playing again for the group.
+  await waitFor('position', (v) => typeof v === 'number' && v < durationSeconds - 60 && v < 30, {
+    read: playerPosition,
+    timeout: 90000,
+    label: 'the item playing again from its start',
+  });
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 30000,
+    label: 'playing after the restart',
+  });
+  expect(await getGlobalVal('syncPlayManager.sync.playingItemId'), 'the same item').toBe(
+    playingItemId,
+  );
+  expect(await getGlobalVal('syncPlayManager.sync.playingItemIndex'), 'the same index').toBe(0);
+  expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+  await syncPlay(member, 'SetRepeatMode', { Mode: 'RepeatNone' });
+  await waitFor('syncPlayManager.sync.repeatMode', (v) => v === 'RepeatNone', {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: 'repeat off again for the cases after',
+  });
+});
+
+// The gear's SyncPlay rows while following, then Leave Group from the gear: the membership ends
+// and the video plays on as the viewer's own. Last, because it leaves the group.
+it('the gear shows the group rows while following, and its Leave Group leaves with the video playing on', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  await waitOsdUp('the OSD up for the gear', { itemId: heroId });
+  const atGear = (f) => f.node?.id === 'showPlaybackSettings';
+  await waitFocused(atGear, {
+    timeout: 20000,
+    action: walkFocusUntil(ecp.Key.Right, atGear),
+    label: 'the gear focused',
+  });
+  await press(ecp.Key.Ok);
+  await waitFor(
+    '#optionList.content.0.title',
+    (t) => typeof t === 'string' && t.startsWith('Maximum Bitrate ('),
+    { label: 'gear menu open', timeout: 10000 },
+  );
+  await waitFocusInside('#optionList', { label: 'gear menu focused', timeout: 5000 });
+  const rows = await getVal('#optionList.content.getChildCount()');
+  const [shuffleRow, offsetRow, leaveRow] = await getVals([
+    `#optionList.content.${rows - 3}.title`,
+    `#optionList.content.${rows - 2}.title`,
+    `#optionList.content.${rows - 1}.title`,
+  ]);
+  expect(shuffleRow).toBe('Shuffle (Off)');
+  expect(offsetRow).toMatch(/^SyncPlay Time Offset \(\d+ ms(, .+)?\)$/);
+  expect(leaveRow).toBe('Leave Group');
+  if (CAPTURE) await captureRawUI('syncPlayGearMenu');
+
+  await scrollFocus({
+    keyPath: '#optionList.itemFocused',
+    target: rows - 1,
+    forwardKey: ecp.Key.Down,
+    backKey: ecp.Key.Up,
+    label: 'Leave Group row focused',
+  });
+  await press(ecp.Key.Ok);
+  await waitDialogClosed('the gear menu closed on Leave Group', { timeout: 10000 });
+  await waitFor('syncPlayManager.inGroup', (v) => v === false, {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: "the membership ended on the server's GroupLeft",
+  });
+  expect(await playerState(), "the video plays on as the viewer's own").toBe('playing');
+  expect(await localQueueCount(), 'its queue kept the item').toBe(1);
+  expect(
+    (await listGroups(member)).find((g) => g.GroupId === groupId)?.Participants?.length ?? 0,
+    'one member left on the server',
+  ).toBe(1);
 });

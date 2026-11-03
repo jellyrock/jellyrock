@@ -32,6 +32,7 @@ While you're in a group, the **SyncPlay** icon is highlighted.
 - **Use the remote as usual.** Play, pause, seeking, skipping and next or previous all go to the group, so everyone moves together.
 - **People coming and going.** A message tells you when someone joins or leaves the group.
 - **Staying in step.** JellyRock keeps your Roku on the group's clock by itself. If a resume leaves it noticeably ahead or behind, it corrects itself: the picture holds for a moment and starts again in step with the group. If the sound from your TV still lags the other people's devices, raise **SyncPlay Time Offset** until they line up, up to 500 milliseconds.
+- **Repeat and shuffle for the whole group.** Press **Up** during playback and open the gear. **Repeat** and **Shuffle** set the group's own modes, so they change what plays next for everyone, and a change someone else makes shows up in the same rows. Under **Repeat one** the video starts again for the whole group when it ends, or when anyone presses next or previous.
 
 So that one person's settings don't move everyone, a few things wait while you're in a group: JellyRock shows the skip button instead of skipping intros by itself, doesn't ask whether you're still watching, doesn't play Cinema Mode intros, and doesn't show its next-episode button. When a video ends, the group's playlist decides what plays next.
 
@@ -43,13 +44,21 @@ To catch up, select the **SyncPlay** icon and pick **Resume with Group**. Your R
 
 ## Leave a group
 
-Select the **SyncPlay** icon and pick **Leave Group**. Signing out or switching servers leaves the group too.
+Select the **SyncPlay** icon and pick **Leave Group**, or pick **Leave Group** in the player's gear while you watch. Signing out or switching servers leaves the group too.
 
 If you press **Home** on the remote while you're in a group, JellyRock leaves that group the next time it starts, and tells you so.
 
+## The gear while you watch together
+
+While you follow a group, the gear in the player's controls has three more rows under **Repeat**:
+
+- **Shuffle**: **Off** or **On**, for the group's playlist. The server reorders it around the video that is on.
+- **SyncPlay Time Offset**: the same setting as in **Settings → Playback**, in steps of 50 milliseconds, with how your Roku sits against the group beside it, for example **(100 ms, 35 ms behind)**. Pick a value while you listen, until the sound lines up. A change applies the next time the group resumes.
+- **Leave Group**: leaves the group. The video keeps playing on your Roku alone.
+
 ## Settings
 
-- [SyncPlay Time Offset](../app-settings.md#playbackSyncPlayTimeOffsetMs), in **Settings → Playback**: how many milliseconds ahead of the group your Roku plays, and 0 means no offset. A change applies the next time the group resumes. To reach **Settings**, press **Back**, then pick **Resume with Group** when you return.
+- [SyncPlay Time Offset](../app-settings.md#playbackSyncPlayTimeOffsetMs), in **Settings → Playback**: how many milliseconds ahead of the group your Roku plays, and 0 means no offset. A change applies the next time the group resumes. You can also set it from the gear while you watch, as above.
 
 ## Troubleshooting
 

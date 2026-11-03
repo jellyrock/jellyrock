@@ -64,6 +64,30 @@ namespace tests
       m.assertEqual(state.lastUpdateMs, 1792788445000&)
     end function
 
+    @it("PlayQueue keeps the group's repeat and shuffle modes; empty until an update names them")
+    function _()
+      state = m.withQueue(m.joined())
+      m.assertEqual(state.repeatMode, "")
+      m.assertEqual(state.shuffleMode, "")
+      inner = { Reason: "RepeatMode", LastUpdate: "2026-10-23T20:47:26.000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }], PlayingItemIndex: 0, StartPositionTicks: 0, RepeatMode: "RepeatAll", ShuffleMode: "Shuffle" }
+      syncPlayState.applyGroupUpdate(state, m.update("PlayQueue", inner))
+      m.assertEqual(state.repeatMode, "RepeatAll")
+      m.assertEqual(state.shuffleMode, "Shuffle")
+      m.assertEqual(state.playingItemId, "p1", "a mode change keeps the item")
+      m.assertEqual(state.playbackQueueAtMs, 1792788445000&, "and the commands for it stay valid")
+    end function
+
+    @it("a NextItem that keeps the item still moves the command gate: the item starts over under RepeatOne")
+    function _()
+      state = m.withQueue(m.joined())
+      inner = { Reason: "NextItem", LastUpdate: "2026-10-23T20:47:27.000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }], PlayingItemIndex: 0, StartPositionTicks: 0, RepeatMode: "RepeatOne" }
+      syncPlayState.applyGroupUpdate(state, m.update("PlayQueue", inner))
+      m.assertEqual(state.playingItemId, "p1")
+      m.assertEqual(state.playbackQueueAtMs, 1792788447000&)
+      m.assertFalse(syncPlayState.acceptsCommand(state, m.command("Unpause", "2026-10-23T20:47:26.000Z")), "an Unpause from the play that ended")
+      m.assertTrue(syncPlayState.acceptsCommand(state, m.command("Unpause", "2026-10-23T20:47:28.000Z")))
+    end function
+
     @it("PlayQueue with an index past the playlist leaves no current item")
     function _()
       state = m.joined()

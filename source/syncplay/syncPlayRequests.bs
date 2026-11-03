@@ -66,6 +66,19 @@ namespace syncPlayRequests
     return { "PlaylistItemId": playlistItemId }
   end function
 
+  ' POST /SyncPlay/SetRepeatMode: a GroupRepeatMode, the same words as queueRepeat.bs
+  ' (RepeatNone, RepeatAll, RepeatOne). The server answers every member with a PlayQueue update
+  ' whose reason is RepeatMode, in whatever state the group is.
+  function setRepeatMode(mode as string) as object
+    return { "Mode": mode }
+  end function
+
+  ' POST /SyncPlay/SetShuffleMode: a GroupShuffleMode, Sorted or Shuffle (syncPlayQueue.SHUFFLE_ON).
+  ' The server reorders its playlist around the playing item and answers with a ShuffleMode update.
+  function setShuffleMode(mode as string) as object
+    return { "Mode": mode }
+  end function
+
   ' Pause, Unpause, Stop and Leave take no body: BuildSyncPlayRequest(action, invalid).
 
   ' --- helpers ---

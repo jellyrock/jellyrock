@@ -2,6 +2,8 @@
 ' move it. No node, no m.global: phase C's SyncPlayManager holds one of these and applies every
 ' parsed frame (syncPlayMessage) through applyGroupUpdate, then asks acceptsCommand before it
 ' schedules a command. Specced against the frame sequence recorded on the long poll 2026-10-23.
+import "pkg:/source/syncplay/syncPlayQueue.bs"
+
 namespace syncPlayState
 
   ' Not in a group. `following` is true so a fresh join follows at once (a group start auto-plays:
@@ -23,6 +25,10 @@ namespace syncPlayState
       playingItemId: "",
       startPositionTicks: 0&,
       isPlaying: invalid,
+      ' The group's modes, the server's RepeatMode and ShuffleMode words, from the last queue
+      ' update; empty until one arrives (a 10.7 line may send neither).
+      repeatMode: "",
+      shuffleMode: "",
       lastUpdateMs: 0&,
       ' The LastUpdate of the queue update that last changed the playing item: a command emitted
       ' before it is about content that update replaced (see acceptsCommand).
@@ -60,9 +66,13 @@ namespace syncPlayState
       end if
       state.startPositionTicks = update.startPositionTicks
       state.isPlaying = update.isPlaying
+      if isValid(update.repeatMode) then state.repeatMode = update.repeatMode
+      if isValid(update.shuffleMode) then state.shuffleMode = update.shuffleMode
       state.lastUpdateMs = update.lastUpdateMs
-      ' Appends, moves and mode changes keep the item, and the commands for it stay valid.
-      if (update.reason = "NewPlaylist" or state.playingItemId <> previousItemId) and syncPlayTime.isWholeNumber(update.lastUpdateMs)
+      ' Appends, jumps within the item and mode changes keep the item, and the commands for it
+      ' stay valid; a step starts the item over even when it is the same (RepeatOne), and a
+      ' command from before that step is about the play it ended (syncPlayQueue.changesPlayingItem).
+      if syncPlayQueue.changesPlayingItem(update.reason, previousItemId, state.playingItemId) and syncPlayTime.isWholeNumber(update.lastUpdateMs)
         state.playbackQueueAtMs = syncPlayTime.asLong(update.lastUpdateMs)
       end if
     end if

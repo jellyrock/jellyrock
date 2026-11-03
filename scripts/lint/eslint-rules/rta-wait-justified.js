@@ -170,6 +170,14 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // held until the group's queue changes again. `syncplay-controls.spec.js` waits on it after the
   // REST member queues an item.
   'syncPlayManager.sync.playlistCount',
+  // `SyncPlayManager.publish` writes the group's repeat mode from each PlayQueue frame
+  // (`syncPlayState.applyGroupUpdate`), and nothing else writes it: held until the group's next
+  // mode change or a leave. `syncplay-controls.spec.js` waits on it after a SetRepeatMode.
+  'syncPlayManager.sync.repeatMode',
+  // `SyncPlayManager.publish` writes `inGroup` from the membership state, which only a GroupJoined
+  // or a GroupLeft/NotInGroup frame moves: false holds until the next join. `syncplay-controls.spec.js`
+  // waits on it after Leave Group in the gear.
+  'syncPlayManager.inGroup',
   // `SyncPlayManager.checkSettle` publishes the drift from the group on every position
   // notification while an Unpause is in force (every 0.5 s, in RTA builds only), and a group command or a Buffering
   // report clears it. Past its thresholds the manager corrects it, and it then holds inside them,

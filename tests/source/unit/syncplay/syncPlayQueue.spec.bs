@@ -2,6 +2,7 @@ import "pkg:/source/remotecontrol/remoteCommand.bs"
 import "pkg:/source/syncplay/syncPlayQueue.bs"
 import "pkg:/source/syncplay/syncPlayState.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
+import "pkg:/source/utils/queueRepeat.bs"
 
 namespace tests
 
@@ -117,6 +118,36 @@ namespace tests
       m.assertFalse(none.hasNext)
     end function
 
+    @it("wraps at both ends under RepeatAll and replays under RepeatOne, as the server's Next() and Previous() do")
+    function _()
+      first = syncPlayQueue.stepBounds(0, 3, queueRepeat.ALL)
+      m.assertTrue(first.hasPrevious)
+      m.assertTrue(first.hasNext)
+      last = syncPlayQueue.stepBounds(2, 3, queueRepeat.ALL)
+      m.assertTrue(last.hasPrevious)
+      m.assertTrue(last.hasNext)
+      only = syncPlayQueue.stepBounds(0, 1, queueRepeat.ONE)
+      m.assertTrue(only.hasPrevious)
+      m.assertTrue(only.hasNext)
+      none = syncPlayQueue.stepBounds(-1, 0, queueRepeat.ALL)
+      m.assertFalse(none.hasPrevious)
+      m.assertFalse(none.hasNext)
+      unknown = syncPlayQueue.stepBounds(2, 3, "")
+      m.assertFalse(unknown.hasNext)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("normalizeShuffle()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("knows Shuffle, and reads anything else as Sorted")
+    function _()
+      m.assertEqual(syncPlayQueue.normalizeShuffle("Shuffle"), syncPlayQueue.SHUFFLE_ON)
+      m.assertEqual(syncPlayQueue.normalizeShuffle("Sorted"), syncPlayQueue.SHUFFLE_OFF)
+      m.assertEqual(syncPlayQueue.normalizeShuffle(""), syncPlayQueue.SHUFFLE_OFF)
+      m.assertEqual(syncPlayQueue.normalizeShuffle(invalid), syncPlayQueue.SHUFFLE_OFF)
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("pagedItems()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -196,11 +227,16 @@ namespace tests
     @describe("changesPlayingItem()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("a new playlist always moves; a current-item change only when the id changed; queue edits never")
+    @it("a new playlist or a step always starts an item; a jump or a removal only when the id changed; queue edits never")
     function _()
       m.assertTrue(syncPlayQueue.changesPlayingItem("NewPlaylist", "p-1", "p-1"))
       m.assertTrue(syncPlayQueue.changesPlayingItem("NextItem", "p-1", "p-2"))
+      ' RepeatOne: the server keeps the index, sends the step and waits on every Ready.
+      m.assertTrue(syncPlayQueue.changesPlayingItem("NextItem", "p-1", "p-1"))
+      m.assertTrue(syncPlayQueue.changesPlayingItem("PreviousItem", "p-1", "p-1"))
+      m.assertTrue(syncPlayQueue.changesPlayingItem("SetCurrentItem", "p-1", "p-2"))
       m.assertFalse(syncPlayQueue.changesPlayingItem("SetCurrentItem", "p-1", "p-1"))
+      m.assertFalse(syncPlayQueue.changesPlayingItem("RepeatMode", "p-1", "p-1"))
       m.assertTrue(syncPlayQueue.changesPlayingItem("RemoveItems", "p-1", "p-2"))
       m.assertFalse(syncPlayQueue.changesPlayingItem("Queue", "p-1", "p-2"))
       m.assertFalse(syncPlayQueue.changesPlayingItem("ShuffleMode", "p-1", "p-2"))
@@ -226,6 +262,23 @@ namespace tests
       m.assertTrue(syncPlayQueue.isLastItem(state))
       state.playlist = m.playlist
       state.playingItemIndex = -1
+      m.assertTrue(syncPlayQueue.isLastItem(state))
+    end function
+
+    @it("no item is last under RepeatAll or RepeatOne: the server wraps or stays, and answers NextItem")
+    function _()
+      state = syncPlayState.newState()
+      state.playlist = m.playlist
+      state.playingItemIndex = 2
+      state.repeatMode = queueRepeat.ALL
+      m.assertFalse(syncPlayQueue.isLastItem(state))
+      state.repeatMode = queueRepeat.ONE
+      m.assertFalse(syncPlayQueue.isLastItem(state))
+      state.repeatMode = "RepeatNone"
+      m.assertTrue(syncPlayQueue.isLastItem(state))
+      ' An index past the playlist is last whatever the mode: there is nothing to replay.
+      state.repeatMode = queueRepeat.ALL
+      state.playingItemIndex = 3
       m.assertTrue(syncPlayQueue.isLastItem(state))
     end function
 
@@ -304,10 +357,11 @@ namespace tests
       m.assertFalse(syncPlayQueue.owedLoadAfter(invalid, "SetCurrentItem", "p-1", "p-3").newPlaylist)
     end function
 
-    @it("an update that keeps the item owes nothing when nothing was owed")
+    @it("an update that keeps the item owes nothing when nothing was owed; a step to the same item owes its restart")
     function _()
       m.assertInvalid(syncPlayQueue.owedLoadAfter(invalid, "Queue", "p-1", "p-2"))
-      m.assertInvalid(syncPlayQueue.owedLoadAfter(invalid, "NextItem", "p-1", "p-1"))
+      m.assertInvalid(syncPlayQueue.owedLoadAfter(invalid, "SetCurrentItem", "p-1", "p-1"))
+      m.assertFalse(syncPlayQueue.owedLoadAfter(invalid, "NextItem", "p-1", "p-1").newPlaylist, "RepeatOne: the server waits on every Ready for the restart")
     end function
 
     @it("an update that keeps the item leaves an owed new playlist owed (the race's shape)")

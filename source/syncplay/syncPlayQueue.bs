@@ -1,6 +1,7 @@
 import "pkg:/source/syncplay/syncPlayTime.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/playKind.bs"
+import "pkg:/source/utils/queueRepeat.bs"
 
 ' Turning a SyncPlay play queue into QueueManager items, pure. The server's PlayQueue update
 ' names items by id only; SyncPlayManager fetches the one it plays (GET /Items?ids=…) and hands
@@ -9,6 +10,18 @@ import "pkg:/source/utils/playKind.bs"
 ' advance, so the other items' metadata has no reader, and the group's playlist (ids and the
 ' playing index, in syncPlayState) is what the OSD's previous and next read.
 namespace syncPlayQueue
+
+  ' The server's GroupShuffleMode words. The repeat words are queueRepeat.bs's: the group's
+  ' PlayQueue update and the viewer's pick in the gear carry the same RepeatMode values.
+  const SHUFFLE_OFF = "Sorted"
+  const SHUFFLE_ON = "Shuffle"
+
+  ' The shuffle mode as one of the two values: anything else (an empty field, a 10.7 line that
+  ' sends none) is off.
+  function normalizeShuffle(mode as dynamic) as string
+    if syncPlayTime.isText(mode) and mode = SHUFFLE_ON then return SHUFFLE_ON
+    return SHUFFLE_OFF
+  end function
 
   ' The playlist entry the group is playing, or invalid while it plays nothing.
   ' @param state - syncPlayState
@@ -81,10 +94,11 @@ namespace syncPlayQueue
 
   ' Whether the group's playing item is the last of its playlist, so a finished item has nothing to
   ' move on to. The group's playlist, not the local queue: the local one drops items this member
-  ' cannot see. The group's repeat mode is not read yet: under RepeatAll or RepeatOne the server
-  ' answers NextItem on the last item, which this does not expect.
+  ' cannot see. Under RepeatAll the server's Next() wraps to the first item, and under RepeatOne
+  ' it stays on this one, so no item is last then (PlayQueueManager.Next, read 2026-11-03).
   function isLastItem(state as object) as boolean
-    if state.playingItemIndex < 0 then return true
+    if state.playingItemIndex < 0 or state.playingItemIndex >= state.playlist.count() then return true
+    if queueRepeat.normalize(state.repeatMode) <> queueRepeat.OFF then return false
     return state.playingItemIndex >= state.playlist.count() - 1
   end function
 
@@ -112,13 +126,15 @@ namespace syncPlayQueue
     return syncPlayTime.isText(playlistItemId) and playlistItemId <> ""
   end function
 
-  ' What the OSD's previous and next may ask of the group, from the group's playlist: a step
-  ' past either end has no item to go to. The group's repeat mode is not read yet: under
-  ' RepeatAll the server would wrap at either end, which this does not offer.
+  ' What the OSD's previous and next may ask of the group, from the group's playlist and its
+  ' repeat mode: the same rule as the local queue's (queueRepeat.nextIndex, previousIndex), since
+  ' the server's Next() and Previous() wrap under RepeatAll and replay under RepeatOne. Off, a
+  ' step past either end has no item to go to.
   ' @param index - the group's playing index
   ' @param count - the group's playlist length
-  function stepBounds(index as integer, count as integer) as object
-    return { hasPrevious: index > 0 and index < count, hasNext: index >= 0 and index < count - 1 }
+  ' @param repeatMode - the group's RepeatMode
+  function stepBounds(index as integer, count as integer, repeatMode = "" as dynamic) as object
+    return { hasPrevious: queueRepeat.previousIndex(repeatMode, index, count) >= 0, hasNext: queueRepeat.nextIndex(repeatMode, index, count) >= 0 }
   end function
 
   ' What a play pressed while in a group asks of the group in place of a local start (decision
@@ -150,11 +166,15 @@ namespace syncPlayQueue
     return { action: "setNewQueue", itemIds: itemIds, position: position, startPositionTicks: startTicks& }
   end function
 
-  ' Whether a queue update moves this member to another item (a new playlist, the server's
-  ' current-item change, or a removal that took the playing item with it).
+  ' Whether a queue update starts this member on an item: a new playlist, a step to the next or
+  ' previous item, a jump to another item, or a removal that took the playing item with it. A
+  ' NextItem or PreviousItem counts even when the id is unchanged: under RepeatOne the server
+  ' keeps the index, sends the update and waits on every member's Ready, so the item starts over
+  ' (WaitingGroupState.HandleRequest(NextItemGroupRequest), read 2026-11-03; jellyfin-web's
+  ' QueueCore sets the current item again without comparing ids).
   function changesPlayingItem(reason as string, previousPlaylistItemId as string, playlistItemId as string) as boolean
-    if reason = "NewPlaylist" then return true
-    if reason = "SetCurrentItem" or reason = "NextItem" or reason = "PreviousItem" or reason = "RemoveItems"
+    if reason = "NewPlaylist" or reason = "NextItem" or reason = "PreviousItem" then return true
+    if reason = "SetCurrentItem" or reason = "RemoveItems"
       return previousPlaylistItemId <> playlistItemId
     end if
     return false
