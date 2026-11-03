@@ -868,7 +868,7 @@ The SyncPlay wait-on-me correction (`SyncPlayManager.checkSettle`, gated on `las
 
 `PlayerHostView.onPlayerStateChange()` asks `shouldAskStillWatching()` about the target item's `followsIntro` before it calls `QueueManager.advanceTo()`. Under Repeat One, a Cinema Mode intro's end targets the intro's own slot, which carries no tag, so the move into the episode counts as a new unattended video. The function's comment says that move "neither counts nor asks".
 
-Harmless today: only the OSD gear sets the repeat mode, a new queue starts with repeat off, and the intro plays only on a queue's first load, so the Repeat One pick is a key press during the intro and `stillWatchingOnAdvance` resets the count. A repeat mode set without a key press (the SyncPlay group half, reading the group's `RepeatMode`) would expose it.
+It shows today, one video early. The Repeat One pick is a gear press during the intro, so `stillWatchingOnAdvance` resets the count at the intro's end, but it also moves `itemStartedAt` to the episode's start. The press then predates the episode, so the episode's end counts as unattended: with the short preset (2 videos) the prompt comes after the second replay instead of the third. It needs Cinema Mode, a served intro, Repeat One picked during it and the prompt on. Not a regression: `main` does the same. A repeat mode set without a key press (the SyncPlay group half, reading the group's `RepeatMode`) would add one more count.
 
 Close it by deciding "leaving an intro" from the item that ended rather than from the target's tag, with a unit case for Repeat One at an intro's end. Found reviewing the intro-slot fix that followed #1308.
 
