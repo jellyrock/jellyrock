@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-03: fix(playback): Play the episode once when Repeat is picked during a Cinema Mode intro
 - 2026-11-03: feat(player): Repeat a video or the queue from the OSD gear
 - 2026-11-02: fix(playback): Play Cinema Mode intros, drop the stale queue slot
 - 2026-11-02: docs(catalog): Publish the newest Jellyfin line and release dates
