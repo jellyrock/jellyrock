@@ -1058,14 +1058,6 @@ The app-side half (one name helper used by the auth header and `buildPairPayload
 
 Closes when the in-player SyncPlay surface (phase F of epic #1251) ships: delete the constant, fold `joinAllowed` back into `canJoin`, and drop the two `syncPlayMenu.spec.bs` cases that drive the switch.
 
-#### SyncPlay repeat modes are not read: a `RepeatOne` member is left on a finished player and `RepeatAll` grays out Next on the last item `[fid: syncplay-repeat-modes]` `[captured 2026-10-28]`
-
-Under `RepeatAll` or `RepeatOne`, Jellyfin's SyncPlay `PlayQueueManager.Next()` and `Previous()` answer on the playlist's ends: `RepeatAll` wraps around, `RepeatOne` keeps the same index (read upstream 2026-10-28). A jellyfin-web member can set either mode. JellyRock parses `RepeatMode` (`syncPlayMessage`) but `syncPlayState` drops it, and `syncPlayQueue.changesPlayingItem()` treats a `NextItem` with the same id as no change. So, from reading the code and not yet seen on a device: a `RepeatOne` member is left on a finished player (and leaves playback on the last item, `syncPlayQueue.isLastItem()`), and a `RepeatAll` member's **Next** grays out on the last item (`syncPlayQueue.stepBounds()`).
-
-Deferred from #1276 to the SyncPlay project's hardening phase, where the control itself is designed: the operator expects it in the playback settings menu of the OSD (the gear), and the player has no native loop yet, so what repeat means outside a group is part of the design.
-
-The proposed shape: keep `repeatMode` in the state; `stepBounds()` and `isLastItem()` follow `RepeatAll`; every `NextItem` or `PreviousItem` reloads, since the server sends one only after a step. Closes when a group with a REST member setting each mode plays through the last item on a device, and the gear offers the control.
-
 #### SyncPlay in a group offers no queue edits or shuffle from the Roku, and voice fast-forward and rewind are unchecked `[fid: syncplay-queue-edits-shuffle-voice-scrub]` `[captured 2026-10-29]`
 
 Phase E (#1276) chose honor-only for the group's modes: the server applies shuffle and owns the playlist, so the Roku offers no queue editing and no shuffle control while following. Design both with the repeat control in the OSD gear (followup `syncplay-repeat-modes`), in the SyncPlay project's hardening phase.

@@ -2514,6 +2514,16 @@ Video repeat is a property of the queue being played, held beside the quality ca
 
 Ruled out: sharing the audio player's `loopMode` (a video queue would inherit a loop set on the music screen, the audio exit paths clear that field, and its words would need a mapping at the group boundary); a press that steps under `RepeatOne`, which the music screen does but web and the server do not; a badge count on the gear (says how many, not what, and a notification idiom on a settings control); a persistent repeat glyph in the OSD bar (the bar holds controls, not status). The operator chose `queue` over `shared`, then `replay` over `step` (project `2026-10-syncplay`, phase F step 2, 2026-11-02).
 
+## decision-id: syncplay-group-repeat-rides-queue
+
+**date**: 2026-11-03
+**status**: accepted
+**related-files**: `components/syncplay/SyncPlayManager.bs`, `source/syncplay/syncPlayQueue.bs`, `source/syncplay/syncPlayHooks.bs`, `source/utils/playbackSettingsMenu.bs`, `components/video/OSD.bs`
+
+In a SyncPlay group the group's repeat mode is written onto the local queue: `SyncPlayManager.syncGroupModes` copies each `PlayQueue` update's `RepeatMode` to `QueueManager.setRepeatMode` while the queue holds the group's item (and `applyQueue` does as it sets the queue), then publishes and tells the player `queuechanged`, so an open OSD reads again. The OSD, the gear's tint and the step buttons keep one holder in and out of a group, which `video-repeat-belongs-to-queue` chose the mode's words for. A pick while following goes to the server (`control({ kind: "repeat" })`) and comes back as the update that writes every member. Published first, told after: the OSD reads the group's modes off `sync` as it refreshes, and told first it read the modes from before the update (RTA, Stick 4K, 2026-11-03).
+
+Ruled out: a published `sync.repeatMode` the OSD reads only while following, which leaves two readers to keep in step and a race between them after a leave. The shuffle mode stays the group's alone (`sync.shuffleMode`): no local video shuffle exists to mirror into. The operator chose `mirror` over `sync-field` (project `2026-10-syncplay`, phase F step 2, 2026-11-03).
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
