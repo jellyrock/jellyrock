@@ -864,6 +864,14 @@ Not fixed there because telling each cell its row adds work per cell in Home's h
 
 The SyncPlay wait-on-me correction (`SyncPlayManager.checkSettle`, gated on `lastSeekGaveUp` since commit `677d6c70`) has end-to-end device evidence only from a run that injected a `localSeek` event the node never landed. Two natural-path runs of the project's correction-lead probe (`PROBE_WAIT_ON_ME=1`, the 100 Mbps direct-play fixture, Stick 4K, local 12.2 server, 2026-11-02) never printed "drift correction asks the group to wait": in the one with a valid console the given-up seek's stall brought an `Unpause` 686 ms off, that `Unpause` wrote a seek of its own, the seek landed and cleared the flag, and the next correction ran its seek and hold normally. That is the designed outcome, so nothing is wrong, but the branch is unproven on a natural slow seek. Not done now: the probe needs a shape that leaves the member behind after a given-up seek with no landed seek between (a stall whose `Unpause` arrives within 400 ms, or a second given-up seek), which is device time with a design choice. Closes with a natural-path capture of the "asks the group to wait" line followed by the group's Seek, a Ready at that position with no seek written, and a settled drift; or with a decision that the injected run and the unit verdict cases are enough. Do not open `nc` on port 8085 during an RTA run: the deploy cuts it and voids the harness's own console log.
 
+#### Under Repeat One, the still-watching check counts a Cinema Mode intro's end as a new video `[fid: still-watching-counts-intro-under-repeat-one]` `[captured 2026-11-03]`
+
+`PlayerHostView.onPlayerStateChange()` asks `shouldAskStillWatching()` about the target item's `followsIntro` before it calls `QueueManager.advanceTo()`. Under Repeat One, a Cinema Mode intro's end targets the intro's own slot, which carries no tag, so the move into the episode counts as a new unattended video. The function's comment says that move "neither counts nor asks".
+
+Harmless today: only the OSD gear sets the repeat mode, a new queue starts with repeat off, and the intro plays only on a queue's first load, so the Repeat One pick is a key press during the intro and `stillWatchingOnAdvance` resets the count. A repeat mode set without a key press (the SyncPlay group half, reading the group's `RepeatMode`) would expose it.
+
+Close it by deciding "leaving an intro" from the item that ended rather than from the target's tag, with a unit case for Repeat One at an intro's end. Found reviewing the intro-slot fix that followed #1308.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
