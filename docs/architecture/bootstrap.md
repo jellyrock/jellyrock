@@ -65,7 +65,7 @@ end sub
 
 Every screen, before and after sign-in, is a route in sgRouter (#550). `Main()` sets up `roInput` and `roDeviceInfo` once and enters one event loop that serves the whole session. Changing the server or user, or signing out, calls `reenterLogin()` again from inside that loop, so nothing is recreated and the loop never restarts.
 
-`reenterLogin()` reloads the sign-in locale and runs `beginLogin()`, which tries the saved server and saved token with no UI. If both work, `finishLogin()` starts the fallback-font download when the user needs it and opens Home. Otherwise the router opens `/server`, `/users` or `/login`. [`user-journey.md`](user-journey.md) covers the sign-in screens.
+`reenterLogin()` reloads the sign-in locale and runs `beginLogin()`, which tries the saved server and saved token with no UI. If both work, `finishLogin()` starts the fallback-font download when the user needs it and opens Home. Otherwise the router opens `/server` or `/users`. [`user-journey.md`](user-journey.md) covers the sign-in screens.
 
 ## The two-phase global setup
 
@@ -224,7 +224,7 @@ Both carry a `contentId` and may carry a `mediaType` and an `itemName`. `content
 
 Back from the player then goes to details, then Home.
 
-A deep link is the only thing a signed-out moment hands to the sign-in. The auth guard redirects a signed-out request for a signed-in screen to `/login` and keeps nothing ([`navigation.md`](navigation.md#the-auth-guard)), and a remote-control command that arrives while signed out is dropped ([`remote-control.md`](remote-control.md)).
+A deep link is the only thing a signed-out moment hands to the sign-in. The auth guard refuses a signed-out request for a signed-in screen and keeps nothing ([`navigation.md`](navigation.md#the-auth-guard)), and a remote-control command that arrives while signed out is dropped ([`remote-control.md`](remote-control.md)).
 
 ## Known cruft
 
