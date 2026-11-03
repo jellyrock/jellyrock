@@ -92,6 +92,39 @@ async function seekNearEnd() {
   return seekTo;
 }
 
+// The id of the first intro the server serves for an item, or undefined when it serves none
+// (the public demo has no Intros plugin).
+async function introIdFor(itemId) {
+  const introsUrl = `${session.serverUrl}/Users/${session.userId}/Items/${itemId}/Intros`;
+  const intros = (await getJson(introsUrl, tokenHeader(session.token)))?.Items ?? [];
+  return intros[0]?.Id;
+}
+
+// Sets an item's resume position on the server. The loader asks for an intro only on a play
+// from the start (jellyfin-web draws the same line). The route is 10.9 and later, which a
+// server with the Intros plugin is.
+async function setPlaybackPosition(itemId, positionTicks) {
+  await postJson(
+    `${session.serverUrl}/UserItems/${itemId}/UserData?userId=${session.userId}`,
+    { ...tokenHeader(session.token), 'Content-Type': 'application/json' },
+    { PlaybackPositionTicks: positionTicks, Played: false },
+  );
+}
+
+// Seeds Home with Cinema Mode on and the next episode queued, cold-starts the app so it reads
+// the seed, and returns on Home.
+async function relaunchWithCinemaMode(label) {
+  const expectedServer = await seedHome(session, LOCALE);
+  await odc.writeRegistry({
+    values: {
+      [session.userId]: { playbackPlayNextEpisode: 'enabled', playbackCinemaMode: 'true' },
+    },
+  });
+  await hardRelaunch(); // never plain relaunch: only hardRelaunch confirms the cold start
+  await assertSeedTookEffect(expectedServer, label);
+  await waitHome();
+}
+
 it('an episode that ends naturally advances to the next episode', async () => {
   try {
     await playEpisodeWithNextQueued();
@@ -146,28 +179,12 @@ it('an episode on Repeat One plays again from its start instead of advancing', a
 // drops the slot). Needs a server whose Intros plugin answers for the episode; the public
 // demo does not, so the case skips there with the server named.
 it('an episode behind a Cinema Mode intro has no stale slot before it', async (testCtx) => {
-  const introsUrl = `${session.serverUrl}/Users/${session.userId}/Items/${episode.id}/Intros`;
-  const intros = (await getJson(introsUrl, tokenHeader(session.token)))?.Items ?? [];
-  if (intros.length === 0) testCtx.skip(`${session.serverUrl} serves no intro for the episode`);
-  const introId = intros[0].Id;
-  // The loader asks for an intro only on a play from the start (jellyfin-web draws the same
-  // line), and the advance case above leaves the episode with a resume position, so reset
-  // it on the server first. The route is 10.9 and later, which a server with the plugin is.
-  await postJson(
-    `${session.serverUrl}/UserItems/${episode.id}/UserData?userId=${session.userId}`,
-    { ...tokenHeader(session.token), 'Content-Type': 'application/json' },
-    { PlaybackPositionTicks: 0, Played: false },
-  );
+  const introId = await introIdFor(episode.id);
+  if (!introId) testCtx.skip(`${session.serverUrl} serves no intro for the episode`);
+  // The advance case above leaves the episode with a resume position, so reset it first.
+  await setPlaybackPosition(episode.id, 0);
 
-  const expectedServer = await seedHome(session, LOCALE);
-  await odc.writeRegistry({
-    values: {
-      [session.userId]: { playbackPlayNextEpisode: 'enabled', playbackCinemaMode: 'true' },
-    },
-  });
-  await hardRelaunch(); // never plain relaunch: only hardRelaunch confirms the cold start
-  await assertSeedTookEffect(expectedServer, 'playback-advance cinema mode');
-  await waitHome();
+  await relaunchWithCinemaMode('playback-advance cinema mode');
 
   try {
     await ecp.sendInput({ params: { contentId: `id=${episode.id}|action=play` } });
@@ -221,26 +238,11 @@ it('an episode behind a Cinema Mode intro has no stale slot before it', async (t
 // while the tagged copy stayed behind it (QueueManager.advanceTo drops the slot on arrival).
 // Needs a server whose Intros plugin answers for the episode, so the case skips elsewhere.
 it('a Repeat One pick during a Cinema Mode intro plays the episode once, with no slot before it', async (testCtx) => {
-  const introsUrl = `${session.serverUrl}/Users/${session.userId}/Items/${episode.id}/Intros`;
-  const intros = (await getJson(introsUrl, tokenHeader(session.token)))?.Items ?? [];
-  if (intros.length === 0) testCtx.skip(`${session.serverUrl} serves no intro for the episode`);
-  const introId = intros[0].Id;
-  // The loader asks for an intro only on a play from the start, so reset the resume position.
-  await postJson(
-    `${session.serverUrl}/UserItems/${episode.id}/UserData?userId=${session.userId}`,
-    { ...tokenHeader(session.token), 'Content-Type': 'application/json' },
-    { PlaybackPositionTicks: 0, Played: false },
-  );
+  const introId = await introIdFor(episode.id);
+  if (!introId) testCtx.skip(`${session.serverUrl} serves no intro for the episode`);
+  await setPlaybackPosition(episode.id, 0);
 
-  const expectedServer = await seedHome(session, LOCALE);
-  await odc.writeRegistry({
-    values: {
-      [session.userId]: { playbackPlayNextEpisode: 'enabled', playbackCinemaMode: 'true' },
-    },
-  });
-  await hardRelaunch(); // never plain relaunch: only hardRelaunch confirms the cold start
-  await assertSeedTookEffect(expectedServer, 'playback-advance cinema mode repeat one');
-  await waitHome();
+  await relaunchWithCinemaMode('playback-advance cinema mode repeat one');
 
   try {
     await ecp.sendInput({ params: { contentId: `id=${episode.id}|action=play` } });
@@ -293,33 +295,14 @@ it('a Repeat One pick during a Cinema Mode intro plays the episode once, with no
 // episode the queue reaches plays an intro mid-binge. Needs a server whose Intros plugin
 // answers for the next episode, so the case skips elsewhere with the server named.
 it('a resumed launch spends Cinema Mode, so the next episode plays no intro', async (testCtx) => {
-  const introsUrl = `${session.serverUrl}/Users/${session.userId}/Items/${episode.nextId}/Intros`;
-  const intros = (await getJson(introsUrl, tokenHeader(session.token)))?.Items ?? [];
-  if (intros.length === 0)
+  if (!(await introIdFor(episode.nextId)))
     testCtx.skip(`${session.serverUrl} serves no intro for the next episode`);
-  const userDataHeaders = { ...tokenHeader(session.token), 'Content-Type': 'application/json' };
   // Resume the launched episode near its end, and play the next one from the start, so the
   // only reason the next episode could get an intro is a Cinema Mode flag left armed.
-  await postJson(
-    `${session.serverUrl}/UserItems/${episode.id}/UserData?userId=${session.userId}`,
-    userDataHeaders,
-    { PlaybackPositionTicks: (episode.runTimeSeconds - 20) * 10000000, Played: false },
-  );
-  await postJson(
-    `${session.serverUrl}/UserItems/${episode.nextId}/UserData?userId=${session.userId}`,
-    userDataHeaders,
-    { PlaybackPositionTicks: 0, Played: false },
-  );
+  await setPlaybackPosition(episode.id, (episode.runTimeSeconds - 20) * 10000000);
+  await setPlaybackPosition(episode.nextId, 0);
 
-  const expectedServer = await seedHome(session, LOCALE);
-  await odc.writeRegistry({
-    values: {
-      [session.userId]: { playbackPlayNextEpisode: 'enabled', playbackCinemaMode: 'true' },
-    },
-  });
-  await hardRelaunch(); // never plain relaunch: only hardRelaunch confirms the cold start
-  await assertSeedTookEffect(expectedServer, 'playback-advance cinema mode resume');
-  await waitHome();
+  await relaunchWithCinemaMode('playback-advance cinema mode resume');
 
   try {
     // The deep link resumes from the saved position, so no intro plays first.
