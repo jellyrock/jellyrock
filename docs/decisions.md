@@ -2172,6 +2172,7 @@ An allow-list was chosen over the old exclusion list so a type the app can't pla
 
 **date**: 2026-10-22
 **status**: accepted
+**partially-superseded-by**: signed-out-guard-refuses-strays (the guard's redirect to `/login`)
 **related-files**: `components/auth/AuthManager.bs`, `source/replayRoute.bs`, `source/remotecontrol/remoteDispatch.bs`, `components/JRScene.bs`
 
 After sign-in the app opens a deep link that arrived while signed out (`AuthManager.stashedDeepLink`), else Home, and nothing else. The auth guard (`AuthManager.canActivate`) still redirects a signed-out request for a guarded route to `/login`, but no longer keeps the path: `stashedRoute`, its replay in `replayAfterLogin`, `buildReplayRoutes` and `JRScene.replayRoutedDeepLink` are gone. `remoteDispatch.dispatch` drops remote-control commands while `user.IsAuthenticated()` is false. Nothing a person can do while signed out requests a guarded route, because every screen that navigates to one is torn down at sign-out, so a kept path was only ever a stray. Replaying it sent a manual sign-in to Search instead of Home. On a Stick 4K (2026-10-22), a `/search` requested on the sign-in screen and a late remote route command each landed on Search, and a late `DisplayContent` opened the old session's item. The receiver's STOP is not a join, so commands already queued on the main port drain after `SignOut`, and they belong to the session that ended.
@@ -2513,6 +2514,17 @@ The feature catalog dates each feature (`sinceDate`, which the website uses to m
 Video repeat is a property of the queue being played, held beside the quality caps (`QueueManager.setRepeatMode`: kept through `set()`, forgotten by `clear()`), and never saved. Its values are the server's own `RepeatMode` words (`RepeatNone`, `RepeatAll`, `RepeatOne`), so a SyncPlay group's `PlayQueue` update and the viewer's pick in the OSD gear read the same value with no mapping. `queueRepeat.bs` holds one rule per direction, `nextIndex` and `previousIndex`, for an item that finishes and a press of the player's buttons alike: `RepeatAll` wraps, and under `RepeatOne` both play this item again, as `getNextItemInfo` in jellyfin-web and the SyncPlay server's `Next()` and `Previous()` do, so the control reads the same in and out of a group; a toast says so on the manual replay only, never on the automatic one. The gear lights up (`IconButton.isButtonSelected`, the music screen's idiom) while a gear row differs from the defaults (`playbackSettingsMenu.hasPicks`, beside the repeat labels in the gear's own module).
 
 Ruled out: sharing the audio player's `loopMode` (a video queue would inherit a loop set on the music screen, the audio exit paths clear that field, and its words would need a mapping at the group boundary); a press that steps under `RepeatOne`, which the music screen does but web and the server do not; a badge count on the gear (says how many, not what, and a notification idiom on a settings control); a persistent repeat glyph in the OSD bar (the bar holds controls, not status). The operator chose `queue` over `shared`, then `replay` over `step` (project `2026-10-syncplay`, phase F step 2, 2026-11-02).
+
+## decision-id: signed-out-guard-refuses-strays
+
+**date**: 2026-11-02
+**status**: accepted
+**partially-supersedes**: sign-in-lands-on-home (the guard's redirect to `/login`)
+**related-files**: `components/auth/AuthManager.bs`, `source/loginRouter.bs`, `components/login/UserSelect.bs`
+
+The auth guard (`AuthManager.canActivate`) refuses a guarded route requested while signed out, and the viewer stays on the sign-in screen they are on. Sign-in always starts on the user picker, even when the server lists no users and none are saved here: `resolveUser()` returns `users` with an empty list, and `onLoginBack()` and `finishLogin()`'s fallback return there. The session ends only through `user.Logout()`, whose callers all route to a pre-login screen, so a signed-out guarded request is always a stray and the viewer is already signing in. The redirect to `/login` skipped the user picker, where Quick Connect has lived since #466, and, going by the code, could land on a sign-in screen with no server saved.
+
+Ruled out: redirecting to `/users` with `UserSelect` fetching its own list, which still moves the viewer, is still wrong with no server and adds a second list builder; and refusing, then running `reenterLogin()` on the main thread, which pulls a viewer typing a password back to the picker. Recheck if the app ever signs a user out mid-session (on a 401, say): that viewer is on a guarded screen, and a refusal would strand them there, so that path needs its own route to sign-in.
 
 ## decision-id: syncplay-group-repeat-rides-queue
 

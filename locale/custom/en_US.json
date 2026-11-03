@@ -677,6 +677,7 @@
   "MessageMoreFromSeason1": "More from Season {0}",
   "MessageNoResultsFor1": "No results for \"{0}\"",
   "MessageNoSubtitlesFound": "No subtitles found. If this keeps happening, ask your server admin to set up a subtitle provider such as Open Subtitles.",
+  "MessageNoUsersToShow": "No users to show. Choose how to sign in below.",
   "MessageOverrideTheWebClientSAudio": "Override the web client's audio and subtitle language preferences for this device.",
   "MessageOverrideTheWebClientSAudio2": "Override the web client's audio language preference. Controls which language audio track is preferred during playback.",
   "MessageOverrideTheWebClientSSubtitle": "Override the web client's subtitle language preference. Controls which language subtitle track is preferred during playback.",

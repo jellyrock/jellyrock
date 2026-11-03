@@ -100,7 +100,7 @@ it('manual sign-in lands on Home', async () => {
 it('a guarded route requested while signed out is not opened after sign-in', async () => {
   await startSignedOut();
   await openManualLogin();
-  // The guard sends a signed-out request for a guarded route back to sign-in.
+  // The guard refuses a signed-out request for a guarded route, so sign-in stays.
   await odc.callFunc({
     base: 'scene',
     keyPath: '',

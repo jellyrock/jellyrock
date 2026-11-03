@@ -162,7 +162,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 #### `loginflow-error-boundaries`
 
 - **area**: `source/loginRouter.bs`
-- **issue**: The interactive paths handle failure in place: a failed server entry stays on `SetServerScreen` with a message, and a failed sign-in stays on `LoginScene` with an alert. The cold start does not. In `beginLogin()`, an unreachable saved server or a server-info error goes straight to `/server` with no retry. An invalid saved token tries a password-less sign-in, then drops to the user picker or `/login`, and never re-prompts for the password on the same server. The fallback sign-in cannot tell a network failure from an auth failure, so both get one generic message.
+- **issue**: The interactive paths handle failure in place: a failed server entry stays on `SetServerScreen` with a message, and a failed sign-in stays on `LoginScene` with an alert. The cold start does not. In `beginLogin()`, an unreachable saved server or a server-info error goes straight to `/server` with no retry. An invalid saved token tries a password-less sign-in, then drops to the user picker (even when the server lists no users), and never re-prompts for the password on the same server. The fallback sign-in cannot tell a network failure from an auth failure, so both get one generic message.
 - **direction**: Define a few error categories (unreachable, server error, auth failed, token invalid) with a recovery per category. A network blip retries with backoff. An auth failure goes to the user picker, not the server picker. An invalid token re-prompts for the password and keeps the server.
 
 #### `prelogin-intent-payload-coupling`

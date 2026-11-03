@@ -9,25 +9,23 @@ end sub
 ' during navigateTo, once per guarded route. A cheap SYNCHRONOUS token check only, no network
 ' (launch-time AboutMe re-validation stays in the login flow).
 '
-' Returns:
-'   true               : token present: allow the navigation.
-'   { path: "/login" } : no token: redirect to sign-in. The router treats any AA with a
-'                        non-empty `path` as a redirect command (Router.brs
-'                        sgrouter_runGuardChecks), the same shape
-'                        sgrouter.createRedirectCommand("/login") produces, without pulling the
-'                        whole router namespace into this guard node.
+' Returns true when a token is present (allow the navigation), else false (refuse it).
 '
-' The requested path is not kept for after sign-in. Nothing a person can do while signed out
-' requests a guarded route: every screen that navigates to one is torn down at sign-out. So a
-' request that reaches here is a stray (a late remote-control command, for one), and opening
-' it after the next sign-in sent the user somewhere they never asked to go. A deep link that
-' arrives while signed out is the intent that does survive sign-in, and it has its own stash
-' (stashedDeepLink). Logged as a warning because it should not happen.
+' A refused request is dropped, not redirected and not kept for after sign-in. Nothing a
+' person can do while signed out requests a guarded route: the session ends only through
+' user.Logout(), and every caller then routes to a pre-login screen. So a request that reaches
+' here is a stray (a late remote-control command, for one), and the viewer is already on a
+' sign-in screen. Moving them would take them off it: a redirect to /login skipped the user
+' picker, where Quick Connect is, and landed on a sign-in screen even with no server saved.
+' The router rejects the navigation and JRScene.failNavigation() puts focus back on the
+' current screen. A deep link that arrives while signed out is the intent that does survive
+' sign-in, and it has its own stash (stashedDeepLink). Logged as a warning because it should
+' not happen.
 function canActivate(currentRequest as object) as dynamic
   if isValidAndNotEmpty(m.global.user.authToken) then return true
 
   path = ""
   if isValid(currentRequest) and isValid(currentRequest.path) then path = currentRequest.path
-  m.log.warn("guarded route requested while signed out; redirecting to sign-in", path)
-  return { path: "/login" }
+  m.log.warn("guarded route requested while signed out; ignoring it", path)
+  return false
 end function

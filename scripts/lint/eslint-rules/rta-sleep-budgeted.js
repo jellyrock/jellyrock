@@ -100,6 +100,9 @@ export const BUDGETS = new Map([
   ['tests/rta/specs/sign-in-waits.spec.js', 5],
   // The same for a Quick Connect code request canceled with Back.
   ['tests/rta/specs/quick-connect.spec.js', 1],
+  // A guarded route requested while signed out must leave the user picker where it is; no app
+  // field reports a navigation that was refused.
+  ['tests/rta/specs/user-select-empty.spec.js', 1],
   // A search answer delivered to a hidden screen must not end the details spinner; no app
   // field reports a delivery that did not happen.
   ['tests/rta/specs/slow-search.spec.js', 1],

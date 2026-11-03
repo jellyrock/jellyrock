@@ -16,10 +16,15 @@ sub init()
   m.top.isOptionsAvailable = false
   ' Overhang config: declarative field projected onto the overhang by JRScene (registerOverhangData).
   m.top.isLogoVisible = true
-  m.top.findNode("selectUserLabel").text = translate(translationKeys.LabelSelectAUser)
+  m.heading = m.top.findNode("selectUserLabel")
+  m.heading.text = translate(translationKeys.LabelSelectAUser)
+  m.emptyMessage = m.top.findNode("emptyMessage")
+  m.emptyMessage.text = translate(translationKeys.MessageNoUsersToShow)
   m.top.findNode("manualLoginButton").text = translate(translationKeys.ButtonManualLogin)
   m.buttons = m.top.findNode("buttons")
   m.userRow = m.top.findNode("userRow")
+  ' True while there is no user to pick: the buttons are the screen's only focus target.
+  m.isUserListEmpty = false
 
   ' A picked user / the manual-login + quick-connect buttons emit intents the loginRouter
   ' coordinator handles.
@@ -102,11 +107,29 @@ end sub
 
 ' Remove the Quick Connect button and re-center the remaining buttons.
 ' Safe to call repeatedly - removeChild is a no-op once the node is detached.
+'
+' The probe can answer while the group holds focus (always, when the list is empty).
+' Removing the focused button would leave focus on nothing, so the group's index is
+' kept on the same remaining button and the focus is handed back to it.
 sub removeQuickConnectButton(reason as string)
   if not isValid(m.quickConnectButton) then return
   if isValid(m.quickConnectButton.getParent())
+    hadFocus = m.buttons.isInFocusChain()
+    removedIndex = -1
+    for i = 0 to m.buttons.getChildCount() - 1
+      if m.buttons.getChild(i).isSameNode(m.quickConnectButton) then removedIndex = i
+    end for
     m.buttons.removeChild(m.quickConnectButton)
+    focusedIndex = m.buttons.buttonFocused
+    if removedIndex >= 0 and focusedIndex > removedIndex then focusedIndex--
+    if focusedIndex >= m.buttons.getChildCount() then focusedIndex = m.buttons.getChildCount() - 1
+    if focusedIndex < 0 then focusedIndex = 0
+    m.buttons.buttonFocused = focusedIndex
     m.buttons.callFunc("center")
+    if hadFocus
+      button = m.buttons.getChild(focusedIndex)
+      if isValid(button) then button.setFocus(true)
+    end if
   end if
   m.quickConnectButton = invalid
   m.log.info("Quick Connect button removed", reason)
@@ -114,8 +137,32 @@ end sub
 
 sub onItemContentChanged()
   stopLoadingSpinner()
-  m.top.findNode("UserRow").ItemContent = m.top.itemContent
+  users = m.top.itemContent
+  m.isUserListEmpty = not isValidAndNotEmpty(users)
+  ' No one to pick: a message where the tiles go, and a heading that asks for what the
+  ' screen can still do. Quick Connect and Manual Login stay, which is why the router
+  ' brings a server with no users here rather than to the sign-in screen.
+  m.userRow.visible = not m.isUserListEmpty
+  m.emptyMessage.visible = m.isUserListEmpty
+  if m.isUserListEmpty
+    m.heading.text = translate(translationKeys.ButtonSignIn)
+    if m.userRow.isInFocusChain() then m.buttons.setFocus(true)
+    return
+  end if
+  m.heading.text = translate(translationKeys.LabelSelectAUser)
+  m.userRow.ItemContent = users
   redraw()
+end sub
+
+' JRScreen focus hook. With no user to pick, the buttons take focus, at the group's own
+' index (Quick Connect, or Manual Login when the server has Quick Connect off).
+sub restoreScreenFocus()
+  if m.isUserListEmpty
+    m.buttons.setFocus(true)
+    return
+  end if
+  if restoreOverhangIconFocus(true) then return
+  restoreFocus(m.top)
 end sub
 
 ' A user tile was picked. Resolve its id from the rendered list (UserRow fires the
@@ -571,6 +618,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
     m.top.getScene().preLoginIntent = "userBack"
     return true
   else if key = "up"
+    ' Nothing above the buttons when there is no user to pick.
+    if m.isUserListEmpty then return true
     if m.top.focusedChild.isSubType("JRButtonGroup")
       m.top.findNode("UserRow").setFocus(true)
       return true
@@ -618,6 +667,8 @@ sub onDestroy()
 
   ' Clear node references
   m.userRow = invalid
+  m.heading = invalid
+  m.emptyMessage = invalid
   m.quickConnectButton = invalid
   m.quickConnectTimer = invalid
   m.buttons = invalid
