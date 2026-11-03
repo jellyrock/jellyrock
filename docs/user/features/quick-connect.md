@@ -15,7 +15,7 @@ Typing a password with a Roku remote is slow. With Quick Connect, JellyRock show
 
 ## Sign in with a code
 
-1. On the screen where you pick a user, select **Quick Connect**.
+1. On the screen where you pick a user, select **Quick Connect**. If your server doesn't list its users, the screen says so and **Quick Connect** is already selected.
 2. JellyRock shows a code.
 3. In Jellyfin on your other device, choose **Quick Connect** and enter the code.
 4. JellyRock signs you in as soon as you approve the code, and asks whether to save the sign-in on this Roku. Say yes to stay signed in: JellyRock signs you in by itself the next time it starts.

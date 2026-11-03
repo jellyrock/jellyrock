@@ -24,7 +24,7 @@ Every screen on the path, before and after sign-in, is a route in `JRScene`'s ou
 | Step | What runs | Where |
 |---|---|---|
 | 1. Launch | `Main(args)`: global setup, then `reenterLogin()` | `source/main.bs` ([`bootstrap.md`](bootstrap.md#entry-point)) |
-| 2. Sign-in | `beginLogin()` tries the saved server and token; otherwise `/server`, `/users` or `/login` | `source/loginRouter.bs` |
+| 2. Sign-in | `beginLogin()` tries the saved server and token; otherwise `/server` or `/users` | `source/loginRouter.bs` |
 | 3. Bring up Home | `finishLogin()`, then `loadHomeScreen()`, then `replayAfterLogin()` | `loginRouter.bs`, `main.bs`, `replayRoute.bs` |
 | 4. Home | Rows of items; a pick navigates, a Play press starts playback | `components/home/Home.bs` |
 | 5. Library | `/library/:id`, one grid for every library type | `components/ItemGrid/BaseGridView.bs` |
@@ -44,8 +44,7 @@ A press that starts a sign-in step (`serverSubmitted`, `userSelected`, `credenti
 |---|---|
 | `success` | `finishLogin()`: already signed in |
 | `server` | `/server` |
-| `users` | `/users`, with the user list |
-| `login` | `/login`, with the username filled in |
+| `users` | `/users`, with the user list, even an empty one |
 
 `routerNav()` asks the scene to navigate (`routerNavigate` through `callFunc`), since the `sgrouter` namespace resolves only on the render thread.
 
@@ -59,11 +58,13 @@ A press that starts a sign-in step (`serverSubmitted`, `userSelected`, `credenti
 | | `userBack` | `onUserBack()` forgets the server and opens `/server` |
 | | `quickConnectAuthenticated` | `onQuickConnectAuthenticated()` runs `user.Login` on the session Quick Connect returned, then `finishLogin()` |
 | `/login` (`LoginScene`) | `credentialsSubmitted` | `onCredentialsSubmitted()` gets a token, runs `user.Login`, then `finishLogin()` |
-| | `loginBack` | `onLoginBack()` returns to `/users` when the server has public users, else to `/server` |
+| | `loginBack` | `onLoginBack()` returns to `/users` |
 
 `SetServerScreen` finds servers on the LAN by SSDP or takes a typed URL. Back from `/server` on a fresh install reaches the router root, which asks whether to exit ([`navigation.md`](navigation.md#the-back-arbiter--exit-confirmation)).
 
 `UserSelect` shows public users (`/Users/Public`) merged with the users saved for this server (`buildPublicUserList()`), a **Manual Login** button, and a **Quick Connect** button when the server has it enabled (`m.global.server.isQuickConnectEnabled`).
+
+The router sends a server to `/users` even when that list is empty, because Quick Connect is offered only there. `UserSelect` then hides the user row, shows a message in its place under a **Sign In** heading, and gives focus to the first button. When the availability probe removes Quick Connect while it holds focus, `removeQuickConnectButton()` hands focus to the button left.
 
 ### Quick Connect
 
@@ -83,7 +84,7 @@ There are four ways in: a saved token (checked with `AboutMe`), an empty passwor
 
 ## Bringing up Home
 
-`finishLogin()` first checks that `user.Login` left a signed-in session (`user.IsAuthenticated()`). If it did not, it ends the sign-in step's wait as failed, clears the half-written user, shows a toast and returns to `/users` or `/login`. It never forgets the server here: nobody asked it to. Otherwise it starts the fallback-font download when the user needs one (`initializeFallbackFont()`) and calls `loadHomeScreen()`.
+`finishLogin()` first checks that `user.Login` left a signed-in session (`user.IsAuthenticated()`). If it did not, it ends the sign-in step's wait as failed, clears the half-written user, shows a toast and returns to `/users`. It never forgets the server here: nobody asked it to. Otherwise it starts the fallback-font download when the user needs one (`initializeFallbackFont()`) and calls `loadHomeScreen()`.
 
 `loadHomeScreen()` waits for that download when one is running, then calls `createAndShowHomeGroup()`, which calls `replayAfterLogin()`:
 

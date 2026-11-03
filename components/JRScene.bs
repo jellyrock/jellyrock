@@ -430,11 +430,10 @@ end function
 ' fresh router when none exists on the scene.
 '
 ' The router hosts the FULL app: the pre-login flow (/server, /users, /login) as well as
-' the post-login content/playback routes. The pre-login routes carry no canActivate guards
-' (the redirect target /login is one of them); the post-login routes carry the AuthManager
-' guard. Pre-login back transitions are coordinator-driven (loginRouter), not
-' router-history-driven, because cold start can enter directly at /users with no /server in
-' history.
+' the post-login content/playback routes. The pre-login routes carry no canActivate guards;
+' the post-login routes carry the AuthManager guard, which refuses them while signed out.
+' Pre-login back transitions are coordinator-driven (loginRouter), not router-history-driven,
+' because cold start can enter directly at /users with no /server in history.
 sub initRouter()
   if isValid(sgrouter.getRouter()) then return
 
@@ -470,8 +469,8 @@ sub initRouter()
   end if
 
   ' The auth guard. The SAME node we put on m.global in setGlobalNodes, registered by NODE
-  ' REFERENCE. Added to every POST-login route below; the pre-login routes carry no guard
-  ' (their redirect target, /login, is one of them).
+  ' REFERENCE. Added to every POST-login route below; the pre-login routes carry no guard,
+  ' because they are where a signed-out viewer already is (see AuthManager.canActivate).
   guard = [m.global.AuthManager]
 
   sgrouter.initialize({ outlet: m.top.findNode("routerOutlet") })

@@ -1,0 +1,100 @@
+namespace tests
+
+  ' UserSelect with no user to pick: a server that lists no users, with none saved on this
+  ' Roku. The router brings it here rather than to the sign-in screen, because Quick Connect
+  ' is offered only here. Focus is asserted on a MOUNTED screen: hasFocus() is false for a
+  ' detached node whatever the code does.
+  @suite("UserSelect - empty user list")
+  class UserSelectEmptyListTests extends tests.BaseTestSuite
+
+    private userSelect as object
+    private buttons as object
+    private mountedIn as object
+
+    protected override function beforeEach()
+      super.beforeEach()
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+      m.global.server.isQuickConnectEnabled = true
+    end function
+
+    protected override function afterEach()
+      if isValid(m.mountedIn)
+        m.mountedIn.removeChild(m.userSelect)
+        m.mountedIn = invalid
+      end if
+      m.buttons = invalid
+      m.userSelect = invalid
+      m.global.server.isQuickConnectEnabled = true
+      super.afterEach()
+    end function
+
+    private sub mount(users as object)
+      m.userSelect = CreateObject("roSGNode", "UserSelect")
+      m.buttons = m.userSelect.findNode("buttons")
+      m.mountedIn = m.top.getScene()
+      m.mountedIn.appendChild(m.userSelect)
+      m.userSelect.itemContent = users
+      m.userSelect.callFunc("handleFocus", {})
+    end sub
+
+    private function focusedButtonId() as string
+      for i = 0 to m.buttons.getChildCount() - 1
+        if m.buttons.getChild(i).hasFocus() then return m.buttons.getChild(i).id
+      end for
+      return "<no button focused>"
+    end function
+
+    private function makeUser(name as string) as object
+      user = CreateObject("roSGNode", "PublicUserData")
+      user.id = "id-" + name
+      user.name = name
+      return user
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("no user to pick")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows the message in place of the user row, under a Sign In heading")
+    function _()
+      m.mount([])
+
+      m.assertTrue(m.userSelect.findNode("emptyMessage").visible, "message shown")
+      m.assertFalse(m.userSelect.findNode("userRow").visible, "user row hidden")
+      m.assertEqual(m.userSelect.findNode("selectUserLabel").text, translate(translationKeys.ButtonSignIn))
+    end function
+
+    @it("focuses Quick Connect, the first button")
+    function _()
+      m.mount([])
+
+      m.assertEqual(m.focusedButtonId(), "quickConnect")
+    end function
+
+    @it("focuses Manual Login when the server has Quick Connect off")
+    function _()
+      m.global.server.isQuickConnectEnabled = false
+      m.mount([])
+
+      m.assertEqual(m.focusedButtonId(), "manualLoginButton")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("users to pick")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows the user row and the Select a User heading, with no message")
+    function _()
+      m.mount([m.makeUser("alice")])
+
+      m.assertFalse(m.userSelect.findNode("emptyMessage").visible, "message hidden")
+      m.assertTrue(m.userSelect.findNode("userRow").visible, "user row shown")
+      m.assertEqual(m.userSelect.findNode("selectUserLabel").text, translate(translationKeys.LabelSelectAUser))
+    end function
+
+  end class
+
+end namespace

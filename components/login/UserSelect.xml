@@ -5,6 +5,9 @@
 
     <UserRow id="userRow" translation="[130, 360]" />
 
+    <!-- Where the user tiles go, when the server lists no users and none are saved here. -->
+    <LabelSecondaryLarge id="emptyMessage" text="" wrap="true" horizAlign="center" vertAlign="center" width="1520" height="128" translation="[200, 446]" visible="false" />
+
     <JRButtonGroup id="buttons" translation="[0,850]">
       <TextButton id="quickConnect" minWidth="300" text="" />
       <TextButton id="manualLoginButton" minWidth="300" text="" />
