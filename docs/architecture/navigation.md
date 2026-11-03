@@ -132,7 +132,7 @@ It does not navigate. Each entry point that navigates calls it first (`routerNav
 | `photo` | `/photo` | `PhotoDetails` | guard |
 | `audio` | `/audio` | `AudioPlayerView` | guard |
 
-"Guard" is the `AuthManager` `canActivate` check ([below](#the-auth-guard)). The pre-login routes have none, because `/login` is where the guard sends a signed-out user. Every route also gets `suspendMode: "show"` ([the screen swap](#the-screen-swap)). Code that builds a route by name, such as `JRScene.onDeepLinkResolved` checking for `library`, depends on the names.
+"Guard" is the `AuthManager` `canActivate` check ([below](#the-auth-guard)). The pre-login routes have none: they are where a signed-out user already is. Every route also gets `suspendMode: "show"` ([the screen swap](#the-screen-swap)). Code that builds a route by name, such as `JRScene.onDeepLinkResolved` checking for `library`, depends on the names.
 
 What the flags mean:
 
@@ -163,13 +163,13 @@ Steps 2 and 3 run in one synchronous call, so nothing renders between them. Goin
 function canActivate(currentRequest as object) as dynamic
   if isValidAndNotEmpty(m.global.user.authToken) then return true
   ' ...logs the requested path as a warning...
-  return { path: "/login" }
+  return false
 end function
 ```
 
-With no token, it returns `{ path: "/login" }`. The router treats any associative array with a non-empty `path` as a redirect (`sgrouter_runGuardChecks`), the shape `sgrouter.createRedirectCommand("/login")` builds, so the guard node does not need the router namespace.
+With no token, it returns `false`. The router rejects the navigation (`sgrouter_runGuardChecks`), and `JRScene.failNavigation()` puts focus back on the current screen, so the viewer stays where they are.
 
-**It keeps nothing for after sign-in.** Nothing a person can do while signed out requests a guarded route, because every screen that navigates to one is torn down at sign-out. So a request that reaches the guard is a stray, such as a late remote-control command, and the warning it logs means something went wrong. The guard used to store the path and replay it after the next sign-in, which sent a user who signed in by hand to Search instead of Home. The decision is `sign-in-lands-on-home` in [`decisions.md`](../decisions.md).
+**It moves the viewer nowhere and keeps nothing for after sign-in.** The session ends only through `user.Logout()`, and every caller then routes to a pre-login screen, so a signed-out viewer is always on one already. It used to redirect to `/login`, which skipped the user picker, where Quick Connect is, and landed on a sign-in screen even with no server saved. Nothing a person can do while signed out requests a guarded route, because every screen that navigates to one is torn down at sign-out. So a request that reaches the guard is a stray, such as a late remote-control command, and the warning it logs means something went wrong. The guard used to store the path and replay it after the next sign-in, which sent a user who signed in by hand to Search instead of Home. The decision is `sign-in-lands-on-home` in [`decisions.md`](../decisions.md).
 
 #### What sign-in opens
 

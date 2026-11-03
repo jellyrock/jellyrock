@@ -104,9 +104,11 @@ sub setGlobalNodes()
   ' the point rtaSignInHoldAt names, as a slow server would make it (its requests bypass the
   ' pool, so rtaFailRequests cannot slow it; the points are listed at rtaSignInHold).
   ' rtaSignInCount: how many sign-ins were sent, so a spec can tell one sign-in from two.
-  ' Specs write the first two and read the count.
+  ' Specs write the first two and read the count. rtaEmptyUserList: the user picker's list
+  ' comes back empty, as on a server that lists no users with none saved on this device
+  ' (buildPublicUserList), which the demo server never is.
   #if ENABLE_RTA
-    m.global.addFields({ rtaSkeletonHoldMs: 0, rtaFailRequests: [], rtaGridPageSize: 0, rtaHeldRequests: 0, rtaForceStillWatching: false, rtaSignInHoldMs: 0, rtaSignInHoldAt: "", rtaSignInCount: 0 })
+    m.global.addFields({ rtaSkeletonHoldMs: 0, rtaFailRequests: [], rtaGridPageSize: 0, rtaHeldRequests: 0, rtaForceStillWatching: false, rtaSignInHoldMs: 0, rtaSignInHoldAt: "", rtaSignInCount: 0, rtaEmptyUserList: false })
   #end if
 
   ' First, so it exists before any launch below could need it.

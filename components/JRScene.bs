@@ -430,9 +430,8 @@ end function
 ' fresh router when none exists on the scene.
 '
 ' The router hosts the FULL app: the pre-login flow (/server, /users, /login) as well as
-' the post-login content/playback routes. The pre-login routes carry no canActivate guards
-' (the redirect target /login is one of them); the post-login routes carry the AuthManager
-' guard. Pre-login back transitions are coordinator-driven (loginRouter), not
+' the post-login content/playback routes. The pre-login routes carry no canActivate guards;
+' the post-login routes carry the AuthManager guard, which refuses them while signed out. Pre-login back transitions are coordinator-driven (loginRouter), not
 ' router-history-driven, because cold start can enter directly at /users with no /server in
 ' history.
 sub initRouter()

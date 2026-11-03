@@ -2,7 +2,7 @@
 <!-- Auth guard for post-login routes. Created on m.global in setGlobalNodes BEFORE the
      router's addRoutes, and registered by NODE REFERENCE as the canActivate guard on every
      post-login route (/, details, library, search, settings, play, photo, audio). A signed-out
-     request for one of them is redirected to sign-in and not kept (see canActivate). The node
+     request for one of them is refused and not kept (see canActivate). The node
      lives on m.global because it also holds the one intent that does survive sign-in: a deep
      link that arrived while signed out (stashedDeepLink), which the main-thread replay helper
      (source/replayRoute.bs) opens after the user signs in. -->

@@ -105,8 +105,7 @@ end function
 
 ' Decide the user step given a valid server. Returns one of:
 '   { status: "success" }                already authenticated (fast path)
-'   { status: "users", users: [...] }    show the user picker
-'   { status: "login", username: "" }    go straight to manual sign-in
+'   { status: "users", users: [...] }    show the user picker, even with no users
 ' enterDecision maps each status to its route; the decision carries only payload.
 ' Covers both the active-user branch and the no-active-user branch.
 function resolveUser() as object
@@ -114,7 +113,7 @@ function resolveUser() as object
   activeUser = getSetting("active_user")
 
   if not isValid(activeUser)
-    ' No active user: build the public + saved user list and decide.
+    ' No active user: build the public + saved user list for the picker.
     print "No active user found in registry"
     ' The user picker's whole network wait. It happens HERE, before /users is routed to, so
     ' `UserSelect` mounts with its list already in hand, which is why that screen carries no
@@ -122,12 +121,10 @@ function resolveUser() as object
     screenLoad.pending("users")
     users = buildPublicUserList()
     screenLoad.resolve("users")
-    m.loginCtx = { hasPublicUsers: users.count() > 0 }
-    if users.count() > 0
-      return { status: "users", users: users }
-    end if
-    ' No users to pick: go straight to manual sign-in.
-    return { status: "login", username: "" }
+    ' The picker even when the list is empty: Quick Connect lives there, not on the sign-in
+    ' screen, so a server that lists no users still gets offered it. UserSelect shows its own
+    ' empty state.
+    return { status: "users", users: users }
   end if
 
   ' Active user present: try the saved token, then a no-password login. All sync.
@@ -183,6 +180,10 @@ end function
 ' plus saved users for this server id not already in the public list. Returns an
 ' array of PublicUserData nodes.
 function buildPublicUserList() as object
+  #if ENABLE_RTA
+    ' A server that lists no users, with none saved here: the demo server always lists some.
+    if m.global.rtaEmptyUserList = true then return []
+  #end if
   publicUsers = GetPublicUsers()
   numPubUsers = 0
   if isValid(publicUsers) then numPubUsers = publicUsers.count()
@@ -273,8 +274,6 @@ sub enterDecision(decision as object, signInWait = invalid as dynamic, variant =
     routerNav("/server", {}, signInWait)
   else if decision.status = "users"
     routerNav("/users", { users: decision.users }, signInWait)
-  else if decision.status = "login"
-    routerNav("/login", { username: decision.username }, signInWait)
   end if
 end sub
 
@@ -571,17 +570,10 @@ sub onCredentialsSubmitted()
   view.alert = translate(translationKeys.ErrorLoginAttemptFailed)
 end sub
 
-' Back from LoginScene: return to
-' the user picker if there were public users, otherwise drop back to server select.
+' Back from LoginScene: return to the user picker, where every route to sign-in starts.
+' Back from the picker is what changes server (onUserBack).
 sub onLoginBack()
-  hasUsers = isValid(m.loginCtx) and m.loginCtx.hasPublicUsers = true
-  if hasUsers
-    routerNav("/users", { users: buildPublicUserList() })
-  else
-    server.Delete()
-    unsetSetting("server")
-    routerNav("/server", {})
-  end if
+  routerNav("/users", { users: buildPublicUserList() })
 end sub
 
 ' Login complete: run the post-login bootstrap (per-user font processing) and bring up
@@ -628,21 +620,10 @@ sub finishLogin(signInWait = invalid as dynamic)
     ' and land on top of the incoming screen while contending with it for focus.
     ' Toasts take no focus. Same main-thread reporting replayRoute.bs uses.
     displayToast(translate(translationKeys.ErrorLoginAttemptFailed), "error")
-    ' Not onLoginBack(), on purpose, though it makes the same picker-vs-fallback
-    ' choice: its fallback branch runs `server.Delete()` + `unsetSetting("server")`.
-    ' That is right for the case it was written for (the user pressed Back from
-    ' sign-in because they want a different server) and wrong here, where nobody
-    ' asked to forget anything. On a private server with no public users it would
-    ' destroy a working server config over a failed sign-in.
-    '
-    ' So: the picker when this server has public users to pick from, and manual
-    ' sign-in when it does not, which is the same fallback onUserSelected reaches
-    ' for when a no-password login is refused. The server is left alone either way.
-    if isValid(m.loginCtx) and m.loginCtx.hasPublicUsers = true
-      routerNav("/users", { users: buildPublicUserList() })
-    else
-      routerNav("/login", { username: "" })
-    end if
+    ' Back to the picker, which offers every way to sign in (Quick Connect included)
+    ' whether or not the server lists users. The server is left alone: nobody asked
+    ' to forget it.
+    routerNav("/users", { users: buildPublicUserList() })
     return
   end if
 
