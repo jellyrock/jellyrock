@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (playback) Play the episode once when Repeat is picked during a Cinema Mode intro ([#1313](https://github.com/jellyrock/jellyrock/pull/1313))
 - (playback) Play Cinema Mode intros, drop the stale queue slot ([#1312](https://github.com/jellyrock/jellyrock/pull/1312))
 - (syncplay) Ask the group to wait after a seek that cannot land ([#1306](https://github.com/jellyrock/jellyrock/pull/1306))
 - Register Roku's memory monitor and ship only runtime files ([#1299](https://github.com/jellyrock/jellyrock/pull/1299))
