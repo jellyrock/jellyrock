@@ -1,0 +1,117 @@
+import "pkg:/source/api/items.bs"
+import "pkg:/source/enums/SubtitleSelection.bs"
+
+namespace tests
+
+  ' buildPlaybackInfoPostData: a retry that asks the server not to copy the video stream.
+  ' A copied video can only be cut at the source's keyframes, so a long-GOP source yields HLS
+  ' segments larger than the device's whole video buffer. A re-encode forces a keyframe per
+  ' segment, which keeps them to the length asked for.
+  @suite("Items.bs - buildPlaybackInfoPostData() no video copy")
+  class ItemsPlaybackInfoVideoCopyTests extends tests.BaseTestSuite
+
+    ' A 150 Mbps, two hour source. The per-segment budget of a normal-memory device is below
+    ' what 1 s of it needs, so calculateOptimalTranscodingParams asks for a lower bitrate, which
+    ' is under the source bitrate plus 10%.
+    private function versions() as object
+      return {
+        mediaSourcesData: {
+          mediaSources: [
+            {
+              Id: "longGop",
+              Bitrate: 150000000,
+              RunTimeTicks: 72000000000&,
+              MediaStreams: [{ Type: "Video", index: 0, Codec: "hevc" }]
+            }
+          ]
+        }
+      }
+    end function
+
+    private function build(disallowVideoCopy as boolean) as object
+      return buildPlaybackInfoPostData("longGop", -1, SubtitleSelection.NONE, 0&, m.versions(), false, false, invalid, disallowVideoCopy)
+    end function
+
+    private function videoTranscodingProfiles(postData as object) as object
+      profiles = []
+      for each profile in postData.DeviceProfile.TranscodingProfiles
+        if profile.Type = "Video" and isValid(profile.VideoCodec) then profiles.push(profile)
+      end for
+      return profiles
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("AllowVideoStreamCopy")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is sent as false when the request disallows a video copy")
+    function _()
+      postData = m.build(true)
+
+      m.assertTrue(postData.doesExist("AllowVideoStreamCopy"))
+      m.assertFalse(postData.AllowVideoStreamCopy)
+    end function
+
+    @it("is left out of a normal request")
+    function _()
+      m.assertFalse(m.build(false).doesExist("AllowVideoStreamCopy"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("MaxStreamingBitrate")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("takes the buffer cap even below the source bitrate when the video is not copied")
+    function _()
+      params = calculateOptimalTranscodingParams(150000000&, 7200, getDeviceBufferSize())
+      m.assertTrue(params.maxBitrate > 0 and params.maxBitrate < 150000000, "the fixture needs a cap below the source bitrate")
+
+      m.assertEqual(m.build(true).DeviceProfile.MaxStreamingBitrate, params.maxBitrate)
+    end function
+
+    @it("keeps the profile's own limit when the request copies, as before")
+    function _()
+      m.assertEqual(m.build(false).DeviceProfile.MaxStreamingBitrate, 140000000)
+    end function
+
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("VideoCodec of the video transcoding profiles")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("lists hevc before h264 when the video is not copied, so a server that encodes HEVC keeps 4K")
+    function _()
+      profiles = m.videoTranscodingProfiles(m.build(true))
+
+      m.assertTrue(profiles.count() > 0, "the fixture needs a video transcoding profile")
+      for each profile in profiles
+        codecs = profile.VideoCodec.split(",")
+        m.assertTrue(codecIndex(codecs, "hevc") >= 0, "hevc is listed")
+        m.assertTrue(codecIndex(codecs, "hevc") < codecIndex(codecs, "h264"), "hevc comes before h264 in " + profile.VideoCodec)
+      end for
+    end function
+
+    @it("keeps the profile's own order in a normal request")
+    function _()
+      copying = m.videoTranscodingProfiles(m.build(false))
+      reencoding = m.videoTranscodingProfiles(m.build(true))
+
+      m.assertTrue(copying.count() > 0, "the fixture needs a video transcoding profile")
+      for each profile in copying
+        codecs = profile.VideoCodec.split(",")
+        m.assertTrue(codecIndex(codecs, "h264") < codecIndex(codecs, "hevc"), "h264 stays first in " + profile.VideoCodec)
+      end for
+      m.assertEqual(reencoding.count(), copying.count())
+    end function
+
+  end class
+
+  ' The position of `codec` in a list of codec names, or -1.
+  function codecIndex(codecs as object, codec as string) as integer
+    for i = 0 to codecs.count() - 1
+      if codecs[i] = codec then return i
+    end for
+    return -1
+  end function
+
+end namespace

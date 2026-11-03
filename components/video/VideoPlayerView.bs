@@ -10,6 +10,7 @@ import "pkg:/source/enums/LiveStreamStage.bs"
 import "pkg:/source/enums/MediaSegmentAction.bs"
 import "pkg:/source/enums/MediaSegmentType.bs"
 import "pkg:/source/enums/PlaybackEndReport.bs"
+import "pkg:/source/enums/PlaybackErrorRetry.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/syncplay/syncPlayHooks.bs"
@@ -26,6 +27,7 @@ import "pkg:/source/utils/playbackCaps.bs"
 import "pkg:/source/utils/playbackCheckIn.bs"
 import "pkg:/source/utils/playbackEnd.bs"
 import "pkg:/source/utils/playbackErrorInfo.bs"
+import "pkg:/source/utils/playbackRetry.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
 import "pkg:/source/utils/queueRepeat.bs"
 import "pkg:/source/utils/screenReadiness.bs"
@@ -1245,6 +1247,7 @@ sub onVideoContentLoaded(event as object)
   m.top.cachedPlaybackInfo = videoContent[0].playbackInfo
   m.top.isShortcut = isValid(videoContent[0].meta) and isShortcutPath(videoContent[0].meta.path)
   m.top.isDoviDirectPlayFallbackAvailable = isValid(videoContent[0].isDoviDirectPlayFallbackAvailable) and videoContent[0].isDoviDirectPlayFallbackAvailable
+  m.top.isReencodeFallbackAvailable = isValid(videoContent[0].isReencodeFallbackAvailable) and videoContent[0].isReencodeFallbackAvailable
   m.top.isTranscodeAvailable = isValid(videoContent[0].isTranscodeAvailable) and videoContent[0].isTranscodeAvailable
 
   ' Not a user selection either: without this, onVideoSourceChange reloads in a loop.
@@ -1901,7 +1904,8 @@ end sub
 ' Used by error handlers to retry without exiting the player.
 ' @param {boolean} bypassDovi - skips DoVi container profile so the server can grant direct play
 ' @param {boolean} forceTranscode - disables direct play so the server returns a transcode URL
-sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
+' @param {boolean} disallowVideoCopy - asks the server to re-encode the video instead of copying it
+sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean, disallowVideoCopy = false as boolean)
   ' Only a stream that has played has a position worth saving. A retry before the first
   ' frame (direct play failing over to transcode) has none of its own, and saving what the
   ' player reads then would replace the resume point the queue already holds.
@@ -1921,7 +1925,7 @@ sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
   ' to transcode reports both round trips, which is exactly why its first frame took as
   ' long as it did. `buffer` stays open across the retry (`pending` keeps the first
   ' declaration), so it spans the whole wait rather than restarting mid-way.
-  startVideoLoad(m.top.audioIndex, m.top.SelectedSubtitle, bypassDovi, forceTranscode)
+  startVideoLoad(m.top.audioIndex, m.top.SelectedSubtitle, bypassDovi, forceTranscode, disallowVideoCopy)
 end sub
 
 ' Close the live stream a load opened when no player will ever play it: the load failed, or it is
@@ -1970,7 +1974,8 @@ end function
 ' @param {integer} subtitleIndex - server index of the subtitle stream, or a SubtitleSelection value
 ' @param {boolean} bypassDovi - skip the DoVi container profile (retryPlayback)
 ' @param {boolean} forceTranscode - disable direct play (retryPlayback)
-sub startVideoLoad(audioStreamIndex as integer, subtitleIndex as integer, bypassDovi = false as boolean, forceTranscode = false as boolean)
+' @param {boolean} disallowVideoCopy - ask the server to re-encode the video (retryPlayback)
+sub startVideoLoad(audioStreamIndex as integer, subtitleIndex as integer, bypassDovi = false as boolean, forceTranscode = false as boolean, disallowVideoCopy = false as boolean)
   if isValid(m.LoadMetaDataTask)
     m.LoadMetaDataTask.unobserveField("content")
     releaseVideoLoad(m.LoadMetaDataTask)
@@ -1985,7 +1990,8 @@ sub startVideoLoad(audioStreamIndex as integer, subtitleIndex as integer, bypass
     selectedSubtitleIndex: subtitleIndex,
     mediaSourceId: m.videoLoadMediaSourceId,
     shouldBypassDoviPreservation: bypassDovi,
-    shouldForceTranscoding: forceTranscode
+    shouldForceTranscoding: forceTranscode,
+    shouldDisallowVideoCopy: disallowVideoCopy
   })
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
   ' Every run declares the fill, because the handler cannot tell which call started it. A
@@ -2051,16 +2057,26 @@ sub onState()
 
     print m.top.errorInfo
 
-    ' Detect a Roku video buffer overflow (buffer:loop: source) caused by DoVi transcoding.
-    ' When DoVi preservation forced a transcode and the HLS segments overflow the device buffer,
-    ' retry with direct play by bypassing the DoVi container profile injection.
+    ' Detect a Roku video buffer overflow (buffer:loop: source): one HLS segment is larger than
+    ' the device's whole video buffer. Two causes have a retry (chooseErrorRetry decides which):
+    ' - DoVi preservation forced the transcode: retry with direct play by bypassing the DoVi
+    '   container profile injection.
+    ' - The server copied the video: it can only cut a segment at the source's keyframes, so a
+    '   long-GOP source gives an oversized one. Retry with the video re-encoded, which forces a
+    '   keyframe per segment.
     isBufferLoopError = isValid(m.top.errorInfo) and isValid(m.top.errorInfo.source) and m.top.errorInfo.source = "buffer:loop:"
 
-    if isBufferLoopError and m.top.isDoviDirectPlayFallbackAvailable
+    retry = chooseErrorRetry(isBufferLoopError, m.top.isDoviDirectPlayFallbackAvailable, m.top.isReencodeFallbackAvailable, m.isPlayReported, m.top.isTranscodeAvailable)
+
+    if retry = PlaybackErrorRetry.DOVI_DIRECT_PLAY
       m.log.warn("Buffer overflow in DoVi transcode; falling back to direct play", m.currentItem.id)
       m.top.isDoviDirectPlayFallbackAvailable = false ' prevent retry loop if direct play also fails
       retryPlayback(true, false)
-    else if not m.isPlayReported and m.top.isTranscodeAvailable
+    else if retry = PlaybackErrorRetry.REENCODE_VIDEO
+      m.log.warn("Video buffer overflow on a remux; retrying with the video re-encoded", m.currentItem.id)
+      m.top.isReencodeFallbackAvailable = false ' prevent retry loop if the re-encode also fails
+      retryPlayback(false, false, true)
+    else if retry = PlaybackErrorRetry.TRANSCODE
       m.log.warn("Direct play failed; falling back to transcode", m.currentItem.id)
       m.top.isTranscodeAvailable = false ' prevent retry loop if transcode also fails
       retryPlayback(false, true)

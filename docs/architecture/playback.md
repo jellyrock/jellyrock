@@ -61,7 +61,7 @@ related-files:
   - source/syncplay/syncPlayQueue.bs
   - source/syncplay/syncPlayHooks.bs
   - source/syncplay/syncPlayState.bs
-last-reviewed: 2026-11-02
+last-reviewed: 2026-11-03
 ---
 
 # Video and audio playback
@@ -596,6 +596,14 @@ Roku does not play Dolby Vision from an MKV container, so JellyRock asks for a r
 
 - With `playbackPreserveDovi` on, `buildPlaybackInfoPostData()` adds the MKV container condition `doviRemuxContainerProfile()` returns (`VideoRangeType NotEquals` the stream's range) that keeps the server from direct-playing the file, so it remuxes it into another container. It does this only when the device reports Dolby Vision and plays 4K, the stream's range type names Dolby Vision, the container is MKV, the codec is not AV1 and the server is tier 2 or later. A transcode reason of `VideoRangeTypeNotSupported` marks the fallback as available.
 - If that stream fails with a `buffer:loop:` source error, the player retries with `shouldBypassDoviPreservation = true`, which asks again without the condition and so allows direct play. `isRetrying` keeps `PlayerHostView` from advancing or exiting during the retry, and `isDoviPreservationBypassed` tells the report not to blame the setting.
+
+### A remux that overflows the video buffer
+
+A copied video stream can only be cut at the source's keyframes, so a source with keyframes several seconds apart gives HLS segments larger than Roku's whole video buffer, whatever `SegmentLength` asks for (`calculateOptimalTranscodingParams()` sizes segments by bitrate alone). Roku then fails with a `buffer:loop:` source error, and the player retries once with the video re-encoded, which forces a keyframe every segment:
+
+- `chooseErrorRetry()` (`source/utils/playbackRetry.bs`) picks the retry. The Dolby Vision retry above comes first; the re-encode retry is offered on any transcoded load that did not already ask for one (`isReencodeFallbackAvailable`).
+- The retry sends `AllowVideoStreamCopy = false`, applies the buffer bitrate cap even below the source bitrate, and lists HEVC before H.264 (`hevcFirstCodecList()`), so a server that encodes HEVC keeps 4K.
+- A server that does not encode HEVC (Jellyfin's default) re-encodes to H.264 at the source's size, and Roku decodes H.264 only up to level 4.2. A width limit in a codec profile applies to every codec, so the profile cannot cap H.264 alone. Instead the retry's load reads the master playlist's codec and size (`hlsMasterVariant()`, `needsH264ResolutionCap()`) and, for H.264 above 1080p, asks once more with a 1080p cap. Any failure keeps the first answer.
 
 ## Subtitles
 

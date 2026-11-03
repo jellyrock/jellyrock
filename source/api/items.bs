@@ -9,10 +9,11 @@ import "pkg:/source/utils/audioSeek.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/playbackRetry.bs"
 import "pkg:/source/utils/streamSelection.bs"
 
-function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean)
-  res = ItemPostPlaybackInfoResponse(id, mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding)
+function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, disallowVideoCopy = false as boolean)
+  res = ItemPostPlaybackInfoResponse(id, mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding, 0, invalid, disallowVideoCopy)
   if isValid(res) and res.ok then return res.json
   return invalid
 end function
@@ -22,9 +23,10 @@ end function
 '
 ' @param {integer} timeoutMs - the request's HTTP limit (apiTimeout); 0 keeps the default
 ' @param {dynamic} caps - the viewer's quality caps for this playback (playbackCaps.bs), or invalid
+' @param {boolean} disallowVideoCopy - ask the server to re-encode the video (see buildPlaybackInfoPostData)
 ' @return the pool response AA, or invalid when the caller's wait ran out
-function ItemPostPlaybackInfoResponse(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, timeoutMs = 0 as integer, caps = invalid as dynamic) as dynamic
-  postData = buildPlaybackInfoPostData(mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding, caps)
+function ItemPostPlaybackInfoResponse(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, timeoutMs = 0 as integer, caps = invalid as dynamic, disallowVideoCopy = false as boolean) as dynamic
+  postData = buildPlaybackInfoPostData(mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding, caps, disallowVideoCopy)
   req = GetApi().BuildPostPlaybackInfoRequest(id, postData)
   if isValid(req) and timeoutMs > 0 then req.timeoutMs = timeoutMs
   return fetchRes(req, "playbackInfo")
@@ -36,8 +38,12 @@ end function
 '
 ' @param {dynamic} caps - the viewer's quality caps for this playback (playbackCaps.bs), or
 '                        invalid to use Settings alone
+' @param {boolean} disallowVideoCopy - send AllowVideoStreamCopy=false and the buffer bitrate cap
+'                        even when it is below the source bitrate. A copied video can only be cut at
+'                        the source's keyframes, so a long-GOP source gives HLS segments larger than
+'                        the device's whole video buffer; a re-encode forces a keyframe per segment.
 ' @return {object} the POST body for BuildPostPlaybackInfoRequest
-function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, caps = invalid as dynamic) as object
+function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, caps = invalid as dynamic, disallowVideoCopy = false as boolean) as object
   globalUser = m.global.user
   postData = {
     "UserId": globalUser.id,
@@ -87,9 +93,10 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
       ' Reduce max streaming bitrate only when segment length alone isn't enough.
       ' Never set MaxStreamingBitrate below the reported source bitrate + 10% headroom:
       ' Jellyfin would reject a remux/direct-stream as exceeding the limit.
+      ' A re-encode (disallowVideoCopy) has no such risk, so the cap applies at any bitrate.
       if transcodingParams.maxBitrate > 0
         minAllowedBitrate& = sourceBitrate& * 11& \ 10&
-        if transcodingParams.maxBitrate >= minAllowedBitrate&
+        if transcodingParams.maxBitrate >= minAllowedBitrate& or disallowVideoCopy
           postData.DeviceProfile.MaxStreamingBitrate = transcodingParams.maxBitrate
         end if
       end if
@@ -107,6 +114,18 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
   end if
 
   applyMediaSourceToPostData(postData, mediaSourceId, forceTranscoding)
+
+  if disallowVideoCopy
+    postData.AllowVideoStreamCopy = false
+    ' The server takes the first codec it may encode, so list HEVC first: a server that allows
+    ' HEVC encoding keeps 4K, and one that does not falls to H.264 (hlsMasterVariant tells the
+    ' load when that needs a resolution cap).
+    for each profile in postData.DeviceProfile.TranscodingProfiles
+      if isValid(profile.Type) and profile.Type = "Video" and isValid(profile.VideoCodec)
+        profile.VideoCodec = hevcFirstCodecList(profile.VideoCodec)
+      end if
+    end for
+  end if
 
   mediaStreams = invalid
   if isValid(playedSource) and isValid(playedSource.MediaStreams)

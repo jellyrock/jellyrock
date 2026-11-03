@@ -1,0 +1,97 @@
+import "pkg:/source/utils/hlsMaster.bs"
+
+namespace tests
+
+  @suite("hlsMaster.bs - hlsMasterVariant() and needsH264ResolutionCap()")
+  class HlsMasterTests extends tests.BaseTestSuite
+
+    private function master(streamInf as string) as string
+      return "#EXTM3U" + chr(10) + "#EXT-X-STREAM-INF:" + streamInf + chr(10) + "main.m3u8?x=1" + chr(10)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hlsMasterVariant")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads the codecs and size of an H.264 4K variant")
+    function _()
+      text = m.master("BANDWIDTH=94208000,AVERAGE-BANDWIDTH=94208000,CODECS=" + chr(34) + "avc1.42E02A,ec-3" + chr(34) + ",RESOLUTION=3840x2160,FRAME-RATE=23.976")
+      variant = hlsMasterVariant(text)
+
+      m.assertEqual(variant.codecs, "avc1.42E02A,ec-3")
+      m.assertEqual(variant.width, 3840)
+      m.assertEqual(variant.height, 2160)
+    end function
+
+    @it("reads the first variant when the playlist lists several")
+    function _()
+      text = m.master("CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34) + ",RESOLUTION=1920x1080")
+      text += "#EXT-X-STREAM-INF:CODECS=" + chr(34) + "hvc1.2.4.L153.B0,ec-3" + chr(34) + ",RESOLUTION=3840x2160" + chr(10) + "other.m3u8" + chr(10)
+
+      m.assertEqual(hlsMasterVariant(text).width, 1920)
+    end function
+
+    @it("reads a playlist with Windows line endings")
+    function _()
+      text = "#EXTM3U" + chr(13) + chr(10) + "#EXT-X-STREAM-INF:CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34) + ",RESOLUTION=1280x720" + chr(13) + chr(10) + "main.m3u8" + chr(13) + chr(10)
+
+      m.assertEqual(hlsMasterVariant(text).height, 720)
+    end function
+
+    @it("is invalid for an empty string")
+    function _()
+      m.assertInvalid(hlsMasterVariant(""))
+    end function
+
+    @it("is invalid for text that is not a playlist")
+    function _()
+      m.assertInvalid(hlsMasterVariant("<html>502 Bad Gateway</html>"))
+    end function
+
+    @it("is invalid for a variant with no CODECS")
+    function _()
+      m.assertInvalid(hlsMasterVariant(m.master("BANDWIDTH=1000,RESOLUTION=1920x1080")))
+    end function
+
+    @it("is invalid for a variant with no RESOLUTION")
+    function _()
+      m.assertInvalid(hlsMasterVariant(m.master("CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34))))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("needsH264ResolutionCap")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for H.264 above 1080p")
+    function _()
+      m.assertTrue(needsH264ResolutionCap({ codecs: "avc1.42E02A,ec-3", width: 3840, height: 2160 }))
+    end function
+
+    @it("is true for H.264 wider than 1920 at a short height")
+    function _()
+      m.assertTrue(needsH264ResolutionCap({ codecs: "avc1.640033,ac-3", width: 3840, height: 1600 }))
+    end function
+
+    @it("is false for HEVC at 4K")
+    function _()
+      m.assertFalse(needsH264ResolutionCap({ codecs: "hvc1.2.4.L153.B0,ec-3", width: 3840, height: 2160 }))
+    end function
+
+    @it("is false for H.264 at 1080p")
+    function _()
+      m.assertFalse(needsH264ResolutionCap({ codecs: "avc1.640028,ec-3", width: 1920, height: 1080 }))
+    end function
+
+    @it("is false for no variant")
+    function _()
+      m.assertFalse(needsH264ResolutionCap(invalid))
+    end function
+
+    @it("is false for a variant read from garbage")
+    function _()
+      m.assertFalse(needsH264ResolutionCap(hlsMasterVariant("garbage")))
+    end function
+
+  end class
+
+end namespace

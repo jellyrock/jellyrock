@@ -1,0 +1,12 @@
+' Which retry VideoPlayerView takes for a Video node error (chooseErrorRetry in
+' source/utils/playbackRetry.bs).
+enum PlaybackErrorRetry
+  ' A buffer overflow in a transcode that Dolby Vision preservation forced: ask for direct play.
+  DOVI_DIRECT_PLAY = "doviDirectPlay"
+  ' A buffer overflow in a stream whose video the server copied: ask for the video re-encoded.
+  REENCODE_VIDEO = "reencodeVideo"
+  ' A direct play that failed before its first frame: ask for a transcode.
+  TRANSCODE = "transcode"
+  ' No retry applies: show the error dialog.
+  NONE = "none"
+end enum

@@ -1,0 +1,51 @@
+import "pkg:/source/utils/misc.bs"
+
+' What the first variant of an HLS master playlist declares, or invalid when the text has no
+' variant with both CODECS and RESOLUTION.
+'
+' The server's re-encode (a retry that asks it not to copy the video) can pick H.264 at the
+' source's own size, and a Roku plays AVC only up to level 4.2, so the player needs to know before
+' it plays: the master playlist says it without waiting for a segment.
+'
+' @param {string} text - the playlist body
+' @return {dynamic} { codecs: string, width: integer, height: integer }, or invalid
+function hlsMasterVariant(text as string) as dynamic
+  marker = "#EXT-X-STREAM-INF:"
+  start = inStr(1, text, marker)
+  if start = 0 then return invalid
+
+  lineStart = start + len(marker)
+  lineEnd = inStr(lineStart, text, chr(10))
+  if lineEnd = 0 then lineEnd = len(text) + 1
+  attributes = mid(text, lineStart, lineEnd - lineStart)
+
+  codecs = hlsAttributeValue(attributes, "CODECS=" + chr(34), chr(34))
+  size = hlsAttributeValue(attributes, "RESOLUTION=", ",").trim().split("x")
+  if codecs = "" or size.count() <> 2 then return invalid
+
+  width = size[0].toInt()
+  height = size[1].toInt()
+  if width <= 0 or height <= 0 then return invalid
+  return { codecs: codecs, width: width, height: height }
+end function
+
+' The text after `prefix` up to the next `terminator` (or the end), or "" when `prefix` is absent.
+function hlsAttributeValue(attributes as string, prefix as string, terminator as string) as string
+  start = inStr(1, attributes, prefix)
+  if start = 0 then return ""
+  valueStart = start + len(prefix)
+  valueEnd = inStr(valueStart, attributes, terminator)
+  if valueEnd = 0 then valueEnd = len(attributes) + 1
+  return mid(attributes, valueStart, valueEnd - valueStart)
+end function
+
+' Whether a variant is H.264 larger than a Roku decodes (AVC level 4.2, about 1080p).
+'
+' @param {dynamic} variant - hlsMasterVariant()'s answer
+' @return {boolean} true for an H.264 stream wider than 1920 or taller than 1080
+function needsH264ResolutionCap(variant as dynamic) as boolean
+  if not isValid(variant) then return false
+  codecs = LCase(variant.codecs)
+  isH264 = inStr(1, codecs, "avc1.") > 0 or inStr(1, codecs, "avc3.") > 0
+  return isH264 and (variant.width > 1920 or variant.height > 1080)
+end function

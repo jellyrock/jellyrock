@@ -22,6 +22,10 @@
          On a buffer:loop: error the player retries with shouldBypassDoviPreservation=true
          to allow the server to grant direct play instead. -->
     <field id="isDoviDirectPlayFallbackAvailable" type="boolean" value="false" />
+    <!-- Set for a transcoded stream whose video the server may have copied. On a buffer:loop:
+         error the player retries once with shouldDisallowVideoCopy=true, so the server
+         re-encodes the video and cuts a segment at least every segment length. -->
+    <field id="isReencodeFallbackAvailable" type="boolean" value="false" />
     <!-- Prevents PlayerHostView from advancing or exiting during a DoVi fallback
          retry, whose `stop` can surface as state `finished`. -->
     <field id="isRetrying" type="boolean" value="false" />

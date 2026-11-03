@@ -1,0 +1,43 @@
+import "pkg:/source/enums/PlaybackErrorRetry.bs"
+
+' chooseErrorRetry: Which retry a Video node error gets, or none.
+'
+' The Dolby Vision retry comes before the re-encode: when preservation forced the transcode,
+' direct play is the better answer and the re-encode would only hide that. Each flag is cleared
+' by the caller when it takes its retry, so a retry that fails the same way ends in the dialog.
+'
+' @param {boolean} isBufferLoopError - the error's source is "buffer:loop:"
+' @param {boolean} doviFallbackAvailable - Dolby Vision preservation caused the transcode
+' @param {boolean} reencodeFallbackAvailable - the stream is a transcode whose video the server may have copied
+' @param {boolean} isPlayReported - the stream played at least one frame
+' @param {boolean} transcodeAvailable - a direct play that can fall back to a transcode
+' @return {PlaybackErrorRetry} the retry to take
+function chooseErrorRetry(isBufferLoopError as boolean, doviFallbackAvailable as boolean, reencodeFallbackAvailable as boolean, isPlayReported as boolean, transcodeAvailable as boolean) as PlaybackErrorRetry
+  if isBufferLoopError and doviFallbackAvailable then return PlaybackErrorRetry.DOVI_DIRECT_PLAY
+  if isBufferLoopError and reencodeFallbackAvailable then return PlaybackErrorRetry.REENCODE_VIDEO
+  if not isPlayReported and transcodeAvailable then return PlaybackErrorRetry.TRANSCODE
+  return PlaybackErrorRetry.NONE
+end function
+
+' hevcFirstCodecList: A comma-separated video codec list with the HEVC entries (h265, hevc) first.
+'
+' The re-encode retry sends it as each video transcoding profile's VideoCodec. The server takes
+' the first codec it is allowed to encode: with HEVC encoding on it keeps a 4K source at 4K, and
+' with it off it falls through to H.264. Other entries keep their order.
+'
+' @param {string} codecs - for example "h264,avc,h265,hevc"
+' @return {string} for example "h265,hevc,h264,avc"
+function hevcFirstCodecList(codecs as string) as string
+  hevc = []
+  others = []
+  for each codec in codecs.split(",")
+    name = LCase(codec.trim())
+    if name = "hevc" or name = "h265"
+      hevc.push(codec)
+    else
+      others.push(codec)
+    end if
+  end for
+  hevc.append(others)
+  return hevc.join(",")
+end function

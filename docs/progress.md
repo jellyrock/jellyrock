@@ -874,6 +874,14 @@ It shows today, one video early. The Repeat One pick is a gear press during the 
 
 Close it by deciding "leaving an intro" from the item that ended rather than from the target's tag, with a unit case for Repeat One at an intro's end. Found reviewing the intro-slot fix that followed #1308.
 
+#### The re-encode retry's master-playlist fetch and second request have no unit coverage `[fid: reencode-cap-io-path-untested]` `[captured 2026-11-03]`
+
+`capReencodedResolution` and `fetchManifestText` in `components/ItemGrid/LoadVideoContentTask.bs` (decision `remux-overflow-reencode-retry`) are verified only on a device: the pure parts (`hlsMasterVariant`, `needsH264ResolutionCap`, `hevcFirstCodecList`) have specs, the I/O path does not. The cases that keep the first answer (a non-200 playlist, one that cannot be read, a failed second `PlaybackInfo` request) have never run. Not done now because it needs a seam: a function that takes the fetched text and the second answer so a spec can drive each case. Closes when each keep-first-answer case has a spec.
+
+#### A normal transcode of a 4K source on a default server is 4K H.264, beyond Roku's AVC level `[fid: first-transcode-4k-h264-beyond-roku]` `[captured 2026-11-03]` `[prompt: /snag A normal transcode of a 4K source on a server without HEVC encoding comes out as 4K H.264, beyond Roku's AVC level 4.2]`
+
+A full transcode of a 4K source on a server that does not encode HEVC (Jellyfin's default, `AllowHevcEncoding` off) comes out as 4K H.264, which Roku documents only to AVC level 4.2 (about 1080p). The video transcoding profile in `getTranscodingProfiles` (`source/utils/deviceCapabilities.bs`) lists `h264` before `hevc` and sends `h264-level=42`; the server encodes `3840x2160` anyway and tags it level 4.2. Measured 2026-11-03 on a Roku Ultra against a 12.2 server: a 4K re-encode at 24 fps and about 17 Mbps played, one at 30 fps and about 35 Mbps froze in buffering. The re-encode retry (decision `remux-overflow-reencode-retry`) caps its own H.264 at 1080p by reading the master playlist; a first, normal transcode does not. Not done now: it needs its own investigation (how often first transcodes hit it, whether to reuse the master-playlist check on every transcode or reorder the codecs), so run `/snag` on it.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`

@@ -27,6 +27,11 @@
     <!-- When true, skips the DoVi container profile injection in ItemPostPlaybackInfo,
          allowing the server to re-evaluate direct play without DoVi preservation constraints. -->
     <field id="shouldBypassDoviPreservation" type="boolean" value="false" />
+    <!-- When true, asks the server not to copy the video stream, so it re-encodes it and cuts a
+         segment at least every segment length. Set by VideoPlayerView when retrying after a
+         buffer:loop: error on a remux, where a copied long-GOP video can need one segment larger
+         than the device's whole video buffer. -->
+    <field id="shouldDisallowVideoCopy" type="boolean" value="false" />
     <!-- When true, forces the transcode path and disables direct play for this load.
          Set by VideoPlayerView when retrying after a direct-play failure (VideoLevelNotSupported
          or live-stream direct-play error) so the server returns a transcoding URL instead. -->
