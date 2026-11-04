@@ -777,6 +777,7 @@
 (?:Vitest's)\.
 (?:vorbis)\.
 (?:Vorbis)\.
+(?:VP9)\.
 (?:vscode)\.
 (?:VSCode)\.
 (?:VTT)\.
