@@ -155,6 +155,14 @@ sub init()
   m.groupSeekFallbackTimer = m.top.findNode("groupSeekFallbackTimer")
   m.pauseCheck = new playbackCheckIn.PauseCheck(m.log, "pauseReadBack-")
   m.bufferCheckTimer = m.top.findNode("bufferCheckTimer")
+  ' Watches a "playing" node whose position never moves, which bufferCheck cannot see (it runs only
+  ' while buffering). Its own timer, registered once here and driven by `control` alone, so it
+  ' cannot double up with bufferCheckTimer's observe-on-enter toggle.
+  m.playingProgressTimer = m.top.findNode("playingProgressTimer")
+  m.playingProgressTimer.duration = STALL_WINDOW_SECONDS
+  m.playingProgressTimer.observeField("fire", "playingProgressCheck")
+  m.playingProgressSpan = CreateObject("roTimespan")
+  m.playingProgressPosition = 0.0 ' the position when the current window began
 
   ' Every m.top observer is registered here, once, and released only in onDestroy.
   ' Never unobserve an m.top field mid-life: it can remove observers OTHER components
@@ -189,7 +197,7 @@ sub init()
   m.loadedMediaSourceId = ""
   m.playerParked = false ' see parkPlayerAfterSupersede
   m.top.transcodeReasons = []
-  m.bufferCheckTimer.duration = 30
+  m.bufferCheckTimer.duration = STALL_WINDOW_SECONDS
 
   if userSettings.uiDesignHideClock = true
     clockNode = findNodeBySubtype(m.top, "clock")
@@ -1992,6 +2000,7 @@ end function
 sub startVideoLoad(audioStreamIndex as integer, subtitleIndex as integer, bypassDovi = false as boolean, forceTranscode = false as boolean, disallowVideoCopy = false as boolean)
   ' A new load is a new item or a new answer: the re-encode check of the one it replaces is over.
   cancelReencodeCheck()
+  if isValid(m.playingProgressTimer) then m.playingProgressTimer.control = "stop"
   m.holdPausedAfterReload = false
   m.loadAskedNoCopy = disallowVideoCopy
   if isValid(m.LoadMetaDataTask)
@@ -2048,6 +2057,9 @@ sub onState()
 
   ' Pass video state into OSD
   m.osd.playbackState = osdPlaybackState()
+
+  ' A state change ends the playing-progress window; only `playing` starts a new one.
+  if isValid(m.playingProgressTimer) then m.playingProgressTimer.control = "stop"
 
   if m.top.state = "buffering"
     ' Each buffering episode gets its own progress baseline. `bufferingStatus` is
@@ -2132,6 +2144,11 @@ sub onState()
     ' stop is what makes each episode's window fresh rather than that assumption.
     m.bufferCheckTimer.control = "stop"
     m.bufferCheckTimer.unobserveField("fire")
+
+    ' A fresh window for the position check: a node that says "playing" must also move.
+    m.playingProgressPosition = m.top.position
+    m.playingProgressSpan.mark()
+    m.playingProgressTimer.control = "start"
 
     ' Un-park. A `play` that did not come through onVideoContentLoaded (a voice or
     ' remote-control resume of a stopped player) is the one route back from
@@ -2437,7 +2454,7 @@ sub submitPlaybackReport(state as string, failed as boolean, closesLiveStream = 
   ' Live TV requires MediaSourceId/LiveStreamId for server-side stream tracking
   if isLiveTvPlayback() and isValid(m.top.transcodeParams)
     params.append(liveStreamReportFields(m.top.transcodeParams, closesLiveStream))
-    m.bufferCheckTimer.duration = 30
+    m.bufferCheckTimer.duration = STALL_WINDOW_SECONDS
   end if
 
   if (state = "stop" or state = "finished") and isValid(m.originalClosedCaptionState)
@@ -2502,6 +2519,42 @@ sub bufferCheck()
     end if
   end if
 
+end sub
+
+' A "playing" node whose position has not moved for a stall window: a frozen or black screen with no
+' error (a 4K H.264 re-encode sat so on a Roku Ultra, 2026-11-04). classifyPlayingProgress decides;
+' a stall takes the same exits as bufferCheck's. The timer is started by onState's `playing` branch
+' and stopped by every state change and by onDestroy.
+sub playingProgressCheck()
+  if m.isDestroyed = true or not isValid(m.playingProgressTimer) then return
+  positionNow = m.top.position
+  flags = {
+    isPlaying: m.top.state = "playing",
+    isPaused: m.top.state = "paused",
+    isSeeking: syncPlayHooks.seekInFlight(),
+    isScrubbing: m.top.trickPlayBar.visible or m.isTrackingSeek,
+    isLive: isLiveTvPlayback(),
+    duration: getEffectiveDuration()
+  }
+  action = classifyPlayingProgress(positionNow, m.playingProgressPosition, m.playingProgressSpan.totalMilliseconds(), STALL_WINDOW_SECONDS * 1000, flags)
+  ' Each tick opens the next window.
+  m.playingProgressPosition = positionNow
+  m.playingProgressSpan.mark()
+  if action = BufferCheckAction.PROGRESS
+    return
+  else if action = BufferCheckAction.LIVE_STALLED
+    m.log.warn("Live TV node playing with a frozen position", "position", positionNow)
+    ' Same rule as bufferCheck: the host owns the restart and may destroy this component
+    ' synchronously, so this call is the last statement. A guard that declined leaves the timer
+    ' running, so the next tick checks again.
+    host = m.top.getParent()
+    if isValid(host) then host.callFunc("onLiveStreamStalled")
+  else
+    m.log.warn("Node playing with a frozen position", "position", positionNow)
+    m.playingProgressTimer.control = "stop"
+    showPlaybackErrorDialog(translate(translationKeys.ErrorThereWasAnErrorRetrievingThe))
+    m.top.control = "stop"
+  end if
 end sub
 
 function isLiveTvPlayback() as boolean
@@ -2872,6 +2925,12 @@ sub onDestroy()
     m.bufferCheckTimer.control = "stop"
     m.bufferCheckTimer.unobserveField("fire")
     m.bufferCheckTimer = invalid
+  end if
+
+  if isValid(m.playingProgressTimer)
+    m.playingProgressTimer.control = "stop"
+    m.playingProgressTimer.unobserveField("fire")
+    m.playingProgressTimer = invalid
   end if
 
   ' Stop and release task nodes. The video load is released by releaseVideoLoad, because a load
