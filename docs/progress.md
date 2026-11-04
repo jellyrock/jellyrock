@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-04: fix(playback): Stop transcoded videos playing with no sound
 - 2026-11-03: fix(login): Offer Quick Connect when a server lists no users
 - 2026-11-03: fix(playback): Play the episode once when Repeat is picked during a Cinema Mode intro
 - 2026-11-03: feat(player): Repeat a video or the queue from the OSD gear
@@ -71,10 +72,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-21: test(rta): Restart the app on signals instead of a fixed 14 s sleep
 - 2026-10-21: feat(backdrop): Show My Media backdrops and restore one after sign-in
 - 2026-10-21: fix(playback): Play songs and trailers in the right player
-- 2026-10-20: ci: Run the job when the PR diff can't be fetched
-- 2026-10-20: chore(journal): Retire the signals journal; watch upstreams from CI
-- 2026-10-20: chore(catchup): Stop the reader rewriting `docs/signals-backlog.md`
-- 2026-10-20: feat(search): Pull-down keyboard, live suggestions and recent searches
 
 ## Open followups
 
