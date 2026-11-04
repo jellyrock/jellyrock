@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-03
+last-updated: 2026-11-04
 ---
 
 # Progress
@@ -880,7 +880,7 @@ Close it by deciding "leaving an intro" from the item that ended rather than fro
 
 #### A normal transcode of a 4K source on a default server is 4K H.264, beyond Roku's AVC level `[fid: first-transcode-4k-h264-beyond-roku]` `[captured 2026-11-03]` `[prompt: /snag A normal transcode of a 4K source on a server without HEVC encoding comes out as 4K H.264, beyond Roku's AVC level 4.2]`
 
-A full transcode of a 4K source on a server that does not encode HEVC (Jellyfin's default, `AllowHevcEncoding` off) comes out as 4K H.264, which Roku documents only to AVC level 4.2 (about 1080p). The video transcoding profile in `getTranscodingProfiles` (`source/utils/deviceCapabilities.bs`) lists `h264` before `hevc` and sends `h264-level=42`; the server encodes `3840x2160` anyway and tags it level 4.2. Measured 2026-11-03 on a Roku Ultra against a 12.2 server: a 4K re-encode at 24 fps and about 17 Mbps played, one at 30 fps and about 35 Mbps froze in buffering. The re-encode retry (decision `remux-overflow-reencode-retry`) caps its own H.264 at 1080p by reading the master playlist; a first, normal transcode does not. Not done now: it needs its own investigation (how often first transcodes hit it, whether to reuse the master-playlist check on every transcode or reorder the codecs), so run `/snag` on it.
+A full transcode of a source bigger than 1080p on a server that does not encode HEVC (Jellyfin's default, `AllowHevcEncoding` off) comes out as 4K H.264, which Roku cannot decode. The video transcoding profile in `getTranscodingProfiles` (`source/utils/deviceCapabilities.bs`) lists `h264` before `hevc` and sends `h264-level=42`; the server encodes `3840x2160` anyway and tags it level 4.2. Measured 2026-11-04 on a Roku Ultra against a 12.2 server: direct 4K H.264 files fail with "Image width too high", 4K H.264 re-encodes at 24 and 30 fps and 15 and 40 Mbps never leave buffering (one encoded at 1.36x real time), and through the app the player reports playing at position 0 with no error; a 1080p re-encode plays. (A 4K re-encode at 24 fps first recorded on 2026-11-03 as playing was a misread: its position never moved.) The re-encode retry (decision `remux-overflow-reencode-retry`) caps its own H.264 at 1080p by reading the master playlist; a first, normal transcode does not. The fix is being built on a branch stacked on this one.
 
 ### source
 
