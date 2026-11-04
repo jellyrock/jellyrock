@@ -61,7 +61,7 @@ related-files:
   - source/syncplay/syncPlayQueue.bs
   - source/syncplay/syncPlayHooks.bs
   - source/syncplay/syncPlayState.bs
-last-reviewed: 2026-11-02
+last-reviewed: 2026-11-03
 ---
 
 # Video and audio playback
@@ -588,6 +588,7 @@ The profile rules for audio live in `source/utils/deviceCapabilities.bs` and `so
 - **Multichannel tracks direct-play when the device can output them:** the profile's `AudioChannels` conditions (`getCodecProfiles()`) and the device's real codec support (`getActualCodecSupport()`) decide.
 - **A multichannel source that must be transcoded is steered to surround.** `resolveMultichannelSurroundTarget()` puts `eac3` or `ac3` first in the transcode codec list, so the server does not mix down to stereo AAC. For a stereo source, `optimizeAudioCodecListForSource()` strips the surround codecs (`surroundCodecs`) from the list.
 - **Only what Roku documents is direct-played, and `dts` and `truehd` are never transcode targets** (decision [`audio-profile-documented-and-reported`](../decisions.md#decision-id-audio-profile-documented-and-reported)). Roku's `CanDecodeAudio` and a soundbar's EDID can both say yes to a format the player then fails on, so the profile takes what Roku's media spec lists and the device reports. TrueHD, DTS-HD and `DTS:X` are never direct-played as such; DTS is direct-played up to `DTS_MAX_DIRECT_PLAY_CHANNELS` (6). Neither is offered as a transcode target, because the server copies a source codec it finds on that list, and DTS copied into HLS plays silent on Roku (#821, #892), so the server converts both to `eac3` or `ac3`.
+- **A default track this Roku cannot play gives way to one it can.** With **Play default audio track** on, `findBestAudioStreamIndex()` takes the track the file flags default, but when that track is not direct-playable here (TrueHD, for one), `playableAlternativeToDefault()` picks a same-language, non-commentary track that is, as long as it has no fewer channels than the viewer would get from the default. The server would convert the default anyway, and the playable track lets the video direct-play or copy.
 - **A track switch during playback** asks the profile's own question (`isStreamDirectPlayable()`: `getActualCodecSupport()`, the same refusals, the Decode Multichannel Audio cap and the AAC profile rule), so a switch stays native only where the server would have direct-played the track, and otherwise reloads.
 
 ### Dolby Vision

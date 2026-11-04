@@ -331,13 +331,61 @@ function isCommentaryAudioStream(stream as object) as boolean
   return inStr(1, LCase(stream.Title), "commentary") > 0
 end function
 
+' playableAlternativeToDefault: The stream to play in place of a default track this Roku cannot
+' direct-play (TrueHD, for one). The server converts such a track anyway, and a same-language
+' track the device can play lets the video direct-play or copy instead. The replacement is
+' direct-playable, in the same language (both missing counts as the same), never a commentary
+' track, and has no fewer channels than the viewer would get from the default, which is the
+' lesser of the default's channels and the device maximum. The most channels wins, then stream order.
+'
+' @param {object} defaultStream - The default stream playDefault chose
+' @param {object} audioStreams - Candidate audio streams (commentary already hidden when a main track exists)
+' @param {object} deviceCapabilities - Device capability info
+' @returns {object} - The replacement stream, or defaultStream when it is playable or none qualifies
+function playableAlternativeToDefault(defaultStream as object, audioStreams as object, deviceCapabilities as object) as object
+  if isStreamDirectPlayable(defaultStream, deviceCapabilities) then return defaultStream
+  if not isValid(defaultStream.channels) then return defaultStream
+
+  floorChannels = defaultStream.channels
+  if isValid(deviceCapabilities.maxChannels) and deviceCapabilities.maxChannels < floorChannels
+    floorChannels = deviceCapabilities.maxChannels
+  end if
+
+  defaultHasLanguage = isValidAndNotEmpty(defaultStream.Language)
+  languageMatches = {}
+  if defaultHasLanguage
+    languageMatches = matchingLanguageCodes(streamLanguageCodes(audioStreams, "audio"), defaultStream.Language)
+  end if
+
+  best = defaultStream
+  bestChannels = -1
+  for each candidate in audioStreams
+    if candidate.index = defaultStream.index then continue for
+    if isCommentaryAudioStream(candidate) then continue for
+    if defaultHasLanguage
+      if not isLanguageMatch(languageMatches, candidate.Language) then continue for
+    else if isValidAndNotEmpty(candidate.Language)
+      continue for
+    end if
+    if not isValid(candidate.channels) or candidate.channels < floorChannels then continue for
+    if not isStreamDirectPlayable(candidate, deviceCapabilities) then continue for
+    if candidate.channels > bestChannels
+      best = candidate
+      bestChannels = candidate.channels
+    end if
+  end for
+  return best
+end function
+
 ' findBestAudioStreamIndex: Primary function for selecting the best audio stream
 '
 ' Selection priority when playDefault = true (Jellyfin: "Play default audio track regardless of language"):
 '   1. Filter by IsDefault = true streams (ignore language preference)
 '   2. If multiple IsDefault streams, use language preference as tiebreaker
 '   3. If still multiple or no language match, apply hardware optimization
-'   4. If no IsDefault streams exist, fall back to language preference, then hardware optimization
+'   4. If the chosen default is not direct-playable here, swap in a same-language direct-playable
+'      track with no fewer channels than the viewer would get (playableAlternativeToDefault())
+'   5. If no IsDefault streams exist, fall back to language preference, then hardware optimization
 '
 ' Selection priority when playDefault = false:
 '   1. Filter by language preference (completely ignore IsDefault flag)
@@ -442,7 +490,7 @@ function findBestAudioStreamIndex(streams as dynamic, playDefault as dynamic, pr
       if defaultStreams.Count() = 1
         bestStream = selectBestStreamByHardware(defaultStreams, deviceCapabilities)
         if isValid(bestStream) and isValid(bestStream.index)
-          return bestStream.index
+          return playableAlternativeToDefault(bestStream, audioStreams, deviceCapabilities).index
         end if
       else
         ' Multiple IsDefault streams - try language preference as tiebreaker
@@ -458,7 +506,7 @@ function findBestAudioStreamIndex(streams as dynamic, playDefault as dynamic, pr
           if languageMatchedDefaults.Count() > 0
             bestStream = selectBestStreamByHardware(languageMatchedDefaults, deviceCapabilities)
             if isValid(bestStream) and isValid(bestStream.index)
-              return bestStream.index
+              return playableAlternativeToDefault(bestStream, audioStreams, deviceCapabilities).index
             end if
           end if
         end if
@@ -466,7 +514,7 @@ function findBestAudioStreamIndex(streams as dynamic, playDefault as dynamic, pr
         ' Language didn't match or not set - use hardware optimization on all IsDefault streams
         bestStream = selectBestStreamByHardware(defaultStreams, deviceCapabilities)
         if isValid(bestStream) and isValid(bestStream.index)
-          return bestStream.index
+          return playableAlternativeToDefault(bestStream, audioStreams, deviceCapabilities).index
         end if
       end if
     end if

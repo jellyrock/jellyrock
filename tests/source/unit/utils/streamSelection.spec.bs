@@ -781,6 +781,136 @@ namespace tests
       m.assertEqual(matchingLanguageCodes(["eng"], "").Count(), 0)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Play default track - a playable same-language alternative to an unplayable default")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("replaces a TrueHD 5.1 default with AC3 5.1 of the same language")
+    @params(6, false)
+    @params(8, true)
+    function _(maxChannels as integer, supports8 as boolean)
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 6, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Language: "eng", channels: 6, codec: "ac3", IsDefault: false },
+        { Type: "audio", index: 3, Language: "eng", channels: 2, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(maxChannels, supports8))
+      m.assertEqual(result, 2)
+    end function
+
+    @it("keeps a TrueHD 7.1 default when the device outputs 8 channels and the alternative has 6")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 8, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(8, true))
+      m.assertEqual(result, 1)
+    end function
+
+    @it("replaces a TrueHD 7.1 default with AC3 5.1 when the device outputs 6 channels")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 8, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 2)
+    end function
+
+    @it("keeps a TrueHD 5.1 default when the only alternative is AC3 2.0 on a surround device")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 6, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Language: "eng", channels: 2, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 1)
+    end function
+
+    @it("replaces a TrueHD 5.1 default with AC3 2.0 on a stereo device")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 6, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Language: "eng", channels: 2, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(2, false))
+      m.assertEqual(result, 2)
+    end function
+
+    @it("prefers the alternative with the most channels, then the first in stream order")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 8, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Language: "eng", channels: 2, codec: "ac3", IsDefault: false },
+        { Type: "audio", index: 3, Language: "eng", channels: 6, codec: "ac3", IsDefault: false },
+        { Type: "audio", index: 4, Language: "eng", channels: 6, codec: "eac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 3)
+    end function
+
+    @it("never replaces the default with a commentary track")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 6, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Language: "eng", channels: 6, codec: "ac3", IsDefault: false, Title: "Director's Commentary" }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 1)
+    end function
+
+    @it("does not replace the default with a playable track in another language")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 6, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Language: "fra", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 1)
+    end function
+
+    @it("replaces an unplayable default among multiple IsDefault streams with a same-language playable track")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 6, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Language: "jpn", channels: 2, codec: "aac", IsDefault: true },
+        { Type: "audio", index: 3, Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 3)
+    end function
+
+    @it("treats a default and an alternative that both have no language as the same language")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, channels: 6, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 2)
+    end function
+
+    @it("does not pair a default that has no language with an alternative that has one")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, channels: 6, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 1)
+    end function
+
+    @it("is unchanged with playDefault off")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 6, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, false, "eng", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 2)
+    end function
+
   end class
 
 end namespace
