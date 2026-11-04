@@ -797,7 +797,7 @@ end sub
 sub readServerEncodingPolicy()
   if isValid(m.global.server.encodingPolicy) then return
 
-  req = GetApi().BuildGetEncodingConfigurationRequest()
+  req = GetApi().BuildGetNamedConfigurationRequest("encoding")
   if not isValid(req) then return
 
   policy = serverCapabilities.recordEncodingPolicy(fetchRes(req, "encodingPolicy"))

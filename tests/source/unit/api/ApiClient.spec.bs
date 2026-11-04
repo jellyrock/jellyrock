@@ -860,9 +860,9 @@ namespace tests
       m.assertTrue(result.url.inStr("/System/Configuration") >= 0, "should target /System/Configuration")
     end function
 
-    @it("BuildGetEncodingConfigurationRequest reads /System/Configuration/encoding")
+    @it("BuildGetNamedConfigurationRequest reads /System/Configuration/{key}")
     function _()
-      result = m.apiClient.BuildGetEncodingConfigurationRequest()
+      result = m.apiClient.BuildGetNamedConfigurationRequest("encoding")
 
       m.assertEqual(result.method, "GET")
       m.assertTrue(result.url.inStr("/System/Configuration/encoding") >= 0, "should target /System/Configuration/encoding")

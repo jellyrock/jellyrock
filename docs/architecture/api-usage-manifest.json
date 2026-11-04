@@ -872,8 +872,8 @@
       ]
     },
     {
-      "path": "/System/Configuration/encoding",
-      "normalized": "/system/configuration/encoding",
+      "path": "/System/Configuration/{0}",
+      "normalized": "/system/configuration/{}",
       "methods": [
         "GET"
       ],
