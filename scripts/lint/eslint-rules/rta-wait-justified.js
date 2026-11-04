@@ -166,6 +166,15 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // the group's next command, and in the `beforeAll` of `syncplay-controls.spec.js` nothing sends
   // one between the Unpause and the first case.
   'syncPlayManager.sync.lastCommand.command',
+  // `SyncPlayManager.applyQueue` counts each load it performs and `publish` writes the count; it
+  // only grows, so "above the count read before" cannot revert. `syncplay-controls.spec.js` waits
+  // on it for the first restart's load.
+  'syncPlayManager.sync.loadCount',
+  // The same record's emission time (ODC lowercases the key): it only grows, since each command
+  // that replaces `lastCommand` was emitted later (`syncPlayState.acceptsCommand` drops a command
+  // from before the playing item changed), so "newer than the one read before" cannot revert.
+  // `syncplay-controls.spec.js` waits on it after two restarts of the item.
+  'syncPlayManager.sync.lastCommand.emittedatms',
   // `SyncPlayManager.publish` writes the group playlist's length from each PlayQueue frame:
   // held until the group's queue changes again. `syncplay-controls.spec.js` waits on it after the
   // REST member queues an item.
@@ -179,7 +188,7 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // waits on it after Leave Group in the gear.
   'syncPlayManager.inGroup',
   // `SyncPlayManager.checkSettle` publishes the drift from the group on every position
-  // notification while an Unpause is in force (every 0.5 s, in RTA builds only), and a group command or a Buffering
+  // notification while an Unpause is in force (every 0.5 s, in RTA builds only: `#if ENABLE_RTA`), and a group command or a Buffering
   // report clears it. Past its thresholds the manager corrects it, and it then holds inside them,
   // so "inside the thresholds" is recurrent, not a pulse. `syncplay-controls.spec.js` and
   // `syncplay-correction.spec.js` wait on it.

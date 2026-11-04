@@ -36,8 +36,7 @@ namespace syncPlayHooks
   end function
 
   ' What the OSD gear's SyncPlay rows show while following (playbackSettingsMenu.rows): the
-  ' group's shuffle word, the viewer's SyncPlay Time Offset setting and the drift the manager
-  ' last read (sync.playbackDiffMs, invalid while no Unpause is in force). invalid while not
+  ' group's shuffle word and the viewer's SyncPlay Time Offset setting. invalid while not
   ' following, and the gear shows no SyncPlay rows.
   function groupModes() as dynamic
     manager = m.global.syncPlayManager
@@ -47,7 +46,7 @@ namespace syncPlayHooks
     offsetMs = 0
     user = m.global.user
     if isValid(user) and isValid(user.settings) and isValid(user.settings.playbackSyncPlayTimeOffsetMs) then offsetMs = user.settings.playbackSyncPlayTimeOffsetMs
-    return { shuffleMode: syncPlayQueue.normalizeShuffle(sync.shuffleMode), offsetMs: offsetMs, driftMs: sync.playbackDiffMs }
+    return { shuffleMode: syncPlayQueue.normalizeShuffle(sync.shuffleMode), offsetMs: offsetMs }
   end function
 
   ' The viewer picked Leave Group in the player: POST /SyncPlay/Leave, and the GroupLeft that
@@ -84,7 +83,8 @@ namespace syncPlayHooks
   end function
 
   ' Ask the group for a control the viewer pressed (SyncPlayManager.control has the shapes; a
-  ' repeat or shuffle pick carries its `mode`): true
+  ' repeat or shuffle pick carries its `mode`, and a time offset pick, which asks the group for
+  ' nothing, only that the manager take the saved setting now): true
   ' when the request was posted, so the server's command will move every member, false when the
   ' player should act on its own. The server's answer comes later, as a command or not at all. A pause is the one control the player also applies at once.
   function control(request as object) as boolean

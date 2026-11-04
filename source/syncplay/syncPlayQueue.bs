@@ -180,6 +180,32 @@ namespace syncPlayQueue
     return false
   end function
 
+  ' Whether a NextItem or PreviousItem frame for the item already playing is a restart this member
+  ' is already part of, so it reloads nothing. Under RepeatOne the server keeps the index on a
+  ' step and drops a duplicate only by playlist id, which is unchanged, so two members' steps
+  ' restart the group twice; each restart resets the server's waiting set and waits on every
+  ' member's Ready again, and a reload for the second would make the group wait a third time
+  ' (WaitingGroupState and PlayQueueManager, read 2026-11-03).
+  '   - "loading": the restart's load is owed, or running, or its player has not mounted yet. The
+  '     Ready at its end names the same playlist id and answers both.
+  '   - "ready": the player holds the start, paused, and no command came since the item last changed
+  '     (the group's Unpause would have). The Ready it sent was for the wait the server reset, so
+  '     it goes out again.
+  '   - "": a different item, another reason, or a restart that has begun to play: a load.
+  ' @param loadInFlight - a load is owed, or a reload was asked for and the player has not mounted
+  ' @param trackerPhase - the ready tracker's phase
+  ' @param playerState - the Video node's state
+  ' @param lastCommand - the last group command applied or scheduled, or invalid
+  ' @param queueChangedAtMs - the LastUpdate of the update that last changed the playing item
+  function restartAbsorbed(reason as string, previousPlaylistItemId as string, playlistItemId as string, loadInFlight as boolean, trackerPhase as string, playerState as string, lastCommand as dynamic, queueChangedAtMs as longinteger) as string
+    if reason <> "NextItem" and reason <> "PreviousItem" then return ""
+    if playlistItemId = "" or playlistItemId <> previousPlaylistItemId then return ""
+    if loadInFlight or trackerPhase = "loading" then return "loading"
+    if trackerPhase <> "ready" or playerState <> "paused" then return ""
+    if isValid(lastCommand) and syncPlayTime.isWholeNumber(lastCommand.emittedAtMs) and syncPlayTime.asLong(lastCommand.emittedAtMs) >= queueChangedAtMs then return ""
+    return "ready"
+  end function
+
   ' What a PlayQueue frame leaves owed to the player, decided as the frame arrives, when the
   ' playing item before and after it is still known. A frame that lands while the items are in
   ' flight (a state update, a join, a leave) moves the playing item's baseline, so deciding at
@@ -192,9 +218,10 @@ namespace syncPlayQueue
   ' @param owedLoad - the record from before this frame: invalid or { newPlaylist }
   ' @param previousPlaylistItemId - the group's playing playlist id before this frame
   ' @param playlistItemId - the group's playing playlist id after this frame
-  function owedLoadAfter(owedLoad as dynamic, reason as string, previousPlaylistItemId as string, playlistItemId as string) as dynamic
+  ' @param absorbed - the frame is a restart this member is part of already (restartAbsorbed)
+  function owedLoadAfter(owedLoad as dynamic, reason as string, previousPlaylistItemId as string, playlistItemId as string, absorbed = false as boolean) as dynamic
     if playlistItemId = "" then return invalid
-    if not changesPlayingItem(reason, previousPlaylistItemId, playlistItemId) then return owedLoad
+    if absorbed or not changesPlayingItem(reason, previousPlaylistItemId, playlistItemId) then return owedLoad
     newPlaylist = reason = "NewPlaylist" or (isValid(owedLoad) and owedLoad.newPlaylist = true)
     return { newPlaylist: newPlaylist }
   end function

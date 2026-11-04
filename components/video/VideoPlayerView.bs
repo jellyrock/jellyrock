@@ -835,6 +835,8 @@ sub onSyncPlayPicked()
     if not isValid(pick.value) then return
     user.settings.Save("playbackSyncPlayTimeOffsetMs", int(pick.value))
     m.log.info("SyncPlay time offset picked", "ms", int(pick.value))
+    ' The manager takes the saved setting at once and corrects the drift it makes, without an Unpause.
+    syncPlayHooks.control({ kind: "timeOffset" })
     m.osd.callFunc("refreshFromQueue")
   else if pick.kind = "leave"
     if syncPlayHooks.leaveGroup() then m.log.info("Leave Group picked in the player")

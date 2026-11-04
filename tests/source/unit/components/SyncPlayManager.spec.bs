@@ -232,6 +232,19 @@ namespace tests
       m.assertEqual(m.manager.sync.extraOffsetMs, 0&)
     end function
 
+    @it("a time offset pick while following reaches the clock at once and is told as handled; halted, it is not")
+    function _()
+      settings = m.global.user.settings
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      settings.playbackSyncPlayTimeOffsetMs = 300
+      m.assertTrue(m.manager.callFunc("control", { kind: "timeOffset" }))
+      m.assertEqual(m.manager.sync.extraOffsetMs, 300&, "no frame or player event came between")
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.assertFalse(m.manager.callFunc("control", { kind: "timeOffset" }), "halted: the pick stays a setting")
+    end function
+
     @it("the drift is unknown until an Unpause is in force")
     function _()
       m.joinGroup()
@@ -746,6 +759,27 @@ namespace tests
       m.manager.frame = m.modeUpdate("RepeatMode", "RepeatAll", "Sorted")
       m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatOne")
       m.assertEqual(m.manager.sync.repeatMode, "RepeatAll", "the state still tracks the group")
+    end function
+
+    @it("leaving the group turns off the repeat it wrote onto the queue that still holds its item")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.frame = m.modeUpdate("RepeatMode", "RepeatOne", "Sorted")
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatOne")
+      m.manager.frame = m.update("GroupLeft", { GroupId: "g1" })
+      m.assertFalse(m.manager.inGroup)
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatNone")
+    end function
+
+    @it("leaving leaves the repeat of a queue that does not hold the group's item")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.global.queueManager.callFunc("set", [{ id: "mine", type: "Movie" }])
+      m.global.queueManager.callFunc("setRepeatMode", "RepeatAll")
+      m.manager.frame = m.update("GroupLeft", { GroupId: "g1" })
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatAll")
     end function
 
     @it("the group's modes are published for the OSD's steps: under RepeatAll the last item still has a next")

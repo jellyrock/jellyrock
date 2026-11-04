@@ -135,6 +135,13 @@ sub ensureReady()
   ' since the last group Pause: once per pause chain, or a member that keeps falling behind would
   ' rewind the group every few seconds.
   m.waitedOnMe = false
+  ' Whether a load this member performed for a queue frame has not yet reported its Ready: a second
+  ' step of the same item meets it still loading (syncPlayQueue.restartAbsorbed). Ended by that
+  ' Ready, a halt, a leave, or the player leaving.
+  m.loadAwaitsReady = false
+  ' How many times this member performed the load a queue frame owed (applyQueue), published so
+  ' a spec can tell one restart of the group's item from two.
+  m.loadCount = 0
   publish()
 end sub
 
@@ -170,7 +177,7 @@ function reset() as boolean
   ensureReady()
   if m.state.inGroup then post("Leave", invalid, true)
   unsetUserSetting(STALE_GROUP_KEY)
-  leaveLocally()
+  leaveLocally(holdsGroupItem())
   return true
 end function
 
@@ -303,6 +310,7 @@ sub haltFollowing(reason as string, tell = true as boolean)
   if syncPlayTime.isText(m.loadNotice) and m.loadNotice = "followingAgain" then tell = false
   if tell and isFollowing() then notify("halted", m.state.groupName, "")
   syncPlayState.halt(m.state)
+  m.loadAwaitsReady = false
   m.owedLoad = invalid
   m.loadNotice = invalid
   releaseCorrection()
@@ -414,7 +422,7 @@ end sub
 ' --- frames ---
 
 ' The viewer's own time offset, read from their settings at each entry point, so the clock takes a
-' change at once. The node itself moves at the next Unpause.
+' change at once. The node itself follows when the pick arms the settle check (control, "timeOffset").
 sub refreshExtraOffset()
   extraMs = 0
   user = m.global.user
@@ -422,7 +430,7 @@ sub refreshExtraOffset()
   syncPlayOffset.setExtraOffsetMs(m.estimator, extraMs)
 end sub
 
-' A position notification while following: read the drift (published for the gear's readout and the RTA specs), and correct a drift past
+' A position notification while following: read the drift (published in RTA builds, for the specs), and correct a drift past
 ' the threshold (syncPlayPlayback.settleCorrectionDue, correctionPlan), against the command that
 ' still says where the group is (syncPlayPlayback.clockReference).
 sub checkSettle()
@@ -430,6 +438,7 @@ sub checkSettle()
   drift = syncPlayPlayback.driftMs(inForce, m.estimator, syncPlayTime.nowMs(), m.playerPositionTicks)
   m.playbackDiffMs = drift
   if syncPlayPlayback.settleCorrectionDue(m.settle, drift, m.playerState, m.tracker.phase, m.groupPaused)
+    toldToViewer = syncPlayPlayback.takePickNotice(m.settle)
     host = playerHost()
     if isValid(host)
       plan = syncPlayPlayback.correctionPlan(syncPlayTime.asLong(drift), m.playerPositionTicks, inForce, m.estimator, syncPlayPlayback.correctionLeadMs(m.lastSeekMs))
@@ -450,6 +459,8 @@ sub checkSettle()
         m.correction = plan
         m.log.info("drift correction started", "driftMs", syncPlayTime.asLong(drift).toStr(), "targetTicks", plan.targetTicks.toStr(), "resumeInMs", syncPlayPlayback.correctionResumeDelayMs(plan, syncPlayTime.nowMs()).toStr())
         if plan.seek
+          ' A jump the viewer's own time offset pick caused reads as intended with a word; a hold shows nothing.
+          if toldToViewer then notify("syncing", "", "")
           tellPlayer(host, { command: "seekto", position: syncPlayPlayback.ticksToSeconds(plan.targetTicks), report: false, thenPause: true })
           track({ kind: "seek", positionTicks: plan.targetTicks, report: false, thenPause: true })
         else
@@ -459,9 +470,11 @@ sub checkSettle()
       end if
     end if
   end if
-  ' The gear's time offset row reads the drift while the viewer tunes it, so it is published at
-  ' each reading: one field write on this render-owned node per position notification.
-  publish()
+  ' The RTA specs wait on the drift, so an RTA build publishes it at each reading: one field write
+  ' on this render-owned node per position notification, which a release build does not pay.
+  #if ENABLE_RTA
+    publish()
+  #end if
 end sub
 
 ' The correction's seek settled. The tracker's pause is written, and the node's `paused` state
@@ -585,11 +598,22 @@ sub onGroupUpdate(update as object)
     return
   end if
   previousPlayingItemId = m.state.playingItemId
+  previousQueueChangedAtMs = m.state.playbackQueueAtMs
+  queueHeldGroupItem = holdsGroupItem()
   wasInGroup = m.state.inGroup
   previousGroupName = m.state.groupName
   m.state = syncPlayState.applyGroupUpdate(m.state, update)
   if updateType = "PlayQueue"
-    m.owedLoad = syncPlayQueue.owedLoadAfter(m.owedLoad, update.reason, previousPlayingItemId, m.state.playingItemId)
+    ' A same-item step this member is already part of reloads nothing (syncPlayQueue.restartAbsorbed).
+    absorbed = ""
+    if isFollowing() and not hasOpenClaim()
+      loadInFlight = isValid(m.owedLoad) or m.loadAwaitsReady
+      absorbed = syncPlayQueue.restartAbsorbed(update.reason, previousPlayingItemId, m.state.playingItemId, loadInFlight, m.tracker.phase, m.playerState, m.lastCommand, previousQueueChangedAtMs)
+    end if
+    m.owedLoad = syncPlayQueue.owedLoadAfter(m.owedLoad, update.reason, previousPlayingItemId, m.state.playingItemId, absorbed <> "")
+    if absorbed <> "" then m.log.info("restart of the item already loaded or loading absorbed", "reason", update.reason, "answer", absorbed)
+    ' The Ready this member sent was for the wait the server has reset: the item is held at its start.
+    if absorbed = "ready" then report("ready", false, m.playerPositionTicks)
     if hasOpenClaim() then m.owedLoad = syncPlayQueue.owedLoadForClaimedPlay(m.owedLoad, update.reason, m.state.playingItemId)
   end if
   m.log.info("group update", "type", updateType, "groupId", m.state.groupId, "state", m.state.groupState)
@@ -621,7 +645,7 @@ sub onGroupUpdate(update as object)
     m.staleGroupName = ""
     unsetUserSetting(STALE_GROUP_KEY)
     dropClaimedPlay("left the group")
-    leaveLocally()
+    leaveLocally(queueHeldGroupItem)
     return
   else if updateType = "UserJoined"
     notify("userJoined", m.state.groupName, update.userName)
@@ -753,6 +777,7 @@ sub applyPendingPlan()
   steps = syncPlayPlayback.applyPlan(plan, m.playerState, m.playerPositionTicks, m.tracker.phase, heldForCorrection)
   for each verb in steps
     if verb.command = "stop"
+      m.loadAwaitsReady = false
       m.expectingRemount = true
       host.callFunc("exitPlayback")
     else if verb.command = "seekto" and syncPlayPlayback.pauseWaitsForSeek(m.tracker.phase)
@@ -871,6 +896,8 @@ sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteg
   if action = "" then return
   ' The load is performed from here. The early return above kept the record for its retry.
   m.owedLoad = invalid
+  m.loadAwaitsReady = true
+  m.loadCount++
   ' One toast for what this load is: the claim said it already, a reload in place says only a
   ' follow made again, and a launch says what its frame decided (syncPlayQueue.noticeAtLoad).
   notice = syncPlayQueue.noticeAtLoad(m.loadNotice, action, hasOpenClaim())
@@ -947,6 +974,7 @@ sub track(evt as object)
     if m.groupPaused then armPauseTimer()
   end if
   if isValid(m.correction) and seekEnded then onCorrectionLanded(result.pauseFirst)
+  if result.report = "ready" then m.loadAwaitsReady = false
   if result.report <> ""
     if result.positionTicks >= 0 then report(result.report, isPlaying, result.positionTicks) else report(result.report, isPlaying)
   else if m.tracker.phase <> phaseBefore
@@ -1109,7 +1137,11 @@ function syncPlayRequest(action as string, body as dynamic, isLastForSession = f
   return req
 end function
 
-sub leaveLocally()
+' @param endsGroupRepeat - the local queue still holds the group's item, so the repeat on it is
+'   the group's and ends with the membership (syncGroupModes wrote it; jellyfin-web restores its own
+'   queue manager on leave). Decided by the caller before the state resets, since the group's
+'   playing item is what says the queue is still the group's.
+sub leaveLocally(endsGroupRepeat as boolean)
   m.syncTimer.control = "stop"
   releaseCorrection()
   resetPlaybackTracking()
@@ -1121,6 +1153,7 @@ sub leaveLocally()
   m.lastCommand = invalid
   m.owedLoad = invalid
   m.expectingRemount = false
+  m.loadAwaitsReady = false
   m.claimedStart = invalid
   m.claimRefollowed = false
   m.joinAwaitsQueue = false
@@ -1128,7 +1161,24 @@ sub leaveLocally()
   m.resumeAsked = false
   m.loadStartTicks = 0&
   m.failedBursts = 0
+  if endsGroupRepeat then clearGroupRepeat()
   publish()
+end sub
+
+' Whether the local queue's current item is the one the group is playing.
+function holdsGroupItem() as boolean
+  queueManager = m.global.queueManager
+  if not isValid(queueManager) then return false
+  return syncPlayQueue.isGroupItem(queueManager.callFunc("getCurrentItem"), m.state.playingItemId)
+end function
+
+' Repeat off on the queue the group repeated, and the player told so an open OSD reads it again
+' (published first, as syncGroupModes does: the OSD reads `sync` as it refreshes).
+sub clearGroupRepeat()
+  m.global.queueManager.callFunc("setRepeatMode", queueRepeat.OFF)
+  publish()
+  host = playerHost()
+  if isValid(host) then tellPlayer(host, { command: "queuechanged" })
 end sub
 
 sub publish()
@@ -1150,6 +1200,7 @@ sub publish()
       loadNotice: m.loadNotice,
       playbackDiffMs: m.playbackDiffMs,
       extraOffsetMs: m.estimator.extraOffsetMs,
+      loadCount: m.loadCount,
       repeatMode: m.state.repeatMode,
       shuffleMode: m.state.shuffleMode
     }
@@ -1188,7 +1239,7 @@ function seekInFlight() as boolean
 end function
 
 ' A control the viewer pressed while following, asked of the group in place of the player:
-' { kind: "pause" | "unpause" | "seek" | "next" | "previous" | "repeat" | "shuffle", position, mode },
+' { kind: "pause" | "unpause" | "seek" | "next" | "previous" | "repeat" | "shuffle" | "timeOffset", position, mode },
 ' the seek's position in the Video node's float seconds, a repeat or shuffle pick's mode in the
 ' server's words (queueRepeat.bs, syncPlayQueue.SHUFFLE_ON). True when it was posted; the server's
 ' command then moves every member, this one included (a pause is also written locally by the
@@ -1204,6 +1255,15 @@ function control(request as object) as boolean
   if request.kind = "shuffle"
     if not syncPlayTime.isText(request.mode) then return false
     return post("SetShuffleMode", syncPlayRequests.setShuffleMode(syncPlayQueue.normalizeShuffle(request.mode)))
+  end if
+  if request.kind = "timeOffset"
+    ' Not posted: the offset is this viewer's own. The clock takes the saved setting now, and the settle
+    ' check is armed so the next position notifications correct the drift the new offset made. While
+    ' the group is paused nothing counts toward it, and the next Unpause arms it again.
+    refreshExtraOffset()
+    syncPlayPlayback.armSettleCheck(m.settle, true)
+    publish()
+    return true
   end if
   if request.kind = "pause" then return post("Pause", invalid)
   if request.kind = "unpause" then return post("Unpause", invalid)

@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-03
+last-updated: 2026-11-04
 ---
 
 # Progress
@@ -1612,6 +1612,10 @@ Cause not confirmed. A playback error dialog is only a guess, because the record
 **Also seen in the same run, 05:48 UTC:** "Play on a song's details opens the audio player" timed out waiting for focus in `#extrasGrid` (`wait-focused-timeout`, view `ItemDetails`, focus on an `IconButton`), then passed 3 of 3 alone. Cause not found, and this exact timeout has no earlier record. File it separately if it comes back.
 
 **Not checked:** which dialog appeared; whether the failure repeats in `dialogs.spec.js` run alone; whether the sibling followup has the same cause; whether the memory monitor plays any part, though the same wait failed on a commit without it.
+
+#### RTA cannot reach the ready branch of the SyncPlay duplicate-restart fix `[fid: syncplay-absorb-ready-branch-no-rta]` `[captured 2026-11-04]`
+
+`syncPlayQueue.restartAbsorbed` has two branches (decision `syncplay-duplicate-restart-absorbed`). The RTA case in `tests/rta/specs/syncplay-controls.spec.js` covers the loading branch only. The ready branch (a duplicate restart that finds the Roku already ready at the start, so it sends `Ready` again) has unit tests alone: the REST second member ignores the wait, so the group's `Unpause` follows the Roku's `Ready` within about 100 ms and a poll cannot land in that window. Not done now because it needs the REST member to send its own `Ready` (`IgnoreWait` off) so the wait stays open. Closes when an RTA case drives the ready branch.
 
 ### docs
 

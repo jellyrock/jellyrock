@@ -43,6 +43,10 @@ namespace syncPlayPlayback
   ' Position notifications to let pass after `playing` before the drift is read: the node's
   ' position field lags real playback by up to one notification interval.
   const SETTLE_POSITIONS = 2
+  ' The bar, either way, for a check a time offset pick armed: the viewer asked for a shift, so a
+  ' small one is worth making. The drift reading wobbles by tens of ms, so a smaller bar would
+  ' correct noise; normal drift keeps the bars above so jitter never seeks.
+  const PICK_CORRECTION_MS = 100
   ' How far ahead of the group a correction seeks before it pauses and waits for the group to
   ' arrive. A plain seek to the group's position lands behind by the seek's own latency (a
   ' transcode resumed 364 and 667 ms late on a 2026-10-31 Stick 4K run, the drift it was meant
@@ -200,19 +204,31 @@ namespace syncPlayPlayback
   ' Unpause. A correction gets one reading after it (retrySettleCheck), so the most an Unpause can
   ' cost is two.
   function newSettleCheck() as object
-    return { armed: false, positions: 0, retried: false }
+    return { armed: false, positions: 0, retried: false, byPick: false }
   end function
 
-  sub armSettleCheck(check as object)
+  ' @param byPick - the viewer's time offset pick armed it, not an Unpause: a seek it starts is told
+  '   to the viewer (takePickNotice), since nothing they pressed looks like a jump
+  sub armSettleCheck(check as object, byPick = false as boolean)
     check.armed = true
     check.positions = 0
     check.retried = false
+    check.byPick = byPick
   end sub
+
+  ' Whether the correction the check is about to start is one a time offset pick caused, and so is
+  ' told to the viewer. True once per arming.
+  function takePickNotice(check as object) as boolean
+    pick = check.byPick = true
+    check.byPick = false
+    return pick
+  end function
 
   ' A load starts over: the Unpause that armed this was for the item before it.
   sub disarmSettleCheck(check as object)
     check.armed = false
     check.positions = 0
+    check.byPick = false
   end sub
 
   ' A correction ended, well or badly: read the drift once more. A correction can land off (late,
@@ -237,6 +253,7 @@ namespace syncPlayPlayback
     check.positions++
     if check.positions < SETTLE_POSITIONS then return false
     check.armed = false
+    if check.byPick = true then return Abs(drift) > PICK_CORRECTION_MS
     if drift >= 0 then return drift > SKIP_TO_SYNC_MIN_MS
     return Abs(drift) > SETTLE_CORRECTION_MS
   end function

@@ -26,12 +26,10 @@ namespace playbackSettingsMenu
   const ROW_LEAVE_GROUP = "leaveGroup"
 
   ' The time offset picker's steps, in ms: the setting's range (0 to 500 in settings.json), coarse
-  ' enough to pick with a remote while listening for the echo.
-  const TIME_OFFSET_STEP_MS = 50
+  ' enough to pick with a remote while listening for the echo. Not below PICK_CORRECTION_MS
+  ' (syncPlayPlayback), so every pick moves the node.
+  const TIME_OFFSET_STEP_MS = 100
   const TIME_OFFSET_MAX_MS = 500
-  ' A drift this small reads as in step: under the correction's own bars (150 ms ahead, 400 ms
-  ' behind) and inside the few ms the clock estimate wobbles, it is nothing to tune for.
-  const TIME_OFFSET_IN_STEP_MS = 25
 
   ' Each row's glyph, drawn in the list row's gutter the way the More menu's rows wear
   ' their buttons' icons.
@@ -86,9 +84,9 @@ namespace playbackSettingsMenu
   ' @param {string} resolutionId - playbackCaps.resolution()
   ' @param {dynamic} resolutionSetting - the playbackResolutionMax entry of settings.json
   ' @param {string} repeatMode - QueueManager.getRepeatMode()
-  ' @param {dynamic} group - while following a SyncPlay group, { shuffleMode, offsetMs, driftMs }:
-  '   the group's shuffle word, the viewer's time offset setting and how far behind the group this
-  '   member sits (syncPlayHooks.groupModes); invalid outside a group, and the SyncPlay rows stay out
+  ' @param {dynamic} group - while following a SyncPlay group, { shuffleMode, offsetMs }:
+  '   the group's shuffle word and the viewer's time offset setting
+  '   (syncPlayHooks.groupModes); invalid outside a group, and the SyncPlay rows stay out
   ' @returns {object} - { labels: [string], ids: [string], icons: [string] }
   function rows(isLiveTv as boolean, bitrateMbps as integer, resolutionId as string, resolutionSetting as dynamic, repeatMode as string, group = invalid as dynamic) as object
     menu = { labels: [], ids: [], icons: [] }
@@ -112,7 +110,7 @@ namespace playbackSettingsMenu
       menu.labels.push(rowLabel(translationKeys.LabelShuffle, shuffleLabel(group.shuffleMode)))
       menu.ids.push(ROW_SHUFFLE)
       menu.icons.push(ICON_SHUFFLE)
-      menu.labels.push(rowLabel(translationKeys.LabelSyncPlayTimeOffset, timeOffsetLabel(group.offsetMs, group.driftMs)))
+      menu.labels.push(rowLabel(translationKeys.LabelSyncPlayTimeOffset, timeOffsetLabel(group.offsetMs)))
       menu.ids.push(ROW_TIME_OFFSET)
       menu.icons.push(ICON_TIME_OFFSET)
       menu.labels.push(translate(translationKeys.ButtonLeaveGroup))
@@ -138,21 +136,13 @@ namespace playbackSettingsMenu
     return options
   end function
 
-  ' The time offset row's value: the setting, then how this member sits against the group while
-  ' a reading exists ("100 ms, 35 ms behind"). The reading is the drift the manager publishes:
-  ' positive behind the group, negative ahead, within a few ms in step. Tuned by ear: the viewer
-  ' raises the offset until the sound lines up, and the reading says what the clock sees.
+  ' The time offset row's value: the setting alone. A pick takes effect at once (the manager corrects
+  ' the drift it makes), so the row has no reading to add.
   ' @param {dynamic} offsetMs - the SyncPlay Time Offset setting
-  ' @param {dynamic} driftMs - sync.playbackDiffMs, or invalid while no Unpause is in force
-  function timeOffsetLabel(offsetMs as dynamic, driftMs as dynamic) as string
+  function timeOffsetLabel(offsetMs as dynamic) as string
     offset = 0
     if isValid(offsetMs) then offset = int(offsetMs)
-    label = translate(translationKeys.LabelMilliseconds, [offset.toStr()])
-    if not isValid(driftMs) then return label
-    drift = int(driftMs)
-    if abs(drift) < TIME_OFFSET_IN_STEP_MS then return label + ", " + translate(translationKeys.LabelSyncPlayInStep)
-    if drift > 0 then return label + ", " + translate(translationKeys.LabelSyncPlayBehindGroup, [drift.toStr()])
-    return label + ", " + translate(translationKeys.LabelSyncPlayAheadOfGroup, [abs(drift).toStr()])
+    return translate(translationKeys.LabelMilliseconds, [offset.toStr()])
   end function
 
   ' The time offset picker: every TIME_OFFSET_STEP_MS from 0 to TIME_OFFSET_MAX_MS, with the
