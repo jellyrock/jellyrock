@@ -2526,6 +2526,14 @@ The auth guard (`AuthManager.canActivate`) refuses a guarded route requested whi
 
 Ruled out: redirecting to `/users` with `UserSelect` fetching its own list, which still moves the viewer, is still wrong with no server and adds a second list builder; and refusing, then running `reenterLogin()` on the main thread, which pulls a viewer typing a password back to the picker. Recheck if the app ever signs a user out mid-session (on a 401, say): that viewer is on a guarded screen, and a refusal would strand them there, so that path needs its own route to sign-in.
 
+## decision-id: playable-default-audio-track
+
+**date**: 2026-11-03
+**status**: accepted
+**related-files**: `source/utils/streamSelection.bs`
+
+With "Play default audio track" on, a default track this Roku cannot direct-play (TrueHD, for one) gives way to a same-language, non-commentary track it can play, with no fewer channels than the viewer would get from the default (the lesser of its channels and the device maximum); `playableAlternativeToDefault()` decides. The server converts an unplayable default anyway, and a playable track lets the video direct-play or copy, which avoids remuxing long-GOP 4K sources at all. Measured 2026-11-03 on a Roku Ultra: a 4K HDR10 file with a TrueHD default and an `AC3` 5.1 track went from a remux to `PlayMethod: DirectPlay ... Reasons: 0`. A playable default is kept, so a playable AAC 2.0 default still beats an `AC3` 5.1. Ruled out: leaving the choice to the server, which converts the audio and can lose the original video; a setting for it, which most viewers would never find.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
