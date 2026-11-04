@@ -602,8 +602,16 @@ Roku does not play Dolby Vision from an MKV container, so JellyRock asks for a r
 A copied video stream can only be cut at the source's keyframes, so a source with keyframes several seconds apart gives HLS segments larger than Roku's whole video buffer, whatever `SegmentLength` asks for (`calculateOptimalTranscodingParams()` sizes segments by bitrate alone). Roku then fails with a `buffer:loop:` source error, and the player retries once with the video re-encoded, which forces a keyframe every segment:
 
 - `chooseErrorRetry()` (`source/utils/playbackRetry.bs`) picks the retry. The Dolby Vision retry above comes first; the re-encode retry is offered on any transcoded load that did not already ask for one (`isReencodeFallbackAvailable`).
-- The retry sends `AllowVideoStreamCopy = false`, applies the buffer bitrate cap even below the source bitrate, and lists HEVC before H.264 (`hevcFirstCodecList()`), so a server that encodes HEVC keeps 4K.
-- A server that does not encode HEVC (Jellyfin's default) re-encodes to H.264 at the source's size, and Roku decodes H.264 only up to level 4.2. A width limit in a codec profile applies to every codec, so the profile cannot cap H.264 alone. Instead the retry's load reads the master playlist's codec and size (`hlsMasterVariant()`, `needsH264ResolutionCap()`) and, for H.264 above 1080p, asks once more with a 1080p cap. Any failure keeps the first answer.
+- The retry sends `AllowVideoStreamCopy = false` and applies the buffer bitrate cap even below the source bitrate.
+
+### A transcode Roku can decode
+
+Roku decodes H.264 only up to `H264_MAX_WIDTH` by `H264_MAX_HEIGHT` (1920 by 1080): a larger direct-played file fails with "Image width too high", and a larger HLS stream never starts. A server that does not encode HEVC (Jellyfin's default) re-encodes any source to H.264 at the source's size, so the load checks what the server will send:
+
+- **HEVC goes first when the server encodes HEVC in hardware.** The load reads the server's encoding settings once per session (`GET /System/Configuration/encoding`, open to any signed-in user; `JellyfinServer.encodingPolicy`). When they allow HEVC encoding on a hardware encoder (`serverCapabilities.serverEncodesHevcInHardware()`), a source H.264 cannot carry, beyond the ceiling or HDR the TV shows (`prefersHevcTranscode()`), lists HEVC first, so the server keeps its size and range. Otherwise H.264 goes first: a software HEVC encode runs slower than real time and stalls, where H.264 plays. The re-encode retry always lists HEVC first. Neither rule asks for more than the screen shows: the resolution limit and the HDR range types come from the Roku's output mode and what the TV reports (`getResolutionConditions()`, `GetDisplayProperties()`).
+- **The server's answer is read before it plays.** For a non-live source beyond the ceiling, the load reads the master playlist's codec and size (`hlsMasterVariant()`, `needsH264ResolutionCap()`) and, when the server answered H.264 above the ceiling, asks once more with a 1080p cap (`capH264Resolution()`). Ordinary plays make no extra request, and a copied video reads as HEVC and plays at its own size. Any failure keeps the first answer.
+
+A width limit in the H.264 codec profile cannot do this: Jellyfin applies a codec profile's width as one limit for the whole transcode, which would also stop 4K HEVC copies.
 
 ## Subtitles
 

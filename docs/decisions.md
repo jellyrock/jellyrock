@@ -2536,6 +2536,16 @@ A `buffer:loop:` error on a transcoded HLS stream retries once with the video re
 
 Ruled out: a progressive MKV remux (reverted 2026-04-27: no duration, so no scrubbing); always capping the retry at 1080p, which loses 4K on servers that encode HEVC; HEVC first alone, which still stalls on default servers; and choosing the retry from bitrate before playing, since the client cannot see keyframe spacing and a 55 Mbps short-GOP remux plays as copied. To re-evaluate: if Jellyfin gains per-codec resolution limits, or reports the encoder it will use.
 
+## decision-id: transcode-codec-follows-server
+
+**date**: 2026-11-04
+**status**: accepted
+**related-files**: `source/utils/deviceCapabilities.bs`, `source/utils/serverCapabilities.bs`, `source/api/items.bs`, `components/ItemGrid/LoadVideoContentTask.bs`
+
+A transcode of a source above 1080p never comes out as H.264 above `1920x1080`, and lists HEVC first only when the server's own settings say it encodes HEVC in hardware. Roku decodes H.264 only up to `1920x1080`: measured 2026-11-04 on a Roku Ultra, direct 4K H.264 files fail with "Image width too high", 4K H.264 re-encodes at 24 and 30 fps and 15 and 40 Mbps never leave buffering, and through the app the player sits at "play" position 0 with no error; a 1080p re-encode plays. A server that does not encode HEVC (Jellyfin's default) re-encodes such a source to 4K H.264, so the load reads the master playlist and asks again at 1080p when it declares H.264 above the ceiling (`capH264Resolution`). The server's encoding settings are readable by any signed-in user (`GET /System/Configuration/encoding`, every version from 10.7.7 to master), so HEVC first follows them: with `NVENC` and HEVC on, a 4K HDR re-encode played at 4K; with software HEVC on, `libx265` ran at 0.54x to 0.74x and a 1080p HDR re-encode stalled, where H.264 plays. A re-encode recorded on 2026-11-03 as playing 4K H.264 was a misread: the probe read the player's state, and its position never moved.
+
+Ruled out: a width limit on the H.264 codec profile (Jellyfin applies it to every codec, which would also stop 4K HEVC copies); HEVC first for every source (stalls on software HEVC servers); trying HEVC on software servers and falling back on a stall (a server fast enough still pays for it in its other work). To re-evaluate: if Jellyfin gains per-codec resolution limits.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
