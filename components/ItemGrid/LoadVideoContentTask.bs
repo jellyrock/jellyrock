@@ -586,8 +586,15 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
       end for
     end if
     if isValid(sourceVideoStream) and exceedsH264Ceiling(sourceVideoStream.Width, sourceVideoStream.Height)
-      capH264Resolution(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, pickedCaps, disallowVideoCopy)
+      pickedCaps = capH264Resolution(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, pickedCaps, disallowVideoCopy)
     end if
+  end if
+
+  ' Roku refuses an HLS playlist over 4 MiB of text, and the server echoes the request query into
+  ' every entry, so a long film can fail on a playlist the entry count said was fine. Measure the
+  ' answer's own URL and ask again with fewer entries (longer segments) when it would not fit.
+  if not isLive and isValid(playedSource)
+    fitHlsPlaylist(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, pickedCaps, disallowVideoCopy, playedSource.RunTimeTicks)
   end if
 
   ' Call addSubtitlesToVideo ONCE after ItemPostPlaybackInfo
@@ -801,24 +808,26 @@ end sub
 '
 ' @param {string} itemId - the item
 ' @param {boolean} disallowVideoCopy - the load's own value, sent again unchanged
-sub capH264Resolution(itemId as string, mediaSourceId as dynamic, audioStreamIdx as integer, subtitleIdx as integer, playbackPosition as dynamic, meta as object, bypassDoviPreservation as boolean, forceTranscoding as boolean, pickedCaps as dynamic, disallowVideoCopy as boolean)
-  if not isValidAndNotEmpty(m.playbackInfo.MediaSources) then return
+' @return {dynamic} the caps now in effect, for a later request to send: the 1080p-capped caps when
+'                   that answer was taken, otherwise pickedCaps
+function capH264Resolution(itemId as string, mediaSourceId as dynamic, audioStreamIdx as integer, subtitleIdx as integer, playbackPosition as dynamic, meta as object, bypassDoviPreservation as boolean, forceTranscoding as boolean, pickedCaps as dynamic, disallowVideoCopy as boolean) as dynamic
+  if not isValidAndNotEmpty(m.playbackInfo.MediaSources) then return pickedCaps
   source = m.playbackInfo.MediaSources[0]
-  if not isValid(source) or not isValidAndNotEmpty(source.TranscodingUrl) then return
-  if LCase(textOrEmpty(source.TranscodingSubProtocol)) <> "hls" then return
+  if not isValid(source) or not isValidAndNotEmpty(source.TranscodingUrl) then return pickedCaps
+  if LCase(textOrEmpty(source.TranscodingSubProtocol)) <> "hls" then return pickedCaps
 
   fetched = fetchManifestText(buildURL(source.TranscodingUrl), timeouts.HLS_MASTER_PROBE_MS)
   if not isValid(fetched) or fetched.code <> 200
     m.log.warn("Could not read the server's master playlist; keeping the server's answer", "itemId", itemId)
-    return
+    return pickedCaps
   end if
   variant = hlsMasterVariant(fetched.body)
   if not isValid(variant)
     m.log.warn("Could not parse the server's master playlist; keeping the server's answer", "itemId", itemId)
-    return
+    return pickedCaps
   end if
   m.log.info("Master playlist", "codecs", variant.codecs, "width", variant.width, "height", variant.height, "itemId", itemId)
-  if not needsH264ResolutionCap(variant) then return
+  if not needsH264ResolutionCap(variant) then return pickedCaps
 
   ' The viewer's own picks stay; only the resolution is lowered.
   cappedCaps = {}
@@ -828,8 +837,43 @@ sub capH264Resolution(itemId as string, mediaSourceId as dynamic, audioStreamIdx
   if isValid(res) and res.ok and isValid(res.json) and isValidAndNotEmpty(res.json.MediaSources) and not isValidAndNotEmpty(res.json.ErrorCode)
     m.log.info("Answer is H.264 above 1080p; playing the answer capped at 1080p", "itemId", itemId)
     m.playbackInfo = res.json
+    return cappedCaps
+  end if
+  m.log.warn("PlaybackInfo with a 1080p cap failed; keeping the server's answer", "itemId", itemId)
+  return pickedCaps
+end function
+
+' fitHlsPlaylist: After a PlaybackInfo answer for an HLS transcode, make sure its playlist fits
+' Roku's byte limit.
+'
+' The size is estimated from the answer's TranscodingUrl (estimatePlaylistBytes). When it is over
+' the budget, ask PlaybackInfo once more with the entry count that fits (maxPlaylistEntriesFor), so
+' the server cuts longer segments. Any failure keeps the first answer (m.playbackInfo). A live
+' stream, a direct play and an answer with no known duration make no request.
+'
+' @param {dynamic} pickedCaps - the caps in effect, sent again unchanged
+' @param {dynamic} runTimeTicks - the played source's RunTimeTicks
+sub fitHlsPlaylist(itemId as string, mediaSourceId as dynamic, audioStreamIdx as integer, subtitleIdx as integer, playbackPosition as dynamic, meta as object, bypassDoviPreservation as boolean, forceTranscoding as boolean, pickedCaps as dynamic, disallowVideoCopy as boolean, runTimeTicks as dynamic)
+  if not isValidAndNotEmpty(m.playbackInfo.MediaSources) then return
+  source = m.playbackInfo.MediaSources[0]
+  if not isValid(source) or not isValidAndNotEmpty(source.TranscodingUrl) then return
+  if LCase(textOrEmpty(source.TranscodingSubProtocol)) <> "hls" then return
+  if not isValid(runTimeTicks) or runTimeTicks <= 0 then return
+
+  durationSeconds = Int(runTimeTicks / 10000000)
+  segmentLength = hlsSegmentLengthFromUrl(source.TranscodingUrl)
+  estimate = estimatePlaylistBytes(source.TranscodingUrl, durationSeconds, segmentLength)
+  budget = playlistByteBudget()
+  m.log.info("Estimated HLS playlist size", "bytes", estimate, "budget", budget, "segmentLength", segmentLength, "itemId", itemId)
+  if estimate <= budget then return
+
+  maxEntries = maxPlaylistEntriesFor(source.TranscodingUrl)
+  res = ItemPostPlaybackInfoResponse(itemId, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, 0, pickedCaps, disallowVideoCopy, maxEntries)
+  if isValid(res) and res.ok and isValid(res.json) and isValidAndNotEmpty(res.json.MediaSources) and not isValidAndNotEmpty(res.json.ErrorCode)
+    m.log.info("Playlist would be over the budget; playing the answer cut into fewer entries", "maxEntries", maxEntries, "itemId", itemId)
+    m.playbackInfo = res.json
   else
-    m.log.warn("PlaybackInfo with a 1080p cap failed; keeping the server's answer", "itemId", itemId)
+    m.log.warn("PlaybackInfo with fewer playlist entries failed; keeping the server's answer", "itemId", itemId)
   end if
 end sub
 

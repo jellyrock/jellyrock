@@ -1,0 +1,140 @@
+import "pkg:/source/utils/deviceCapabilities.bs"
+
+namespace tests
+
+  ' Roku rejects an HLS playlist over 4 MiB of text, whatever its entry count. The budget
+  ' estimates a playlist's size from the TranscodingUrl the server answered with, because the
+  ' server echoes the whole request query into every entry.
+  @suite("deviceCapabilities.bs - HLS playlist byte budget")
+  class PlaylistBudgetTests extends tests.BaseTestSuite
+
+    private function urlOfLength(length as integer) as string
+      return "http://s/v/master.m3u8?" + string(length - 23, "a")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("estimatePlaylistBytes()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("puts the 2 h 10 min film with a 1,016-character URL and 2 s segments over the budget")
+    function _()
+      budget = ROKU_MAX_PLAYLIST_BYTES * PLAYLIST_BUDGET_FRACTION
+      m.assertTrue(estimatePlaylistBytes(m.urlOfLength(1016), 7814, 2) > budget)
+    end function
+
+    @it("puts a short URL and a short film far under the budget")
+    function _()
+      m.assertTrue(estimatePlaylistBytes(m.urlOfLength(200), 1800, 6) < ROKU_MAX_PLAYLIST_BYTES / 10)
+    end function
+
+    @it("rounds the entry count up")
+    function _()
+      url = m.urlOfLength(100)
+      m.assertEqual(estimatePlaylistBytes(url, 5, 2), 3& * (100 + PLAYLIST_ENTRY_OVERHEAD_BYTES))
+    end function
+
+    @it("estimates zero for no duration or no segment length")
+    function _()
+      m.assertEqual(estimatePlaylistBytes(m.urlOfLength(100), 0, 2), 0&)
+      m.assertEqual(estimatePlaylistBytes(m.urlOfLength(100), 100, 0), 0&)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("maxPlaylistEntriesFor()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("fits fewer entries than the old fixed cap for a 1,016-character URL")
+    function _()
+      entries = maxPlaylistEntriesFor(m.urlOfLength(1016))
+      m.assertTrue(entries < 5000)
+      m.assertTrue(entries > 3000)
+    end function
+
+    @it("keeps the playlist under the budget at that many entries")
+    function _()
+      url = m.urlOfLength(1016)
+      entries = maxPlaylistEntriesFor(url)
+      m.assertTrue(estimatePlaylistBytes(url, entries, 1) <= ROKU_MAX_PLAYLIST_BYTES * PLAYLIST_BUDGET_FRACTION)
+      m.assertTrue(estimatePlaylistBytes(url, entries + 1, 1) > ROKU_MAX_PLAYLIST_BYTES * PLAYLIST_BUDGET_FRACTION)
+    end function
+
+    @it("allows more entries for a shorter URL")
+    function _()
+      m.assertTrue(maxPlaylistEntriesFor(m.urlOfLength(300)) > maxPlaylistEntriesFor(m.urlOfLength(1016)))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hlsSegmentLengthFromUrl()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads SegmentLength from the query, whatever its case")
+    function _()
+      m.assertEqual(hlsSegmentLengthFromUrl("/videos/x/master.m3u8?DeviceId=a&SegmentLength=3&Tag=b"), 3)
+      m.assertEqual(hlsSegmentLengthFromUrl("/videos/x/master.m3u8?segmentLength=2"), 2)
+    end function
+
+    @it("returns 0 when the URL has none")
+    function _()
+      m.assertEqual(hlsSegmentLengthFromUrl("/videos/x/master.m3u8?DeviceId=a"), 0)
+      m.assertEqual(hlsSegmentLengthFromUrl(invalid), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("calculateOptimalTranscodingParams() with a smaller entry limit")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("lengthens the segment so the playlist fits the limit")
+    function _()
+      ' 7,814 s at a normal-memory buffer and 40 Mbps: the buffer allows 2 s segments (3,907 entries)
+      before = calculateOptimalTranscodingParams(40000000&, 7814, 31616000&)
+      m.assertEqual(before.segmentLength, 2)
+      after = calculateOptimalTranscodingParams(40000000&, 7814, 31616000&, 2800)
+      m.assertEqual(after.segmentLength, 3)
+    end function
+
+    @it("keeps the old cap when no limit is passed")
+    function _()
+      m.assertEqual(calculateOptimalTranscodingParams(10000000&, 7200, 31616000&).segmentLength, 6)
+      m.assertEqual(calculateOptimalTranscodingParams(10000000&, 7200, 31616000&, MAX_HLS_PLAYLIST_ENTRIES).segmentLength, 6)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("uniqueRangeTypes()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("drops repeats and keeps first-seen order")
+    function _()
+      m.assertEqual(uniqueRangeTypes("SDR|DOVIWithSDR|DOVI|DOVIWithEL|DOVIWithELHDR10Plus|HDR10|DOVIWithHDR10|DOVIWithEL|HDR10Plus|DOVIWithHDR10Plus|DOVIWithELHDR10Plus|HLG|DOVIWithHLG"), "SDR|DOVIWithSDR|DOVI|DOVIWithEL|DOVIWithELHDR10Plus|HDR10|DOVIWithHDR10|HDR10Plus|DOVIWithHDR10Plus|HLG|DOVIWithHLG")
+    end function
+
+    @it("leaves a list without repeats alone")
+    function _()
+      m.assertEqual(uniqueRangeTypes("SDR|DOVIWithSDR"), "SDR|DOVIWithSDR")
+    end function
+
+    @it("handles an empty list")
+    function _()
+      m.assertEqual(uniqueRangeTypes(""), "")
+    end function
+
+    @it("leaves no VideoRangeType condition of the device profile with a repeat")
+    function _()
+      profile = getDeviceProfile()
+      checked = 0
+      for each codecProfile in profile.CodecProfiles
+        for each condition in codecProfile.Conditions
+          if condition.Property = "VideoRangeType"
+            seen = {}
+            for each value in condition.Value.split("|")
+              m.assertFalse(seen.doesExist(value), "repeated " + value + " in " + codecProfile.Codec)
+              seen[value] = true
+            end for
+            checked++
+          end if
+        end for
+      end for
+      m.assertTrue(checked > 0)
+    end function
+
+  end class
+end namespace

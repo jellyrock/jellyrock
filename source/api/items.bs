@@ -25,9 +25,10 @@ end function
 ' @param {integer} timeoutMs - the request's HTTP limit (apiTimeout); 0 keeps the default
 ' @param {dynamic} caps - the viewer's quality caps for this playback (playbackCaps.bs), or invalid
 ' @param {boolean} disallowVideoCopy - ask the server to re-encode the video (see buildPlaybackInfoPostData)
+' @param {integer} maxPlaylistEntries - see buildPlaybackInfoPostData
 ' @return the pool response AA, or invalid when the caller's wait ran out
-function ItemPostPlaybackInfoResponse(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, timeoutMs = 0 as integer, caps = invalid as dynamic, disallowVideoCopy = false as boolean) as dynamic
-  postData = buildPlaybackInfoPostData(mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding, caps, disallowVideoCopy)
+function ItemPostPlaybackInfoResponse(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, timeoutMs = 0 as integer, caps = invalid as dynamic, disallowVideoCopy = false as boolean, maxPlaylistEntries = 0 as integer) as dynamic
+  postData = buildPlaybackInfoPostData(mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding, caps, disallowVideoCopy, maxPlaylistEntries)
   req = GetApi().BuildPostPlaybackInfoRequest(id, postData)
   if isValid(req) and timeoutMs > 0 then req.timeoutMs = timeoutMs
   return fetchRes(req, "playbackInfo")
@@ -43,8 +44,10 @@ end function
 '                        even when it is below the source bitrate. A copied video can only be cut at
 '                        the source's keyframes, so a long-GOP source gives HLS segments larger than
 '                        the device's whole video buffer; a re-encode forces a keyframe per segment.
+' @param {integer} maxPlaylistEntries - the most HLS playlist entries to plan for (see
+'                        maxPlaylistEntriesFor); 0 keeps the default of calculateOptimalTranscodingParams
 ' @return {object} the POST body for BuildPostPlaybackInfoRequest
-function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, caps = invalid as dynamic, disallowVideoCopy = false as boolean) as object
+function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, caps = invalid as dynamic, disallowVideoCopy = false as boolean, maxPlaylistEntries = 0 as integer) as object
   globalUser = m.global.user
   postData = {
     "UserId": globalUser.id,
@@ -80,7 +83,11 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
 
     if sourceBitrate& > 0 and videoDurationSeconds > 0
       bufferSize& = getDeviceBufferSize()
-      transcodingParams = calculateOptimalTranscodingParams(sourceBitrate&, videoDurationSeconds, bufferSize&)
+      if maxPlaylistEntries > 0
+        transcodingParams = calculateOptimalTranscodingParams(sourceBitrate&, videoDurationSeconds, bufferSize&, maxPlaylistEntries)
+      else
+        transcodingParams = calculateOptimalTranscodingParams(sourceBitrate&, videoDurationSeconds, bufferSize&)
+      end if
 
       ' Apply optimized segment length to all video transcoding profiles
       if isValid(postData.DeviceProfile.TranscodingProfiles)
