@@ -1,0 +1,196 @@
+import "pkg:/source/enums/ReencodeVerdict.bs"
+import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/reencodeCheck.bs"
+
+namespace tests
+
+  @suite("reencodeCheck.bs")
+  class ReencodeCheckTests extends tests.BaseTestSuite
+
+    private function capBps() as longinteger
+      return 94848000&
+    end function
+
+    ' The flags of a load the check applies to, on its first read.
+    private function flags(overrides = {} as object) as object
+      base = { attempt: 1, isLive: false, askedNoCopy: false, isFollowingGroup: false, hasFailed: false, isStale: false }
+      base.append(overrides)
+      return base
+    end function
+
+    private function answer(sessions as dynamic) as object
+      return { ok: true, statusCode: 200, json: sessions }
+    end function
+
+    ' A session whose server is encoding the video.
+    private function encoding(bitrate as dynamic, nowPlayingId = invalid as dynamic, isVideoDirect = false as dynamic) as object
+      session = { DeviceId: "roku", TranscodingInfo: { IsVideoDirect: isVideoDirect, Bitrate: bitrate, VideoCodec: "hevc" } }
+      if isValid(nowPlayingId) then session.NowPlayingItem = { Id: nowPlayingId }
+      return session
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("reencodeNeedsBufferCap() - restarts")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("restarts a re-encode above the cap")
+    function _()
+      res = m.answer([m.encoding(139808000, "abc")])
+      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
+    end function
+
+    @it("restarts when the session shows no playing item yet, as a stream that never left buffering does")
+    function _()
+      res = m.answer([m.encoding(139808000)])
+      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
+    end function
+
+    @it("matches the playing item without regard to case")
+    function _()
+      res = m.answer([m.encoding(139808000, "ABC")])
+      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
+    end function
+
+    @it("restarts one bit per second above the cap")
+    function _()
+      res = m.answer([m.encoding(94848001&, "abc")])
+      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
+    end function
+
+    @it("reads a bitrate the server sent as a long integer or a float")
+    function _()
+      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(m.answer([m.encoding(139808000&, "abc")]), m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
+      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(m.answer([m.encoding(139808000.0, "abc")]), m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
+    end function
+
+    @it("picks the session playing this item from several for the device")
+    function _()
+      res = m.answer([m.encoding(10000000, "other"), m.encoding(139808000, "abc")])
+      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
+    end function
+
+    @it("restarts on the second read too")
+    function _()
+      res = m.answer([m.encoding(139808000, "abc")])
+      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, m.capBps(), "abc", m.flags({ attempt: 2 })), ReencodeVerdict.RESTART)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("reencodeNeedsBufferCap() - nothing to do")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves a video the server copies")
+    function _()
+      res = m.answer([m.encoding(139808000, "abc", true)])
+      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
+    end function
+
+    @it("leaves a re-encode at or under the cap")
+    function _()
+      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(m.answer([m.encoding(m.capBps(), "abc")]), m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
+      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(m.answer([m.encoding(60000000, "abc")]), m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
+    end function
+
+    @it("does nothing when the load has no cap")
+    function _()
+      res = m.answer([m.encoding(139808000, "abc")])
+      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, 0&, "abc", m.flags()), ReencodeVerdict.NONE)
+      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, invalid, "abc", m.flags()), ReencodeVerdict.NONE)
+    end function
+
+    @it("does nothing when an older server sends no IsVideoDirect")
+    function _()
+      session = { DeviceId: "roku", TranscodingInfo: { Bitrate: 139808000 } }
+      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(m.answer([session]), m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
+    end function
+
+    @it("does nothing when the read failed, was slow or came back malformed")
+    function _()
+      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(invalid, m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
+      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap({ ok: false, statusCode: 500, json: invalid }, m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
+      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap({ ok: false, statusCode: 0, json: invalid }, m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
+      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap({ ok: true, statusCode: 200, json: {} }, m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
+      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(m.answer(["x", invalid]), m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("reencodeNeedsBufferCap() - the load is not one to act on")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("stands down for each reason a load or an answer is not the one to restart")
+    function _()
+      res = m.answer([m.encoding(139808000, "abc")])
+      for each reason in ["isLive", "askedNoCopy", "isFollowingGroup", "hasFailed", "isStale"]
+        overrides = {}
+        overrides[reason] = true
+        m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, m.capBps(), "abc", m.flags(overrides)), ReencodeVerdict.NONE, reason)
+      end for
+    end function
+
+    @it("ignores an answer about another item")
+    function _()
+      res = m.answer([m.encoding(139808000, "other")])
+      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, m.capBps(), "abc", m.flags({ attempt: 2 })), ReencodeVerdict.NONE)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("reencodeNeedsBufferCap() - the server has not shown its transcode yet")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads again once when this device's session shows no transcode or no bitrate yet")
+    function _()
+      named = { DeviceId: "roku", NowPlayingItem: { Id: "abc" } }
+      unnamed = { DeviceId: "roku" }
+      emptyInfo = { DeviceId: "roku", TranscodingInfo: {} }
+      noBitrate = { DeviceId: "roku", TranscodingInfo: { IsVideoDirect: false } }
+      for each sessions in [[named], [unnamed], [emptyInfo], [noBitrate], [m.encoding(139808000, "other"), unnamed]]
+        m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(m.answer(sessions), m.capBps(), "abc", m.flags()), ReencodeVerdict.LATER)
+        m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(m.answer(sessions), m.capBps(), "abc", m.flags({ attempt: 2 })), ReencodeVerdict.NONE)
+      end for
+    end function
+
+    @it("does nothing when no session matches the device and item")
+    function _()
+      for each sessions in [[], [m.encoding(139808000, "other")]]
+        m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(m.answer(sessions), m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("bufferCapBps()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is the buffer cap calculateOptimalTranscodingParams gives a 160 Mbps film")
+    function _()
+      source = { Bitrate: 160000000, RunTimeTicks: 7200& * 10000000& }
+      expected = calculateOptimalTranscodingParams(160000000&, 7200, DEVICE_BUFFER_SIZE_NORMAL).maxBitrate
+      cap = reencodeCheck.bufferCapBps(source, DEVICE_BUFFER_SIZE_NORMAL, 0)
+      m.assertEqual(cap, expected)
+      m.assertTrue(cap > 0)
+      m.assertTrue(cap < 160000000)
+    end function
+
+    @it("uses the playlist entry limit the load was cut for")
+    function _()
+      source = { Bitrate: 160000000, RunTimeTicks: 36000& * 10000000& }
+      expected = calculateOptimalTranscodingParams(160000000&, 36000, DEVICE_BUFFER_SIZE_NORMAL, 3000).maxBitrate
+      m.assertEqual(reencodeCheck.bufferCapBps(source, DEVICE_BUFFER_SIZE_NORMAL, 3000), expected)
+      m.assertTrue(expected < reencodeCheck.bufferCapBps(source, DEVICE_BUFFER_SIZE_NORMAL, 0))
+    end function
+
+    @it("is zero when the source fits the buffer with a shorter segment")
+    function _()
+      source = { Bitrate: 20000000, RunTimeTicks: 7200& * 10000000& }
+      m.assertEqual(reencodeCheck.bufferCapBps(source, DEVICE_BUFFER_SIZE_NORMAL, 0), 0&)
+    end function
+
+    @it("is zero for a source with no bitrate or runtime, or none at all")
+    function _()
+      m.assertEqual(reencodeCheck.bufferCapBps({ RunTimeTicks: 7200& * 10000000& }, DEVICE_BUFFER_SIZE_NORMAL, 0), 0&)
+      m.assertEqual(reencodeCheck.bufferCapBps({ Bitrate: 160000000 }, DEVICE_BUFFER_SIZE_NORMAL, 0), 0&)
+      m.assertEqual(reencodeCheck.bufferCapBps(invalid, DEVICE_BUFFER_SIZE_NORMAL, 0), 0&)
+    end function
+
+  end class
+
+end namespace

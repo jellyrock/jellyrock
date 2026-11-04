@@ -1,0 +1,107 @@
+import "pkg:/source/enums/ReencodeVerdict.bs"
+import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/misc.bs"
+
+' Whether the server re-encoded a stream above what the device's video buffer holds, which a
+' first request cannot rule out. buildPlaybackInfoPostData applies the buffer bitrate cap only at
+' or above the source bitrate + 10%, because the server copies the video only when the requested
+' bitrate is at or above the source's. So a high-bitrate source keeps a request near its own
+' bitrate, and a server that has to re-encode anyway then encodes at that bitrate. The player asks
+' the server what it is doing once the stream is handed over, and restarts with the cap when the
+' answer is such an encode.
+namespace reencodeCheck
+
+  ' Seconds from handing the stream to the player to the first read of the session.
+  const FIRST_CHECK_SECONDS = 4
+  ' Seconds from the first read to the second, taken only when the server showed no transcode yet.
+  const SECOND_CHECK_SECONDS = 4
+  ' The reads a load gets: the second only when the first found no transcode to judge.
+  const MAX_ATTEMPTS = 2
+
+  ' The bitrate above which the video buffer cannot hold a segment of this load: the maxBitrate
+  ' calculateOptimalTranscodingParams works out for the played version, 0 when the source fits at
+  ' the segment length chosen for it (nothing to check then).
+  ' @param mediaSource - the played MediaSource: Bitrate and RunTimeTicks are read
+  ' @param bufferSizeBytes - getDeviceBufferSize()
+  ' @param maxPlaylistEntries - the entry limit the load was cut for (fitHlsPlaylist), 0 for the default
+  ' @returns bits per second, or 0
+  function bufferCapBps(mediaSource as dynamic, bufferSizeBytes as longinteger, maxPlaylistEntries as integer) as longinteger
+    if type(mediaSource) <> "roAssociativeArray" then return 0&
+    sourceBitrate& = 0&
+    if isValid(mediaSource.Bitrate) then sourceBitrate& = mediaSource.Bitrate
+    durationSeconds = 0
+    if isValid(mediaSource.RunTimeTicks) and mediaSource.RunTimeTicks > 0 then durationSeconds = Int(mediaSource.RunTimeTicks / 10000000)
+    if sourceBitrate& <= 0 or durationSeconds <= 0 then return 0&
+    if maxPlaylistEntries > 0
+      params = calculateOptimalTranscodingParams(sourceBitrate&, durationSeconds, bufferSizeBytes, maxPlaylistEntries)
+    else
+      params = calculateOptimalTranscodingParams(sourceBitrate&, durationSeconds, bufferSizeBytes)
+    end if
+    return params.maxBitrate
+  end function
+
+  ' Decide from this device's sessions whether the load must restart with the buffer cap.
+  '
+  ' The session carries a TranscodingInfo while the server's ffmpeg job runs. NowPlayingItem comes
+  ' from the start report, which the player sends at its first frame, so a stream that never leaves
+  ' buffering has none yet: a session naming no item is taken as this load's, and one naming another
+  ' item is not. A restart is cheap to be wrong about (the capped stream plays), a missed one is a
+  ' stream that never starts.
+  '
+  ' @param res - the fetchAsync response AA ({ ok, json }); json is the list of this device's sessions
+  ' @param capBps - bufferCapBps for the load, 0 when it has none
+  ' @param itemId - the item this load plays
+  ' @param flags - { attempt: 1 or 2, isLive, askedNoCopy (the load already asked for a re-encode,
+  '   which applies the cap), isFollowingGroup, hasFailed (a playback error owns the flow), isStale
+  '   (a newer load, or another item, since the read began) }
+  ' @returns a ReencodeVerdict
+  function reencodeNeedsBufferCap(res as dynamic, capBps as dynamic, itemId as string, flags as object) as ReencodeVerdict
+    if flags.isLive = true or flags.askedNoCopy = true or flags.isFollowingGroup = true then return ReencodeVerdict.NONE
+    if flags.hasFailed = true or flags.isStale = true then return ReencodeVerdict.NONE
+    if reencodeCheck.bitsPerSecond(capBps) <= 0 then return ReencodeVerdict.NONE
+    if not isValid(res) or res.ok <> true or type(res.json) <> "roArray" then return ReencodeVerdict.NONE
+
+    notYet = ReencodeVerdict.NONE
+    if flags.attempt < reencodeCheck.MAX_ATTEMPTS then notYet = ReencodeVerdict.LATER
+
+    session = reencodeCheck.sessionFor(res.json, itemId)
+    ' No session of this device is playing this item: the answer is about something else.
+    if not isValid(session) then return ReencodeVerdict.NONE
+    info = session.TranscodingInfo
+    if type(info) <> "roAssociativeArray" or info.Count() = 0 then return notYet
+    ' An older server sends no IsVideoDirect: nothing to judge, and no later read changes that.
+    if info.IsVideoDirect <> false then return ReencodeVerdict.NONE
+    bitrate = reencodeCheck.bitsPerSecond(info.Bitrate)
+    if bitrate <= 0 then return notYet
+    if bitrate > reencodeCheck.bitsPerSecond(capBps) then return ReencodeVerdict.RESTART
+    return ReencodeVerdict.NONE
+  end function
+
+  ' The session that is this load's: the one playing the item, else one naming no item. invalid
+  ' when every session of the device plays something else, or there is none.
+  function sessionFor(sessions as object, itemId as string) as dynamic
+    unnamed = invalid
+    for each session in sessions
+      if type(session) = "roAssociativeArray"
+        playing = session.NowPlayingItem
+        if type(playing) = "roAssociativeArray" and isValidAndNotEmpty(playing.Id)
+          if LCase(playing.Id) = LCase(itemId) then return session
+        else if not isValid(unnamed)
+          unnamed = session
+        end if
+      end if
+    end for
+    return unnamed
+  end function
+
+  ' A JSON number as whole bits per second, 0 for anything else. Not mediaNumber: that reads a
+  ' long integer through a float, which drops the low digits of a bitrate this large.
+  function bitsPerSecond(value as dynamic) as longinteger
+    valueType = LCase(type(value))
+    if valueType = "longinteger" or valueType = "rolonginteger" then return value
+    if valueType = "integer" or valueType = "rointeger" or valueType = "roint" then return value
+    if valueType = "float" or valueType = "rofloat" or valueType = "double" or valueType = "rodouble" then return Int(value)
+    return 0&
+  end function
+
+end namespace

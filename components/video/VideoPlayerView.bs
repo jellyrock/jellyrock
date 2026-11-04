@@ -11,6 +11,7 @@ import "pkg:/source/enums/MediaSegmentAction.bs"
 import "pkg:/source/enums/MediaSegmentType.bs"
 import "pkg:/source/enums/PlaybackEndReport.bs"
 import "pkg:/source/enums/PlaybackErrorRetry.bs"
+import "pkg:/source/enums/ReencodeVerdict.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/syncplay/syncPlayHooks.bs"
@@ -30,6 +31,7 @@ import "pkg:/source/utils/playbackErrorInfo.bs"
 import "pkg:/source/utils/playbackRetry.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
 import "pkg:/source/utils/queueRepeat.bs"
+import "pkg:/source/utils/reencodeCheck.bs"
 import "pkg:/source/utils/screenReadiness.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamOrigin.bs"
@@ -57,6 +59,15 @@ sub init()
   ' injects this line only when init() does not already open with it, so keeping it
   ' first is what stops the build from carrying a second, redundant copy.
   m.isDestroyed = false
+
+  ' The re-encode check (reencodeCheck.bs) belongs to one load. startVideoLoad runs below, before the
+  ' timer is bound, so these exist first. The seq is bumped to cancel: an answer carries the seq it
+  ' was asked under and is dropped when it no longer matches.
+  m.reencodeCheckSeq = 0
+  m.reencodeAttempt = 0
+  m.reencodeCapBps = 0&
+  m.loadAskedNoCopy = false ' the load in flight asked for a re-encode, so the cap already applies
+  m.holdPausedAfterReload = false ' a capped restart of a paused stream pauses again at its first frame
 
   ' Open the readiness ledger for one playback start. This is the RTA `osd` and
   ' `trickplay` screens' load: both navs drive `startPlayback` and then wait for the
@@ -167,6 +178,8 @@ sub init()
 
   m.playbackTimer.observeField("fire", "reportPlayback")
   m.pauseConfirmTimer.observeField("fire", "onPauseConfirmDue")
+  m.reencodeCheckTimer = m.top.findNode("reencodeCheckTimer")
+  m.reencodeCheckTimer.observeField("fire", "onReencodeCheckDue")
   m.groupSeekFallbackTimer.observeField("fire", "onGroupSeekOverdue")
   m.bufferPercentage = 0 ' Track whether content is being loaded
   m.isPlayReported = false
@@ -1409,6 +1422,7 @@ sub onVideoContentLoaded(event as object)
   ' focus out of it: same rule as handleHideAction.
   if not m.global.sceneManager.callFunc("isDialogOpen") then m.top.setFocus(true)
   m.top.control = "play"
+  armReencodeCheck(videoContent[0].reencodeCapBps)
 end sub
 
 ' populateChapterMenu: ' Parse chapter data from API and appeand to chapter list menu
@@ -1976,6 +1990,10 @@ end function
 ' @param {boolean} forceTranscode - disable direct play (retryPlayback)
 ' @param {boolean} disallowVideoCopy - ask the server to re-encode the video (retryPlayback)
 sub startVideoLoad(audioStreamIndex as integer, subtitleIndex as integer, bypassDovi = false as boolean, forceTranscode = false as boolean, disallowVideoCopy = false as boolean)
+  ' A new load is a new item or a new answer: the re-encode check of the one it replaces is over.
+  cancelReencodeCheck()
+  m.holdPausedAfterReload = false
+  m.loadAskedNoCopy = disallowVideoCopy
   if isValid(m.LoadMetaDataTask)
     m.LoadMetaDataTask.unobserveField("content")
     releaseVideoLoad(m.LoadMetaDataTask)
@@ -2053,6 +2071,8 @@ sub onState()
       startLoadingSpinner(false)
     end if
   else if m.top.state = "error"
+    ' The error branch owns the flow now; a retry's own load decides for itself.
+    cancelReencodeCheck()
     m.log.error(m.top.errorCode, m.top.errorMsg, m.top.errorStr, m.isPlayReported, m.top.isTranscodeAvailable)
 
     print m.top.errorInfo
@@ -2160,6 +2180,11 @@ sub onState()
       reportPlayback()
     end if
     restartPlaybackTimer(playbackCheckIn.PLAYING_REPORT_SECONDS)
+    ' The capped restart of a paused stream: its first frame is where it pauses again.
+    if m.holdPausedAfterReload
+      m.holdPausedAfterReload = false
+      m.top.control = "pause"
+    end if
   else if m.top.state = "paused"
     stopLoadingSpinner()
     ' Same reason as `playing`: a paused player is not stalling, and the stall window
@@ -2244,6 +2269,98 @@ sub onPauseConfirmDue()
   end sub).catch(sub(err as object, _ctx as object)
     m.pauseCheck.readBackFailed(err)
   end sub)
+end sub
+
+' Starts the re-encode check for the stream handed to the player (reencodeCheck.bs): the server
+' may be re-encoding the video at a bitrate the device's video buffer cannot hold, which a first
+' request cannot rule out. It runs on a timer from the handoff, not from `playing`: a stream like that
+' never leaves buffering. It stands down for a stream the server does not transcode, Live TV, a load
+' that already asked for a re-encode, and a SyncPlay group.
+'
+' The group is skipped because a restart here is a reload in place, which the group sees only as a
+' stall: the tracker's Ready after it carries the node's own position, which the node reads as 0 at
+' the first frame of a load that starts partway in (syncPlayPlayback.trackPlayerEvent, "mounted"),
+' and no run of a reload under a group has shown the Ready lands where the group is.
+'
+' @param {dynamic} capBps - LoadVideoContentTask's reencodeCapBps for this load: 0 or invalid for none
+sub armReencodeCheck(capBps as dynamic)
+  m.reencodeCapBps = reencodeCheck.bitsPerSecond(capBps)
+  if not m.top.isTranscoded or isLiveTvPlayback() or m.loadAskedNoCopy or m.reencodeCapBps <= 0 then return
+  if syncPlayHooks.following()
+    m.log.info("Re-encode check skipped while following a SyncPlay group", "itemId", m.loadItemId)
+    return
+  end if
+  m.reencodeAttempt = 1
+  m.reencodeCheckTimer.control = "stop"
+  m.reencodeCheckTimer.duration = reencodeCheck.FIRST_CHECK_SECONDS
+  m.reencodeCheckTimer.control = "start"
+end sub
+
+' The re-encode check is over, or belongs to a load that is: stop its timer, and drop any answer
+' still on its way (it carries the seq it was asked under).
+sub cancelReencodeCheck()
+  m.reencodeCheckSeq++
+  if isValid(m.reencodeCheckTimer) then m.reencodeCheckTimer.control = "stop"
+end sub
+
+' The re-encode check is due: read this device's session from the server, off the render thread.
+sub onReencodeCheckDue()
+  if m.isDestroyed then return
+  if m.hasPlaybackFailed or m.top.state = "error" or m.top.state = "stopped" or m.top.state = "finished" then return
+  req = playbackCheckIn.sessionRequest()
+  if not isValid(req) then return
+  ctx = { seq: m.reencodeCheckSeq, attempt: m.reencodeAttempt, itemId: m.loadItemId }
+  promises.chain(fetchAsync(req, "reencodeCheck-" + ctx.seq.toStr()), ctx).then(sub(res as object, ctx as object)
+    onReencodeSessionRead(res, ctx)
+  end sub).catch(sub(err as object, _ctx as object)
+    m.log.warn("Re-encode check could not read the session; leaving the stream as it is", err)
+  end sub)
+end sub
+
+' The session came back: restart with the cap, read again later, or leave the stream alone
+' (reencodeCheck.reencodeNeedsBufferCap decides).
+'
+' @param {object} res - the fetchAsync response AA
+' @param {object} ctx - { seq, attempt, itemId } as the read was asked
+sub onReencodeSessionRead(res as object, ctx as object)
+  if m.isDestroyed then return
+  playerState = m.top.state
+  flags = {
+    attempt: ctx.attempt,
+    isLive: isLiveTvPlayback(),
+    askedNoCopy: m.loadAskedNoCopy,
+    isFollowingGroup: syncPlayHooks.following(),
+    hasFailed: m.hasPlaybackFailed or playerState = "error",
+    ' A newer load since the read began, another item, or a stream that has ended.
+    isStale: ctx.seq <> m.reencodeCheckSeq or LCase(ctx.itemId) <> LCase(m.loadItemId) or playerState = "stopped" or playerState = "finished"
+  }
+  verdict = reencodeCheck.reencodeNeedsBufferCap(res, m.reencodeCapBps, ctx.itemId, flags)
+  if verdict = ReencodeVerdict.RESTART
+    m.log.info("The server re-encodes above the buffer cap; restarting once with the cap", "capBps", m.reencodeCapBps.toStr(), "attempt", ctx.attempt, "itemId", ctx.itemId)
+    restartForBufferCap()
+  else if verdict = ReencodeVerdict.LATER
+    m.log.info("The server shows no transcode to judge yet; reading again", "attempt", ctx.attempt, "itemId", ctx.itemId)
+    m.reencodeAttempt = ctx.attempt + 1
+    m.reencodeCheckTimer.duration = reencodeCheck.SECOND_CHECK_SECONDS
+    m.reencodeCheckTimer.control = "start"
+  else
+    m.log.info("Re-encode check: nothing to restart", "attempt", ctx.attempt, "cause", playbackCheckIn.unreadableCause(res), "itemId", ctx.itemId)
+  end if
+end sub
+
+' Restart the stream with the video re-encoded under the buffer cap, from where it is. This is the
+' re-encode retry (retryPlayback with disallowVideoCopy), and not reloadAtCurrentPosition: that one
+' saves the player's position unconditionally, and a stream that never left buffering reads 0, which
+' would replace the resume point. retryPlayback saves a position only for a stream that played, and
+' sets isRetrying so the stop does not advance the queue. The request it makes applies the cap at any
+' bitrate and lists HEVC first (buildPlaybackInfoPostData). The restart's own load never checks again.
+sub restartForBufferCap()
+  cancelReencodeCheck()
+  isHeldPaused = m.isPlayReported and m.top.state = "paused"
+  ' The retry is spent for this chain: an error on the capped stream goes to the dialog.
+  m.top.isReencodeFallbackAvailable = false
+  retryPlayback(false, false, true)
+  m.holdPausedAfterReload = isHeldPaused
 end sub
 
 ' Report the end of this stream, once (classifyPlaybackEnd decides which report, if any). Every end
@@ -2737,6 +2854,12 @@ sub onDestroy()
     m.pauseConfirmTimer.control = "stop"
     m.pauseConfirmTimer.unobserveField("fire")
     m.pauseConfirmTimer = invalid
+  end if
+
+  if isValid(m.reencodeCheckTimer)
+    cancelReencodeCheck()
+    m.reencodeCheckTimer.unobserveField("fire")
+    m.reencodeCheckTimer = invalid
   end if
 
   if isValid(m.groupSeekFallbackTimer)
