@@ -64,5 +64,14 @@
          next consumer retries. Reset with the rest of this node on a server switch. -->
     <field id="resumePolicy" type="assocarray" />
 
+    <!-- The server's encoder settings, from GET /System/Configuration/encoding:
+         { HardwareAccelerationType, EnableHardwareEncoding, AllowHevcEncoding }. INVALID
+         (unset) = not read yet, the same one "unknown" state as resumePolicy. Read lazily by
+         LoadVideoContentTask on its Task thread before the first video load, and only a
+         complete answer is stored, so a failed read is retried by the next load. Decides
+         whether a first request lists HEVC before H.264 (serverCapabilities.serverEncodesHevcInHardware).
+         Reset with the rest of this node on a server switch. -->
+    <field id="encodingPolicy" type="assocarray" />
+
   </interface>
 </component>

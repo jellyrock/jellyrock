@@ -23,6 +23,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/playbackCaps.bs"
 import "pkg:/source/utils/probedStreams.bs"
+import "pkg:/source/utils/serverCapabilities.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/subtitles.bs"
@@ -462,6 +463,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   ' The quality caps the viewer picked for this queue in the OSD's gear, read once for both
   ' requests below. invalid when there are none, and Settings applies.
   pickedCaps = queueManager.callFunc("getPlaybackCaps")
+  ' The codec order of a first request depends on the server's encoder settings. A live stream is
+  ' never re-encoded to a size here, and its open call must not wait on another request.
+  if not isLive then readServerEncodingPolicy()
   res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, openLimitMs, pickedCaps, disallowVideoCopy)
   m.playbackInfo = invalid
   if isValid(res) and res.ok then m.playbackInfo = res.json
@@ -757,6 +761,26 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   setCertificateAuthority(video.content)
   ' Convert Jellyfin audio stream index to Roku Track identifier (Index + 1 for MKV)
   video.audioTrack = getRokuAudioTrackPosition(audioStreamIdx, video.fullAudioData)
+end sub
+
+' readServerEncodingPolicy: Read the server's encoder settings once per server session.
+'
+' Runs on this Task thread, so the request never touches the render thread. The answer is stored
+' on m.global.server.encodingPolicy (one cross-thread write per session), where
+' buildPlaybackInfoPostData reads it. A failed or incomplete read stores nothing: the policy stays
+' unknown, a first request keeps H.264 first, and the next load asks again.
+sub readServerEncodingPolicy()
+  if isValid(m.global.server.encodingPolicy) then return
+
+  req = GetApi().BuildGetEncodingConfigurationRequest()
+  if not isValid(req) then return
+
+  policy = serverCapabilities.recordEncodingPolicy(fetchRes(req, "encodingPolicy"))
+  if isValid(policy)
+    m.log.info("Server encoder settings", "hardware", policy.HardwareAccelerationType, "enableHardwareEncoding", policy.EnableHardwareEncoding, "allowHevcEncoding", policy.AllowHevcEncoding)
+  else
+    m.log.warn("Could not read the server's encoder settings; H.264 stays first")
+  end if
 end sub
 
 ' capH264Resolution: After a PlaybackInfo answer, make sure the stream is not H.264 above 1080p.
