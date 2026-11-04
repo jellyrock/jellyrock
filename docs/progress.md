@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-04: chore(build): Fail the build on an `m.log` call with too many values
 - 2026-11-04: fix(playback): Stop transcoded videos playing with no sound
 - 2026-11-03: fix(login): Offer Quick Connect when a server lists no users
 - 2026-11-03: fix(playback): Play the episode once when Repeat is picked during a Cinema Mode intro
