@@ -280,7 +280,7 @@ Not every plugin honors every marker, and an unsupported one fails silently: the
 | Code | line | next-line | file | Notes |
 |---|---|---|---|---|
 | `print-locations` | ✅ | ✅ | ✅ | |
-| `log-too-many-values` | ✅ | ✅ | ✅ | |
+| `log-too-many-values` | ✅ | ✅ | ❌ | Same reason as `no-raw-run` |
 | `observe-without-on-destroy` | ✅ | ✅ | ✅ | |
 | `unobserve-before-release` | ✅ | ✅ | ✅ | Put it on the `unobserveField` line, where the diagnostic lands |
 | `callfunc-interface` | ✅ | ✅ | ✅ | Should be rare: an undeclared target is normally a real bug |

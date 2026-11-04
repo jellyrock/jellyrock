@@ -68,6 +68,19 @@ describe('roku-log call arity', () => {
     ).toHaveLength(0);
   });
 
+  it('ignores a whole-file suppression marker', () => {
+    const source = `' bsc-disable-file ${CODE}
+    sub init()
+      ${callWith('m.log', 'info', 9)}
+    end sub
+  `;
+    const found = diagnosticsByCode(
+      runPluginOnSource(rokuLogPlugin, { 'components/Foo.bs': source }),
+      CODE,
+    );
+    expect(found).toHaveLength(1);
+  });
+
   it('keeps its limit in step with the vendored module', () => {
     // A missing file fails rather than skips: a roku-log upgrade or ropm rename that
     // moves it is the drift this test exists to catch.

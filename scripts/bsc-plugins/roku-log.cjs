@@ -30,7 +30,8 @@
  * clean and then crashes the Task or screen at runtime with "Wrong number of
  * function parameters". The check runs in afterValidateFile, so `npm run validate`
  * and the editor see it, and it applies whether or not the build strips or
- * prepends. Suppress with `' bsc-disable-line log-too-many-values`.
+ * prepends. Suppress with `' bsc-disable-line log-too-many-values`. It ignores
+ * `bsc-disable-file`, since a whole-file opt-out would hide every over-limit call in the file.
  *
  * Configuration via bsconfig.json:
  *   "rokuLog": {
@@ -77,7 +78,6 @@ const MAX_SOURCE_ARGS = LOG_FUNCTION_PARAMS - 1;
 const ARITY_CODE = 'log-too-many-values';
 const ARITY_DISABLE_LINE = /'\s*bsc-disable-line\s+log-too-many-values\b/i;
 const ARITY_DISABLE_NEXT_LINE = /'\s*bsc-disable-next-line\s+log-too-many-values\b/i;
-const ARITY_DISABLE_FILE = /'\s*bsc-disable-file\s+log-too-many-values\b/i;
 
 /**
  * Get the name text from an AST node (BSC v1 uses .tokens.name.text)
@@ -231,7 +231,6 @@ class RokuLogPlugin {
       const file = event.file;
       if (!brighterscript.isBrsFile(file)) return;
       const text = file.fileContents || '';
-      if (ARITY_DISABLE_FILE.test(text)) return;
       const sourceLines = text.split(/\r?\n/);
 
       file.parser.ast.walk(
