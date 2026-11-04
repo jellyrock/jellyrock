@@ -22,6 +22,7 @@ import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/probedStreams.bs"
+import "pkg:/source/utils/serverCapabilities.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamSelection.bs"
 import "pkg:/source/utils/subtitles.bs"
@@ -461,6 +462,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   ' The quality caps the viewer picked for this queue in the OSD's gear, read once for both
   ' requests below. invalid when there are none, and Settings applies.
   pickedCaps = queueManager.callFunc("getPlaybackCaps")
+  ' The codec order of a first request depends on the server's encoder settings. A live stream is
+  ' never re-encoded to a size here, and its open call must not wait on another request.
+  if not isLive then readServerEncodingPolicy()
   res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, openLimitMs, pickedCaps, disallowVideoCopy)
   m.playbackInfo = invalid
   if isValid(res) and res.ok then m.playbackInfo = res.json
@@ -765,11 +769,31 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   video.audioTrack = getRokuAudioTrackPosition(audioStreamIdx, video.fullAudioData)
 end sub
 
+' readServerEncodingPolicy: Read the server's encoder settings once per server session.
+'
+' Runs on this Task thread, so the request never touches the render thread. The answer is stored
+' on m.global.server.encodingPolicy (one cross-thread write per session), where
+' buildPlaybackInfoPostData reads it. A failed or incomplete read stores nothing: the policy stays
+' unknown, a first request keeps H.264 first, and the next load asks again.
+sub readServerEncodingPolicy()
+  if isValid(m.global.server.encodingPolicy) then return
+
+  req = GetApi().BuildGetEncodingConfigurationRequest()
+  if not isValid(req) then return
+
+  policy = serverCapabilities.recordEncodingPolicy(fetchRes(req, "encodingPolicy"))
+  if isValid(policy)
+    m.log.info("Server encoder settings", "hardware", policy.HardwareAccelerationType, "enableHardwareEncoding", policy.EnableHardwareEncoding, "allowHevcEncoding", policy.AllowHevcEncoding)
+  else
+    m.log.warn("Could not read the server's encoder settings; H.264 stays first")
+  end if
+end sub
+
 ' capH264Resolution: After a PlaybackInfo answer for a source above 1080p, make sure the stream is
 ' not H.264 above 1080p.
 '
-' The request lists HEVC first for such a source, but a server that does not encode HEVC
-' (Jellyfin's default) re-encodes to H.264 at the source's size, and a Roku stops at AVC level 4.2
+' Unless the request lists HEVC first (a server that encodes HEVC in hardware, or the retry), a
+' server re-encodes such a source to H.264 at the source's size, and a Roku stops at AVC level 4.2
 ' and buffers forever on a 4K one. The server's master playlist declares the codec and size before
 ' any segment exists, so read it, and when it is H.264 above 1080p ask PlaybackInfo once more with
 ' a 1080p resolution cap. Any failure keeps the first answer (m.playbackInfo). An answer that is not

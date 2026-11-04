@@ -21,9 +21,10 @@ end function
 
 ' hevcFirstCodecList: A comma-separated video codec list with the HEVC entries (h265, hevc) first.
 '
-' The re-encode retry sends it as each video transcoding profile's VideoCodec. The server takes the first codec it is allowed
-' to encode: with HEVC encoding on it keeps a 4K source at 4K, and with it off it falls through to
-' H.264. Other entries keep their order.
+' A transcode of a source H.264 cannot carry (prefersHevcTranscode) on a server that encodes HEVC in
+' hardware, and the re-encode retry, send it as each video transcoding profile's VideoCodec. The server
+' takes the first codec it is allowed to encode: with HEVC encoding on it keeps a 4K source at 4K, and
+' with it off it falls through to H.264. Other entries keep their order.
 '
 ' @param {string} codecs - for example "h264,avc,h265,hevc"
 ' @return {string} for example "h265,hevc,h264,avc"

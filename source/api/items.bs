@@ -10,6 +10,7 @@ import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/playbackRetry.bs"
+import "pkg:/source/utils/serverCapabilities.bs"
 import "pkg:/source/utils/streamSelection.bs"
 
 function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, disallowVideoCopy = false as boolean)
@@ -117,9 +118,28 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
 
   if disallowVideoCopy
     postData.AllowVideoStreamCopy = false
-    ' The server takes the first codec it may encode, so list HEVC first: a server that allows
-    ' HEVC encoding keeps 4K, and one that does not falls to H.264 (hlsMasterVariant tells the
-    ' load when that needs a resolution cap).
+  end if
+
+  ' The server takes the first codec it may encode. List HEVC first for a source H.264 cannot carry
+  ' on this device, so a server that encodes HEVC keeps its size and range. A first request does so
+  ' only when the server's own settings say it encodes HEVC in hardware: software HEVC measured
+  ' below real time and stalled where H.264 plays. A server that does not encode HEVC falls to
+  ' H.264 either way (the load then reads the playlist and caps the resolution, see
+  ' LoadVideoContentTask.capH264Resolution). The re-encode retry always lists HEVC first.
+  listHevcFirst = disallowVideoCopy
+  if not listHevcFirst and serverCapabilities.serverEncodesHevcInHardware(m.global.server.encodingPolicy)
+    sourceVideoStream = invalid
+    if isValid(playedSource) and isValid(playedSource.MediaStreams)
+      for each stream in playedSource.MediaStreams
+        if isValid(stream.Type) and stream.Type = "Video"
+          sourceVideoStream = stream
+          exit for
+        end if
+      end for
+    end if
+    listHevcFirst = prefersHevcTranscode(sourceVideoStream, hevcRangeTypesOfProfile(postData.DeviceProfile), false)
+  end if
+  if listHevcFirst
     for each profile in postData.DeviceProfile.TranscodingProfiles
       if isValid(profile.Type) and profile.Type = "Video" and isValid(profile.VideoCodec)
         profile.VideoCodec = hevcFirstCodecList(profile.VideoCodec)

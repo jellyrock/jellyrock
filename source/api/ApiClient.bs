@@ -922,6 +922,20 @@ class ApiClient
     return m.validatedReq("GET", buildURL("/System/Configuration"))
   end function
 
+  ' Build a request AA for the server's encoding settings, for use with fetchRes() or
+  ' fetchAsync(). Returns an EncodingOptions.
+  '
+  ' Read for HardwareAccelerationType, EnableHardwareEncoding and AllowHevcEncoding, which
+  ' tell whether the server can encode HEVC fast enough to be offered first
+  ' (source/utils/serverCapabilities.bs). Reading is authorized for ANY signed-in user, not
+  ' only admins (the controller has only [Authorize] on every version from 10.7.7 to master);
+  ' writing needs an admin. The same path on every version, so no V1/V2 branch.
+  '
+  ' @returns Request AA: { method, url } or invalid if server URL not set
+  function BuildGetEncodingConfigurationRequest() as dynamic
+    return m.validatedReq("GET", buildURL("/System/Configuration/encoding"))
+  end function
+
   ' ═══════════════════════════════════════════════════════════════════════════
   ' FILTERS ENDPOINTS
   ' ═══════════════════════════════════════════════════════════════════════════

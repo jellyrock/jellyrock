@@ -33,7 +33,7 @@ namespace tests
     end function
 
     ' The same request for a source of the given size and range.
-    private function buildFor(width as integer, height as integer, rangeType as string) as object
+    private function buildFor(width as integer, height as integer, rangeType as string, disallowVideoCopy = false as boolean) as object
       versions = {
         mediaSourcesData: {
           mediaSources: [
@@ -46,7 +46,39 @@ namespace tests
           ]
         }
       }
-      return buildPlaybackInfoPostData("sized", -1, SubtitleSelection.NONE, 0&, versions, false, false, invalid, false)
+      return buildPlaybackInfoPostData("sized", -1, SubtitleSelection.NONE, 0&, versions, false, false, invalid, disallowVideoCopy)
+    end function
+
+    private function setServerPolicy(hardwareType as string, enableHardware as boolean, allowHevc as boolean)
+      m.global.server.encodingPolicy = { HardwareAccelerationType: hardwareType, EnableHardwareEncoding: enableHardware, AllowHevcEncoding: allowHevc }
+    end function
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.global.server.setField("encodingPolicy", invalid)
+    end function
+
+    protected override function afterEach()
+      m.global.server.setField("encodingPolicy", invalid)
+      super.afterEach()
+    end function
+
+    private function assertHevcFirst(postData as object)
+      profiles = m.videoTranscodingProfiles(postData)
+      m.assertTrue(profiles.count() > 0, "the fixture needs a video transcoding profile")
+      for each profile in profiles
+        codecs = profile.VideoCodec.split(",")
+        m.assertTrue(codecIndex(codecs, "hevc") < codecIndex(codecs, "h264"), "hevc comes before h264 in " + profile.VideoCodec)
+      end for
+    end function
+
+    private function assertH264First(postData as object)
+      profiles = m.videoTranscodingProfiles(postData)
+      m.assertTrue(profiles.count() > 0, "the fixture needs a video transcoding profile")
+      for each profile in profiles
+        codecs = profile.VideoCodec.split(",")
+        m.assertTrue(codecIndex(codecs, "h264") < codecIndex(codecs, "hevc"), "h264 stays first in " + profile.VideoCodec)
+      end for
     end function
 
     private function videoTranscodingProfiles(postData as object) as object
@@ -121,15 +153,27 @@ namespace tests
       m.assertEqual(reencoding.count(), copying.count())
     end function
 
-    @it("keeps h264 first for a 4K source in a first request (HEVC first is the re-encode retry's)")
+    @it("lists hevc first for a 4K source when the server encodes HEVC in hardware")
     function _()
-      profiles = m.videoTranscodingProfiles(m.buildFor(3840, 2160, "SDR"))
+      m.setServerPolicy("nvenc", true, true)
+      m.assertHevcFirst(m.buildFor(3840, 2160, "SDR"))
+    end function
 
-      m.assertTrue(profiles.count() > 0, "the fixture needs a video transcoding profile")
-      for each profile in profiles
-        codecs = profile.VideoCodec.split(",")
-        m.assertTrue(codecIndex(codecs, "h264") < codecIndex(codecs, "hevc"), "h264 stays first in " + profile.VideoCodec)
-      end for
+    @it("keeps h264 first for a 4K source when the server encodes in software only")
+    function _()
+      m.setServerPolicy("none", false, true)
+      m.assertH264First(m.buildFor(3840, 2160, "SDR"))
+    end function
+
+    @it("keeps h264 first for a 4K source when the server's settings are unknown")
+    function _()
+      m.assertH264First(m.buildFor(3840, 2160, "SDR"))
+    end function
+
+    @it("lists hevc first on the re-encode retry whatever the server's settings")
+    function _()
+      m.setServerPolicy("none", false, false)
+      m.assertHevcFirst(m.buildFor(1920, 1080, "SDR", true))
     end function
 
     @it("keeps h264 first for a 1080p SDR source")
