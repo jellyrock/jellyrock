@@ -21,6 +21,16 @@
  *  - insertPkgPath:  Inject source file location as first arg to log calls (dev builds)
  *  - guard:          Wrap log calls in `if m.__le = true then` checks
  *  - removeComments: Strip comments from transpiled .brs and XML output
+ *  - arity check:    Error on an m.log.<level>() call with more than the message
+ *                    plus 8 values (`log-too-many-values`, see below)
+ *
+ * Call arity: each level function in the runtime library takes `message` plus nine
+ * values (ten parameters), and insertPkgPath prepends a file-and-line argument, so
+ * a source call may pass the message plus at most eight values. A ninth builds
+ * clean and then crashes the Task or screen at runtime with "Wrong number of
+ * function parameters". The check runs in afterValidateFile, so `npm run validate`
+ * and the editor see it, and it applies whether or not the build strips or
+ * prepends. Suppress with `' bsc-disable-line log-too-many-values`.
  *
  * Configuration via bsconfig.json:
  *   "rokuLog": {
@@ -49,6 +59,25 @@ const {
   ParseMode,
   TokenKind,
 } = brighterscript;
+
+// The level functions of the roku-log runtime that take (message, value ... value9).
+// The same list gates the file-and-line prepend below.
+const LOG_LEVELS = ['info', 'verbose', 'error', 'warn', 'debug', 'method'];
+
+// Parameter count of each level function: `message` plus `value` to `value9`.
+// Source: `function info(message, value = "~#", ... value9 = "~#")` in
+// source/roku_modules/log/LogMixin.d.bs (ropm output). A test compares this number
+// with that file, so a roku-log upgrade that changes it fails the suite.
+const LOG_FUNCTION_PARAMS = 10;
+
+// The build prepends one argument (the file and line) to every call, so the source
+// call has one fewer slot: the message plus eight values.
+const MAX_SOURCE_ARGS = LOG_FUNCTION_PARAMS - 1;
+
+const ARITY_CODE = 'log-too-many-values';
+const ARITY_DISABLE_LINE = /'\s*bsc-disable-line\s+log-too-many-values\b/i;
+const ARITY_DISABLE_NEXT_LINE = /'\s*bsc-disable-next-line\s+log-too-many-values\b/i;
+const ARITY_DISABLE_FILE = /'\s*bsc-disable-file\s+log-too-many-values\b/i;
 
 /**
  * Get the name text from an AST node (BSC v1 uses .tokens.name.text)
@@ -173,7 +202,7 @@ class RokuLogPlugin {
           } else {
             if (config.insertPkgPath) {
               const funcName = getNameText(callee);
-              if (['info', 'verbose', 'error', 'warn', 'debug', 'method'].includes(funcName)) {
+              if (LOG_LEVELS.includes(funcName)) {
                 const sourceExpr = new SourceLiteralExpression({
                   value: createToken(TokenKind.SourceLocationLiteral, ''),
                 });
@@ -195,6 +224,52 @@ class RokuLogPlugin {
     event.file.parser.ast.walk(logVisitor, {
       walkMode: brighterscript.WalkMode.visitAllRecursive,
     });
+  }
+
+  afterValidateFile(event) {
+    try {
+      const file = event.file;
+      if (!brighterscript.isBrsFile(file)) return;
+      const text = file.fileContents || '';
+      if (ARITY_DISABLE_FILE.test(text)) return;
+      const sourceLines = text.split(/\r?\n/);
+
+      file.parser.ast.walk(
+        brighterscript.createVisitor({
+          CallExpression: (call) => {
+            const callee = call.callee;
+            // Same shape the build edit matches: m.log.<level>(...)
+            if (!brighterscript.isDottedGetExpression(callee)) return;
+            if (!brighterscript.isDottedGetExpression(callee.obj)) return;
+            if (getNameText(callee.obj) !== 'log') return;
+            if (!brighterscript.isVariableExpression(callee.obj.obj)) return;
+            if (getNameText(callee.obj.obj) !== 'm') return;
+            const level = getNameText(callee);
+            if (!LOG_LEVELS.includes(level)) return;
+
+            const argCount = call.args.length;
+            if (argCount <= MAX_SOURCE_ARGS) return;
+
+            const range = getRange(call);
+            if (!range) return;
+            const line = range.start.line;
+            if (ARITY_DISABLE_LINE.test(sourceLines[line] ?? '')) return;
+            if (line > 0 && ARITY_DISABLE_NEXT_LINE.test(sourceLines[line - 1] ?? '')) return;
+
+            event.program.diagnostics.register({
+              code: ARITY_CODE,
+              severity: 1, // Error
+              source: this.name,
+              message: `m.log.${level}() has ${argCount - 1} values after the message, and the limit is ${MAX_SOURCE_ARGS - 1} values. The roku-log runtime takes ${LOG_FUNCTION_PARAMS} parameters and the build prepends the file and line, so a longer call builds clean and crashes at runtime with "Wrong number of function parameters". Combine values into one string or log fewer. Add ' bsc-disable-line ${ARITY_CODE} to suppress.`,
+              location: call.location,
+            });
+          },
+        }),
+        { walkMode: brighterscript.WalkMode.visitAllRecursive },
+      );
+    } catch (e) {
+      console.log(`roku-log-plugin: Error checking ${event.file?.pkgPath}: ${e.message}`);
+    }
   }
 
   afterSerializeFile(event) {
@@ -269,3 +344,5 @@ function createGuardStatement(callExpression) {
 }
 
 module.exports = () => new RokuLogPlugin();
+module.exports.LOG_LEVELS = LOG_LEVELS;
+module.exports.LOG_FUNCTION_PARAMS = LOG_FUNCTION_PARAMS;
