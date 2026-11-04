@@ -563,21 +563,13 @@ The client overrides the server's answer in three places:
 
 MPEG-TS is left out of the direct-play profiles (`GetDirectPlayProfiles`), so the server remuxes every TS source, recordings included, to HLS.
 
-### Which HLS container the server picks
+### Why every HLS transcode is TS
 
-`getTranscodingProfiles()` emits one HLS video profile per container, `ts` first and then `mp4`. Keep `ts` first: `fmp4` HLS plays silent on some Roku hardware (#620), and a spec in `deviceCapabilities-transcodingProfile.spec.bs` fails if the order flips.
+`getTranscodingProfiles()` emits one HLS video profile, with the `ts` container. Don't add an `mp4` (`fMP4`) one back: Roku's media spec lists TS as the only HLS chunk format that may mux audio and video ("muxing audio and video not supported for CMAF"), and Jellyfin's `fMP4` HLS puts both tracks in the same fragments. The video plays and the audio never starts. A spec in `deviceCapabilities-transcodingProfile.spec.bs` fails if an `mp4` video profile comes back.
 
-The server's `StreamBuilder` chooses a profile this way (read from each release's source, and the outcomes measured 2026-11-01 on the seven local test servers):
+Array order did not keep the server off `fMP4`. From 10.8 the server's `StreamBuilder` ranks profiles by video and then audio fit and uses order only to break a tie, so whenever the `mp4` profile's longer audio list fit the source better, it picked `fMP4`. #573 (stereo files) and #1079 (DTS copied in) were that one cause, each patched for its own trigger. The measurements and the history are in decision [`hls-transcodes-ts-only`](../decisions.md#decision-id-hls-transcodes-ts-only).
 
-| Server | How it picks |
-| --- | --- |
-| 10.7 | The first matching profile. A `ts` profile that lacks the source's codec still wins, so the server re-encodes. |
-| 10.8 and 10.9 | The best video rank, then array order. |
-| 10.10 and later | The best video and audio rank, then array order. |
-
-- **From 10.8, order only breaks a tie.** If the `ts` profile lacks the source's video codec and the `mp4` profile has it, the server picks `mp4`. An empty `VideoCodec` matches every codec.
-- **Dolby Vision is the exception by design.** Its transcode uses the `fmp4` profile (decision [`audio-profile-documented-and-reported`](../decisions.md#decision-id-audio-profile-documented-and-reported)).
-- **Account permissions did not change the container** in those measurements.
+TS has one cost: a source with rotation metadata, such as a phone video, can't keep its video in a remux. From 10.10 the server turns video copy off for a rotated source unless the segments are `fMP4` (`DynamicHlsHelper`, read from the server source, not measured), so the video is re-encoded.
 
 To see what the server chose, open **Playback Info**: its container row shows the source and the target.
 

@@ -6,13 +6,6 @@
       "AudioCodec": "aac,eac3,ac3,dts,mp3,flac,alac,pcm",
       "VideoCodec": "h264",
       "MaxAudioChannels": "2"
-    },
-    {
-      "Container": "mp4",
-      "Type": "Video",
-      "AudioCodec": "aac,eac3,ac3,dts,mp3,flac,alac,pcm",
-      "VideoCodec": "h264",
-      "MaxAudioChannels": "2"
     }
   ]
 }
