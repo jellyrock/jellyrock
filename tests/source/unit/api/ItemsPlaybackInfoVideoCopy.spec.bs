@@ -32,6 +32,23 @@ namespace tests
       return buildPlaybackInfoPostData("longGop", -1, SubtitleSelection.NONE, 0&, m.versions(), false, false, invalid, disallowVideoCopy)
     end function
 
+    ' The same request for a source of the given size and range.
+    private function buildFor(width as integer, height as integer, rangeType as string) as object
+      versions = {
+        mediaSourcesData: {
+          mediaSources: [
+            {
+              Id: "sized",
+              Bitrate: 20000000,
+              RunTimeTicks: 72000000000&,
+              MediaStreams: [{ Type: "Video", index: 0, Codec: "hevc", Width: width, Height: height, VideoRangeType: rangeType }]
+            }
+          ]
+        }
+      }
+      return buildPlaybackInfoPostData("sized", -1, SubtitleSelection.NONE, 0&, versions, false, false, invalid, false)
+    end function
+
     private function videoTranscodingProfiles(postData as object) as object
       profiles = []
       for each profile in postData.DeviceProfile.TranscodingProfiles
@@ -102,6 +119,28 @@ namespace tests
         m.assertTrue(codecIndex(codecs, "h264") < codecIndex(codecs, "hevc"), "h264 stays first in " + profile.VideoCodec)
       end for
       m.assertEqual(reencoding.count(), copying.count())
+    end function
+
+    @it("lists hevc before h264 for a 4K source, so a server that encodes HEVC keeps 4K")
+    function _()
+      profiles = m.videoTranscodingProfiles(m.buildFor(3840, 2160, "SDR"))
+
+      m.assertTrue(profiles.count() > 0, "the fixture needs a video transcoding profile")
+      for each profile in profiles
+        codecs = profile.VideoCodec.split(",")
+        m.assertTrue(codecIndex(codecs, "hevc") < codecIndex(codecs, "h264"), "hevc comes before h264 in " + profile.VideoCodec)
+      end for
+    end function
+
+    @it("keeps h264 first for a 1080p SDR source")
+    function _()
+      profiles = m.videoTranscodingProfiles(m.buildFor(1920, 1080, "SDR"))
+
+      m.assertTrue(profiles.count() > 0, "the fixture needs a video transcoding profile")
+      for each profile in profiles
+        codecs = profile.VideoCodec.split(",")
+        m.assertTrue(codecIndex(codecs, "h264") < codecIndex(codecs, "hevc"), "h264 stays first in " + profile.VideoCodec)
+      end for
     end function
 
   end class

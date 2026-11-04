@@ -1,11 +1,11 @@
+import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
 
 ' What the first variant of an HLS master playlist declares, or invalid when the text has no
 ' variant with both CODECS and RESOLUTION.
 '
-' The server's re-encode (a retry that asks it not to copy the video) can pick H.264 at the
-' source's own size, and a Roku plays AVC only up to level 4.2, so the player needs to know before
-' it plays: the master playlist says it without waiting for a segment.
+' The server's transcode of a source above 1080p can pick H.264 at the source's own size, and a
+' Roku plays AVC only up to level 4.2, so the player needs to know before it plays: the master playlist says it without waiting for a segment.
 '
 ' @param {string} text - the playlist body
 ' @return {dynamic} { codecs: string, width: integer, height: integer }, or invalid
@@ -42,10 +42,10 @@ end function
 ' Whether a variant is H.264 larger than a Roku decodes (AVC level 4.2, about 1080p).
 '
 ' @param {dynamic} variant - hlsMasterVariant()'s answer
-' @return {boolean} true for an H.264 stream wider than 1920 or taller than 1080
+' @return {boolean} true for an H.264 stream beyond exceedsH264Ceiling
 function needsH264ResolutionCap(variant as dynamic) as boolean
   if not isValid(variant) then return false
   codecs = LCase(variant.codecs)
   isH264 = inStr(1, codecs, "avc1.") > 0 or inStr(1, codecs, "avc3.") > 0
-  return isH264 and (variant.width > 1920 or variant.height > 1080)
+  return isH264 and exceedsH264Ceiling(variant.width, variant.height)
 end function

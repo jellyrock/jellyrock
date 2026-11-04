@@ -63,8 +63,8 @@ namespace timeouts
   ' 0.16-0.82 s per playlist GET, so 3 s is ~3.7x the slowest seen anywhere.
   const UPSTREAM_PREFLIGHT_MS = 3000
 
-  ' Wait for the server's own HLS master playlist when the re-encode retry reads the codec and size
-  ' it declared (LoadVideoContentTask.capReencodedResolution). The server builds the playlist from
+  ' Wait for the server's own HLS master playlist when a transcode of a source above 1080p reads the
+  ' codec and size it declared (LoadVideoContentTask.capH264Resolution). The server builds the playlist from
   ' the request alone, without starting the transcode, so it answers like any API call. A playlist
   ' that does not arrive in time is skipped and the first answer plays.
   const HLS_MASTER_PROBE_MS = 3000

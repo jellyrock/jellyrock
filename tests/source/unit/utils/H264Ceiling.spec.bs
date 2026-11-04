@@ -1,0 +1,96 @@
+import "pkg:/source/utils/deviceCapabilities.bs"
+
+namespace tests
+
+  @suite("deviceCapabilities.bs - exceedsH264Ceiling() and prefersHevcTranscode()")
+  class H264CeilingTests extends tests.BaseTestSuite
+
+    private function stream(width as integer, height as integer, rangeType = "SDR" as string, range = "SDR" as string) as object
+      return { Type: "Video", Codec: "hevc", Width: width, Height: height, VideoRange: range, VideoRangeType: rangeType }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("exceedsH264Ceiling")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is false at exactly 1920x1080")
+    function _()
+      m.assertFalse(exceedsH264Ceiling(1920, 1080))
+    end function
+
+    @it("is true one pixel too wide")
+    function _()
+      m.assertTrue(exceedsH264Ceiling(1921, 1080))
+    end function
+
+    @it("is true one pixel too tall")
+    function _()
+      m.assertTrue(exceedsH264Ceiling(1920, 1081))
+    end function
+
+    @it("is true at 3840x2160")
+    function _()
+      m.assertTrue(exceedsH264Ceiling(3840, 2160))
+    end function
+
+    @it("reads a size that arrives as a string")
+    function _()
+      m.assertTrue(exceedsH264Ceiling("3840", "2160"))
+      m.assertFalse(exceedsH264Ceiling("1920", "1080"))
+    end function
+
+    @it("is false when the size is missing")
+    function _()
+      m.assertFalse(exceedsH264Ceiling(invalid, invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("prefersHevcTranscode")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for a 4K SDR source when the device decodes HEVC")
+    function _()
+      m.assertTrue(prefersHevcTranscode(m.stream(3840, 2160), "SDR|DOVIWithSDR", false))
+    end function
+
+    @it("is true for a 1080p HDR10 source when the HEVC range types include HDR10")
+    function _()
+      m.assertTrue(prefersHevcTranscode(m.stream(1920, 1080, "HDR10", "HDR"), "SDR|DOVIWithSDR|HDR10", false))
+    end function
+
+    @it("is false for a 1080p HDR10 source when the HEVC range types are SDR only")
+    function _()
+      m.assertFalse(prefersHevcTranscode(m.stream(1920, 1080, "HDR10", "HDR"), "SDR|DOVIWithSDR", false))
+    end function
+
+    @it("is false for a 1080p SDR source")
+    function _()
+      m.assertFalse(prefersHevcTranscode(m.stream(1920, 1080), "SDR|DOVIWithSDR|HDR10", false))
+    end function
+
+    @it("is true on the re-encode retry even for a 1080p SDR source")
+    function _()
+      m.assertTrue(prefersHevcTranscode(m.stream(1920, 1080), "SDR|DOVIWithSDR", true))
+    end function
+
+    @it("is false when the device has no HEVC profile")
+    function _()
+      m.assertFalse(prefersHevcTranscode(m.stream(3840, 2160), invalid, false))
+      m.assertFalse(prefersHevcTranscode(m.stream(3840, 2160), invalid, true))
+    end function
+
+    @it("reads HDR from VideoRange when the server sends no VideoRangeType")
+    function _()
+      m.assertTrue(prefersHevcTranscode({ Type: "Video", Width: 1920, Height: 1080, VideoRange: "HDR" }, "SDR|HDR10", false))
+      m.assertFalse(prefersHevcTranscode({ Type: "Video", Width: 1920, Height: 1080, VideoRange: "HDR" }, "SDR|DOVIWithSDR", false))
+    end function
+
+    @it("is false for an invalid stream unless it is the retry")
+    function _()
+      m.assertFalse(prefersHevcTranscode(invalid, "SDR", false))
+      m.assertTrue(prefersHevcTranscode(invalid, "SDR", true))
+    end function
+
+  end class
+
+end namespace

@@ -117,9 +117,22 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
 
   if disallowVideoCopy
     postData.AllowVideoStreamCopy = false
-    ' The server takes the first codec it may encode, so list HEVC first: a server that allows
-    ' HEVC encoding keeps 4K, and one that does not falls to H.264 (hlsMasterVariant tells the
-    ' load when that needs a resolution cap).
+  end if
+
+  ' The server takes the first codec it may encode, so list HEVC first for a source H.264 cannot
+  ' carry on this device: a server that allows HEVC encoding keeps its size and range, and one that
+  ' does not falls to H.264 (the load then reads the playlist and caps the resolution, see
+  ' LoadVideoContentTask.capH264Resolution).
+  sourceVideoStream = invalid
+  if isValid(playedSource) and isValid(playedSource.MediaStreams)
+    for each stream in playedSource.MediaStreams
+      if isValid(stream.Type) and stream.Type = "Video"
+        sourceVideoStream = stream
+        exit for
+      end if
+    end for
+  end if
+  if prefersHevcTranscode(sourceVideoStream, hevcRangeTypesOfProfile(postData.DeviceProfile), disallowVideoCopy)
     for each profile in postData.DeviceProfile.TranscodingProfiles
       if isValid(profile.Type) and profile.Type = "Video" and isValid(profile.VideoCodec)
         profile.VideoCodec = hevcFirstCodecList(profile.VideoCodec)
@@ -151,8 +164,8 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
       if isValid(stream.Type) and stream.Type = "Video" and isValid(stream.Codec) and LCase(stream.Codec) = "h264"
         if isValid(postData.DeviceProfile.CodecProfiles)
           ' Start from the H264 hardware ceiling, then clamp down to the user's cap if lower
-          h264CapHeight = 1080
-          h264CapWidth = 1920
+          h264CapHeight = H264_MAX_HEIGHT
+          h264CapWidth = H264_MAX_WIDTH
           userResConditions = getResolutionConditions(false, caps)
           for each condition in userResConditions
             if condition.Property = "Height" and condition.Value.toInt() < h264CapHeight
