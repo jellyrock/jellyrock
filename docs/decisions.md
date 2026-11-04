@@ -2612,6 +2612,16 @@ With "Play default audio track" on, a default track this Roku cannot direct-play
 
 Commentary and audio-description tracks stay out of the automatic audio pick while the file has another track (#500, `isHiddenFromAutoPick()`), so a stereo narration track can't win on channel count. Audio description is the main track for blind and low-vision viewers, so it is kept where its viewer has asked for it: the file flags it default and "Play default audio track" is on, or the Roku's Audio Guide (screen reader) is on, when it ranks like a main track. The swap in `playableAlternativeToDefault()` replaces a default only with a track of the same kind and never with commentary. Detection is by title only ("description", "descriptive" or "described" anywhere, or "AD" as a capitalized whole word): Jellyfin 12.2's media probe sets `IsHearingImpaired` from the `hearing_impaired` disposition ffmpeg reports and never reads `visual_impaired`, so `MediaStream` carries no audio-description flag. Ruled out: hiding audio description in every case, which made a viewer who flagged it default in their own files pick it for each video; hiding it only in the swap, since the channel ranking could already pick it by accident; and preferring it whenever Audio Guide is on, since some screen-reader users don't want narration. Re-evaluate if Jellyfin adds an audio-description flag, or if viewers ask for a setting to prefer it.
 
+## decision-id: transcode-codec-follows-server
+
+**date**: 2026-11-04
+**status**: accepted
+**related-files**: `source/utils/deviceCapabilities.bs`, `source/utils/serverCapabilities.bs`, `source/api/items.bs`, `components/ItemGrid/LoadVideoContentTask.bs`
+
+A transcode of a source above 1080p never comes out as H.264 above `1920x1080`, and lists HEVC first only when the server's own settings say it encodes HEVC in hardware. Roku decodes H.264 only up to `1920x1080`: measured 2026-11-04 on a Roku Ultra, direct 4K H.264 files fail with "Image width too high", 4K H.264 re-encodes at 24 and 30 fps and 15 and 40 Mbps never leave buffering, and through the app the player sits at "play" position 0 with no error; a 1080p re-encode plays. A server that does not encode HEVC (Jellyfin's default) re-encodes such a source to 4K H.264, so the load reads the master playlist and asks again at 1080p when it declares H.264 above the ceiling (`capH264Resolution`). The server's encoding settings are readable by any signed-in user (`GET /System/Configuration/encoding`, every version from 10.7.7 to master), so HEVC first follows them: with `NVENC` and HEVC on, a 4K HDR re-encode played at 4K; with software HEVC on, `libx265` ran at 0.54x to 0.74x and a 1080p HDR re-encode stalled, where H.264 plays. A re-encode recorded on 2026-11-03 as playing 4K H.264 was a misread: the probe read the player's state, and its position never moved.
+
+Ruled out: a width limit on the H.264 codec profile (Jellyfin applies it to every codec, which would also stop 4K HEVC copies); HEVC first for every source (stalls on software HEVC servers); trying HEVC on software servers and falling back on a stall (a server fast enough still pays for it in its other work). To re-evaluate: if Jellyfin gains per-codec resolution limits.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
