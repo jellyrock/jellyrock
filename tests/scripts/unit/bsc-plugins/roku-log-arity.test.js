@@ -41,8 +41,8 @@ describe('roku-log call arity', () => {
     const found = check(callWith('m.log', level, 9));
     expect(found).toHaveLength(1);
     expect(found[0].severity).toBe(1);
-    expect(found[0].message).toContain('8 values');
-    expect(found[0].message).toContain('9');
+    expect(found[0].message).toContain('has 9 values after the message');
+    expect(found[0].message).toContain('the limit is 8 values');
   });
 
   it('fails a call with 10 values (the crash seen on a Roku Ultra)', () => {
@@ -62,9 +62,17 @@ describe('roku-log call arity', () => {
     expect(check(`${callWith('m.log', 'info', 9)} ' bsc-disable-line ${CODE}`)).toHaveLength(0);
   });
 
+  it('honors a next-line suppression marker', () => {
+    expect(
+      check(`' bsc-disable-next-line ${CODE}\n      ${callWith('m.log', 'info', 9)}`),
+    ).toHaveLength(0);
+  });
+
   it('keeps its limit in step with the vendored module', () => {
+    // A missing file fails rather than skips: a roku-log upgrade or ropm rename that
+    // moves it is the drift this test exists to catch.
     const typings = 'source/roku_modules/log/LogMixin.d.bs';
-    if (!fs.existsSync(typings)) return; // ropm output, absent until `npm ci`
+    expect(fs.existsSync(typings), `${typings} is missing: run \`npm ci\``).toBe(true);
     const text = fs.readFileSync(typings, 'utf8');
     for (const level of rokuLogPlugin.LOG_LEVELS) {
       const signature = text.match(new RegExp(`function ${level}\\(([^)]*)\\)`));

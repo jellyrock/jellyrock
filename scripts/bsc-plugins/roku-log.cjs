@@ -260,7 +260,7 @@ class RokuLogPlugin {
               code: ARITY_CODE,
               severity: 1, // Error
               source: this.name,
-              message: `m.log.${level}() has ${argCount - 1} values after the message, and the limit is ${MAX_SOURCE_ARGS - 1} values. The roku-log runtime takes ${LOG_FUNCTION_PARAMS} parameters and the build prepends the file and line, so a longer call builds clean and crashes at runtime with "Wrong number of function parameters". Combine values into one string or log fewer. Add ' bsc-disable-line ${ARITY_CODE} to suppress.`,
+              message: `m.log.${level}() has ${argCount - 1} values after the message, and the limit is ${MAX_SOURCE_ARGS - 1} values. The roku-log runtime takes ${LOG_FUNCTION_PARAMS} parameters and the build prepends the file and line, so a longer call builds clean and crashes at runtime with "Wrong number of function parameters". Split it into two log lines. Add ' bsc-disable-line ${ARITY_CODE} to suppress.`,
               location: call.location,
             });
           },

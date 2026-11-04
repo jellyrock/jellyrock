@@ -4,7 +4,7 @@ related-files:
   - components/JRScene.bs
   - components/JRScreen.bs
   - scripts/bsc-plugins/roku-log.cjs
-last-reviewed: 2026-10-10
+last-reviewed: 2026-11-04
 ---
 
 # Logging
@@ -22,7 +22,7 @@ Say which one you mean. They fail differently, and a bug in the second reads lik
 | | What | Who owns it |
 |---|---|---|
 | **Runtime library** | `source/roku_modules/log/` and `components/roku_modules/log/`: `Logger`, the transports, `initializeLogManager` | **Upstream, unchanged.** `npm:roku-log@0.11.1`, vendored by ropm, which prefixes every symbol (`Logger` becomes `log_Logger`, `"Log"` becomes `"log_Log"`) |
-| **Compile-time plugin** | [`scripts/bsc-plugins/roku-log.cjs`](../../scripts/bsc-plugins/roku-log.cjs): `strip`, `insertPkgPath`, `guard`, `removeComments` | **Ours.** Written from scratch to replace the unmaintained `roku-log-bsc-plugin@0.9.0-beta.1`, which BrighterScript v1 broke. There is nothing upstream to sync from |
+| **Compile-time plugin** | [`scripts/bsc-plugins/roku-log.cjs`](../../scripts/bsc-plugins/roku-log.cjs): `strip`, `insertPkgPath`, `guard`, `removeComments`, and the `log-too-many-values` check, which fails a call with more values than the runtime function takes once `insertPkgPath` has added its argument | **Ours.** Written from scratch to replace the unmaintained `roku-log-bsc-plugin@0.9.0-beta.1`, which BrighterScript v1 broke. There is nothing upstream to sync from |
 
 **Never hand-edit the vendored runtime files.** `roku_modules` is gitignored, so those files are regenerated on every install: an edit there disappears at the next `npm i` and leaves no trace. The installed copy differs from the npm package only by the prefixes ropm adds. To check:
 
