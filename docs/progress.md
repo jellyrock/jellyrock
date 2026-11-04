@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-03
+last-updated: 2026-11-04
 ---
 
 # Progress
@@ -599,7 +599,7 @@ A live `PlaybackInfo` now waits up to `timeouts.LIVE_OPEN_MS` (120 s) and keeps 
 
 #### AV1 is not a transcode video target, so converting an AV1 file's audio re-encodes its video too. `[fid: av1-not-transcode-target]` `[captured 2026-10-01]`
 
-`getTranscodingProfiles` lists only `h264` / `hevc` (and `vp9` / `mpeg2video` where supported) as transcode video codecs, so when the server must convert the audio of an AV1 file it cannot keep the video. Measured 2026-10-01: switching a 4K AV1 Dolby Vision movie to its DTS 7.1 track reloads as a full 4K re-encode, 19 s to the first segment on the home server, then about 4.1 s per 6 s segment. Jellyfin carries AV1 in HLS only in `mp4` segments (from 10.9, per `getTranscodingProfiles`' notes). **Next step:** before adding `av1` to the `mp4` transcode profile, measure on a Roku that audio converted into `mp4`-segment HLS plays with sound, since DTS copied into that format played silent (#821) and #573 records silent `mp4`-segment transcodes.
+`getTranscodingProfiles` lists only `h264` / `hevc` (and `vp9` / `mpeg2video` where supported) as transcode video codecs, so when the server must convert the audio of an AV1 file it cannot keep the video. Measured 2026-10-01: switching a 4K AV1 Dolby Vision movie to its DTS 7.1 track reloads as a full 4K re-encode, 19 s to the first segment on the home server, then about 4.1 s per 6 s segment. Jellyfin carries AV1 in HLS only in `mp4` (`fMP4`) segments, and the device profile no longer offers `fMP4` at all (decision `hls-transcodes-ts-only`): Roku plays no audio from muxed `fMP4` HLS. So adding `av1` to a transcode profile is not an option, and this re-encode is the expected cost. **Next step:** re-check only if Roku's media spec gains muxed CMAF, or Jellyfin serves `fMP4` HLS with audio in a separate track.
 
 #### `activeRoutedView`'s observer fires many times per navigation although the field does not always notify, and nobody knows why. `[fid: active-routed-view-observer-refires]` `[captured 2026-10-09]`
 
