@@ -569,6 +569,8 @@ MPEG-TS is left out of the direct-play profiles (`GetDirectPlayProfiles`), so th
 
 Array order did not keep the server off `fMP4`. From 10.8 the server's `StreamBuilder` ranks profiles by video and then audio fit and uses order only to break a tie, so whenever the `mp4` profile's longer audio list fit the source better, it picked `fMP4`. #573 (stereo files) and #1079 (DTS copied in) were that one cause, each patched for its own trigger. The measurements and the history are in decision [`hls-transcodes-ts-only`](../decisions.md#decision-id-hls-transcodes-ts-only).
 
+TS has one cost: a source with rotation metadata, such as a phone video, can't keep its video in a remux. From 10.10 the server turns video copy off for a rotated source unless the segments are `fMP4` (`DynamicHlsHelper`, read from the server source, not measured), so the video is re-encoded.
+
 To see what the server chose, open **Playback Info**: its container row shows the source and the target.
 
 ### Audio
