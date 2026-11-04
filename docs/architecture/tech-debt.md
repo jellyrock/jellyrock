@@ -58,7 +58,8 @@ In a code comment or a diagnostic string, where markdown does not render, use th
   - Live TV and recordings: channel switching, guide refresh, live-edge math (about 10)
   - voice and remote transport: `handleTransport`, seeks, next and previous item, `announceNowPlaying`, `setFavorite` (about 10)
   - the playback-error dialog and its diagnostics (11, from `showPlaybackErrorDialog` to `parkPlayerAfterSupersede`). Its pure logic lives in [`playbackErrorInfo.bs`](../../source/utils/playbackErrorInfo.bs); presentation and teardown stayed here.
-- **direction**: Extract controllers that each own their observers and keys: `SubtitleController`, `ChapterController`, a `TranscodeRecoveryHandler` (Dolby Vision retry, error dialog, force-finish), a `NotificationController` (next episode and media segments), a transport handler, and a `LiveTvController`. Extract Live TV last, because it is tied most closely to the `Video` state machine. The player keeps its lifecycle, state observation, OSD dispatch, audio and source switching, trickplay sync and reporting.
+  - the re-encode restart after reading the session and the frozen-playing stall check (6 functions and 2 timers, from `armReencodeCheck` to `playingProgressCheck`). Their pure logic lives in [`reencodeCheck.bs`](../../source/utils/reencodeCheck.bs) and [`bufferStall.bs`](../../source/utils/bufferStall.bs).
+- **direction**: Extract controllers that each own their observers and keys: `SubtitleController`, `ChapterController`, a `TranscodeRecoveryHandler` (Dolby Vision retry, the re-encode restart, error dialog, force-finish), a `NotificationController` (next episode and media segments), a transport handler, and a `LiveTvController`. Extract Live TV last, because it is tied most closely to the `Video` state machine. The player keeps its lifecycle, state observation, OSD dispatch, audio and source switching, trickplay sync and reporting.
 
 #### `mainbs-event-loop-fan-out`
 
