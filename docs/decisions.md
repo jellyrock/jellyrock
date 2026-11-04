@@ -2546,6 +2546,30 @@ A transcode of a source above 1080p never comes out as H.264 above `1920x1080`, 
 
 Ruled out: a width limit on the H.264 codec profile (Jellyfin applies it to every codec, which would also stop 4K HEVC copies); HEVC first for every source (stalls on software HEVC servers); trying HEVC on software servers and falling back on a stall (a server fast enough still pays for it in its other work). To re-evaluate: if Jellyfin gains per-codec resolution limits.
 
+## decision-id: hls-playlist-byte-budget
+
+**date**: 2026-11-04
+**status**: accepted
+**related-files**: `source/utils/deviceCapabilities.bs`, `components/ItemGrid/LoadVideoContentTask.bs`
+
+The HLS playlist is sized against Roku's byte limit from the server's own `TranscodingUrl`, not against an entry count. Measured 2026-11-04 with synthetic playlists on a Streaming Stick 4K (Roku OS 15.3.4) and a Roku Ultra (16.0.4): 4,188,113 bytes plays and 4,200,113 fails with `mpr playlist file is too large` on both, and 40,000 short entries play, so the limit is 4 MiB of text. Jellyfin repeats the whole request query in every entry (about 1,060 bytes with a TV that reports HDR), so the old 5,000-entry cap let Knives Out (2 h 10 min) reach 4,272,699 bytes and fail; with the budget it asks again at 3 s segments, 2,767,739 bytes, and plays copied. The profile's range type lists also lose the values they repeated. Ruled out: a fixed per-entry size guessed before the request (too cautious on an SDR TV, wrong when the URL grows); removing the repeats alone (a 2.5-hour film still fails). Shortening entries further and playing a film in parts are #1321.
+
+## decision-id: reencode-bitrate-checked-from-session
+
+**date**: 2026-11-04
+**status**: accepted
+**related-files**: `components/video/VideoPlayerView.bs`, `source/utils/reencodeCheck.bs`
+
+A re-encode the server runs above the buffer bitrate is found from the server's own session and restarted once with the cap. Jellyfin copies video only when the requested bitrate is at or above the source's, so the request keeps a high bitrate for a source above the cap, and a server that cannot copy re-encodes at it: measured 2026-11-04 on a Roku Ultra with `NVENC`, 4K HEVC re-encodes at 140 Mbps with 1 s segments never left buffering, at 95 Mbps and below they played. About 4 s after the stream reaches the player, the session's `TranscodingInfo` says whether the video is copied and at what bitrate; a 120 Mbps re-encode was restarted at 94.7 Mbps and played, and an 89 Mbps copy was left alone. The restart goes through `retryPlayback`, which keeps the resume point of a stream that never played. Skipped in a SyncPlay group, where the reload's Ready would carry position 0. Ruled out: predicting the server's copy decision before the request (it repeats server rules that differ by version); always applying the cap (every source above about 86 Mbps would be re-encoded, copies included).
+
+## decision-id: playing-stall-shares-buffer-window
+
+**date**: 2026-11-04
+**status**: accepted
+**related-files**: `components/video/VideoPlayerView.bs`, `source/utils/bufferStall.bs`
+
+A player that reports "playing" while its position does not move counts as a stall after the same 30 s window as a buffering stall, and takes the same exits: the error dialog for a movie or episode, the restart rule for Live TV. Seen 2026-11-04 on a Roku Ultra: a 4K H.264 re-encode sat at "play" position 0 with no error; with the check, the player stopped 31 s later, and a normal remux played 52 s without a false stall. Ruled out for now: retrying one step down the transcode ladder before the error, since nothing yet shows a lower step rescues a server too slow for the stream.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

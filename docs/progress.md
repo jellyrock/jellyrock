@@ -369,6 +369,10 @@ The `Detect test-relevant changes` pattern in `device-unit-tests.yml` leaves out
 
 **Fix shape:** add `scripts/run-roku-tests.js`, `scripts/lib/rooibos-summary.cjs` and the patches the run applies to the pattern.
 
+#### The log mixin prints `LongInteger` values blank `[fid: log-mixin-longinteger-blank]` `[captured 2026-11-04]`
+
+The roku-log mixin prints `LongInteger` values as blank (seen 2026-11-04: "bytes  budget" with nothing after, from `fitHlsPlaylist`'s log). Find whether `m.toString` in the vendored `LogMixin.brs` mishandles the type, and decide between converting in our code (`.toStr()`, as the playlist and re-encode logs now do), a wrapper, or a build check, which needs type inference the roku-log plugin lacks.
+
 ### components
 
 #### The `cell-load` counters are silently zeroed whenever a screen replaces its content root, so any measurement of a session that does so under-reports. `[fid: cell-load-counters-zeroed-by-root-swap]` `[captured 2026-08-22]`
@@ -882,6 +886,10 @@ Close it by deciding "leaving an intro" from the item that ended rather than fro
 
 An H.264 source caps the H.264 codec profile at `1920x1080` in `buildPlaybackInfoPostData` (`source/api/items.bs`, the block that caps the H.264 codec profile for an H.264 source), and Jellyfin applies a codec profile's width and height to the whole transcode, so a 4K H.264 source is re-encoded at 1080p even on a server that encodes HEVC in hardware and could keep 4K. Seen 2026-11-04 on a Roku Ultra against Jellyfin 12.4 with `NVENC`: a 4K H.264 source re-encoded as HEVC at `1920x1080`. Rare (4K H.264 sources are uncommon). Fix by dropping that cap where `capH264Resolution` already guards H.264 output, then check a 4K H.264 source keeps 4K on a hardware HEVC server and gets 1080p H.264 on a default one.
 
+#### A SyncPlay reload in place sends Ready at position 0 `[fid: syncplay-reload-ready-position]` `[captured 2026-11-04]`
+
+A reload in place while following a SyncPlay group reaches `syncPlayPlayback.trackPlayerEvent` as a stall followed by more buffering, and its Ready carries the node's own position (`positionTicks = -1`), which reads 0 at the first frame of a load that starts partway in; only the `mounted` path corrects for that with `loadStartTicks`. A Ready at 0 makes the server send a corrective Seek. Because of this the re-encode bitrate check (decision `reencode-bitrate-checked-from-session`) skips groups. Fix by sending the load's start position in that Ready, then let the check run in groups and test it with the REST second member.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -1144,6 +1152,10 @@ Several checks compare a number's `type()` against a partial list of names. On a
 #### A SyncPlay Ready after a slow silent seek can carry the position from before the seek and draw a corrective Seek `[fid: syncplay-ready-stale-position-after-slow-seek]` `[captured 2026-11-02]`
 
 After a slow silent seek on a SyncPlay member, the `Ready` goes out at the `playing` edge with the node's own position, which `docs/architecture/playback.md` says can still read the position from before the seek; a position off by more than 500 ms draws a corrective `Seek` from the server. Read from the code in PR #1296's review (2026-11-01), never reproduced; refiled from `syncplay-slow-seek-catch-up-unbounded` when the SyncPlay project's consolidation step closed it (the unbounded lead and the seek-stall cycle end with the wait-on-me correction, commit `a151efbc`). Closes with a device capture of a `Ready` after a slow seek compared against the seek's target, and a read of the position from a later notification when they differ, or a decision to drop it.
+
+#### `mediaNumber` loses the low digits of large values `[fid: media-number-long-precision]` `[captured 2026-11-04]`
+
+`mediaNumber` in `source/utils/misc.bs` reads a long integer through a float, so a large value loses its low digits (94848001 reads as 94848000, found 2026-11-04). It is harmless for the values it serves today, but wrong for bitrate and byte values; `reencodeCheck.bitsPerSecond` was added to avoid it. Decide whether `mediaNumber` should keep integers whole, and check its callers.
 
 ### api
 
