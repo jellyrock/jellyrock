@@ -924,8 +924,9 @@ class ApiClient
     return m.validatedReq("GET", buildURL("/System/Configuration"))
   end function
 
-  ' Build a request AA for the server's encoding settings, for use with fetchRes() or
-  ' fetchAsync(). Returns an EncodingOptions.
+  ' Build a request AA for one of the server's named configurations (GetNamedConfiguration,
+  ' `/System/Configuration/{key}`), for use with fetchRes() or fetchAsync(). With key "encoding"
+  ' it returns an EncodingOptions.
   '
   ' Read for HardwareAccelerationType, EnableHardwareEncoding and AllowHevcEncoding, which
   ' tell whether the server can encode HEVC fast enough to be offered first
@@ -934,8 +935,9 @@ class ApiClient
   ' writing needs an admin. The same path on every version, so no V1/V2 branch.
   '
   ' @returns Request AA: { method, url } or invalid if server URL not set
-  function BuildGetEncodingConfigurationRequest() as dynamic
-    return m.validatedReq("GET", buildURL("/System/Configuration/encoding"))
+  ' @param key - the configuration's name, for example "encoding"
+  function BuildGetNamedConfigurationRequest(key as string) as dynamic
+    return m.validatedReq("GET", buildURL(Substitute("/System/Configuration/{0}", key)))
   end function
 
   ' ═══════════════════════════════════════════════════════════════════════════
