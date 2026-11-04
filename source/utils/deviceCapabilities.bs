@@ -42,6 +42,12 @@ const NO_VIDEO_LEVEL = -1
 ' track switch (isStreamDirectPlayable in streamSelection.bs), so both draw one line.
 const DTS_MAX_DIRECT_PLAY_CHANNELS = 6
 
+' Most channels a surround transcode carries: the server converts multichannel audio to
+' eac3 or ac3 (resolveMultichannelSurroundTarget in items.bs), and Jellyfin's encoders for
+' both stop at 5.1 (_audioTranscodeChannelLookup in its EncodingHelper), whatever
+' MaxAudioChannels says. Raise it only if the server's eac3 encoder ever carries 7.1.
+const SURROUND_TRANSCODE_MAX_CHANNELS = 6
+
 ' Translate Jellyfin codec names to Roku API codec names where they differ.
 ' Covers both audio and video codecs.
 '   "h264"      -> "mpeg4 avc" (Jellyfin uses "h264"; Roku API uses "mpeg4 avc" with a space)

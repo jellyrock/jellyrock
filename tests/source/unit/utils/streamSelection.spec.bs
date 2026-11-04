@@ -798,11 +798,42 @@ namespace tests
       m.assertEqual(result, 2)
     end function
 
-    @it("keeps a TrueHD 7.1 default when the device outputs 8 channels and the alternative has 6")
+    @it("replaces a TrueHD 7.1 default with AC3 5.1 though the device outputs 8 channels, since the server converts it to 5.1")
     function _()
       streams = [
         { Type: "audio", index: 1, Language: "eng", channels: 8, codec: "truehd", IsDefault: true },
         { Type: "audio", index: 2, Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(8, true))
+      m.assertEqual(result, 2)
+    end function
+
+    @it("replaces a DTS 7.1 default with AC3 5.1 though the device outputs 8 channels")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 8, codec: "dts", IsDefault: true },
+        { Type: "audio", index: 2, Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(8, true))
+      m.assertEqual(result, 2)
+    end function
+
+    @it("prefers a playable 7.1 alternative over a 5.1 one on a device that outputs 8 channels")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 8, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Language: "eng", channels: 6, codec: "ac3", IsDefault: false },
+        { Type: "audio", index: 3, Language: "eng", channels: 8, codec: "eac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(8, true))
+      m.assertEqual(result, 3)
+    end function
+
+    @it("keeps a TrueHD 7.1 default when the only alternative is AC3 2.0 on a device that outputs 8 channels")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 8, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Language: "eng", channels: 2, codec: "ac3", IsDefault: false }
       ]
       result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(8, true))
       m.assertEqual(result, 1)

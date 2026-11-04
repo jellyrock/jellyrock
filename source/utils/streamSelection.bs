@@ -335,8 +335,10 @@ end function
 ' direct-play (TrueHD, for one). The server converts such a track anyway, and a same-language
 ' track the device can play lets the video direct-play or copy instead. The replacement is
 ' direct-playable, in the same language (both missing counts as the same), never a commentary
-' track, and has no fewer channels than the viewer would get from the default, which is the
-' lesser of the default's channels and the device maximum. The most channels wins, then stream order.
+' track, and has no fewer channels than the viewer would get from the default once the server
+' converts it: the least of the default's channels, the device maximum and
+' SURROUND_TRANSCODE_MAX_CHANNELS, so a 7.1 default arrives as 5.1 even on a 7.1 system. The most
+' channels wins, then stream order.
 '
 ' @param {object} defaultStream - The default stream playDefault chose
 ' @param {object} audioStreams - Candidate audio streams (commentary already hidden when a main track exists)
@@ -350,6 +352,7 @@ function playableAlternativeToDefault(defaultStream as object, audioStreams as o
   if isValid(deviceCapabilities.maxChannels) and deviceCapabilities.maxChannels < floorChannels
     floorChannels = deviceCapabilities.maxChannels
   end if
+  if SURROUND_TRANSCODE_MAX_CHANNELS < floorChannels then floorChannels = SURROUND_TRANSCODE_MAX_CHANNELS
 
   defaultHasLanguage = isValidAndNotEmpty(defaultStream.Language)
   languageMatches = {}
