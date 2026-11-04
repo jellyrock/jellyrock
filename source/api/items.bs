@@ -117,22 +117,9 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
 
   if disallowVideoCopy
     postData.AllowVideoStreamCopy = false
-  end if
-
-  ' The server takes the first codec it may encode, so list HEVC first for a source H.264 cannot
-  ' carry on this device: a server that allows HEVC encoding keeps its size and range, and one that
-  ' does not falls to H.264 (the load then reads the playlist and caps the resolution, see
-  ' LoadVideoContentTask.capH264Resolution).
-  sourceVideoStream = invalid
-  if isValid(playedSource) and isValid(playedSource.MediaStreams)
-    for each stream in playedSource.MediaStreams
-      if isValid(stream.Type) and stream.Type = "Video"
-        sourceVideoStream = stream
-        exit for
-      end if
-    end for
-  end if
-  if prefersHevcTranscode(sourceVideoStream, hevcRangeTypesOfProfile(postData.DeviceProfile), disallowVideoCopy)
+    ' The server takes the first codec it may encode, so list HEVC first: a server that allows
+    ' HEVC encoding keeps 4K, and one that does not falls to H.264 (hlsMasterVariant tells the
+    ' load when that needs a resolution cap).
     for each profile in postData.DeviceProfile.TranscodingProfiles
       if isValid(profile.Type) and profile.Type = "Video" and isValid(profile.VideoCodec)
         profile.VideoCodec = hevcFirstCodecList(profile.VideoCodec)

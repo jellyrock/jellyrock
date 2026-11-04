@@ -121,14 +121,14 @@ namespace tests
       m.assertEqual(reencoding.count(), copying.count())
     end function
 
-    @it("lists hevc before h264 for a 4K source, so a server that encodes HEVC keeps 4K")
+    @it("keeps h264 first for a 4K source in a first request (HEVC first is the re-encode retry's)")
     function _()
       profiles = m.videoTranscodingProfiles(m.buildFor(3840, 2160, "SDR"))
 
       m.assertTrue(profiles.count() > 0, "the fixture needs a video transcoding profile")
       for each profile in profiles
         codecs = profile.VideoCodec.split(",")
-        m.assertTrue(codecIndex(codecs, "hevc") < codecIndex(codecs, "h264"), "hevc comes before h264 in " + profile.VideoCodec)
+        m.assertTrue(codecIndex(codecs, "h264") < codecIndex(codecs, "hevc"), "h264 stays first in " + profile.VideoCodec)
       end for
     end function
 

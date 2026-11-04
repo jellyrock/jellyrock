@@ -2,7 +2,7 @@ import "pkg:/source/utils/deviceCapabilities.bs"
 
 namespace tests
 
-  @suite("deviceCapabilities.bs - exceedsH264Ceiling() and prefersHevcTranscode()")
+  @suite("deviceCapabilities.bs - exceedsH264Ceiling()")
   class H264CeilingTests extends tests.BaseTestSuite
 
     private function stream(width as integer, height as integer, rangeType = "SDR" as string, range = "SDR" as string) as object
@@ -42,53 +42,6 @@ namespace tests
     @it("is false when the size is missing")
     function _()
       m.assertFalse(exceedsH264Ceiling(invalid, invalid))
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("prefersHevcTranscode")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("is true for a 4K SDR source when the device decodes HEVC")
-    function _()
-      m.assertTrue(prefersHevcTranscode(m.stream(3840, 2160), "SDR|DOVIWithSDR", false))
-    end function
-
-    @it("is true for a 1080p HDR10 source when the HEVC range types include HDR10")
-    function _()
-      m.assertTrue(prefersHevcTranscode(m.stream(1920, 1080, "HDR10", "HDR"), "SDR|DOVIWithSDR|HDR10", false))
-    end function
-
-    @it("is false for a 1080p HDR10 source when the HEVC range types are SDR only")
-    function _()
-      m.assertFalse(prefersHevcTranscode(m.stream(1920, 1080, "HDR10", "HDR"), "SDR|DOVIWithSDR", false))
-    end function
-
-    @it("is false for a 1080p SDR source")
-    function _()
-      m.assertFalse(prefersHevcTranscode(m.stream(1920, 1080), "SDR|DOVIWithSDR|HDR10", false))
-    end function
-
-    @it("is true on the re-encode retry even for a 1080p SDR source")
-    function _()
-      m.assertTrue(prefersHevcTranscode(m.stream(1920, 1080), "SDR|DOVIWithSDR", true))
-    end function
-
-    @it("is false when the device has no HEVC profile")
-    function _()
-      m.assertFalse(prefersHevcTranscode(m.stream(3840, 2160), invalid, false))
-      m.assertFalse(prefersHevcTranscode(m.stream(3840, 2160), invalid, true))
-    end function
-
-    @it("reads HDR from VideoRange when the server sends no VideoRangeType")
-    function _()
-      m.assertTrue(prefersHevcTranscode({ Type: "Video", Width: 1920, Height: 1080, VideoRange: "HDR" }, "SDR|HDR10", false))
-      m.assertFalse(prefersHevcTranscode({ Type: "Video", Width: 1920, Height: 1080, VideoRange: "HDR" }, "SDR|DOVIWithSDR", false))
-    end function
-
-    @it("is false for an invalid stream unless it is the retry")
-    function _()
-      m.assertFalse(prefersHevcTranscode(invalid, "SDR", false))
-      m.assertTrue(prefersHevcTranscode(invalid, "SDR", true))
     end function
 
   end class
