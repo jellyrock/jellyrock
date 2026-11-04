@@ -569,10 +569,11 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     end if
   end if
 
-  ' The re-encode retry can come back as H.264 at the source's size, which a Roku cannot decode
-  ' above 1080p: check the answer's playlist and ask again with a 1080p cap if so.
-  if disallowVideoCopy and not isLive
-    capReencodedResolution(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, pickedCaps, userSettings)
+  ' A transcode of a source above 1080p can come back as H.264 at the source's size when the server
+  ' does not encode HEVC, which a Roku cannot decode: check the answer's playlist and ask again
+  ' with a 1080p cap if so.
+  if not isLive
+    capH264Resolution(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, pickedCaps, userSettings, disallowVideoCopy)
   end if
 
   ' Call addSubtitlesToVideo ONCE after ItemPostPlaybackInfo
@@ -747,7 +748,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     '
     ' Not offered for Live TV, until a live overflow is measured: every one so far was a file.
     ' A live re-encode would also need its own check for H.264 above 1080p, since
-    ' capReencodedResolution skips live loads (its second PlaybackInfo opens a second stream).
+    ' capH264Resolution skips live loads (its second PlaybackInfo opens a second stream).
     if not disallowVideoCopy and not isLive
       video.isReencodeFallbackAvailable = true
     end if
@@ -758,19 +759,23 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   video.audioTrack = getRokuAudioTrackPosition(audioStreamIdx, video.fullAudioData)
 end sub
 
-' capReencodedResolution: After a re-encode retry's PlaybackInfo answer, make sure the stream is
-' not H.264 above 1080p.
+' capH264Resolution: After a PlaybackInfo answer, make sure the stream is not H.264 above 1080p.
 '
-' The retry asks the server not to copy the video and lists HEVC first, but a server that does not
-' encode HEVC (Jellyfin's default) re-encodes to H.264 at the source's size, and a Roku stops at
-' AVC level 4.2 and buffers forever on a 4K one. The server's master playlist declares the codec and
-' size before any segment exists, so read it, and ask PlaybackInfo once more with a 1080p
-' resolution cap when reencodeCapDecision says so. A second request that fails keeps the first
-' answer (m.playbackInfo). A resolution cap of the viewer's own at or below 1080p (Settings or the
-' gear pick) skips the check: the first answer already honors it, and a forced 1080 would raise it.
+' A Roku stops at AVC level 4.2 and buffers forever on a 4K H.264 stream. A server that does not
+' encode HEVC (Jellyfin's default) re-encodes a source above 1080p to H.264 at the source's size,
+' whatever the request lists first. The server's master playlist declares the codec and size before
+' any segment exists, so read it, and ask PlaybackInfo once more with a 1080p resolution cap when
+' h264CapDecision says so. A second request that fails keeps the first answer (m.playbackInfo).
+'
+' A first request reads the playlist only for a source above 1080p, so other plays make no extra
+' request; the re-encode retry always reads it. Neither reads it for an answer that is not an HLS
+' transcode, or under a resolution cap of the viewer's own at or below 1080p (Settings or the gear
+' pick): the first answer already honors that cap, and a forced 1080 would raise it.
 '
 ' @param {string} itemId - the item
-sub capReencodedResolution(itemId as string, mediaSourceId as dynamic, audioStreamIdx as integer, subtitleIdx as integer, playbackPosition as dynamic, meta as object, bypassDoviPreservation as boolean, forceTranscoding as boolean, pickedCaps as dynamic, userSettings as object)
+' @param {object} userSettings - the viewer's settings, for their resolution cap
+' @param {boolean} disallowVideoCopy - the load's own value, sent again unchanged
+sub capH264Resolution(itemId as string, mediaSourceId as dynamic, audioStreamIdx as integer, subtitleIdx as integer, playbackPosition as dynamic, meta as object, bypassDoviPreservation as boolean, forceTranscoding as boolean, pickedCaps as dynamic, userSettings as object, disallowVideoCopy as boolean)
   if not isValidAndNotEmpty(m.playbackInfo.MediaSources) then return
   source = m.playbackInfo.MediaSources[0]
   if not isValid(source) or not isValidAndNotEmpty(source.TranscodingUrl) then return
@@ -779,7 +784,7 @@ sub capReencodedResolution(itemId as string, mediaSourceId as dynamic, audioStre
   ' The server's first answer already keeps the video within the viewer's own cap.
   limit = playbackCaps.heightLimit(userSettings, pickedCaps)
   if limit > 0 and limit <= 1080
-    m.log.info("Re-encode keeps the viewer's resolution cap", "maxHeight", limit, "itemId", itemId)
+    m.log.info("Transcode keeps the viewer's resolution cap", "maxHeight", limit, "itemId", itemId)
     return
   end if
 
@@ -787,13 +792,14 @@ sub capReencodedResolution(itemId as string, mediaSourceId as dynamic, audioStre
   if isValid(meta.mediaSourcesData) then playedSource = mediaSourceForId(meta.mediaSourcesData.mediaSources, mediaSourceId)
   sourceAboveCeiling = false
   if isValid(playedSource) then sourceAboveCeiling = videoStreamAboveH264Ceiling(getFirstVideoStream(playedSource.MediaStreams))
+  if not disallowVideoCopy and not sourceAboveCeiling then return
 
   fetched = fetchManifestText(buildURL(source.TranscodingUrl), timeouts.HLS_MASTER_PROBE_MS)
-  decision = reencodeCapDecision(fetched, sourceAboveCeiling)
+  decision = h264CapDecision(fetched, sourceAboveCeiling, disallowVideoCopy)
   if isValid(decision.variant)
-    m.log.info("Re-encode master playlist", "codecs", decision.variant.codecs, "width", decision.variant.width, "height", decision.variant.height, "itemId", itemId)
+    m.log.info("Master playlist", "codecs", decision.variant.codecs, "width", decision.variant.width, "height", decision.variant.height, "itemId", itemId)
   else
-    m.log.warn("Could not read the re-encode's master playlist", "reason", decision.reason, "sourceAboveCeiling", sourceAboveCeiling, "itemId", itemId)
+    m.log.warn("Could not read the master playlist", "reason", decision.reason, "sourceAboveCeiling", sourceAboveCeiling, "isReencode", disallowVideoCopy, "itemId", itemId)
   end if
   if not decision.cap then return
 
@@ -801,9 +807,9 @@ sub capReencodedResolution(itemId as string, mediaSourceId as dynamic, audioStre
   cappedCaps = {}
   if type(pickedCaps) = "roAssociativeArray" then cappedCaps.append(pickedCaps)
   cappedCaps.maxResolution = "1080"
-  res = ItemPostPlaybackInfoResponse(itemId, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, 0, cappedCaps, true)
+  res = ItemPostPlaybackInfoResponse(itemId, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, 0, cappedCaps, disallowVideoCopy)
   if isUsablePlaybackInfoResponse(res)
-    m.log.info("Playing the re-encode capped at 1080p", "reason", decision.reason, "itemId", itemId)
+    m.log.info("Playing the answer capped at 1080p", "reason", decision.reason, "itemId", itemId)
     m.playbackInfo = res.json
   else
     m.log.warn("PlaybackInfo with a 1080p cap failed; keeping the server's answer", "reason", decision.reason, "itemId", itemId)
