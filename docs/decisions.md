@@ -2546,6 +2546,14 @@ Array order was not enough: from 10.8 the server ranks profiles by video and aud
 
 With "Play default audio track" on, a default track this Roku cannot direct-play (TrueHD, for one) gives way to a same-language, non-commentary track it can play, with no fewer channels than the viewer would get from the default once the server converts it: the least of its channels, the device maximum and `SURROUND_TRANSCODE_MAX_CHANNELS` (6), because the server's `eac3` and `ac3` encoders stop at 5.1. So a 7.1 default gives way to a 5.1 track even on a 7.1 system, and a playable 7.1 track still beats a 5.1 one; `playableAlternativeToDefault()` decides. The 5.1 limit is read from Jellyfin 12.2's source (`_audioTranscodeChannelLookup`), not measured on a 7.1 system. The server converts an unplayable default anyway, and a playable track lets the video direct-play or copy, which avoids remuxing long-GOP 4K sources at all. Measured 2026-11-03 on a Roku Ultra: a 4K HDR10 file with a TrueHD default and an `AC3` 5.1 track went from a remux to `PlayMethod: DirectPlay ... Reasons: 0`. A playable default is kept, so a playable AAC 2.0 default still beats an `AC3` 5.1. Ruled out: leaving the choice to the server, which converts the audio and can lose the original video; a setting for it, which most viewers would never find.
 
+## decision-id: audio-description-never-auto-picked
+
+**date**: 2026-11-04
+**status**: accepted
+**related-files**: `source/utils/streamSelection.bs`
+
+Commentary and audio-description tracks stay out of the automatic audio pick while the file has another track (#500, `isHiddenFromAutoPick()`), so a stereo narration track can't win on channel count. Audio description is the main track for blind and low-vision viewers, so it is kept where its viewer has asked for it: the file flags it default and "Play default audio track" is on, or the Roku's Audio Guide (screen reader) is on, when it ranks like a main track. The swap in `playableAlternativeToDefault()` replaces a default only with a track of the same kind and never with commentary. Detection is by title only ("description", "descriptive" or "described" anywhere, or "AD" as a capitalized whole word): Jellyfin 12.2's media probe sets `IsHearingImpaired` from the `hearing_impaired` disposition ffmpeg reports and never reads `visual_impaired`, so `MediaStream` carries no audio-description flag. Ruled out: hiding audio description in every case, which made a viewer who flagged it default in their own files pick it for each video; hiding it only in the swap, since the channel ranking could already pick it by accident; and preferring it whenever Audio Guide is on, since some screen-reader users don't want narration. Re-evaluate if Jellyfin adds an audio-description flag, or if viewers ask for a setting to prefer it.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

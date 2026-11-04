@@ -331,17 +331,56 @@ function isCommentaryAudioStream(stream as object) as boolean
   return inStr(1, LCase(stream.Title), "commentary") > 0
 end function
 
+' isAudioDescriptionStream: Whether a stream looks like an audio-description track (narration
+' for blind and low-vision viewers). Jellyfin has no flag for it: its prober reads ffmpeg's
+' hearing_impaired disposition but not visual_impaired, so the title is all there is.
+'
+' Detection: "description", "descriptive" or "described" anywhere in the title (any case), or
+' "AD" as a whole word in capitals ("English AD", "(AD)"), so ADTS, ADR or "ad" inside a word
+' never match.
+'
+' @param {object} stream - MediaStream object from Jellyfin metadata
+' @returns {boolean}
+function isAudioDescriptionStream(stream as object) as boolean
+  if not isValid(stream) or not isValidAndNotEmpty(stream.Title) then return false
+  title = LCase(stream.Title)
+  for each word in ["description", "descriptive", "described"]
+    if inStr(1, title, word) > 0 then return true
+  end for
+  return CreateObject("roRegex", "(^|[^A-Za-z])AD([^A-Za-z]|$)", "").isMatch(stream.Title)
+end function
+
+' isHiddenFromAutoPick: Whether findBestAudioStreamIndex() leaves a stream out of its automatic
+' pick while the file has a main track (issue #500). The viewer can still choose it from Audio.
+'
+' Commentary is always hidden. Audio description is hidden too, so a stereo narration track can't
+' win on channel count, except where its viewer has asked for it: the file flags it default and
+' "Play default audio track" is on, or the Roku's Audio Guide (screen reader) is on, when it is
+' ranked like a main track. The default flag counts only in that mode, the one that reads it.
+'
+' @param {object} stream - MediaStream object from Jellyfin metadata
+' @param {boolean} playDefault - "Play default audio track" is on
+' @param {boolean} audioGuideOn - The Roku's Audio Guide is on
+' @returns {boolean}
+function isHiddenFromAutoPick(stream as object, playDefault as boolean, audioGuideOn as boolean) as boolean
+  if isCommentaryAudioStream(stream) then return true
+  if not isAudioDescriptionStream(stream) then return false
+  if audioGuideOn then return false
+  return not (playDefault and stream.IsDefault = true)
+end function
+
 ' playableAlternativeToDefault: The stream to play in place of a default track this Roku cannot
 ' direct-play (TrueHD, for one). The server converts such a track anyway, and a same-language
 ' track the device can play lets the video direct-play or copy instead. The replacement is
-' direct-playable, in the same language (both missing counts as the same), never a commentary
-' track, and has no fewer channels than the viewer would get from the default once the server
-' converts it: the least of the default's channels, the device maximum and
+' direct-playable, in the same language code (any case; both missing counts as the same, and a
+' regional variant does not), never commentary, of the same kind as the default (audio description
+' for audio description, main for main), and has no fewer channels than the viewer would get from
+' the default once the server converts it: the least of the default's channels, the device maximum and
 ' SURROUND_TRANSCODE_MAX_CHANNELS, so a 7.1 default arrives as 5.1 even on a 7.1 system. The most
 ' channels wins, then stream order.
 '
 ' @param {object} defaultStream - The default stream playDefault chose
-' @param {object} audioStreams - Candidate audio streams (commentary already hidden when a main track exists)
+' @param {object} audioStreams - Every audio stream of the file; the rules above pick among them
 ' @param {object} deviceCapabilities - Device capability info
 ' @returns {object} - The replacement stream, or defaultStream when it is playable or none qualifies
 function playableAlternativeToDefault(defaultStream as object, audioStreams as object, deviceCapabilities as object) as object
@@ -354,22 +393,18 @@ function playableAlternativeToDefault(defaultStream as object, audioStreams as o
   end if
   if SURROUND_TRANSCODE_MAX_CHANNELS < floorChannels then floorChannels = SURROUND_TRANSCODE_MAX_CHANNELS
 
-  defaultHasLanguage = isValidAndNotEmpty(defaultStream.Language)
-  languageMatches = {}
-  if defaultHasLanguage
-    languageMatches = matchingLanguageCodes(streamLanguageCodes(audioStreams, "audio"), defaultStream.Language)
-  end if
+  defaultLanguage = ""
+  if isValidAndNotEmpty(defaultStream.Language) then defaultLanguage = LCase(defaultStream.Language)
 
   best = defaultStream
   bestChannels = -1
   for each candidate in audioStreams
     if candidate.index = defaultStream.index then continue for
     if isCommentaryAudioStream(candidate) then continue for
-    if defaultHasLanguage
-      if not isLanguageMatch(languageMatches, candidate.Language) then continue for
-    else if isValidAndNotEmpty(candidate.Language)
-      continue for
-    end if
+    if isAudioDescriptionStream(candidate) <> isAudioDescriptionStream(defaultStream) then continue for
+    candidateLanguage = ""
+    if isValidAndNotEmpty(candidate.Language) then candidateLanguage = LCase(candidate.Language)
+    if candidateLanguage <> defaultLanguage then continue for
     if not isValid(candidate.channels) or candidate.channels < floorChannels then continue for
     if not isStreamDirectPlayable(candidate, deviceCapabilities) then continue for
     if candidate.channels > bestChannels
@@ -457,13 +492,16 @@ function findBestAudioStreamIndex(streams as dynamic, playDefault as dynamic, pr
     return 0
   end if
 
-  ' Deprioritize commentary tracks (issue #500): when at least one non-commentary track
-  ' exists, hide commentary entries from all subsequent selection logic so a stereo
-  ' commentary track can't outrank the multichannel main track on a stereo device.
-  ' Files with only commentary tracks fall through with the original list.
+  ' Deprioritize commentary and audio description (issue #500, isHiddenFromAutoPick()): when at
+  ' least one track stays, hide the rest from all subsequent selection logic so a stereo
+  ' commentary or narration track can't outrank the multichannel main track on a stereo device.
+  ' Files where every track is hidden fall through with the original list.
+  playDefaultOn = isValid(playDefault) and playDefault = true
+  audioGuideOn = m.global.device.isAudioGuideEnabled = true
+  allAudioStreams = audioStreams
   mainStreams = []
   for i = 0 to audioStreams.Count() - 1
-    if not isCommentaryAudioStream(audioStreams[i])
+    if not isHiddenFromAutoPick(audioStreams[i], playDefaultOn, audioGuideOn)
       mainStreams.push(audioStreams[i])
     end if
   end for
@@ -493,7 +531,7 @@ function findBestAudioStreamIndex(streams as dynamic, playDefault as dynamic, pr
       if defaultStreams.Count() = 1
         bestStream = selectBestStreamByHardware(defaultStreams, deviceCapabilities)
         if isValid(bestStream) and isValid(bestStream.index)
-          return playableAlternativeToDefault(bestStream, audioStreams, deviceCapabilities).index
+          return playableAlternativeToDefault(bestStream, allAudioStreams, deviceCapabilities).index
         end if
       else
         ' Multiple IsDefault streams - try language preference as tiebreaker
@@ -509,7 +547,7 @@ function findBestAudioStreamIndex(streams as dynamic, playDefault as dynamic, pr
           if languageMatchedDefaults.Count() > 0
             bestStream = selectBestStreamByHardware(languageMatchedDefaults, deviceCapabilities)
             if isValid(bestStream) and isValid(bestStream.index)
-              return playableAlternativeToDefault(bestStream, audioStreams, deviceCapabilities).index
+              return playableAlternativeToDefault(bestStream, allAudioStreams, deviceCapabilities).index
             end if
           end if
         end if
@@ -517,7 +555,7 @@ function findBestAudioStreamIndex(streams as dynamic, playDefault as dynamic, pr
         ' Language didn't match or not set - use hardware optimization on all IsDefault streams
         bestStream = selectBestStreamByHardware(defaultStreams, deviceCapabilities)
         if isValid(bestStream) and isValid(bestStream.index)
-          return playableAlternativeToDefault(bestStream, audioStreams, deviceCapabilities).index
+          return playableAlternativeToDefault(bestStream, allAudioStreams, deviceCapabilities).index
         end if
       end if
     end if

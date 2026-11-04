@@ -942,6 +942,236 @@ namespace tests
       m.assertEqual(result, 2)
     end function
 
+    @it("keeps a default that has no channel count")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 1)
+    end function
+
+    @it("does not swap in AAC 5.1 when Decode Multichannel Audio is off, and does when it is on")
+    function _()
+      settings = m.global.user.settings
+      saved = settings.playbackDecodeMultichannelAudio
+      streams = [
+        { Type: "audio", index: 1, Language: "eng", channels: 6, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Language: "eng", channels: 6, codec: "aac", IsDefault: false }
+      ]
+
+      settings.playbackDecodeMultichannelAudio = false
+      offResult = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(6, false))
+      settings.playbackDecodeMultichannelAudio = true
+      onResult = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(6, false))
+      settings.playbackDecodeMultichannelAudio = saved
+
+      m.assertEqual(offResult, 1, "with the setting off the server handles multichannel aac, so the default stays")
+      m.assertEqual(onResult, 2)
+    end function
+
+    @it("matches the default's language whatever its case")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "ENG", channels: 6, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 2)
+    end function
+
+    @it("does not treat a regional variant as the default's language (por default, pob alternative)")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Language: "por", channels: 6, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Language: "pob", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "por", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Secondary audio tracks: commentary and audio description are never auto-picked over a main track")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("isAudioDescriptionStream: true for audio-description titles")
+    @params("Audio Description")
+    @params("ENGLISH AUDIO DESCRIPTION")
+    @params("English - Descriptive Video Service")
+    @params("Described Video (English)")
+    @params("English AD")
+    @params("AD")
+    @params("(AD) English")
+    @params("English [AD] - AC3 5.1")
+    @params("eng-AD")
+    function _(title as string)
+      m.assertTrue(isAudioDescriptionStream({ Title: title }), title)
+    end function
+
+    @it("isAudioDescriptionStream: false for main-track titles")
+    @params("English - AC3 5.1")
+    @params("AAC ADTS")
+    @params("ADR Test Mix")
+    @params("Headphones Mix")
+    @params("Made for TV")
+    @params("Stereo ad")
+    function _(title as string)
+      m.assertFalse(isAudioDescriptionStream({ Title: title }), title)
+    end function
+
+    @it("isAudioDescriptionStream: false with no title, an empty title or no stream")
+    function _()
+      m.assertFalse(isAudioDescriptionStream({}))
+      m.assertFalse(isAudioDescriptionStream({ Title: "" }))
+      m.assertFalse(isAudioDescriptionStream(invalid))
+    end function
+
+    @it("isHiddenFromAutoPick: commentary always, audio description unless chosen or Audio Guide is on")
+    function _()
+      commentary = { Title: "Director's Commentary", IsDefault: true }
+      description = { Title: "English - Audio Description", IsDefault: false }
+      flaggedDescription = { Title: "English - Audio Description", IsDefault: true }
+      mainTrack = { Title: "English - EAC3 5.1", IsDefault: false }
+
+      m.assertTrue(isHiddenFromAutoPick(commentary, true, true), "commentary, even flagged default with Audio Guide on")
+      m.assertTrue(isHiddenFromAutoPick(description, true, false))
+      m.assertTrue(isHiddenFromAutoPick(flaggedDescription, false, false), "the default flag counts only with Play default audio track on")
+      m.assertFalse(isHiddenFromAutoPick(flaggedDescription, true, false), "the file chose it and the viewer plays defaults")
+      m.assertFalse(isHiddenFromAutoPick(description, false, true), "Audio Guide on")
+      m.assertFalse(isHiddenFromAutoPick(mainTrack, false, false))
+      m.assertFalse(isHiddenFromAutoPick({}, false, false))
+    end function
+
+    @it("passes over a stereo audio-description track for the 5.1 main track on a stereo device")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Title: "English - Audio Description", Language: "eng", channels: 2, codec: "aac", IsDefault: false },
+        { Type: "audio", index: 2, Title: "English - EAC3 5.1", Language: "eng", channels: 6, codec: "eac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, false, "eng", m.createMockCapabilities(2, false))
+      m.assertEqual(result, 2)
+    end function
+
+    @it("plays an audio-description track the file flags default when Play default audio track is on")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Title: "Described Video", Language: "eng", channels: 2, codec: "aac", IsDefault: true },
+        { Type: "audio", index: 2, Title: "English", Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 1)
+    end function
+
+    @it("hides an audio-description track the file flags default when Play default audio track is off")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Title: "Described Video", Language: "eng", channels: 2, codec: "aac", IsDefault: true },
+        { Type: "audio", index: 2, Title: "English", Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, false, "eng", m.createMockCapabilities(2, false))
+      m.assertEqual(result, 2)
+    end function
+
+    @it("with Audio Guide on, ranks an audio-description track as a main track")
+    function _()
+      device = m.global.device
+      saved = device.isAudioGuideEnabled
+      streams = [
+        { Type: "audio", index: 1, Title: "English - Audio Description", Language: "eng", channels: 2, codec: "aac", IsDefault: false },
+        { Type: "audio", index: 2, Title: "English - EAC3 5.1", Language: "eng", channels: 6, codec: "eac3", IsDefault: false }
+      ]
+      device.isAudioGuideEnabled = true
+      guideOn = findBestAudioStreamIndex(streams, false, "eng", m.createMockCapabilities(2, false))
+      device.isAudioGuideEnabled = false
+      guideOff = findBestAudioStreamIndex(streams, false, "eng", m.createMockCapabilities(2, false))
+      device.isAudioGuideEnabled = saved
+
+      m.assertEqual(guideOn, 1, "the stereo match wins, as for any main track")
+      m.assertEqual(guideOff, 2)
+    end function
+
+    @it("with Audio Guide on, still never auto-picks commentary")
+    function _()
+      device = m.global.device
+      saved = device.isAudioGuideEnabled
+      streams = [
+        { Type: "audio", index: 1, Title: "Commentary", Language: "eng", channels: 2, codec: "aac", IsDefault: true },
+        { Type: "audio", index: 2, Title: "English - EAC3 5.1", Language: "eng", channels: 6, codec: "eac3", IsDefault: false }
+      ]
+      device.isAudioGuideEnabled = true
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(2, false))
+      device.isAudioGuideEnabled = saved
+      m.assertEqual(result, 2)
+    end function
+
+    @it("swaps an unplayable audio-description default for a playable audio-description track, not the main one")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Title: "English - Audio Description - TrueHD", Language: "eng", channels: 6, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Title: "English - AC3 5.1", Language: "eng", channels: 6, codec: "ac3", IsDefault: false },
+        { Type: "audio", index: 3, Title: "English - Audio Description - AC3", Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 3)
+    end function
+
+    @it("with Audio Guide on, never swaps a main default for an audio-description track")
+    function _()
+      device = m.global.device
+      saved = device.isAudioGuideEnabled
+      streams = [
+        { Type: "audio", index: 1, Title: "English - TrueHD 5.1", Language: "eng", channels: 6, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Title: "English - Audio Description", Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      device.isAudioGuideEnabled = true
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(6, false))
+      device.isAudioGuideEnabled = saved
+      m.assertEqual(result, 1)
+    end function
+
+    @it("picks the main track from a file with main, commentary and audio-description tracks")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Title: "Commentary", Language: "eng", channels: 2, codec: "aac", IsDefault: false },
+        { Type: "audio", index: 2, Title: "English AD", Language: "eng", channels: 2, codec: "aac", IsDefault: false },
+        { Type: "audio", index: 3, Title: "English - AC3 5.1", Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      m.assertEqual(findBestAudioStreamIndex(streams, false, "eng", m.createMockCapabilities(2, false)), 3)
+      m.assertEqual(findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(2, false)), 3)
+    end function
+
+    @it("still picks a track from a file with only secondary tracks")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Title: "Audio Description - Stereo", Language: "eng", channels: 2, codec: "aac", IsDefault: false },
+        { Type: "audio", index: 2, Title: "Audio Description - 5.1", Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, false, "eng", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 2)
+    end function
+
+    @it("swaps an unplayable default for the main track, not the audio-description one before it")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Title: "English - TrueHD 5.1", Language: "eng", channels: 6, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Title: "English - Audio Description", Language: "eng", channels: 6, codec: "ac3", IsDefault: false },
+        { Type: "audio", index: 3, Title: "English - AC3 5.1", Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 3)
+    end function
+
+    @it("keeps an unplayable default when the only playable alternative is audio description")
+    function _()
+      streams = [
+        { Type: "audio", index: 1, Title: "English - TrueHD 5.1", Language: "eng", channels: 6, codec: "truehd", IsDefault: true },
+        { Type: "audio", index: 2, Title: "English - Audio Description", Language: "eng", channels: 6, codec: "ac3", IsDefault: false }
+      ]
+      result = findBestAudioStreamIndex(streams, true, "eng", m.createMockCapabilities(6, false))
+      m.assertEqual(result, 1)
+    end function
+
   end class
 
 end namespace
