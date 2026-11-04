@@ -896,6 +896,18 @@
       ]
     },
     {
+      "path": "/System/Configuration/encoding",
+      "normalized": "/system/configuration/encoding",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
       "path": "/system/info/public",
       "normalized": "/system/info/public",
       "methods": [
@@ -3643,7 +3655,7 @@
       }
     },
     "counts": {
-      "endpoints": 99,
+      "endpoints": 100,
       "requestFields": 64,
       "responseFields": 223,
       "unresolvedEndpointSinks": 3
@@ -3651,11 +3663,11 @@
     "unresolvedEndpointSinks": [
       {
         "sourceFile": "source/api/items.bs",
-        "line": 476
+        "line": 496
       },
       {
         "sourceFile": "source/api/items.bs",
-        "line": 491
+        "line": 511
       },
       {
         "sourceFile": "source/utils/subtitles.bs",
