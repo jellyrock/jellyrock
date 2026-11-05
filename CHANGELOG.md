@@ -35,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update rimraf from v6.1.3 to v6.1.4 ([#1319](https://github.com/jellyrock/jellyrock/pull/1319))
 - Update eslint from v10.13.0 to v10.14.0 ([#1287](https://github.com/jellyrock/jellyrock/pull/1287))
 - Lock file maintenance ([#1300](https://github.com/jellyrock/jellyrock/pull/1300))
 
