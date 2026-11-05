@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The log manager node. log.initializeLogManager() (source/logging/LogMixin.bs) creates the one
+  instance, and each log.Logger copies its settings when it is built.
+  Adopted from roku-log 0.11.1 (MIT). Its origin and local changes are in source/logging/README.md.
+-->
+<component name="log_Log" extends="ContentNode">
+  <interface>
+    <!-- 0 error, 1 warn, 2 info, 3 verbose, 4 debug. A line is written when its level is at most this. -->
+    <field id="logLevel" type="integer" value="4" />
+
+    <!-- When true, a Logger applies logLevel and the name filters below. -->
+    <field id="isFiltering" type="boolean" value="true" />
+
+    <field id="enabled" type="boolean" value="true" />
+
+    <!-- Logger names to include, and to exclude. -->
+    <field id="includeFilters" type="assocarray" />
+    <field id="excludeFilters" type="assocarray" />
+
+    <!--
+      How a Logger writes, set from transportTypes: 0 nowhere, 1 print only,
+      2 transports only, 3 print and transports.
+    -->
+    <field id="logMode" type="integer" value="0" />
+    <field id="includeDate" type="boolean" value="false" />
+    <field id="dateText" type="string" value="" />
+
+    <!--
+      Transport names. "log_PrintTransport" writes to the debug console. Any other name is
+      created as a child of the scene and must implement `function logItem(name, levelNum, text)`.
+    -->
+    <field id="transportTypes" type="array" />
+
+    <!-- The transport nodes created from transportTypes. -->
+    <field id="transports" type="array" />
+  </interface>
+</component>

@@ -10,7 +10,7 @@
 ' separation is the point: when both halves lived in one component they shared one
 ' unsynchronized `m`, and the render thread's 100 ms caption timer racing this
 ' function is what produced the &hf3 crash on `m.tags.replaceAll()`.
-import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/logging/LogMixin.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/webvtt.bs"
 

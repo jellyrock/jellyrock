@@ -1,0 +1,72 @@
+import "pkg:/source/logging/LogMixin.bs"
+
+namespace tests
+
+  ' The log manager node and the Logger's value formatting (source/logging/, adopted from
+  ' roku-log). BaseTestSuite sets `logMode` on its own manager by hand, so without this suite
+  ' nothing would notice the manager failing to set it, which leaves every Logger silent.
+  @suite("log manager")
+  class LogManagerTests extends tests.BaseTestSuite
+
+    private manager
+
+    protected override sub beforeEach()
+      super.beforeEach()
+      m.manager = CreateObject("roSGNode", "log_Log")
+    end sub
+
+    protected override sub afterEach()
+      m.manager = invalid
+      super.afterEach()
+    end sub
+
+    function newLogger() as object
+      return new log.Logger("test")
+    end function
+
+    @describe("logMode follows transportTypes")
+
+    @it("prints by default once the node is created")
+    sub _()
+      m.assertEqual(m.manager.logMode, 1)
+    end sub
+
+    @it("writes nowhere with no transports")
+    sub _()
+      m.manager.transportTypes = []
+      m.assertEqual(m.manager.logMode, 0)
+    end sub
+
+    @it("prints again when the print transport comes back")
+    sub _()
+      m.manager.transportTypes = []
+      m.manager.transportTypes = ["log_PrintTransport"]
+      m.assertEqual(m.manager.logMode, 1)
+    end sub
+
+    @describe("Logger.toString")
+
+    @it("leaves out an argument the caller did not pass")
+    sub _()
+      m.assertEqual(m.newLogger().toString("~#"), "")
+    end sub
+
+    @it("writes strings, integers and booleans as text")
+    sub _()
+      subject = m.newLogger()
+      m.assertEqual(subject.toString("abc"), "abc")
+      m.assertEqual(subject.toString(42), "42")
+      m.assertEqual(subject.toString(true), "true")
+    end sub
+
+    @it("names invalid, nodes and associative arrays")
+    sub _()
+      subject = m.newLogger()
+      m.assertEqual(subject.toString(invalid), "INVALID")
+      m.assertEqual(subject.toString(CreateObject("roSGNode", "ContentNode")), "Node(ContentNode)")
+      m.assertEqual(subject.toString({ a: 1 }), "AA(" + formatJson({ a: 1 }) + ")")
+    end sub
+
+  end class
+
+end namespace

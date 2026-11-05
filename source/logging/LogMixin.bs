@@ -1,0 +1,160 @@
+' The logging runtime: the `log.Logger` class and `log.initializeLogManager`.
+' Adopted from roku-log 0.11.1 (MIT). Its origin and every local change are in README.md here.
+
+namespace log
+
+  ' Creates the log manager (a `log_Log` node) and stores it on `m.global.rLog` and on the scene.
+  ' JRScene.init() is the only caller, and `npm run lint:log-manager-init` keeps it that way.
+  '
+  ' @param transportTypes the transport names; "log_PrintTransport" writes to the debug console
+  ' @param logLevel 0 error, 1 warn, 2 info, 3 verbose, 4 debug
+  ' @param includeDate prefix each line with the time
+  ' @param enabled the value `Logger.enabled` copies
+  ' @returns the manager node
+  function initializeLogManager(transportTypes = invalid, logLevel = invalid, includeDate = false, enabled = false) as object
+    rLog = CreateObject("roSGNode", "log_Log")
+    m.global.addFields({ "rLog": rLog })
+    m.top.getScene().addFields({ "rLog": rLog })
+
+    if transportTypes = invalid
+      transportTypes = ["log_PrintTransport"]
+    end if
+
+    if logLevel = invalid
+      logLevel = 2
+    end if
+
+    rLog.includeFilters = {}
+    rLog.excludeFilters = {}
+    rLog.transportTypes = transportTypes
+    rLog.logLevel = logLevel
+    rLog.includeDate = includeDate = true
+    rLog.enabled = enabled = true
+    return rLog
+  end function
+
+  ' The log manager, or invalid before JRScene.init() creates it.
+  function getLogInstance() as dynamic
+    if m.global <> invalid and m.global.rLog <> invalid
+      return m.global.rLog
+    end if
+
+    if m.top.getScene() <> invalid
+      ' A fallback for test setups that put the manager on the scene only
+      return m.top.getScene().rLog
+    end if
+    return invalid
+  end function
+
+  class Logger
+    public enabled = true
+    private name
+    private rLog
+    private isFiltering = false
+    private logLevel = 2
+    private includeFilters = []
+    private excludeFilters = []
+    private includeDate = false
+    private logMode = 1
+    private transports = []
+
+    ' Copies the manager's settings once. A Logger built before the manager exists keeps
+    ' `rLog = invalid`, and every level method then returns at once.
+    sub new(name = "general")
+      m.name = name
+      m.rLog = log.getLogInstance()
+      if m.rLog <> invalid
+        m.enabled = m.rLog.enabled
+        m.isFiltering = m.rLog.isFiltering
+        m.logLevel = m.rLog.logLevel
+        m.includeFilters = m.rLog.includeFilters
+        m.excludeFilters = m.rLog.excludeFilters
+        m.includeDate = m.rLog.includeDate
+        m.logMode = m.rLog.logMode
+        m.transports = m.rLog.transports
+      end if
+    end sub
+
+    sub log(levelNum, level, message, value = "~#", value2 = "~#", value3 = "~#", value4 = "~#", value5 = "~#", value6 = "~#", value7 = "~#", value8 = "~#", value9 = "~#")
+
+      if m.isFiltering
+        if m.logLevel < levelNum or (m.includeFilters.count() > 0 and m.includeFilters[m.name] = invalid) or (m.excludeFilters.count() > 0 and m.excludeFilters[m.name] <> invalid)
+          return
+        end if
+      end if
+
+      if m.includeDate
+        level = m.rLog.dateText + " " + level
+      end if
+
+      ' This class is what m.log calls, so its print is the console output itself.
+      if m.logMode = 1
+        print level " " m.toString(message) " " m.toString(value) " " m.toString(value2) " " m.toString(value3) " " m.toString(value4) " " m.toString(value5) " " m.toString(value6) " " m.toString(value7) " " m.toString(value8) " " + m.toString(value9) ' bsc-disable-line print-locations
+      else
+        text = level + " " + m.toString(message) + " " + m.toString(value) + " " + m.toString(value2) + " " + m.toString(value3) + " " + m.toString(value4) + " " + m.toString(value5) + " " + m.toString(value6) + " " + m.toString(value7) + " " + m.toString(value8) + " " + m.toString(value9)
+
+        if m.logMode = 3
+          print text ' bsc-disable-line print-locations
+        end if
+
+        for each transport in m.transports
+          transport.callFunc("logItem", m.name, levelNum, text)
+        end for
+      end if
+    end sub
+
+    sub debug(message, value = "~#", value2 = "~#", value3 = "~#", value4 = "~#", value5 = "~#", value6 = "~#", value7 = "~#", value8 = "~#", value9 = "~#")
+      if m.rLog = invalid then return
+      m.log(4, "DEBUG", message, value, value2, value3, value4, value5, value6, value7, value8, value9)
+    end sub
+
+    sub verbose(message, value = "~#", value2 = "~#", value3 = "~#", value4 = "~#", value5 = "~#", value6 = "~#", value7 = "~#", value8 = "~#", value9 = "~#")
+      if m.rLog = invalid then return
+      m.log(3, "VERBOSE", message, value, value2, value3, value4, value5, value6, value7, value8, value9)
+    end sub
+
+    sub info(message, value = "~#", value2 = "~#", value3 = "~#", value4 = "~#", value5 = "~#", value6 = "~#", value7 = "~#", value8 = "~#", value9 = "~#")
+      if m.rLog = invalid then return
+      m.log(2, "INFO", message, value, value2, value3, value4, value5, value6, value7, value8, value9)
+    end sub
+
+    sub warn(message, value = "~#", value2 = "~#", value3 = "~#", value4 = "~#", value5 = "~#", value6 = "~#", value7 = "~#", value8 = "~#", value9 = "~#")
+      if m.rLog = invalid then return
+      m.log(1, "WARN", message, value, value2, value3, value4, value5, value6, value7, value8, value9)
+    end sub
+
+    sub error(message, value = "~#", value2 = "~#", value3 = "~#", value4 = "~#", value5 = "~#", value6 = "~#", value7 = "~#", value8 = "~#", value9 = "~#")
+      if m.rLog = invalid then return
+      m.log(0, "ERROR", message, value, value2, value3, value4, value5, value6, value7, value8, value9)
+    end sub
+
+    ' "~#" marks an argument the caller left out, so it prints as nothing.
+    function toString(value as dynamic) as string
+      valueType = type(value)
+      if valueType = "<uninitialized>"
+        return "UNINIT"
+      else if value = invalid
+        return "INVALID"
+      else if getInterface(value, "ifString") <> invalid
+        if value = "~#"
+          return ""
+        else
+          return value
+        end if
+      else if valueType = "roInt" or valueType = "roInteger" or valueType = "Integer"
+        return value.toStr()
+      else if getInterface(value, "ifFloat") <> invalid
+        return str(value).trim()
+      else if valueType = "roSGNode"
+        return "Node(" + value.subType() + ")"
+      else if valueType = "roAssociativeArray"
+        return "AA(" + formatJson(value) + ")"
+      else if valueType = "roBoolean" or valueType = "Boolean"
+        return value.toStr()
+      else
+        return ""
+      end if
+    end function
+  end class
+
+end namespace

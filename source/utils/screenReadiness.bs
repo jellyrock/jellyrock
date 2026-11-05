@@ -1,4 +1,4 @@
-import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/logging/LogMixin.bs"
 
 ' The screen readiness ledger: when did a screen PAINT, and when did it stop CHANGING?
 '

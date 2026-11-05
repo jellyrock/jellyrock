@@ -9,7 +9,7 @@
 
 import "pkg:/source/GridView/collectionsView.bs"
 import "pkg:/source/GridView/GridPresenterBase.bs"
-import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/logging/LogMixin.bs"
 import "pkg:/source/utils/languageFilters.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/tasks.bs"

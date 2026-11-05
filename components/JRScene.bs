@@ -2,7 +2,7 @@
 ' app, so no fetchAsync() started here (the SyncPlay group list) can outlive it.
 import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/enums/LoadingKind.bs"
-import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/logging/LogMixin.bs"
 import "pkg:/source/syncplay/syncPlayMenu.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/appWaits.bs"
@@ -36,7 +36,7 @@ sub init()
   '
   ' It cannot move any earlier. This is a platform constraint, not a preference. Verified on
   ' device (Streaming Stick 4K, OS 15.2.4): `initializeLogManager` creates a `log_Log` node
-  ' whose own init() creates a `Timer` (roku_modules/log/Log.brs), and creating a Timer on the
+  ' whose own init() creates a `Timer` (components/logging/Log.bs), and creating a Timer on the
   ' MAIN thread before `m.screen.show()` fails: it returns invalid and the library then faults
   ' with &he4. So main.bs cannot stand the manager up before `setGlobals()`. JRScene.init runs
   ' on the render thread, where node creation is unrestricted, which is why it works here.

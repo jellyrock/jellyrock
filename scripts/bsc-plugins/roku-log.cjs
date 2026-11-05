@@ -8,13 +8,11 @@
  * args). There is no
  * upstream to sync from or defer to: change it here.
  *
- * ⚠️ Do not confuse this with the roku-log RUNTIME library in
- * `source/roku_modules/log/`. That one IS upstream (npm:roku-log, vendored by
- * ropm, gitignored, regenerated on every install; edits there vanish). This
- * file rewrites CALL SITES before the compiler sees them, so it can put a
- * statement in a scope that never contained one; when logging misbehaves, work
- * out which of the two artifacts you are looking at first.
- * See docs/architecture/logging.md.
+ * Do not confuse this with the logging runtime in `source/logging/` and
+ * `components/logging/` (adopted from roku-log 0.11.1, also ours). This file
+ * rewrites CALL SITES before the compiler sees them, so it can put a statement
+ * in a scope that never contained one; when logging misbehaves, work out which
+ * of the two you are looking at first. See docs/architecture/logging.md.
  *
  * Features:
  *  - strip:          Remove all m.log.*() calls from transpiled output (prod builds)
@@ -61,14 +59,14 @@ const {
   TokenKind,
 } = brighterscript;
 
-// The level functions of the roku-log runtime that take (message, value ... value9).
+// The level methods of the logging runtime that take (message, value ... value9).
 // The same list gates the file-and-line prepend below.
-const LOG_LEVELS = ['info', 'verbose', 'error', 'warn', 'debug', 'method'];
+const LOG_LEVELS = ['info', 'verbose', 'error', 'warn', 'debug'];
 
-// Parameter count of each level function: `message` plus `value` to `value9`.
-// Source: `function info(message, value = "~#", ... value9 = "~#")` in
-// source/roku_modules/log/LogMixin.d.bs (ropm output). A test compares this number
-// with that file, so a roku-log upgrade that changes it fails the suite.
+// Parameter count of each level method: `message` plus `value` to `value9`.
+// Source: `sub info(message, value = "~#", ... value9 = "~#")` in
+// source/logging/LogMixin.bs. A test compares this number with that file, so a
+// change to the signatures fails the suite.
 const LOG_FUNCTION_PARAMS = 10;
 
 // The build prepends one argument (the file and line) to every call, so the source
