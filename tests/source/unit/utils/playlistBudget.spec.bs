@@ -80,6 +80,31 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("estimateAnswerPlaylistBytes()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("estimates at the segment length the URL itself asks for")
+    function _()
+      url = "/videos/x/master.m3u8?SegmentLength=3&" + string(200, "a")
+      m.assertEqual(estimateAnswerPlaylistBytes(url, 7800), estimatePlaylistBytes(url, 7800, 3))
+    end function
+
+    @it("tells a re-ask still over the budget from one that fits")
+    function _()
+      ' 9 s is the longest segment calculateOptimalTranscodingParams gives, so a long enough film
+      ' stays over the budget whatever the re-ask asks for.
+      longUrl = "/videos/x/master.m3u8?SegmentLength=9&" + string(2000, "a")
+      m.assertTrue(estimateAnswerPlaylistBytes(longUrl, 5 * 3600) > playlistByteBudget())
+      shortUrl = "/videos/x/master.m3u8?SegmentLength=3&" + string(1000, "a")
+      m.assertTrue(estimateAnswerPlaylistBytes(shortUrl, 7800) <= playlistByteBudget())
+    end function
+
+    @it("estimates zero for a URL with no SegmentLength")
+    function _()
+      m.assertEqual(estimateAnswerPlaylistBytes("/videos/x/master.m3u8?DeviceId=a", 7800), 0&)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("calculateOptimalTranscodingParams() with a smaller entry limit")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

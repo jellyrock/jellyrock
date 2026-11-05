@@ -1979,6 +1979,16 @@ function hlsSegmentLengthFromUrl(url as dynamic) as integer
   return 0
 end function
 
+' estimateAnswerPlaylistBytes: estimatePlaylistBytes at the segment length the TranscodingUrl itself
+' asks for (hlsSegmentLengthFromUrl), so a first answer and a re-ask are measured the same way.
+'
+' @param {dynamic} transcodingUrl - the TranscodingUrl of PlaybackInfo's answer
+' @param {integer} durationSeconds - the film's length
+' @return {longinteger} the estimate in bytes, 0 when the URL names no SegmentLength
+function estimateAnswerPlaylistBytes(transcodingUrl as dynamic, durationSeconds as integer) as longinteger
+  return estimatePlaylistBytes(transcodingUrl, durationSeconds, hlsSegmentLengthFromUrl(transcodingUrl))
+end function
+
 ' uniqueRangeTypes: A pipe-separated VideoRangeType list without repeats, in first-seen order.
 ' The display-capability blocks of getCodecProfiles add some of the same values (DOVIWithEL,
 ' DOVIWithELHDR10Plus), and the server echoes the list into every playlist entry.

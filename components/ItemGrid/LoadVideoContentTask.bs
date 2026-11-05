@@ -845,9 +845,10 @@ end function
 ' fitHlsPlaylist: After a PlaybackInfo answer for an HLS transcode, make sure its playlist fits
 ' Roku's byte limit.
 '
-' The size is estimated from the answer's TranscodingUrl (estimatePlaylistBytes). When it is over
-' the budget, ask PlaybackInfo once more with the entry count that fits (maxPlaylistEntriesFor), so
-' the server cuts longer segments. Any failure keeps the first answer (m.playbackInfo). A load that
+' The size is estimated from the answer's TranscodingUrl (estimateAnswerPlaylistBytes). When it is
+' over the budget, ask PlaybackInfo once more with the entry count that fits (maxPlaylistEntriesFor),
+' so the server cuts longer segments, and estimate that answer too. Any failure keeps the first
+' answer (m.playbackInfo). A load that
 ' does not play the server's transcode, and an answer with no known duration, make no request.
 '
 ' @param {dynamic} pickedCaps - the caps in effect (capH264Resolution's), sent again unchanged
@@ -862,18 +863,26 @@ sub fitHlsPlaylist(itemId as string, mediaSourceId as dynamic, audioStreamIdx as
   if not isValid(runTimeTicks) or runTimeTicks <= 0 then return
 
   durationSeconds = Int(runTimeTicks / 10000000)
-  segmentLength = hlsSegmentLengthFromUrl(source.TranscodingUrl)
-  estimate = estimatePlaylistBytes(source.TranscodingUrl, durationSeconds, segmentLength)
+  estimate = estimateAnswerPlaylistBytes(source.TranscodingUrl, durationSeconds)
   budget = playlistByteBudget()
-  m.log.info("Estimated HLS playlist size", "bytes", estimate.toStr(), "budget", budget.toStr(), "segmentLength", segmentLength, "itemId", itemId)
+  m.log.info("Estimated HLS playlist size", "bytes", estimate.toStr(), "budget", budget.toStr(), "segmentLength", hlsSegmentLengthFromUrl(source.TranscodingUrl), "itemId", itemId)
   if estimate <= budget then return
 
   maxEntries = maxPlaylistEntriesFor(source.TranscodingUrl)
   res = ItemPostPlaybackInfoResponse(itemId, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, 0, pickedCaps, disallowVideoCopy, maxEntries)
   if isUsablePlaybackInfoResponse(res)
-    m.log.info("Playlist would be over the budget; playing the answer cut into fewer entries", "maxEntries", maxEntries, "itemId", itemId)
     m.playbackInfo = res.json
     m.playlistEntryLimit = maxEntries
+    ' The re-ask is kept either way: it has fewer entries. Segments stop at 9 s, so a film long
+    ' enough stays over the budget, and the log says so rather than claim it fits.
+    reaskedUrl = invalid
+    if isValidAndNotEmpty(res.json.MediaSources) and isValid(res.json.MediaSources[0]) then reaskedUrl = res.json.MediaSources[0].TranscodingUrl
+    reaskedEstimate = estimateAnswerPlaylistBytes(reaskedUrl, durationSeconds)
+    if reaskedEstimate > budget
+      m.log.warn("Playlist still over the budget after asking for fewer entries; Roku may refuse it (#1321)", "bytes", reaskedEstimate.toStr(), "maxEntries", maxEntries, "itemId", itemId)
+    else
+      m.log.info("Playlist would be over the budget; playing the answer cut into fewer entries", "bytes", reaskedEstimate.toStr(), "maxEntries", maxEntries, "itemId", itemId)
+    end if
   else
     m.log.warn("PlaybackInfo with fewer playlist entries failed; keeping the server's answer", "itemId", itemId)
   end if
