@@ -25,5 +25,5 @@ The public names are unchanged, so no call site changed: `log.Logger`, `log.init
 ## Known issues
 
 - A `LongInteger` or `Double` argument prints as an empty string (followup `roku-log-longinteger-double-empty` in `docs/progress.md`).
-- `initializeLogManager` defaults `enabled` to `false` and `JRScene` does not pass it, so turning on the plugin's `guard` would silence every line.
+- `initializeLogManager` defaults `enabled` to `false` and `JRScene` does not pass it, so turning on the plugin's `guard` would silence every line (followup `log-enabled-default-false`).
 - `onTransportsChange` reads `m.transports` but writes `m.top.transports`, so a transport node is never removed when the list changes. It matters only for a transport other than the print transport.

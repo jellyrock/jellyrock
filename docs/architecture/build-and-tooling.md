@@ -99,7 +99,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-11-04
+last-reviewed: 2026-11-05
 ---
 
 # Build and tooling
@@ -197,7 +197,7 @@ These change the emitted code.
 
 | Plugin | What it does |
 |---|---|
-| `roku-log.cjs` | Ours, replacing the unmaintained `roku-log-bsc-plugin`; the roku-log runtime library is stock upstream ([logging.md](logging.md#roku-log-is-two-artifacts-and-only-one-of-them-is-ours)). `strip` removes every `m.log.*()` call (prod), `insertPkgPath` prepends the source path to log lines (dev), `removeComments` strips comments (on by default, off in dev). `guard` wraps calls in a check, but no config turns it on ([logging.md](logging.md#the-guard-transform-only-knows-mlog)) |
+| `roku-log.cjs` | Ours, replacing the unmaintained `roku-log-bsc-plugin`; the logging runtime it serves, adopted from roku-log, is ours too ([logging.md](logging.md#logging-is-two-parts-and-both-are-ours)). `strip` removes every `m.log.*()` call (prod), `insertPkgPath` prepends the source path to log lines (dev), `removeComments` strips comments (on by default, off in dev). `guard` wraps calls in a check, but no config turns it on ([logging.md](logging.md#the-guard-transform-only-knows-mlog)) |
 | `translation-keys.cjs` | Generates a virtual `pkg:/source/translationKeys.bs` with one constant per key in `locale/custom/en_US.json`. It watches that file, so the editor sees new keys without a rebuild. See [translations.md](translations.md) |
 | `auto-abandon-promises.cjs` | Puts `abandonApiPromises()` first in the `onDestroy()` of every component that calls `fetchAsync`, so a late response never calls into a destroyed node. A component that calls `fetchAsync` with no `onDestroy()` is a build error. See [promises.md](../dev/promises.md) |
 | `auto-destroyed-guard.cjs` | Adds a teardown guard to `onKeyEvent` (next section) |
@@ -242,7 +242,7 @@ These turn conventions from `components/CLAUDE.md` and `source/CLAUDE.md` into e
 | `field-observer-wiring` | error | Five ways an interface field's wiring goes wrong: wired by both XML `onChange` and `m.top.observeField()`; an unobserve that detaches nothing; an `onChange` in a component that has `onDestroy`; an `m.top` unobserve outside `onDestroy()`; an `m.top` observe outside `init()` | [ADR 0034](../adr/0034-component-observers-init-to-ondestroy.md) |
 | `register-once-observer` | error | A member observed once, in `init()`, then unobserved anywhere but `onDestroy()`. Nothing re-registers it, so its handler never runs again | [ADR 0034](../adr/0034-component-observers-init-to-ondestroy.md), decision [`register-once-observer-gate`](../decisions.md#decision-id-register-once-observer-gate) |
 | `dead-code` | error | A declaration nothing in the app consumes | [Dead code](#dead-code), [ADR 0047](../adr/0047-dead-code-gate.md) |
-| `log-too-many-values` | error | An `m.log.<level>()` call with more than eight values after the message. The runtime function takes the message plus nine values and the build prepends the file and line, so a longer call builds clean and crashes at runtime. Split it into two log lines. `roku-log.cjs` reports it, and `LOG_FUNCTION_PARAMS` in that file is checked against the vendored module by a test | [logging.md](logging.md#roku-log-is-two-artifacts-and-only-one-of-them-is-ours) |
+| `log-too-many-values` | error | An `m.log.<level>()` call with more than eight values after the message. The runtime function takes the message plus nine values and the build prepends the file and line, so a longer call builds clean and crashes at runtime. Split it into two log lines. `roku-log.cjs` reports it, and `LOG_FUNCTION_PARAMS` in that file is checked against `source/logging/LogMixin.bs` by a test | [logging.md](logging.md#logging-is-two-parts-and-both-are-ours) |
 
 The three Task rules work together. `no-raw-run` bounds where a thread may start, `no-task-fanout` bounds how many start at once, and `no-same-node-relaunch` catches a launch the platform can ignore ([threading.md](threading.md#measured-findings)). Epic #728 needed the first two: its crash came from concurrent launches in one screen load, through an ordinary launch site.
 
@@ -471,13 +471,14 @@ ropm copies Roku libraries into the project at install time; nothing resolves at
 
 | Alias | Package | Used for |
 |---|---|---|
-| `log` | `roku-log` | Logging ([logging.md](logging.md)) |
 | `rr` | `roku-requests` | HTTP, under the API Task |
 | `promises` | `@rokucommunity/promises` | Render-thread promises ([promises.md](../dev/promises.md)) |
 | `sgRouter` | `@rokucommunity/sgrouter` | Screen routing ([navigation.md](navigation.md)) |
 | (none) | `@rokucommunity/bslib` | BrighterScript's standard library |
 
-They land in the gitignored `source/roku_modules/` and `components/roku_modules/`. `npm run ropm` runs `ropm copy`, then `scripts/ropm-hook.cjs`.
+They land in the gitignored `source/roku_modules/` and `components/roku_modules/` when `npm run ropm` runs `ropm copy`. Nothing edits them, and every check skips them.
+
+Third-party code kept in the repo is different: JellyRock owns it, and every check applies ([ADR 0054](../adr/0054-owned-code-gets-every-check.md)). There are two such libraries: the logging runtime in `source/logging/` and `components/logging/`, adopted from roku-log ([logging.md](logging.md)), and the socket client in `components/websocket/` ([remote-control.md](remote-control.md)). Each folder has a README with its upstream, pinned commit and local changes.
 
 ## Dev dependencies worth knowing
 

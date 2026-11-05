@@ -3,13 +3,15 @@ topic: logging
 related-files:
   - components/JRScene.bs
   - components/JRScreen.bs
+  - components/logging/Log.bs
+  - source/logging/LogMixin.bs
   - scripts/bsc-plugins/roku-log.cjs
-last-reviewed: 2026-11-04
+last-reviewed: 2026-11-05
 ---
 
-# Logging guide (roku-log)
+# Logging guide
 
-JellyRock logs through roku-log. To log from your code, import the mixin, create a logger, and call it at the right level. How the logging system works inside is in [architecture/logging.md](../architecture/logging.md).
+JellyRock logs through its own logger in `source/logging/`, adopted from roku-log. To log from your code, import the mixin, create a logger, and call it at the right level. How the logging system works inside is in [architecture/logging.md](../architecture/logging.md).
 
 ## 1. The log manager is already set up
 
@@ -19,11 +21,7 @@ JellyRock logs through roku-log. To log from your code, import the mixin, create
 
 The manager takes these settings:
 
-- **Transports**, one or more of:
-  - `log_PrintTransport` (telnet output)
-  - `log_ScreenTransport` (on-screen overlay)
-  - `log_NodeTransport` (RALE node)
-  - `log_HTTPTransport` (HTTP endpoint)
+- **Transports:** `log_PrintTransport` writes to the debug console (telnet on port 8085). It is the only one.
 - **Log level**: `0` error, `1` warn, `2` info, `3` verbose, `4` debug. A call is written when its level number is at most the configured level. The app's default of `2` writes error, warn and info, and drops verbose and debug.
 
 **Production builds remove every `m.log.*` call** when they compile (`rokuLog.strip` in `bsconfig-prod.json`, applied by the `roku-log` BrighterScript plugin). A production build logs nothing, whatever the level. If a log line you expect is missing, check whether you're on a production build before you look at levels or filters.
@@ -33,7 +31,7 @@ The manager takes these settings:
 Import the mixin in every `.bs` file that logs:
 
 ```brighterscript
-import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/logging/LogMixin.bs"
 ```
 
 ## 3. Create a logger in each component or class
@@ -72,22 +70,7 @@ Each method takes a message and up to 8 values. A ninth fails the build with `lo
 m.log.info("Received data", json.result, "http call", m.top.uri)
 ```
 
-roku-log converts the values to text, so you don't have to.
-
-## 5. Indent related lines
-
-Indent related log lines to group them:
-
-```brighterscript
-m.log.increaseIndent("Fetching user data")
-' ...log actions...
-m.log.decreaseIndent()
-m.log.resetIndent()
-```
-
-- `increaseIndent([title])`: indents one level, with an optional title.
-- `decreaseIndent()`: goes back one level.
-- `resetIndent()`: removes all indentation.
+The logger converts the values to text, so you don't have to. The exception: a `LongInteger` or `Double` prints as an empty string (followup `roku-log-longinteger-double-empty`), so call `.toStr()` on one until that is fixed.
 
 ## Rules
 
@@ -96,5 +79,4 @@ m.log.resetIndent()
 - **Import the mixin** in every file that logs.
 - **Create one logger per component or class**, so each line shows where it came from.
 - **Pick the level by the table above**, so filtering works.
-- **Group related lines** with indentation, so a sequence is easy to follow.
 - **Use `m.log.*`, not `print`.** `print` is allowed only in `source/main.bs` and in the `#if debug` block of `source/utils/globals.bs`. The `print-locations` BrighterScript plugin enforces this (see [build-and-tooling.md](../architecture/build-and-tooling.md)).
