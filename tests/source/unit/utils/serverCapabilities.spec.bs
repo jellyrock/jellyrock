@@ -146,6 +146,49 @@ namespace tests
       m.assertInvalid(serverCapabilities.encodingPolicyFrom({ ok: true, json: { HardwareAccelerationType: 3, EnableHardwareEncoding: true, AllowHevcEncoding: true } }))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("recordEncodingPolicy()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.global.server.setField("encodingPolicy", invalid)
+    end function
+
+    protected override function afterEach()
+      m.global.server.setField("encodingPolicy", invalid)
+      super.afterEach()
+    end function
+
+    @it("stores a complete reply on the server node, where the playback request reads it")
+    function _()
+      res = { ok: true, json: { HardwareAccelerationType: "nvenc", EnableHardwareEncoding: true, AllowHevcEncoding: true } }
+
+      returned = serverCapabilities.recordEncodingPolicy(res)
+
+      stored = m.global.server.encodingPolicy
+      m.assertEqual(stored.HardwareAccelerationType, "nvenc")
+      m.assertEqual(returned.HardwareAccelerationType, "nvenc")
+      m.assertTrue(serverCapabilities.serverEncodesHevcInHardware(stored))
+    end function
+
+    @it("stores nothing for a failed reply, so the next load asks again")
+    function _()
+      m.assertInvalid(serverCapabilities.recordEncodingPolicy({ ok: false, json: invalid }))
+      m.assertInvalid(m.global.server.encodingPolicy)
+    end function
+
+    @it("keeps a stored policy when a later read fails")
+    function _()
+      serverCapabilities.recordEncodingPolicy({ ok: true, json: { HardwareAccelerationType: "qsv", EnableHardwareEncoding: true, AllowHevcEncoding: true } })
+
+      serverCapabilities.recordEncodingPolicy({ ok: false, json: invalid })
+
+      stored = m.global.server.encodingPolicy
+      m.assertNotInvalid(stored)
+      if isValid(stored) then m.assertEqual(stored.HardwareAccelerationType, "qsv")
+    end function
+
   end class
 
 end namespace
