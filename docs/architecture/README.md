@@ -101,7 +101,7 @@ The how-to guides in [`docs/dev/`](../dev/), listed by each file's `H1` heading.
 | [`docs/dev/feature-pages.md`](../dev/feature-pages.md) | Document a feature |
 | [`docs/dev/home-first-paint-performance.md`](../dev/home-first-paint-performance.md) | Measuring orchestrator wait-vs-emit on device |
 | [`docs/dev/jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md) | Jellyfin server versions |
-| [`docs/dev/logging.md`](../dev/logging.md) | Logging guide (roku-log) |
+| [`docs/dev/logging.md`](../dev/logging.md) | Logging guide |
 | [`docs/dev/measuring-performance.md`](../dev/measuring-performance.md) | Measuring performance on device |
 | [`docs/dev/new-user-setting.md`](../dev/new-user-setting.md) | Add a setting |
 | [`docs/dev/promises.md`](../dev/promises.md) | Promises |
