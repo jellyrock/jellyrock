@@ -46,10 +46,10 @@
 //      0 writes on 2026-07-30) has not come back. It rebinds fields to an invalid port and is
 //      only reachable now that we call set_headers.
 //
-// 2-4 all live in vendored BrightWebSocket code, whose local modifications are
-// documented in components/vendor/BrightWebSocket/README.md. A future upstream
-// re-sync is the single likeliest way they get reverted, and a large vendor
-// diff is exactly where a four-line semantic change hides during review.
+// 2-4 all live in the adopted BrightWebSocket code, whose local modifications are
+// documented in components/websocket/README.md. A future upstream re-sync is the
+// likeliest way they get reverted, and a large re-sync diff is where a four-line
+// semantic change hides during review.
 //
 // Only Node stdlib, so no npm ci needed.
 
@@ -58,8 +58,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const RECEIVER_REL = 'components/remotecontrol/RemoteControlTask.bs';
-export const WS_TASK_REL =
-  'components/vendor/BrightWebSocket/web_socket_client/WebSocketClientTask.brs';
+export const WS_TASK_REL = 'components/websocket/web_socket_client/WebSocketClientTask.brs';
 
 // Strip whole-line BrightScript comments so a rule can't be satisfied (or
 // tripped) by prose. The banned-pattern rules especially: WebSocketClientTask

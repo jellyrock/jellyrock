@@ -53,7 +53,7 @@ function ciPattern() {
 const MUST_TRIGGER = [
   ['source/main.bs', 'BrightScript source'],
   ['components/ItemDetails.bs', 'component codebehind'],
-  ['components/vendor/thing.brs', 'transpiled BrightScript'],
+  ['components/websocket/thing.brs', 'plain BrightScript'],
   ['components/ItemDetails.xml', 'component XML — half the input to three gates'],
   ['bsconfig.json', 'the plugin list itself: removing a gate here must re-run the gates'],
   ['bsconfig-tests-unit.json', 'a sibling bsconfig the hook also matches'],

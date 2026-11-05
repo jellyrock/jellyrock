@@ -111,7 +111,6 @@
  *
  * Allowed call sites:
  *  - `source/utils/tasks.bs`   (the wrapper itself)
- *  - `components/vendor/**`    (vendored third-party code we don't author)
  *
  * Sites that predate the rule are listed in PENDING_MIGRATIONS below rather than
  * suppressed inline, so there is no marker to copy onto a new site. The list can
@@ -158,7 +157,6 @@ const CODE = 'no-same-node-relaunch';
 const AUDIT_TAG = `${CODE}-list-audit`;
 const PLUGIN_DEST_PATH = `scripts/bsc-plugins/${CODE}.cjs`;
 const ALLOWED_DEST_PATHS = new Set(['source/utils/tasks.bs', 'source/utils/tasks.brs']);
-const EXCLUDED_DEST_PREFIXES = ['components/vendor/'];
 // Line and next-line only, like the other Task rules: a whole-file opt-out would
 // remove the guard from every launch in the file.
 const DISABLE_LINE_MARKER = /'\s*bsc-disable-line\s+no-same-node-relaunch\b/i;
@@ -521,12 +519,11 @@ function duplicateEntries(pending, key) {
 
 /**
  * True when the rule does not inspect `destPath` at all: the launch wrapper
- * itself, or vendored code we do not author. Shared so the audit can tell when a
- * listed file is one the file hook will silently skip.
+ * itself. Shared so the audit can tell when a listed file is one the file hook
+ * will silently skip.
  */
 function isRuleExempt(destPath) {
-  if (ALLOWED_DEST_PATHS.has(destPath)) return true;
-  return EXCLUDED_DEST_PREFIXES.some((prefix) => destPath.startsWith(prefix));
+  return ALLOWED_DEST_PATHS.has(destPath);
 }
 
 const EVIDENCE = 'Evidence: docs/architecture/threading.md (Measured findings).';
@@ -740,7 +737,7 @@ class NoSameNodeRelaunchPlugin {
           flag(
             key,
             undefined,
-            `PENDING_MIGRATIONS lists \`${key}\`, which this rule never inspects (it is the launch wrapper, or vendored). ` +
+            `PENDING_MIGRATIONS lists \`${key}\`, which this rule never inspects (it is the launch wrapper). ` +
               'Its entries can never be checked or retired, so delete them — and note the rule is not guarding that file at all.',
           );
           continue;

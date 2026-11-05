@@ -73,7 +73,7 @@
  *     child it aliases, which is a use even when nothing reads the field.
  *   - Calls another JellyRock plugin injects at transpile time (INJECTED_CALLS).
  *     They are invisible in source, so the injecting plugin exports their names.
- *   - `roku_modules`, `components/vendor` and the generated `translationKeys`
+ *   - `roku_modules` (package-managed) and the generated `translationKeys`
  *     namespace (unused translation keys are `lint:translations`' job).
  *
  * KEEPING CODE ON PURPOSE
@@ -218,7 +218,7 @@ const DECLARATION_KEYWORDS = new Set([
   TokenKind.Interface,
 ]);
 
-const VENDORED = /(^|[\\/])(roku_modules|components[\\/]vendor)([\\/])/;
+const VENDORED = /(^|[\\/])roku_modules([\\/])/;
 const GENERATED_PATHS = new Set(['source/translationkeys.bs']);
 const WORD = /[A-Za-z_][A-Za-z0-9_]*/g;
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*[$%!#&]?$/;

@@ -1698,6 +1698,9 @@ describe('mechanismHint (stage-time triage signal)', () => {
     expect(
       mechanismHint({ bsFile: 'components/vendor/BrightWebSocket/x.bs', codeSnippet: 'foo()' }),
     ).toBe('network');
+    expect(mechanismHint({ bsFile: 'components/websocket/x.brs', codeSnippet: 'foo()' })).toBe(
+      'network',
+    );
     expect(mechanismHint({ codeSnippet: 'saved = getSetting("saved_servers")' })).toBe('network');
   });
 

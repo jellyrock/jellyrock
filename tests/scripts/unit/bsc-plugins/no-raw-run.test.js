@@ -223,8 +223,8 @@ describe('no-raw-run', () => {
     ).toHaveLength(0);
   });
 
-  it('does not flag vendored code', () => {
-    // The vendored WebSocketClientTask self-starts; we do not author it.
+  it('flags third-party code kept in the repo like any other', () => {
+    // WebSocketClientTask starts itself; its real line carries a bsc-disable-line.
     expect(
       check(
         `
@@ -232,9 +232,9 @@ describe('no-raw-run', () => {
           m.top.control = "RUN"
         end sub
       `,
-        'components/vendor/BrightWebSocket/web_socket_client/WebSocketClientTask.brs',
+        'components/websocket/web_socket_client/WebSocketClientTask.brs',
       ),
-    ).toHaveLength(0);
+    ).toHaveLength(1);
   });
 
   it('honours bsc-disable-line', () => {
