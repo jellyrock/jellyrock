@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (playback) Handle long films, big re-encodes and frozen playback ([#1324](https://github.com/jellyrock/jellyrock/pull/1324))
 - (playback) Make 4K transcodes play, in HEVC on hardware servers ([#1323](https://github.com/jellyrock/jellyrock/pull/1323))
 - (playback) Recover when a 4K remux overflows the video buffer ([#1318](https://github.com/jellyrock/jellyrock/pull/1318))
 - (playback) Copy AC3 audio in a remux on 7.1 systems ([#1327](https://github.com/jellyrock/jellyrock/pull/1327))
