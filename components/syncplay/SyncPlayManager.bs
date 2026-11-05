@@ -177,7 +177,7 @@ function reset() as boolean
   ensureReady()
   if m.state.inGroup then post("Leave", invalid, true)
   unsetUserSetting(STALE_GROUP_KEY)
-  leaveLocally(holdsGroupItem())
+  leaveLocally()
   return true
 end function
 
@@ -318,6 +318,7 @@ sub haltFollowing(reason as string, tell = true as boolean)
   m.tracker = syncPlayPlayback.newReadyTracker()
   dropClaimedPlay("stopped following")
   post("SetIgnoreWait", syncPlayRequests.setIgnoreWait(true))
+  releaseGroupRepeat()
   publish()
 end sub
 
@@ -599,7 +600,6 @@ sub onGroupUpdate(update as object)
   end if
   previousPlayingItemId = m.state.playingItemId
   previousQueueChangedAtMs = m.state.playbackQueueAtMs
-  queueHeldGroupItem = holdsGroupItem()
   wasInGroup = m.state.inGroup
   previousGroupName = m.state.groupName
   m.state = syncPlayState.applyGroupUpdate(m.state, update)
@@ -645,7 +645,7 @@ sub onGroupUpdate(update as object)
     m.staleGroupName = ""
     unsetUserSetting(STALE_GROUP_KEY)
     dropClaimedPlay("left the group")
-    leaveLocally(queueHeldGroupItem)
+    leaveLocally()
     return
   else if updateType = "UserJoined"
     notify("userJoined", m.state.groupName, update.userName)
@@ -673,7 +673,7 @@ sub syncGroupModes()
   queueManager = m.global.queueManager
   if not isValid(queueManager) then return
   if not syncPlayQueue.isGroupItem(queueManager.callFunc("getCurrentItem"), m.state.playingItemId) then return
-  queueManager.callFunc("setRepeatMode", m.state.repeatMode)
+  queueManager.callFunc("setRepeatMode", m.state.repeatMode, queueRepeat.BY_GROUP)
   ' Published first: the OSD reads the group's modes and playlist off `sync` as it refreshes
   ' (syncPlayHooks.groupQueue), and told after, it read the modes from before this update (RTA,
   ' Stick 4K, 2026-11-03: Previous stayed disabled after the group's RepeatAll).
@@ -887,7 +887,7 @@ sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteg
   queueManager.callFunc("set", queueItems)
   queueManager.callFunc("setPosition", index)
   ' The group's repeat mode rides on its queue (syncGroupModes): a clear() above forgot it.
-  queueManager.callFunc("setRepeatMode", m.state.repeatMode)
+  queueManager.callFunc("setRepeatMode", m.state.repeatMode, queueRepeat.BY_GROUP)
   ' Cinema Mode: no intro in front of the group's item. set() went through clear(), which
   ' re-reads the setting, so this comes after it.
   queueManager.callFunc("setPrerollStatus", false)
@@ -1137,11 +1137,7 @@ function syncPlayRequest(action as string, body as dynamic, isLastForSession = f
   return req
 end function
 
-' @param endsGroupRepeat - the local queue still holds the group's item, so the repeat on it is
-'   the group's and ends with the membership (syncGroupModes wrote it; jellyfin-web restores its own
-'   queue manager on leave). Decided by the caller before the state resets, since the group's
-'   playing item is what says the queue is still the group's.
-sub leaveLocally(endsGroupRepeat as boolean)
+sub leaveLocally()
   m.syncTimer.control = "stop"
   releaseCorrection()
   resetPlaybackTracking()
@@ -1161,21 +1157,20 @@ sub leaveLocally(endsGroupRepeat as boolean)
   m.resumeAsked = false
   m.loadStartTicks = 0&
   m.failedBursts = 0
-  if endsGroupRepeat then clearGroupRepeat()
+  releaseGroupRepeat()
   publish()
 end sub
 
-' Whether the local queue's current item is the one the group is playing.
-function holdsGroupItem() as boolean
+' Following ended (a halt or a leave), so what plays is the viewer's own: the repeat the group
+' wrote onto the queue goes off, while a mode the viewer picked since, or a new queue, keeps its
+' own (QueueManager.releaseRepeatMode). jellyfin-web restores its own queue on leave, so a group's
+' mode never carries into local playback. A follow again writes the group's mode back
+' (applyQueue). When the mode changed, an open OSD is told after the publish, as syncGroupModes
+' does: it reads `sync` as it refreshes.
+sub releaseGroupRepeat()
   queueManager = m.global.queueManager
-  if not isValid(queueManager) then return false
-  return syncPlayQueue.isGroupItem(queueManager.callFunc("getCurrentItem"), m.state.playingItemId)
-end function
-
-' Repeat off on the queue the group repeated, and the player told so an open OSD reads it again
-' (published first, as syncGroupModes does: the OSD reads `sync` as it refreshes).
-sub clearGroupRepeat()
-  m.global.queueManager.callFunc("setRepeatMode", queueRepeat.OFF)
+  if not isValid(queueManager) then return
+  if queueManager.callFunc("releaseRepeatMode", queueRepeat.BY_GROUP) <> true then return
   publish()
   host = playerHost()
   if isValid(host) then tellPlayer(host, { command: "queuechanged" })

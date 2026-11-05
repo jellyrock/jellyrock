@@ -814,7 +814,7 @@ sub onRepeatModePicked()
     m.log.info("Repeat mode asked of the group", "mode", mode)
     return
   end if
-  m.global.queueManager.callFunc("setRepeatMode", mode)
+  m.global.queueManager.callFunc("setRepeatMode", mode, queueRepeat.BY_VIEWER)
   m.log.info("Repeat mode picked", "mode", mode)
   ' The step buttons and the gear's tint read the mode: show the pick now. The Next Episode
   ' prompt reads it on each position tick (checkTimeToDisplayNextEpisode).

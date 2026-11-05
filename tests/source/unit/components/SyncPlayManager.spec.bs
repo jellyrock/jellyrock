@@ -761,7 +761,7 @@ namespace tests
       m.assertEqual(m.manager.sync.repeatMode, "RepeatAll", "the state still tracks the group")
     end function
 
-    @it("leaving the group turns off the repeat it wrote onto the queue that still holds its item")
+    @it("leaving the group turns off the repeat it wrote onto the queue")
     function _()
       m.joinGroup()
       m.playGroupItem()
@@ -769,6 +769,58 @@ namespace tests
       m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatOne")
       m.manager.frame = m.update("GroupLeft", { GroupId: "g1" })
       m.assertFalse(m.manager.inGroup)
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatNone")
+    end function
+
+    @it("a halt turns off the repeat the group wrote, and tells an open OSD")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.frame = m.modeUpdate("RepeatMode", "RepeatOne", "Sorted")
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.assertFalse(m.manager.following)
+      m.assertTrue(m.manager.inGroup)
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatNone", "what plays now is the viewer's own")
+      m.assertEqual(m.manager.sync.repeatMode, "RepeatOne", "the state still tracks the group, for a follow again")
+    end function
+
+    @it("a halt with the queue still on the group's previous item turns off the repeat the group wrote")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.frame = m.modeUpdate("RepeatMode", "RepeatAll", "Sorted")
+      ' The group steps on and the load of its next item never lands (no server here, as when the
+      ' fetch fails): the local queue still holds p1 while the group plays p2.
+      m.manager.frame = m.update("PlayQueue", { Reason: "NextItem", LastUpdate: "2026-10-23T20:47:27.000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }, { ItemId: "i2", PlaylistItemId: "p2" }], PlayingItemIndex: 1, StartPositionTicks: 0, RepeatMode: "RepeatAll", ShuffleMode: "Sorted" })
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatAll")
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.assertFalse(m.manager.following)
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatNone")
+    end function
+
+    @it("a halted viewer's own repeat pick outlasts the leave")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.frame = m.modeUpdate("RepeatMode", "RepeatOne", "Sorted")
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      ' Not following, so the gear's pick is the viewer's own (VideoPlayerView.onRepeatModePicked).
+      m.assertFalse(m.manager.callFunc("control", { kind: "repeat", mode: "RepeatAll" }))
+      m.global.queueManager.callFunc("setRepeatMode", "RepeatAll")
+      m.manager.frame = m.update("GroupLeft", { GroupId: "g1" })
+      m.assertFalse(m.manager.inGroup)
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatAll")
+    end function
+
+    @it("signing out turns off the repeat the group wrote")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.frame = m.modeUpdate("RepeatMode", "RepeatAll", "Sorted")
+      m.manager.callFunc("reset")
       m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatNone")
     end function
 

@@ -45,6 +45,47 @@ namespace tests
       m.assertEqual(m.queueManager.callFunc("getRepeatMode"), queueRepeat.OFF, "a new queue starts without one")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("releaseRepeatMode: who set the mode")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("turns off a mode the releasing setter set, and answers that it changed it")
+    function _()
+      m.queueManager.callFunc("setRepeatMode", queueRepeat.ONE, queueRepeat.BY_GROUP)
+      m.assertTrue(m.queueManager.callFunc("releaseRepeatMode", queueRepeat.BY_GROUP))
+      m.assertEqual(m.queueManager.callFunc("getRepeatMode"), queueRepeat.OFF)
+    end function
+
+    @it("leaves the viewer's own mode, even one picked over the group's")
+    function _()
+      m.queueManager.callFunc("setRepeatMode", queueRepeat.ALL)
+      m.assertFalse(m.queueManager.callFunc("releaseRepeatMode", queueRepeat.BY_GROUP), "the viewer set it")
+      m.assertEqual(m.queueManager.callFunc("getRepeatMode"), queueRepeat.ALL)
+      m.queueManager.callFunc("setRepeatMode", queueRepeat.ONE, queueRepeat.BY_GROUP)
+      m.queueManager.callFunc("setRepeatMode", queueRepeat.ALL, queueRepeat.BY_VIEWER)
+      m.assertFalse(m.queueManager.callFunc("releaseRepeatMode", queueRepeat.BY_GROUP), "the viewer took it over")
+      m.assertEqual(m.queueManager.callFunc("getRepeatMode"), queueRepeat.ALL)
+    end function
+
+    @it("keeps who set the mode through set, and forgets it with clear")
+    function _()
+      m.queueManager.callFunc("setRepeatMode", queueRepeat.ALL, queueRepeat.BY_GROUP)
+      m.queueManager.callFunc("set", [{ id: "test-a", type: "Episode" }])
+      m.assertTrue(m.queueManager.callFunc("releaseRepeatMode", queueRepeat.BY_GROUP), "a reorder keeps the setter")
+      m.queueManager.callFunc("setRepeatMode", queueRepeat.ALL, queueRepeat.BY_GROUP)
+      m.queueManager.callFunc("clear")
+      m.assertFalse(m.queueManager.callFunc("releaseRepeatMode", queueRepeat.BY_GROUP), "a new queue has no setter's mode")
+    end function
+
+    @it("answers false for a release with the mode already off, and the mode is the viewer's after it")
+    function _()
+      m.queueManager.callFunc("setRepeatMode", queueRepeat.OFF, queueRepeat.BY_GROUP)
+      m.assertFalse(m.queueManager.callFunc("releaseRepeatMode", queueRepeat.BY_GROUP))
+      m.queueManager.callFunc("setRepeatMode", queueRepeat.ONE)
+      m.assertFalse(m.queueManager.callFunc("releaseRepeatMode", queueRepeat.BY_GROUP))
+      m.assertEqual(m.queueManager.callFunc("getRepeatMode"), queueRepeat.ONE)
+    end function
+
   end class
 
 end namespace

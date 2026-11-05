@@ -2549,9 +2549,11 @@ A SyncPlay Time Offset picked in the player's gear takes effect at once. The pic
 
 **date**: 2026-11-03
 **status**: accepted
-**related-files**: `components/syncplay/SyncPlayManager.bs`
+**related-files**: `components/syncplay/SyncPlayManager.bs`, `components/manager/QueueManager.bs`, `source/utils/queueRepeat.bs`
 
-Leaving a SyncPlay group turns repeat off on the local queue when it still holds the group's item (`leaveLocally(endsGroupRepeat)`, decided before a `GroupLeft` resets the state), then publishes and tells the player `queuechanged` so an open OSD reads it again. The group's mode was written onto the local queue (`syncGroupModes`), so without this a viewer kept repeating as the group did after leaving; jellyfin-web restores its own queue on leave, so a group's mode never carries into local playback. A queue that no longer holds the group's item keeps its own repeat.
+When following ends, by a halt or a leave, the repeat a SyncPlay group wrote onto the local queue goes off (`SyncPlayManager.releaseGroupRepeat`, from `haltFollowing` and `leaveLocally`), then the manager publishes and tells the player `queuechanged` so an open OSD reads it again. The queue records who set its mode (`QueueManager.setRepeatMode(mode, by)`, with `queueRepeat.BY_VIEWER` or `BY_GROUP`; `set()` keeps the setter and `clear()` forgets it), and `releaseRepeatMode(BY_GROUP)` turns the mode off only while the group still holds it. So a mode the viewer picked after a halt, or a new local queue, keeps its own, and a follow again writes the group's mode back (`applyQueue`). Once following ends, what plays is the viewer's own, and jellyfin-web restores its own queue on leave, so a group's mode never carries into local playback.
+
+Ruled out: deciding by whether the queue's current item is the group's (the first version). It kept the group's repeat after a halt, missed a queue still on the group's previous item after a failed load, and wiped a halted viewer's own pick at leave; all three were reproduced as failing unit tests (Stick 4K, 2026-11-04). Also ruled out: a boolean on the manager, which can't see a `clear()` and so could write onto a queue it never touched. The operator chose `owner` over `flag` and `proxy` (2026-11-04).
 
 ## decision-id: syncplay-duplicate-restart-absorbed
 
