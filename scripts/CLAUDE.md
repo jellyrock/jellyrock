@@ -36,7 +36,7 @@ The rule for a new script:
 | Anything else a `.cjs` file `require()`s | `.cjs` | CJS can't require ESM |
 | Top-level CLI script with no internal callers | `.js` (ESM) | The modern default |
 
-The four top-level `.cjs` scripts predate this rule. Migrating them is tracked in tech-debt [`mixed-esm-cjs-scripts`](../docs/architecture/tech-debt.md#mixed-esm-cjs-scripts). Don't migrate one in passing: the audit of what requires what comes first.
+The top-level `.cjs` scripts predate this rule. Migrating them is tracked in tech-debt [`mixed-esm-cjs-scripts`](../docs/architecture/tech-debt.md#mixed-esm-cjs-scripts). Don't migrate one in passing: the audit of what requires what comes first.
 
 ## Generated assets
 

@@ -3,10 +3,10 @@ topic: remote-control
 related-files:
   - components/remotecontrol/RemoteControlTask.bs
   - components/remotecontrol/RemoteControlTask.xml
-  - components/vendor/BrightWebSocket/WebSocketClient.xml
-  - components/vendor/BrightWebSocket/web_socket_client/WebSocketClient.brs
-  - components/vendor/BrightWebSocket/web_socket_client/WebSocketClientTask.brs
-  - components/vendor/BrightWebSocket/README.md
+  - components/websocket/WebSocketClient.xml
+  - components/websocket/web_socket_client/WebSocketClient.brs
+  - components/websocket/web_socket_client/WebSocketClientTask.brs
+  - components/websocket/README.md
   - source/remotecontrol/remoteCommand.bs
   - source/remotecontrol/remoteProtocol.bs
   - source/utils/backoff.bs
@@ -52,13 +52,13 @@ The socket is I/O, so it lives on a Task thread. But the seams a command drives 
 ```text
                 RemoteControlTask (Task thread)                     main thread (Main() loop)
  Jellyfin  ─ws─▶ WebSocketClient ─▶ remoteCommand.parseMessage ─▶ dispatchCommand field ─▶ remoteDispatch
-   server        (vendored)          (pure normalize)              (observed by main.bs)     ├─ play     → stashDeepLink + onRuntimeDeepLink
+   server        (adopted)           (pure normalize)              (observed by main.bs)     ├─ play     → stashDeepLink + onRuntimeDeepLink
                                                                                              ├─ navigate → stashDeepLink + onRuntimeDeepLink
                                                                                              ├─ route / goback → m.scene.callFunc("routerNavigate" / "routerGoBack")
                                                                                              └─ transport→ getActiveView().handleTransport(evt)
 ```
 
-- **[`RemoteControlTask`](../../components/remotecontrol/RemoteControlTask.bs)** owns the vendored `WebSocketClient` node, itself a nested Task ([vendor README](../../components/vendor/BrightWebSocket/README.md)). It parses each frame, answers keepalive requests, reconnects with backoff and hands normalized commands to the main thread. It never dispatches, and it never logs the socket URL, which carries the token.
+- **[`RemoteControlTask`](../../components/remotecontrol/RemoteControlTask.bs)** owns the adopted `WebSocketClient` node, itself a nested Task ([its README](../../components/websocket/README.md)). It parses each frame, answers keepalive requests, reconnects with backoff and hands normalized commands to the main thread. It never dispatches, and it never logs the socket URL, which carries the token.
 - **`remoteCommand.bs` and `remoteProtocol.bs`** are pure: no node, no socket, no `m.global`. They hold the wire-protocol parser and the transport helpers (the HTTP check, URL builders, the keepalive frame), and have unit tests in `tests/source/unit/remotecontrol/`. The reconnect delay comes from the shared `backoff.nextDelayMs` ([`backoff.bs`](../../source/utils/backoff.bs)), which the TV guide's retries use too.
 - **`remoteDispatch.bs`** is the main-thread adapter, the one place a remote command calls the deep-link and player seams. Voice uses the same `dispatchTransport`: the `roInputEvent` branch in `main.bs` calls it, so voice and cast control the player identically.
 
@@ -77,13 +77,13 @@ The command rides a field on the Task node, `dispatchCommand`, which the main lo
 Each connect attempt creates a fresh `WebSocketClient` node, and its Task thread must be released when the connection ends, since a Task thread survives dropped references (the #728 leak class). Two mechanisms cover it:
 
 - **`closeSocket()` stops the child once the connection has ended.** It runs on every reconnect, and it also covers an error raised while the socket is still open, which the loop's own exit never sees. It sends no close frame: on every path that reaches it the client has already left `OPEN`, and the STOP would kill the sending thread anyway. The teardown is abrupt by design ([`remotecontrol-socket-abrupt-teardown`](tech-debt.md#remotecontrol-socket-abrupt-teardown)).
-- **The vendored socket loop exits by itself** once its connection reaches `CLOSED` and its event port is drained (a single-connection contract; see the modification list in the vendor README). This reclaims a child left behind by a receiver that died without running `closeSocket()`.
+- **The adopted socket loop exits by itself** once its connection reaches `CLOSED` and its event port is drained (a single-connection contract; see the modification list in its README). This reclaims a child left behind by a receiver that died without running `closeSocket()`.
 
-The receiver wakes on `on_close` or `on_error`, but the vendored loop releases its thread on `ready_state = CLOSED`. Those are different signals. They line up only because every `_close()` path in the client posts one of the two, and nothing enforces that. So the receiver also observes `ready_state` and treats `CLOSED` as the end, but only for a socket that opened: `ready_state` reads `CLOSED` before `open()` is called, and the Task seeds `m.top.ready_state` from it at start-up, so an ungated check would tear down every connection before it opened. `on_close` and `on_error` stay the fast path: an error raised while the socket is `OPEN` or `CLOSING` arrives up to `_CLOSING_DELAY` (30 seconds) before the client forces `CLOSED`. Whichever signal comes first wins, with the same result.
+The receiver wakes on `on_close` or `on_error`, but the adopted loop releases its thread on `ready_state = CLOSED`. Those are different signals. They line up only because every `_close()` path in the client posts one of the two, and nothing enforces that. So the receiver also observes `ready_state` and treats `CLOSED` as the end, but only for a socket that opened: `ready_state` reads `CLOSED` before `open()` is called, and the Task seeds `m.top.ready_state` from it at start-up, so an ungated check would tear down every connection before it opened. `on_close` and `on_error` stay the fast path: an error raised while the socket is `OPEN` or `CLOSING` arrives up to `_CLOSING_DELAY` (30 seconds) before the client forces `CLOSED`. Whichever signal comes first wins, with the same result.
 
-Jellyfin ends a session with a `WebSocket` close frame (code `1000`, reason `System Shutdown`), not by dropping the connection; measured against 10.11.11 with a raw upgrade that mirrors the vendored client's. That is why `on_close`, not `on_error`, is the terminal event. A close frame raises no error, so the socket goes from `OPEN` to `CLOSING` and reaches `CLOSED` (emitting `on_close`) only after `_CLOSING_DELAY`, by which time the event port is long idle. The vendored loop's exit test has to be ordered for that, or the receiver never learns the socket died.
+Jellyfin ends a session with a `WebSocket` close frame (code `1000`, reason `System Shutdown`), not by dropping the connection; measured against 10.11.11 with a raw upgrade that mirrors the adopted client's. That is why `on_close`, not `on_error`, is the terminal event. A close frame raises no error, so the socket goes from `OPEN` to `CLOSING` and reaches `CLOSED` (emitting `on_close`) only after `_CLOSING_DELAY`, by which time the event port is long idle. The adopted loop's exit test has to be ordered for that, or the receiver never learns the socket died.
 
-Both mechanisms rely on a connection that ends. A connect that never completes is weaker. On a non-blocking socket, Roku's `connect()` reports only that the attempt started, and the vendored client never re-checks `isConnected()` or `eConnRefused()`, so it sits in `CONNECTING` until the handshake write fails. The receiver blocks on the same socket, so this costs one thread, not a growing number. No test can reach the ordering inside the vendored loop, so `npm run lint:socket-thread-release` checks it.
+Both mechanisms rely on a connection that ends. A connect that never completes is weaker. On a non-blocking socket, Roku's `connect()` reports only that the attempt started, and the adopted client never re-checks `isConnected()` or `eConnRefused()`, so it sits in `CONNECTING` until the handshake write fails. The receiver blocks on the same socket, so this costs one thread, not a growing number. No test can reach the ordering inside the adopted loop, so `npm run lint:socket-thread-release` checks it.
 
 Reconnects back off exponentially from 1 second to a 30-second cap. A connection that stayed up 30 seconds or more resets the backoff. The receiver re-reads the token before each reconnect and stops if it changed. When the server sends `ForceKeepAlive`, the receiver sends a `KeepAlive` at once and then every half of the requested interval, so the server does not reap the session.
 

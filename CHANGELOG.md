@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- (logging) adopt `roku-log` as owned code, drop its hook ([#1328](https://github.com/jellyrock/jellyrock/pull/1328))
 - (home) Show vertical posters in TV Recently Added rows ([#1295](https://github.com/jellyrock/jellyrock/pull/1295))
 
 ### Fixed

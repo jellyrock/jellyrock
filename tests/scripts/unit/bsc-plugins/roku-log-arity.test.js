@@ -31,7 +31,7 @@ function check(statement, path = 'components/Foo.bs') {
 }
 
 describe('roku-log call arity', () => {
-  const levels = ['debug', 'verbose', 'info', 'method', 'warn', 'error'];
+  const levels = ['debug', 'verbose', 'info', 'warn', 'error'];
 
   it.each(levels)('passes m.log.%s with the message and 8 values', (level) => {
     expect(check(callWith('m.log', level, 8))).toHaveLength(0);
@@ -81,14 +81,14 @@ describe('roku-log call arity', () => {
     expect(found).toHaveLength(1);
   });
 
-  it('keeps its limit in step with the vendored module', () => {
-    // A missing file fails rather than skips: a roku-log upgrade or ropm rename that
-    // moves it is the drift this test exists to catch.
-    const typings = 'source/roku_modules/log/LogMixin.d.bs';
-    expect(fs.existsSync(typings), `${typings} is missing: run \`npm ci\``).toBe(true);
-    const text = fs.readFileSync(typings, 'utf8');
+  it('keeps its limit in step with the logger', () => {
+    // A missing file fails rather than skips: moving the logger is the drift this
+    // test exists to catch.
+    const source = 'source/logging/Logger.bs';
+    expect(fs.existsSync(source), `${source} is missing`).toBe(true);
+    const text = fs.readFileSync(source, 'utf8');
     for (const level of rokuLogPlugin.LOG_LEVELS) {
-      const signature = text.match(new RegExp(`function ${level}\\(([^)]*)\\)`));
+      const signature = text.match(new RegExp(`(?:sub|function) ${level}\\(([^)]*)\\)`));
       expect(signature, level).not.toBeNull();
       expect(signature[1].split(',').length, level).toBe(rokuLogPlugin.LOG_FUNCTION_PARAMS);
     }

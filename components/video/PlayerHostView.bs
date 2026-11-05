@@ -1,5 +1,5 @@
 import "pkg:/source/enums/SubtitleSelection.bs"
-import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/syncplay/syncPlayHooks.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"

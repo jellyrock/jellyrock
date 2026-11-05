@@ -68,7 +68,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 #### `task-thread-budget`
 
-- **area**: Task components (26 shipped types, plus two test probes and the vendored `WebSocketClient`; find them with `git grep -l 'extends="Task"' -- components`), [`source/utils/tasks.bs`](../../source/utils/tasks.bs) (the launch ledger, `TASK_THREAD_WATERMARK`, the launch queue), [`components/tasks/TaskLaunchQueue.bs`](../../components/tasks/TaskLaunchQueue.bs), and `source/main.bs`.
+- **area**: Task components (26 shipped types, plus two test probes and `WebSocketClient` (`components/websocket/`); find them with `git grep -l 'extends="Task"' -- components`), [`source/utils/tasks.bs`](../../source/utils/tasks.bs) (the launch ledger, `TASK_THREAD_WATERMARK`, the launch queue), [`components/tasks/TaskLaunchQueue.bs`](../../components/tasks/TaskLaunchQueue.bs), and `source/main.bs`.
 - **github**: #728 (the `&h29` "Too many task threads" crash epic, closed 2026-08-21)
 - **issue**: Roku caps an app's concurrent Task threads; ADR 0031 records 50 as the console warning and 100 as the cap. JellyRock runs a fixed floor of persistent tasks: the `ApiTask` pool ([sized per device class](api.md#pool-width)), the `ApiQueueTask` coordinator, `SideEffectTask` and `RemoteControlTask` (with a nested `WebSocketClient` on the `ws://` path). `FontDownloadTask` and `FontScalingTask` are conditional and short-lived. Transient per-screen tasks spawn on top during navigation. #728's fan-out is fixed, and two guards now cover that shape:
   - At compile time, [`no-task-fanout.cjs`](../../scripts/bsc-plugins/no-task-fanout.cjs) makes a `launchTask()` inside a loop an error, following a same-file helper one hop (decision `task-fanout-follows-helpers`).
@@ -142,13 +142,6 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 - **issue**: [`components/CLAUDE.md`](../../components/CLAUDE.md) allows two ways to wire an observer on a long-lived node, and only one is gated. `register-once-observer` covers a member observed once in `init()` and detached only in `onDestroy()`. The balanced toggle (observe on the way in, unobserve on every exit path) is gated only for `m.top`, by `field-observer-wiring`'s `top-observer-outside-init` and `top-unobserve-outside-ondestroy` ([ADR 0034](../adr/0034-component-observers-init-to-ondestroy.md)). A toggle on a child node the component owns, such as a `Timer`, is not gated, and the register-once rule cannot reach it by construction. Four instances were found by hand, one per PR: #896, #898, #899 and #907. The last lost an observer instead of adding one: an audio-track switch left the progress timer firing with no listener, so Continue Watching froze (decision note on `playbackTimer`).
 - **severity**: Medium: a recurring class with a cheap per-instance fix, nothing live and no crash. Escalate if a fifth lands.
 - **direction**: This needs control-flow analysis: for each `(target, field)` pair, does every path out of the observing scope reach a matching `unobserveField`? Do not start with a same-function heuristic; the plugin header records why that drowned in toggles. Find a structural signature for "this member is a toggle" first, and measure the candidate set before choosing a rule shape.
-
-#### `ropm-hook-fails-silently`
-
-- **area**: [`scripts/ropm-hook.cjs`](../../scripts/ropm-hook.cjs), the `ropm` script in [`package.json`](../../package.json), `components/roku_modules/` and `source/roku_modules/` (generated, gitignored)
-- **github**: #986 (adopting roku-log as owned code deletes the hook)
-- **issue**: `ropm copy` writes vendored component XML whose `<script uri>` paths do not exist (`pkg:/source/roku_modules/undefined/bslib.brs` and similar). `ropm-hook.cjs` rewrites them after every install, which is what lets the app launch. It catches and logs every error, and `npm run ropm` still exits 0, so if the output of `ropm copy` changes shape the hook silently does nothing and the app ships with unresolvable script URIs. Nothing checks that `<script uri>` targets resolve, and `bsconfig-base.json` filters every diagnostic under `**/roku_modules/**`. An audit on 2026-09-03 found every URI resolving. [ADR 0020](../adr/0020-router-settle-primitive.md) calls the hook fragile.
-- **direction**: Prefer a lint that resolves every `<script uri="pkg:/…">` in component XML against the build output. It catches the failure whether or not the hook ran. A cheaper stopgap is to make the hook fail the install when a rewritten URI has no file behind it. The hook only rewrites the XML of roku-log, so if #986 lands, delete this entry with the hook.
 
 #### `weblate-branch-stale-sync`
 
@@ -476,7 +469,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 - **area**: `scripts/` (top level), `scripts/lib/`, `scripts/lint/`
 - **issue**: `package.json` sets `"type": "module"`, so new code defaults to ESM, but the tree mixes both:
-  - **Top level:** the `.js` scripts are ESM; three are `.cjs` (`create-package.cjs`, `create-signed-package.cjs`, `ropm-hook.cjs`).
+  - **Top level:** the `.js` scripts are ESM; two are `.cjs` (`create-package.cjs`, `create-signed-package.cjs`).
   - **`scripts/lib/`:** `.cjs`, except four ESM files nothing `require()`s (`fixture-probe.js`, `odc-probe.js`, `png-compare.js`, `pr-title.js`).
   - **`scripts/lint/`:** mostly `.cjs`, the rest ESM (`ls scripts/lint/*.js` lists them). `floor-coverage-check.js` must be ESM, because it imports named exports from the ESM `findings-candidates.js`.
 
@@ -508,7 +501,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 - **area**: 12 component `.bs` files (the font tasks, `JRButtons`, `JRButtonGroup`, `JRLabel`, `JRScrollingLabel`, `JRLabelList`, `JRRowList`, `JRTimeGrid`, `HomeRows`, `VideoPlayerView`) and `source/data/JellyfinDataTransformer.bs`. `ResumeButton.bs` carries the opt-out header with no `print` left.
 - **issue**: Raw `print` statements remain where `m.log.*` could be used (component and class methods). Prod builds strip `m.log` calls but not `print`, so these reach the device log unconditionally.
-- **direction**: In each file, import `pkg:/source/roku_modules/log/LogMixin.brs`, create `m.log = new log.Logger("…")` in `init()` (or the class constructor), and convert each `print` to the right level. Each file carries a `' bsc-disable-file print-locations` header pointing here; remove it with the last `print`. Remove `ResumeButton.bs`' header now, so a new `print` there is flagged.
+- **direction**: In each file, import `pkg:/source/logging/Logger.bs`, create `m.log = new log.Logger("…")` in `init()` (or the class constructor), and convert each `print` to the right level. Each file carries a `' bsc-disable-file print-locations` header pointing here; remove it with the last `print`. Remove `ResumeButton.bs`' header now, so a new `print` there is flagged.
 - **enforced**: `scripts/bsc-plugins/print-locations.cjs` flags every new `print` outside `source/main.bs` and the `globals.bs` debug block, skipping free functions in `source/`, which have no `m`.
 
 #### `tokenize-stopwords-duplicated`
@@ -564,13 +557,6 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 - **area**: [`components/ui/dropdown/TrackDropdownRow.bs`](../../components/ui/dropdown/TrackDropdownRow.bs)
 - **issue**: `TrackDropdownRow` marks the current track by drawing its label in `colorTextSecondary`, which plays the user's pick down rather than marking it. The two other components that mark a current choice disagree with it and with each other. `JRDropdownItem` recolors the selected label to `colorSecondary`, and only while unfocused. `JRListDialogRow` shows a `colorSecondary` check over a `colorBackgroundSecondary` surface and leaves the label at `colorTextPrimary`. So choosing an audio or subtitle track marks the current value one way before playback (the dropdown) and another way during it (the list dialog).
 - **direction**: Give `TrackDropdownRow` the `JRListDialogRow` treatment (a check and a surface, label unchanged), and settle at the same time whether `JRDropdownItem`'s unfocused-only rule is the convention. Do not recolor the label too: with a surface already there, a third treatment was too much contrast on a device (the `JRListDialogRow` comment records it). A shape survives color blindness and a dim panel, which a hue change does not. Check that the row height fits a glyph first.
-
-#### `vendored-source-maps-shipped`
-
-- **area**: `components/roku_modules/log/` and `source/roku_modules/log/` (prebuilt maps ropm vendors with roku-log; generated, gitignored)
-- **github**: #986 (adopt roku-log as owned code)
-- **issue**: roku-log ships prebuilt `.map` files whose `sources` are absolute paths on its author's machine. Copying them into builds is fixed: every `files` array ends with `"!**/*.map"` (gated by [`bsconfig-inheritance.test.js`](../../tests/scripts/unit/lint/bsconfig-inheritance.test.js)), and a prod build holds no maps. What remains: BSC reads each co-located map (`util.resolveInputSourceMap`) and chains it into the map it writes. So in dev, test and analysis builds, a `roku_modules/log` frame maps to paths that exist nowhere, and [`/crash-report`](../../scripts/crash-report.js) resolves such a frame with no code snippet.
-- **direction**: Adopt roku-log as owned code (#986). The prebuilt maps leave with the ropm dependency, and BSC maps its frames to files in this repo. Low, because roku-log calls are stripped in prod.
 
 #### `jrtabbar-ondestroy-never-called`
 

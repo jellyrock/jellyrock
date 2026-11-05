@@ -50,7 +50,6 @@ For each file or function:
 
 - One logger per component or class: `m.log = new log.Logger("ComponentName")` in `init()` or `new()`. The log manager has to start first, so a node built before the scene exists logs nothing; [`logging.md`](../../docs/architecture/logging.md#the-startup-window-has-no-logger) lists the known cases. Don't report those as gaps.
 - Levels: `error` (a crash or an unrecoverable failure), `warn` (a fallback or a retry), `info` (a major state change), `verbose` (operational flow, sparingly), `debug` (variable values, sparingly). A normal sideloaded build writes `error`, `warn` and `info`; a production build strips every `m.log` call and writes none.
-- Indentation: `m.log.increaseIndent()` and `decreaseIndent()` group related lines. Don't propose indentation the file doesn't already use.
 - A `print` is a smell everywhere the `print-locations` plugin flags it, which is every function in `components/` and every class method: flag it for conversion. The plugin allows `print` only where no logger can exist: `source/main.bs`, the `#if debug` block in `source/utils/globals.bs`, and free functions anywhere under `source/`.
 
 ## Reporting format

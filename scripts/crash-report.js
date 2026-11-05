@@ -1634,7 +1634,9 @@ export function mechanismHint(source) {
     /roUrlTransfer|AsyncGetToString|roStreamSocket|WebSocket|https?:\/\/|setUrl|getToString/i.test(
       snippet,
     ) ||
-    /\/(api|socket|vendor\/BrightWebSocket)\//i.test(file) ||
+    // `vendor/BrightWebSocket` is where older releases kept the socket client, and a crash
+    // report cites the source of the version that crashed.
+    /\/(api|socket|websocket|vendor\/BrightWebSocket)\//i.test(file) ||
     /timeout|inferserverurl|server/i.test(snippet)
   ) {
     return 'network';
