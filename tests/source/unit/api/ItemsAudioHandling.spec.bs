@@ -33,23 +33,23 @@ namespace tests
       m.assertFalse(tsProfile.AudioCodec.inStr("aac") >= 0, "AAC should be removed from codec list")
     end function
 
-    @it("removes AAC from mp4 container codec list for 8ch audio")
+    @it("removes AAC from ts container codec list for 8ch audio")
     function _()
       deviceProfile = MockDataLoader.LoadDeviceProfile("device-profile-8ch-passthrough")
       channelCount = 8
 
       optimizeAudioCodecListForSource(deviceProfile, channelCount)
 
-      mp4Profile = invalid
+      tsProfile = invalid
       for each profile in deviceProfile.TranscodingProfiles
-        if profile.Container = "mp4"
-          mp4Profile = profile
+        if profile.Container = "ts"
+          tsProfile = profile
           exit for
         end if
       end for
 
-      m.assertNotInvalid(mp4Profile, "mp4 profile should exist")
-      m.assertFalse(mp4Profile.AudioCodec.inStr("aac") >= 0, "AAC should be removed from codec list")
+      m.assertNotInvalid(tsProfile, "ts profile should exist")
+      m.assertFalse(tsProfile.AudioCodec.inStr("aac") >= 0, "AAC should be removed from codec list")
     end function
 
     @it("preserves surround codecs (eac3, ac3, dts) for multichannel audio")
@@ -326,12 +326,13 @@ namespace tests
 
     @it("rescues an on-device-decode-only list (truehd,opus) by leading with the surround target")
     function _()
-      ' GIVEN: the mp4 list a truehd-only device produces after construction + stereo stripping:
-      ' truehd (un-encodeable for a non-truehd source) + opus (on-device decode only). Left as-is
-      ' the server resolves this to opus, silently abandoning surround. (issue #573 audit)
+      ' GIVEN: a list with no usable surround target: truehd (un-encodeable for a non-truehd
+      ' source) + opus (on-device decode only). The builder no longer emits this list, but
+      ' optimizeAudioCodecListForSource must still rescue one. Left as-is the server resolves
+      ' it to opus, silently abandoning surround. (issue #573 audit)
       deviceProfile = {
         TranscodingProfiles: [
-          { Container: "mp4", Type: "Video", AudioCodec: "truehd,opus", VideoCodec: "h264", MaxAudioChannels: "6" }
+          { Container: "ts", Type: "Video", AudioCodec: "truehd,opus", VideoCodec: "h264", MaxAudioChannels: "6" }
         ]
       }
 
@@ -415,32 +416,6 @@ namespace tests
       m.assertEqual(deviceProfile.TranscodingProfiles[0].AudioCodec, originalAudioProfileCodecs, "Audio type profile should not be modified")
       ' Video profile: multichannel optimization strips aac and mp3, keeps surround codecs
       m.assertEqual(deviceProfile.TranscodingProfiles[1].AudioCodec, "eac3,ac3", "Video type profile should have stereo codecs stripped for multichannel")
-    end function
-
-    @it("processes both ts and mp4 containers in same profile")
-    function _()
-      deviceProfile = MockDataLoader.LoadDeviceProfile("device-profile-with-passthrough")
-      channelCount = 6
-
-      optimizeAudioCodecListForSource(deviceProfile, channelCount)
-
-      ' Both containers should have AAC removed
-      tsProfile = invalid
-      mp4Profile = invalid
-      for each profile in deviceProfile.TranscodingProfiles
-        if profile.Container = "ts"
-          tsProfile = profile
-        else if profile.Container = "mp4"
-          mp4Profile = profile
-        end if
-      end for
-
-      m.assertNotInvalid(tsProfile, "ts profile should exist")
-      m.assertNotInvalid(mp4Profile, "mp4 profile should exist")
-      m.assertFalse(tsProfile.AudioCodec.inStr("aac") >= 0, "AAC should be removed from ts")
-      m.assertFalse(mp4Profile.AudioCodec.inStr("aac") >= 0, "AAC should be removed from mp4")
-      m.assertFalse(tsProfile.AudioCodec.inStr("mp3") >= 0, "MP3 should be removed from ts for multichannel")
-      m.assertFalse(mp4Profile.AudioCodec.inStr("mp3") >= 0, "MP3 should be removed from mp4 for multichannel")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

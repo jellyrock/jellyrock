@@ -4,7 +4,7 @@ related-files:
   - components/JRScene.bs
   - components/JRScreen.bs
   - scripts/bsc-plugins/roku-log.cjs
-last-reviewed: 2026-08-02
+last-reviewed: 2026-11-04
 ---
 
 # Logging guide (roku-log)
@@ -66,7 +66,7 @@ end class
 | `m.log.verbose` | Detailed operations | Function entry and exit, API calls, data processing |
 | `m.log.debug` | Variable values and logic | Loop contents, which branch ran, object dumps |
 
-Each method takes a message and up to 9 values:
+Each method takes a message and up to 8 values. A ninth fails the build with `log-too-many-values`, so split a longer line in two:
 
 ```brighterscript
 m.log.info("Received data", json.result, "http call", m.top.uri)

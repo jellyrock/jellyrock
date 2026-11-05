@@ -1877,6 +1877,7 @@ Ruled out: one merged editor bsconfig (all-tests plus the plugins in `bsconfig.j
 
 **date**: 2026-10-01
 **status**: accepted
+**partially-superseded-by**: `hls-transcodes-ts-only` (its ruled-out "dropping the `fmp4` transcode profile")
 **related-files**: `source/utils/deviceCapabilities.bs`
 
 The device profile advertises an audio format only where Roku's media spec documents it AND the device reports it, and `dts` / `truehd` are never transcode targets. This carries `audio-direct-play-surround-containers` from the audio rows to the video rows: TrueHD, absent from the spec, is direct-played nowhere; DTS-HD and `DTS:X` (`dtshd`, `dtsx`), also absent, are direct-played nowhere either, and the DTS-HD MA tracks measured were reported by Jellyfin as `dts` and played as their DTS core; DTS, which the spec lists as passthrough and whose core carries at most 5.1, is direct-played up to 6 channels; and neither appears in a transcode profile's `AudioCodec`, because Jellyfin copies a source codec it finds there rather than converting it. The mid-play track switch (`isStreamDirectPlayable`) asks the same question, `getActualCodecSupport` plus the same refusals, the Decode Multichannel Audio cap and the AAC profile rule, so a switch goes native only where the server would have direct-played the track, and otherwise reloads. Measured on a Roku Ultra `4850X` whose soundbar advertises `MAT`, `DTS` and `DTSHD` at 8ch: TrueHD failed to start, direct or copied into `fmp4` HLS; a `DTS-HD MA + DTS:X` 7.1 track failed to start (error -3); DTS copied into `fmp4` HLS played silent (#821, #892) while the same soundbar plays direct DTS with sound. With this change each converts to `eac3` in ts and plays with sound. (Where the earlier note says the device "really can decode" DTS, that is passthrough: the spec lists DTS as passthrough only.) `getSupportedPassthruCodecs` still counts a `dtshd` sink: it only detects surround passthrough for choosing a transcode target, and never adds a direct-play row.
@@ -2559,6 +2560,33 @@ Leaving a SyncPlay group turns repeat off on the local queue when it still holds
 **related-files**: `components/syncplay/SyncPlayManager.bs`, `source/syncplay/syncPlayQueue.bs`
 
 A `NextItem` or `PreviousItem` update whose playlist id is unchanged reloads nothing when it finds this member still loading that restart or ready at its start before the group's `Unpause` (`syncPlayQueue.restartAbsorbed`). While loading, the `Ready` at the load's end answers both; when the `Ready` already went out, it is sent again, because the server started a new wait. Under `RepeatOne` the server's `Next()` keeps the index and bumps `LastChange`, and drops a duplicate only by `PlaylistItemId` (`WaitingGroupState` and `PlayQueueManager`, read 2026-11-03), so two members pressing next restarted the group twice. Reproduced on a Stick 4K against a 12.2 server: a second `NextItem` sent while the Roku loaded the first restart reloaded the item twice, and once with this. Two frames arriving together never showed it, since the newer fetch supersedes the older.
+
+## decision-id: hls-transcodes-ts-only
+
+**date**: 2026-11-03
+**status**: accepted
+**partially-supersedes**: `audio-profile-documented-and-reported` (its ruled-out "dropping the `fmp4` transcode profile")
+**related-files**: `source/utils/deviceCapabilities.bs`
+
+The device profile offers one HLS video transcoding profile, `ts`; the `mp4` (`fMP4`) one is gone. Roku's media spec lists TS as the only HLS chunk format that may mux audio and video ("muxing audio and video not supported for CMAF"), and Jellyfin's `fMP4` HLS puts both tracks in the same fragments, so video plays and audio never starts. Measured 2026-11-03 against a 12.2 server on a Streaming Stick 4K, a Roku Ultra `4850X` and a Roku Stick `3600X`: every `fMP4` variant tried (AAC copied or re-encoded, stereo or 5.1, H.264 or HEVC) reported `audioFormat` none with the audio clock at 0, while TS with AAC played with sound. With TS only, the AAC 5.1, AC3 5.1 and EAC3 5.1 titles that were silent in `fMP4` on the Stick 4K play AAC in TS; the Ultra is unchanged.
+
+Array order was not enough: from 10.8 the server ranks profiles by video and audio fit and uses order only to break a tie, so the `mp4` profile's longer audio list (`alac`, `flac`, `opus`) won whenever it fit the source better. #573 (stereo) and #1079 (copied DTS) were this one cause, patched per trigger. The older note kept `fMP4` for Dolby Vision; on the Ultra the Dolby Vision 8.1 remux was already TS (`-hls_segment_type mpegts`, video copied, `eac3` with sound), and nothing in the server or the profile sends Dolby Vision to `fMP4`. Ruled out: equalizing the two audio lists so the tie goes to TS, which still routes HEVC and some sources to `fMP4`. To re-evaluate: if Roku's spec gains muxed CMAF, or Jellyfin serves `fMP4` HLS with audio and video in separate tracks.
+
+## decision-id: playable-default-audio-track
+
+**date**: 2026-11-03
+**status**: accepted
+**related-files**: `source/utils/streamSelection.bs`, `source/utils/deviceCapabilities.bs`
+
+With "Play default audio track" on, a default track this Roku cannot direct-play (TrueHD, for one) gives way to a same-language, non-commentary track it can play, with no fewer channels than the viewer would get from the default once the server converts it: the least of its channels, the device maximum and `SURROUND_TRANSCODE_MAX_CHANNELS` (6), because the server's `eac3` and `ac3` encoders stop at 5.1. So a 7.1 default gives way to a 5.1 track even on a 7.1 system, and a playable 7.1 track still beats a 5.1 one; `playableAlternativeToDefault()` decides. The 5.1 limit is read from Jellyfin 12.2's source (`_audioTranscodeChannelLookup`), not measured on a 7.1 system. The server converts an unplayable default anyway, and a playable track lets the video direct-play or copy, which avoids remuxing long-GOP 4K sources at all. Measured 2026-11-03 on a Roku Ultra: a 4K HDR10 file with a TrueHD default and an `AC3` 5.1 track went from a remux to `PlayMethod: DirectPlay ... Reasons: 0`. A playable default is kept, so a playable AAC 2.0 default still beats an `AC3` 5.1. Ruled out: leaving the choice to the server, which converts the audio and can lose the original video; a setting for it, which most viewers would never find.
+
+## decision-id: audio-description-never-auto-picked
+
+**date**: 2026-11-04
+**status**: accepted
+**related-files**: `source/utils/streamSelection.bs`
+
+Commentary and audio-description tracks stay out of the automatic audio pick while the file has another track (#500, `isHiddenFromAutoPick()`), so a stereo narration track can't win on channel count. Audio description is the main track for blind and low-vision viewers, so it is kept where its viewer has asked for it: the file flags it default and "Play default audio track" is on, or the Roku's Audio Guide (screen reader) is on, when it ranks like a main track. The swap in `playableAlternativeToDefault()` replaces a default only with a track of the same kind and never with commentary. Detection is by title only ("description", "descriptive" or "described" anywhere, or "AD" as a capitalized whole word): Jellyfin 12.2's media probe sets `IsHearingImpaired` from the `hearing_impaired` disposition ffmpeg reports and never reads `visual_impaired`, so `MediaStream` carries no audio-description flag. Ruled out: hiding audio description in every case, which made a viewer who flagged it default in their own files pick it for each video; hiding it only in the swap, since the channel ranking could already pick it by accident; and preferring it whenever Audio Guide is on, since some screen-reader users don't want narration. Re-evaluate if Jellyfin adds an audio-description flag, or if viewers ask for a setting to prefer it.
 
 ## Migrated to ADRs
 

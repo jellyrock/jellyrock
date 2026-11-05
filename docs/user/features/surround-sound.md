@@ -17,7 +17,7 @@ JellyRock asks your Roku which surround formats your TV, soundbar or receiver ca
 
 - **Dolby Digital (AC3) and Dolby Digital Plus (EAC3)** play as they are. Your Roku sends them to a surround system that supports them, and mixes them down to stereo itself when there is none.
 - **DTS** plays as it is, up to 5.1, when your audio system supports it.
-- **Dolby TrueHD, DTS-HD and DTS:X** are converted by your server to Dolby Digital Plus or Dolby Digital, still in surround. Roku doesn't play these formats reliably, so JellyRock never asks for them as they are.
+- **Dolby TrueHD, DTS-HD and DTS:X** are converted by your server to Dolby Digital Plus or Dolby Digital, still in surround. Roku doesn't play these formats reliably, so JellyRock never asks for them as they are. When such a track is the file's default and the file also has a track in the same language that your system plays as it is, JellyRock starts on that track instead, as long as it has as many channels as the converted sound would. The **Audio** menu still offers the original.
 - **Opus, AAC, FLAC, ALAC, PCM and Vorbis** in surround are decoded by your Roku itself, unless you turn off [Decode Multichannel Audio](../app-settings.md#playbackDecodeMultichannelAudio).
 - **Stereo sound** stays stereo: JellyRock never asks the server to turn it into surround.
 

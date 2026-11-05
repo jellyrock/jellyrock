@@ -27,7 +27,7 @@ Move along the row with **Left** and **Right**, and press **OK** to select. A bu
 - **Previous and next:** go to the previous or next item in your queue. They're grayed out when there is none. With **Repeat all** on, they wrap around at both ends of the queue; with **Repeat one**, either plays the same video again and a message says so.
 - **Play and pause.**
 - **Version:** switch between the versions of a video that has more than one.
-- **Audio:** switch to another audio track.
+- **Audio:** switch to another audio track. A video never starts on a commentary track while it has another one, so choose it here to hear it. Audio description is skipped the same way, unless the file marks it as its default track (with [Play Default Audio Track](../app-settings.md#playbackPlayDefaultAudioTrack) on) or your Roku's Audio Guide is on.
 - **Subtitles:** turn subtitles on or off, or pick another track.
 - **Chapters:** open the video's chapter list.
 - **LIVE:** on a live channel, go back to the live broadcast. See [Live TV and recordings](live-tv.md).

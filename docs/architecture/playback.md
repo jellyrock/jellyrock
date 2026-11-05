@@ -61,7 +61,7 @@ related-files:
   - source/syncplay/syncPlayQueue.bs
   - source/syncplay/syncPlayHooks.bs
   - source/syncplay/syncPlayState.bs
-last-reviewed: 2026-11-03
+last-reviewed: 2026-11-04
 ---
 
 # Video and audio playback
@@ -564,21 +564,13 @@ The client overrides the server's answer in three places:
 
 MPEG-TS is left out of the direct-play profiles (`GetDirectPlayProfiles`), so the server remuxes every TS source, recordings included, to HLS.
 
-### Which HLS container the server picks
+### Why every HLS transcode is TS
 
-`getTranscodingProfiles()` emits one HLS video profile per container, `ts` first and then `mp4`. Keep `ts` first: `fmp4` HLS plays silent on some Roku hardware (#620), and a spec in `deviceCapabilities-transcodingProfile.spec.bs` fails if the order flips.
+`getTranscodingProfiles()` emits one HLS video profile, with the `ts` container. Don't add an `mp4` (`fMP4`) one back: Roku's media spec lists TS as the only HLS chunk format that may mux audio and video ("muxing audio and video not supported for CMAF"), and Jellyfin's `fMP4` HLS puts both tracks in the same fragments. The video plays and the audio never starts. A spec in `deviceCapabilities-transcodingProfile.spec.bs` fails if an `mp4` video profile comes back.
 
-The server's `StreamBuilder` chooses a profile this way (read from each release's source, and the outcomes measured 2026-11-01 on the seven local test servers):
+Array order did not keep the server off `fMP4`. From 10.8 the server's `StreamBuilder` ranks profiles by video and then audio fit and uses order only to break a tie, so whenever the `mp4` profile's longer audio list fit the source better, it picked `fMP4`. #573 (stereo files) and #1079 (DTS copied in) were that one cause, each patched for its own trigger. The measurements and the history are in decision [`hls-transcodes-ts-only`](../decisions.md#decision-id-hls-transcodes-ts-only).
 
-| Server | How it picks |
-| --- | --- |
-| 10.7 | The first matching profile. A `ts` profile that lacks the source's codec still wins, so the server re-encodes. |
-| 10.8 and 10.9 | The best video rank, then array order. |
-| 10.10 and later | The best video and audio rank, then array order. |
-
-- **From 10.8, order only breaks a tie.** If the `ts` profile lacks the source's video codec and the `mp4` profile has it, the server picks `mp4`. An empty `VideoCodec` matches every codec.
-- **Dolby Vision is the exception by design.** Its transcode uses the `fmp4` profile (decision [`audio-profile-documented-and-reported`](../decisions.md#decision-id-audio-profile-documented-and-reported)).
-- **Account permissions did not change the container** in those measurements.
+TS has one cost: a source with rotation metadata, such as a phone video, can't keep its video in a remux. From 10.10 the server turns video copy off for a rotated source unless the segments are `fMP4` (`DynamicHlsHelper`, read from the server source, not measured), so the video is re-encoded.
 
 To see what the server chose, open **Playback Info**: its container row shows the source and the target.
 
@@ -589,6 +581,7 @@ The profile rules for audio live in `source/utils/deviceCapabilities.bs` and `so
 - **Multichannel tracks direct-play when the device can output them:** the profile's `AudioChannels` conditions (`getCodecProfiles()`) and the device's real codec support (`getActualCodecSupport()`) decide.
 - **A multichannel source that must be transcoded is steered to surround.** `resolveMultichannelSurroundTarget()` puts `eac3` or `ac3` first in the transcode codec list, so the server does not mix down to stereo AAC. For a stereo source, `optimizeAudioCodecListForSource()` strips the surround codecs (`surroundCodecs`) from the list.
 - **Only what Roku documents is direct-played, and `dts` and `truehd` are never transcode targets** (decision [`audio-profile-documented-and-reported`](../decisions.md#decision-id-audio-profile-documented-and-reported)). Roku's `CanDecodeAudio` and a soundbar's EDID can both say yes to a format the player then fails on, so the profile takes what Roku's media spec lists and the device reports. TrueHD, DTS-HD and `DTS:X` are never direct-played as such; DTS is direct-played up to `DTS_MAX_DIRECT_PLAY_CHANNELS` (6). Neither is offered as a transcode target, because the server copies a source codec it finds on that list, and DTS copied into HLS plays silent on Roku (#821, #892), so the server converts both to `eac3` or `ac3`.
+- **A default track this Roku cannot play gives way to one it can.** With **Play default audio track** on, `findBestAudioStreamIndex()` takes the track the file flags default, but when that track is not direct-playable here (TrueHD, for one), `playableAlternativeToDefault()` picks a same-language track of the same kind that is (audio description for audio description, never commentary), as long as it has no fewer channels than the viewer would get from the default. The server would convert the default anyway, and the playable track lets the video direct-play or copy. A converted default arrives as at most 5.1 (`SURROUND_TRANSCODE_MAX_CHANNELS`), because the server's `eac3` and `ac3` encoders stop there, so a 7.1 default gives way to a 5.1 track even on a 7.1 system.
 - **A track switch during playback** asks the profile's own question (`isStreamDirectPlayable()`: `getActualCodecSupport()`, the same refusals, the Decode Multichannel Audio cap and the AAC profile rule), so a switch stays native only where the server would have direct-played the track, and otherwise reloads.
 
 ### Dolby Vision
