@@ -710,17 +710,9 @@ function getTranscodingProfiles(caps = invalid as dynamic) as object
   ' Single profile per container with codecs in optimal order
   ' ========================================
 
-  ' Determine max supported audio channels
-  maxAudioChannels = "2" ' default stereo
-  allSurroundCodecs = []
-
-  if eightChannelPassthruCodecs.count() > 0
-    maxAudioChannels = "8"
-    allSurroundCodecs = eightChannelPassthruCodecs
-  else if sixChannelPassthruCodecs.count() > 0
-    maxAudioChannels = "6"
-    allSurroundCodecs = sixChannelPassthruCodecs
-  end if
+  surroundAudio = resolveSurroundTranscodeAudio(eightChannelPassthruCodecs, sixChannelPassthruCodecs)
+  maxAudioChannels = surroundAudio.maxAudioChannels
+  allSurroundCodecs = surroundAudio.surroundCodecs
 
   ' Build per-container audio codec list. The construction logic is in the pure helper
   ' buildVideoTranscodingAudioCodecsForContainer so it can be exhaustively unit-tested
@@ -778,6 +770,41 @@ function getHlsTranscodeTargetsForContainer(container as string) as object
     return ["aac", "ac3", "eac3", "mp3"]
   end if
   return []
+end function
+
+' The video transcoding profile's channel limit and surround codecs, from the two passthrough probes.
+' Pure, so the profile's audio decision is testable without a real roDeviceInfo.
+'
+' @param eightChannelCodecs - codecs the device passes through at 8 channels
+' @param sixChannelCodecs - codecs the device passes through at 6 channels
+' @returns an AA: maxAudioChannels ("8", "6" or "2") and surroundCodecs (the codecs to offer for surround)
+function resolveSurroundTranscodeAudio(eightChannelCodecs as object, sixChannelCodecs as object) as object
+  maxAudioChannels = "2"
+  if eightChannelCodecs.count() > 0
+    maxAudioChannels = "8"
+  else if sixChannelCodecs.count() > 0
+    maxAudioChannels = "6"
+  end if
+  return { maxAudioChannels: maxAudioChannels, surroundCodecs: mergeSurroundPassthruCodecs(eightChannelCodecs, sixChannelCodecs) }
+end function
+
+' Merges the 8-channel and 6-channel passthrough probes into one surround codec list.
+' AC3 cannot carry more than 5.1, so the 8-channel probe never reports it. The server copies
+' a source codec only when it is in the transcode list, so an AC3 source would be re-encoded
+' unless the 6-channel probe's codecs are added.
+'
+' @param eightChannelCodecs - codecs the device passes through at 8 channels
+' @param sixChannelCodecs - codecs the device passes through at 6 channels
+' @returns the 8-channel codecs in order, then each 6-channel codec not already present
+function mergeSurroundPassthruCodecs(eightChannelCodecs as object, sixChannelCodecs as object) as object
+  merged = []
+  for each codec in eightChannelCodecs
+    merged.push(codec)
+  end for
+  for each codec in sixChannelCodecs
+    if not arrayHasValue(merged, codec) then merged.push(codec)
+  end for
+  return merged
 end function
 
 ' Build the AudioCodec list for a single HLS video transcoding profile container.
