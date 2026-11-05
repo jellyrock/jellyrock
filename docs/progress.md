@@ -1133,10 +1133,6 @@ Several checks compare a number's `type()` against a partial list of names. On a
 
 After a slow silent seek on a SyncPlay member, the `Ready` goes out at the `playing` edge with the node's own position, which `docs/architecture/playback.md` says can still read the position from before the seek; a position off by more than 500 ms draws a corrective `Seek` from the server. Read from the code in PR #1296's review (2026-11-01), never reproduced; refiled from `syncplay-slow-seek-catch-up-unbounded` when the SyncPlay project's consolidation step closed it (the unbounded lead and the seek-stall cycle end with the wait-on-me correction, commit `a151efbc`). Closes with a device capture of a `Ready` after a slow seek compared against the seek's target, and a read of the position from a later notification when they differ, or a decision to drop it.
 
-#### Mask tokens and addresses in every log line `[fid: log-redact-secrets]` `[captured 2026-11-05]` `[pinned]`
-
-**Mask secrets and addresses in every log line, in every build.** Stream URLs carry the access token in their query (`source/utils/streamOrigin.bs`), and the `m.log` calls that print a URL put it on the debug console, which `scripts/lib/console-capture.js` copies into `.device-runs/`. Agreed shape (#986 planning, 2026-11-05): one pure `redact()` step in `Logger.log()` before any output, with no shared state, so it adds no thread crossing. A token becomes a short fingerprint such as `<token:3fa9>`, so a log still shows whether two requests used the same one. A URL keeps its scheme, port, path and query keys, and its host becomes a class (`<lan-host>`, `<host>`). An IP becomes `<lan-ip>`, `<public-ip>` or `<loopback>`, never a hash, since a home network has 256 addresses to try. User names need known values, and must not cost a per-line `m.global` read. Test-first in `tests/source/unit/logging/LogManager.spec.bs`, and measure the per-line cost on a device. Limit: `print` and Roku OS console lines bypass the logger.
-
 #### `initializeLogManager` leaves `enabled` false, which `guard` would turn into silence `[fid: log-enabled-default-false]` `[captured 2026-11-05]`
 
 **`log.initializeLogManager` defaults `enabled` to `false`, and `JRScene.init()` does not pass it,** so every `Logger.enabled` is `false`. Nothing reads it today, but the `roku-log` plugin's `guard` option wraps each call in `if m.__le = true`, so turning `guard` on would silence every log line without an error. Fix: default it to `true` (or pass it from `JRScene`), with a test in `tests/source/unit/logging/LogManager.spec.bs`. Listed under Known issues in `source/logging/README.md`; remove it there too.
@@ -1144,6 +1140,10 @@ After a slow silent seek on a SyncPlay member, the `Ready` goes out at the `play
 #### Send logs to the user's Jellyfin server (epic) `[fid: log-upload-to-server]` `[captured 2026-11-05]`
 
 **Let a user send the app's logs to their own Jellyfin server.** `POST /ClientLog/Document` takes `text/plain` up to 1,000,000 bytes and returns `{ FileName }`; it exists from 10.8.0 (absent at 10.7.7) and answers 403 when the server's `AllowClientLogUpload` is off, which defaults to on (checked in Jellyfin's source at `v10.11.0`, 2026-11-05). Jellyfin's Android TV client uses it for crash reports. Open questions: a production build strips every `m.log` call, so decide what it keeps (for example warn and error into a bounded buffer) and budget it against the thread-crossing cost model; the 10.8.0 guard and its endpoint-availability ledger entry; masking addresses and names on upload (followup `log-redact-secrets`). Next step: draft the epic issue and show it to the maintainer before filing.
+
+#### Route every print through the log redactor `[fid: log-print-through-redactor]` `[captured 2026-11-05]`
+
+**Route every `print` through the redactor.** The 161 `print` statements in `source/` and `components/` bypass `log.Redactor`; most print user IDs or the server URL (`inferServerUrl` in `source/utils/misc.bs`), and none print a token today. Agreed shape (2026-11-05): a free function such as `log.print(...)` that masks and prints, usable before the log manager exists, and the `print-locations` plugin failing any raw `print` outside `source/logging/`. Comes after `rr-http-trace-leaks-token`.
 
 ### api
 
@@ -1276,6 +1276,10 @@ Close it on a device: seek to 50% in an Ogg file holding FLAC whose last frame i
 **Not checked:** whether any of those callers fires twice under the same id while the first is pending (for example, `fetchQueue` seeing the same `lastUpdateMs` twice through a re-follow); the early settle of the second promise by the leftover observer is from reading the code, not a device run.
 
 **Tracked in** [#1272](https://github.com/jellyrock/jellyrock/issues/1272); close it with the fix.
+
+#### `roku-requests` prints the token in every request trace `[fid: rr-http-trace-leaks-token]` `[captured 2026-11-05]` `[pinned]`
+
+**`roku-requests` prints every request's full URL and headers, token included, in every build.** `rr_Requests_run` (`source/roku_modules/rr/Requests.brs`, package-managed) runs `? "[http] URL:"` and `? "[http] Headers: "` with no guard, and every API call reaches it through `executeHttpRequest()` in `source/api/baseRequest.bs`. A `print` is never stripped, so production builds print it too; whether a production install's console can be read was not checked. `log.Redactor` cannot reach these lines. Options weighed 2026-11-05: adopting `rr` as owned code (rejected by the maintainer: it makes every `rr` upgrade a manual merge for the sake of two prints); a `patch-package` patch (needs `postinstall` to apply patches before `ropm copy`, and `--error-on-fail`, since a failed patch exits 0 locally); a build-time step in the `roku-log` plugin that removes `print` statements under `roku_modules/rr/`, which needs no work on upgrade. Whichever is chosen, keep a masked trace of our own in `executeHttpRequest()` (method, URL, status, retries), and update the `[http]` replay advice in `docs/dev/debug-flags.md`, which relies on the token in the trace.
 
 ### tests
 

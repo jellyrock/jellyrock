@@ -88,6 +88,26 @@ Nodes created in `setGlobals()`, which `Main()` calls, are built before any mana
 
 **Do not create a `log.Logger` in anything built before the scene exists.** Use `print` there, as `main.bs` does. `lint:log-manager-init` fails on a new one; `JellyfinUserSettings` is its one recorded exception. If you add a global node that logs, check its output on a device: a silent logger looks the same as a quiet one.
 
+## Masking what a line could leak
+
+Console logs get shared: pasted into issues, and copied into `.device-runs/` by `scripts/lib/console-capture.js`. So `Logger.log()` passes every line through `log.Redactor` (in [`source/logging/Logger.bs`](../../source/logging/Logger.bs)) before it is written, in every build:
+
+| Found | Becomes |
+|---|---|
+| A token, API key or `AccessToken` value (`ApiKey=`, `api_key=`, `Token="…"`, JSON keys) | `<token:xxxx>`, the first 4 hex characters of its `MD5` hash |
+| A device ID (`DeviceId=`, `deviceId=`) | `<device:xxxx>` |
+| A password, a secret, or user info in a URL | `<secret>` |
+| The `Device=` field of the `Authorization` header (the Roku's user-set name) | `<device-name>` |
+| A URL host, or a bare `IPv4` address | `<loopback>`, `<lan-ip>`, `<public-ip>`, `<lan-host>` or `<host>` |
+
+**A fingerprint still answers the debugging question.** Two lines with the same `<token:…>` used the same token, and a host class still says whether the app talked to the LAN, the internet or itself. Scheme, port, path and query keys stay. Item and user IDs stay too: they identify nothing alone.
+
+**Free text cannot be masked, so the build keeps it out.** A title or a person's name has no shape the redactor could find. The `log-personal-text` check in [`roku-log.cjs`](../../scripts/bsc-plugins/roku-log.cjs) fails an `m.log` argument whose name says it holds one (`rowTitle`, `item.name`, `username`, `groupName` and the like).
+
+**The redactor adds no thread crossing.** It reads no node and keeps no shared state, only its compiled patterns and a fingerprint cache, and a `Logger` builds it on its first line. Its cost per line on a device is not measured yet: `tests/source/unit/logging/RedactorCost.spec.bs` prints it through `test:tdd`. A production build strips every `m.log` call, so the cost is a dev and test build cost.
+
+**Not covered:** `print` statements, which bypass the logger; the `[http]` request trace of `roku-requests`, which prints each request's full URL and headers, token included, in every build; and Roku OS's own console lines. The first two are followups `log-print-through-redactor` and `rr-http-trace-leaks-token` in [`docs/progress.md`](../progress.md).
+
 ## Where `print` is allowed
 
 The `print-locations` plugin flags a `print` wherever an `m.log` is available: any function in a component, and any class method. It allows `print` where no logger can exist: `source/main.bs`, the `#if debug` block in `source/utils/globals.bs`, and free functions in `source/`, which have no `m` to hold one. The logging runtime's own `print` statements are suppressed line by line, since they are the console output. Unlike `m.log` calls, a `print` is not stripped from a production build.
