@@ -21,6 +21,7 @@ import "pkg:/source/utils/liveStreamHandoff.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
+import "pkg:/source/utils/playbackCaps.bs"
 import "pkg:/source/utils/probedStreams.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamSelection.bs"
@@ -571,7 +572,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   ' The re-encode retry can come back as H.264 at the source's size, which a Roku cannot decode
   ' above 1080p: check the answer's playlist and ask again with a 1080p cap if so.
   if disallowVideoCopy and not isLive
-    capReencodedResolution(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, pickedCaps)
+    capReencodedResolution(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, pickedCaps, userSettings)
   end if
 
   ' Call addSubtitlesToVideo ONCE after ItemPostPlaybackInfo
@@ -765,14 +766,22 @@ end sub
 ' AVC level 4.2 and buffers forever on a 4K one. The server's master playlist declares the codec and
 ' size before any segment exists, so read it, and ask PlaybackInfo once more with a 1080p
 ' resolution cap when reencodeCapDecision says so. A second request that fails keeps the first
-' answer (m.playbackInfo).
+' answer (m.playbackInfo). A resolution cap of the viewer's own at or below 1080p (Settings or the
+' gear pick) skips the check: the first answer already honors it, and a forced 1080 would raise it.
 '
 ' @param {string} itemId - the item
-sub capReencodedResolution(itemId as string, mediaSourceId as dynamic, audioStreamIdx as integer, subtitleIdx as integer, playbackPosition as dynamic, meta as object, bypassDoviPreservation as boolean, forceTranscoding as boolean, pickedCaps as dynamic)
+sub capReencodedResolution(itemId as string, mediaSourceId as dynamic, audioStreamIdx as integer, subtitleIdx as integer, playbackPosition as dynamic, meta as object, bypassDoviPreservation as boolean, forceTranscoding as boolean, pickedCaps as dynamic, userSettings as object)
   if not isValidAndNotEmpty(m.playbackInfo.MediaSources) then return
   source = m.playbackInfo.MediaSources[0]
   if not isValid(source) or not isValidAndNotEmpty(source.TranscodingUrl) then return
   if LCase(textOrEmpty(source.TranscodingSubProtocol)) <> "hls" then return
+
+  ' The server's first answer already keeps the video within the viewer's own cap.
+  limit = playbackCaps.heightLimit(userSettings, pickedCaps)
+  if limit > 0 and limit <= 1080
+    m.log.info("Re-encode keeps the viewer's resolution cap", "maxHeight", limit, "itemId", itemId)
+    return
+  end if
 
   playedSource = invalid
   if isValid(meta.mediaSourcesData) then playedSource = mediaSourceForId(meta.mediaSourcesData.mediaSources, mediaSourceId)
