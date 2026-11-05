@@ -216,6 +216,27 @@ namespace tests
       m.assertInvalid(result)
     end function
 
+    @it("returns invalid for out-of-spec Dolby Vision a pre-10.11 server calls DOVIWithHDR10 (profile 8 or 10, compatibility ID 6, HDR10 tags)")
+    @params(8)
+    @params(10)
+    function _(dvProfile as integer)
+      stream = { Type: "Video", Codec: "hevc", VideoRangeType: "DOVIWithHDR10", DvProfile: dvProfile, DvBlSignalCompatibilityId: 6, ColorSpace: "bt2020nc", ColorTransfer: "smpte2084", ColorPrimaries: "bt2020" }
+      result = doviRemuxContainerProfile([stream], "mkv", true, false, 2, m.mockCaps(true))
+
+      m.assertInvalid(result)
+    end function
+
+    @it("still returns the profile for in-spec Dolby Vision, profile 7, or out-of-spec without HDR10 tags")
+    function _()
+      inSpec = { Type: "Video", Codec: "hevc", VideoRangeType: "DOVIWithHDR10", DvProfile: 8, DvBlSignalCompatibilityId: 1, ColorSpace: "bt2020nc", ColorTransfer: "smpte2084", ColorPrimaries: "bt2020" }
+      profile7 = { Type: "Video", Codec: "hevc", VideoRangeType: "DOVIWithEL", DvProfile: 7, DvBlSignalCompatibilityId: 6, ColorSpace: "bt2020nc", ColorTransfer: "smpte2084", ColorPrimaries: "bt2020" }
+      untagged = { Type: "Video", Codec: "hevc", VideoRangeType: "DOVIWithHDR10", DvProfile: 8, DvBlSignalCompatibilityId: 6, ColorSpace: "bt709", ColorTransfer: "bt709", ColorPrimaries: "bt709" }
+
+      m.assertEqual(doviRemuxContainerProfile([inSpec], "mkv", true, false, 2, m.mockCaps(true)), m.expectedProfile("DOVIWithHDR10"), "in spec")
+      m.assertEqual(doviRemuxContainerProfile([profile7], "mkv", true, false, 2, m.mockCaps(true)), m.expectedProfile("DOVIWithEL"), "profile 7")
+      m.assertEqual(doviRemuxContainerProfile([untagged], "mkv", true, false, 2, m.mockCaps(true)), m.expectedProfile("DOVIWithHDR10"), "no HDR10 tags")
+    end function
+
     @it("returns invalid for an empty VideoRangeType")
     function _()
       streams = [m.videoStream("hevc", "")]
