@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-05: fix(playback): Copy AC3 audio in a remux on 7.1 systems
 - 2026-11-05: fix(playback): Pick a playable audio track, not audio description
 - 2026-11-04: chore(build): Fail the build on an `m.log` call with too many values
 - 2026-11-04: fix(playback): Stop transcoded videos playing with no sound
