@@ -137,7 +137,8 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
   ' only when the server's own settings say it encodes HEVC in hardware: software HEVC measured
   ' below real time and stalled where H.264 plays. A server that does not encode HEVC falls to
   ' H.264 either way (the load then reads the playlist and caps the resolution, see
-  ' LoadVideoContentTask.capH264Resolution). The re-encode retry always lists HEVC first.
+  ' LoadVideoContentTask.capH264Resolution). The re-encode retry always lists HEVC first. Live TV
+  ' follows the same rule, with the settings Home read at sign-in: it has no playlist check.
   listHevcFirst = disallowVideoCopy
   if not listHevcFirst and serverCapabilities.serverEncodesHevcInHardware(m.global.server.encodingPolicy)
     sourceVideoStream = invalid

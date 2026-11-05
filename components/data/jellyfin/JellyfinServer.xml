@@ -66,10 +66,11 @@
 
     <!-- The server's encoder settings, from GET /System/Configuration/encoding:
          { HardwareAccelerationType, EnableHardwareEncoding, AllowHevcEncoding }. INVALID
-         (unset) = not read yet, the same one "unknown" state as resumePolicy. Read lazily by
-         LoadVideoContentTask on its Task thread before the first video load, and only a
-         complete answer is stored, so a failed read is retried by the next load. Decides
-         whether a first request lists HEVC before H.264 (serverCapabilities.serverEncodesHevcInHardware).
+         (unset) = not read yet, the same one "unknown" state as resumePolicy. Read by Home
+         at each sign-in (Home.checkServerCapabilities), and by LoadVideoContentTask before a
+         video load that finds it unread. Only a complete answer is stored, so a failed read
+         is retried by the next load. Decides whether a first request lists HEVC before H.264
+         (serverCapabilities.serverEncodesHevcInHardware), Live TV included.
          Reset with the rest of this node on a server switch. -->
     <field id="encodingPolicy" type="assocarray" />
 

@@ -463,8 +463,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   ' The quality caps the viewer picked for this queue in the OSD's gear, read once for both
   ' requests below. invalid when there are none, and Settings applies.
   pickedCaps = queueManager.callFunc("getPlaybackCaps")
-  ' The codec order of a first request depends on the server's encoder settings. A live stream is
-  ' never re-encoded to a size here, and its open call must not wait on another request.
+  ' The codec order of a first request depends on the server's encoder settings, which Home reads
+  ' at sign-in. A live load uses whatever that read stored: its open call must not wait on another
+  ' request.
   if not isLive then readServerEncodingPolicy()
   res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, openLimitMs, pickedCaps, disallowVideoCopy)
   m.playbackInfo = invalid
@@ -745,12 +746,13 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   video.audioTrack = getRokuAudioTrackPosition(audioStreamIdx, video.fullAudioData)
 end sub
 
-' readServerEncodingPolicy: Read the server's encoder settings once per server session.
+' readServerEncodingPolicy: Read the server's encoder settings when the sign-in read has not.
 '
-' Runs on this Task thread, so the request never touches the render thread. The answer is stored
-' on m.global.server.encodingPolicy (one cross-thread write per session), where
-' buildPlaybackInfoPostData reads it. A failed or incomplete read stores nothing: the policy stays
-' unknown, a first request keeps H.264 first, and the next load asks again.
+' Home reads them at sign-in (Home.checkServerCapabilities), so this covers a play that starts
+' before that reply: a deep link, or a press right after sign-in. Runs on this Task thread, so the
+' request never touches the render thread. The answer is stored on m.global.server.encodingPolicy,
+' where buildPlaybackInfoPostData reads it. A failed or incomplete read stores nothing: the policy
+' stays unknown, a first request keeps H.264 first, and the next load asks again.
 sub readServerEncodingPolicy()
   if isValid(m.global.server.encodingPolicy) then return
 
