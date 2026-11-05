@@ -68,7 +68,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 #### `task-thread-budget`
 
-- **area**: Task components (26 shipped types, plus two test probes and the vendored `WebSocketClient`; find them with `git grep -l 'extends="Task"' -- components`), [`source/utils/tasks.bs`](../../source/utils/tasks.bs) (the launch ledger, `TASK_THREAD_WATERMARK`, the launch queue), [`components/tasks/TaskLaunchQueue.bs`](../../components/tasks/TaskLaunchQueue.bs), and `source/main.bs`.
+- **area**: Task components (26 shipped types, plus two test probes and `WebSocketClient` (`components/websocket/`); find them with `git grep -l 'extends="Task"' -- components`), [`source/utils/tasks.bs`](../../source/utils/tasks.bs) (the launch ledger, `TASK_THREAD_WATERMARK`, the launch queue), [`components/tasks/TaskLaunchQueue.bs`](../../components/tasks/TaskLaunchQueue.bs), and `source/main.bs`.
 - **github**: #728 (the `&h29` "Too many task threads" crash epic, closed 2026-08-21)
 - **issue**: Roku caps an app's concurrent Task threads; ADR 0031 records 50 as the console warning and 100 as the cap. JellyRock runs a fixed floor of persistent tasks: the `ApiTask` pool ([sized per device class](api.md#pool-width)), the `ApiQueueTask` coordinator, `SideEffectTask` and `RemoteControlTask` (with a nested `WebSocketClient` on the `ws://` path). `FontDownloadTask` and `FontScalingTask` are conditional and short-lived. Transient per-screen tasks spawn on top during navigation. #728's fan-out is fixed, and two guards now cover that shape:
   - At compile time, [`no-task-fanout.cjs`](../../scripts/bsc-plugins/no-task-fanout.cjs) makes a `launchTask()` inside a loop an error, following a same-file helper one hop (decision `task-fanout-follows-helpers`).
