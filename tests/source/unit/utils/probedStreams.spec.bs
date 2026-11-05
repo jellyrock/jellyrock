@@ -89,6 +89,48 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("playsServerTranscode()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for a transcode answer of an ordinary file")
+    function _()
+      source = m.transcodeSource("/videos/x/master.m3u8?TranscodeReasons=VideoCodecNotSupported")
+      source.SupportsDirectPlay = false
+
+      m.assertTrue(playsServerTranscode(source, UpstreamManifestBlocker.NOT_HTTP_PROTOCOL, false, false))
+    end function
+
+    @it("is false when the viewer's level override tries direct play")
+    function _()
+      source = m.transcodeSource("/videos/x/master.m3u8?TranscodeReasons=VideoLevelNotSupported")
+      source.SupportsDirectPlay = false
+
+      m.assertFalse(playsServerTranscode(source, UpstreamManifestBlocker.NOT_HTTP_PROTOCOL, false, true))
+    end function
+
+    @it("is false when the device plays the upstream link itself")
+    function _()
+      source = m.transcodeSource("/videos/x/master.m3u8")
+      source.SupportsDirectPlay = false
+
+      m.assertFalse(playsServerTranscode(source, UpstreamManifestBlocker.NONE, true, false))
+    end function
+
+    @it("is false for a direct play answer, even one that carries a TranscodingUrl")
+    function _()
+      source = m.transcodeSource("/videos/x/master.m3u8")
+      source.SupportsDirectPlay = true
+
+      m.assertFalse(playsServerTranscode(source, UpstreamManifestBlocker.NOT_HTTP_PROTOCOL, false, false))
+    end function
+
+    @it("is false for an answer with no TranscodingUrl, or no answer")
+    function _()
+      m.assertFalse(playsServerTranscode({ Id: "src", SupportsDirectPlay: false }, UpstreamManifestBlocker.NOT_HTTP_PROTOCOL, false, false))
+      m.assertFalse(playsServerTranscode(invalid, UpstreamManifestBlocker.NOT_HTTP_PROTOCOL, false, false))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("probedPicksNeedNewAnswer()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

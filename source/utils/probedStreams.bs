@@ -54,6 +54,24 @@ function serverAnswerPlays(blocker as string, deviceLoadsUpstream as boolean, se
   return not deviceLoadsUpstream and not serverAllowed
 end function
 
+' True when the load plays the answer's TranscodingUrl: the server's answer plays
+' (serverAnswerPlays), it is not a direct play, and the viewer's level override does not try direct
+' play instead (triesDirectPlayOverLevel). A check of the transcode's output is wasted otherwise,
+' and asking again would change an answer that plays. A fallback that reaches the server's stream
+' later (the retry after a failed direct play) runs a load of its own.
+'
+' @param {dynamic} answerSource - the PlaybackInfo answer's MediaSource, or invalid
+' @param {string} blocker - an UpstreamManifestBlocker value for the source
+' @param {boolean} deviceLoadsUpstream - the device's check that it can load the manifest URL
+' @param {boolean} triesLevelOverride - triesDirectPlayOverLevel()'s answer for this load
+' @returns {boolean}
+function playsServerTranscode(answerSource as dynamic, blocker as string, deviceLoadsUpstream as boolean, triesLevelOverride as boolean) as boolean
+  if not isValid(answerSource) or not isValidAndNotEmpty(answerSource.TranscodingUrl) then return false
+  serverAllowed = isBooleanTrue(answerSource.SupportsDirectPlay)
+  if serverAllowed or not serverAnswerPlays(blocker, deviceLoadsUpstream, serverAllowed) then return false
+  return not triesLevelOverride
+end function
+
 ' True when picks made from the probed streams differ from what a transcode answer was built
 ' with, so that answer has to be asked for again. A direct play answer never does: the device
 ' plays the source itself and switches tracks on its own.

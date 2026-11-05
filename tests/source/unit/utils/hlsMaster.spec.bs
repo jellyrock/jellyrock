@@ -113,13 +113,13 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("reencodeCapDecision")
+    @describe("h264CapDecision")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("caps H.264 above 1080p")
     function _()
       body = m.master("CODECS=" + chr(34) + "avc1.640033,ac-3" + chr(34) + ",RESOLUTION=3840x2160")
-      decision = reencodeCapDecision({ code: 200, body: body }, true)
+      decision = h264CapDecision({ code: 200, body: body }, true, true)
 
       m.assertTrue(decision.cap)
       m.assertEqual(decision.reason, "h264AboveCeiling")
@@ -129,28 +129,28 @@ namespace tests
     @it("keeps HEVC at 4K")
     function _()
       body = m.master("CODECS=" + chr(34) + "hvc1.2.4.L153.B0,ac-3" + chr(34) + ",RESOLUTION=3840x2160")
-      decision = reencodeCapDecision({ code: 200, body: body }, true)
+      decision = h264CapDecision({ code: 200, body: body }, true, true)
 
       m.assertFalse(decision.cap)
       m.assertEqual(decision.reason, "playable")
     end function
 
-    @it("caps a source above 1080p when the playlist did not arrive")
+    @it("caps a re-encode of a source above 1080p when the playlist did not arrive")
     function _()
-      decision = reencodeCapDecision(invalid, true)
+      decision = h264CapDecision(invalid, true, true)
 
       m.assertTrue(decision.cap)
       m.assertEqual(decision.reason, "playlistUnread")
     end function
 
-    @it("caps a source above 1080p when the playlist answered with an error")
+    @it("caps a re-encode of a source above 1080p when the playlist answered with an error")
     function _()
-      m.assertTrue(reencodeCapDecision({ code: 500, body: "" }, true).cap)
+      m.assertTrue(h264CapDecision({ code: 500, body: "" }, true, true).cap)
     end function
 
-    @it("caps a source above 1080p when the playlist cannot be read")
+    @it("caps a re-encode of a source above 1080p when the playlist cannot be read")
     function _()
-      decision = reencodeCapDecision({ code: 200, body: "<html>502 Bad Gateway</html>" }, true)
+      decision = h264CapDecision({ code: 200, body: "<html>502 Bad Gateway</html>" }, true, true)
 
       m.assertTrue(decision.cap)
       m.assertEqual(decision.reason, "playlistUnparsed")
@@ -158,8 +158,76 @@ namespace tests
 
     @it("keeps the answer for a source at or below 1080p when the playlist did not arrive")
     function _()
-      m.assertFalse(reencodeCapDecision(invalid, false).cap)
-      m.assertFalse(reencodeCapDecision({ code: 200, body: "garbage" }, false).cap)
+      m.assertFalse(h264CapDecision(invalid, false, true).cap)
+      m.assertFalse(h264CapDecision({ code: 200, body: "garbage" }, false, true).cap)
+    end function
+
+    @it("caps a first request that the playlist declares H.264 above 1080p")
+    function _()
+      body = m.master("CODECS=" + chr(34) + "avc1.640033,ac-3" + chr(34) + ",RESOLUTION=3840x2160")
+      decision = h264CapDecision({ code: 200, body: body }, true, false)
+
+      m.assertTrue(decision.cap)
+      m.assertEqual(decision.reason, "h264AboveCeiling")
+    end function
+
+    @it("keeps a first request's answer when its playlist did not arrive, since the video may be copied")
+    function _()
+      decision = h264CapDecision(invalid, true, false)
+
+      m.assertFalse(decision.cap)
+      m.assertEqual(decision.reason, "playlistUnread")
+    end function
+
+    @it("keeps a first request's answer when its playlist cannot be read")
+    function _()
+      decision = h264CapDecision({ code: 200, body: "<html>502 Bad Gateway</html>" }, true, false)
+
+      m.assertFalse(decision.cap)
+      m.assertEqual(decision.reason, "playlistUnparsed")
+      m.assertFalse(h264CapDecision({ code: 500, body: "" }, true, false).cap)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("h264OutputCheck")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads the playlist on the re-encode retry, whatever the source's size")
+    function _()
+      m.assertTrue(h264OutputCheck(true, 0, false, true).read)
+      m.assertTrue(h264OutputCheck(true, 0, true, true).read)
+    end function
+
+    @it("reads the playlist on a first request for a source beyond the ceiling")
+    function _()
+      check = h264OutputCheck(true, 0, true, false)
+
+      m.assertTrue(check.read)
+      m.assertEqual(check.reason, "")
+    end function
+
+    @it("skips a first request for a source within the ceiling")
+    function _()
+      check = h264OutputCheck(true, 0, false, false)
+
+      m.assertFalse(check.read)
+      m.assertEqual(check.reason, "withinCeiling")
+    end function
+
+    @it("skips under a viewer cap at or below 1080p, and reads above it")
+    function _()
+      m.assertEqual(h264OutputCheck(true, 1080, true, true).reason, "viewerCap")
+      m.assertEqual(h264OutputCheck(true, 720, true, false).reason, "viewerCap")
+      m.assertTrue(h264OutputCheck(true, 2160, true, false).read)
+    end function
+
+    @it("skips a load that does not play the transcode, before any other reason")
+    function _()
+      ' The level override's direct play, or the device playing the upstream link.
+      check = h264OutputCheck(false, 720, true, true)
+
+      m.assertFalse(check.read)
+      m.assertEqual(check.reason, "notPlayed")
     end function
 
   end class

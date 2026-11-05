@@ -36,6 +36,11 @@ const MAX_HLS_PLAYLIST_ENTRIES = 5000
 ' seq_level_idx starts at 0 for level 2.0).
 const NO_VIDEO_LEVEL = -1
 
+' The largest H.264 picture a Roku decodes (AVC level 4.2): a larger one fails direct play with
+' "Image width too high", and over HLS it never starts. exceedsH264Ceiling reads these.
+const H264_MAX_WIDTH = 1920
+const H264_MAX_HEIGHT = 1080
+
 ' Most channels DTS is played at without the server converting it: the DTS core's 5.1.
 ' Roku's media spec documents DTS passthrough and no DTS-HD or DTS:X, which is all that
 ' carries more. Shared by the device profile (getActualCodecSupport) and the mid-play
@@ -1569,24 +1574,7 @@ function isWithinH264HardwareCeiling(videoStream as object) as boolean
   if not isValid(videoStream) or not isValid(videoStream.codec) then return false
   if videoStream.codec <> "h264" then return true
 
-  sourceHeight = 0
-  sourceWidth = 0
-
-  if isValid(videoStream.Height)
-    sourceHeight = videoStream.Height
-    if type(sourceHeight) = "roString" or type(sourceHeight) = "String"
-      sourceHeight = sourceHeight.toInt()
-    end if
-  end if
-
-  if isValid(videoStream.Width)
-    sourceWidth = videoStream.Width
-    if type(sourceWidth) = "roString" or type(sourceWidth) = "String"
-      sourceWidth = sourceWidth.toInt()
-    end if
-  end if
-
-  return sourceHeight <= 1080 and sourceWidth <= 1920
+  return not exceedsH264Ceiling(videoStream.Width, videoStream.Height)
 end function
 
 ' @param {dynamic} caps - the viewer's quality caps for this playback (playbackCaps.bs); a
@@ -1924,4 +1912,76 @@ function calculateOptimalTranscodingParams(bitrateBps as longinteger, videoDurat
   maxBitrate& = (segmentBudget& * 8&) \ segmentLength
 
   return { segmentLength: segmentLength, maxBitrate: maxBitrate& }
+end function
+
+' exceedsH264Ceiling: Whether a video size is beyond what a Roku decodes as H.264 (1920x1080).
+'
+' The one source of truth for that ceiling: every check of a size against it asks this, so the
+' ceiling changes only in H264_MAX_WIDTH and H264_MAX_HEIGHT.
+' A size arriving as a string is read as a number, and a missing size counts as 0, so it is within.
+'
+' @param {dynamic} width - a MediaStream Width
+' @param {dynamic} height - a MediaStream Height
+' @return {boolean} true when wider than 1920 or taller than 1080
+function exceedsH264Ceiling(width as dynamic, height as dynamic) as boolean
+  return mediaNumber(width) > H264_MAX_WIDTH or mediaNumber(height) > H264_MAX_HEIGHT
+end function
+
+' prefersHevcTranscode: Whether a transcode of this source should list HEVC before H.264.
+'
+' The server takes the first codec in a transcoding profile's VideoCodec it may encode. A server
+' that does not encode HEVC (Jellyfin's default) falls through to H.264, so HEVC first costs
+' nothing there, while a server that does encode it keeps a source H.264 cannot carry. That is a
+' source beyond the H.264 ceiling (exceedsH264Ceiling), or an HDR one the TV can show, which the
+' profile's H.264 range types (SDR only) cannot carry. The re-encode retry always asks for it.
+'
+' @param {dynamic} videoStream - the source's video MediaStream, or invalid
+' @param {dynamic} hevcRangeTypes - the "|" list of VideoRangeType values the device profile allows
+'                        for HEVC (hevcRangeTypesOfProfile), "" when the profile sends none, or
+'                        invalid when the device does not decode HEVC
+' @param {boolean} disallowVideoCopy - the retry that asks the server to re-encode the video
+' @return {boolean} true to list HEVC first
+function prefersHevcTranscode(videoStream as dynamic, hevcRangeTypes as dynamic, disallowVideoCopy as boolean) as boolean
+  if not isValid(hevcRangeTypes) then return false
+  if disallowVideoCopy then return true
+  if not isValid(videoStream) then return false
+
+  if exceedsH264Ceiling(videoStream.Width, videoStream.Height) then return true
+
+  rangeType = ""
+  if isValid(videoStream.VideoRangeType) then rangeType = videoStream.VideoRangeType
+  rangeTypeLower = LCase(rangeType)
+  isHdr = isValid(videoStream.VideoRange) and LCase(videoStream.VideoRange) = "hdr"
+  if rangeTypeLower <> "" and rangeTypeLower <> "sdr" and rangeTypeLower <> "doviwithsdr" and rangeTypeLower <> "unknown" then isHdr = true
+  if not isHdr then return false
+
+  allowed = []
+  for each allowedType in hevcRangeTypes.split("|")
+    allowed.push(LCase(allowedType))
+  end for
+  if rangeType <> ""
+    return arrayHasValue(allowed, LCase(rangeType))
+  end if
+  for each allowedType in allowed
+    if allowedType <> "sdr" and allowedType <> "doviwithsdr" and allowedType <> "" then return true
+  end for
+  return false
+end function
+
+' hevcRangeTypesOfProfile: The VideoRangeType values a device profile allows for HEVC.
+'
+' @param {dynamic} deviceProfile - a device profile (getDeviceProfile)
+' @return {dynamic} the "|" list ("" when the HEVC codec profile sends no range types, as on a
+'                  server before 10.9), or invalid when the profile has no HEVC codec profile
+function hevcRangeTypesOfProfile(deviceProfile as dynamic) as dynamic
+  if not isValid(deviceProfile) or not isValid(deviceProfile.CodecProfiles) then return invalid
+  for each codecProfile in deviceProfile.CodecProfiles
+    if isValid(codecProfile.Codec) and isValid(codecProfile.Type) and codecProfile.Type = "Video" and inStr(1, LCase(codecProfile.Codec), "hevc") > 0
+      for each condition in codecProfile.Conditions
+        if condition.Property = "VideoRangeType" then return condition.Value
+      end for
+      return ""
+    end if
+  end for
+  return invalid
 end function

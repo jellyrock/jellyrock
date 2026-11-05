@@ -875,19 +875,53 @@ It shows today, one video early. The Repeat One pick is a gear press during the 
 
 Close it by deciding "leaving an intro" from the item that ended rather than from the target's tag, with a unit case for Repeat One at an intro's end. Found reviewing the intro-slot fix that followed #1308.
 
-#### A normal transcode of a 4K source on a default server is 4K H.264, beyond Roku's AVC level `[fid: first-transcode-4k-h264-beyond-roku]` `[captured 2026-11-03]` `[prompt: /snag A normal transcode of a 4K source on a server without HEVC encoding comes out as 4K H.264, beyond Roku's AVC level 4.2]`
-
-A full transcode of a source bigger than 1080p on a server that does not encode HEVC (Jellyfin's default, `AllowHevcEncoding` off) comes out as 4K H.264, which Roku cannot decode. The video transcoding profile in `getTranscodingProfiles` (`source/utils/deviceCapabilities.bs`) lists `h264` before `hevc` and sends `h264-level=42`; the server encodes `3840x2160` anyway and tags it level 4.2. Measured 2026-11-04 on a Roku Ultra against a 12.2 server: direct 4K H.264 files fail with "Image width too high", 4K H.264 re-encodes at 24 and 30 fps and 15 and 40 Mbps never leave buffering (one encoded at 1.36x real time), and through the app the player reports playing at position 0 with no error; a 1080p re-encode plays. (A 4K re-encode at 24 fps first recorded on 2026-11-03 as playing was a misread: its position never moved.) The re-encode retry (decision `remux-overflow-reencode-retry`) caps its own H.264 at 1080p by reading the master playlist; a first, normal transcode does not. The fix is being built on a branch stacked on this one.
-
 #### No audit of what the app does, and shows, for a user the server's access policy restricts `[fid: user-access-policy-ux-audit]` `[captured 2026-11-05]`
 
-The app loads the user's access policy (`SessionDataTransformer` maps `EnableVideoPlaybackTranscoding`, `EnablePlaybackRemuxing` and more onto `m.global.user.policy`), but no playback code reads most of it. So every fallback that asks the server for a transcode can ask for one the policy forbids: the retry that forces a transcode after a failed direct play, and since PR #1318 the re-encode retry after a `buffer:loop:` overflow (`chooseErrorRetry()`, `capReencodedResolution()`). A restricted user then sees whatever error the refused request yields, not one that says why. What the server actually answers in that case was not checked.
+The app loads the user's access policy (`SessionDataTransformer` maps `EnableVideoPlaybackTranscoding`, `EnablePlaybackRemuxing` and more onto `m.global.user.policy`), but no playback code reads most of it. So every fallback that asks the server for a transcode can ask for one the policy forbids: the retry that forces a transcode after a failed direct play, and since PR #1318 the re-encode retry after a `buffer:loop:` overflow (`chooseErrorRetry()`, `capH264Resolution()`, whose second `PlaybackInfo` request since PR #1323 also runs on a first request). A restricted user then sees whatever error the refused request yields, not one that says why. What the server actually answers in that case was not checked.
 
 Found in review of PR #1318. The user ruled out a one-off policy check on the re-encode retry: the gap needs a proper audit of user access and its UX instead. Close it with an audit that lists each policy field the server enforces, which app features and fallbacks each one affects, what the server answers when a request crosses it (measured on a server with the policy off), and what the user should see, then file the fixes it finds.
 
 #### File an enhancement issue for an on-screen log overlay `[fid: log-screen-overlay-issue]` `[captured 2026-11-05]`
 
 **File an enhancement issue for an on-screen log overlay in debug builds.** The old roku-log `ScreenTransport` drew the latest lines over the UI; it was deleted in #986 because nothing used it (its code is in git history, in roku-log 0.11.1's `src/components/ScreenTransport.bs`). The maintainer sees value in it beyond the console: RTA screenshots would show the log beside the screen. Draft the issue and show it before filing.
+
+#### A live channel beyond the H.264 ceiling buffers forever, from its upstream link or the server's stream `[fid: live-4k-h264-no-1080p-check]` `[captured 2026-11-05]`
+
+A live channel beyond the H.264 ceiling never plays when the device plays its upstream link. Measured 2026-11-05 on a Roku Ultra with a 4K output mode, against a live `M3U` channel serving H.264 High@5.1 at `3840x2160` (the local test servers' HLS fixture). The load found no blocker (`getUpstreamManifestBlocker` NONE, `deviceLoadsUpstream` true) and direct-played the upstream HLS link, so the server never transcoded it. That held on a server that does not encode HEVC and on 12.4 with `NVENC` and HEVC encoding on alike. The player then sat in `buffer` at position 0 for the 45 s watched, and the transcode fallback (`isTranscodeAvailable`) never ran, because nothing failed.
+
+The same channel has a second path to the same hang, found by reading the code and not yet measured: when the load plays the server's stream instead (a blocker such as the user policy's remote-source transcoding, or a link the device cannot load), the server re-encodes the video to H.264 at the source's size on a server that does not encode HEVC, and nothing caps it. A live load has no playlist check (`capH264Resolution` skips it), and HEVC first never fires for a channel that lists no streams, so a hardware HEVC server sends 4K H.264 too.
+
+Two facts limit the fix. The channel item lists no media streams before it opens (seen on 10.9.11 and 12.4), so no check can read its size from the item, and the HEVC first rule from PR #1323 never fires for such a channel. And a file's 1080p check (`LoadVideoContentTask.capH264Resolution`) does not fit live: its second `PlaybackInfo` would open a second live stream.
+
+Not done in PR #1323: the gap is in live playback, which that PR does not change, and the fix is a design choice. For the upstream link, read the upstream playlist's `CODECS` and `RESOLUTION` before playing it (`hlsMasterVariant()` on the upstream master, where one exists) and send the stream through the server when it is H.264 beyond the ceiling. For the server's stream, read its master playlist the same way and, when it declares H.264 beyond the ceiling, close that live stream before asking again at 1080p. A stall fallback that moves to a capped server stream would cover both. Then check a 4K H.264 channel plays on both server setups, through the upstream link and through the server.
+
+#### With a level setting on, a direct play the decoder never starts hangs at position 0 with no fallback `[fid: level-override-direct-play-hangs-no-fallback]` `[captured 2026-11-05]` `[pinned]`
+
+With `playbackTryDirectHevcProfileLevel` or `playbackTryDirectH264ProfileLevel` on, a source whose only transcode reason is `VideoLevelNotSupported` is direct-played (`triesDirectPlayOverLevel()` in `source/utils/streamSelection.bs`), with the transcode as its fallback (`isTranscodeAvailable`). When the decoder never starts that play, the player reports playing at position 0 indefinitely and the fallback never runs.
+
+Measured 2026-11-05 against 12.4, override on, each case a cold start and a deep-link play: on a Roku Ultra `4850X` (OS 16.0.4, 4K output) a 4K HEVC clip tagged level 6.1, whose stream fits level 5.0, sat at `play`, position 0, for 45 s and for 75 s with no fallback. In the same runs the override helped: the Ultra and the Streaming Stick 4K `3820RW` direct-played a 1080p H.264 clip tagged 5.1 (device level 4.2), and the Ultra a 4K HEVC clip tagged 5.2. The Roku Stick `3600X` refused the H.264 5.1 clip with `-3 ... no memory` after 0.6 s, and its fallback transcode played. So decoders look past an inflated tag within limits the docs do not state, and the setting only helps users who find it.
+
+Root cause: the transcode retry runs only from the `error` branch of `VideoPlayerView`'s state handler (`chooseErrorRetry()`), and the one stall watchdog (`bufferCheck()`) starts only in `buffering`. A play the decoder never starts reports neither. The override and its error-only fallback are in the fork's initial commit, and live and upstream-link direct plays share the same fallback (followup `live-4k-h264-no-1080p-check`).
+
+The same gap covers a file transcode. On a first request, `h264CapDecision()` keeps the answer when the master playlist cannot be read, since the video may be copied, so a 4K H.264 answer then plays and hangs the same way. Measured 2026-11-05 on 12.4 with software encoding, the read is rarely the cause: 20 of 20 answered in a median of 11 ms idle, and 30 of 30 in a median of 21 ms (max 51 ms) while the server encoded 4K at about 8 cores, against the 3 s `timeouts.HLS_MASTER_PROBE_MS`; every line from 10.7.7 to 12.4 declares `CODECS` and `RESOLUTION`. Only a network fault during the read leads there. A start watchdog whose retry asks again with a 1080p cap would cover it.
+
+Options:
+
+- `auto` (recommended): remove both settings; when the server's only reason is the level and the stream's own size, frame rate and bitrate fit the device's level, try direct play for everyone, backed by a start watchdog (the position must move within a measured window, or the load retries through the transcode) and the existing error fallback. Touches the settings, a registry migration to clear the saved keys, the strings and user docs, `triesDirectPlayOverLevel()`, a pure watchdog rule with tests, `VideoPlayerView`, `playback.md` and a decision record. Risk: artifacts no check sees, and a failed try costs the watchdog window before the transcode.
+- `startwatch`: keep the opt-in settings and add only the watchdog.
+- `remove`: remove both settings and always transcode on a level mismatch.
+
+Not done in PR #1323: it is its own change (settings removal, migration, docs, watchdog), and the hang predates the PR.
+
+Not checked:
+
+- whether the picture was correct: a moving position is not a clean picture, and Roku can't capture the video plane;
+- real files whose encoders inflated the tag (all the test clips are synthetic);
+- other Roku models and OS versions;
+- how long a healthy direct play takes to move on the slowest supported Roku, which a watchdog's window depends on;
+- whether the Ultra errors on its own after more than 75 s.
+
+Tracked publicly in [#1330](https://github.com/jellyrock/jellyrock/issues/1330).
 
 ### source
 
@@ -1155,6 +1189,10 @@ After a slow silent seek on a SyncPlay member, the `Ready` goes out at the `play
 #### Send logs to the user's Jellyfin server (epic) `[fid: log-upload-to-server]` `[captured 2026-11-05]`
 
 **Let a user send the app's logs to their own Jellyfin server.** `POST /ClientLog/Document` takes `text/plain` up to 1,000,000 bytes and returns `{ FileName }`; it exists from 10.8.0 (absent at 10.7.7) and answers 403 when the server's `AllowClientLogUpload` is off, which defaults to on (checked in Jellyfin's source at `v10.11.0`, 2026-11-05). Jellyfin's Android TV client uses it for crash reports. Open questions: a production build strips every `m.log` call, so decide what it keeps (for example warn and error into a bounded buffer) and budget it against the thread-crossing cost model; the 10.8.0 guard and its endpoint-availability ledger entry; masking addresses and names on upload (followup `log-redact-secrets`). Next step: draft the epic issue and show it to the maintainer before filing.
+
+#### A 4K H.264 source is re-encoded at 1080p even on a hardware HEVC server `[fid: h264-source-cap-limits-hevc]` `[captured 2026-11-05]`
+
+An H.264 source caps the H.264 codec profile at `1920x1080` in `buildPlaybackInfoPostData` (`source/api/items.bs`, the block that caps the H.264 codec profile for an H.264 source), and Jellyfin applies a codec profile's width and height to the whole transcode, so a 4K H.264 source is re-encoded at 1080p even on a server that encodes HEVC in hardware and could keep 4K. Seen 2026-11-04 on a Roku Ultra against Jellyfin 12.4 with `NVENC`: a 4K H.264 source re-encoded as HEVC at `1920x1080`. Rare (4K H.264 sources are uncommon). Not done in PR #1323 because it needs its own device check on two server setups. Fix by dropping that cap where `capH264Resolution` already guards H.264 output, then check a 4K H.264 source keeps 4K on a hardware HEVC server and gets 1080p H.264 on a default one.
 
 ### api
 

@@ -80,4 +80,76 @@ namespace serverCapabilities
     return status <> serverCapabilities.STATUS_UNAVAILABLE
   end function
 
+  ' A JSON string or boolean arrives as a boxed roString or roBoolean, and a literal as a bare one.
+  function isStringValue(value as dynamic) as boolean
+    return type(value) = "String" or type(value) = "roString"
+  end function
+
+  function isBooleanValue(value as dynamic) as boolean
+    return type(value) = "Boolean" or type(value) = "roBoolean"
+  end function
+
+  ' encodingPolicyFrom: The encoder settings that decide the codec order, from a
+  ' GET /System/Configuration/encoding reply.
+  '
+  ' All three fields or none: a half-read policy would let serverEncodesHevcInHardware() answer
+  ' for settings it never saw. The one exception is a missing HardwareAccelerationType, which
+  ' reads as "none": servers before 10.10 leave it out until an admin saves the Transcoding page,
+  ' and their dashboard treats a missing value as no hardware acceleration, as it does its own
+  ' "None" (""). Storing it keeps such a server from being asked again on every play.
+  '
+  ' @param {object} res - fetchRes or fetchAsync result { ok, json }
+  ' @return {dynamic} { HardwareAccelerationType, EnableHardwareEncoding, AllowHevcEncoding }, or
+  '                   invalid when the reply does not answer it
+  function encodingPolicyFrom(res as object) as dynamic
+    if not isValid(res) or res.ok <> true or not isValid(res.json) then return invalid
+
+    hardwareType = res.json.HardwareAccelerationType
+    if not isValid(hardwareType) then hardwareType = "none"
+    enableHardware = res.json.EnableHardwareEncoding
+    allowHevc = res.json.AllowHevcEncoding
+    if not serverCapabilities.isStringValue(hardwareType) then return invalid
+    if not serverCapabilities.isBooleanValue(enableHardware) then return invalid
+    if not serverCapabilities.isBooleanValue(allowHevc) then return invalid
+
+    return { HardwareAccelerationType: hardwareType, EnableHardwareEncoding: enableHardware, AllowHevcEncoding: allowHevc }
+  end function
+
+  ' recordEncodingPolicy: Store a reply's encoder settings on m.global.server.
+  '
+  ' An unanswered reply is not stored, so a failed read is retried by the next load instead of
+  ' being remembered for the rest of the session.
+  '
+  ' @param {object} res - fetchRes or fetchAsync result { ok, json }
+  ' @return {dynamic} the policy stored, or invalid
+  function recordEncodingPolicy(res as object) as dynamic
+    policy = serverCapabilities.encodingPolicyFrom(res)
+    if isValid(policy) then m.global.server.encodingPolicy = policy
+    return policy
+  end function
+
+  ' serverEncodesHevcInHardware: Whether the server's own settings say it encodes HEVC in hardware.
+  '
+  ' True only when HEVC encoding is allowed, hardware encoding is on and the acceleration type
+  ' is a hardware one (anything but "none"). A policy that is unknown (not read, or a field
+  ' missing or of the wrong type) is false, which keeps H.264 first.
+  '
+  ' Hardware only because software HEVC measured below real time (libx265 at 0.54x to 0.74x on
+  ' the test server, 2026-11-04) and stalled where H.264 plays. A faster CPU may manage it, which
+  ' a later stall fallback can try.
+  '
+  ' @param {dynamic} encodingPolicy - m.global.server.encodingPolicy, or invalid when not read
+  ' @return {boolean}
+  function serverEncodesHevcInHardware(encodingPolicy as dynamic) as boolean
+    if type(encodingPolicy) <> "roAssociativeArray" then return false
+    if not serverCapabilities.isBooleanValue(encodingPolicy.AllowHevcEncoding) then return false
+    if not serverCapabilities.isBooleanValue(encodingPolicy.EnableHardwareEncoding) then return false
+    if encodingPolicy.AllowHevcEncoding <> true or encodingPolicy.EnableHardwareEncoding <> true then return false
+
+    hardwareType = encodingPolicy.HardwareAccelerationType
+    if not serverCapabilities.isStringValue(hardwareType) then return false
+    hardwareType = LCase(hardwareType.trim())
+    return hardwareType <> "" and hardwareType <> "none"
+  end function
+
 end namespace
