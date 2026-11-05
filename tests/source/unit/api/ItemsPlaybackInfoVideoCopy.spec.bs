@@ -176,15 +176,32 @@ namespace tests
       m.assertHevcFirst(m.buildFor(1920, 1080, "SDR", true))
     end function
 
-    @it("keeps h264 first for a 1080p SDR source")
+    @it("keeps h264 first for a 1080p SDR source even when the server encodes HEVC in hardware")
     function _()
-      profiles = m.videoTranscodingProfiles(m.buildFor(1920, 1080, "SDR"))
+      m.setServerPolicy("nvenc", true, true)
+      m.assertH264First(m.buildFor(1920, 1080, "SDR"))
+    end function
 
-      m.assertTrue(profiles.count() > 0, "the fixture needs a video transcoding profile")
-      for each profile in profiles
-        codecs = profile.VideoCodec.split(",")
-        m.assertTrue(codecIndex(codecs, "h264") < codecIndex(codecs, "hevc"), "h264 stays first in " + profile.VideoCodec)
-      end for
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isUsablePlaybackInfoResponse")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("accepts an answer that lists a media source")
+    function _()
+      m.assertTrue(isUsablePlaybackInfoResponse({ ok: true, json: { MediaSources: [{ Id: "a" }] } }))
+    end function
+
+    @it("rejects no answer, a failed request, or an answer with no media source")
+    function _()
+      m.assertFalse(isUsablePlaybackInfoResponse(invalid))
+      m.assertFalse(isUsablePlaybackInfoResponse({ ok: false, json: { MediaSources: [{ Id: "a" }] } }))
+      m.assertFalse(isUsablePlaybackInfoResponse({ ok: true, json: invalid }))
+      m.assertFalse(isUsablePlaybackInfoResponse({ ok: true, json: { MediaSources: [] } }))
+    end function
+
+    @it("rejects an answer that names an error")
+    function _()
+      m.assertFalse(isUsablePlaybackInfoResponse({ ok: true, json: { MediaSources: [{ Id: "a" }], ErrorCode: "NoCompatibleStream" } }))
     end function
 
   end class

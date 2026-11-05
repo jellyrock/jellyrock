@@ -140,7 +140,6 @@
  *
  * Allowed call sites:
  *  - `source/utils/tasks.bs`   (the wrapper itself)
- *  - `components/vendor/**`    (vendored third-party code we don't author)
  *
  * Escape hatch, followed by the reason:
  *  - `' bsc-disable-line no-task-fanout` on the offending line
@@ -154,7 +153,6 @@ const brighterscript = require('brighterscript');
 const { bareCallName, isLaunchTaskCall, functionsIn } = require('../lib/bsc-rule.cjs');
 
 const ALLOWED_DEST_PATHS = new Set(['source/utils/tasks.bs', 'source/utils/tasks.brs']);
-const EXCLUDED_DEST_PREFIXES = ['components/vendor/'];
 const DISABLE_LINE_MARKER = /'\s*bsc-disable-line\s+no-task-fanout\b/i;
 const DISABLE_NEXT_LINE_MARKER = /'\s*bsc-disable-next-line\s+no-task-fanout\b/i;
 
@@ -411,7 +409,6 @@ class NoTaskFanoutPlugin {
 
       const destPath = (file.destPath || '').replace(/\\/g, '/');
       if (ALLOWED_DEST_PATHS.has(destPath)) return;
-      if (EXCLUDED_DEST_PREFIXES.some((prefix) => destPath.startsWith(prefix))) return;
 
       const sourceLines = (file.fileContents || '').split(/\r?\n/);
 

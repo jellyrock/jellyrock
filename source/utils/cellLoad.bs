@@ -1,4 +1,4 @@
-import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/logging/Logger.bs"
 
 ' The cell-load ledger: how much work did a screen's CELLS do, and how much of it was waste?
 '

@@ -1,0 +1,64 @@
+import "pkg:/source/utils/streamSelection.bs"
+
+namespace tests
+
+  @suite("streamSelection.bs - triesDirectPlayOverLevel()")
+  class TriesDirectPlayOverLevelTests extends tests.BaseTestSuite
+
+    private function settings(tryH264 as boolean, tryHevc as boolean) as object
+      return { playbackTryDirectH264ProfileLevel: tryH264, playbackTryDirectHevcProfileLevel: tryHevc }
+    end function
+
+    private function answer(codec as string, width as integer, height as integer, reasons as string) as object
+      return {
+        SupportsDirectPlay: false,
+        TranscodingUrl: "/videos/x/master.m3u8?VideoCodec=h264&TranscodeReasons=" + reasons,
+        MediaStreams: [{ Type: "Audio", Index: 1 }, { Type: "Video", Index: 0, codec: codec, Width: width, Height: height }]
+      }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("triesDirectPlayOverLevel")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("tries direct play of a 4K HEVC source whose one reason is its level")
+    function _()
+      m.assertTrue(triesDirectPlayOverLevel(m.answer("hevc", 3840, 2160, "VideoLevelNotSupported"), m.settings(false, true), false))
+    end function
+
+    @it("does not once a 1080p cap has added a resolution reason, which is why the load decides first")
+    function _()
+      m.assertFalse(triesDirectPlayOverLevel(m.answer("hevc", 3840, 2160, "VideoLevelNotSupported,VideoResolutionNotSupported"), m.settings(false, true), false))
+    end function
+
+    @it("tries direct play of a 1080p H.264 source whose one reason is its level")
+    function _()
+      m.assertTrue(triesDirectPlayOverLevel(m.answer("h264", 1920, 1080, "VideoLevelNotSupported"), m.settings(true, false), false))
+    end function
+
+    @it("does not for an H.264 source beyond the ceiling")
+    function _()
+      m.assertFalse(triesDirectPlayOverLevel(m.answer("h264", 3840, 2160, "VideoLevelNotSupported"), m.settings(true, true), false))
+    end function
+
+    @it("does not when the setting for that codec is off")
+    function _()
+      m.assertFalse(triesDirectPlayOverLevel(m.answer("hevc", 3840, 2160, "VideoLevelNotSupported"), m.settings(true, false), false))
+      m.assertFalse(triesDirectPlayOverLevel(m.answer("h264", 1920, 1080, "VideoLevelNotSupported"), m.settings(false, true), false))
+    end function
+
+    @it("does not on the retry that forces a transcode")
+    function _()
+      m.assertFalse(triesDirectPlayOverLevel(m.answer("hevc", 3840, 2160, "VideoLevelNotSupported"), m.settings(true, true), true))
+    end function
+
+    @it("does not for an answer with no TranscodingUrl, no video stream, or no answer")
+    function _()
+      m.assertFalse(triesDirectPlayOverLevel({ SupportsDirectPlay: true, MediaStreams: [{ Type: "Video", codec: "hevc" }] }, m.settings(true, true), false))
+      m.assertFalse(triesDirectPlayOverLevel({ TranscodingUrl: "/x?TranscodeReasons=VideoLevelNotSupported", MediaStreams: [] }, m.settings(true, true), false))
+      m.assertFalse(triesDirectPlayOverLevel(invalid, m.settings(true, true), false))
+    end function
+
+  end class
+
+end namespace

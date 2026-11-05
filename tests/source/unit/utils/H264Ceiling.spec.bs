@@ -2,7 +2,7 @@ import "pkg:/source/utils/deviceCapabilities.bs"
 
 namespace tests
 
-  @suite("deviceCapabilities.bs - exceedsH264Ceiling() and prefersHevcTranscode()")
+  @suite("deviceCapabilities.bs - exceedsH264Ceiling(), prefersHevcTranscode() and hevcRangeTypesOfProfile()")
   class H264CeilingTests extends tests.BaseTestSuite
 
     private function stream(width as integer, height as integer, rangeType = "SDR" as string, range = "SDR" as string) as object
@@ -89,6 +89,57 @@ namespace tests
     function _()
       m.assertFalse(prefersHevcTranscode(invalid, "SDR", false))
       m.assertTrue(prefersHevcTranscode(invalid, "SDR", true))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hevcRangeTypesOfProfile")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A device profile shaped like getDeviceProfile's: an H.264 codec profile ahead of the HEVC one,
+    ' each with its own range types, so a lookup that takes the first video profile reads the wrong one.
+    private function profileWithHevc() as object
+      return {
+        CodecProfiles: [
+          { Type: "VideoAudio", Codec: "aac", Conditions: [{ Condition: "LessThanEqual", Property: "AudioChannels", Value: "6" }] },
+          { Type: "Video", Codec: "h264,avc", Conditions: [{ Condition: "EqualsAny", Property: "VideoRangeType", Value: "SDR|DOVIWithSDR" }] },
+          {
+            Type: "Video", Codec: "h265,hevc", Conditions: [
+              { Condition: "EqualsAny", Property: "VideoProfile", Value: "main|main 10" },
+              { Condition: "EqualsAny", Property: "VideoRangeType", Value: "SDR|DOVIWithSDR|HDR10" }
+            ]
+          }
+        ]
+      }
+    end function
+
+    @it("reads the HEVC codec profile's range types, not the H.264 profile's ahead of it")
+    function _()
+      m.assertEqual(hevcRangeTypesOfProfile(m.profileWithHevc()), "SDR|DOVIWithSDR|HDR10")
+    end function
+
+    @it("is empty when the profile was stripped of range types for a server before 10.9")
+    function _()
+      profile = m.profileWithHevc()
+      profile.CodecProfiles = filterCodecProfileConditions(profile.CodecProfiles, ["VideoRangeType"])
+
+      rangeTypes = hevcRangeTypesOfProfile(profile)
+      m.assertEqual(rangeTypes, "")
+      ' A server before 10.9 still gets HEVC first for a 4K source, and never for HDR alone.
+      m.assertTrue(prefersHevcTranscode(m.stream(3840, 2160), rangeTypes, false))
+      m.assertFalse(prefersHevcTranscode(m.stream(1920, 1080, "HDR10", "HDR"), rangeTypes, false))
+    end function
+
+    @it("is invalid when the device decodes no HEVC")
+    function _()
+      profile = m.profileWithHevc()
+      profile.CodecProfiles.pop()
+      m.assertInvalid(hevcRangeTypesOfProfile(profile))
+    end function
+
+    @it("is invalid for no profile or a profile with no codec profiles")
+    function _()
+      m.assertInvalid(hevcRangeTypesOfProfile(invalid))
+      m.assertInvalid(hevcRangeTypesOfProfile({}))
     end function
 
   end class

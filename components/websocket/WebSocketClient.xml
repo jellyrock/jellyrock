@@ -6,8 +6,8 @@
 
   WebSocket client following RFC 6455
 
-  VENDORED into JellyRock (see ./README.md). Modifications vs the pinned upstream SHA:
-    - <script> uris repointed to the vendored path.
+  Adopted into JellyRock (see ./README.md). Modifications against the pinned upstream SHA:
+    - <script> uris point to this folder.
     - Removed TLS/wss:// support: dropped the `secure` field and the TlsUtil.brs script
       (upstream TLS was an unimplemented skeleton; Roku can't do socket TLS; ws:// only).
 -->
@@ -34,8 +34,8 @@
         <field id="close" type="array" alwaysNotify="true" />
     </interface>
 
-    <script type="text/brightscript" uri="pkg:/components/vendor/BrightWebSocket/web_socket_client/WebSocketClient.brs" />
-    <script type="text/brightscript" uri="pkg:/components/vendor/BrightWebSocket/web_socket_client/WebSocketClientTask.brs" />
-    <script type="text/brightscript" uri="pkg:/components/vendor/BrightWebSocket/web_socket_client/Logger.brs" />
-    <script type="text/brightscript" uri="pkg:/components/vendor/BrightWebSocket/web_socket_client/ByteUtil.brs" />
+    <script type="text/brightscript" uri="pkg:/components/websocket/web_socket_client/WebSocketClient.brs" />
+    <script type="text/brightscript" uri="pkg:/components/websocket/web_socket_client/WebSocketClientTask.brs" />
+    <script type="text/brightscript" uri="pkg:/components/websocket/web_socket_client/Logger.brs" />
+    <script type="text/brightscript" uri="pkg:/components/websocket/web_socket_client/ByteUtil.brs" />
 </component>

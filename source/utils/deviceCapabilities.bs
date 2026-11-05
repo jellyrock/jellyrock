@@ -65,6 +65,12 @@ const H264_MAX_HEIGHT = 1080
 ' track switch (isStreamDirectPlayable in streamSelection.bs), so both draw one line.
 const DTS_MAX_DIRECT_PLAY_CHANNELS = 6
 
+' Most channels a surround transcode carries: the server converts multichannel audio to
+' eac3 or ac3 (resolveMultichannelSurroundTarget in items.bs), and Jellyfin's encoders for
+' both stop at 5.1 (_audioTranscodeChannelLookup in its EncodingHelper), whatever
+' MaxAudioChannels says. Raise it only if the server's eac3 encoder ever carries 7.1.
+const SURROUND_TRANSCODE_MAX_CHANNELS = 6
+
 ' Translate Jellyfin codec names to Roku API codec names where they differ.
 ' Covers both audio and video codecs.
 '   "h264"      -> "mpeg4 avc" (Jellyfin uses "h264"; Roku API uses "mpeg4 avc" with a space)
@@ -674,21 +680,14 @@ function getTranscodingProfiles(caps = invalid as dynamic) as object
   ' VIDEO CODEC DETECTION (per container)
   ' ========================================
   '
-  ' Container preference order: ts (HLS-mpegts) first, then mp4 (HLS-fmp4). One
-  ' video transcoding profile is emitted PER container, in this array order, further
-  ' below, so this order IS the emitted profile order, and Jellyfin's StreamBuilder
-  ' picks FirstOrDefault when profile ranks tie. ts-first => the server prefers an
-  ' mpegts-HLS transcode, which is what Roku reliably plays audio for.
-  '
-  ' Do not flip this to mp4-first. fmp4-HLS transcodes produce silent audio on some
-  ' Roku hardware (issue #573 regression: stereo files that played under mpegts went
-  ' silent under fmp4). Upstream jellyfin-roku declares ["mp4","ts"] but only uses
-  ' that loop to accumulate per-container codec strings: it emits its ts video
-  ' profile BEFORE its mp4 one, that is ts-first, the same as here. The #573 empty-codec
-  ' fix lives in buildVideoTranscodingAudioCodecsForContainer (always leads with aac,
-  ' never empty) and optimizeAudioCodecListForSource. It does not depend on container
-  ' order, so this stays ts-first.
-  transcodingContainers = ["ts", "mp4"]
+  ' TS is the only HLS video container offered. Roku's HLS spec does not support
+  ' muxed audio and video in fMP4/CMAF, and Jellyfin's fMP4 HLS muxes both tracks
+  ' into the same fragments, so every fMP4 play has no audio. The server picks a
+  ' transcode profile by its codec ranks and uses array order only to break ties, so
+  ' an mp4 profile gets chosen whenever its longer audio list fits the source. Do not
+  ' add an mp4 HLS video profile back. The #573 empty-codec fix lives in
+  ' buildVideoTranscodingAudioCodecsForContainer (always leads with aac, never empty).
+  transcodingContainers = ["ts"]
   containerVideoCodecs = {}
 
   for each container in transcodingContainers
@@ -734,17 +733,9 @@ function getTranscodingProfiles(caps = invalid as dynamic) as object
   ' Single profile per container with codecs in optimal order
   ' ========================================
 
-  ' Determine max supported audio channels
-  maxAudioChannels = "2" ' default stereo
-  allSurroundCodecs = []
-
-  if eightChannelPassthruCodecs.count() > 0
-    maxAudioChannels = "8"
-    allSurroundCodecs = eightChannelPassthruCodecs
-  else if sixChannelPassthruCodecs.count() > 0
-    maxAudioChannels = "6"
-    allSurroundCodecs = sixChannelPassthruCodecs
-  end if
+  surroundAudio = resolveSurroundTranscodeAudio(eightChannelPassthruCodecs, sixChannelPassthruCodecs)
+  maxAudioChannels = surroundAudio.maxAudioChannels
+  allSurroundCodecs = surroundAudio.surroundCodecs
 
   ' Build per-container audio codec list. The construction logic is in the pure helper
   ' buildVideoTranscodingAudioCodecsForContainer so it can be exhaustively unit-tested
@@ -789,21 +780,54 @@ function getTranscodingProfiles(caps = invalid as dynamic) as object
   return transcodingProfiles
 end function
 
-' Mirror of Jellyfin server's _supportedHlsAudioCodecs* from
-' MediaBrowser.Model/Dlna/StreamBuilder.cs. Codecs outside these per-container sets
+' Mirror of Jellyfin server's _supportedHlsAudioCodecsTs from
+' MediaBrowser.Model/Dlna/StreamBuilder.cs. Codecs outside this set
 ' get silently stripped by the server's HLS-codec filter when building the
 ' TranscodingUrl, leaving an empty AudioCodec field that triggers the server's
 ' InferAudioCodec("m3u8") fallback chain (issue #573). Listing only codecs the
 ' server will actually use as HLS transcode targets keeps the profile honest and
-' prevents the bug class at the construction site.
+' prevents the bug class at the construction site. Any container but "ts" has no
+' targets, since the profile offers no other HLS video container.
 function getHlsTranscodeTargetsForContainer(container as string) as object
   if container = "ts"
     return ["aac", "ac3", "eac3", "mp3"]
   end if
-  if container = "mp4"
-    return ["aac", "ac3", "eac3", "mp3", "alac", "flac", "opus", "dts", "truehd"]
-  end if
   return []
+end function
+
+' The video transcoding profile's channel limit and surround codecs, from the two passthrough probes.
+' Pure, so the profile's audio decision is testable without a real roDeviceInfo.
+'
+' @param eightChannelCodecs - codecs the device passes through at 8 channels
+' @param sixChannelCodecs - codecs the device passes through at 6 channels
+' @returns an AA: maxAudioChannels ("8", "6" or "2") and surroundCodecs (the codecs to offer for surround)
+function resolveSurroundTranscodeAudio(eightChannelCodecs as object, sixChannelCodecs as object) as object
+  maxAudioChannels = "2"
+  if eightChannelCodecs.count() > 0
+    maxAudioChannels = "8"
+  else if sixChannelCodecs.count() > 0
+    maxAudioChannels = "6"
+  end if
+  return { maxAudioChannels: maxAudioChannels, surroundCodecs: mergeSurroundPassthruCodecs(eightChannelCodecs, sixChannelCodecs) }
+end function
+
+' Merges the 8-channel and 6-channel passthrough probes into one surround codec list.
+' AC3 cannot carry more than 5.1, so the 8-channel probe never reports it. The server copies
+' a source codec only when it is in the transcode list, so an AC3 source would be re-encoded
+' unless the 6-channel probe's codecs are added.
+'
+' @param eightChannelCodecs - codecs the device passes through at 8 channels
+' @param sixChannelCodecs - codecs the device passes through at 6 channels
+' @returns the 8-channel codecs in order, then each 6-channel codec not already present
+function mergeSurroundPassthruCodecs(eightChannelCodecs as object, sixChannelCodecs as object) as object
+  merged = []
+  for each codec in eightChannelCodecs
+    merged.push(codec)
+  end for
+  for each codec in sixChannelCodecs
+    if not arrayHasValue(merged, codec) then merged.push(codec)
+  end for
+  return merged
 end function
 
 ' Build the AudioCodec list for a single HLS video transcoding profile container.
@@ -811,14 +835,14 @@ end function
 ' without mocking roDeviceInfo or m.global.
 '
 ' Ordering rules (leftmost is the server's first-choice transcode target):
-'   1. AAC (universal Roku decode, in both ts and mp4 server target sets)
+'   1. AAC (universal Roku decode, in the ts server target set)
 '   2. User's preferredCodec if set, offerable, device-passthru-supported, and server-target
 '   3. Other surround codecs in priority order (eac3 > ac3), each
 '      gated by device passthru AND server-target for this container
 '   4. Stereo fallback codecs the device decodes (mp3 > flac > alac > opus), each
 '      gated by server-target for this container
 '
-' @param container - "ts" or "mp4"
+' @param container - "ts"; any other value returns an empty list
 ' @param allSurroundCodecs - array of surround codec names with device passthrough
 ' @param preferredCodec - user's playbackPreferredMultichannelCodec value, or "auto" / ""
 ' @param decodableStereoFallbacks - stereo fallback codec names the device can decode
@@ -828,14 +852,9 @@ function buildVideoTranscodingAudioCodecsForContainer(container as string, allSu
   serverTargets = getHlsTranscodeTargetsForContainer(container)
   if serverTargets.count() = 0 then return []
 
-  ' dts and truehd are never offered, though the server's fMP4 target set includes
-  ' both. A source codec on this list is COPIED rather than converted, and on a Roku
-  ' Ultra `4850X` both failed copied into fMP4 HLS: DTS played SILENT (a transcode
-  ' forced by bitrate, and a Dolby Vision remux) while the same soundbar plays direct
-  ' DTS with sound; TrueHD failed to start, as it does in direct play (see
-  ' canDecodeAudioInContainer). Nor can the server ENCODE dts (see
-  ' resolveMultichannelSurroundTarget in items.bs). Left off, either source is
-  ' converted to the first surround codec here instead.
+  ' dts and truehd are never offered: neither is a ts HLS target, and the server
+  ' cannot ENCODE dts (see resolveMultichannelSurroundTarget in items.bs). A source
+  ' in either is converted to the first surround codec here instead.
   surroundPriority = ["eac3", "ac3"]
   audioCodecList = []
 
@@ -1980,8 +1999,8 @@ end function
 
 ' exceedsH264Ceiling: Whether a video size is beyond what a Roku decodes as H.264 (1920x1080).
 '
-' The one source of truth for that ceiling: direct play (isWithinH264HardwareCeiling) and the
-' check of the server's answer (needsH264ResolutionCap, capH264Resolution) both ask it.
+' The one source of truth for that ceiling: every check of a size against it asks this, so the
+' ceiling changes only in H264_MAX_WIDTH and H264_MAX_HEIGHT.
 ' A size arriving as a string is read as a number, and a missing size counts as 0, so it is within.
 '
 ' @param {dynamic} width - a MediaStream Width

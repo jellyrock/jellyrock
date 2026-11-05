@@ -390,6 +390,30 @@ namespace tests
       m.assertEqual(rows[2].value, "The audio's channel count needs converting for this device. Caused by the Decode Multichannel Audio setting.")
     end function
 
+    @it("adds a row saying the player asked for the video re-encoded")
+    function _()
+      m.input.videoCopyDisallowed = true
+      rows = m.sectionById(buildPlaybackReport(m.input), "reasons").rows
+
+      m.assertEqual(rows.count(), 2, "the server's reason stays, and ours follows it")
+      m.assertEqual(rows[1].id, "reason.videoCopyDisallowed")
+      m.assertEqual(rows[1].label, "Video re-encoded")
+      m.assertEqual(rows[1].value, "The stream overflowed this device's video buffer, so the player asked for the video re-encoded.")
+    end function
+
+    @it("shows the re-encode row even when the server lists no reason")
+    function _()
+      m.input.videoCopyDisallowed = true
+      m.input.session.TranscodingInfo.TranscodeReasons = []
+
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "reason.videoCopyDisallowed"), "The stream overflowed this device's video buffer, so the player asked for the video re-encoded.")
+    end function
+
+    @it("adds no re-encode row to a normal transcode")
+    function _()
+      m.assertEqual(m.rowValue(buildPlaybackReport(m.input), "reason.videoCopyDisallowed"), "<missing>")
+    end function
+
     @it("gives the reasons section a wide label column for the codes")
     function _()
       m.assertTrue(m.sectionById(buildPlaybackReport(m.input), "reasons").wideLabels)

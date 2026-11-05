@@ -34,6 +34,18 @@ function ItemPostPlaybackInfoResponse(id as string, mediaSourceId = "" as string
   return fetchRes(req, "playbackInfo")
 end function
 
+' isUsablePlaybackInfoResponse: Whether an ItemPostPlaybackInfoResponse() answer can replace the
+' one a load already holds: it arrived, parsed, lists a media source and names no error.
+'
+' @param {dynamic} res - the pool response AA, or invalid
+' @return {boolean}
+function isUsablePlaybackInfoResponse(res as dynamic) as boolean
+  if type(res) <> "roAssociativeArray" or not isBooleanTrue(res.ok) then return false
+  json = res.json
+  if type(json) <> "roAssociativeArray" then return false
+  return isValidAndNotEmpty(json.MediaSources) and not isValidAndNotEmpty(json.ErrorCode)
+end function
+
 ' buildPlaybackInfoPostData: The PlaybackInfo request body, tuned to the version being played.
 '
 ' Split from ItemPostPlaybackInfo so the body can be tested without a server.
@@ -132,18 +144,14 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
   ' only when the server's own settings say it encodes HEVC in hardware: software HEVC measured
   ' below real time and stalled where H.264 plays. A server that does not encode HEVC falls to
   ' H.264 either way (the load then reads the playlist and caps the resolution, see
-  ' LoadVideoContentTask.capH264Resolution). The re-encode retry always lists HEVC first.
+  ' LoadVideoContentTask.capH264Resolution). The re-encode retry always lists HEVC first. Live TV
+  ' follows the same rule, with the settings Home read at sign-in, only when the channel lists its
+  ' video stream: an M3U channel lists none before it opens, so it keeps H.264 first. A live load
+  ' has no playlist check.
   listHevcFirst = disallowVideoCopy
   if not listHevcFirst and serverCapabilities.serverEncodesHevcInHardware(m.global.server.encodingPolicy)
     sourceVideoStream = invalid
-    if isValid(playedSource) and isValid(playedSource.MediaStreams)
-      for each stream in playedSource.MediaStreams
-        if isValid(stream.Type) and stream.Type = "Video"
-          sourceVideoStream = stream
-          exit for
-        end if
-      end for
-    end if
+    if isValid(playedSource) then sourceVideoStream = getFirstVideoStream(playedSource.MediaStreams)
     listHevcFirst = prefersHevcTranscode(sourceVideoStream, hevcRangeTypesOfProfile(postData.DeviceProfile), false)
   end if
   if listHevcFirst
@@ -996,8 +1004,8 @@ end sub
 ' multichannel codec setting (playbackPreferredMultichannelCodec). Clamped to the reliably-
 ' encodeable HLS surround targets: eac3 (default) and ac3. dts is intentionally excluded: the
 ' Jellyfin server emits no audio stream for a dts transcode target (verified on 10.11), so a dts
-' fallback would itself re-trigger the issue #573 failure. Both eac3 and ac3 are valid HLS audio
-' targets in every video transcoding container (ts and mp4), so no per-container clamp is needed.
+' fallback would itself re-trigger the issue #573 failure. Both eac3 and ac3 are valid audio
+' targets in the ts HLS profile, the only video transcoding profile offered.
 function resolveMultichannelSurroundTarget(preferredMultichannelCodec as string) as string
   if isValidAndNotEmpty(preferredMultichannelCodec) and LCase(preferredMultichannelCodec) = "ac3"
     return "ac3"

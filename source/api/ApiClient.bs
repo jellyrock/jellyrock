@@ -534,7 +534,7 @@ class ApiClient
   ' Use with SubmitSideEffect() (a report nobody reads) or fetchAsync() (New, Join).
   ' @param action - "New" | "Join" | "Leave" | "SetNewQueue" | "Ready" | "Buffering" | "Ping" |
   '   "Pause" | "Unpause" | "Stop" | "Seek" | "SetIgnoreWait" | "NextItem" | "PreviousItem" |
-  '   "SetPlaylistItem"
+  '   "SetPlaylistItem" | "SetRepeatMode" | "SetShuffleMode"
   ' @param body - the request body AA, or invalid
   ' @returns Request AA: { method, url[, body, headers] } or invalid if the action is unknown or
   '   the server URL is not set
@@ -555,6 +555,8 @@ class ApiClient
     if action = "NextItem" then path = "/SyncPlay/NextItem"
     if action = "PreviousItem" then path = "/SyncPlay/PreviousItem"
     if action = "SetPlaylistItem" then path = "/SyncPlay/SetPlaylistItem"
+    if action = "SetRepeatMode" then path = "/SyncPlay/SetRepeatMode"
+    if action = "SetShuffleMode" then path = "/SyncPlay/SetShuffleMode"
     if path = "" then return invalid
 
     req = m.validatedReq("POST", buildURL(path))
@@ -928,7 +930,7 @@ class ApiClient
   '
   ' Read for HardwareAccelerationType, EnableHardwareEncoding and AllowHevcEncoding, which
   ' tell whether the server can encode HEVC fast enough to be offered first
-  ' (source/utils/serverCapabilities.bs). Reading is authorized for ANY signed-in user, not
+  ' (source/utils/serverCapabilities.bs). Reading is authorized for any signed-in user, not
   ' only admins (the controller has only [Authorize] on every version from 10.7.7 to master);
   ' writing needs an admin. The same path on every version, so no V1/V2 branch.
   '

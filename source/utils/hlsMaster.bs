@@ -5,7 +5,8 @@ import "pkg:/source/utils/misc.bs"
 ' variant with both CODECS and RESOLUTION.
 '
 ' The server's transcode of a source above 1080p can pick H.264 at the source's own size, and a
-' Roku plays AVC only up to level 4.2, so the player needs to know before it plays: the master playlist says it without waiting for a segment.
+' Roku plays AVC only up to level 4.2, so the player needs to know before it plays: the master
+' playlist says it without waiting for a segment.
 '
 ' @param {string} text - the playlist body
 ' @return {dynamic} { codecs: string, width: integer, height: integer }, or invalid
@@ -48,4 +49,60 @@ function needsH264ResolutionCap(variant as dynamic) as boolean
   codecs = LCase(variant.codecs)
   isH264 = inStr(1, codecs, "avc1.") > 0 or inStr(1, codecs, "avc3.") > 0
   return isH264 and exceedsH264Ceiling(variant.width, variant.height)
+end function
+
+' Whether a source's video stream is above 1080p, whatever its codec. False when the stream or
+' its size is unknown.
+'
+' @param {dynamic} videoStream - a MediaStream (Width, Height), or invalid
+' @return {boolean}
+function videoStreamAboveH264Ceiling(videoStream as dynamic) as boolean
+  if type(videoStream) <> "roAssociativeArray" then return false
+  return exceedsH264Ceiling(videoStream.Width, videoStream.Height)
+end function
+
+' h264OutputCheck: Whether a load reads the master playlist to see if the transcode is H.264
+' beyond the ceiling, and why not when it does not.
+'
+' Only a transcode that plays needs it. A viewer cap at or below 1080p skips it: the answer
+' already honors that cap, and a forced 1080 would raise it. A first request reads it only for a
+' source beyond the ceiling, so other plays make no extra request; the re-encode retry always
+' reads it.
+'
+' @param {boolean} playsTranscode - the load plays the answer's TranscodingUrl (playsServerTranscode)
+' @param {integer} viewerCapHeight - the viewer's resolution cap (playbackCaps.heightLimit), 0 for none
+' @param {boolean} sourceAboveCeiling - the source's video is beyond the ceiling (videoStreamAboveH264Ceiling)
+' @param {boolean} isReencode - the load asked the server not to copy the video (disallowVideoCopy)
+' @return {object} { read: boolean, reason: string }. reason is "" when read, otherwise
+'   "notPlayed", "viewerCap" or "withinCeiling"
+function h264OutputCheck(playsTranscode as boolean, viewerCapHeight as integer, sourceAboveCeiling as boolean, isReencode as boolean) as object
+  if not playsTranscode then return { read: false, reason: "notPlayed" }
+  if viewerCapHeight > 0 and viewerCapHeight <= H264_MAX_HEIGHT then return { read: false, reason: "viewerCap" }
+  if not isReencode and not sourceAboveCeiling then return { read: false, reason: "withinCeiling" }
+  return { read: true, reason: "" }
+end function
+
+' h264CapDecision: Whether a PlaybackInfo answer must be asked for again at 1080p, and why.
+'
+' The server's master playlist declares the codec and size the transcode will have, and H.264
+' above 1080p needs the cap. A playlist that did not arrive or cannot be read says nothing. On the
+' re-encode retry the source then decides: one above 1080p is capped, since a 4K H.264 re-encode
+' buffers forever with no error while a 1080p one plays. A first request keeps its answer instead:
+' the server may be copying the video, and the cap would turn a 4K copy into a 1080p re-encode.
+'
+' @param {dynamic} fetched - fetchManifestText()'s answer ({ code, body }), or invalid
+' @param {boolean} sourceAboveCeiling - the source's video is above 1080p (videoStreamAboveH264Ceiling)
+' @param {boolean} isReencode - the load asked the server not to copy the video (disallowVideoCopy)
+' @return {object} { cap: boolean, reason: string, variant: dynamic }. reason is
+'   "h264AboveCeiling" or "playable" when the playlist was read (variant is hlsMasterVariant()'s
+'   answer), "playlistUnread" (no answer, or not HTTP 200) or "playlistUnparsed" otherwise.
+function h264CapDecision(fetched as dynamic, sourceAboveCeiling as boolean, isReencode as boolean) as object
+  capWhenUnread = sourceAboveCeiling and isReencode
+  if type(fetched) <> "roAssociativeArray" or mediaNumber(fetched.code) <> 200
+    return { cap: capWhenUnread, reason: "playlistUnread", variant: invalid }
+  end if
+  variant = hlsMasterVariant(textOrEmpty(fetched.body))
+  if not isValid(variant) then return { cap: capWhenUnread, reason: "playlistUnparsed", variant: invalid }
+  if needsH264ResolutionCap(variant) then return { cap: true, reason: "h264AboveCeiling", variant: variant }
+  return { cap: false, reason: "playable", variant: variant }
 end function

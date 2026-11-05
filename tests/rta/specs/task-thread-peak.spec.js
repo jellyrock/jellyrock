@@ -225,7 +225,7 @@ it("keeps peak live Task threads far below Roku's cap across a real journey", as
   // `no-raw-run` and `no-task-fanout` are compile-time ratchets, and they cannot see
   // the one thing that actually kills the app: the AGGREGATE count. Their own
   // documented gaps are interprocedural (a loop calling a helper that launches
-  // internally), plus `components/vendor/**`, plus many screens each launching a
+  // internally), plus the `WebSocketClient` Task that starts itself, plus many screens each launching a
   // bounded number that sum. This is the check that covers those.
   //
   // A BOUND, not a pin. Measured 2026-08-23 on `.177`: peak 7 against a 4-library

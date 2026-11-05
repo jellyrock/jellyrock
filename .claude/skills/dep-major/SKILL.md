@@ -36,7 +36,7 @@ Summarize only the **breaking changes** in the range (ignore features and fixes 
 
 For each breaking change, grep the codebase for where we actually use the affected API:
 
-- For BrightScript libraries (vendored by ropm: `sgRouter`, `promises`, `roku-log` and the others): search `source/` and `components/` for the namespace/component (`sgrouter.`, `sgrouter_`, `promises.`, etc.).
+- For BrightScript libraries (vendored by ropm: `sgRouter`, `promises`, `rr` and the others): search `source/` and `components/` for the namespace/component (`sgrouter.`, `sgrouter_`, `promises.`, etc.).
 - For a GitHub Action: the workflow steps that `uses:` it, and each of those workflows' triggers (`on:`).
 - For dev tooling (`brighterscript`, `vitest`, `rooibos`, `roku-deploy` and the like): search `scripts/`, `bsconfig*.json`, `*.config.js`, `tests/`, and `package.json` script invocations.
 
@@ -53,7 +53,7 @@ Get the new version into the tree first:
 
 Then run the matching gate:
 
-- **Runtime BrightScript lib** (the `dependencies` in `package.json`, vendored by ropm and bundled into the `.zip`: `@rokucommunity/bslib`, `log` (roku-log), `promises`, `rr` (roku-requests), `sgRouter`): `npm run validate` (catches removed or renamed symbols), then `npm run build`, then `npm run lint:bs`. Then run `npm run device:check`, and when a device answers, `npm run test:unit` and `npm run test:rta`: for a bundled runtime lib the device run is the real signal, and a clean build is not enough. **If the probe fails, say the probe failed:** never imply the runtime gate passed.
+- **Runtime BrightScript lib** (the `dependencies` in `package.json`, vendored by ropm and bundled into the `.zip`: `@rokucommunity/bslib`, `promises`, `rr` (roku-requests), `sgRouter`): `npm run validate` (catches removed or renamed symbols), then `npm run build`, then `npm run lint:bs`. Then run `npm run device:check`, and when a device answers, `npm run test:unit` and `npm run test:rta`: for a bundled runtime lib the device run is the real signal, and a clean build is not enough. **If the probe fails, say the probe failed:** never imply the runtime gate passed.
 - **BrightScript build and lint tooling** (`brighterscript`, `brighterscript-formatter`, `brighterscript-xml-plugin`, `@rokucommunity/bslint`, `ropm`, `roku-deploy`, `rooibos-roku`): `npm run validate`, `npm run build`, `npm run lint:bs` and `npm run check-formatting:bs`. These are the dependency under test, so the build gate is the right one. A formatter or linter major often changes the formatting of the tree or flags it again, which is expected: apply `npm run format` and review the diff.
 - **`roku-test-automation`:** `npm run test:rta` on a device, after `npm run device:check`.
 - **Lint tools** (`eslint`, `prettier`, `jshint`, `markdownlint-cli2`, `spellchecker-cli`): their own npm lint script, run over the whole repo.

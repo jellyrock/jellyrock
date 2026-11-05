@@ -14,6 +14,12 @@ namespace queueRepeat
   const ALL = "RepeatAll"
   const ONE = "RepeatOne"
 
+  ' Who set the queue's mode (QueueManager.setRepeatMode): the viewer in the gear, or a SyncPlay
+  ' group the viewer follows. The group's mode ends with the following
+  ' (QueueManager.releaseRepeatMode), and the viewer's own never does.
+  const BY_VIEWER = "viewer"
+  const BY_GROUP = "group"
+
   ' The mode as one of the three values: anything else (invalid, an empty field, a word the
   ' server adds later) is off.
   function normalize(mode as dynamic) as string

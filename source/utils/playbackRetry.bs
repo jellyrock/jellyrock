@@ -1,4 +1,5 @@
 import "pkg:/source/enums/PlaybackErrorRetry.bs"
+import "pkg:/source/utils/misc.bs"
 
 ' chooseErrorRetry: Which retry a Video node error gets, or none.
 '
@@ -17,6 +18,41 @@ function chooseErrorRetry(isBufferLoopError as boolean, doviFallbackAvailable as
   if isBufferLoopError and reencodeFallbackAvailable then return PlaybackErrorRetry.REENCODE_VIDEO
   if not isPlayReported and transcodeAvailable then return PlaybackErrorRetry.TRANSCODE
   return PlaybackErrorRetry.NONE
+end function
+
+' noRetryFlags: The flags a load runs with before any retry: the server's own choice.
+'
+' The flags are VideoPlayerView's retry state. They last for the rest of the version's playback,
+' because what a retry learned (direct play fails, the copied video overflows) is a property of
+' the file, not of the audio, subtitle or quality picked: every reload carries them, and only a
+' version switch starts over. A load with a flag on never offers that flag's fallback again, so a
+' playback takes at most one retry of each kind.
+'
+' @return {object} { bypassDovi, forceTranscode, disallowVideoCopy }, all false
+function noRetryFlags() as object
+  return { bypassDovi: false, forceTranscode: false, disallowVideoCopy: false }
+end function
+
+' retryFlagsWith: The flags after a retry: the ones in place, plus the one the retry turns on.
+'
+' Flags only turn on. A retry that dropped one would let the server offer again what already
+' failed: the re-encode once asked without forceTranscode, and the server, which still allows
+' direct play when it may not copy the video, offered the direct play that had failed.
+'
+' @param {dynamic} flags - the flags in place (noRetryFlags shape), or invalid for none
+' @param {PlaybackErrorRetry} retry - the retry being taken
+' @return {object} a new flags AA
+function retryFlagsWith(flags as dynamic, retry as PlaybackErrorRetry) as object
+  result = noRetryFlags()
+  if type(flags) = "roAssociativeArray"
+    for each key in result
+      if isBooleanTrue(flags[key]) then result[key] = true
+    end for
+  end if
+  if retry = PlaybackErrorRetry.DOVI_DIRECT_PLAY then result.bypassDovi = true
+  if retry = PlaybackErrorRetry.REENCODE_VIDEO then result.disallowVideoCopy = true
+  if retry = PlaybackErrorRetry.TRANSCODE then result.forceTranscode = true
+  return result
 end function
 
 ' hevcFirstCodecList: A comma-separated video codec list with the HEVC entries (h265, hevc) first.

@@ -29,7 +29,9 @@ m.global
 │   │                     the capabilities read later:
 │   ├── isQuickConnectEnabled   defaults to true; UserSelect's probe sets it false
 │   ├── subtitleProviderStatus  "" until Home's session check (serverCapabilities.bs)
-│   └── resumePolicy            invalid until ItemDetails first needs it (versionResume.bs)
+│   ├── remoteChannelStatus     "" until RemoteControlTask settles (serverCapabilities.bs)
+│   ├── resumePolicy            invalid until ItemDetails first needs it (versionResume.bs)
+│   └── encodingPolicy          invalid until Home's session check or a video load (serverCapabilities.bs)
 ├── user                  JellyfinUser: id, name, authToken, fontScaleFactor
 │   ├── settings          JellyfinUserSettings, every per-user setting (see settings.md)
 │   ├── config            JellyfinUserConfiguration, the server's profile for the user

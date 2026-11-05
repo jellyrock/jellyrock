@@ -22,12 +22,12 @@
          On a buffer:loop: error the player retries with shouldBypassDoviPreservation=true
          to allow the server to grant direct play instead. -->
     <field id="isDoviDirectPlayFallbackAvailable" type="boolean" value="false" />
-    <!-- Set for a transcoded stream whose video the server may have copied. On a buffer:loop:
-         error the player retries once with shouldDisallowVideoCopy=true, so the server
-         re-encodes the video and cuts a segment at least every segment length. -->
+    <!-- Set for a transcoded stream whose video the server may have copied, except Live TV.
+         On a buffer:loop: error the player retries once with shouldDisallowVideoCopy=true, so
+         the server re-encodes the video and cuts a segment at least every segment length. -->
     <field id="isReencodeFallbackAvailable" type="boolean" value="false" />
-    <!-- Prevents PlayerHostView from advancing or exiting during a DoVi fallback
-         retry, whose `stop` can surface as state `finished`. -->
+    <!-- Prevents PlayerHostView from advancing or exiting during a retry (retryPlayback),
+         whose `stop` can surface as state `finished`. -->
     <field id="isRetrying" type="boolean" value="false" />
     <!-- An error dialog is up and IT owns the exit, so PlayerHostView must not
          treat a `finished` as the end of playback. The stall paths show the
@@ -40,11 +40,15 @@
          Same shape and same reason as isRetrying: a `finished` this app caused
          is not playback ending. -->
     <field id="errorDialogOwnsExit" type="boolean" value="false" />
-    <!-- True once a retry re-asked the server WITHOUT the DoVi container profile.
-         Read by the playback-info report: with the profile bypassed, a
-         VideoRangeTypeNotSupported on this pass cannot be the Preserve DoVi
-         setting's doing, so the report must not name that setting. -->
+    <!-- True while the playing stream was asked for WITHOUT the DoVi container profile
+         (a retry, and every reload after it). Read by the playback-info report: with the
+         profile bypassed, a VideoRangeTypeNotSupported on this pass cannot be the Preserve
+         DoVi setting's doing, so the report must not name that setting. -->
     <field id="isDoviPreservationBypassed" type="boolean" value="false" />
+    <!-- True while the playing stream was asked for with AllowVideoStreamCopy=false (the
+         re-encode retry after a buffer:loop: error, and every reload after it). Read by the
+         playback-info report, which says why the video is re-encoded. -->
+    <field id="isVideoCopyDisallowed" type="boolean" value="false" />
     <!-- True when the playing item is a .strm shortcut (its own path ends in .strm). Read by
          the playback-info report: such a source's size and bitrate describe the text file. -->
     <field id="isShortcut" type="boolean" value="false" />

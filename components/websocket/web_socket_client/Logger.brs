@@ -77,7 +77,7 @@ function Logger() as object
   end sub
 
   ' JellyRock modification: default the log level to INFO instead of reading an optional
-  ' pkg:/bright_web_socket.json config (JellyRock doesn't ship one — the upstream read
+  ' pkg:/bright_web_socket.json config (JellyRock doesn't ship one, and the upstream read
   ' spammed ReadAsciiFile/ParseJSON errors + a WARN on every socket open).
   log.log_level = log.INFO
   return log

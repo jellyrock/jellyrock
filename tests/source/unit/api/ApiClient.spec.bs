@@ -1002,6 +1002,8 @@ namespace tests
     @params("NextItem")
     @params("PreviousItem")
     @params("SetPlaylistItem")
+    @params("SetRepeatMode")
+    @params("SetShuffleMode")
     function _(action)
       result = m.apiClient.BuildSyncPlayRequest(action)
       route = "/SyncPlay/" + action

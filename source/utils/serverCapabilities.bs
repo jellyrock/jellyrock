@@ -93,7 +93,10 @@ namespace serverCapabilities
   ' GET /System/Configuration/encoding reply.
   '
   ' All three fields or none: a half-read policy would let serverEncodesHevcInHardware() answer
-  ' for settings it never saw.
+  ' for settings it never saw. The one exception is a missing HardwareAccelerationType, which
+  ' reads as "none": servers before 10.10 leave it out until an admin saves the Transcoding page,
+  ' and their dashboard treats a missing value as no hardware acceleration, as it does its own
+  ' "None" (""). Storing it keeps such a server from being asked again on every play.
   '
   ' @param {object} res - fetchRes or fetchAsync result { ok, json }
   ' @return {dynamic} { HardwareAccelerationType, EnableHardwareEncoding, AllowHevcEncoding }, or
@@ -102,6 +105,7 @@ namespace serverCapabilities
     if not isValid(res) or res.ok <> true or not isValid(res.json) then return invalid
 
     hardwareType = res.json.HardwareAccelerationType
+    if not isValid(hardwareType) then hardwareType = "none"
     enableHardware = res.json.EnableHardwareEncoding
     allowHevc = res.json.AllowHevcEncoding
     if not serverCapabilities.isStringValue(hardwareType) then return invalid

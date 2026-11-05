@@ -189,7 +189,11 @@ function reasonsSection(transcoding as dynamic, videoStream as dynamic, selected
   if not isValid(transcoding) then return invalid
 
   reasons = transcoding.TranscodeReasons
-  if not isValidAndNotEmpty(reasons) then return invalid
+  videoCopyDisallowed = isBooleanTrue(input.videoCopyDisallowed)
+  if not isValidAndNotEmpty(reasons)
+    if not videoCopyDisallowed then return invalid
+    reasons = []
+  end if
 
   causeCtx = {
     settings: input.settings,
@@ -226,6 +230,12 @@ function reasonsSection(transcoding as dynamic, videoStream as dynamic, selected
     end if
     rows.push({ id: "reason." + code, label: code, value: value })
   end for
+
+  ' The player's own reason, which no server code names: the re-encode retry asked the server
+  ' not to copy the video (VideoPlayerView.isVideoCopyDisallowed).
+  if videoCopyDisallowed
+    rows.push({ id: "reason.videoCopyDisallowed", label: translate(translationKeys.LabelVideoReencoded), value: translate(translationKeys.MessageVideoReencodedAfterBufferOverflow) })
+  end if
 
   ' wideLabels: these labels are reason codes, several times longer than "Codec".
   return reportSection("reasons", translate(translationKeys.LabelReasons), rows, true)

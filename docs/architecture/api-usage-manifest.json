@@ -836,6 +836,30 @@
       ]
     },
     {
+      "path": "/SyncPlay/SetRepeatMode",
+      "normalized": "/syncplay/setrepeatmode",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/SyncPlay/SetShuffleMode",
+      "normalized": "/syncplay/setshufflemode",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
       "path": "/SyncPlay/Stop",
       "normalized": "/syncplay/stop",
       "methods": [
@@ -1403,6 +1427,12 @@
       "name": "MinSegments",
       "sourceFiles": [
         "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "Mode",
+      "sourceFiles": [
+        "source/syncplay/syncPlayRequests.bs"
       ]
     },
     {
@@ -3625,19 +3655,19 @@
       }
     },
     "counts": {
-      "endpoints": 98,
-      "requestFields": 63,
+      "endpoints": 100,
+      "requestFields": 64,
       "responseFields": 223,
       "unresolvedEndpointSinks": 3
     },
     "unresolvedEndpointSinks": [
       {
         "sourceFile": "source/api/items.bs",
-        "line": 491
+        "line": 499
       },
       {
         "sourceFile": "source/api/items.bs",
-        "line": 506
+        "line": 514
       },
       {
         "sourceFile": "source/utils/subtitles.bs",

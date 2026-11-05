@@ -50,6 +50,17 @@ namespace playbackCaps
     return settingsResolution(settings)
   end function
 
+  ' The height in pixels of the resolution cap that applies now, or 0 when it has no fixed height.
+  '
+  ' "off", "auto" and anything that is not a positive number have none.
+  '
+  ' @returns {integer} - 720 for "720", 0 for "off" or "auto"
+  function heightLimit(settings as object, caps as dynamic) as integer
+    height = Int(Val(resolution(settings, caps)))
+    if height < 1 then return 0
+    return height
+  end function
+
   function hasBitrate(caps as dynamic) as boolean
     return type(caps) = "roAssociativeArray" and caps.DoesExist("maxBitrateMbps")
   end function

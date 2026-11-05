@@ -9,15 +9,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- (syncplay) Repeat, shuffle, time offset and leave in the gear ([#1315](https://github.com/jellyrock/jellyrock/pull/1315))
 - (player) Repeat a video or the queue from the OSD gear ([#1308](https://github.com/jellyrock/jellyrock/pull/1308))
 - (syncplay) Stay in step, stop seek freezes, add a time offset ([#1296](https://github.com/jellyrock/jellyrock/pull/1296))
 
 ### Changed
 
+- (logging) adopt `roku-log` as owned code, drop its hook ([#1328](https://github.com/jellyrock/jellyrock/pull/1328))
 - (home) Show vertical posters in TV Recently Added rows ([#1295](https://github.com/jellyrock/jellyrock/pull/1295))
 
 ### Fixed
 
+- (playback) Make 4K transcodes play, in HEVC on hardware servers ([#1323](https://github.com/jellyrock/jellyrock/pull/1323))
+- (playback) Recover when a 4K remux overflows the video buffer ([#1318](https://github.com/jellyrock/jellyrock/pull/1318))
+- (playback) Copy AC3 audio in a remux on 7.1 systems ([#1327](https://github.com/jellyrock/jellyrock/pull/1327))
+- (playback) Pick a playable audio track, not audio description ([#1320](https://github.com/jellyrock/jellyrock/pull/1320))
+- (playback) Stop transcoded videos playing with no sound ([#1317](https://github.com/jellyrock/jellyrock/pull/1317))
 - (login) Offer Quick Connect when a server lists no users ([#1314](https://github.com/jellyrock/jellyrock/pull/1314))
 - (playback) Play the episode once when Repeat is picked during a Cinema Mode intro ([#1313](https://github.com/jellyrock/jellyrock/pull/1313))
 - (playback) Play Cinema Mode intros, drop the stale queue slot ([#1312](https://github.com/jellyrock/jellyrock/pull/1312))
@@ -28,6 +35,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update rimraf from v6.1.3 to v6.1.4 ([#1319](https://github.com/jellyrock/jellyrock/pull/1319))
+- Update eslint from v10.13.0 to v10.14.0 ([#1287](https://github.com/jellyrock/jellyrock/pull/1287))
 - Lock file maintenance ([#1300](https://github.com/jellyrock/jellyrock/pull/1300))
 
 ## [3.3.1](https://github.com/jellyrock/jellyrock/compare/v3.3.0...v3.3.1) - 2026-10-30
