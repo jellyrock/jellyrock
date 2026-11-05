@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-05: Renamed the Rooibos patch for alpha.56, so `npm install` no longer warns about a version mismatch
 - 2026-11-05: fix(playback): Make 4K transcodes play, in HEVC on hardware servers
 - 2026-11-05: fix(playback): Recover when a 4K remux overflows the video buffer
 - 2026-11-05: refactor(logging): adopt `roku-log` as owned code, drop its hook
@@ -297,10 +298,6 @@ In `scripts/bsc-plugins/roku-log.cjs`, the visitor that finds `m.log = new log.L
 #### `server-upgrade.js` links a reused or reopened issue without `replace_parent` `[fid: subissue-attach-without-replace-parent]` `[captured 2026-10-13]`
 
 `attachSubIssue` POSTs only `sub_issue_id`, and `executePlan` calls it for `comment` and `reopen` as well as `file`. An issue that already has a parent may then fail to link; the error is stored as `subIssueError`, not fatal. Unverified: whether GitHub refuses without `replace_parent` needs a throwaway issue pair. Read in the code 2026-10-13.
-
-#### The Rooibos patch file is named for alpha.55 while alpha.56 is installed `[fid: rooibos-patch-name-version-mismatch]` `[captured 2026-10-13]`
-
-`patches/rooibos-roku+6.0.0-alpha.55.patch` sits beside a `package.json` pin of `rooibos-roku` 6.0.0-alpha.56 (since #1067). It still applies, but patch-package matches by name and version. Regenerate it against alpha.56 (`npx patch-package rooibos-roku`) and remove the old file. Checked 2026-10-13; not run.
 
 #### `renovate.json` says "CLI smoke-tested", but the smoke workflow only loads the modules `[fid: renovate-cli-smoke-tested-wording]` `[captured 2026-10-13]`
 
