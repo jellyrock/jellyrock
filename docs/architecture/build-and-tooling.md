@@ -320,7 +320,7 @@ Resolution follows scope:
 - A component is named by an exact value (a tag, `extends=`, `*ComponentName=`, a whole string), never a word inside a longer string. A `findNode()` argument is a node id, not a component.
 - Code reachable only from dead code is dead, and the message names what reached it. That covers a dead field's XML element and its `onChange` handler, and a script whose including components are all dead.
 
-**Never reported:** Roku entry points and lifecycle callbacks; fields the firmware writes into item and row components; `keySelected` on a `DynamicCustomKeyboard` subclass; an alias field with a `value`; calls another plugin injects at transpile time; `roku_modules`, `components/vendor` and the generated `translationKeys` namespace.
+**Never reported:** Roku entry points and lifecycle callbacks; fields the firmware writes into item and row components; `keySelected` on a `DynamicCustomKeyboard` subclass; an alias field with a `value`; calls another plugin injects at transpile time; `roku_modules` (package-managed) and the generated `translationKeys` namespace.
 
 **Tests.** A test's `callFunc` keeps an interface function's declaration alive, because the test needs that exposure to drive a live component. That covers Rooibos `callFunc("x")` and `@.x`, and an RTA quoted `funcName: 'x'` (`deadCode.exposureConsumers`). It works only while the app still runs the function behind it, and keeps nothing else alive.
 
