@@ -2394,7 +2394,8 @@ sub onReencodeSessionRead(res as object, ctx as object)
     ' A newer load since the read began, another item, or a stream that has ended.
     isStale: ctx.seq <> m.reencodeCheckSeq or LCase(ctx.itemId) <> LCase(m.loadItemId) or playerState = "stopped" or playerState = "finished"
   }
-  verdict = reencodeCheck.reencodeNeedsBufferCap(res, m.reencodeCapBps, ctx.itemId, flags)
+  decision = reencodeCheck.reencodeNeedsBufferCap(res, m.reencodeCapBps, ctx.itemId, flags)
+  verdict = decision.verdict
   if verdict = ReencodeVerdict.RESTART
     m.log.info("The server re-encodes above the buffer cap; restarting once with the cap", "capBps", m.reencodeCapBps.toStr(), "attempt", ctx.attempt, "itemId", ctx.itemId)
     restartForBufferCap()
@@ -2404,7 +2405,10 @@ sub onReencodeSessionRead(res as object, ctx as object)
     m.reencodeCheckTimer.duration = reencodeCheck.SECOND_CHECK_SECONDS
     m.reencodeCheckTimer.control = "start"
   else
-    m.log.info("Re-encode check: nothing to restart", "attempt", ctx.attempt, "cause", playbackCheckIn.unreadableCause(res), "itemId", ctx.itemId)
+    ' An unreadable answer says how it failed (no answer, an HTTP status); every other reason is the decision's own.
+    reason = decision.reason
+    if reason = "unreadable" then reason = playbackCheckIn.unreadableCause(res)
+    m.log.info("Re-encode check: nothing to restart", "attempt", ctx.attempt, "reason", reason, "itemId", ctx.itemId)
   end if
 end sub
 

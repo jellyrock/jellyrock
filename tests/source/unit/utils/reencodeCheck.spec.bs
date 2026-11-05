@@ -29,6 +29,14 @@ namespace tests
       return session
     end function
 
+    private function verdictOf(res as dynamic, cap as dynamic, itemId as string, flags as object) as string
+      return reencodeCheck.reencodeNeedsBufferCap(res, cap, itemId, flags).verdict
+    end function
+
+    private function reasonOf(res as dynamic, cap as dynamic, itemId as string, flags as object) as string
+      return reencodeCheck.reencodeNeedsBufferCap(res, cap, itemId, flags).reason
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("reencodeNeedsBufferCap() - restarts")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -36,43 +44,43 @@ namespace tests
     @it("restarts a re-encode above the cap")
     function _()
       res = m.answer([m.encoding(139808000, "abc")])
-      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
+      m.assertEqual(m.verdictOf(res, m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
     end function
 
     @it("restarts when the session shows no playing item yet, as a stream that never left buffering does")
     function _()
       res = m.answer([m.encoding(139808000)])
-      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
+      m.assertEqual(m.verdictOf(res, m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
     end function
 
     @it("matches the playing item without regard to case")
     function _()
       res = m.answer([m.encoding(139808000, "ABC")])
-      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
+      m.assertEqual(m.verdictOf(res, m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
     end function
 
     @it("restarts one bit per second above the cap")
     function _()
       res = m.answer([m.encoding(94848001&, "abc")])
-      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
+      m.assertEqual(m.verdictOf(res, m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
     end function
 
     @it("reads a bitrate the server sent as a long integer or a float")
     function _()
-      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(m.answer([m.encoding(139808000&, "abc")]), m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
-      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(m.answer([m.encoding(139808000.0, "abc")]), m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
+      m.assertEqual(m.verdictOf(m.answer([m.encoding(139808000&, "abc")]), m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
+      m.assertEqual(m.verdictOf(m.answer([m.encoding(139808000.0, "abc")]), m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
     end function
 
     @it("picks the session playing this item from several for the device")
     function _()
       res = m.answer([m.encoding(10000000, "other"), m.encoding(139808000, "abc")])
-      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
+      m.assertEqual(m.verdictOf(res, m.capBps(), "abc", m.flags()), ReencodeVerdict.RESTART)
     end function
 
     @it("restarts on the second read too")
     function _()
       res = m.answer([m.encoding(139808000, "abc")])
-      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, m.capBps(), "abc", m.flags({ attempt: 2 })), ReencodeVerdict.RESTART)
+      m.assertEqual(m.verdictOf(res, m.capBps(), "abc", m.flags({ attempt: 2 })), ReencodeVerdict.RESTART)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -82,35 +90,35 @@ namespace tests
     @it("leaves a video the server copies")
     function _()
       res = m.answer([m.encoding(139808000, "abc", true)])
-      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
+      m.assertEqual(m.verdictOf(res, m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
     end function
 
     @it("leaves a re-encode at or under the cap")
     function _()
-      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(m.answer([m.encoding(m.capBps(), "abc")]), m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
-      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(m.answer([m.encoding(60000000, "abc")]), m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
+      m.assertEqual(m.verdictOf(m.answer([m.encoding(m.capBps(), "abc")]), m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
+      m.assertEqual(m.verdictOf(m.answer([m.encoding(60000000, "abc")]), m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
     end function
 
     @it("does nothing when the load has no cap")
     function _()
       res = m.answer([m.encoding(139808000, "abc")])
-      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, 0&, "abc", m.flags()), ReencodeVerdict.NONE)
-      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, invalid, "abc", m.flags()), ReencodeVerdict.NONE)
+      m.assertEqual(m.verdictOf(res, 0&, "abc", m.flags()), ReencodeVerdict.NONE)
+      m.assertEqual(m.verdictOf(res, invalid, "abc", m.flags()), ReencodeVerdict.NONE)
     end function
 
     @it("does nothing when an older server sends no IsVideoDirect")
     function _()
       session = { DeviceId: "roku", TranscodingInfo: { Bitrate: 139808000 } }
-      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(m.answer([session]), m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
+      m.assertEqual(m.verdictOf(m.answer([session]), m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
     end function
 
     @it("does nothing when the read failed, was slow or came back malformed")
     function _()
-      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(invalid, m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
-      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap({ ok: false, statusCode: 500, json: invalid }, m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
-      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap({ ok: false, statusCode: 0, json: invalid }, m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
-      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap({ ok: true, statusCode: 200, json: {} }, m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
-      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(m.answer(["x", invalid]), m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
+      m.assertEqual(m.verdictOf(invalid, m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
+      m.assertEqual(m.verdictOf({ ok: false, statusCode: 500, json: invalid }, m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
+      m.assertEqual(m.verdictOf({ ok: false, statusCode: 0, json: invalid }, m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
+      m.assertEqual(m.verdictOf({ ok: true, statusCode: 200, json: {} }, m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
+      m.assertEqual(m.verdictOf(m.answer(["x", invalid]), m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -123,14 +131,14 @@ namespace tests
       for each reason in ["isLive", "askedNoCopy", "isFollowingGroup", "hasFailed", "isStale"]
         overrides = {}
         overrides[reason] = true
-        m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, m.capBps(), "abc", m.flags(overrides)), ReencodeVerdict.NONE, reason)
+        m.assertEqual(m.verdictOf(res, m.capBps(), "abc", m.flags(overrides)), ReencodeVerdict.NONE, reason)
       end for
     end function
 
     @it("ignores an answer about another item")
     function _()
       res = m.answer([m.encoding(139808000, "other")])
-      m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(res, m.capBps(), "abc", m.flags({ attempt: 2 })), ReencodeVerdict.NONE)
+      m.assertEqual(m.verdictOf(res, m.capBps(), "abc", m.flags({ attempt: 2 })), ReencodeVerdict.NONE)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -144,16 +152,56 @@ namespace tests
       emptyInfo = { DeviceId: "roku", TranscodingInfo: {} }
       noBitrate = { DeviceId: "roku", TranscodingInfo: { IsVideoDirect: false } }
       for each sessions in [[named], [unnamed], [emptyInfo], [noBitrate], [m.encoding(139808000, "other"), unnamed]]
-        m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(m.answer(sessions), m.capBps(), "abc", m.flags()), ReencodeVerdict.LATER)
-        m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(m.answer(sessions), m.capBps(), "abc", m.flags({ attempt: 2 })), ReencodeVerdict.NONE)
+        m.assertEqual(m.verdictOf(m.answer(sessions), m.capBps(), "abc", m.flags()), ReencodeVerdict.LATER)
+        m.assertEqual(m.verdictOf(m.answer(sessions), m.capBps(), "abc", m.flags({ attempt: 2 })), ReencodeVerdict.NONE)
       end for
     end function
 
     @it("does nothing when no session matches the device and item")
     function _()
       for each sessions in [[], [m.encoding(139808000, "other")]]
-        m.assertEqual(reencodeCheck.reencodeNeedsBufferCap(m.answer(sessions), m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
+        m.assertEqual(m.verdictOf(m.answer(sessions), m.capBps(), "abc", m.flags()), ReencodeVerdict.NONE)
       end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("reencodeNeedsBufferCap() - the reason it gives, for the log")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("names a restart and each answer it leaves alone")
+    function _()
+      m.assertEqual(m.reasonOf(m.answer([m.encoding(139808000, "abc")]), m.capBps(), "abc", m.flags()), "aboveCap")
+      m.assertEqual(m.reasonOf(m.answer([m.encoding(139808000, "abc", true)]), m.capBps(), "abc", m.flags()), "videoCopied")
+      m.assertEqual(m.reasonOf(m.answer([m.encoding(60000000, "abc")]), m.capBps(), "abc", m.flags()), "withinCap")
+      m.assertEqual(m.reasonOf(m.answer([{ DeviceId: "roku", TranscodingInfo: { Bitrate: 139808000 } }]), m.capBps(), "abc", m.flags()), "noIsVideoDirect")
+    end function
+
+    @it("names each reason the load is not one to act on")
+    function _()
+      res = m.answer([m.encoding(139808000, "abc")])
+      expected = { isLive: "liveTv", askedNoCopy: "alreadyCapped", isFollowingGroup: "syncPlayGroup", hasFailed: "playbackFailed", isStale: "stale" }
+      for each flag in expected
+        overrides = {}
+        overrides[flag] = true
+        m.assertEqual(m.reasonOf(res, m.capBps(), "abc", m.flags(overrides)), expected[flag], flag)
+      end for
+      m.assertEqual(m.reasonOf(res, 0&, "abc", m.flags()), "noCap")
+    end function
+
+    @it("tells an unreadable answer from one with no session for this item")
+    function _()
+      m.assertEqual(m.reasonOf(invalid, m.capBps(), "abc", m.flags()), "unreadable")
+      m.assertEqual(m.reasonOf({ ok: false, statusCode: 500, json: invalid }, m.capBps(), "abc", m.flags()), "unreadable")
+      m.assertEqual(m.reasonOf({ ok: true, statusCode: 200, json: {} }, m.capBps(), "abc", m.flags()), "unreadable")
+      m.assertEqual(m.reasonOf(m.answer([]), m.capBps(), "abc", m.flags()), "noSession")
+      m.assertEqual(m.reasonOf(m.answer([m.encoding(139808000, "other")]), m.capBps(), "abc", m.flags()), "noSession")
+    end function
+
+    @it("says the server showed no transcode, on the read that waits and on the last one")
+    function _()
+      res = m.answer([{ DeviceId: "roku", NowPlayingItem: { Id: "abc" } }])
+      m.assertEqual(m.reasonOf(res, m.capBps(), "abc", m.flags()), "noTranscodeShown")
+      m.assertEqual(m.reasonOf(res, m.capBps(), "abc", m.flags({ attempt: 2 })), "noTranscodeShown")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

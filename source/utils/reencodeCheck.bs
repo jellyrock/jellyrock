@@ -54,27 +54,33 @@ namespace reencodeCheck
   ' @param flags - { attempt: 1 or 2, isLive, askedNoCopy (the load already asked for a re-encode,
   '   which applies the cap), isFollowingGroup, hasFailed (a playback error owns the flow), isStale
   '   (a newer load, or another item, since the read began) }
-  ' @returns a ReencodeVerdict
-  function reencodeNeedsBufferCap(res as dynamic, capBps as dynamic, itemId as string, flags as object) as ReencodeVerdict
-    if flags.isLive = true or flags.askedNoCopy = true or flags.isFollowingGroup = true then return ReencodeVerdict.NONE
-    if flags.hasFailed = true or flags.isStale = true then return ReencodeVerdict.NONE
-    if reencodeCheck.bitsPerSecond(capBps) <= 0 then return ReencodeVerdict.NONE
-    if not isValid(res) or res.ok <> true or type(res.json) <> "roArray" then return ReencodeVerdict.NONE
+  ' @returns { verdict: a ReencodeVerdict, reason: why, for the log: aboveCap, withinCap,
+  '   videoCopied, noIsVideoDirect, noTranscodeShown, noSession, unreadable, noCap, liveTv,
+  '   alreadyCapped, syncPlayGroup, playbackFailed or stale }
+  function reencodeNeedsBufferCap(res as dynamic, capBps as dynamic, itemId as string, flags as object) as object
+    if flags.isLive = true then return { verdict: ReencodeVerdict.NONE, reason: "liveTv" }
+    if flags.askedNoCopy = true then return { verdict: ReencodeVerdict.NONE, reason: "alreadyCapped" }
+    if flags.isFollowingGroup = true then return { verdict: ReencodeVerdict.NONE, reason: "syncPlayGroup" }
+    if flags.hasFailed = true then return { verdict: ReencodeVerdict.NONE, reason: "playbackFailed" }
+    if flags.isStale = true then return { verdict: ReencodeVerdict.NONE, reason: "stale" }
+    if reencodeCheck.bitsPerSecond(capBps) <= 0 then return { verdict: ReencodeVerdict.NONE, reason: "noCap" }
+    if not isValid(res) or res.ok <> true or type(res.json) <> "roArray" then return { verdict: ReencodeVerdict.NONE, reason: "unreadable" }
 
-    notYet = ReencodeVerdict.NONE
-    if flags.attempt < reencodeCheck.MAX_ATTEMPTS then notYet = ReencodeVerdict.LATER
+    notYet = { verdict: ReencodeVerdict.NONE, reason: "noTranscodeShown" }
+    if flags.attempt < reencodeCheck.MAX_ATTEMPTS then notYet.verdict = ReencodeVerdict.LATER
 
     session = reencodeCheck.sessionFor(res.json, itemId)
     ' No session of this device is playing this item: the answer is about something else.
-    if not isValid(session) then return ReencodeVerdict.NONE
+    if not isValid(session) then return { verdict: ReencodeVerdict.NONE, reason: "noSession" }
     info = session.TranscodingInfo
     if type(info) <> "roAssociativeArray" or info.Count() = 0 then return notYet
     ' An older server sends no IsVideoDirect: nothing to judge, and no later read changes that.
-    if info.IsVideoDirect <> false then return ReencodeVerdict.NONE
+    if info.IsVideoDirect = true then return { verdict: ReencodeVerdict.NONE, reason: "videoCopied" }
+    if info.IsVideoDirect <> false then return { verdict: ReencodeVerdict.NONE, reason: "noIsVideoDirect" }
     bitrate = reencodeCheck.bitsPerSecond(info.Bitrate)
     if bitrate <= 0 then return notYet
-    if bitrate > reencodeCheck.bitsPerSecond(capBps) then return ReencodeVerdict.RESTART
-    return ReencodeVerdict.NONE
+    if bitrate > reencodeCheck.bitsPerSecond(capBps) then return { verdict: ReencodeVerdict.RESTART, reason: "aboveCap" }
+    return { verdict: ReencodeVerdict.NONE, reason: "withinCap" }
   end function
 
   ' The session that is this load's: the one playing the item, else one naming no item. invalid
