@@ -121,6 +121,7 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
   if isValid(doviProfile)
     postData.DeviceProfile.ContainerProfiles.push(doviProfile)
   end if
+  allowHdr10DoviInvalid(postData.DeviceProfile.CodecProfiles, mediaStreams)
 
   ' Cap H264 codec profile when the source video is H264.
   ' Applied dynamically here rather than in the static device profile so it doesn't
@@ -266,8 +267,9 @@ function doviRemuxContainerProfile(mediaStreams as dynamic, container as dynamic
       ' DOVI remux logic requires VideoRangeType which was added in Jellyfin 10.9
       ' Only apply this for API v2+ servers (10.9+)
       if apiVersion >= 2 and containerString = "mkv" and isValid(stream.VideoRangeType) and stream.VideoRangeType <> ""
-        ' is DOVI in the string?
-        if inStr(LCase(stream.VideoRangeType), "dovi") > 0
+        ' is DOVI in the string? DOVIInvalid is not: a remux cannot make out-of-spec Dolby Vision
+        ' play as Dolby Vision (allowHdr10DoviInvalid() direct-plays the HDR10 kind instead)
+        if inStr(LCase(stream.VideoRangeType), "dovi") > 0 and LCase(stream.VideoRangeType) <> "doviinvalid"
           ' add a condition to the mkv container profile to force remux (container swap)
           return {
             "Type": "Video",
@@ -289,6 +291,47 @@ function doviRemuxContainerProfile(mediaStreams as dynamic, container as dynamic
 
   return invalid
 end function
+
+' allowHdr10DoviInvalid: Let the server direct-play a DOVIInvalid video stream whose base layer is
+' plain HDR10, on a display that takes HDR10.
+'
+' Jellyfin marks Dolby Vision profile 8 or 10 video DOVIInvalid when its base-layer compatibility
+' ID is outside Dolby's spec. When the stream's color tags are still the HDR10 ones (bt2020nc, smpte2084,
+' bt2020), Roku plays it as HDR10, so this adds DOVIInvalid to the hevc and av1 VideoRangeType
+' lists that already take HDR10. Any other DOVIInvalid stream is left for the server to convert.
+' Only the first video stream counts, as in doviRemuxContainerProfile().
+'
+' @param {dynamic} codecProfiles - the DeviceProfile's CodecProfiles, changed in place
+' @param {dynamic} mediaStreams - MediaStream array of the played source, or invalid
+sub allowHdr10DoviInvalid(codecProfiles as dynamic, mediaStreams as dynamic)
+  if not isValid(codecProfiles) or not isValid(mediaStreams) then return
+
+  video = invalid
+  for each stream in mediaStreams
+    if isValid(stream.Type) and stream.Type = "Video"
+      video = stream
+      exit for
+    end if
+  end for
+  if not isValid(video) or not isValid(video.VideoRangeType) or LCase(video.VideoRangeType) <> "doviinvalid" then return
+  if not isValid(video.ColorSpace) or LCase(video.ColorSpace) <> "bt2020nc" then return
+  if not isValid(video.ColorTransfer) or LCase(video.ColorTransfer) <> "smpte2084" then return
+  if not isValid(video.ColorPrimaries) or LCase(video.ColorPrimaries) <> "bt2020" then return
+
+  for each codecProfile in codecProfiles
+    codecs = LCase(codecProfile.Codec ?? "")
+    if inStr(1, codecs, "hevc") > 0 or inStr(1, codecs, "av1") > 0
+      for each condition in codecProfile.Conditions ?? []
+        if condition.Property = "VideoRangeType" and isValid(condition.Value)
+          rangeTypes = condition.Value.Split("|")
+          if arrayHasValue(rangeTypes, "HDR10") and not arrayHasValue(rangeTypes, "DOVIInvalid")
+            condition.Value = condition.Value + "|DOVIInvalid"
+          end if
+        end if
+      end for
+    end if
+  end for
+end sub
 
 ' MetaData about an item. Returns a JellyfinBaseItem node.
 ' @param {string} fields - Comma-separated Jellyfin fields to request. Defaults to Chapters and Trickplay only.

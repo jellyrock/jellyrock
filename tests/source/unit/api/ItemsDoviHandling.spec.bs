@@ -66,7 +66,7 @@ namespace tests
 
     @it("matches dovi in any case within VideoRangeType")
     function _()
-      for each rangeType in ["DOVI", "dovi", "DOVIWithSDR", "DOVIWithHLG", "DOVIWithHDR10", "DOVIInvalid"]
+      for each rangeType in ["DOVI", "dovi", "DOVIWithSDR", "DOVIWithHLG", "DOVIWithHDR10"]
         streams = [m.videoStream("hevc", rangeType)]
 
         result = doviRemuxContainerProfile(streams, "mkv", true, false, 2, m.mockCaps(true))
@@ -205,6 +205,15 @@ namespace tests
 
         m.assertInvalid(result, "VideoRangeType " + rangeType)
       end for
+    end function
+
+    @it("returns invalid for DOVIInvalid in any case, which a remux cannot turn into Dolby Vision")
+    @params("DOVIInvalid")
+    @params("doviinvalid")
+    function _(videoRangeType as string)
+      result = doviRemuxContainerProfile([m.videoStream("hevc", videoRangeType)], "mkv", true, false, 2, m.mockCaps(true))
+
+      m.assertInvalid(result)
     end function
 
     @it("returns invalid for an empty VideoRangeType")

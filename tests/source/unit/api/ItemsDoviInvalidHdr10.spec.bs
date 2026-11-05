@@ -1,0 +1,137 @@
+import "pkg:/source/api/items.bs"
+import "pkg:/source/utils/streamSelection.bs"
+
+namespace tests
+
+  @suite("Items.bs - allowHdr10DoviInvalid()")
+  class ItemsDoviInvalidHdr10Tests extends tests.BaseTestSuite
+
+    private function hdr10Tagged(codec as string, videoRangeType as string) as object
+      return { Type: "Video", Codec: codec, VideoRangeType: videoRangeType, ColorSpace: "bt2020nc", ColorTransfer: "smpte2084", ColorPrimaries: "bt2020" }
+    end function
+
+    private function codecProfile(codec as string, rangeTypes as string) as object
+      return {
+        "Type": "Video",
+        "Codec": codec,
+        "Conditions": [
+          { "Condition": "EqualsAny", "Property": "VideoProfile", "Value": "main|main 10", "IsRequired": false },
+          { "Condition": "EqualsAny", "Property": "VideoRangeType", "Value": rangeTypes, "IsRequired": false }
+        ]
+      }
+    end function
+
+    private function rangeTypesOf(profile as object) as dynamic
+      for each condition in profile.Conditions
+        if condition.Property = "VideoRangeType" then return condition.Value
+      end for
+      return invalid
+    end function
+
+    private function hdrProfiles() as object
+      return [
+        m.codecProfile("h264,avc", "SDR|DOVIWithSDR"),
+        m.codecProfile("h265,hevc", "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL"),
+        m.codecProfile("vp9", "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL"),
+        m.codecProfile("av1", "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL")
+      ]
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("allows an HDR10-tagged DOVIInvalid stream on an HDR10 display")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("adds DOVIInvalid to the hevc and av1 range types only")
+    function _()
+      profiles = m.hdrProfiles()
+      allowHdr10DoviInvalid(profiles, [{ Type: "Audio", Codec: "ac3" }, m.hdr10Tagged("hevc", "DOVIInvalid")])
+
+      m.assertEqual(m.rangeTypesOf(profiles[0]), "SDR|DOVIWithSDR")
+      m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL|DOVIInvalid")
+      m.assertEqual(m.rangeTypesOf(profiles[2]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL")
+      m.assertEqual(m.rangeTypesOf(profiles[3]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL|DOVIInvalid")
+    end function
+
+    @it("matches the range type and the color tags in any case")
+    function _()
+      profiles = m.hdrProfiles()
+      allowHdr10DoviInvalid(profiles, [{ Type: "Video", Codec: "HEVC", VideoRangeType: "doviinvalid", ColorSpace: "BT2020NC", ColorTransfer: "SMPTE2084", ColorPrimaries: "BT2020" }])
+
+      m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL|DOVIInvalid")
+    end function
+
+    @it("does not add it twice")
+    function _()
+      profiles = [m.codecProfile("h265,hevc", "SDR|HDR10|DOVIInvalid")]
+      allowHdr10DoviInvalid(profiles, [m.hdr10Tagged("hevc", "DOVIInvalid")])
+
+      m.assertEqual(m.rangeTypesOf(profiles[0]), "SDR|HDR10|DOVIInvalid")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("leaves the profile alone")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("when the display does not take HDR10")
+    function _()
+      profiles = [m.codecProfile("h265,hevc", "SDR|DOVIWithSDR")]
+      allowHdr10DoviInvalid(profiles, [m.hdr10Tagged("hevc", "DOVIInvalid")])
+
+      m.assertEqual(m.rangeTypesOf(profiles[0]), "SDR|DOVIWithSDR")
+    end function
+
+    @it("when the stream is not DOVIInvalid")
+    @params("HDR10")
+    @params("DOVIWithHDR10")
+    @params("DOVI")
+    function _(videoRangeType as string)
+      profiles = m.hdrProfiles()
+      allowHdr10DoviInvalid(profiles, [m.hdr10Tagged("hevc", videoRangeType)])
+
+      m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL")
+    end function
+
+    @it("when a color tag is not HDR10's")
+    @params("ColorTransfer", "arib-std-b67")
+    @params("ColorPrimaries", "bt709")
+    @params("ColorSpace", "bt709")
+    function _(field as string, value as string)
+      stream = m.hdr10Tagged("hevc", "DOVIInvalid")
+      stream[field] = value
+      profiles = m.hdrProfiles()
+      allowHdr10DoviInvalid(profiles, [stream])
+
+      m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL")
+    end function
+
+    @it("when a color tag is missing")
+    function _()
+      stream = m.hdr10Tagged("hevc", "DOVIInvalid")
+      stream.Delete("ColorPrimaries")
+      profiles = m.hdrProfiles()
+      allowHdr10DoviInvalid(profiles, [stream])
+
+      m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL")
+    end function
+
+    @it("when there is no video stream, or no streams")
+    function _()
+      profiles = m.hdrProfiles()
+      allowHdr10DoviInvalid(profiles, [{ Type: "Audio", Codec: "ac3" }])
+      allowHdr10DoviInvalid(profiles, invalid)
+      allowHdr10DoviInvalid(invalid, [m.hdr10Tagged("hevc", "DOVIInvalid")])
+
+      m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL")
+    end function
+
+    @it("when the profile has no VideoRangeType condition (a server before 10.9)")
+    function _()
+      profiles = [{ "Type": "Video", "Codec": "h265,hevc", "Conditions": [{ "Condition": "EqualsAny", "Property": "VideoProfile", "Value": "main", "IsRequired": false }] }]
+      allowHdr10DoviInvalid(profiles, [m.hdr10Tagged("hevc", "DOVIInvalid")])
+
+      m.assertEqual(profiles[0].Conditions.Count(), 1)
+    end function
+
+  end class
+
+end namespace

@@ -28,6 +28,8 @@ Some of these repackaged streams are too much for the Roku to hold. When one fai
 
 [Preserve DoVi](../app-settings.md#playbackPreserveDovi) turns this on or off. It's on by default.
 
+Some files carry Dolby Vision that doesn't follow Dolby's specification, and Jellyfin marks it invalid. When the picture underneath is HDR10, JellyRock plays the file as HDR10 on a TV that shows HDR10, without Dolby Vision. Otherwise your server converts it.
+
 ## Settings
 
 - [Preserve DoVi](../app-settings.md#playbackPreserveDovi): repackage Dolby Vision MKV files so they play in Dolby Vision.
