@@ -325,10 +325,38 @@ namespace tests
       m.assertEqual(result[2], "ac3")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resolveSurroundTranscodeAudio(): the profile's channel limit and surround codecs")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("offers ac3 at 8 channels when only the 6-channel probe reports it")
+    function _()
+      result = resolveSurroundTranscodeAudio(["eac3"], ["eac3", "ac3"])
+      m.assertEqual(result.maxAudioChannels, "8")
+      m.assertTrue(arrayHasValue(result.surroundCodecs, "eac3"))
+      m.assertTrue(arrayHasValue(result.surroundCodecs, "ac3"), "an AC3 source must be copyable on a 7.1 system")
+    end function
+
+    @it("uses 6 channels and the 6-channel codecs on a 5.1 system")
+    function _()
+      result = resolveSurroundTranscodeAudio([], ["eac3", "ac3"])
+      m.assertEqual(result.maxAudioChannels, "6")
+      m.assertEqual(result.surroundCodecs.count(), 2)
+      m.assertTrue(arrayHasValue(result.surroundCodecs, "eac3"))
+      m.assertTrue(arrayHasValue(result.surroundCodecs, "ac3"))
+    end function
+
+    @it("uses 2 channels and no surround codecs without passthrough")
+    function _()
+      result = resolveSurroundTranscodeAudio([], [])
+      m.assertEqual(result.maxAudioChannels, "2")
+      m.assertEqual(result.surroundCodecs.count(), 0)
+    end function
+
     @it("lets ac3 reach the ts transcode list on an eac3-only 8-channel device")
     function _()
-      merged = mergeSurroundPassthruCodecs(["eac3"], ["eac3", "ac3"])
-      result = buildVideoTranscodingAudioCodecsForContainer("ts", merged, "auto", ["mp3"])
+      surroundAudio = resolveSurroundTranscodeAudio(["eac3"], ["eac3", "ac3"])
+      result = buildVideoTranscodingAudioCodecsForContainer("ts", surroundAudio.surroundCodecs, "auto", ["mp3"])
       m.assertTrue(arrayHasValue(result, "ac3"), "ac3 must be offered so the server can copy an AC3 source")
       m.assertTrue(arrayHasValue(result, "eac3"))
     end function
