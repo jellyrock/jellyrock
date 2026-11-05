@@ -893,6 +893,32 @@ Two facts limit the fix. The channel item lists no media streams before it opens
 
 Not done in PR #1323: the gap is in the upstream direct play, which that PR does not change, and the fix is a design choice. Close it by reading the upstream playlist's `CODECS` and `RESOLUTION` before playing the link (`hlsMasterVariant()` on the upstream master, where one exists) and sending the stream through the server when it is H.264 beyond the ceiling, or by a stall fallback that moves to the server's stream; then check a 4K H.264 channel plays on both server setups.
 
+#### With a level setting on, a direct play the decoder never starts hangs at position 0 with no fallback `[fid: level-override-direct-play-hangs-no-fallback]` `[captured 2026-11-05]` `[pinned]`
+
+With `playbackTryDirectHevcProfileLevel` or `playbackTryDirectH264ProfileLevel` on, a source whose only transcode reason is `VideoLevelNotSupported` is direct-played (`triesDirectPlayOverLevel()` in `source/utils/streamSelection.bs`), with the transcode as its fallback (`isTranscodeAvailable`). When the decoder never starts that play, the player reports playing at position 0 indefinitely and the fallback never runs.
+
+Measured 2026-11-05 against 12.4, override on, each case a cold start and a deep-link play: on a Roku Ultra `4850X` (OS 16.0.4, 4K output) a 4K HEVC clip tagged level 6.1, whose stream fits level 5.0, sat at `play`, position 0, for 45 s and for 75 s with no fallback. In the same runs the override helped: the Ultra and the Streaming Stick 4K `3820RW` direct-played a 1080p H.264 clip tagged 5.1 (device level 4.2), and the Ultra a 4K HEVC clip tagged 5.2. The Roku Stick `3600X` refused the H.264 5.1 clip with `-3 ... no memory` after 0.6 s, and its fallback transcode played. So decoders look past an inflated tag within limits the docs do not state, and the setting only helps users who find it.
+
+Root cause: the transcode retry runs only from the `error` branch of `VideoPlayerView`'s state handler (`chooseErrorRetry()`), and the one stall watchdog (`bufferCheck()`) starts only in `buffering`. A play the decoder never starts reports neither. The override and its error-only fallback are in the fork's initial commit, and live and upstream-link direct plays share the same fallback (followup `live-4k-h264-no-1080p-check`).
+
+Options:
+
+- `auto` (recommended): remove both settings; when the server's only reason is the level and the stream's own size, frame rate and bitrate fit the device's level, try direct play for everyone, backed by a start watchdog (the position must move within a measured window, or the load retries through the transcode) and the existing error fallback. Touches the settings, a registry migration to clear the saved keys, the strings and user docs, `triesDirectPlayOverLevel()`, a pure watchdog rule with tests, `VideoPlayerView`, `playback.md` and a decision record. Risk: artifacts no check sees, and a failed try costs the watchdog window before the transcode.
+- `startwatch`: keep the opt-in settings and add only the watchdog.
+- `remove`: remove both settings and always transcode on a level mismatch.
+
+Not done in PR #1323: it is its own change (settings removal, migration, docs, watchdog), and the hang predates the PR.
+
+Not checked:
+
+- whether the picture was correct: a moving position is not a clean picture, and Roku can't capture the video plane;
+- real files whose encoders inflated the tag (all the test clips are synthetic);
+- other Roku models and OS versions;
+- how long a healthy direct play takes to move on the slowest supported Roku, which a watchdog's window depends on;
+- whether the Ultra errors on its own after more than 75 s.
+
+Tracked publicly in [#1330](https://github.com/jellyrock/jellyrock/issues/1330).
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
