@@ -752,7 +752,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
       ' the video buffer holds at this answer's segment length. A load that already asked for a
       ' re-encode carries the cap and is never checked.
       video.reencodeCapBps = reencodeCheck.bufferCapBps(playedSource, getDeviceBufferSize(), m.playlistEntryLimit)
-      m.log.info("Buffer bitrate cap for the re-encode check", "capBps", video.reencodeCapBps, "entryLimit", m.playlistEntryLimit, "itemId", video.id)
+      m.log.info("Buffer bitrate cap for the re-encode check", "capBps", video.reencodeCapBps.toStr(), "entryLimit", m.playlistEntryLimit, "itemId", video.id)
     end if
   end if
 

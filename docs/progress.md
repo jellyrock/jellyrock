@@ -369,10 +369,6 @@ The `Detect test-relevant changes` pattern in `device-unit-tests.yml` leaves out
 
 **Fix shape:** add `scripts/run-roku-tests.js`, `scripts/lib/rooibos-summary.cjs` and the patches the run applies to the pattern.
 
-#### The log mixin prints `LongInteger` values blank `[fid: log-mixin-longinteger-blank]` `[captured 2026-11-04]`
-
-The roku-log mixin prints `LongInteger` values as blank (seen 2026-11-04: "bytes  budget" with nothing after, from `fitHlsPlaylist`'s log). Find whether `m.toString` in the vendored `LogMixin.brs` mishandles the type, and decide between converting in our code (`.toStr()`, as the playlist and re-encode logs now do), a wrapper, or a build check, which needs type inference the roku-log plugin lacks.
-
 ### components
 
 #### The `cell-load` counters are silently zeroed whenever a screen replaces its content root, so any measurement of a session that does so under-reports. `[fid: cell-load-counters-zeroed-by-root-swap]` `[captured 2026-08-22]`

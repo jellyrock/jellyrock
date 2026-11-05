@@ -2588,7 +2588,7 @@ sub playingProgressCheck()
   }
   action = classifyPlayingProgress(positionNow, m.playingProgressPosition, m.playingProgressSpan.totalMilliseconds(), STALL_WINDOW_SECONDS * 1000, flags)
   if action = BufferCheckAction.STALLED
-    m.log.warn("Node playing with a frozen position", "position", positionNow)
+    m.log.warn("Node playing with a frozen position", "position", int(positionNow))
     showPlaybackErrorDialog(translate(translationKeys.ErrorThereWasAnErrorRetrievingThe))
     m.top.control = "stop"
     return
@@ -2599,7 +2599,7 @@ sub playingProgressCheck()
   m.playingProgressSpan.mark()
   m.playingProgressTimer.control = "start"
   if action = BufferCheckAction.LIVE_STALLED
-    m.log.warn("Live TV node playing with a frozen position", "position", positionNow)
+    m.log.warn("Live TV node playing with a frozen position", "position", int(positionNow))
     ' Same rule as bufferCheck: the host owns the restart and may destroy this component
     ' synchronously, so this call is the last statement. A guard that declined leaves the next
     ' window running, so the check comes back.
