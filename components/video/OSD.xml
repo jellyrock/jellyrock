@@ -114,6 +114,10 @@
     <!-- A pick in the gear menu's Repeat row: a queueRepeat mode. Written only when it differs
          from the queue's; VideoPlayerView records it on the queue. -->
     <field id="repeatModePick" type="string" alwaysNotify="true" />
+    <!-- A pick in the gear menu's SyncPlay rows, shown while following a group: { kind, value },
+         kind "shuffle" (value a server shuffle word), "timeOffset" (value the SyncPlay Time Offset
+         in ms) or "leave" (no value). VideoPlayerView asks the group or saves the setting. -->
+    <field id="syncPlayPick" type="assocarray" alwaysNotify="true" />
     <!-- Read the queue again for previous and next and the gear's tint: a gear pick changes both. -->
     <function name="refreshFromQueue" />
   </interface>

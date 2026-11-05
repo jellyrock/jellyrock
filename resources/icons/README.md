@@ -170,6 +170,7 @@ this table automatically.
 | `search.svg` | `search` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
 | `settings.svg` | `settings` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
 | `shuffle.svg` | `shuffle` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
+| `shuffle_menu.svg` | `shuffle` | Rounded | 500 | 0 | `24px` | 2026-11-03 (a copy of `shuffle.svg` at the default density, for the OSD gear's rows, whose other glyphs render at 96/54; `shuffle` itself is pinned to the overhang's 63/46) |
 | `tv.svg` | `tv_gen` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
 | `delete.svg` | `delete_forever` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
 | `expand.svg` | `unfold_more` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
@@ -219,3 +220,5 @@ this table automatically.
 | `speed.svg` | `speed` | Rounded | 500 | 0 | `24px` | 2026-10-23 |
 | `hd.svg` | `hd` | Rounded | 500 | 0 | `24px` | 2026-10-23 |
 | `groups.svg` | `groups` | Rounded | 500 | 1 | `24px` | 2026-10-27 |
+| `groups_menu.svg` | `groups` | Rounded | 500 | 1 | `24px` | 2026-11-03 (a copy of `groups.svg` at the default density, for the gear's **Leave Group** row) |
+| `timer.svg` | `timer` | Rounded | 500 | 0 | `24px` | 2026-11-03 |

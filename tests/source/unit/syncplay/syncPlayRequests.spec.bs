@@ -47,6 +47,8 @@ namespace tests
       m.assertEqual(syncPlayRequests.nextItem("p-1")["PlaylistItemId"], "p-1")
       m.assertEqual(syncPlayRequests.previousItem("p-2")["PlaylistItemId"], "p-2")
       m.assertEqual(syncPlayRequests.setPlaylistItem("p-3")["PlaylistItemId"], "p-3")
+      m.assertEqual(syncPlayRequests.setRepeatMode("RepeatAll")["Mode"], "RepeatAll")
+      m.assertEqual(syncPlayRequests.setShuffleMode("Shuffle")["Mode"], "Shuffle")
     end function
 
     @it("SetNewQueue carries the ids, the index and the start ticks")

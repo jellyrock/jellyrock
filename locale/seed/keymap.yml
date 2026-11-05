@@ -535,3 +535,8 @@ LabelRepeatSingle:
         tr: "means repeat once; ours loops this item"
         vi: "means repeat once; ours loops this item"
         zh_Hant_HK: "means repeat once; ours loops this item"
+
+LabelShuffle:
+  en: Shuffle
+  from:
+    jellyfin-web: { key: Shuffle, en: Shuffle }
