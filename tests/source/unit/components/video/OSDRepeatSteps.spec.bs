@@ -1,3 +1,4 @@
+import "pkg:/source/remotecontrol/remoteCommand.bs"
 import "pkg:/source/utils/queueRepeat.bs"
 
 namespace tests
@@ -11,12 +12,21 @@ namespace tests
 
     private osd as object
     private previousQueue as object
+    private previousManager as object
+    private previousServerUrl as string
 
     protected override function beforeEach()
       super.beforeEach()
       if not m.global.doesExist("queueManager") then m.global.addField("queueManager", "node", false)
       m.previousQueue = m.global.queueManager
       m.global.queueManager = CreateObject("roSGNode", "QueueManager")
+      ' The OSD reads the group through m.global.syncPlayManager; outside a group there is none to read.
+      if not m.global.doesExist("syncPlayManager") then m.global.addField("syncPlayManager", "node", false)
+      m.previousManager = m.global.syncPlayManager
+      m.global.syncPlayManager = invalid
+      ' No server: a GroupJoined then starts no time-sync burst.
+      m.previousServerUrl = m.global.server.serverUrl
+      m.global.server.serverUrl = ""
       if not m.global.doesExist("sceneManager")
         m.global.addField("sceneManager", "node", false)
         m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
@@ -27,10 +37,26 @@ namespace tests
 
     protected override function afterEach()
       m.osd = invalid
+      if isValid(m.global.syncPlayManager) then m.global.syncPlayManager.callFunc("reset")
+      m.global.syncPlayManager = m.previousManager
+      m.previousManager = invalid
+      m.global.server.serverUrl = m.previousServerUrl
       m.global.queueManager = m.previousQueue
       m.previousQueue = invalid
       super.afterEach()
     end function
+
+    ' A member following a group of two items, playing the second, under `repeatMode`; the local
+    ' queue holds the group's item alone with its playlist stamp, as SyncPlayManager.applyQueue
+    ' builds it (with no server the manager's own fetch builds nothing).
+    private sub followingGroupAt(index as integer, repeatMode as string, shuffleMode = "Sorted" as string)
+      manager = CreateObject("roSGNode", "SyncPlayManager")
+      m.global.syncPlayManager = manager
+      manager.frame = remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g1", Type: "GroupJoined", Data: { GroupId: "g1", GroupName: "Movie night", State: "Idle", Participants: ["ann"], LastUpdatedAt: "2026-10-23T20:47:20.500Z" } } })
+      playlist = [{ ItemId: "i1", PlaylistItemId: "p1" }, { ItemId: "i2", PlaylistItemId: "p2" }]
+      m.global.queueManager.callFunc("set", [{ id: "i" + (index + 1).toStr(), type: "Movie", syncPlayPlaylistItemId: "p" + (index + 1).toStr() }])
+      manager.frame = remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g1", Type: "PlayQueue", Data: { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: playlist, PlayingItemIndex: index, StartPositionTicks: 0, RepeatMode: repeatMode, ShuffleMode: shuffleMode } } })
+    end sub
 
     private sub localQueueAt(index as integer, count as integer, repeatMode as string)
       items = []
@@ -105,6 +131,37 @@ namespace tests
       m.global.queueManager.callFunc("setRepeatMode", queueRepeat.ALL)
       m.osd.callFunc("refreshFromQueue")
       m.assertTrue(m.button("itemNext").isEnabled)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("in a SyncPlay group")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads the group's playlist and its repeat mode: the last item has a next under RepeatAll, none when off")
+    function _()
+      m.followingGroupAt(1, "RepeatNone")
+      m.osd.itemData = m.item()
+      m.assertFalse(m.button("itemNext").isEnabled)
+      m.assertTrue(m.button("itemBack").isEnabled)
+      m.followingGroupAt(1, "RepeatAll")
+      m.osd.callFunc("refreshFromQueue")
+      m.assertTrue(m.button("itemNext").isEnabled)
+      m.assertTrue(m.button("itemBack").isEnabled)
+    end function
+
+    @it("the group's repeat mode rides on the local queue, and the gear lights for it or for the group's shuffle")
+    function _()
+      m.followingGroupAt(0, "RepeatOne")
+      m.osd.itemData = m.item()
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), queueRepeat.ONE)
+      m.assertTrue(m.button("showPlaybackSettings").isButtonSelected)
+      m.followingGroupAt(0, "RepeatNone", "Shuffle")
+      m.osd.callFunc("refreshFromQueue")
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), queueRepeat.OFF)
+      m.assertTrue(m.button("showPlaybackSettings").isButtonSelected, "the group's shuffle")
+      m.followingGroupAt(0, "RepeatNone", "Sorted")
+      m.osd.callFunc("refreshFromQueue")
+      m.assertFalse(m.button("showPlaybackSettings").isButtonSelected)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

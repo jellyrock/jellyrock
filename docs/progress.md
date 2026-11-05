@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-05: feat(syncplay): Repeat, shuffle, time offset and leave in the gear
 - 2026-11-05: fix(playback): Copy AC3 audio in a remux on 7.1 systems
 - 2026-11-05: fix(playback): Pick a playable audio track, not audio description
 - 2026-11-04: chore(build): Fail the build on an `m.log` call with too many values
@@ -1061,21 +1062,13 @@ The app-side half (one name helper used by the auth header and `buildPairPayload
 
 Closes when the in-player SyncPlay surface (phase F of epic #1251) ships: delete the constant, fold `joinAllowed` back into `canJoin`, and drop the two `syncPlayMenu.spec.bs` cases that drive the switch.
 
-#### SyncPlay repeat modes are not read: a `RepeatOne` member is left on a finished player and `RepeatAll` grays out Next on the last item `[fid: syncplay-repeat-modes]` `[captured 2026-10-28]`
+#### SyncPlay in a group offers no queue edits from the Roku, and voice fast-forward and rewind are unchecked `[fid: syncplay-queue-edits-shuffle-voice-scrub]` `[captured 2026-10-29]`
 
-Under `RepeatAll` or `RepeatOne`, Jellyfin's SyncPlay `PlayQueueManager.Next()` and `Previous()` answer on the playlist's ends: `RepeatAll` wraps around, `RepeatOne` keeps the same index (read upstream 2026-10-28). A jellyfin-web member can set either mode. JellyRock parses `RepeatMode` (`syncPlayMessage`) but `syncPlayState` drops it, and `syncPlayQueue.changesPlayingItem()` treats a `NextItem` with the same id as no change. So, from reading the code and not yet seen on a device: a `RepeatOne` member is left on a finished player (and leaves playback on the last item, `syncPlayQueue.isLastItem()`), and a `RepeatAll` member's **Next** grays out on the last item (`syncPlayQueue.stepBounds()`).
-
-Deferred from #1276 to the SyncPlay project's hardening phase, where the control itself is designed: the operator expects it in the playback settings menu of the OSD (the gear), and the player has no native loop yet, so what repeat means outside a group is part of the design.
-
-The proposed shape: keep `repeatMode` in the state; `stepBounds()` and `isLastItem()` follow `RepeatAll`; every `NextItem` or `PreviousItem` reloads, since the server sends one only after a step. Closes when a group with a REST member setting each mode plays through the last item on a device, and the gear offers the control.
-
-#### SyncPlay in a group offers no queue edits or shuffle from the Roku, and voice fast-forward and rewind are unchecked `[fid: syncplay-queue-edits-shuffle-voice-scrub]` `[captured 2026-10-29]`
-
-Phase E (#1276) chose honor-only for the group's modes: the server applies shuffle and owns the playlist, so the Roku offers no queue editing and no shuffle control while following. Design both with the repeat control in the OSD gear (followup `syncplay-repeat-modes`), in the SyncPlay project's hardening phase.
+Phase E (#1276) chose honor-only for the group's playlist: the server owns it, so the Roku offers no queue editing while following (add, remove or move an item in the group's playlist). The group's repeat and shuffle now ship in the OSD gear (decision `syncplay-group-repeat-rides-queue`), so queue edits are the part left to design, in the SyncPlay project's hardening phase.
 
 Also unchecked: voice fast-forward and rewind still write the node (`control` set to `fastforward` or `rewind` in `VideoPlayerView.handleTransport`) instead of going to the group. The remote's OK on the trick-play bar posts the group seek, but nobody has checked on a device whether a voice scrub can land with no OK, which would move this member alone.
 
-Closes when the queue-edit and shuffle design ships or is declined in a decision note, and a device check shows a voice scrub in a group either reaches the group or cannot land without an OK.
+Closes when the queue-edit design ships or is declined in a decision note, and a device check shows a voice scrub in a group either reaches the group or cannot land without an OK.
 
 #### A halt landing just after a SyncPlay correction's pause write can leave the node paused `[fid: syncplay-correction-pause-in-flight]` `[captured 2026-11-01]`
 
@@ -1630,6 +1623,10 @@ Cause not confirmed. A playback error dialog is only a guess, because the record
 **Also seen in the same run, 05:48 UTC:** "Play on a song's details opens the audio player" timed out waiting for focus in `#extrasGrid` (`wait-focused-timeout`, view `ItemDetails`, focus on an `IconButton`), then passed 3 of 3 alone. Cause not found, and this exact timeout has no earlier record. File it separately if it comes back.
 
 **Not checked:** which dialog appeared; whether the failure repeats in `dialogs.spec.js` run alone; whether the sibling followup has the same cause; whether the memory monitor plays any part, though the same wait failed on a commit without it.
+
+#### RTA cannot reach the ready branch of the SyncPlay duplicate-restart fix `[fid: syncplay-absorb-ready-branch-no-rta]` `[captured 2026-11-04]`
+
+`syncPlayQueue.restartAbsorbed` has two branches (decision `syncplay-duplicate-restart-absorbed`). The RTA case in `tests/rta/specs/syncplay-controls.spec.js` covers the loading branch only. The ready branch (a duplicate restart that finds the Roku already ready at the start, so it sends `Ready` again) has unit tests alone: the REST second member ignores the wait, so the group's `Unpause` follows the Roku's `Ready` within about 100 ms and a poll cannot land in that window. Not done now because it needs the REST member to send its own `Ready` (`IgnoreWait` off) so the wait stays open. Closes when an RTA case drives the ready branch.
 
 #### Document the BrightScript simulator for one-spec and boot checks `[fid: brs-simulator-howto]` `[captured 2026-11-05]`
 

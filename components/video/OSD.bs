@@ -753,7 +753,10 @@ sub applyGearState()
   gearButton = m.buttonMenuRight.findNode("showPlaybackSettings")
   if not isValid(gearButton) then return
   queueManager = m.global.queueManager
-  gearButton.isButtonSelected = playbackSettingsMenu.hasPicks(queueManager.callFunc("getPlaybackCaps"), queueManager.callFunc("getRepeatMode"))
+  shuffleMode = invalid
+  group = syncPlayHooks.groupModes()
+  if isValid(group) then shuffleMode = group.shuffleMode
+  gearButton.isButtonSelected = playbackSettingsMenu.hasPicks(queueManager.callFunc("getPlaybackCaps"), queueManager.callFunc("getRepeatMode"), shuffleMode)
 end sub
 
 ' What the queue decides for the OSD, read again: the step buttons and the gear's tint. Run as the
@@ -1018,7 +1021,9 @@ end function
 ' @param {string} focusRowId - the row to focus, for Back from one of its pickers
 sub openSettingsMenu(focusRowId = "" as string)
   current = effectiveCaps()
-  menu = playbackSettingsMenu.rows(isLiveTvItem(), current.bitrateMbps, current.resolution, resolutionSetting(), currentRepeatMode())
+  ' The SyncPlay rows while following, read as the menu opens and never cached (the group's
+  ' shuffle and this member's drift change under an open OSD).
+  menu = playbackSettingsMenu.rows(isLiveTvItem(), current.bitrateMbps, current.resolution, resolutionSetting(), currentRepeatMode(), syncPlayHooks.groupModes())
   if menu.ids.count() = 0 then return
 
   focusIndex = 0
@@ -1050,6 +1055,17 @@ sub onSettingsMenuResult()
   else if rowId = playbackSettingsMenu.ROW_REPEAT
     repeatMode = currentRepeatMode()
     openCapPicker(rowId, translationKeys.LabelRepeat, playbackSettingsMenu.repeatOptions(repeatMode), repeatMode)
+  else if rowId = playbackSettingsMenu.ROW_SHUFFLE or rowId = playbackSettingsMenu.ROW_TIME_OFFSET or rowId = playbackSettingsMenu.ROW_LEAVE_GROUP
+    ' The membership can have ended while the menu was up: the rows then have nothing to act on.
+    group = syncPlayHooks.groupModes()
+    if not isValid(group) then return
+    if rowId = playbackSettingsMenu.ROW_SHUFFLE
+      openCapPicker(rowId, translationKeys.LabelShuffle, playbackSettingsMenu.shuffleOptions(group.shuffleMode), group.shuffleMode)
+    else if rowId = playbackSettingsMenu.ROW_TIME_OFFSET
+      openCapPicker(rowId, translationKeys.LabelSyncPlayTimeOffset, playbackSettingsMenu.timeOffsetOptions(group.offsetMs), group.offsetMs)
+    else
+      m.top.syncPlayPick = { kind: "leave" }
+    end if
   end if
 end sub
 
@@ -1059,7 +1075,8 @@ function currentRepeatMode() as string
 end function
 
 ' One picker for every gear row. `field` is the row id, which is also the playbackCaps field
-' a pick sets; the Repeat row's pick goes out on repeatModePick instead.
+' a pick sets; the Repeat row's pick goes out on repeatModePick, and the SyncPlay rows' on
+' syncPlayPick.
 sub openCapPicker(field as string, titleKey as string, options as object, current as dynamic)
   m.capPicker = { field: field, options: options, current: current }
   m.capPickerDialog = showListDialog(translate(titleKey), options.labels, "onCapPicked", options.defaultIndex, options.selectedIndex)
@@ -1088,6 +1105,10 @@ sub onCapPicked()
   if picked = picker.current then return
   if picker.field = playbackSettingsMenu.ROW_REPEAT
     m.top.repeatModePick = picked
+  else if picker.field = playbackSettingsMenu.ROW_SHUFFLE
+    m.top.syncPlayPick = { kind: "shuffle", value: picked }
+  else if picker.field = playbackSettingsMenu.ROW_TIME_OFFSET
+    m.top.syncPlayPick = { kind: "timeOffset", value: picked }
   else
     m.top.playbackCapsPick = { field: picker.field, value: picked }
   end if

@@ -160,6 +160,13 @@ namespace tests
       m.assertEqual(syncPlayMenu.toastFor({ kind: "LibraryAccessDenied" }).key, translationKeys.MessageSyncPlayLibraryAccessDenied)
     end function
 
+    @it("a time offset pick's correction is an info toast that the member is syncing")
+    function _()
+      toast = syncPlayMenu.toastFor({ kind: "syncing" })
+      m.assertEqual(toast.key, translationKeys.MessageSyncPlaySyncingWithGroup)
+      m.assertEqual(toast.toastType, "info")
+    end function
+
     @it("an unknown kind, or no notice, shows nothing")
     function _()
       m.assertInvalid(syncPlayMenu.toastFor({ kind: "StateUpdate" }))

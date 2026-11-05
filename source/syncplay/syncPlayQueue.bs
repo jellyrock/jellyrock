@@ -1,6 +1,7 @@
 import "pkg:/source/syncplay/syncPlayTime.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/playKind.bs"
+import "pkg:/source/utils/queueRepeat.bs"
 
 ' Turning a SyncPlay play queue into QueueManager items, pure. The server's PlayQueue update
 ' names items by id only; SyncPlayManager fetches the one it plays (GET /Items?ids=…) and hands
@@ -9,6 +10,18 @@ import "pkg:/source/utils/playKind.bs"
 ' advance, so the other items' metadata has no reader, and the group's playlist (ids and the
 ' playing index, in syncPlayState) is what the OSD's previous and next read.
 namespace syncPlayQueue
+
+  ' The server's GroupShuffleMode words. The repeat words are queueRepeat.bs's: the group's
+  ' PlayQueue update and the viewer's pick in the gear carry the same RepeatMode values.
+  const SHUFFLE_OFF = "Sorted"
+  const SHUFFLE_ON = "Shuffle"
+
+  ' The shuffle mode as one of the two values: anything else (an empty field, a 10.7 line that
+  ' sends none) is off.
+  function normalizeShuffle(mode as dynamic) as string
+    if syncPlayTime.isText(mode) and mode = SHUFFLE_ON then return SHUFFLE_ON
+    return SHUFFLE_OFF
+  end function
 
   ' The playlist entry the group is playing, or invalid while it plays nothing.
   ' @param state - syncPlayState
@@ -81,10 +94,11 @@ namespace syncPlayQueue
 
   ' Whether the group's playing item is the last of its playlist, so a finished item has nothing to
   ' move on to. The group's playlist, not the local queue: the local one drops items this member
-  ' cannot see. The group's repeat mode is not read yet: under RepeatAll or RepeatOne the server
-  ' answers NextItem on the last item, which this does not expect.
+  ' cannot see. Under RepeatAll the server's Next() wraps to the first item, and under RepeatOne
+  ' it stays on this one, so no item is last then (PlayQueueManager.Next, read 2026-11-03).
   function isLastItem(state as object) as boolean
-    if state.playingItemIndex < 0 then return true
+    if state.playingItemIndex < 0 or state.playingItemIndex >= state.playlist.count() then return true
+    if queueRepeat.normalize(state.repeatMode) <> queueRepeat.OFF then return false
     return state.playingItemIndex >= state.playlist.count() - 1
   end function
 
@@ -112,13 +126,19 @@ namespace syncPlayQueue
     return syncPlayTime.isText(playlistItemId) and playlistItemId <> ""
   end function
 
-  ' What the OSD's previous and next may ask of the group, from the group's playlist: a step
-  ' past either end has no item to go to. The group's repeat mode is not read yet: under
-  ' RepeatAll the server would wrap at either end, which this does not offer.
+  ' What the OSD's previous and next may ask of the group, from the group's playlist and its
+  ' repeat mode: the same rule as the local queue's (queueRepeat.nextIndex, previousIndex), since
+  ' the server's Next() and Previous() wrap under RepeatAll and replay under RepeatOne. Off, a
+  ' step past either end has no item to go to. Each step's target index comes too, so a press
+  ' whose target is the playing item says it plays again.
   ' @param index - the group's playing index
   ' @param count - the group's playlist length
-  function stepBounds(index as integer, count as integer) as object
-    return { hasPrevious: index > 0 and index < count, hasNext: index >= 0 and index < count - 1 }
+  ' @param repeatMode - the group's RepeatMode
+  ' @return {object} - { hasPrevious, hasNext, previousIndex, nextIndex }, an index -1 for no step
+  function stepBounds(index as integer, count as integer, repeatMode = "" as dynamic) as object
+    previousIndex = queueRepeat.previousIndex(repeatMode, index, count)
+    nextIndex = queueRepeat.nextIndex(repeatMode, index, count)
+    return { hasPrevious: previousIndex >= 0, hasNext: nextIndex >= 0, previousIndex: previousIndex, nextIndex: nextIndex }
   end function
 
   ' What a play pressed while in a group asks of the group in place of a local start (decision
@@ -150,14 +170,44 @@ namespace syncPlayQueue
     return { action: "setNewQueue", itemIds: itemIds, position: position, startPositionTicks: startTicks& }
   end function
 
-  ' Whether a queue update moves this member to another item (a new playlist, the server's
-  ' current-item change, or a removal that took the playing item with it).
+  ' Whether a queue update starts this member on an item: a new playlist, a step to the next or
+  ' previous item, a jump to another item, or a removal that took the playing item with it. A
+  ' NextItem or PreviousItem counts even when the id is unchanged: under RepeatOne the server
+  ' keeps the index, sends the update and waits on every member's Ready, so the item starts over
+  ' (WaitingGroupState.HandleRequest(NextItemGroupRequest), read 2026-11-03; jellyfin-web's
+  ' QueueCore sets the current item again without comparing ids).
   function changesPlayingItem(reason as string, previousPlaylistItemId as string, playlistItemId as string) as boolean
-    if reason = "NewPlaylist" then return true
-    if reason = "SetCurrentItem" or reason = "NextItem" or reason = "PreviousItem" or reason = "RemoveItems"
+    if reason = "NewPlaylist" or reason = "NextItem" or reason = "PreviousItem" then return true
+    if reason = "SetCurrentItem" or reason = "RemoveItems"
       return previousPlaylistItemId <> playlistItemId
     end if
     return false
+  end function
+
+  ' Whether a NextItem or PreviousItem frame for the item already playing is a restart this member
+  ' is already part of, so it reloads nothing. Under RepeatOne the server keeps the index on a
+  ' step and drops a duplicate only by playlist id, which is unchanged, so two members' steps
+  ' restart the group twice; each restart resets the server's waiting set and waits on every
+  ' member's Ready again, and a reload for the second would make the group wait a third time
+  ' (WaitingGroupState and PlayQueueManager, read 2026-11-03).
+  '   - "loading": the restart's load is owed, or running, or its player has not mounted yet. The
+  '     Ready at its end names the same playlist id and answers both.
+  '   - "ready": the player holds the start, paused, and no command came since the item last changed
+  '     (the group's Unpause would have). The Ready it sent was for the wait the server reset, so
+  '     it goes out again.
+  '   - "": a different item, another reason, or a restart that has begun to play: a load.
+  ' @param loadInFlight - a load is owed, or a reload was asked for and the player has not mounted
+  ' @param trackerPhase - the ready tracker's phase
+  ' @param playerState - the Video node's state
+  ' @param lastCommand - the last group command applied or scheduled, or invalid
+  ' @param queueChangedAtMs - the LastUpdate of the update that last changed the playing item
+  function restartAbsorbed(reason as string, previousPlaylistItemId as string, playlistItemId as string, loadInFlight as boolean, trackerPhase as string, playerState as string, lastCommand as dynamic, queueChangedAtMs as longinteger) as string
+    if reason <> "NextItem" and reason <> "PreviousItem" then return ""
+    if playlistItemId = "" or playlistItemId <> previousPlaylistItemId then return ""
+    if loadInFlight or trackerPhase = "loading" then return "loading"
+    if trackerPhase <> "ready" or playerState <> "paused" then return ""
+    if isValid(lastCommand) and syncPlayTime.isWholeNumber(lastCommand.emittedAtMs) and syncPlayTime.asLong(lastCommand.emittedAtMs) >= queueChangedAtMs then return ""
+    return "ready"
   end function
 
   ' What a PlayQueue frame leaves owed to the player, decided as the frame arrives, when the
@@ -172,9 +222,10 @@ namespace syncPlayQueue
   ' @param owedLoad - the record from before this frame: invalid or { newPlaylist }
   ' @param previousPlaylistItemId - the group's playing playlist id before this frame
   ' @param playlistItemId - the group's playing playlist id after this frame
-  function owedLoadAfter(owedLoad as dynamic, reason as string, previousPlaylistItemId as string, playlistItemId as string) as dynamic
+  ' @param absorbed - the frame is a restart this member is part of already (restartAbsorbed)
+  function owedLoadAfter(owedLoad as dynamic, reason as string, previousPlaylistItemId as string, playlistItemId as string, absorbed = false as boolean) as dynamic
     if playlistItemId = "" then return invalid
-    if not changesPlayingItem(reason, previousPlaylistItemId, playlistItemId) then return owedLoad
+    if absorbed or not changesPlayingItem(reason, previousPlaylistItemId, playlistItemId) then return owedLoad
     newPlaylist = reason = "NewPlaylist" or (isValid(owedLoad) and owedLoad.newPlaylist = true)
     return { newPlaylist: newPlaylist }
   end function
