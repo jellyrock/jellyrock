@@ -61,6 +61,27 @@ function videoStreamAboveH264Ceiling(videoStream as dynamic) as boolean
   return exceedsH264Ceiling(videoStream.Width, videoStream.Height)
 end function
 
+' h264OutputCheck: Whether a load reads the master playlist to see if the transcode is H.264
+' beyond the ceiling, and why not when it does not.
+'
+' Only a transcode that plays needs it. A viewer cap at or below 1080p skips it: the answer
+' already honors that cap, and a forced 1080 would raise it. A first request reads it only for a
+' source beyond the ceiling, so other plays make no extra request; the re-encode retry always
+' reads it.
+'
+' @param {boolean} playsTranscode - the load plays the answer's TranscodingUrl (playsServerTranscode)
+' @param {integer} viewerCapHeight - the viewer's resolution cap (playbackCaps.heightLimit), 0 for none
+' @param {boolean} sourceAboveCeiling - the source's video is beyond the ceiling (videoStreamAboveH264Ceiling)
+' @param {boolean} isReencode - the load asked the server not to copy the video (disallowVideoCopy)
+' @return {object} { read: boolean, reason: string }. reason is "" when read, otherwise
+'   "notPlayed", "viewerCap" or "withinCeiling"
+function h264OutputCheck(playsTranscode as boolean, viewerCapHeight as integer, sourceAboveCeiling as boolean, isReencode as boolean) as object
+  if not playsTranscode then return { read: false, reason: "notPlayed" }
+  if viewerCapHeight > 0 and viewerCapHeight <= H264_MAX_HEIGHT then return { read: false, reason: "viewerCap" }
+  if not isReencode and not sourceAboveCeiling then return { read: false, reason: "withinCeiling" }
+  return { read: true, reason: "" }
+end function
+
 ' h264CapDecision: Whether a PlaybackInfo answer must be asked for again at 1080p, and why.
 '
 ' The server's master playlist declares the codec and size the transcode will have, and H.264

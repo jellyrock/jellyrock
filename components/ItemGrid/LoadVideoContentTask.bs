@@ -573,11 +573,20 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     end if
   end if
 
+  ' Whether the viewer's level override tries direct play, decided once from the answer as it
+  ' stands: the check below must not ask again for a transcode that will not play, and a 1080p
+  ' answer would add a resolution reason that turns the override off.
+  answerSource = invalid
+  if isValidAndNotEmpty(m.playbackInfo.MediaSources) then answerSource = m.playbackInfo.MediaSources[0]
+  triesLevelOverride = false
+  if not isLive then triesLevelOverride = triesDirectPlayOverLevel(answerSource, userSettings, forceTranscoding)
+
   ' A transcode of a source above 1080p can come back as H.264 at the source's size when the server
   ' does not encode HEVC, which a Roku cannot decode: check the answer's playlist and ask again
   ' with a 1080p cap if so.
   if not isLive
-    capH264Resolution(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, pickedCaps, userSettings, disallowVideoCopy)
+    playsTranscode = playsServerTranscode(answerSource, upstreamBlocker, deviceLoadsUpstream, triesLevelOverride)
+    capH264Resolution(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, pickedCaps, userSettings, disallowVideoCopy, playsTranscode)
   end if
 
   ' Call addSubtitlesToVideo ONCE after ItemPostPlaybackInfo
@@ -660,38 +669,11 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     m.log.debug("Source keeps the server's answer", "blocker", upstreamBlocker, "isLive", isLive, "itemId", video.id)
   end if
 
-  ' For h264/hevc video, Roku spec states that it supports specfic encoding levels
-  ' The device can decode content with a Higher Encoding level but may play it back with certain
-  ' artifacts. If the user preference is set, and the only reason the server says we need to
-  ' transcode is that the Encoding Level is not supported, then try to direct play but silently
-  ' fall back to the transcode if that fails.
-  '
-  ' Resolution guard: Only attempt the level override when the source resolution is within the
-  ' codec's hardware ceiling. Many encoders tag 1080p content with inflated levels (for example 5.1)
-  ' even though the actual decode workload is within Roku's capability. But for resolutions
-  ' above the hardware limit (for example 4K h264), no level tolerance will help: skip the override.
-  ' Both height and width are checked to catch ultrawide or non-standard aspect ratios.
-  if m.playbackInfo.MediaSources[0].MediaStreams.Count() > 0 and not isLive
-    ' Find first video stream - MediaStreams[0] might be subtitle/audio
-    videoStream = getFirstVideoStream(m.playbackInfo.MediaSources[0].MediaStreams)
-    if isValid(videoStream) and isValid(videoStream.codec)
-      tryDirectPlay = userSettings.playbackTryDirectH264ProfileLevel and videoStream.codec = "h264"
-      tryDirectPlay = tryDirectPlay or (userSettings.playbackTryDirectHevcProfileLevel and videoStream.codec = "hevc")
-
-      ' Check source resolution against hardware ceiling before allowing override
-      if tryDirectPlay and not isWithinH264HardwareCeiling(videoStream)
-        tryDirectPlay = false
-      end if
-    else
-      tryDirectPlay = false
-    end if
-    if tryDirectPlay and isValid(m.playbackInfo.MediaSources[0].TranscodingUrl) and forceTranscoding = false
-      transcodingReasons = getTranscodeReasons(m.playbackInfo.MediaSources[0].TranscodingUrl)
-      if transcodingReasons.Count() = 1 and transcodingReasons[0] = "VideoLevelNotSupported"
-        video.isDirectPlaySupported = true
-        video.isTranscodeAvailable = true
-      end if
-    end if
+  ' The viewer's level override (triesDirectPlayOverLevel, decided above): try direct play, and
+  ' fall back to the transcode if it fails.
+  if triesLevelOverride
+    video.isDirectPlaySupported = true
+    video.isTranscodeAvailable = true
   end if
 
   if video.isDirectPlaySupported
@@ -791,32 +773,32 @@ end sub
 ' any segment exists, so read it, and ask PlaybackInfo once more with a 1080p resolution cap when
 ' h264CapDecision says so. A second request that fails keeps the first answer (m.playbackInfo).
 '
-' A first request reads the playlist only for a source above 1080p, so other plays make no extra
-' request; the re-encode retry always reads it. Neither reads it for an answer that is not an HLS
-' transcode, or under a resolution cap of the viewer's own at or below 1080p (Settings or the gear
-' pick): the first answer already honors that cap, and a forced 1080 would raise it.
+' h264OutputCheck decides when the playlist is read: only for a transcode that plays, never under
+' a viewer cap at or below 1080p, and on a first request only for a source above 1080p. An answer
+' that is not an HLS transcode has no master playlist to read.
 '
 ' @param {string} itemId - the item
 ' @param {object} userSettings - the viewer's settings, for their resolution cap
 ' @param {boolean} disallowVideoCopy - the load's own value, sent again unchanged
-sub capH264Resolution(itemId as string, mediaSourceId as dynamic, audioStreamIdx as integer, subtitleIdx as integer, playbackPosition as dynamic, meta as object, bypassDoviPreservation as boolean, forceTranscoding as boolean, pickedCaps as dynamic, userSettings as object, disallowVideoCopy as boolean)
+' @param {boolean} playsTranscode - the load plays the answer's TranscodingUrl (playsServerTranscode)
+sub capH264Resolution(itemId as string, mediaSourceId as dynamic, audioStreamIdx as integer, subtitleIdx as integer, playbackPosition as dynamic, meta as object, bypassDoviPreservation as boolean, forceTranscoding as boolean, pickedCaps as dynamic, userSettings as object, disallowVideoCopy as boolean, playsTranscode as boolean)
   if not isValidAndNotEmpty(m.playbackInfo.MediaSources) then return
   source = m.playbackInfo.MediaSources[0]
   if not isValid(source) or not isValidAndNotEmpty(source.TranscodingUrl) then return
   if LCase(textOrEmpty(source.TranscodingSubProtocol)) <> "hls" then return
 
-  ' The server's first answer already keeps the video within the viewer's own cap.
-  limit = playbackCaps.heightLimit(userSettings, pickedCaps)
-  if limit > 0 and limit <= 1080
-    m.log.info("Transcode keeps the viewer's resolution cap", "maxHeight", limit, "itemId", itemId)
-    return
-  end if
-
   playedSource = invalid
   if isValid(meta.mediaSourcesData) then playedSource = mediaSourceForId(meta.mediaSourcesData.mediaSources, mediaSourceId)
   sourceAboveCeiling = false
   if isValid(playedSource) then sourceAboveCeiling = videoStreamAboveH264Ceiling(getFirstVideoStream(playedSource.MediaStreams))
-  if not disallowVideoCopy and not sourceAboveCeiling then return
+
+  limit = playbackCaps.heightLimit(userSettings, pickedCaps)
+  check = h264OutputCheck(playsTranscode, limit, sourceAboveCeiling, disallowVideoCopy)
+  if not check.read
+    ' Ordinary plays (withinCeiling) skip it silently; the other reasons skip a check that would have run.
+    if check.reason <> "withinCeiling" then m.log.info("Skipping the master playlist check", "reason", check.reason, "maxHeight", limit, "itemId", itemId)
+    return
+  end if
 
   fetched = fetchManifestText(buildURL(source.TranscodingUrl), timeouts.HLS_MASTER_PROBE_MS)
   decision = h264CapDecision(fetched, sourceAboveCeiling, disallowVideoCopy)

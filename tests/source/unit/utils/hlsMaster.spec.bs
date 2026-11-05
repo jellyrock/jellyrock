@@ -188,6 +188,48 @@ namespace tests
       m.assertFalse(h264CapDecision({ code: 500, body: "" }, true, false).cap)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("h264OutputCheck")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads the playlist on the re-encode retry, whatever the source's size")
+    function _()
+      m.assertTrue(h264OutputCheck(true, 0, false, true).read)
+      m.assertTrue(h264OutputCheck(true, 0, true, true).read)
+    end function
+
+    @it("reads the playlist on a first request for a source beyond the ceiling")
+    function _()
+      check = h264OutputCheck(true, 0, true, false)
+
+      m.assertTrue(check.read)
+      m.assertEqual(check.reason, "")
+    end function
+
+    @it("skips a first request for a source within the ceiling")
+    function _()
+      check = h264OutputCheck(true, 0, false, false)
+
+      m.assertFalse(check.read)
+      m.assertEqual(check.reason, "withinCeiling")
+    end function
+
+    @it("skips under a viewer cap at or below 1080p, and reads above it")
+    function _()
+      m.assertEqual(h264OutputCheck(true, 1080, true, true).reason, "viewerCap")
+      m.assertEqual(h264OutputCheck(true, 720, true, false).reason, "viewerCap")
+      m.assertTrue(h264OutputCheck(true, 2160, true, false).read)
+    end function
+
+    @it("skips a load that does not play the transcode, before any other reason")
+    function _()
+      ' The level override's direct play, or the device playing the upstream link.
+      check = h264OutputCheck(false, 720, true, true)
+
+      m.assertFalse(check.read)
+      m.assertEqual(check.reason, "notPlayed")
+    end function
+
   end class
 
 end namespace
