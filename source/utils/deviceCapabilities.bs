@@ -1917,8 +1917,8 @@ function calculateOptimalTranscodingParams(bitrateBps as longinteger, videoDurat
   end if
 
   ' Case 3+: Playlist forces longer than 6s, or source bitrate overflows even 1s segments.
-  ' Use minSegDuration (capped at 9s). Content over ~12.5h (45,000s) cannot satisfy the
-  ' playlist constraint within this range, but that duration is beyond expected use.
+  ' Use minSegDuration (capped at 9s). Content longer than maxPlaylistEntries segments of 9 s each
+  ' cannot fit the playlist constraint (#1321 tracks longer films).
   segmentLength = minSegDuration
   if segmentLength > 9 then segmentLength = 9
 
