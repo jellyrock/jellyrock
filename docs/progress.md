@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-04
+last-updated: 2026-11-05
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-05: fix(playback): Pick a playable audio track, not audio description
 - 2026-11-04: chore(build): Fail the build on an `m.log` call with too many values
 - 2026-11-04: fix(playback): Stop transcoded videos playing with no sound
 - 2026-11-03: fix(login): Offer Quick Connect when a server lists no users
@@ -69,10 +70,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-22: fix(login): Land on Home after sign-in; drop casts while signed out
 - 2026-10-22: chore(lint): Check only git-visible files in the doc-citation ratchet
 - 2026-10-22: fix(audio): Seek in FLAC without freezing or skipping the end
-- 2026-10-21: chore(tooling): Read Roku's developer docs from GitLab, not GitHub
-- 2026-10-21: test(rta): Restart the app on signals instead of a fixed 14 s sleep
-- 2026-10-21: feat(backdrop): Show My Media backdrops and restore one after sign-in
-- 2026-10-21: fix(playback): Play songs and trailers in the right player
 
 ## Open followups
 
