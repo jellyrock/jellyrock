@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (playback) Pick a playable audio track, not audio description ([#1320](https://github.com/jellyrock/jellyrock/pull/1320))
 - (playback) Stop transcoded videos playing with no sound ([#1317](https://github.com/jellyrock/jellyrock/pull/1317))
 - (login) Offer Quick Connect when a server lists no users ([#1314](https://github.com/jellyrock/jellyrock/pull/1314))
 - (playback) Play the episode once when Repeat is picked during a Cinema Mode intro ([#1313](https://github.com/jellyrock/jellyrock/pull/1313))
