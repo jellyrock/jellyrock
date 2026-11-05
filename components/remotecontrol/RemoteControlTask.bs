@@ -1,7 +1,7 @@
 import "pkg:/source/api/baseRequest.bs"
+import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/remotecontrol/remoteCommand.bs"
 import "pkg:/source/remotecontrol/remoteProtocol.bs"
-import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/backoff.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/serverCapabilities.bs"

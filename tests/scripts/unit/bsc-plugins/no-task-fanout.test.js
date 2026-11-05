@@ -959,7 +959,7 @@ describe('no-task-fanout', () => {
       ).toHaveLength(0);
     });
 
-    it('does not flag vendored code we do not author', () => {
+    it('flags third-party code kept in the repo like any other', () => {
       expect(
         check(
           `
@@ -969,9 +969,9 @@ describe('no-task-fanout', () => {
               end for
             end sub
           `,
-          'components/vendor/Thing.bs',
+          'components/websocket/Thing.bs',
         ),
-      ).toHaveLength(0);
+      ).toHaveLength(1);
     });
 
     it('honours bsc-disable-line on the offending line', () => {

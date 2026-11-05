@@ -2,7 +2,7 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/apiPromise.bs"
-import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/utils/audioSeek.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/playbackCheckIn.bs"

@@ -27,9 +27,7 @@ const SPELL_EXACT = new Set([
   'CLAUDE.md',
   'AGENTS.md',
 ]);
-// components/vendor/ holds third-party vendored code + its attribution READMEs:
-// jargon-heavy and human-rarely-format-reviewed, same carveout as the agent files.
-const SPELL_PREFIXES = ['node_modules/', '.claude/', '.opencode/', 'components/vendor/'];
+const SPELL_PREFIXES = ['node_modules/', '.claude/', '.opencode/'];
 const SPELL_SUFFIXES = ['/CLAUDE.md', '/AGENTS.md'];
 
 // Markdown lint excludes.
@@ -37,15 +35,7 @@ const SPELL_SUFFIXES = ['/CLAUDE.md', '/AGENTS.md'];
 // Same agent-file carveout as above: relaxed structural rules for files that
 // agents read but humans rarely format-review.
 const MARKDOWN_EXACT = new Set(['CLAUDE.md', 'AGENTS.md']);
-const MARKDOWN_PREFIXES = [
-  'node_modules/',
-  'out/',
-  'build/',
-  'tasks/',
-  '.claude/',
-  '.opencode/',
-  'components/vendor/',
-];
+const MARKDOWN_PREFIXES = ['node_modules/', 'out/', 'build/', 'tasks/', '.claude/', '.opencode/'];
 const MARKDOWN_SUFFIXES = ['/copilot-instructions.md', '/CLAUDE.md', '/AGENTS.md'];
 
 // JSON lint excludes.

@@ -2,7 +2,7 @@ import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPipeline.bs"
 import "pkg:/source/data/JellyfinDataTransformer.bs"
 import "pkg:/source/home/latestRows.bs"
-import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 

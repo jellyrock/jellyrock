@@ -37,6 +37,7 @@ BrighterScript modules: shared utilities and the orchestration that doesn't live
 | `source/GridView/` | Grid presenters per library type, and the grid's paging and query helpers. |
 | `source/home/` | Home's row loading and failure handling. |
 | `source/extras/` | The details screen's extras rows. |
+| `source/logging/` | The logger (`log.Logger`, `log.initializeLogManager`), adopted from roku-log and owned here; its README lists every change from upstream. The manager node is in `components/logging/`. |
 | `source/remotecontrol/` | Remote-control commands and their dispatch. |
 | `source/syncplay/` | The pure SyncPlay layer: server time (LongInteger ms, never a Double: an AA demotes one to a 32-bit float), the clock-offset estimate, the frame parser, the request bodies, the membership state, the coordinator's decisions (`syncPlayPlayback.bs`) and the queue mapping. No node, no HTTP; `syncPlayHooks.bs` is the one file that reads `m.global`, for the player. |
 | `source/enums/` | Enum constants. |

@@ -873,6 +873,10 @@ It shows today, one video early. The Repeat One pick is a gear press during the 
 
 Close it by deciding "leaving an intro" from the item that ended rather than from the target's tag, with a unit case for Repeat One at an intro's end. Found reviewing the intro-slot fix that followed #1308.
 
+#### File an enhancement issue for an on-screen log overlay `[fid: log-screen-overlay-issue]` `[captured 2026-11-05]`
+
+**File an enhancement issue for an on-screen log overlay in debug builds.** The old roku-log `ScreenTransport` drew the latest lines over the UI; it was deleted in #986 because nothing used it (its code is in git history, in roku-log 0.11.1's `src/components/ScreenTransport.bs`). The maintainer sees value in it beyond the console: RTA screenshots would show the log beside the screen. Draft the issue and show it before filing.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -939,7 +943,7 @@ Production builds STRIP every `m.log.*` call (`bsconfig-prod.json` `"strip": tru
 
 #### roku-log prints a `LongInteger` or `Double` argument as an empty string `[fid: roku-log-longinteger-double-empty]` `[captured 2026-09-19]`
 
-**roku-log prints a `LongInteger` or `Double` argument as an empty string**, so any `m.log` value that is a tick count or the Video node's `position` (a Double) logs blank unless the caller `.toStr()`s it (`LogMixin.toString` handles Integer/Float/String/Boolean/node/AA only). Still blank as of 2026-09-19: `VideoPlayerView`'s "Subtitle change requires stream reload" and "Audio index changed by user" (`position`), and `LoadVideoContentTask`'s "Playback position resolved" (`startingPoint`). **Fix shape:** one change to how the logger turns values into text rather than per-call-site `.toStr()` — but `LogMixin.brs` is a vendored ropm module, so check how it is patched/pinned first.
+**The logger prints a `LongInteger` or `Double` argument as an empty string**, so any `m.log` value that is a tick count or the Video node's `position` (a Double) logs blank unless the caller `.toStr()`s it (`Logger.toString` in `source/logging/Logger.bs` handles Integer, Float, String, Boolean, node and AA only). Still blank as of 2026-09-19: `VideoPlayerView`'s "Subtitle change requires stream reload" and "Audio index changed by user" (`position`), and `LoadVideoContentTask`'s "Playback position resolved" (`startingPoint`). **Fix shape:** one change to `Logger.toString`, test-first in `tests/source/unit/logging/LogManager.spec.bs`, rather than `.toStr()` at each call site. The logger is owned code since #986 (ADR 0054), so it is edited in place.
 
 #### Triage the Hint-severity diagnostics every bsconfig reports `[fid: bsconfig-hint-diagnostics-triage]` `[captured 2026-09-21]`
 
@@ -1127,6 +1131,18 @@ Several checks compare a number's `type()` against a partial list of names. On a
 #### A SyncPlay Ready after a slow silent seek can carry the position from before the seek and draw a corrective Seek `[fid: syncplay-ready-stale-position-after-slow-seek]` `[captured 2026-11-02]`
 
 After a slow silent seek on a SyncPlay member, the `Ready` goes out at the `playing` edge with the node's own position, which `docs/architecture/playback.md` says can still read the position from before the seek; a position off by more than 500 ms draws a corrective `Seek` from the server. Read from the code in PR #1296's review (2026-11-01), never reproduced; refiled from `syncplay-slow-seek-catch-up-unbounded` when the SyncPlay project's consolidation step closed it (the unbounded lead and the seek-stall cycle end with the wait-on-me correction, commit `a151efbc`). Closes with a device capture of a `Ready` after a slow seek compared against the seek's target, and a read of the position from a later notification when they differ, or a decision to drop it.
+
+#### Mask tokens and addresses in every log line `[fid: log-redact-secrets]` `[captured 2026-11-05]` `[pinned]`
+
+**Mask secrets and addresses in every log line, in every build.** Stream URLs carry the access token in their query (`source/utils/streamOrigin.bs`), and the `m.log` calls that print a URL put it on the debug console, which `scripts/lib/console-capture.js` copies into `.device-runs/`. Agreed shape (#986 planning, 2026-11-05): one pure `redact()` step in `Logger.log()` before any output, with no shared state, so it adds no thread crossing. A token becomes a short fingerprint such as `<token:3fa9>`, so a log still shows whether two requests used the same one. A URL keeps its scheme, port, path and query keys, and its host becomes a class (`<lan-host>`, `<host>`). An IP becomes `<lan-ip>`, `<public-ip>` or `<loopback>`, never a hash, since a home network has 256 addresses to try. User names need known values, and must not cost a per-line `m.global` read. Test-first in `tests/source/unit/logging/LogManager.spec.bs`, and measure the per-line cost on a device. Limit: `print` and Roku OS console lines bypass the logger.
+
+#### `initializeLogManager` leaves `enabled` false, which `guard` would turn into silence `[fid: log-enabled-default-false]` `[captured 2026-11-05]`
+
+**`log.initializeLogManager` defaults `enabled` to `false`, and `JRScene.init()` does not pass it,** so every `Logger.enabled` is `false`. Nothing reads it today, but the `roku-log` plugin's `guard` option wraps each call in `if m.__le = true`, so turning `guard` on would silence every log line without an error. Fix: default it to `true` (or pass it from `JRScene`), with a test in `tests/source/unit/logging/LogManager.spec.bs`. Listed under Known issues in `source/logging/README.md`; remove it there too.
+
+#### Send logs to the user's Jellyfin server (epic) `[fid: log-upload-to-server]` `[captured 2026-11-05]`
+
+**Let a user send the app's logs to their own Jellyfin server.** `POST /ClientLog/Document` takes `text/plain` up to 1,000,000 bytes and returns `{ FileName }`; it exists from 10.8.0 (absent at 10.7.7) and answers 403 when the server's `AllowClientLogUpload` is off, which defaults to on (checked in Jellyfin's source at `v10.11.0`, 2026-11-05). Jellyfin's Android TV client uses it for crash reports. Open questions: a production build strips every `m.log` call, so decide what it keeps (for example warn and error into a bounded buffer) and budget it against the thread-crossing cost model; the 10.8.0 guard and its endpoint-availability ledger entry; masking addresses and names on upload (followup `log-redact-secrets`). Next step: draft the epic issue and show it to the maintainer before filing.
 
 ### api
 
@@ -1510,10 +1526,6 @@ Not checked: on a device, whether the app's `Main` code after `Rooibos_init` run
 
 Closes when the line is gone from every tracked config, the lint text is corrected, and `npm run test:unit` passes. Ships as its own PR from `main`.
 
-#### `ropm-hook.test.js` rewrites the real `roku_modules` XML on every run and asserts nothing that can fail `[fid: ropm-hook-test-rewrites-real-modules]` `[captured 2026-10-13]` `[prompt: /snag ropm-hook.test.js rewrites the real roku_modules XML on every test:scripts run and its only assertion cannot fail]`
-
-The test spawns `scripts/ropm-hook.cjs`, which resolves `components/roku_modules` and `source/roku_modules` from its own directory, so it rewrites the checkout's real `.xml` files in place (idempotent today). The script catches every error, and the only assertion is that the exit code is a number. Tech-debt `ropm-hook-fails-silently` (#986) covers the hook, not the test. A `/snag` candidate.
-
 #### The stale-budget test for `dialogs.spec.js` hardcodes the sleep count `[fid: rta-sleep-budget-test-hardcoded]` `[captured 2026-10-13]`
 
 In `tests/scripts/unit/lint/rta-sleep-budgeted.test.js`, the `dialogs.spec.js` case uses `sleep(1)` against a `BUDGETS` entry of 2 in `scripts/lint/eslint-rules/rta-sleep-budgeted.js`. The next budget change breaks it again, as one already did. Derive it as the entry minus one. Checked 2026-10-13.
@@ -1615,6 +1627,10 @@ Cause not confirmed. A playback error dialog is only a guess, because the record
 #### RTA cannot reach the ready branch of the SyncPlay duplicate-restart fix `[fid: syncplay-absorb-ready-branch-no-rta]` `[captured 2026-11-04]`
 
 `syncPlayQueue.restartAbsorbed` has two branches (decision `syncplay-duplicate-restart-absorbed`). The RTA case in `tests/rta/specs/syncplay-controls.spec.js` covers the loading branch only. The ready branch (a duplicate restart that finds the Roku already ready at the start, so it sends `Ready` again) has unit tests alone: the REST second member ignores the wait, so the group's `Unpause` follows the Roku's `Ready` within about 100 ms and a poll cannot land in that window. Not done now because it needs the REST member to send its own `Ready` (`IgnoreWait` off) so the wait stays open. Closes when an RTA case drives the ready branch.
+
+#### Document the BrightScript simulator for one-spec and boot checks `[fid: brs-simulator-howto]` `[captured 2026-11-05]`
+
+**Document the BrightScript simulator (`brs-node`, `brs-cli`) as a no-device check.** Tried 2026-11-05 with `brs-node` 2.6.2: a dev build boots to pre-login and prints log lines in the device format, then the engine faults (`e.registerCallback is not a function`) when the first Task (`ServerDiscoveryTask`) starts. A single-spec TDD build runs cleanly (the logger spec, 6 of 6). The whole unit suite ran 90 suites (697 pass, 67 fail) before the process ran out of memory with an 8 GB heap; failures cluster in focus and visual suites, Task-relaunch platform suites and codec answers, and none was checked against a device. So it suits one spec at a time and boot checks, never as a replacement for `test:all` on a device. Add a short how-to to `docs/dev/unit-tests-tdd.md` (zip `build/`, `npx brs-cli <zip> -c 0`). The maintainer does not want upstream bug reports filed.
 
 ### docs
 

@@ -63,8 +63,8 @@ Each doc's frontmatter lists the source files it describes (`related-files`) and
 - **PlayerHostView:** the routed view (`components/video/PlayerHostView.bs`) that wraps `VideoPlayerView`, since a `Video` node cannot be a router view. It reads the queue when it mounts, moves through the queue and hosts the track, source and info dialogs during playback.
 - **ApiClient:** the Jellyfin API wrapper in `source/api/ApiClient.bs`. It picks the v1 endpoints (Jellyfin 10.7 and 10.8) or the v2 ones (10.9 and later), and builds request AAs for the task pool.
 - **API task pool:** a few persistent `ApiTask` Task nodes that make HTTP requests off the render thread, fed in order by one `ApiQueueTask` coordinator. Each request's answer comes back on its own `ApiResultNode`, so SceneGraph cannot merge two answers into one field change.
-- **roku-log:** the logging library. Each component creates `m.log = new log.Logger("ComponentName")`. Levels: error, warn, info, verbose, debug.
-- **ropm:** the Roku package manager. It vendors packages into `components/roku_modules/` and `source/roku_modules/`: `log` (roku-log), `rr` (roku-requests), `promises`, `sgrouter`, `rokucommunity_bslib` and `tkss_rodash_v0`.
+- **Logging:** the logger in `source/logging/`, adopted from roku-log. Each component creates `m.log = new log.Logger("ComponentName")`. Levels: error, warn, info, verbose, debug.
+- **ropm:** the Roku package manager. It vendors packages into `components/roku_modules/` and `source/roku_modules/`: `rr` (roku-requests), `promises`, `sgrouter`, `rokucommunity_bslib` and `tkss_rodash_v0`.
 - **Overhang:** the top bar (logo, current user, search, settings, library tabs), a `JROverhang` inside `JRScene`. Each `JRGroup` sets `overhangTitle`, `overhangTabs`, `selectedTabId` and `isOverhangVisible`, and `JRScene` binds them to the overhang when the router switches to that screen.
 - **Threads:** a SceneGraph app has three. The main thread runs `Main()` in `source/main.bs`. The render thread runs every component's `init()`, observers and key handlers. Task threads run Task nodes. Network, registry and other blocking work must run on a Task thread, never the render thread. See [threading.md](./threading.md).
 - **`m.global`:** Roku's app-wide global node. JellyRock hangs a tree of nodes off it (`m.global.user`, `m.global.server`, `m.global.queueManager` and more); see [global-state.md](./global-state.md).
@@ -101,7 +101,7 @@ The how-to guides in [`docs/dev/`](../dev/), listed by each file's `H1` heading.
 | [`docs/dev/feature-pages.md`](../dev/feature-pages.md) | Document a feature |
 | [`docs/dev/home-first-paint-performance.md`](../dev/home-first-paint-performance.md) | Measuring orchestrator wait-vs-emit on device |
 | [`docs/dev/jellyfin-server-versioning.md`](../dev/jellyfin-server-versioning.md) | Jellyfin server versions |
-| [`docs/dev/logging.md`](../dev/logging.md) | Logging guide (roku-log) |
+| [`docs/dev/logging.md`](../dev/logging.md) | Logging guide |
 | [`docs/dev/measuring-performance.md`](../dev/measuring-performance.md) | Measuring performance on device |
 | [`docs/dev/new-user-setting.md`](../dev/new-user-setting.md) | Add a setting |
 | [`docs/dev/promises.md`](../dev/promises.md) | Promises |

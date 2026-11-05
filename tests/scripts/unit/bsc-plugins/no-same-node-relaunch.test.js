@@ -465,7 +465,7 @@ describe('no-same-node-relaunch — not flagged', () => {
     ).toHaveLength(1);
   });
 
-  it('skips tasks.bs and vendored code', () => {
+  it('skips tasks.bs only: third-party code kept in the repo is checked', () => {
     const source = `
       sub a()
         m.t.control = "STOP"
@@ -473,7 +473,7 @@ describe('no-same-node-relaunch — not flagged', () => {
       end sub
     `;
     expect(check(source, 'source/utils/tasks.bs')).toHaveLength(0);
-    expect(check(source, 'components/vendor/x/Foo.bs')).toHaveLength(0);
+    expect(check(source, 'components/websocket/Foo.bs')).not.toHaveLength(0);
   });
 });
 
@@ -885,8 +885,8 @@ describe('no-same-node-relaunch — every state a pending entry can be in', () =
     },
     {
       state: 'file is one the rule never inspects',
-      pending: { 'components/vendor/Dep.bs': [['search', 'm.searchTask']] },
-      files: { 'components/vendor/Dep.bs': relaunches },
+      pending: { 'source/utils/tasks.bs': [['search', 'm.searchTask']] },
+      files: { 'source/utils/tasks.bs': relaunches },
       expect: /this rule never inspects/,
     },
     {
@@ -961,7 +961,7 @@ describe('no-same-node-relaunch — every state a pending entry can be in', () =
   // listed AFTER it must still be audited: reading functions out of a file that
   // has none throws, and the never-crash guard would swallow the rest of the list.
   it('reports an uncheckable file once, and still audits the keys after it', () => {
-    for (const key of ['components/vendor/Dep.bs', 'components/Foo.xml']) {
+    for (const key of ['source/utils/tasks.bs', 'components/Foo.xml']) {
       const found = diagnosticsByCode(
         runPluginOnSource(
           plugin.withPendingMigrations({
@@ -972,7 +972,7 @@ describe('no-same-node-relaunch — every state a pending entry can be in', () =
             'components/Gone.bs': [['search', 'm.searchTask']],
           }),
           {
-            'components/vendor/Dep.bs': 'sub noop()\nend sub',
+            'source/utils/tasks.bs': 'sub noop()\nend sub',
             'components/Foo.xml':
               '<?xml version="1.0" encoding="utf-8"?>\n<component name="Foo" extends="Group" />',
           },

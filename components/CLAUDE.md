@@ -6,7 +6,7 @@ Roku SceneGraph components: an XML interface paired with a BrighterScript code-b
 
 - A component is `Foo.xml` and `Foo.bs`, with the same base name in the same directory. They scope together with no `<script>` tag.
 - Component XML lives only under `components/`; `source/` holds only `.bs` files.
-- Pull in shared code with `import "pkg:/source/..."` in the component's `.bs`. First-party components use `import` only; don't add `<script>` tags (vendored components under `roku_modules/` and `vendor/` keep theirs).
+- Pull in shared code with `import "pkg:/source/..."` in the component's `.bs`. First-party components use `import` only; don't add `<script>` tags (package-managed components under `roku_modules/` keep theirs, and so does the plain-BrightScript `components/websocket/`).
 - Subfolders group by feature (`video/`, `login/`, `settings/`). Using a component from another feature is fine: components are created by name (`createObject("roSGNode", "Foo")`), not by path.
 
 ## Component hierarchy

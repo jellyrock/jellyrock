@@ -13,7 +13,7 @@ This page covers what is specific to the JellyRock app repository. The [organiza
 
 ## Get started
 
-1. Fork the repo, then follow the [Dev guide](DEVGUIDE.md) to clone it, install the dependencies and run the app on your Roku. If npm scripts are turned off in your environment, run `npm run prepare && npm run postinstall` yourself after `npm install`. That installs the git hooks, pulls the Roku dependencies and applies the dependency patches.
+1. Fork the repo, then follow the [Dev guide](DEVGUIDE.md) to clone it, install the dependencies and run the app on your Roku.
 2. Build the app with `npm run build` (or `npm run build:prod`).
 3. Lint everything with `npm run lint`, and run the tests for the Node tooling with `npm run test:scripts`. Neither needs a Roku.
 4. The test suites that run on a Roku (`npm run test:unit`, `npm run test:integration`) need a Roku in Developer Mode. See [Unit tests](unit-tests.md) to set one up.
