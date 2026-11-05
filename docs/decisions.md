@@ -2554,6 +2554,14 @@ With "Play default audio track" on, a default track this Roku cannot direct-play
 
 Commentary and audio-description tracks stay out of the automatic audio pick while the file has another track (#500, `isHiddenFromAutoPick()`), so a stereo narration track can't win on channel count. Audio description is the main track for blind and low-vision viewers, so it is kept where its viewer has asked for it: the file flags it default and "Play default audio track" is on, or the Roku's Audio Guide (screen reader) is on, when it ranks like a main track. The swap in `playableAlternativeToDefault()` replaces a default only with a track of the same kind and never with commentary. Detection is by title only ("description", "descriptive" or "described" anywhere, or "AD" as a capitalized whole word): Jellyfin 12.2's media probe sets `IsHearingImpaired` from the `hearing_impaired` disposition ffmpeg reports and never reads `visual_impaired`, so `MediaStream` carries no audio-description flag. Ruled out: hiding audio description in every case, which made a viewer who flagged it default in their own files pick it for each video; hiding it only in the swap, since the channel ranking could already pick it by accident; and preferring it whenever Audio Guide is on, since some screen-reader users don't want narration. Re-evaluate if Jellyfin adds an audio-description flag, or if viewers ask for a setting to prefer it.
 
+## decision-id: dovi-invalid-hdr10-direct-play
+
+**date**: 2026-11-04
+**status**: accepted
+**related-files**: `source/api/items.bs`
+
+A video Jellyfin marks `DOVIInvalid` (Dolby Vision profile 8 or 10 with an out-of-spec base-layer compatibility ID) direct-plays when it carries the HDR10 color tags (`bt2020nc`, `smpte2084`, `bt2020`) and the display takes HDR10: `allowHdr10DoviInvalid()` adds `DOVIInvalid` to that request's HEVC and AV1 `VideoRangeType` lists, and `doviRemuxContainerProfile()` skips it, since a remux cannot make it play as Dolby Vision. Measured 2026-11-04 on a Roku Ultra: a profile 8 file with compatibility ID 6 and HDR10 tags went from a remux that stopped with `mpr playlist file is too large` to direct play from MKV. Ruled out: advertising `DOVIInvalid` for every request on an HDR10 display, as jellyfin-web does on the smart-TV platforms it found play the HDR10 fallback, which would also direct-play `DOVIInvalid` files whose color tags don't match; and leaving the remux. Re-evaluate if a `DOVIInvalid` file with HDR10 tags shows wrong colors on a Roku, or if Jellyfin changes what it marks invalid.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
