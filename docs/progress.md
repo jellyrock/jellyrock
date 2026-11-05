@@ -885,6 +885,10 @@ Found in review of PR #1318. The user ruled out a one-off policy check on the re
 
 **File an enhancement issue for an on-screen log overlay in debug builds.** The old roku-log `ScreenTransport` drew the latest lines over the UI; it was deleted in #986 because nothing used it (its code is in git history, in roku-log 0.11.1's `src/components/ScreenTransport.bs`). The maintainer sees value in it beyond the console: RTA screenshots would show the log beside the screen. Draft the issue and show it before filing.
 
+#### A 4K live channel on a server that does not encode HEVC can still come out as 4K H.264, with no 1080p check `[fid: live-4k-h264-no-1080p-check]` `[captured 2026-11-05]`
+
+A file whose transcode comes back as H.264 above `1920x1080` is asked for again at 1080p (`LoadVideoContentTask.capH264Resolution`), but a live load skips that check: its second `PlaybackInfo` would open a second live stream. On a server that does not encode HEVC (Jellyfin's default), a channel above 1080p that the server re-encodes therefore comes out as H.264 at its own size, which a Roku cannot decode, and the player buffers with no error. A hardware HEVC server is covered since PR #1323: Live TV lists HEVC first there, using the encoding settings Home reads at sign-in. Not done in PR #1323 because it needs a live source above 1080p to test on, and it is not known whether channel items carry their picture size before the stream opens. Close it by finding whether the size is known before the open (if so, send a 1080p cap on the live request when `serverEncodesHevcInHardware` is false), or by reading the master playlist after the open and reopening at 1080p, then checking a 4K channel on a default server plays.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
