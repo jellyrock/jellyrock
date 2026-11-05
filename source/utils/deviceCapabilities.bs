@@ -1916,8 +1916,8 @@ end function
 
 ' exceedsH264Ceiling: Whether a video size is beyond what a Roku decodes as H.264 (1920x1080).
 '
-' The one source of truth for that ceiling: direct play (isWithinH264HardwareCeiling) and the
-' check of the server's answer (needsH264ResolutionCap, capH264Resolution) both ask it.
+' The one source of truth for that ceiling: every check of a size against it asks this, so the
+' ceiling changes only in H264_MAX_WIDTH and H264_MAX_HEIGHT.
 ' A size arriving as a string is read as a number, and a missing size counts as 0, so it is within.
 '
 ' @param {dynamic} width - a MediaStream Width

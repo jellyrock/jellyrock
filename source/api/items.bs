@@ -141,14 +141,7 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
   listHevcFirst = disallowVideoCopy
   if not listHevcFirst and serverCapabilities.serverEncodesHevcInHardware(m.global.server.encodingPolicy)
     sourceVideoStream = invalid
-    if isValid(playedSource) and isValid(playedSource.MediaStreams)
-      for each stream in playedSource.MediaStreams
-        if isValid(stream.Type) and stream.Type = "Video"
-          sourceVideoStream = stream
-          exit for
-        end if
-      end for
-    end if
+    if isValid(playedSource) then sourceVideoStream = getFirstVideoStream(playedSource.MediaStreams)
     listHevcFirst = prefersHevcTranscode(sourceVideoStream, hevcRangeTypesOfProfile(postData.DeviceProfile), false)
   end if
   if listHevcFirst
