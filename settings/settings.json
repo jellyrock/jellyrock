@@ -1139,6 +1139,32 @@
             "descriptionKey": "MessageSettingsRelatingToTheAppearanceOf2"
           },
           {
+            "title": "Photos",
+            "description": "Settings for viewing photos.",
+            "children": [
+              {
+                "title": "Slideshow",
+                "description": "Advance to the next photo automatically.",
+                "settingName": "photosSlideshow",
+                "type": "bool",
+                "default": "false",
+                "titleKey": "LabelSlideshow",
+                "descriptionKey": "MessageAdvanceToTheNextPhoto"
+              },
+              {
+                "title": "Random Order",
+                "description": "Advance to a random photo automatically. Has no effect while Slideshow is on.",
+                "settingName": "photosRandom",
+                "type": "bool",
+                "default": "false",
+                "titleKey": "LabelRandomOrder",
+                "descriptionKey": "MessageAdvanceToARandomPhoto"
+              }
+            ],
+            "titleKey": "LabelPhotos",
+            "descriptionKey": "MessageSettingsForViewingPhotos"
+          },
+          {
             "title": "TV Shows",
             "description": "Settings relating to the appearance of pages in TV Libraries.",
             "children": [

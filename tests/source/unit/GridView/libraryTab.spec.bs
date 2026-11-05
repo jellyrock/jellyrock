@@ -1,0 +1,267 @@
+import "pkg:/source/GridView/GenericPresenter.bs"
+import "pkg:/source/GridView/libraryTab.bs"
+import "pkg:/source/GridView/LiveTVPresenter.bs"
+import "pkg:/source/GridView/MoviePresenter.bs"
+import "pkg:/source/GridView/MusicPresenter.bs"
+import "pkg:/source/GridView/PhotoPresenter.bs"
+import "pkg:/source/GridView/TVShowPresenter.bs"
+
+namespace tests
+
+  ' A library view's id is the web client's LibraryTab id, and its layout is a separate
+  ' axis. These pin the legacy mapping the registry migration runs, the case rule that
+  ' keeps that mapping safe to run twice, and that every presenter lists only known ids.
+  @suite("libraryTab - view ids and the legacy mapping")
+  class LibraryTabTests extends tests.BaseTestSuite
+
+    ' A stand-in for BaseGridView carrying what a presenter reads in getOptions(): the
+    ' current view and, for the Collections gate, the server version.
+    private function host(currentView as string) as object
+      return {
+        top: { currentView: currentView },
+        global: { server: { version: "12.0.0" }, user: { id: "user-1" } }
+      }
+    end function
+
+    ' Every field a presenter reads off its parent item, as a ContentNode always has them:
+    ' MusicPresenter calls LCase() on folderType, which faults on Invalid.
+    private function item(itemType as string, collectionType = "" as string) as object
+      return { Id: "item-1", type: itemType, collectionType: collectionType, folderType: "", parentId: "" }
+    end function
+
+    private function library(collectionType as string) as object
+      return m.item("CollectionFolder", collectionType)
+    end function
+
+    ' Every presenter with the parent items that change its list, each as
+    ' { label, presenter, parentItem }. Built per test: a presenter holds state.
+    private function presenterCases() as object
+      movie = new MoviePresenter()
+      movie.onInit(m.host("movies"))
+      movieGenre = new MoviePresenter()
+      movieGenre.onInit(m.host("movies"))
+      tv = new TVShowPresenter()
+      tv.onInit(m.host("series"))
+      music = new MusicPresenter()
+      music.onInit(m.host("albumartists"))
+      musicGenre = new MusicPresenter()
+      musicGenre.onInit(m.host("albums"))
+      liveTv = new LiveTVPresenter()
+      liveTv.onInit(m.host("channels"))
+      photo = new PhotoPresenter()
+      photo.onInit(m.host("photos"))
+      generic = new GenericPresenter()
+      generic.onInit(m.host(""))
+
+      return [
+        { label: "movies", presenter: movie, parentItem: m.library("movies") },
+        { label: "movie genre", presenter: movieGenre, parentItem: m.item("Genre") },
+        { label: "tvshows", presenter: tv, parentItem: m.library("tvshows") },
+        { label: "music", presenter: music, parentItem: m.library("music") },
+        { label: "music genre", presenter: musicGenre, parentItem: m.item("MusicGenre") },
+        { label: "livetv", presenter: liveTv, parentItem: m.library("livetv") },
+        { label: "photos", presenter: photo, parentItem: m.library("photos") },
+        { label: "folder", presenter: generic, parentItem: m.item("Folder") }
+      ]
+    end function
+
+    private function names(views as object) as object
+      out = []
+      for each view in views
+        out.push(view.Name)
+      end for
+      return out
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("fromLegacyView()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("maps every view name the presenters used to save")
+    @params("Movies", "movies", "presentation")
+    @params("MoviesGrid", "movies", "comfortable")
+    @params("Studios", "studios", "")
+    @params("Genres", "genres", "")
+    @params("Collections", "collections", "")
+    @params("Shows", "series", "")
+    @params("Networks", "studios", "")
+    @params("AlbumArtistsGrid", "albumartists", "")
+    @params("Albums", "albums", "")
+    @params("ArtistsGrid", "artists", "")
+    @params("livetv", "channels", "")
+    @params("tvGuide", "guide", "")
+    @params("singlephoto", "photos", "")
+    @params("slideshowphoto", "photos", "")
+    @params("randomphoto", "photos", "")
+    function _(legacyName, tabId, layout)
+      m.assertEqual(libraryTab.fromLegacyView(legacyName), { tab: tabId, layout: layout })
+    end function
+
+    @it("matches a legacy name in another case")
+    @params("MOVIESGRID", "movies", "comfortable")
+    @params("artistsgrid", "artists", "")
+    @params("TVGUIDE", "guide", "")
+    @params(" Shows ", "series", "")
+    function _(legacyName, tabId, layout)
+      m.assertEqual(libraryTab.fromLegacyView(legacyName), { tab: tabId, layout: layout })
+    end function
+
+    @it("maps a folder's default view to no tab at all")
+    @params("default")
+    @params("Default")
+    function _(legacyName)
+      m.assertEqual(libraryTab.fromLegacyView(legacyName), { tab: "", layout: "" })
+    end function
+
+    @it("leaves a tab id as it is, so a second run changes nothing")
+    ' `movies` is the case that matters: folded to lowercase, the old presentation view
+    ' `Movies` reads the same, and a second run would put every library back into
+    ' presentation. A sideloaded build runs the user migrations at every launch.
+    function _()
+      for each id in libraryTab.ids()
+        m.assertEqual(libraryTab.fromLegacyView(id), { tab: id, layout: "" }, id)
+      end for
+    end function
+
+    @it("is idempotent over its own output for every legacy name")
+    function _()
+      for each legacyName in ["Movies", "MoviesGrid", "Studios", "Genres", "Collections", "Shows", "Networks", "AlbumArtistsGrid", "Albums", "ArtistsGrid", "livetv", "tvGuide", "singlephoto", "slideshowphoto", "randomphoto"]
+        first = libraryTab.fromLegacyView(legacyName)
+        second = libraryTab.fromLegacyView(first.tab)
+        m.assertEqual(second.tab, first.tab, legacyName)
+        m.assertEqual(second.layout, "", legacyName + " implies its layout only once")
+      end for
+    end function
+
+    @it("passes a name it does not recognize through unchanged")
+    ' The migration leaves it alone, and the grid's resolveView falls back from it.
+    @params("SomethingNewer")
+    @params("")
+    function _(unknownName)
+      m.assertEqual(libraryTab.fromLegacyView(unknownName), { tab: unknownName, layout: "" })
+    end function
+
+    @it("answers for a value that is not a string")
+    function _()
+      m.assertEqual(libraryTab.fromLegacyView(invalid), { tab: "", layout: "" })
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isKnown()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("knows every id the app uses")
+    function _()
+      for each id in libraryTab.ids()
+        m.assertTrue(libraryTab.isKnown(id), id)
+      end for
+    end function
+
+    @it("is exact about case, which is what tells a tab id from a legacy name")
+    @params("Movies")
+    @params("GENRES")
+    @params("tvGuide")
+    @params("")
+    function _(name)
+      m.assertFalse(libraryTab.isKnown(name))
+    end function
+
+    @it("answers false for a value that is not a string")
+    @params(invalid)
+    @params(1)
+    function _(value)
+      m.assertFalse(libraryTab.isKnown(value))
+    end function
+
+    @it("lists each id once")
+    function _()
+      seen = {}
+      for each id in libraryTab.ids()
+        m.assertFalse(seen.doesExist(id), id + " is listed twice")
+        seen[id] = true
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("libraryLayout")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("honors a saved layout it knows")
+    @params("comfortable")
+    @params("presentation")
+    function _(saved)
+      m.assertEqual(libraryLayout.resolve(saved, libraryLayout.COMFORTABLE), saved)
+    end function
+
+    @it("falls back to the default for anything else")
+    ' A layout a newer build saved (compact, posters) must not reach a presenter that
+    ' cannot draw it.
+    @params(invalid)
+    @params("")
+    @params("compact")
+    @params("Presentation")
+    function _(saved)
+      m.assertEqual(libraryLayout.resolve(saved, libraryLayout.COMFORTABLE), libraryLayout.COMFORTABLE)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the presenters' tabs")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("lists only known tab ids, each once")
+    function _()
+      for each testCase in m.presenterCases()
+        seen = {}
+        for each view in testCase.presenter.getOptions(testCase.parentItem).views
+          m.assertTrue(libraryTab.isKnown(view.Name), testCase.label + ": " + textOrEmpty(view.Name))
+          m.assertFalse(seen.doesExist(view.Name), testCase.label + ": " + view.Name + " is listed twice")
+          seen[view.Name] = true
+        end for
+      end for
+    end function
+
+    @it("offers layouts only for a tab it lists, and only layouts it knows")
+    function _()
+      for each testCase in m.presenterCases()
+        options = testCase.presenter.getOptions(testCase.parentItem)
+        listed = m.names(options.views)
+        for each tabId in options.layouts
+          m.assertTrue(inArray(listed, tabId), testCase.label + ": layouts for unlisted tab " + tabId)
+          for each choice in options.layouts[tabId]
+            m.assertTrue(libraryLayout.isKnown(choice.Name), testCase.label + ": " + textOrEmpty(choice.Name))
+          end for
+        end for
+      end for
+    end function
+
+    @it("lists each library's tabs in the web client's order")
+    function _()
+      cases = m.presenterCases()
+      expected = {
+        "movies": ["movies", "collections", "genres", "studios"],
+        "movie genre": ["movies"],
+        "tvshows": ["series", "genres", "studios", "collections"],
+        "music": ["albums", "albumartists", "artists", "genres"],
+        "music genre": ["albums"],
+        "livetv": ["channels", "guide"],
+        "photos": ["photos"],
+        "folder": []
+      }
+      for each testCase in cases
+        m.assertEqual(m.names(testCase.presenter.getOptions(testCase.parentItem).views), expected[testCase.label], testCase.label)
+      end for
+    end function
+
+    @it("offers the movie library's two layouts on its Movies tab")
+    function _()
+      presenter = new MoviePresenter()
+      presenter.onInit(m.host("movies"))
+
+      layouts = presenter.getOptions(m.library("movies")).layouts
+
+      m.assertEqual(m.names(layouts[libraryTab.MOVIES]), [libraryLayout.PRESENTATION, libraryLayout.COMFORTABLE])
+    end function
+
+  end class
+
+end namespace

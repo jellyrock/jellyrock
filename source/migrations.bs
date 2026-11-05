@@ -1,3 +1,4 @@
+import "pkg:/source/GridView/libraryTab.bs"
 import "pkg:/source/utils/conditional.bs"
 import "pkg:/source/utils/misc.bs"
 
@@ -29,6 +30,11 @@ const THEME_PRESET_MIGRATION_VERSION = "2.5.0"
 
 ' client version when homeSection settings were removed from registry (now server-authoritative via DisplayPreferences)
 const HOMESECTION_CLEANUP_VERSION = "2.13.0"
+
+' client version when library views were renamed to the web client's tab ids and the grid's
+' layout (presentation or grid) became a setting of its own. The lowest version above the
+' last release (3.3.1), so the next release runs it whatever number it takes.
+const LIBRARY_TAB_MIGRATION_VERSION = "3.3.2"
 
 ' Run all necessary registry migrations on the "global" JellyRock registry section
 sub runGlobalMigrations()
@@ -432,6 +438,54 @@ sub runRegistryUserMigrations(targetSections = invalid as dynamic)
         print `Deleted stale homeSection keys for userid: ${section}`
       else
         print `No homeSection cleanup needed for userid: ${section} (keys not found)`
+      end if
+    end if
+
+    ' LIBRARY_TAB_MIGRATION_VERSION - Rewrite each library's saved view to the web's tab ids
+    if isValid(lastRunVersion) and not versionChecker(lastRunVersion, LIBRARY_TAB_MIGRATION_VERSION)
+      m.wasMigrated = true
+
+      ' Keys are "display.<libraryId>.landing". The mapping is libraryTab.fromLegacyView,
+      ' which leaves a tab id as it is, so a second run (every launch of a sideloaded build)
+      ' changes nothing. The two movie views become one tab plus a layout, and the layout
+      ' is written from the old name every time it implies one: the old name is the
+      ' latest choice even where a newer build's layout key is still there.
+      keyPrefix = "display."
+      keySuffix = ".landing"
+      changedCount = 0
+
+      for each key in reg.GetKeyList()
+        if key.left(keyPrefix.len()) = keyPrefix and key.right(keySuffix.len()) = keySuffix
+          currentValue = reg.read(key)
+          mapped = libraryTab.fromLegacyView(currentValue)
+
+          if mapped.tab = ""
+            ' `default`, a folder's only view: the grid needs no saved tab for it
+            reg.delete(key)
+            changedCount++
+            print `Removed ${key}: '${currentValue}' names no tab`
+          else if mapped.tab <> currentValue
+            reg.write(key, mapped.tab)
+            changedCount++
+            print `Migrated ${key}: '${currentValue}' to '${mapped.tab}'`
+          end if
+
+          if mapped.layout <> ""
+            layoutKey = key.left(key.len() - keySuffix.len()) + ".layout"
+            if not reg.exists(layoutKey) or reg.read(layoutKey) <> mapped.layout
+              reg.write(layoutKey, mapped.layout)
+              changedCount++
+              print `Wrote ${layoutKey}: '${mapped.layout}' from '${currentValue}'`
+            end if
+          end if
+        end if
+      end for
+
+      if changedCount > 0
+        reg.flush()
+        print `Migrated library views to v${LIBRARY_TAB_MIGRATION_VERSION} for userid: ${section}`
+      else
+        print `No library view migration needed for userid: ${section} (no legacy views found)`
       end if
     end if
   end for
