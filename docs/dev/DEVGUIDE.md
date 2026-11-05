@@ -32,6 +32,10 @@ You need [`node`](https://nodejs.org) 22 (22.22.1 or later), 24, or 26 and later
 npm install
 ```
 
+It also installs the git hooks, copies the Roku libraries into the project and patches some dependencies. If npm scripts are turned off on your machine, those steps don't run: run `npm run prepare && npm run postinstall` yourself afterward.
+
+When a pull changes `package-lock.json`, run `npm ci`. It removes a package the lockfile dropped, and a copy left behind can break the build.
+
 ## Method 1: Visual Studio Code
 
 We recommend Visual Studio Code for this project. Its [BrightScript Language extension](https://marketplace.visualstudio.com/items?itemName=RokuCommunity.brightscript) checks your code as you type, and lets you set breakpoints, inspect variables while the app runs, format code and drive the Roku from the editor. See its [feature list](https://rokucommunity.github.io/vscode-brightscript-language/features.html) for more.

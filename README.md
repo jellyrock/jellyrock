@@ -110,17 +110,7 @@ To run the latest version of JellyRock before it hits the Roku Channel Store:
 
 ## Contribute
 
-Start with the [contributing guide](docs/dev/contributing.md). The developer docs are at [dev.jellyrock.app](https://dev.jellyrock.app), and every guide is listed in [docs/architecture/README.md](docs/architecture/README.md#existing-dev-guides).
-
-### Build
-
-```bash
-git clone https://github.com/jellyrock/jellyrock.git
-cd jellyrock
-npm install
-# Note: If npm scripts are disabled, manually run `npm run ropm` to install dependencies
-npm run build # OR npm run build:prod
-```
+Start with the [contributing guide](docs/dev/contributing.md). To build the app and run it on your Roku, follow the [dev guide](docs/dev/DEVGUIDE.md). The developer docs are at [dev.jellyrock.app](https://dev.jellyrock.app), and every guide is listed in [docs/architecture/README.md](docs/architecture/README.md#existing-dev-guides).
 
 ## Changelog
 
