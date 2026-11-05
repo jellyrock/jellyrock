@@ -7,6 +7,7 @@
 ' - TV Guide (EPG) integration with Schedule component
 
 import "pkg:/source/GridView/GridPresenterBase.bs"
+import "pkg:/source/GridView/libraryTab.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/misc.bs"
 
@@ -23,21 +24,22 @@ class LiveTVPresenter extends GridPresenterBase
   end sub
 
   ' LiveTV uses fullscreen backdrop
-  override function getBackdropMode() as string
+  override function getBackdropMode(_viewMode as string, _layout as string) as string
     return "fullscreen"
   end function
 
   ' No presentation info for LiveTV
-  override function shouldShowPresentationInfo(_viewMode as string) as boolean
+  override function shouldShowPresentationInfo(_viewMode as string, _layout as string) as boolean
     return false
   end function
 
   override function getOptions(_parentItem as object) as object
     return {
       views: [
-        { "Title": translate(translationKeys.LabelChannels), "Name": "livetv" },
-        { "Title": translate(translationKeys.LabelTvGuide), "Name": "tvGuide" }
+        { "Title": translate(translationKeys.LabelChannels), "Name": libraryTab.CHANNELS },
+        { "Title": translate(translationKeys.LabelTvGuide), "Name": libraryTab.GUIDE }
       ],
+      layouts: {},
       sort: [
         { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" }
       ],
@@ -49,7 +51,7 @@ class LiveTVPresenter extends GridPresenterBase
   end function
 
   ' Channel logos need scaleToFit, not scaleToZoom
-  override function getGridConfig(_viewMode as string) as object
+  override function getGridConfig(_viewMode as string, _layout as string) as object
     return {
       translation: [96, 102],
       itemSize: [264, 396],
@@ -62,14 +64,14 @@ class LiveTVPresenter extends GridPresenterBase
 
   override sub configureLoadTask(task as object, _parentItem as object, _viewMode as string)
     ' CRITICAL: itemType must be "LiveTV" to route to the LiveTv/Channels API endpoint
-    ' (see LoadItemsTask2.bs line 113-115)
+    ' (see the `LiveTV` branch of LoadItemsTask2's query selection)
     task.itemType = "LiveTV"
     task.isRecursive = false
   end sub
 
-  ' The "tvGuide" view offered in getOptions() is the EPG, not a grid
+  ' The Guide tab offered in getOptions() is the EPG, not a grid
   override function showsTVGuide(viewMode as string) as boolean
-    return LCase(viewMode) = "tvguide"
+    return LCase(viewMode) = libraryTab.GUIDE
   end function
 
   override sub onDestroy()

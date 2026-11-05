@@ -1,14 +1,16 @@
 ' PhotoPresenter: Presenter for photo library views
 '
 ' Handles Photo-specific:
-' - View options (Slideshow Off/On, Random Off/On)
+' - One tab, Photos
 ' - Photo display configuration
-' - Slideshow/Random state persistence to user settings
-' - PhotoDetails launch with appropriate flags
+'
+' Whether a photo opens as a slideshow, in order or at random, is the photosSlideshow and
+' photosRandom user settings (Settings, Libraries, Photos), which PhotoDetails reads.
+' They used to be listed here as four views.
 
 import "pkg:/source/GridView/GridPresenterBase.bs"
+import "pkg:/source/GridView/libraryTab.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
-import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 
 class PhotoPresenter extends GridPresenterBase
@@ -24,25 +26,21 @@ class PhotoPresenter extends GridPresenterBase
   end sub
 
   ' Photos use fullscreen backdrop
-  override function getBackdropMode() as string
+  override function getBackdropMode(_viewMode as string, _layout as string) as string
     return "fullscreen"
   end function
 
   ' No presentation info for photos
-  override function shouldShowPresentationInfo(_viewMode as string) as boolean
+  override function shouldShowPresentationInfo(_viewMode as string, _layout as string) as boolean
     return false
   end function
 
-  ' Photo view options control slideshow and random behavior
-  ' These are unusual - 4 options that set 2 boolean flags
   override function getOptions(_parentItem as object) as object
     return {
       views: [
-        { "Title": translate(translationKeys.LabelSlideshowOff), "Name": "singlephoto" },
-        { "Title": translate(translationKeys.LabelSlideshowOn), "Name": "slideshowphoto" },
-        { "Title": translate(translationKeys.LabelRandomOff), "Name": "singlephoto" },
-        { "Title": translate(translationKeys.LabelRandomOn), "Name": "randomphoto" }
+        { "Title": translate(translationKeys.LabelPhotos), "Name": libraryTab.PHOTOS }
       ],
+      layouts: {},
       sort: [
         { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
         { "Title": translate(translationKeys.LabelDateAdded), "Name": "DateCreated" },
@@ -56,30 +54,7 @@ class PhotoPresenter extends GridPresenterBase
     }
   end function
 
-  ' Called when options dialog is closed
-  ' Persist slideshow/random settings based on view selection
-  override sub onOptionsClosed(_options as object)
-    if not isValid(m.view) then return
-
-    viewMode = ""
-    if isValid(m.view.top) and isValid(m.view.top.currentView)
-      viewMode = LCase(m.view.top.currentView)
-    end if
-
-    ' Determine slideshow and random state from view mode
-    if viewMode = "singlephoto"
-      setUserSetting("photosSlideshow", "false")
-      setUserSetting("photosRandom", "false")
-    else if viewMode = "slideshowphoto"
-      setUserSetting("photosSlideshow", "true")
-      setUserSetting("photosRandom", "false")
-    else if viewMode = "randomphoto"
-      setUserSetting("photosRandom", "true")
-      setUserSetting("photosSlideshow", "false")
-    end if
-  end sub
-
-  override function getGridConfig(_viewMode as string) as object
+  override function getGridConfig(_viewMode as string, _layout as string) as object
     return {
       translation: [96, 102],
       itemSize: [264, 396],
@@ -96,18 +71,6 @@ class PhotoPresenter extends GridPresenterBase
     ' Photos in albums are non-recursive
     task.isRecursive = false
   end sub
-
-  ' Returns current slideshow state based on view mode
-  function isSlideshow() as boolean
-    if not isValid(m.view) or not isValid(m.view.top) then return false
-    return LCase(m.view.top.currentView) = "slideshowphoto"
-  end function
-
-  ' Returns current random state based on view mode
-  function isRandom() as boolean
-    if not isValid(m.view) or not isValid(m.view.top) then return false
-    return LCase(m.view.top.currentView) = "randomphoto"
-  end function
 
   override sub onDestroy()
     m.log.info("PhotoPresenter destroyed")

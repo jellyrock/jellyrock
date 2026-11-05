@@ -75,6 +75,9 @@ namespace tests
       ' Display settings
       reg.write("display.livetv.landing", "guide")
 
+      ' A library's saved view (v3.3.2 renames it to its libraryTab id and splits off the layout)
+      reg.write("display.lib-movies.landing", "Movies")
+
       ' Server policy keys (will be deleted during migration - these should never be in registry)
       reg.write("livetv.canrecord", "true")
       reg.write("content.candelete", "false")
@@ -180,6 +183,8 @@ namespace tests
       ' Verify display settings migrated correctly
       m.assertTrue(reg.exists("displayLiveTvLanding"))
       m.assertEqual(reg.read("displayLiveTvLanding"), "guide")
+      m.assertEqual(reg.read("display.lib-movies.landing"), "movies", "the saved view becomes its tab id")
+      m.assertEqual(reg.read("display.lib-movies.layout"), "presentation", "and the layout it implied")
 
       ' AND: OLD setting names are deleted
       m.assertFalse(reg.exists("ui.row.layout"), "Old setting name should be deleted")

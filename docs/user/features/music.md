@@ -15,7 +15,7 @@ Play the music on your Jellyfin server: browse it by artist, album or genre, pla
 
 ## Browse your music
 
-Open your music library from Home. Press the options button (**\***) to choose how to browse it: **Album Artists**, **Albums**, **Artists** or **Genres**. The same menu sorts the list by title, date added or at random, and filters it to your favorites.
+Open your music library from Home. Press the options button (**\***) to choose how to browse it: **Albums**, **Album Artists**, **Artists** or **Genres**. The same menu sorts the list by title, date added or at random, and filters it to your favorites.
 
 ## Play music
 

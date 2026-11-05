@@ -58,7 +58,7 @@ it('genre skeleton window: select is a no-op, scroll survives the fill, backdrop
     testCtx.skip(`needs 3+ movie genres to exercise scroll restore, has ${genreCount}`);
 
   const expectedServer = await seedHome(session, LOCALE);
-  const landing = await seedLibraryLanding(session, moviesId, 'Genres');
+  const landing = await seedLibraryLanding(session, moviesId, 'genres');
   await hardRelaunch();
   await assertSeedTookEffect(expectedServer, 'genre-skeleton', { landing });
 
@@ -87,7 +87,7 @@ it('genre skeleton window: select is a no-op, scroll survives the fill, backdrop
   // (2) OK on a skeleton is ignored: still on the Genres view, still in skeleton.
   await press(ecp.Key.Ok);
   await sleep(800);
-  expect(await getActiveVal('currentView')).toBe('Genres');
+  expect(await getActiveVal('currentView')).toBe('genres');
   expect(await getActiveVal('loadState')).toBe('skeleton');
 
   // (3) Scroll down while skeletons are up (bounded by the row count).

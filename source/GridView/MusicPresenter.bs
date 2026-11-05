@@ -1,4 +1,5 @@
 import "pkg:/source/GridView/GridPresenterBase.bs"
+import "pkg:/source/GridView/libraryTab.bs"
 import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/utils/displaySettings.bs"
 
@@ -17,6 +18,7 @@ class MusicPresenter extends GridPresenterBase
   override function getOptions(parentItem as object) as object
     options = {
       views: [],
+      layouts: {},
       sort: [],
       filter: []
     }
@@ -31,15 +33,16 @@ class MusicPresenter extends GridPresenterBase
 
     if isMusicGenre
       options.views = [
-        { "Title": translate(translationKeys.LabelAlbums), "Name": "Albums" }
+        { "Title": translate(translationKeys.LabelAlbums), "Name": libraryTab.ALBUMS }
       ]
     else
-      ' Standard music views
+      ' The web client's tab order (Albums, Suggestions, Album Artists, Artists,
+      ' Playlists, Songs, Genres), with the tabs JellyRock has
       options.views = [
-        { "Title": translate(translationKeys.LabelAlbumArtists), "Name": "AlbumArtistsGrid" },
-        { "Title": translate(translationKeys.LabelAlbums), "Name": "Albums" },
-        { "Title": translate(translationKeys.LabelArtists), "Name": "ArtistsGrid" },
-        { "Title": translate(translationKeys.LabelGenres), "Name": "Genres" }
+        { "Title": translate(translationKeys.LabelAlbums), "Name": libraryTab.ALBUMS },
+        { "Title": translate(translationKeys.LabelAlbumArtists), "Name": libraryTab.ALBUM_ARTISTS },
+        { "Title": translate(translationKeys.LabelArtists), "Name": libraryTab.ARTISTS },
+        { "Title": translate(translationKeys.LabelGenres), "Name": libraryTab.GENRES }
       ]
     end if
 
@@ -49,13 +52,13 @@ class MusicPresenter extends GridPresenterBase
       currentView = m.view.top.currentView
     end if
     viewLower = LCase(currentView)
-    if viewLower = "genres"
+    if viewLower = libraryTab.GENRES
       options.sort = [
         { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
         { "Title": translate(translationKeys.LabelRandom), "Name": "Random" }
       ]
       options.filter = []
-    else if viewLower = "albums"
+    else if viewLower = libraryTab.ALBUMS
       options.sort = [
         { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
         { "Title": translate(translationKeys.LabelDateAdded), "Name": "DateCreated" },
@@ -84,10 +87,10 @@ class MusicPresenter extends GridPresenterBase
   end function
 
   ' Configure grid layout and positioning for music views
-  override function getGridConfig(currentView as string) as object
+  override function getGridConfig(currentView as string, _layout as string) as object
     viewLower = LCase(currentView)
 
-    if viewLower = "albums"
+    if viewLower = libraryTab.ALBUMS
       ' Albums view - square poster
       return {
         translation: [96, 102],
@@ -97,7 +100,7 @@ class MusicPresenter extends GridPresenterBase
         numColumns: "5",
         imageDisplayMode: "scaleToFit"
       }
-    else if viewLower = "genres"
+    else if viewLower = libraryTab.GENRES
       ' Genres view - smaller posters
       return {
         translation: [96, 102],
@@ -108,7 +111,7 @@ class MusicPresenter extends GridPresenterBase
         imageDisplayMode: "scaleToZoom"
       }
     else
-      ' Default: Artist grid view (ArtistsGrid or AlbumArtistsGrid)
+      ' Default: the artist grid (Artists or Album Artists)
       return {
         translation: [96, 102],
         itemSize: [323, 323],
@@ -144,16 +147,16 @@ class MusicPresenter extends GridPresenterBase
     end if
 
     ' Configure based on view type
-    if viewLower = "albums"
+    if viewLower = libraryTab.ALBUMS
       task.itemType = "MusicAlbum"
       task.itemId = parentItem.Id
       task.view = "Artists"
       task.additionalFields = "Genres"
-    else if viewLower = "albumartistsgrid"
+    else if viewLower = libraryTab.ALBUM_ARTISTS
       task.itemType = "AlbumArtists"
       task.itemId = parentItem.Id
       task.view = "Artists"
-    else if viewLower = "genres"
+    else if viewLower = libraryTab.GENRES
       task.itemType = ""
       task.itemId = parentItem.Id
       task.view = "Genres"

@@ -10,7 +10,7 @@ related-files:
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
   - source/utils/playKind.bs
-last-reviewed: 2026-11-02
+last-reviewed: 2026-11-05
 ---
 
 # The user journey
@@ -133,7 +133,9 @@ Picking an item calls `routeForItem()` and navigates in `BaseGridView.onLibraryS
 
 Like every route, `/library/:id` uses `suspendMode: "show"`. Opening an item leaves the grid in the outlet, hidden, with its focus, and Back shows it again with the cursor where the user left it. On that return it checks `m.scene.contentVersion` and loads again if an item was deleted meanwhile, so a deleted item does not stay in the grid.
 
-Backing out of the library destroys the grid ([ADR 0029](../adr/0029-destroy-routed-screens-on-pop.md)). Opening it again loads from the start, with a spinner and the first tile focused. The view, sort and filter choice survives, because it lives in the registry (`getLibraryDisplaySetting`). A saved view applies only while the presenter still offers it (`gridQuery.resolveView`), since the same library on an older server may not have it. The fallback stays in memory only, so the saved choice comes back when the server offers it again.
+Backing out of the library destroys the grid ([ADR 0029](../adr/0029-destroy-routed-screens-on-pop.md)). Opening it again loads from the start, with a spinner and the first tile focused. The view, layout, sort and filter choice survives, because it lives in the registry (`getLibraryDisplaySetting`). A saved view applies only while the presenter still offers it (`gridQuery.resolveView`), since the same library on an older server may not have it. The fallback stays in memory only, so the saved choice comes back when the server offers it again.
+
+A view is a tab, named by a JellyRock id (`movies`, `shows`, `networks`; `source/GridView/libraryTab.bs`). The ids are the app's own, so a tab the web client lacks is added like any other; most match the web client's ids where it has the same tab. A value read from the server's display preferences (the web's default tab, its per-tab sort) is translated into these ids where it is read, so a rename on the web side never changes a stored setting. How a tab is drawn is a second axis, the per-library `layout` setting (`libraryLayout`): a movie library's Movies tab draws as the presentation panel or the poster grid, and the presenters take the layout as a parameter beside the view. The layout is per library rather than per tab, so a library left in presentation still draws Studios in its own grid.
 
 ### Loading pages
 

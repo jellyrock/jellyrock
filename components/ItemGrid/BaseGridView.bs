@@ -8,13 +8,14 @@ import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/constants/imageSize.bs"
-import "pkg:/source/GridView/collectionsView.bs"
 import "pkg:/source/GridView/GenericPresenter.bs"
 import "pkg:/source/GridView/gridPaging.bs"
 import "pkg:/source/GridView/gridQuery.bs"
+import "pkg:/source/GridView/libraryTab.bs"
 import "pkg:/source/GridView/LiveTVPresenter.bs"
 import "pkg:/source/GridView/MoviePresenter.bs"
 import "pkg:/source/GridView/MusicPresenter.bs"
+import "pkg:/source/GridView/optionsViewList.bs"
 import "pkg:/source/GridView/PhotoPresenter.bs"
 import "pkg:/source/GridView/TVShowPresenter.bs"
 import "pkg:/source/libraryViewFactory.bs"
@@ -138,6 +139,12 @@ sub init()
 
   ' Presenter (built by onPresenterTypeChanged when presenterType is set)
   m.presenter = invalid
+
+  ' The view (a libraryTab id) and layout (a libraryLayout value) the grid is showing,
+  ' and the tabs the presenter offered at the last load. Set by loadInitialItems.
+  m.view = ""
+  m.layout = libraryLayout.COMFORTABLE
+  m.offeredViews = []
 
   ' TV Guide state (LiveTV only)
   m.tvGuide = invalid
@@ -468,6 +475,7 @@ sub loadInitialItems()
   m.filter = getLibraryDisplaySetting(libraryId, "filter", "All")
   m.filterOptions = parseJson(getLibraryDisplaySetting(libraryId, "filterOptions", "{}"))
   m.view = getLibraryDisplaySetting(libraryId, "landing", invalid)
+  savedLayout = getLibraryDisplaySetting(libraryId, "layout", invalid)
   m.sortAscending = getLibraryDisplaySetting(libraryId, "sortAscending", true)
 
   ' Set default view if not saved, or if the saved one is no longer on offer.
@@ -480,7 +488,14 @@ sub loadInitialItems()
   ' The fallback is not written back to the registry. The saved choice is still what the
   ' user picked, and it is valid again the moment the library is opened against a server
   ' that offers it, so this reads the setting down, it does not overwrite it.
-  m.view = gridQuery.resolveView(m.view, offeredViews(), getDefaultView())
+  m.offeredViews = offeredViews()
+  m.view = gridQuery.resolveView(m.view, m.offeredViews, getDefaultView())
+
+  ' The layout is per library, not per view: a movie library left in presentation still
+  ' draws Studios in its own grid, and comes back to presentation on the Movies tab.
+  defaultLayout = libraryLayout.COMFORTABLE
+  if isValid(m.presenter) then defaultLayout = m.presenter.getDefaultLayout()
+  m.layout = libraryLayout.resolve(savedLayout, defaultLayout)
 
   ' Keep currentView in sync with the finalized view
   m.top.currentView = m.view
@@ -592,26 +607,34 @@ function offeredViews() as object
   return options.views
 end function
 
+' The tab a library opens on when none is saved, a libraryTab id. A folder or collection
+' has no tabs, so it answers "".
+'
+' Music opens on Album Artists, as it always has, although the web's own first music tab
+' is Albums. Changing which tab a library opens on belongs with reading the web's
+' `landing-<libraryId>` preference, not with renaming the ids.
 function getDefaultView() as string
-  ' Let presenter determine default view, or use fallback
-  ' Movies and TV default to grid mode for consistency
   collectionType = getCollectionType()
   if collectionType = "movies"
-    return "MoviesGrid"
+    return libraryTab.MOVIES
   else if collectionType = "music"
-    return "AlbumArtistsGrid"
+    return libraryTab.ALBUM_ARTISTS
   else if collectionType = "tvshows"
-    return "Shows"
+    return libraryTab.SHOWS
   end if
 
   ' Fallback to presenterType for genres and other items without collectionType
   presenterType = m.top.presenterType
   if presenterType = "movie"
-    return "MoviesGrid"
+    return libraryTab.MOVIES
   else if presenterType = "music"
-    return "AlbumArtistsGrid"
+    return libraryTab.ALBUM_ARTISTS
   else if presenterType = "tvshow"
-    return "Shows"
+    return libraryTab.SHOWS
+  else if presenterType = "livetv"
+    return libraryTab.CHANNELS
+  else if presenterType = "photo"
+    return libraryTab.PHOTOS
   end if
 
   return ""
@@ -620,7 +643,7 @@ end function
 sub configureBackdrop()
   if not isValid(m.presenter) then return
 
-  backdropMode = m.presenter.getBackdropMode()
+  backdropMode = m.presenter.getBackdropMode(m.view, m.layout)
 
   if backdropMode = "presentation"
     ' Clear fullscreen backdrop first to avoid overlap during transition
@@ -633,7 +656,7 @@ sub configureBackdrop()
     m.presentationBackdrop.uri = getItemBackdropUrl(m.top.parentItem, m.backdropSize)
 
     ' Show presentation info if presenter supports it
-    showInfo = m.presenter.shouldShowPresentationInfo(m.view)
+    showInfo = m.presenter.shouldShowPresentationInfo(m.view, m.layout)
     m.presentationInfo.visible = showInfo
   else
     ' Use fullscreen backdrop via scene manager
@@ -647,7 +670,7 @@ end sub
 sub configureGrid()
   if not isValid(m.presenter) then return
 
-  config = m.presenter.getGridConfig(m.view)
+  config = m.presenter.getGridConfig(m.view, m.layout)
 
   if isValid(config.translation)
     if type(config.translation) = "roArray"
@@ -679,7 +702,7 @@ sub configureGrid()
 
   ' Configure item titles visibility
   userSettings = m.global.user.settings
-  showInfo = m.presenter.shouldShowPresentationInfo(m.view)
+  showInfo = m.presenter.shouldShowPresentationInfo(m.view, m.layout)
   if showInfo
     m.top.showItemTitles = "hidealways"
   else
@@ -1168,7 +1191,7 @@ sub onItemFocused()
 
   ' Let presenter handle item-specific metadata display
   if isValid(m.presenter) and isValid(m.selectedFavoriteItem)
-    m.presenter.onItemFocused(m.selectedFavoriteItem, m.view)
+    m.presenter.onItemFocused(m.selectedFavoriteItem, m.view, m.layout)
   end if
 end sub
 
@@ -1274,7 +1297,7 @@ sub updateBackdropForFocusedItem()
   backdropUrl = getItemBackdropUrl(m.selectedFavoriteItem, m.backdropSize)
 
   if isValid(m.presenter)
-    backdropMode = m.presenter.getBackdropMode()
+    backdropMode = m.presenter.getBackdropMode(m.view, m.layout)
     if backdropMode = "presentation"
       ' Clear fullscreen backdrop to prevent overlap with presentation backdrop
       m.global.sceneManager.callFunc("setBackgroundImage", "")
@@ -1364,17 +1387,20 @@ sub SetUpOptions()
     favorite: []
   }
 
-  ' Let presenter provide options
+  ' Let presenter provide options. The dialog's View list is the presenter's tabs with
+  ' each layout choice spelled out (see optionsViewList).
   if isValid(m.presenter)
     presenterOptions = m.presenter.getOptions(m.top.parentItem)
-    if isValid(presenterOptions.views) then options.views = presenterOptions.views
+    if isValid(presenterOptions.views) then options.views = optionsViewList.build(presenterOptions.views, presenterOptions.layouts)
     if isValid(presenterOptions.sort) then options.sort = presenterOptions.sort
     if isValid(presenterOptions.filter) then options.filter = presenterOptions.filter
   end if
 
   ' Set selected view option
+  m.options.view = m.view
+  m.options.layout = m.layout
   for each o in options.views
-    if LCase(o.Name) = LCase(m.view)
+    if optionsViewList.isSelected(o, m.view, m.layout)
       o.Selected = true
       o.Ascending = m.sortAscending
       m.options.view = o.Name
@@ -1455,13 +1481,19 @@ sub optionsClosed()
     setLibraryDisplaySetting(libraryId, "filterOptions", FormatJson(m.options.filterOptions))
   end if
 
-  ' Check if view changed
+  ' Check if view changed. The dialog lists a layout choice as a view of its own, so
+  ' switching between a tab's layouts goes through the same path a view change always did.
   libraryId = m.top.parentItem.Id
 
-  if m.options.view <> m.view
+  layoutChosen = isValidAndNotEmpty(m.options.layout) and m.options.layout <> m.layout
+  if m.options.view <> m.view or layoutChosen
     m.view = m.options.view
     m.top.currentView = m.view
     setLibraryDisplaySetting(libraryId, "landing", m.view)
+    if layoutChosen
+      m.layout = m.options.layout
+      setLibraryDisplaySetting(libraryId, "layout", m.layout)
+    end if
 
     ' Reset any filtering or search terms
     m.voiceBox.text = ""
@@ -1481,7 +1513,7 @@ sub optionsClosed()
     reload = true
   end if
 
-  ' Let presenter handle any custom option processing (for example, PhotoPresenter saves slideshow/random settings)
+  ' Let presenter handle any custom option processing
   if isValid(m.presenter)
     m.presenter.onOptionsClosed(m.options)
   end if
@@ -1527,7 +1559,7 @@ sub onAlphaActiveChanged()
   if m.top.isAlphaActive
     ' Clear backdrop when alpha menu is active
     if isValid(m.presenter)
-      backdropMode = m.presenter.getBackdropMode()
+      backdropMode = m.presenter.getBackdropMode(m.view, m.layout)
       if backdropMode = "presentation"
         m.presentationBackdrop.uri = ""
       else
@@ -1785,30 +1817,31 @@ sub updateTitle()
     return
   end if
 
-  ' View-specific titles (only when no active filters)
+  ' View-specific titles (only when no active filters). A library's content tab (Movies,
+  ' Shows, Channels, Photos) carries no suffix; the others are named by the title the
+  ' presenter gave the tab.
   lowerView = LCase(m.view)
-  if lowerView = "networks"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelNetworks))
-  else if lowerView = "studios"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelStudios))
-  else if lowerView = "genres"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelGenres))
-  else if lowerView = LCase(collectionsView.VIEW_NAME)
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelCollections))
-  else if lowerView = "artistsgrid"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelArtists))
-  else if lowerView = "albumartistsgrid"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelAlbumArtists))
-  else if lowerView = "albums"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelAlbums))
+  if lowerView = libraryTab.STUDIOS or lowerView = libraryTab.NETWORKS or lowerView = libraryTab.GENRES or lowerView = libraryTab.COLLECTIONS or lowerView = libraryTab.ARTISTS or lowerView = libraryTab.ALBUM_ARTISTS or lowerView = libraryTab.ALBUMS
+    tabTitle = offeredViewTitle(m.view)
+    if tabTitle <> "" then m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, tabTitle)
   end if
 
   ' Add item count if enabled
   actInt = m.itemGrid.itemFocused + 1
-  if m.showItemCount and m.totalRecordCount > 0 and lowerView <> "genres"
+  if m.showItemCount and m.totalRecordCount > 0 and lowerView <> libraryTab.GENRES
     m.top.overhangTitle += " (" + translate(translationKeys.Message1Of2, [actInt.toStr(), m.totalRecordCount.toStr()]) + ")"
   end if
 end sub
+
+' The title the presenter gave a tab at the last load, "" when it did not offer it.
+' Read off the list loadInitialItems kept, not a fresh getOptions(): this runs on every
+' focus change, and the options build is a run of translate() calls.
+function offeredViewTitle(viewName as string) as string
+  for each view in m.offeredViews
+    if isValid(view) and LCase(textOrEmpty(view.Name)) = LCase(viewName) then return textOrEmpty(view.Title)
+  end for
+  return ""
+end function
 
 ' Returns the flat index of an item within the grid's content root.
 ' Called by GridItem via callFunc for O(1) index lookup (avoids O(N) child scan).
