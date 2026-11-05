@@ -54,6 +54,52 @@ namespace tests
       m.assertEqual(chooseErrorRetry(true, false, false, false, false), PlaybackErrorRetry.NONE)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("retryFlagsWith")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("starts with every flag off")
+    function _()
+      m.assertEqual(noRetryFlags(), { bypassDovi: false, forceTranscode: false, disallowVideoCopy: false })
+    end function
+
+    @it("turns on the flag each retry stands for")
+    function _()
+      m.assertTrue(retryFlagsWith(noRetryFlags(), PlaybackErrorRetry.DOVI_DIRECT_PLAY).bypassDovi)
+      m.assertTrue(retryFlagsWith(noRetryFlags(), PlaybackErrorRetry.TRANSCODE).forceTranscode)
+      m.assertTrue(retryFlagsWith(noRetryFlags(), PlaybackErrorRetry.REENCODE_VIDEO).disallowVideoCopy)
+    end function
+
+    @it("keeps the forced transcode when the re-encode follows it, so direct play is never offered again")
+    function _()
+      flags = retryFlagsWith(noRetryFlags(), PlaybackErrorRetry.TRANSCODE)
+      flags = retryFlagsWith(flags, PlaybackErrorRetry.REENCODE_VIDEO)
+
+      m.assertEqual(flags, { bypassDovi: false, forceTranscode: true, disallowVideoCopy: true })
+    end function
+
+    @it("keeps the Dolby Vision bypass when the re-encode follows it")
+    function _()
+      flags = retryFlagsWith(retryFlagsWith(noRetryFlags(), PlaybackErrorRetry.DOVI_DIRECT_PLAY), PlaybackErrorRetry.REENCODE_VIDEO)
+
+      m.assertTrue(flags.bypassDovi)
+      m.assertTrue(flags.disallowVideoCopy)
+    end function
+
+    @it("returns a new AA and leaves the flags in place alone")
+    function _()
+      before = noRetryFlags()
+      after = retryFlagsWith(before, PlaybackErrorRetry.TRANSCODE)
+
+      m.assertFalse(before.forceTranscode)
+      m.assertTrue(after.forceTranscode)
+    end function
+
+    @it("treats invalid flags as none")
+    function _()
+      m.assertEqual(retryFlagsWith(invalid, PlaybackErrorRetry.NONE), noRetryFlags())
+    end function
+
   end class
 
 end namespace

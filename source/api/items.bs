@@ -32,6 +32,18 @@ function ItemPostPlaybackInfoResponse(id as string, mediaSourceId = "" as string
   return fetchRes(req, "playbackInfo")
 end function
 
+' isUsablePlaybackInfoResponse: Whether an ItemPostPlaybackInfoResponse() answer can replace the
+' one a load already holds: it arrived, parsed, lists a media source and names no error.
+'
+' @param {dynamic} res - the pool response AA, or invalid
+' @return {boolean}
+function isUsablePlaybackInfoResponse(res as dynamic) as boolean
+  if type(res) <> "roAssociativeArray" or not isBooleanTrue(res.ok) then return false
+  json = res.json
+  if type(json) <> "roAssociativeArray" then return false
+  return isValidAndNotEmpty(json.MediaSources) and not isValidAndNotEmpty(json.ErrorCode)
+end function
+
 ' buildPlaybackInfoPostData: The PlaybackInfo request body, tuned to the version being played.
 '
 ' Split from ItemPostPlaybackInfo so the body can be tested without a server.

@@ -49,6 +49,8 @@ related-files:
   - source/utils/bufferStall.bs
   - source/enums/BufferCheckAction.bs
   - source/utils/playbackEnd.bs
+  - source/utils/playbackRetry.bs
+  - source/utils/hlsMaster.bs
   - source/enums/PlaybackEndReport.bs
   - source/utils/liveStreamHandoff.bs
   - source/enums/LiveStreamStage.bs
@@ -61,7 +63,7 @@ related-files:
   - source/syncplay/syncPlayQueue.bs
   - source/syncplay/syncPlayHooks.bs
   - source/syncplay/syncPlayState.bs
-last-reviewed: 2026-11-04
+last-reviewed: 2026-11-05
 ---
 
 # Video and audio playback
@@ -271,7 +273,7 @@ The video player. It extends Roku's `Video` node, so it inherits the playback st
 | Presses the host observes | `selectSubtitlePressed`, `selectAudioPressed`, `selectVideoSourcePressed`, `selectPlaybackInfoPressed` (all `alwaysNotify`) |
 | Selection | `audioIndex`, `SelectedSubtitle` (default `-2`, `SubtitleSelection.NOT_SET`; `-1` is none; `alwaysNotify`), `mediaSourceId`, `Subtitles`, `fullSubtitleData`, `fullAudioData`, `fullVideoSourceData`, `isPreviousSubtitleEncoded`, `shouldAllowCaptions` |
 | The stream | `videoId`, `PlaySessionId`, `container`, `isDirectPlaySupported`, `isTranscoded`, `isTranscodeAvailable`, `transcodeParams`, `cachedPlaybackInfo`, `isShortcut` (the item is a `.strm` file, so the report hides its size and bitrate), `showID` |
-| Dolby Vision fallback | `isDoviDirectPlayFallbackAvailable`, `isRetrying`, `isDoviPreservationBypassed` (a retry asked without the Dolby Vision profile, so the report must not blame the setting) |
+| Retries | `isDoviDirectPlayFallbackAvailable`, `isReencodeFallbackAvailable`, `isTranscodeAvailable`, `isRetrying`, `isDoviPreservationBypassed` (the stream was asked for without the Dolby Vision profile, so the report must not blame the setting), `isVideoCopyDisallowed` (the stream was asked for re-encoded, which the report says) |
 | Errors | `errorDialogOwnsExit` |
 | Other | `lastFocus`, `transcodeReasons` (set to `[]` in `init()` and never read) |
 | Functions | `onDestroy`, `handleTransport`, `pauseWithOsd`, `abandonErrorDialog`, `showLiveStreamStoppedError`, `showLiveStreamStalledError`, `liveProgressMs`, `reportStallStop` |
@@ -595,9 +597,14 @@ Roku does not play Dolby Vision from an MKV container, so JellyRock asks for a r
 
 A copied video stream can only be cut at the source's keyframes, so a source with keyframes several seconds apart gives HLS segments larger than Roku's whole video buffer, whatever `SegmentLength` asks for (`calculateOptimalTranscodingParams()` sizes segments by bitrate alone). Roku then fails with a `buffer:loop:` source error, and the player retries once with the video re-encoded, which forces a keyframe every segment:
 
-- `chooseErrorRetry()` (`source/utils/playbackRetry.bs`) picks the retry. The Dolby Vision retry above comes first; the re-encode retry is offered on any transcoded load that did not already ask for one (`isReencodeFallbackAvailable`).
+- `chooseErrorRetry()` (`source/utils/playbackRetry.bs`) picks the retry. The Dolby Vision retry above comes first; the re-encode retry is offered on any transcoded load that did not already ask for one (`isReencodeFallbackAvailable`), except Live TV: no live overflow has been measured, and a live re-encode would need its own 1080p check.
 - The retry sends `AllowVideoStreamCopy = false`, applies the buffer bitrate cap even below the source bitrate, and lists HEVC before H.264 (`hevcFirstCodecList()`), so a server that encodes HEVC keeps 4K.
-- A server that does not encode HEVC (Jellyfin's default) re-encodes to H.264 at the source's size, and Roku decodes H.264 only up to level 4.2. A width limit in a codec profile applies to every codec, so the profile cannot cap H.264 alone. Instead the retry's load reads the master playlist's codec and size (`hlsMasterVariant()`, `needsH264ResolutionCap()`) and, for H.264 above 1080p, asks once more with a 1080p cap. Any failure keeps the first answer.
+- A server that does not encode HEVC (Jellyfin's default) re-encodes to H.264 at the source's size, and Roku decodes H.264 only up to level 4.2. A width limit in a codec profile applies to every codec, so the profile cannot cap H.264 alone. Instead the retry's load reads the master playlist's codec and size (`hlsMasterVariant()`) and asks once more with a 1080p cap when `reencodeCapDecision()` says so: for H.264 above 1080p, or for a source above 1080p whose playlist could not be read. A failed second request keeps the first answer.
+- The report says why the video is re-encoded (`isVideoCopyDisallowed`, a row in its reasons section), since no server reason names it.
+
+### A retry lasts for the version's playback
+
+Each retry adds one flag to `VideoPlayerView`'s `m.retryFlags` (`retryFlagsWith()`): the Dolby Vision bypass, the forced transcode or the re-encode. `startVideoLoad()` sends them on every run, so an audio, subtitle or gear reload asks the server the same way, and only a version switch starts over (`noRetryFlags()`); a new queue item gets a new player. What a retry learned is a property of the file: a reload that dropped it would fail the same way again. A flag only turns on, and a load with a flag on never offers that flag's fallback again (a forced transcode sends `EnableDirectPlay = false`, which also blocks the upstream-URL play), so a playback takes at most one retry of each kind. Dropping a flag is what once let the re-encode cycle with a direct play that had failed: the server still allows direct play when it may not copy the video.
 
 ## Subtitles
 

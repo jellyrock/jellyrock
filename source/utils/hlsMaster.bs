@@ -39,6 +39,13 @@ function hlsAttributeValue(attributes as string, prefix as string, terminator as
   return mid(attributes, valueStart, valueEnd - valueStart)
 end function
 
+' Whether a picture is larger than a Roku decodes as H.264 (AVC level 4.2, about 1080p).
+'
+' @return {boolean} true when wider than 1920 or taller than 1080
+function isAboveH264Ceiling(width as integer, height as integer) as boolean
+  return width > 1920 or height > 1080
+end function
+
 ' Whether a variant is H.264 larger than a Roku decodes (AVC level 4.2, about 1080p).
 '
 ' @param {dynamic} variant - hlsMasterVariant()'s answer
@@ -47,5 +54,39 @@ function needsH264ResolutionCap(variant as dynamic) as boolean
   if not isValid(variant) then return false
   codecs = LCase(variant.codecs)
   isH264 = inStr(1, codecs, "avc1.") > 0 or inStr(1, codecs, "avc3.") > 0
-  return isH264 and (variant.width > 1920 or variant.height > 1080)
+  return isH264 and isAboveH264Ceiling(variant.width, variant.height)
+end function
+
+' Whether a source's video stream is above 1080p, whatever its codec. False when the stream or
+' its size is unknown.
+'
+' @param {dynamic} videoStream - a MediaStream (Width, Height), or invalid
+' @return {boolean}
+function videoStreamAboveH264Ceiling(videoStream as dynamic) as boolean
+  if type(videoStream) <> "roAssociativeArray" then return false
+  return isAboveH264Ceiling(mediaNumber(videoStream.Width), mediaNumber(videoStream.Height))
+end function
+
+' reencodeCapDecision: Whether the re-encode retry's answer must be asked for again at 1080p,
+' and why.
+'
+' The server's master playlist declares the codec and size the re-encode will have, and H.264
+' above 1080p needs the cap. A playlist that did not arrive or cannot be read says nothing, so
+' the source decides: one above 1080p is capped. A 4K H.264 re-encode buffers forever with no
+' error, while a 1080p one plays; the cap costs 4K only on a server that encodes HEVC, and only
+' when its playlist could not be read.
+'
+' @param {dynamic} fetched - fetchManifestText()'s answer ({ code, body }), or invalid
+' @param {boolean} sourceAboveCeiling - the source's video is above 1080p (videoStreamAboveH264Ceiling)
+' @return {object} { cap: boolean, reason: string, variant: dynamic }. reason is
+'   "h264AboveCeiling" or "playable" when the playlist was read (variant is hlsMasterVariant()'s
+'   answer), "playlistUnread" (no answer, or not HTTP 200) or "playlistUnparsed" otherwise.
+function reencodeCapDecision(fetched as dynamic, sourceAboveCeiling as boolean) as object
+  if type(fetched) <> "roAssociativeArray" or mediaNumber(fetched.code) <> 200
+    return { cap: sourceAboveCeiling, reason: "playlistUnread", variant: invalid }
+  end if
+  variant = hlsMasterVariant(textOrEmpty(fetched.body))
+  if not isValid(variant) then return { cap: sourceAboveCeiling, reason: "playlistUnparsed", variant: invalid }
+  if needsH264ResolutionCap(variant) then return { cap: true, reason: "h264AboveCeiling", variant: variant }
+  return { cap: false, reason: "playable", variant: variant }
 end function

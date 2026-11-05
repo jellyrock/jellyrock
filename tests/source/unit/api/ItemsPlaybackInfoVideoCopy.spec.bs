@@ -104,6 +104,28 @@ namespace tests
       m.assertEqual(reencoding.count(), copying.count())
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isUsablePlaybackInfoResponse")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("accepts an answer that lists a media source")
+    function _()
+      m.assertTrue(isUsablePlaybackInfoResponse({ ok: true, json: { MediaSources: [{ Id: "a" }] } }))
+    end function
+
+    @it("rejects no answer, a failed request, or an answer with no media source")
+    function _()
+      m.assertFalse(isUsablePlaybackInfoResponse(invalid))
+      m.assertFalse(isUsablePlaybackInfoResponse({ ok: false, json: { MediaSources: [{ Id: "a" }] } }))
+      m.assertFalse(isUsablePlaybackInfoResponse({ ok: true, json: invalid }))
+      m.assertFalse(isUsablePlaybackInfoResponse({ ok: true, json: { MediaSources: [] } }))
+    end function
+
+    @it("rejects an answer that names an error")
+    function _()
+      m.assertFalse(isUsablePlaybackInfoResponse({ ok: true, json: { MediaSources: [{ Id: "a" }], ErrorCode: "NoCompatibleStream" } }))
+    end function
+
   end class
 
   ' The position of `codec` in a list of codec names, or -1.

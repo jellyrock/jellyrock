@@ -92,6 +92,76 @@ namespace tests
       m.assertFalse(needsH264ResolutionCap(hlsMasterVariant("garbage")))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("videoStreamAboveH264Ceiling")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for a 4K HEVC stream")
+    function _()
+      m.assertTrue(videoStreamAboveH264Ceiling({ Codec: "hevc", Width: 3840, Height: 2160 }))
+    end function
+
+    @it("is false for a 1080p stream")
+    function _()
+      m.assertFalse(videoStreamAboveH264Ceiling({ Codec: "hevc", Width: 1920, Height: 1080 }))
+    end function
+
+    @it("is false for an unknown stream")
+    function _()
+      m.assertFalse(videoStreamAboveH264Ceiling(invalid))
+      m.assertFalse(videoStreamAboveH264Ceiling({ Codec: "hevc" }))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("reencodeCapDecision")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("caps H.264 above 1080p")
+    function _()
+      body = m.master("CODECS=" + chr(34) + "avc1.640033,ac-3" + chr(34) + ",RESOLUTION=3840x2160")
+      decision = reencodeCapDecision({ code: 200, body: body }, true)
+
+      m.assertTrue(decision.cap)
+      m.assertEqual(decision.reason, "h264AboveCeiling")
+      m.assertEqual(decision.variant.width, 3840)
+    end function
+
+    @it("keeps HEVC at 4K")
+    function _()
+      body = m.master("CODECS=" + chr(34) + "hvc1.2.4.L153.B0,ac-3" + chr(34) + ",RESOLUTION=3840x2160")
+      decision = reencodeCapDecision({ code: 200, body: body }, true)
+
+      m.assertFalse(decision.cap)
+      m.assertEqual(decision.reason, "playable")
+    end function
+
+    @it("caps a source above 1080p when the playlist did not arrive")
+    function _()
+      decision = reencodeCapDecision(invalid, true)
+
+      m.assertTrue(decision.cap)
+      m.assertEqual(decision.reason, "playlistUnread")
+    end function
+
+    @it("caps a source above 1080p when the playlist answered with an error")
+    function _()
+      m.assertTrue(reencodeCapDecision({ code: 500, body: "" }, true).cap)
+    end function
+
+    @it("caps a source above 1080p when the playlist cannot be read")
+    function _()
+      decision = reencodeCapDecision({ code: 200, body: "<html>502 Bad Gateway</html>" }, true)
+
+      m.assertTrue(decision.cap)
+      m.assertEqual(decision.reason, "playlistUnparsed")
+    end function
+
+    @it("keeps the answer for a source at or below 1080p when the playlist did not arrive")
+    function _()
+      m.assertFalse(reencodeCapDecision(invalid, false).cap)
+      m.assertFalse(reencodeCapDecision({ code: 200, body: "garbage" }, false).cap)
+    end function
+
   end class
 
 end namespace

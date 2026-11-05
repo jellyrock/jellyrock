@@ -86,13 +86,13 @@ function transcodeCauseSettingKey(reason as string, ctx as object) as string
   end if
 
   ' ContainerBitrateExceedsLimit is absent on purpose. It compares the source's
-  ' total bitrate against DeviceProfile.MaxStreamingBitrate, and the only thing
-  ' that ever lowers ours is the transcoding-buffer calculation in
-  ' buildPlaybackInfoPostData(), which explicitly refuses to go below the source's
-  ' own bitrate plus 10% headroom. So our cap cannot produce this reason, and the
-  ' user's "Maximum Bitrate" setting does not write that field at all (it writes a
-  ' per-codec VideoBitrate condition, which surfaces as VideoBitrateNotSupported).
-  ' Attributing it here would be a guess wearing a predicate's clothes.
+  ' total bitrate against DeviceProfile.MaxStreamingBitrate, which no setting
+  ' writes: the user's "Maximum Bitrate" writes a per-codec VideoBitrate condition
+  ' (surfacing as VideoBitrateNotSupported). Only the transcoding-buffer
+  ' calculation in buildPlaybackInfoPostData() lowers it, and below the source's
+  ' bitrate plus 10% only on the re-encode retry, which the report names in a row
+  ' of its own (reasonsSection). So no setting causes this reason, and
+  ' attributing it here would be a guess wearing a predicate's clothes.
   return ""
 end function
 

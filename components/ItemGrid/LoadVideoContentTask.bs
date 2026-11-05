@@ -743,7 +743,11 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     ' keyframes: a long-GOP source gives a segment larger than the device's whole video buffer
     ' (a buffer:loop: error). Flag that the player may retry with the video re-encoded, which
     ' forces a keyframe per segment. Not offered to a load that already asked for that.
-    if not disallowVideoCopy
+    '
+    ' Not offered for Live TV, until a live overflow is measured: every one so far was a file.
+    ' A live re-encode would also need its own check for H.264 above 1080p, since
+    ' capReencodedResolution skips live loads (its second PlaybackInfo opens a second stream).
+    if not disallowVideoCopy and not isLive
       video.isReencodeFallbackAvailable = true
     end if
   end if
@@ -759,8 +763,9 @@ end sub
 ' The retry asks the server not to copy the video and lists HEVC first, but a server that does not
 ' encode HEVC (Jellyfin's default) re-encodes to H.264 at the source's size, and a Roku stops at
 ' AVC level 4.2 and buffers forever on a 4K one. The server's master playlist declares the codec and
-' size before any segment exists, so read it, and when it is H.264 above 1080p ask PlaybackInfo once
-' more with a 1080p resolution cap. Any failure keeps the first answer (m.playbackInfo).
+' size before any segment exists, so read it, and ask PlaybackInfo once more with a 1080p
+' resolution cap when reencodeCapDecision says so. A second request that fails keeps the first
+' answer (m.playbackInfo).
 '
 ' @param {string} itemId - the item
 sub capReencodedResolution(itemId as string, mediaSourceId as dynamic, audioStreamIdx as integer, subtitleIdx as integer, playbackPosition as dynamic, meta as object, bypassDoviPreservation as boolean, forceTranscoding as boolean, pickedCaps as dynamic)
@@ -769,29 +774,30 @@ sub capReencodedResolution(itemId as string, mediaSourceId as dynamic, audioStre
   if not isValid(source) or not isValidAndNotEmpty(source.TranscodingUrl) then return
   if LCase(textOrEmpty(source.TranscodingSubProtocol)) <> "hls" then return
 
+  playedSource = invalid
+  if isValid(meta.mediaSourcesData) then playedSource = mediaSourceForId(meta.mediaSourcesData.mediaSources, mediaSourceId)
+  sourceAboveCeiling = false
+  if isValid(playedSource) then sourceAboveCeiling = videoStreamAboveH264Ceiling(getFirstVideoStream(playedSource.MediaStreams))
+
   fetched = fetchManifestText(buildURL(source.TranscodingUrl), timeouts.HLS_MASTER_PROBE_MS)
-  if not isValid(fetched) or fetched.code <> 200
-    m.log.warn("Could not read the re-encode's master playlist; keeping the server's answer", "itemId", itemId)
-    return
+  decision = reencodeCapDecision(fetched, sourceAboveCeiling)
+  if isValid(decision.variant)
+    m.log.info("Re-encode master playlist", "codecs", decision.variant.codecs, "width", decision.variant.width, "height", decision.variant.height, "itemId", itemId)
+  else
+    m.log.warn("Could not read the re-encode's master playlist", "reason", decision.reason, "sourceAboveCeiling", sourceAboveCeiling, "itemId", itemId)
   end if
-  variant = hlsMasterVariant(fetched.body)
-  if not isValid(variant)
-    m.log.warn("Could not parse the re-encode's master playlist; keeping the server's answer", "itemId", itemId)
-    return
-  end if
-  m.log.info("Re-encode master playlist", "codecs", variant.codecs, "width", variant.width, "height", variant.height, "itemId", itemId)
-  if not needsH264ResolutionCap(variant) then return
+  if not decision.cap then return
 
   ' The viewer's own picks stay; only the resolution is lowered.
   cappedCaps = {}
   if type(pickedCaps) = "roAssociativeArray" then cappedCaps.append(pickedCaps)
   cappedCaps.maxResolution = "1080"
   res = ItemPostPlaybackInfoResponse(itemId, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, 0, cappedCaps, true)
-  if isValid(res) and res.ok and isValid(res.json) and isValidAndNotEmpty(res.json.MediaSources) and not isValidAndNotEmpty(res.json.ErrorCode)
-    m.log.info("Re-encode is H.264 above 1080p; playing the answer capped at 1080p", "itemId", itemId)
+  if isUsablePlaybackInfoResponse(res)
+    m.log.info("Playing the re-encode capped at 1080p", "reason", decision.reason, "itemId", itemId)
     m.playbackInfo = res.json
   else
-    m.log.warn("PlaybackInfo with a 1080p cap failed; keeping the server's answer", "itemId", itemId)
+    m.log.warn("PlaybackInfo with a 1080p cap failed; keeping the server's answer", "reason", decision.reason, "itemId", itemId)
   end if
 end sub
 
