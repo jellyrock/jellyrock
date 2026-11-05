@@ -4,7 +4,7 @@ related-files:
   - components/JRScene.bs
   - components/JRScreen.bs
   - components/logging/Log.bs
-  - source/logging/LogMixin.bs
+  - source/logging/Logger.bs
   - scripts/bsc-plugins/roku-log.cjs
 last-reviewed: 2026-11-05
 ---
@@ -23,7 +23,7 @@ Say which one you mean. They fail differently, and a bug in the second reads lik
 
 | | What | Where it came from |
 |---|---|---|
-| **Runtime** | [`source/logging/LogMixin.bs`](../../source/logging/LogMixin.bs) (`log.Logger`, `log.initializeLogManager`) and [`components/logging/Log.bs`](../../components/logging/Log.bs) (the `log_Log` manager node) | Adopted from roku-log 0.11.1, whose last release was in 2023. Its [README](../../source/logging/README.md) lists every change from upstream. Edit it like any other code ([ADR 0054](../adr/0054-owned-code-gets-every-check.md)) |
+| **Runtime** | [`source/logging/Logger.bs`](../../source/logging/Logger.bs) (`log.Logger`, `log.initializeLogManager`) and [`components/logging/Log.bs`](../../components/logging/Log.bs) (the `log_Log` manager node) | Adopted from roku-log 0.11.1, whose last release was in 2023. Its [README](../../source/logging/README.md) lists every change from upstream. Edit it like any other code ([ADR 0054](../adr/0054-owned-code-gets-every-check.md)) |
 | **Compile-time plugin** | [`scripts/bsc-plugins/roku-log.cjs`](../../scripts/bsc-plugins/roku-log.cjs): `strip`, `insertPkgPath`, `guard`, `removeComments`, and the `log-too-many-values` check, which fails a call with more values than the runtime function takes once `insertPkgPath` has added its argument | Written from scratch to replace the unmaintained `roku-log-bsc-plugin@0.9.0-beta.1`, which BrighterScript v1 broke |
 
 **The console format is a contract.** `npm run measure` parses `<LEVEL> file://<path>:<line> <message>` (`LOG_LINE` in [`scripts/measurements.js`](../../scripts/measurements.js)), so a change to how `Logger.log()` writes a line must keep that shape or update the parser in the same change.

@@ -5,7 +5,7 @@ The `log.Logger` class, `log.initializeLogManager` and the `log_Log` manager nod
 - **Upstream:** [`georgejecook/roku-log`](https://github.com/georgejecook/roku-log), by George Cook
 - **Pinned release:** `v0.11.1`, commit `a853601aa77b85c186a6b87f60247fcf663b27f4` (2023-05-15), the last release
 - **License:** MIT (see [`LICENSE`](LICENSE), copied unchanged)
-- **Files:** `source/logging/LogMixin.bs` (upstream `src/source/LogMixin.bs`) and `components/logging/Log.{bs,xml}` (upstream `src/components/Log.{bs,xml}`)
+- **Files:** `source/logging/Logger.bs` (upstream `src/source/LogMixin.bs`) and `components/logging/Log.{bs,xml}` (upstream `src/components/Log.{bs,xml}`)
 
 ## Why it is here
 
@@ -15,6 +15,7 @@ roku-log has had no release since 2023, and installing it needed a post-install 
 
 The public names are unchanged, so no call site changed: `log.Logger`, `log.initializeLogManager`, the `log_Log` component and the `"log_PrintTransport"` transport name. The console output is byte-identical, which `scripts/measurements.js` depends on.
 
+- **`LogMixin.bs` renamed to `Logger.bs`.** It holds the `log` namespace and the `Logger` class, not a mixin.
 - **Callback names match their functions.** Upstream observed `"log_onTransportsChange"` but named the function `onTransportsChange`, and relied on the renaming ropm did to make them match. Without ropm the callback never ran, `logMode` stayed `0`, and nothing printed. `tests/source/unit/logging/LogManager.spec.bs` guards it.
 - **Three transports deleted:** `NodeTransport` (for RALE), `ScreenTransport` (an on-screen overlay) and `HTTPTransport` (which needed maestro's `mc_RequestTask`, absent from this app). Nothing used them. The manager still accepts any node with a `logItem(name, levelNum, text)` function as a transport.
 - **Indentation deleted:** `increaseIndent`, `decreaseIndent`, `resetIndent` and `_changeIndent`, with the `logIndent` and `logIndentText` fields they kept on `m.global`. Nothing called them, but every log line read `m.global.logIndentText`, a thread crossing when the caller is a Task. The text was always empty, so the output is the same.

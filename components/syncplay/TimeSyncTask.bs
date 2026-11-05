@@ -1,4 +1,4 @@
-import "pkg:/source/logging/LogMixin.bs"
+import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/syncplay/syncPlayTime.bs"
 import "pkg:/source/utils/misc.bs"
 

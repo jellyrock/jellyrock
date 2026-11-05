@@ -2,7 +2,7 @@
 ' app, so no fetchAsync() started here (the SyncPlay group list) can outlive it.
 import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/enums/LoadingKind.bs"
-import "pkg:/source/logging/LogMixin.bs"
+import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/syncplay/syncPlayMenu.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/appWaits.bs"

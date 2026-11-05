@@ -4,14 +4,14 @@ related-files:
   - components/JRScene.bs
   - components/JRScreen.bs
   - components/logging/Log.bs
-  - source/logging/LogMixin.bs
+  - source/logging/Logger.bs
   - scripts/bsc-plugins/roku-log.cjs
 last-reviewed: 2026-11-05
 ---
 
 # Logging guide
 
-JellyRock logs through its own logger in `source/logging/`, adopted from roku-log. To log from your code, import the mixin, create a logger, and call it at the right level. How the logging system works inside is in [architecture/logging.md](../architecture/logging.md).
+JellyRock logs through its own logger in `source/logging/`, adopted from roku-log. To log from your code, import the logger, create one, and call it at the right level. How the logging system works inside is in [architecture/logging.md](../architecture/logging.md).
 
 ## 1. The log manager is already set up
 
@@ -26,12 +26,12 @@ The manager takes these settings:
 
 **Production builds remove every `m.log.*` call** when they compile (`rokuLog.strip` in `bsconfig-prod.json`, applied by the `roku-log` BrighterScript plugin). A production build logs nothing, whatever the level. If a log line you expect is missing, check whether you're on a production build before you look at levels or filters.
 
-## 2. Import the logging mixin
+## 2. Import the logger
 
-Import the mixin in every `.bs` file that logs:
+Import the logger in every `.bs` file that logs:
 
 ```brighterscript
-import "pkg:/source/logging/LogMixin.bs"
+import "pkg:/source/logging/Logger.bs"
 ```
 
 ## 3. Create a logger in each component or class
@@ -76,7 +76,7 @@ The logger converts the values to text, so you don't have to. The exception: a `
 
 - **Don't set up the log manager yourself.** `JRScene.init()` owns it, and `lint:log-manager-init` enforces that.
 - **Don't create a `log.Logger` in anything built before the scene exists** (`setGlobals()`, early `main.bs`). It stores `invalid` and never logs. Use `print` where it is allowed.
-- **Import the mixin** in every file that logs.
+- **Import the logger** in every file that logs.
 - **Create one logger per component or class**, so each line shows where it came from.
 - **Pick the level by the table above**, so filtering works.
 - **Use `m.log.*`, not `print`.** `print` is allowed only in `source/main.bs` and in the `#if debug` block of `source/utils/globals.bs`. The `print-locations` BrighterScript plugin enforces this (see [build-and-tooling.md](../architecture/build-and-tooling.md)).

@@ -1,7 +1,7 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/api/baseRequest.bs"
-import "pkg:/source/logging/LogMixin.bs"
+import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/misc.bs"

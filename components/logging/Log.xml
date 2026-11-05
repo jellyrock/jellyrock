@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The log manager node. log.initializeLogManager() (source/logging/LogMixin.bs) creates the one
+  The log manager node. log.initializeLogManager() (source/logging/Logger.bs) creates the one
   instance, and each log.Logger copies its settings when it is built.
   Adopted from roku-log 0.11.1 (MIT). Its origin and local changes are in source/logging/README.md.
 -->

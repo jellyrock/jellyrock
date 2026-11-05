@@ -7,7 +7,7 @@
 ' - PhotoDetails launch with appropriate flags
 
 import "pkg:/source/GridView/GridPresenterBase.bs"
-import "pkg:/source/logging/LogMixin.bs"
+import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 

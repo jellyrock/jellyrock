@@ -65,7 +65,7 @@ const LOG_LEVELS = ['info', 'verbose', 'error', 'warn', 'debug'];
 
 // Parameter count of each level method: `message` plus `value` to `value9`.
 // Source: `sub info(message, value = "~#", ... value9 = "~#")` in
-// source/logging/LogMixin.bs. A test compares this number with that file, so a
+// source/logging/Logger.bs. A test compares this number with that file, so a
 // change to the signatures fails the suite.
 const LOG_FUNCTION_PARAMS = 10;
 

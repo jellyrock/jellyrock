@@ -1,5 +1,5 @@
 import "pkg:/source/constants/imageSize.bs"
-import "pkg:/source/logging/LogMixin.bs"
+import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/placeholderImage.bs"

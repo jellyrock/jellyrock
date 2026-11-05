@@ -1,5 +1,5 @@
 import "pkg:/source/api/baseRequest.bs"
-import "pkg:/source/logging/LogMixin.bs"
+import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/remotecontrol/remoteCommand.bs"
 import "pkg:/source/remotecontrol/remoteProtocol.bs"
 import "pkg:/source/utils/backoff.bs"

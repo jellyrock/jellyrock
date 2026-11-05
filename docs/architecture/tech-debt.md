@@ -501,7 +501,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 - **area**: 12 component `.bs` files (the font tasks, `JRButtons`, `JRButtonGroup`, `JRLabel`, `JRScrollingLabel`, `JRLabelList`, `JRRowList`, `JRTimeGrid`, `HomeRows`, `VideoPlayerView`) and `source/data/JellyfinDataTransformer.bs`. `ResumeButton.bs` carries the opt-out header with no `print` left.
 - **issue**: Raw `print` statements remain where `m.log.*` could be used (component and class methods). Prod builds strip `m.log` calls but not `print`, so these reach the device log unconditionally.
-- **direction**: In each file, import `pkg:/source/logging/LogMixin.bs`, create `m.log = new log.Logger("…")` in `init()` (or the class constructor), and convert each `print` to the right level. Each file carries a `' bsc-disable-file print-locations` header pointing here; remove it with the last `print`. Remove `ResumeButton.bs`' header now, so a new `print` there is flagged.
+- **direction**: In each file, import `pkg:/source/logging/Logger.bs`, create `m.log = new log.Logger("…")` in `init()` (or the class constructor), and convert each `print` to the right level. Each file carries a `' bsc-disable-file print-locations` header pointing here; remove it with the last `print`. Remove `ResumeButton.bs`' header now, so a new `print` there is flagged.
 - **enforced**: `scripts/bsc-plugins/print-locations.cjs` flags every new `print` outside `source/main.bs` and the `globals.bs` debug block, skipping free functions in `source/`, which have no `m`.
 
 #### `tokenize-stopwords-duplicated`

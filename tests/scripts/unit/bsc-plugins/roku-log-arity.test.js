@@ -84,7 +84,7 @@ describe('roku-log call arity', () => {
   it('keeps its limit in step with the logger', () => {
     // A missing file fails rather than skips: moving the logger is the drift this
     // test exists to catch.
-    const source = 'source/logging/LogMixin.bs';
+    const source = 'source/logging/Logger.bs';
     expect(fs.existsSync(source), `${source} is missing`).toBe(true);
     const text = fs.readFileSync(source, 'utf8');
     for (const level of rokuLogPlugin.LOG_LEVELS) {

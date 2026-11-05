@@ -22,7 +22,7 @@ import {
 const REPO_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..', '..');
 
 const GOOD_SCENE = `
-import "pkg:/source/logging/LogMixin.bs"
+import "pkg:/source/logging/Logger.bs"
 
 sub init()
   ' a comment ahead of the call must not count as a statement
