@@ -355,13 +355,13 @@ namespace tests
       m.assertTrue(syncPlayPlayback.settleCorrectionDue(check, 450&, "playing", "ready", false), "behind past the threshold")
     end function
 
-    @it("a check armed by a time offset pick is due past 100 ms either way, and a normal check keeps its bars")
+    @it("a check armed by a time offset pick is due past 50 ms either way, and a normal check keeps its bars")
     function _()
       rows = [
-        { drift: 120&, pick: true, due: true }
-        { drift: -120&, pick: true, due: true }
-        { drift: 80&, pick: true, due: false }
-        { drift: -80&, pick: true, due: false }
+        { drift: 51&, pick: true, due: true }
+        { drift: -51&, pick: true, due: true }
+        { drift: 50&, pick: true, due: false }
+        { drift: -50&, pick: true, due: false }
         { drift: 120&, pick: false, due: false }
         { drift: -120&, pick: false, due: false }
         { drift: 401&, pick: false, due: true }

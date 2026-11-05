@@ -2543,7 +2543,19 @@ Ruled out: a published `sync.repeatMode` the OSD reads only while following, whi
 **status**: accepted
 **related-files**: `components/syncplay/SyncPlayManager.bs`, `source/syncplay/syncPlayPlayback.bs`, `source/utils/playbackSettingsMenu.bs`
 
-A SyncPlay Time Offset picked in the player's gear takes effect at once. The pick sends a `timeOffset` control that arms the drift check with a bar of its own, `PICK_CORRECTION_MS` (100 ms either way), so a member behind seeks ahead with a "Syncing with the group" toast and one ahead holds, without waiting for the next `Unpause`. Normal drift keeps the resume bars (150 ms ahead, 400 ms behind), so the drift reading's own wobble of tens of milliseconds never seeks. The gear's picker steps by 100 ms to match, so every value it offers clears the bar; a value between the steps is typed in Settings and applies at the next resume. The gear's label shows the offset alone, so the drift is published per position in RTA builds only. The cost is the seek's frozen picture (2.1 to 2.6 s on a Stick 4K, measured 2026-10-31) when the offset is raised. Ruled out: applying the pick at the next resume, which made a change seem to do nothing; the resume bars for a pick, which left any raise under 400 ms uncorrected; 50 ms steps, which sit at the reading's noise; matching playback speed, deferred to #1316.
+A SyncPlay Time Offset picked in the player's gear takes effect at once. The pick sends a `timeOffset` control that arms the drift check with a bar of its own, `PICK_CORRECTION_MS` (50 ms either way), so a member behind seeks ahead with a "Syncing with the group" toast and one ahead holds, without waiting for the next `Unpause`. Normal drift keeps the resume bars (150 ms ahead, 400 ms behind), so the drift reading's own noise never seeks.
+
+The bar is half the gear's 100 ms step (`playbackSettingsMenu.TIME_OFFSET_STEP_MS`; a unit test pins the two), halfway between the reading's noise and one step. Settled readings ran from −8 to +2 ms and one step read 74 to 106 ms (Stick 4K, 12.4 server, 2026-11-04), so every step starts a correction and noise alone never does. The drift reading uses the notified `Video.position`, so a step down crosses the bar only while that reading's phase error after the last resume is under 50 ms. Readings after resumes and seeks sat 49 to 73 ms off in some runs (Stick 4K, 2026-11-04), and whether that is the node or the reading is an open question. A value between the steps is typed in Settings and applies at the next resume. A pick promises a correction, not a landing inside the bar: a seek resumes a little late (one landed about 55 ms behind in the same run). The gear's label shows the offset alone, so the drift is published per position in RTA builds only. The cost is the seek's frozen picture when the offset is raised (2.1 to 2.6 s on a Stick 4K, measured 2026-10-31).
+
+Ruled out:
+
+- Applying the pick at the next resume, which made a change seem to do nothing.
+- The resume bars for a pick, which left any raise under 400 ms uncorrected.
+- A bar equal to the step (the first version), which corrected 1 of 10 one-step raises in the 2026-11-04 run.
+- A 200 ms step, which leaves three choices to tune by ear.
+- Matching playback speed, deferred to #1316.
+
+50 ms steps were first ruled out as sitting at the reading's noise. The 2026-11-04 noise allows them (a 25 ms bar would keep about 15 ms of margin), so they stay open if 100 ms proves too coarse by ear. The operator chose `midpoint` over `coarser` (2026-11-04).
 
 ## decision-id: syncplay-leave-ends-group-repeat
 

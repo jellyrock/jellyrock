@@ -44,9 +44,10 @@ namespace syncPlayPlayback
   ' position field lags real playback by up to one notification interval.
   const SETTLE_POSITIONS = 2
   ' The bar, either way, for a check a time offset pick armed: the viewer asked for a shift, so a
-  ' small one is worth making. The drift reading wobbles by tens of ms, so a smaller bar would
-  ' correct noise; normal drift keeps the bars above so jitter never seeks.
-  const PICK_CORRECTION_MS = 100
+  ' small one is worth making. Half the gear's step (playbackSettingsMenu.TIME_OFFSET_STEP_MS, a unit
+  ' test pins the two), so it sits halfway between the drift reading's own noise and one step: every
+  ' step corrects, and noise alone never does. Normal drift keeps the bars above, so jitter never seeks.
+  const PICK_CORRECTION_MS = 50
   ' How far ahead of the group a correction seeks before it pauses and waits for the group to
   ' arrive. A plain seek to the group's position lands behind by the seek's own latency (a
   ' transcode resumed 364 and 667 ms late on a 2026-10-31 Stick 4K run, the drift it was meant

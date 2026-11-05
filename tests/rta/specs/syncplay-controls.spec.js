@@ -467,82 +467,100 @@ it("the remote's play/pause during a group Seek pauses the group and does not we
 
 // A time offset picked in the gear takes effect at the pick, with no Unpause: the manager arms the
 // settle check, and the next position notifications correct the drift the new offset made. Raised,
-// the node seeks ahead (with a toast, since nothing the viewer pressed looks like a jump); lowered
-// again, it is ahead of the group and holds. The pick is written to the OSD's `syncPlayPick`, the
+// the node reads behind and seeks ahead (with a toast, since nothing the viewer pressed looks like a
+// jump); lowered, it reads ahead and holds. The pick is written to the OSD's `syncPlayPick`, the
 // field the gear's picker sets, so `VideoPlayerView.onSyncPlayPicked` runs as it does for a viewer.
-// `syncPlayPlayback.PICK_CORRECTION_MS`: a check a pick armed corrects past this, either way. The
-// gear's picker steps by 100 ms: a 200 ms pick is behind the normal seek bar (400 ms), so only the pick bar corrects it.
-const PICK_BAR_MS = 100;
-const PICK_STEP_MS = 200;
+// Each pick waits for `sync.correctionsDone` to count the correction it started: a drift reading,
+// the toast and the node's state can all still show the pick before. The first raise is the gear's
+// smallest step. Nothing here puts the member exactly in step (the normal bars leave a resume up to
+// `SKIP_TO_SYNC_MIN_MS` behind, and a seek lands a little late), so each pick is sized to cross the
+// bar from where the member can be: one step up from a member not ahead, then two steps down from
+// wherever the second raise's seek landed. One step down is the same bar the other way (`Abs`),
+// which the unit rows pin.
+// `syncPlayPlayback.PICK_CORRECTION_MS`: a check a pick armed corrects past this, either way.
+const PICK_BAR_MS = 50;
+// `playbackSettingsMenu.TIME_OFFSET_STEP_MS`: the gear's smallest pick, under the normal bars.
+const PICK_STEP_MS = 100;
+// Not ahead of the group past this, so one step up crosses the bar with margin for the noise.
+const AHEAD_AT_MOST_MS = 40;
+// `syncPlayPlayback.SKIP_TO_SYNC_MIN_MS`: a reading past it is a resume still settling.
+const SEEK_BAR_MS = 400;
 const pickTimeOffset = (ms) =>
   odc.setValue({
     base: 'scene',
     keyPath: `#${heroId}.#osd.syncPlayPick`,
     value: { kind: 'timeOffset', value: ms },
   });
-const waitDriftInside = () =>
-  waitFor(
-    'syncPlayManager.sync.playbackDiffMs',
-    (v) => typeof v === 'number' && Math.abs(v) <= PICK_BAR_MS,
+const correctionsDone = () => getGlobalVal('syncPlayManager.sync.correctionsDone');
+// Picks `ms` and waits for the correction it started to run to its resume, playing again.
+async function pickAndWaitForCorrection(ms, { toast = false } = {}) {
+  const before = await correctionsDone();
+  await pickTimeOffset(ms);
+  expect(
+    await getGlobalVal('user.settings.playbackSyncPlayTimeOffsetMs'),
+    'the pick was saved',
+  ).toBe(ms);
+  if (toast)
+    await waitToast('Syncing with the group', {
+      label: `the toast for the seek after the pick of ${ms} ms`,
+    });
+  await waitFor(
+    'syncPlayManager.sync.correctionsDone',
+    (v) => typeof v === 'number' && v > before,
     {
       read: getGlobalVal,
       timeout: 20000,
-      label: "this member's drift from the group inside the pick's bar",
+      label: `the correction the pick of ${ms} ms started, run to its resume`,
     },
   );
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 15000,
+    label: `playing again after the pick of ${ms} ms`,
+  });
+}
 it('a time offset picked in the gear corrects the drift at once, without an Unpause', async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(
       'the server has no command channel to this Roku (https without the companion plugin)',
     );
-  await waitDriftInside();
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 15000,
+    label: 'the node playing before the pick',
+  });
+  await waitFor(
+    'syncPlayManager.sync.playbackDiffMs',
+    (v) => typeof v === 'number' && v >= -AHEAD_AT_MOST_MS && v <= SEEK_BAR_MS,
+    {
+      read: getGlobalVal,
+      timeout: 20000,
+      label: "this member settled after the group's resume, and not ahead of it",
+    },
+  );
   const unpausedAt = await getGlobalVal('syncPlayManager.sync.lastCommand.emittedatms');
   try {
-    // Raised: the clock moves ahead, so the node reads behind past the pick's bar and seeks.
-    await pickTimeOffset(PICK_STEP_MS);
-    expect(
-      await getGlobalVal('user.settings.playbackSyncPlayTimeOffsetMs'),
-      'the pick was saved',
-    ).toBe(PICK_STEP_MS);
+    // Raised twice: behind past the bar, so the node seeks ahead. The toast is read on the first
+    // only, since the second's could be the first's still on screen.
+    await pickAndWaitForCorrection(PICK_STEP_MS, { toast: true });
+    await pickAndWaitForCorrection(2 * PICK_STEP_MS);
+    // Lowered: ahead past the bar, so the node holds until the group arrives, and lands in step
+    // (a hold resumes on time). A reading from before the hold is ahead past the bar, so it cannot
+    // pass this wait.
+    await pickAndWaitForCorrection(0);
     await waitFor(
       'syncPlayManager.sync.playbackDiffMs',
-      (v) => typeof v === 'number' && v > PICK_BAR_MS,
-      {
-        read: getGlobalVal,
-        timeout: 10000,
-        label: 'the node behind the group by the raised offset',
-      },
+      (v) => typeof v === 'number' && Math.abs(v) <= PICK_BAR_MS,
+      { read: getGlobalVal, timeout: 20000, label: 'the hold brought the node back in step' },
     );
-    await waitToast('Syncing with the group', { label: 'the toast for the correction seek' });
-    await waitDriftInside();
-    await waitFor('state', (s) => s === 'playing', {
-      read: playerState,
-      timeout: 15000,
-      label: 'playing again after the correction',
-    });
-    // Lowered: the node now reads ahead past its bar and holds until the group arrives.
-    await pickTimeOffset(0);
-    await waitFor(
-      'syncPlayManager.sync.playbackDiffMs',
-      (v) => typeof v === 'number' && v < -PICK_BAR_MS,
-      {
-        read: getGlobalVal,
-        timeout: 10000,
-        label: 'the node ahead of the group by the lowered offset',
-      },
-    );
-    await waitDriftInside();
-    await waitFor('state', (s) => s === 'playing', {
-      read: playerState,
-      timeout: 15000,
-      label: 'playing again after the hold',
-    });
   } finally {
-    await pickTimeOffset(0);
+    // Only when a failure left it raised: a pick of the value in force still arms a check.
+    if ((await getGlobalVal('user.settings.playbackSyncPlayTimeOffsetMs')) !== 0)
+      await pickTimeOffset(0);
   }
   expect(
     await getGlobalVal('syncPlayManager.sync.lastCommand.emittedatms'),
-    'no Unpause came in between: the pick alone corrected it',
+    'no Unpause came in between: the picks alone corrected it',
   ).toBe(unpausedAt);
   expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
 });
@@ -591,6 +609,83 @@ it("next and previous from the remote step the whole group, with one item in thi
     timeout: 90000,
     label: 'the first movie playing again on this Roku',
   });
+  expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+});
+
+// A Shuffle pick on this Roku goes to the group (`VideoPlayerView.onSyncPlayPicked`, then
+// `control({ kind: "shuffle" })`), and the server answers every member with a ShuffleMode queue
+// update that reorders its playlist around the playing item. This Roku plays on: the update's
+// fetch finds the same item and reloads nothing. With two items the server's new order can match
+// the old one, but the Roku's path (the update, its fetch, no load) is the same for any order. The
+// pick is written to the OSD's `syncPlayPick`, the field the gear's picker sets. Turned off again,
+// the playlist is back in its order with the first movie first, as the repeat cases below expect.
+const pickShuffle = (mode) =>
+  odc.setValue({
+    base: 'scene',
+    keyPath: `#${heroId}.#osd.syncPlayPick`,
+    value: { kind: 'shuffle', value: mode },
+  });
+it("a Shuffle pick on this Roku shuffles the group's playlist without reloading the item", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  expect(await getGlobalVal('syncPlayManager.sync.playlistCount'), 'two movies queued').toBe(2);
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 15000,
+    label: 'the node playing before the pick',
+  });
+  const playing = await getGlobalVal('syncPlayManager.sync.playingItemId');
+  const loads = await getGlobalVal('syncPlayManager.sync.loadCount');
+  try {
+    await pickShuffle('Shuffle');
+    await waitFor('syncPlayManager.sync.shuffleMode', (v) => v === 'Shuffle', {
+      read: getGlobalVal,
+      timeout: 15000,
+      label: "the group's Shuffle reached this Roku",
+    });
+    expect(
+      await getVal('#showPlaybackSettings.isButtonSelected'),
+      'the gear lights while the group shuffles',
+    ).toBe(true);
+    // The update's fetch runs after the mode lands, and a load would follow it: watch a window
+    // long enough for both, every sample still on the same item with no load. The node's state is
+    // not sampled: a drift correction can hold it for a moment, and that is not a reload.
+    const sampleUntil = Date.now() + 3000;
+    while (Date.now() < sampleUntil) {
+      expect(await getGlobalVal('syncPlayManager.sync.loadCount'), 'no reload for a reorder').toBe(
+        loads,
+      );
+      expect(await getGlobalVal('syncPlayManager.sync.playingItemId'), 'the same item').toBe(
+        playing,
+      );
+      await sleep(250);
+    }
+  } finally {
+    await pickShuffle('Sorted');
+  }
+  await waitFor('syncPlayManager.sync.shuffleMode', (v) => v === 'Sorted', {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: "the group's Sorted reached this Roku",
+  });
+  expect(
+    await getGlobalVal('syncPlayManager.sync.playingItemIndex'),
+    'the playlist back in its order, the first movie first',
+  ).toBe(0);
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 15000,
+    label: 'the node still playing the same item after both picks',
+  });
+  expect(await getGlobalVal('syncPlayManager.sync.loadCount'), 'no reload for either pick').toBe(
+    loads,
+  );
+  expect(
+    await getVal('#showPlaybackSettings.isButtonSelected'),
+    'the gear unlit with shuffle and repeat off',
+  ).toBe(false);
   expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
 });
 

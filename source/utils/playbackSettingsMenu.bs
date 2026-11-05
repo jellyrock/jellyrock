@@ -26,8 +26,8 @@ namespace playbackSettingsMenu
   const ROW_LEAVE_GROUP = "leaveGroup"
 
   ' The time offset picker's steps, in ms: the setting's range (0 to 500 in settings.json), coarse
-  ' enough to pick with a remote while listening for the echo. Not below PICK_CORRECTION_MS
-  ' (syncPlayPlayback), so every pick moves the node.
+  ' enough to pick with a remote while listening for the echo. Twice syncPlayPlayback's
+  ' PICK_CORRECTION_MS (a unit test pins the two), so every step starts a correction.
   const TIME_OFFSET_STEP_MS = 100
   const TIME_OFFSET_MAX_MS = 500
 

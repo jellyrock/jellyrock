@@ -823,9 +823,9 @@ end sub
 
 ' The viewer picked one of the gear's SyncPlay rows ({ kind, value }, OSD.syncPlayPick). A shuffle
 ' goes to the group, which answers every member with its reordered playlist. The time offset is
-' the viewer's own saved setting (the same one the Playback settings screen edits), read by the manager at
-' its next frame or player event, so the clock takes it at once and the node moves at the next
-' resume. Leave Group posts the Leave; what plays goes on as the viewer's own.
+' the viewer's own saved setting (the same one the Playback settings screen edits): the manager
+' takes it at once and corrects the drift it makes, with no Unpause (SyncPlayManager.control).
+' Leave Group posts the Leave; what plays goes on as the viewer's own.
 sub onSyncPlayPicked()
   pick = m.osd.syncPlayPick
   if not isValid(pick) or not isValidAndNotEmpty(pick.kind) then return

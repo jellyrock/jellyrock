@@ -107,7 +107,7 @@ sub ensureReady()
   ' before it runs says so (haltFollowing); false once the load runs.
   m.resumeAsked = false
   ' The correction each Unpause arms (syncPlayPlayback.settleCorrectionDue), and the drift last
-  ' read from a position notification, for the gear's time offset row and the RTA spec. A halt or a leave leaves the check as
+  ' read from a position notification, for the RTA specs. A halt or a leave leaves the check as
   ' it is: it fires only with the tracker at `ready`, which only a mount reaches, and the mount
   ' disarms it first; a group Pause or Seek holds it until the next Unpause arms it again.
   m.settle = syncPlayPlayback.newSettleCheck()
@@ -142,6 +142,9 @@ sub ensureReady()
   ' How many times this member performed the load a queue frame owed (applyQueue), published so
   ' a spec can tell one restart of the group's item from two.
   m.loadCount = 0
+  ' How many drift corrections ran to their resume (onCorrectionTimer), published so a spec can
+  ' wait for the one a time offset pick started, not for a drift reading that may predate it.
+  m.correctionsDone = 0
   publish()
 end sub
 
@@ -532,6 +535,8 @@ sub onCorrectionTimer()
   m.correctionPauseOwed = false
   m.log.info("drift correction resumed", "positionTicks", m.playerPositionTicks.toStr())
   m.correction = invalid
+  ' Published with the next drift reading (checkSettle), which an RTA build publishes at once.
+  m.correctionsDone++
   syncPlayPlayback.retrySettleCheck(m.settle)
 end sub
 
@@ -1196,6 +1201,7 @@ sub publish()
       playbackDiffMs: m.playbackDiffMs,
       extraOffsetMs: m.estimator.extraOffsetMs,
       loadCount: m.loadCount,
+      correctionsDone: m.correctionsDone,
       repeatMode: m.state.repeatMode,
       shuffleMode: m.state.shuffleMode
     }

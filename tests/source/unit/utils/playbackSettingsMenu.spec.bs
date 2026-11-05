@@ -1,3 +1,4 @@
+import "pkg:/source/syncplay/syncPlayPlayback.bs"
 import "pkg:/source/syncplay/syncPlayQueue.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/playbackSettingsMenu.bs"
@@ -227,6 +228,13 @@ namespace tests
       m.assertEqual(playbackSettingsMenu.timeOffsetLabel(0), "0 ms")
       m.assertEqual(playbackSettingsMenu.timeOffsetLabel(invalid), "0 ms")
       m.assertEqual(playbackSettingsMenu.timeOffsetLabel(250&), "250 ms", "a LongInteger, as the manager publishes it")
+    end function
+
+    @it("the picker's step is twice the bar a pick corrects past, so every step starts a correction")
+    function _()
+      ' The bar sits halfway between the drift reading's noise and one step: change one constant and
+      ' the other must be weighed again (decision syncplay-offset-applies-at-pick).
+      m.assertEqual(playbackSettingsMenu.TIME_OFFSET_STEP_MS, syncPlayPlayback.PICK_CORRECTION_MS * 2)
     end function
 
     @it("the time offset picker steps by 100 to 500 and checks the value that applies")

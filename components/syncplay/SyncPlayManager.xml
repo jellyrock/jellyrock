@@ -24,8 +24,8 @@
     <field id="groupState" type="string" value="" />
     <!-- { offsetMs, delayMs, hasEstimate, lastCommand, trackerPhase, playingItemId, playingItemIndex,
          playlistCount, loadNotice, playbackDiffMs (how far behind the group this member sits, ms, invalid
-         until an Unpause is in force; refreshed at each position notification), extraOffsetMs (the
-         viewer's time offset setting), loadCount (the loads performed for queue frames, a monotonic count), repeatMode and shuffleMode (the group's, in the server's words,
+         until an Unpause is in force; refreshed at each position notification in RTA builds only, otherwise whenever something else publishes), extraOffsetMs (the
+         viewer's time offset setting), loadCount (the loads performed for queue frames, a monotonic count), correctionsDone (the drift corrections that ran to their resume, a monotonic count), repeatMode and shuffleMode (the group's, in the server's words,
          from the last queue update) } -->
     <field id="sync" type="assocarray" />
     <!-- Something the viewer is told: { kind, groupName, userName }. kind is joined, left, leftStale,
@@ -58,10 +58,11 @@
     <!-- { kind: "mounted" | "state" | "position" | "finished" | "unmounted", state, position }
          from the host and the player, position in the Video node's float seconds. -->
     <function name="playerEvent" />
-    <!-- control({ kind: "pause" | "unpause" | "seek" | "next" | "previous" | "repeat" | "shuffle",
-         position, mode }): a control the viewer pressed while following, posted to the group in place
-         of the player; a seek's position in the Video node's float seconds, a mode pick's mode in the
-         server's words. True when posted. -->
+    <!-- control({ kind: "pause" | "unpause" | "seek" | "next" | "previous" | "repeat" | "shuffle" |
+         "timeOffset", position, mode }): a control the viewer pressed while following, posted to the
+         group in place of the player; a seek's position in the Video node's float seconds, a mode
+         pick's mode in the server's words. A timeOffset posts nothing: the manager takes the saved
+         setting and corrects the drift it makes. True when posted or taken. -->
     <function name="control" />
     <!-- viewerPause(): the viewer pressed pause while following. Posts it and answers whether the
          player should pause the node itself; false while a seek's landing will. -->
