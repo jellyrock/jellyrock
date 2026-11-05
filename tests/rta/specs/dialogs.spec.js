@@ -230,7 +230,7 @@ async function playingOsd(userSettings = null) {
 
 it('series watched button opens the standard confirm dialog; back cancels it', async () => {
   const expectedServer = await seedHome(session, LOCALE);
-  const landing = await seedLibraryLanding(session, libraryIdFor(libraries, 'tvshows'), 'series');
+  const landing = await seedLibraryLanding(session, libraryIdFor(libraries, 'tvshows'), 'shows');
   await hardRelaunch();
   await assertSeedTookEffect(expectedServer, 'series watched dialog', { landing });
   await navSeriesDetails();

@@ -1,7 +1,7 @@
 namespace tests
 
   ' LIBRARY_TAB_MIGRATION_VERSION: each library's saved view (`display.<id>.landing`)
-  ' becomes the web client's tab id, and the two movie views become one tab plus a
+  ' becomes its libraryTab id, and the two movie views become one tab plus a
   ' `display.<id>.layout`. Run against real `test-` registry sections.
   @suite("Library Tab Migration - v3.3.2 Migration")
   @tags("migration")
@@ -43,8 +43,8 @@ namespace tests
         "lib-studios": ["Studios", "studios", ""],
         "lib-genres": ["Genres", "genres", ""],
         "lib-collections": ["Collections", "collections", ""],
-        "lib-shows": ["Shows", "series", ""],
-        "lib-networks": ["Networks", "studios", ""],
+        "lib-shows": ["Shows", "shows", ""],
+        "lib-networks": ["Networks", "networks", ""],
         "lib-album-artists": ["AlbumArtistsGrid", "albumartists", ""],
         "lib-albums": ["Albums", "albums", ""],
         "lib-artists": ["ArtistsGrid", "artists", ""],
@@ -219,7 +219,7 @@ namespace tests
 
     @it("follows the music view migration for a user from before it")
     ' MUSIC_VIEW_MIGRATION_VERSION turns ArtistsPresentation into ArtistsGrid first; this
-    ' one then turns that into the web's id. File order is version order.
+    ' one then turns that into its libraryTab id. File order is version order.
     function _()
       testUserId = "test-library-tab-010"
       reg = m.userSection(testUserId, "1.9.0")

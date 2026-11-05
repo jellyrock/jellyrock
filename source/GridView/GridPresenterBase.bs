@@ -82,7 +82,7 @@ class GridPresenterBase
   ' Returns the options configuration for ItemGridOptions
   '
   ' `views` lists the library's tabs, each `Name` a libraryTab id, in the web client's
-  ' order. `layouts` maps a tab id to the layouts that tab can be drawn in, for the options
+  ' order where the web has the same tabs. `layouts` maps a tab id to the layouts that tab can be drawn in, for the options
   ' dialog's View list (see optionsViewList); a tab with no entry has no choice.
   '
   ' @param {object} parentItem - The library item being displayed

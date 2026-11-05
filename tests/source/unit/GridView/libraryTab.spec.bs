@@ -8,7 +8,7 @@ import "pkg:/source/GridView/TVShowPresenter.bs"
 
 namespace tests
 
-  ' A library view's id is the web client's LibraryTab id, and its layout is a separate
+  ' A library view's id is a libraryTab id, and its layout is a separate
   ' axis. These pin the legacy mapping the registry migration runs, the case rule that
   ' keeps that mapping safe to run twice, and that every presenter lists only known ids.
   @suite("libraryTab - view ids and the legacy mapping")
@@ -41,7 +41,7 @@ namespace tests
       movieGenre = new MoviePresenter()
       movieGenre.onInit(m.host("movies"))
       tv = new TVShowPresenter()
-      tv.onInit(m.host("series"))
+      tv.onInit(m.host("shows"))
       music = new MusicPresenter()
       music.onInit(m.host("albumartists"))
       musicGenre = new MusicPresenter()
@@ -83,8 +83,8 @@ namespace tests
     @params("Studios", "studios", "")
     @params("Genres", "genres", "")
     @params("Collections", "collections", "")
-    @params("Shows", "series", "")
-    @params("Networks", "studios", "")
+    @params("Shows", "shows", "")
+    @params("Networks", "networks", "")
     @params("AlbumArtistsGrid", "albumartists", "")
     @params("Albums", "albums", "")
     @params("ArtistsGrid", "artists", "")
@@ -101,7 +101,7 @@ namespace tests
     @params("MOVIESGRID", "movies", "comfortable")
     @params("artistsgrid", "artists", "")
     @params("TVGUIDE", "guide", "")
-    @params(" Shows ", "series", "")
+    @params(" Shows ", "shows", "")
     function _(legacyName, tabId, layout)
       m.assertEqual(libraryTab.fromLegacyView(legacyName), { tab: tabId, layout: layout })
     end function
@@ -240,7 +240,7 @@ namespace tests
       expected = {
         "movies": ["movies", "collections", "genres", "studios"],
         "movie genre": ["movies"],
-        "tvshows": ["series", "genres", "studios", "collections"],
+        "tvshows": ["shows", "genres", "networks", "collections"],
         "music": ["albums", "albumartists", "artists", "genres"],
         "music genre": ["albums"],
         "livetv": ["channels", "guide"],

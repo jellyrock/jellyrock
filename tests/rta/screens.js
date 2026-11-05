@@ -468,15 +468,14 @@ export const SCREENS = [
   // capture never depends on whatever view is stickily persisted on the device.
   // `view.collectionType` is stable; the library id is resolved at runtime.
   // (Movies "Presentation" view == the store `libraryGrid`, so it isn't duplicated.)
-  // Seeded by tab id (source/GridView/libraryTab.bs). A TV library's Networks tab is
-  // `studios`, as on the web.
+  // Seeded by tab id (source/GridView/libraryTab.bs).
   vw('moviesLibraryGrid', navLibraryGrid, 'movies', 'movies'),
   vw('moviesLibraryStudios', navLibraryGrid, 'movies', 'studios'),
   vw('moviesLibraryGenres', navLibraryGrid, 'movies', 'genres', assertGenreRowsOwnTheirItems),
-  vw('tvLibraryShows', navTvLibrary, 'tvshows', 'series'),
+  vw('tvLibraryShows', navTvLibrary, 'tvshows', 'shows'),
   // Networks view is empty on the demo (its single series has no network), but the
   // empty-state ("No Items") is itself a valid, capture-worthy screen.
-  vw('tvLibraryNetworks', navTvLibrary, 'tvshows', 'studios'),
+  vw('tvLibraryNetworks', navTvLibrary, 'tvshows', 'networks'),
   vw('tvLibraryGenres', navTvLibrary, 'tvshows', 'genres'),
   vw('musicLibraryAlbumArtists', navMusicLibrary, 'music', 'albumartists'),
   vw('musicLibraryAlbums', navMusicLibrary, 'music', 'albums'),
@@ -488,9 +487,9 @@ export const SCREENS = [
 
   // --- Per-item-type detail screens (Movie detail is `movieDetails`, above) ----
   // Each opens the first tile of its (view-seeded) library as a representative.
-  vw('seriesDetails', navSeriesDetails, 'tvshows', 'series'),
-  vw('seasonDetails', navSeasonDetails, 'tvshows', 'series'),
-  vw('episodeDetails', navEpisodeDetails, 'tvshows', 'series'),
+  vw('seriesDetails', navSeriesDetails, 'tvshows', 'shows'),
+  vw('seasonDetails', navSeasonDetails, 'tvshows', 'shows'),
+  vw('episodeDetails', navEpisodeDetails, 'tvshows', 'shows'),
   vw('musicAlbumDetails', navMusicDetail, 'music', 'albums'),
   vw('musicArtistDetails', navMusicDetail, 'music', 'artists'),
   vw('audioDetails', navAudioDetails, 'music', 'albums'),

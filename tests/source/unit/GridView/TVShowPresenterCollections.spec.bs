@@ -22,7 +22,7 @@ namespace tests
 
     ' Only what a presenter reads off its host. TVShowPresenter asks for no dynamic
     ' filters, so unlike the movie one it never calls back into the component.
-    private sub attach(serverVersion as string, currentView = "series" as string)
+    private sub attach(serverVersion as string, currentView = "shows" as string)
       m.presenter.onInit({
         top: { currentView: currentView },
         global: { server: { version: serverVersion } }
@@ -51,7 +51,7 @@ namespace tests
     function _(serverVersion)
       m.attach(serverVersion)
 
-      m.assertEqual(m.names(m.presenter.getOptions(m.library()).views), ["series", "genres", "studios", libraryTab.COLLECTIONS])
+      m.assertEqual(m.names(m.presenter.getOptions(m.library()).views), ["shows", "genres", "networks", libraryTab.COLLECTIONS])
     end function
 
     @it("does not offer Collections on a server that ignores the scope")
@@ -61,7 +61,7 @@ namespace tests
     function _(serverVersion)
       m.attach(serverVersion)
 
-      m.assertEqual(m.names(m.presenter.getOptions(m.library()).views), ["series", "genres", "studios"])
+      m.assertEqual(m.names(m.presenter.getOptions(m.library()).views), ["shows", "genres", "networks"])
     end function
 
     @it("does not offer Collections inside a network or genre, only on the library itself")
@@ -72,7 +72,7 @@ namespace tests
     function _(parentType)
       m.attach("12.0.0")
 
-      m.assertEqual(m.names(m.presenter.getOptions({ Id: "f1", type: parentType, parentId: "shows-lib" }).views), ["series", "genres", "studios"])
+      m.assertEqual(m.names(m.presenter.getOptions({ Id: "f1", type: parentType, parentId: "shows-lib" }).views), ["shows", "genres", "networks"])
     end function
 
     @it("lists BoxSet sorts in the view, not series ones")
@@ -88,8 +88,8 @@ namespace tests
     end function
 
     @it("leaves the series sorts alone in the other views")
-    @params("series")
-    @params("studios")
+    @params("shows")
+    @params("networks")
     function _(viewMode)
       m.attach("12.0.0", viewMode)
 
@@ -126,8 +126,8 @@ namespace tests
     end function
 
     @it("still asks for series in the other views")
-    @params("series")
-    @params("studios")
+    @params("shows")
+    @params("networks")
     @params("genres")
     function _(viewMode)
       m.attach("12.0.0", viewMode)
