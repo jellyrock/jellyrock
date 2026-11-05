@@ -106,13 +106,44 @@ namespace tests
       m.assertFalse(policy.doesExist("EncodingThreadCount"))
     end function
 
-    @it("is invalid when the reply does not answer all three")
+    @it("is invalid when the reply does not answer both switches")
     function _()
       m.assertInvalid(serverCapabilities.encodingPolicyFrom({ ok: false, json: invalid }))
       m.assertInvalid(serverCapabilities.encodingPolicyFrom({ ok: true, json: {} }))
       m.assertInvalid(serverCapabilities.encodingPolicyFrom({ ok: true, json: { HardwareAccelerationType: "nvenc", EnableHardwareEncoding: true } }))
-      m.assertInvalid(serverCapabilities.encodingPolicyFrom({ ok: true, json: { HardwareAccelerationType: invalid, EnableHardwareEncoding: true, AllowHevcEncoding: true } }))
+      m.assertInvalid(serverCapabilities.encodingPolicyFrom({ ok: true, json: { HardwareAccelerationType: "nvenc", AllowHevcEncoding: true } }))
       m.assertInvalid(serverCapabilities.encodingPolicyFrom(invalid))
+    end function
+
+    @it("reads a missing hardware type as none, as a server before 10.10 sends until its Transcoding page is saved")
+    function _()
+      ' The reply of a new 10.8.13 server after its setup wizard: no HardwareAccelerationType.
+      res = { ok: true, json: { EncodingThreadCount: -1, EnableHardwareEncoding: true, AllowHevcEncoding: false } }
+      policy = serverCapabilities.encodingPolicyFrom(res)
+
+      m.assertEqual(policy.HardwareAccelerationType, "none")
+      m.assertFalse(serverCapabilities.serverEncodesHevcInHardware(policy))
+    end function
+
+    @it("reads a missing hardware type as none even with both switches on, as a new 10.7.7 server sends")
+    function _()
+      policy = serverCapabilities.encodingPolicyFrom({ ok: true, json: { EnableHardwareEncoding: true, AllowHevcEncoding: true } })
+
+      m.assertEqual(policy.HardwareAccelerationType, "none")
+      m.assertFalse(serverCapabilities.serverEncodesHevcInHardware(policy))
+    end function
+
+    @it("keeps the dashboard's empty None, which is not hardware")
+    function _()
+      policy = serverCapabilities.encodingPolicyFrom({ ok: true, json: { HardwareAccelerationType: "", EnableHardwareEncoding: true, AllowHevcEncoding: true } })
+
+      m.assertEqual(policy.HardwareAccelerationType, "")
+      m.assertFalse(serverCapabilities.serverEncodesHevcInHardware(policy))
+    end function
+
+    @it("is invalid for a hardware type that is not a string")
+    function _()
+      m.assertInvalid(serverCapabilities.encodingPolicyFrom({ ok: true, json: { HardwareAccelerationType: 3, EnableHardwareEncoding: true, AllowHevcEncoding: true } }))
     end function
 
   end class
