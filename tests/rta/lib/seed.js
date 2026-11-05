@@ -238,8 +238,8 @@ export async function seedUserSelect(session, locale) {
  * seedHome and before relaunch; the per-key write merges into the user section
  * seedHome wrote.
  *
- * `view` is a tab id from the web client's vocabulary (`movies`, `series`, `genres`;
- * `source/GridView/libraryTab.bs`), never a name saved before it: the app's registry
+ * `view` is a tab id (`movies`, `shows`, `genres`; `source/GridView/libraryTab.bs`),
+ * never a name saved before those ids: the app's registry
  * migration rewrites an old name at launch, so `assertSeedTookEffect` would then find
  * the app holding a different value from the seed. How a tab is drawn is a separate
  * setting, `display.<libraryId>.layout`: pass `layout` (`presentation`) to seed it too,

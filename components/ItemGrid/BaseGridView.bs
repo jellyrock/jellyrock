@@ -610,9 +610,9 @@ end function
 ' The tab a library opens on when none is saved, a libraryTab id. A folder or collection
 ' has no tabs, so it answers "".
 '
-' Music opens on Album Artists, as it did before the web's ids, although the web's own
-' first music tab is Albums. Changing which tab a library opens on belongs with reading
-' the web's `landing-<libraryId>` preference, not with renaming the ids.
+' Music opens on Album Artists, as it always has, although the web's own first music tab
+' is Albums. Changing which tab a library opens on belongs with reading the web's
+' `landing-<libraryId>` preference, not with renaming the ids.
 function getDefaultView() as string
   collectionType = getCollectionType()
   if collectionType = "movies"
@@ -620,7 +620,7 @@ function getDefaultView() as string
   else if collectionType = "music"
     return libraryTab.ALBUM_ARTISTS
   else if collectionType = "tvshows"
-    return libraryTab.SERIES
+    return libraryTab.SHOWS
   end if
 
   ' Fallback to presenterType for genres and other items without collectionType
@@ -630,7 +630,7 @@ function getDefaultView() as string
   else if presenterType = "music"
     return libraryTab.ALBUM_ARTISTS
   else if presenterType = "tvshow"
-    return libraryTab.SERIES
+    return libraryTab.SHOWS
   else if presenterType = "livetv"
     return libraryTab.CHANNELS
   else if presenterType = "photo"
@@ -1819,9 +1819,9 @@ sub updateTitle()
 
   ' View-specific titles (only when no active filters). A library's content tab (Movies,
   ' Shows, Channels, Photos) carries no suffix; the others are named by the title the
-  ' presenter gave the tab, so a TV library's `studios` tab reads "(Networks)".
+  ' presenter gave the tab.
   lowerView = LCase(m.view)
-  if lowerView = libraryTab.STUDIOS or lowerView = libraryTab.GENRES or lowerView = libraryTab.COLLECTIONS or lowerView = libraryTab.ARTISTS or lowerView = libraryTab.ALBUM_ARTISTS or lowerView = libraryTab.ALBUMS
+  if lowerView = libraryTab.STUDIOS or lowerView = libraryTab.NETWORKS or lowerView = libraryTab.GENRES or lowerView = libraryTab.COLLECTIONS or lowerView = libraryTab.ARTISTS or lowerView = libraryTab.ALBUM_ARTISTS or lowerView = libraryTab.ALBUMS
     tabTitle = offeredViewTitle(m.view)
     if tabTitle <> "" then m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, tabTitle)
   end if

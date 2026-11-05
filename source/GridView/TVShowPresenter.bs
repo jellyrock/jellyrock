@@ -34,12 +34,11 @@ class TVShowPresenter extends GridPresenterBase
     }
 
     ' The web client's tab order (Shows, Suggestions, Upcoming, Genres, Networks,
-    ' Episodes), with the tabs JellyRock has. The web's Shows tab is `series` and its
-    ' Networks tab `studios`.
+    ' Episodes), with the tabs JellyRock has.
     options.views = [
-      { "Title": translate(translationKeys.LabelShows), "Name": libraryTab.SERIES },
+      { "Title": translate(translationKeys.LabelShows), "Name": libraryTab.SHOWS },
       { "Title": translate(translationKeys.LabelGenres), "Name": libraryTab.GENRES },
-      { "Title": translate(translationKeys.LabelNetworks), "Name": libraryTab.STUDIOS }
+      { "Title": translate(translationKeys.LabelNetworks), "Name": libraryTab.NETWORKS }
     ]
 
     ' The library itself on 12.0+ only; see collectionsView for both rules. A TV library
@@ -106,7 +105,7 @@ class TVShowPresenter extends GridPresenterBase
   override function getGridConfig(currentView as string, _layout as string) as object
     viewLower = LCase(currentView)
 
-    if viewLower = libraryTab.SERIES
+    if viewLower = libraryTab.SHOWS
       ' Full grid view - rowHeights > itemSize to always leave space for titles
       return {
         translation: [96, 102],
@@ -116,7 +115,7 @@ class TVShowPresenter extends GridPresenterBase
         numColumns: "6",
         imageDisplayMode: "scaleToZoom"
       }
-    else if viewLower = libraryTab.STUDIOS
+    else if viewLower = libraryTab.NETWORKS
       ' Full grid view - rowHeights > itemSize to always leave space for titles
       return {
         translation: [96, 102],
@@ -176,7 +175,7 @@ class TVShowPresenter extends GridPresenterBase
       task.additionalFields = ""
       task.itemId = parentItem.Id
       task.view = "Collections"
-    else if viewLower = libraryTab.STUDIOS
+    else if viewLower = libraryTab.NETWORKS
       task.itemType = "Series"
       task.itemId = parentItem.Id
       task.view = "Networks"

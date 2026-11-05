@@ -31,7 +31,7 @@ const THEME_PRESET_MIGRATION_VERSION = "2.5.0"
 ' client version when homeSection settings were removed from registry (now server-authoritative via DisplayPreferences)
 const HOMESECTION_CLEANUP_VERSION = "2.13.0"
 
-' client version when library views were renamed to the web client's tab ids and the grid's
+' client version when library views were renamed to libraryTab ids and the grid's
 ' layout (presentation or grid) became a setting of its own. The lowest version above the
 ' last release (3.3.1), so the next release runs it whatever number it takes.
 const LIBRARY_TAB_MIGRATION_VERSION = "3.3.2"
@@ -441,7 +441,7 @@ sub runRegistryUserMigrations(targetSections = invalid as dynamic)
       end if
     end if
 
-    ' LIBRARY_TAB_MIGRATION_VERSION - Rewrite each library's saved view to the web's tab ids
+    ' LIBRARY_TAB_MIGRATION_VERSION - Rewrite each library's saved view to its libraryTab id
     if isValid(lastRunVersion) and not versionChecker(lastRunVersion, LIBRARY_TAB_MIGRATION_VERSION)
       m.wasMigrated = true
 

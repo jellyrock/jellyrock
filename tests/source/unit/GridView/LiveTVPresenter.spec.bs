@@ -21,7 +21,7 @@ namespace tests
     function _()
       presenter = new LiveTVPresenter()
       m.assertFalse(presenter.showsTVGuide("channels"))
-      ' The name the guide was saved under before the web's ids. The registry migration
+      ' The name the guide was saved under before the libraryTab ids. The registry migration
       ' rewrites it, so the presenter no longer answers to it.
       m.assertFalse(presenter.showsTVGuide("tvGuide"))
       m.assertFalse(presenter.showsTVGuide(""))
