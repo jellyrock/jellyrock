@@ -519,14 +519,14 @@ end sub
 ' Uses m.log to avoid string concat crashes from invalid/non-string field values.
 sub logTextureAction(action as string)
   item = m.top.itemContent
-  rowTitle = invalid
-  itemName = invalid
+  rowId = invalid
+  itemId = invalid
   if isValid(item)
-    itemName = item.name
+    itemId = item.id
     rowNode = item.getParent()
-    if isValid(rowNode) then rowTitle = rowNode.title
+    if isValid(rowNode) then rowId = rowNode.id
   end if
-  m.log.verbose(action, "row:", rowTitle, "item:", itemName)
+  m.log.verbose(action, "row:", rowId, "item:", itemId)
 end sub
 
 ' One-time setup: observes loadedRowRange and focusedColumns on the RowList's content root.

@@ -21,6 +21,8 @@
  *  - removeComments: Strip comments from transpiled .brs and XML output
  *  - arity check:    Error on an m.log.<level>() call with more than the message
  *                    plus 8 values (`log-too-many-values`, see below)
+ *  - personal text:  Error on an m.log.<level>() argument whose name says it holds a
+ *                    title or a name (`log-personal-text`, see below)
  *
  * Call arity: each level function in the runtime library takes `message` plus nine
  * values (ten parameters), and insertPkgPath prepends a file-and-line argument, so
@@ -74,6 +76,35 @@ const LOG_FUNCTION_PARAMS = 10;
 const MAX_SOURCE_ARGS = LOG_FUNCTION_PARAMS - 1;
 
 const ARITY_CODE = 'log-too-many-values';
+
+// The logger masks what has a shape (tokens, hosts, IPs: log.Redactor in
+// source/logging/Logger.bs). A title or a person's name is free text with no shape to find,
+// and a shared log can show who someone is or what they watch, so the build keeps them out
+// of m.log by the name of the argument instead. An ID is fine: it identifies nothing alone.
+const PERSONAL_CODE = 'log-personal-text';
+const PERSONAL_NAMES = new Set([
+  'name',
+  'username',
+  'itemname',
+  'seriesname',
+  'albumname',
+  'album',
+  'albumartist',
+  'artist',
+  'artists',
+  'artistname',
+  'groupname',
+  'devicename',
+  'friendlyname',
+  'displayname',
+  'servername',
+  'sortname',
+  'fullname',
+]);
+const PERSONAL_DISABLE_LINE = /'\s*bsc-disable-line\s+log-personal-text\b/i;
+const PERSONAL_DISABLE_NEXT_LINE = /'\s*bsc-disable-next-line\s+log-personal-text\b/i;
+// Calls that only convert or trim a value, so the name of what they convert is what counts.
+const PASS_THROUGH_CALLS = new Set(['tostr', 'trim', 'toupper', 'tolower', 'tostring']);
 const ARITY_DISABLE_LINE = /'\s*bsc-disable-line\s+log-too-many-values\b/i;
 const ARITY_DISABLE_NEXT_LINE = /'\s*bsc-disable-next-line\s+log-too-many-values\b/i;
 
@@ -244,12 +275,30 @@ class RokuLogPlugin {
             const level = getNameText(callee);
             if (!LOG_LEVELS.includes(level)) return;
 
-            const argCount = call.args.length;
-            if (argCount <= MAX_SOURCE_ARGS) return;
-
             const range = getRange(call);
             if (!range) return;
             const line = range.start.line;
+
+            const personalSuppressed =
+              PERSONAL_DISABLE_LINE.test(sourceLines[line] ?? '') ||
+              (line > 0 && PERSONAL_DISABLE_NEXT_LINE.test(sourceLines[line - 1] ?? ''));
+            if (!personalSuppressed) {
+              for (const arg of call.args) {
+                const argName = finalName(arg);
+                if (!argName || !isPersonalName(argName)) continue;
+                event.program.diagnostics.register({
+                  code: PERSONAL_CODE,
+                  severity: 1, // Error
+                  source: this.name,
+                  message: `m.log.${level}() is given \`${argName}\`, which looks like a title or a name. Logs get shared, and free text can show who someone is or what they watch, and masking cannot find it. Log the ID instead, or add ' bsc-disable-line ${PERSONAL_CODE} with why it cannot identify anyone.`,
+                  location: arg.location ?? call.location,
+                });
+              }
+            }
+
+            const argCount = call.args.length;
+            if (argCount <= MAX_SOURCE_ARGS) return;
+
             if (ARITY_DISABLE_LINE.test(sourceLines[line] ?? '')) return;
             if (line > 0 && ARITY_DISABLE_NEXT_LINE.test(sourceLines[line - 1] ?? '')) return;
 
@@ -284,6 +333,45 @@ class RokuLogPlugin {
 
     result.data = Buffer.from(text);
   }
+}
+
+/**
+ * The name an argument expression reads last: `item.name` gives `name`, `rowTitle` gives
+ * `rowTitle`, `item["Name"]` gives `Name`, and `item.album.toStr()` gives `album`. Anything
+ * else (a literal, an arithmetic result, a call that is not a conversion) gives undefined.
+ * @param {object} expression
+ * @returns {string|undefined}
+ */
+function finalName(expression) {
+  if (brighterscript.isVariableExpression(expression)) return getNameText(expression);
+  if (brighterscript.isDottedGetExpression(expression)) return getNameText(expression);
+  if (brighterscript.isIndexedGetExpression(expression)) {
+    const index = expression.indexes?.[0] ?? expression.index;
+    if (brighterscript.isLiteralExpression(index)) {
+      const text = index.tokens?.value?.text ?? '';
+      if (text.startsWith('"')) return text.replace(/^"|"$/g, '');
+    }
+    return undefined;
+  }
+  if (isCallExpression(expression) && brighterscript.isDottedGetExpression(expression.callee)) {
+    const method = (getNameText(expression.callee) ?? '').toLowerCase();
+    if (PASS_THROUGH_CALLS.has(method)) return finalName(expression.callee.obj);
+  }
+  return undefined;
+}
+
+/**
+ * True for a name that says it holds a title or a person's name. `subtitle` is the one
+ * common name ending in "title" that holds neither.
+ * @param {string} name
+ * @returns {boolean}
+ */
+function isPersonalName(name) {
+  const lowered = name.toLowerCase();
+  if (lowered.endsWith('subtitle')) return false;
+  if (lowered.endsWith('title')) return true;
+  if (lowered.endsWith('username')) return true;
+  return PERSONAL_NAMES.has(lowered);
 }
 
 /**
