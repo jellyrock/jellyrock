@@ -32,7 +32,7 @@ namespace syncPlayHooks
     if not isValid(sync) or not isValid(sync.playingItemIndex) or not isValid(sync.playlistCount) then return invalid
     repeatMode = queueRepeat.normalize(sync.repeatMode)
     bounds = syncPlayQueue.stepBounds(sync.playingItemIndex, sync.playlistCount, repeatMode)
-    return { index: sync.playingItemIndex, count: sync.playlistCount, repeatMode: repeatMode, hasPrevious: bounds.hasPrevious, hasNext: bounds.hasNext }
+    return { index: sync.playingItemIndex, count: sync.playlistCount, repeatMode: repeatMode, hasPrevious: bounds.hasPrevious, hasNext: bounds.hasNext, previousIndex: bounds.previousIndex, nextIndex: bounds.nextIndex }
   end function
 
   ' What the OSD gear's SyncPlay rows show while following (playbackSettingsMenu.rows): the

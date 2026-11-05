@@ -136,6 +136,22 @@ namespace tests
       m.assertFalse(unknown.hasNext)
     end function
 
+    @it("names each step's target, so a press that plays this item again says so under RepeatOne and a one-item RepeatAll alike")
+    function _()
+      single = syncPlayQueue.stepBounds(0, 1, queueRepeat.ALL)
+      m.assertEqual(single.nextIndex, 0)
+      m.assertEqual(single.previousIndex, 0)
+      one = syncPlayQueue.stepBounds(1, 3, queueRepeat.ONE)
+      m.assertEqual(one.nextIndex, 1)
+      m.assertEqual(one.previousIndex, 1)
+      wrap = syncPlayQueue.stepBounds(2, 3, queueRepeat.ALL)
+      m.assertEqual(wrap.nextIndex, 0)
+      m.assertEqual(wrap.previousIndex, 1)
+      off = syncPlayQueue.stepBounds(0, 3, "")
+      m.assertEqual(off.nextIndex, 1)
+      m.assertEqual(off.previousIndex, -1)
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("normalizeShuffle()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

@@ -309,14 +309,19 @@ end sub
 ' @param {string} action - skip action to take
 sub handleItemSkipAction(action as string)
   ' In a SyncPlay group the step is the group's: the server's queue update moves every member.
-  ' Under the group's RepeatOne the server starts this item over for everyone, so the press says
-  ' why here as it does outside a group.
+  ' A step whose target is this item (RepeatOne, or RepeatAll on a one-item playlist) has the
+  ' server start it over for everyone, so the press says why here as it does outside a group.
   group = syncPlayHooks.groupQueue()
   if isValid(group)
     asked = false
-    if action = "itemnext" and group.hasNext then asked = syncPlayHooks.control({ kind: "next" })
-    if action = "itemback" and group.hasPrevious then asked = syncPlayHooks.control({ kind: "previous" })
-    if asked and group.repeatMode = queueRepeat.ONE then sayPlayingAgain()
+    stepTarget = group.previousIndex
+    if action = "itemnext"
+      stepTarget = group.nextIndex
+      if group.hasNext then asked = syncPlayHooks.control({ kind: "next" })
+    else if action = "itemback" and group.hasPrevious
+      asked = syncPlayHooks.control({ kind: "previous" })
+    end if
+    if asked and stepTarget = group.index then sayPlayingAgain()
     return
   end if
 

@@ -129,12 +129,16 @@ namespace syncPlayQueue
   ' What the OSD's previous and next may ask of the group, from the group's playlist and its
   ' repeat mode: the same rule as the local queue's (queueRepeat.nextIndex, previousIndex), since
   ' the server's Next() and Previous() wrap under RepeatAll and replay under RepeatOne. Off, a
-  ' step past either end has no item to go to.
+  ' step past either end has no item to go to. Each step's target index comes too, so a press
+  ' whose target is the playing item says it plays again.
   ' @param index - the group's playing index
   ' @param count - the group's playlist length
   ' @param repeatMode - the group's RepeatMode
+  ' @return {object} - { hasPrevious, hasNext, previousIndex, nextIndex }, an index -1 for no step
   function stepBounds(index as integer, count as integer, repeatMode = "" as dynamic) as object
-    return { hasPrevious: queueRepeat.previousIndex(repeatMode, index, count) >= 0, hasNext: queueRepeat.nextIndex(repeatMode, index, count) >= 0 }
+    previousIndex = queueRepeat.previousIndex(repeatMode, index, count)
+    nextIndex = queueRepeat.nextIndex(repeatMode, index, count)
+    return { hasPrevious: previousIndex >= 0, hasNext: nextIndex >= 0, previousIndex: previousIndex, nextIndex: nextIndex }
   end function
 
   ' What a play pressed while in a group asks of the group in place of a local start (decision
