@@ -921,6 +921,10 @@ Not checked:
 
 Tracked publicly in [#1330](https://github.com/jellyrock/jellyrock/issues/1330).
 
+#### A SyncPlay reload in place sends Ready at position 0 `[fid: syncplay-reload-ready-position]` `[captured 2026-11-04]`
+
+A reload in place while following a SyncPlay group reaches `syncPlayPlayback.trackPlayerEvent` as a stall followed by more buffering, and its Ready carries the node's own position (`positionTicks = -1`), which reads 0 at the first frame of a load that starts partway in; only the `mounted` path corrects for that with `loadStartTicks`. A Ready at 0 makes the server send a corrective Seek. Because of this the re-encode bitrate check (decision `reencode-bitrate-checked-from-session`) skips groups. Fix by sending the load's start position in that Ready, then let the check run in groups and test it with the REST second member.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -1191,6 +1195,10 @@ After a slow silent seek on a SyncPlay member, the `Ready` goes out at the `play
 #### A 4K H.264 source is re-encoded at 1080p even on a hardware HEVC server `[fid: h264-source-cap-limits-hevc]` `[captured 2026-11-05]`
 
 An H.264 source caps the H.264 codec profile at `1920x1080` in `buildPlaybackInfoPostData` (`source/api/items.bs`, the block that caps the H.264 codec profile for an H.264 source), and Jellyfin applies a codec profile's width and height to the whole transcode, so a 4K H.264 source is re-encoded at 1080p even on a server that encodes HEVC in hardware and could keep 4K. Seen 2026-11-04 on a Roku Ultra against Jellyfin 12.4 with `NVENC`: a 4K H.264 source re-encoded as HEVC at `1920x1080`. Rare (4K H.264 sources are uncommon). Not done in PR #1323 because it needs its own device check on two server setups. Fix by dropping that cap where `capH264Resolution` already guards H.264 output, then check a 4K H.264 source keeps 4K on a hardware HEVC server and gets 1080p H.264 on a default one.
+
+#### `mediaNumber` loses the low digits of large values `[fid: media-number-long-precision]` `[captured 2026-11-04]`
+
+`mediaNumber` in `source/utils/misc.bs` reads a long integer through a float, so a large value loses its low digits (94848001 reads as 94848000, found 2026-11-04). It is harmless for the values it serves today, but wrong for bitrate and byte values; `reencodeCheck.bitsPerSecond` was added to avoid it. Decide whether `mediaNumber` should keep integers whole, and check its callers.
 
 ### api
 

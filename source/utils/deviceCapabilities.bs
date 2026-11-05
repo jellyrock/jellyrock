@@ -25,10 +25,28 @@ const BUFFER_SAFETY_FACTOR = 0.75
 ' The buffer must fit at least this many segments concurrently.
 const BUFFER_SEGMENT_COUNT = 2
 
-' Max HLS playlist entries before Roku's MPR rejects the playlist as too large.
-' Exact Roku limit is undocumented - this is a conservative estimate.
-' Tune this value based on testing if "mpr playlist file is too large" errors occur.
+' Default cap on HLS playlist entries for calculateOptimalTranscodingParams. Roku limits the
+' playlist's bytes, not its entries (ROKU_MAX_PLAYLIST_BYTES), so this is only the default for a
+' caller with no URL to measure. LoadVideoContentTask asks again with maxPlaylistEntriesFor()
+' when the server's real answer would not fit.
 const MAX_HLS_PLAYLIST_ENTRIES = 5000
+
+' Largest HLS media playlist Roku plays: 4 MiB of playlist text. Measured 2026-11-04 with synthetic
+' playlists of one repeated 2 s segment on a Streaming Stick 4K (Roku OS 15.3.4) and a Roku Ultra
+' (16.0.4), both alike: 4,188,113 bytes played and 4,200,113 bytes failed with "mpr playlist file is
+' too large". 40,000 short entries (2.2 MB) played, so entries are not what is limited.
+const ROKU_MAX_PLAYLIST_BYTES = 4194304
+
+' Share of ROKU_MAX_PLAYLIST_BYTES the estimate may fill, leaving room for what it does not count.
+const PLAYLIST_BUDGET_FRACTION = 0.9
+
+' Bytes one playlist entry adds beyond the length of the TranscodingUrl: the segment path in place
+' of "master.m3u8", the runtimeTicks and actualSegmentLengthTicks the server adds, and the
+' "#EXTINF:2.586000, nodesc" line with its newlines. Measured 2026-11-04 on Jellyfin 12.4: a
+' 1,016-character TranscodingUrl gave entries of 1,062 bytes plus the 25-character EXTINF line,
+' which is 72 beyond the URL, and 3,907 entries filled 4,272,699 bytes (about 78 beyond). Set above
+' both so the estimate errs high.
+const PLAYLIST_ENTRY_OVERHEAD_BYTES = 128
 
 ' Sentinel for jellyfinVideoLevel(): this codec has no VideoLevel scale established
 ' here, so the caller must OMIT the condition rather than send a number.
@@ -1107,7 +1125,7 @@ function getCodecProfiles(caps = invalid as dynamic) as object
       {
         "Condition": "EqualsAny",
         "Property": "VideoRangeType",
-        "Value": h264VideoRangeTypes,
+        "Value": uniqueRangeTypes(h264VideoRangeTypes),
         "IsRequired": false
       }
 
@@ -1229,7 +1247,7 @@ function getCodecProfiles(caps = invalid as dynamic) as object
         {
           "Condition": "EqualsAny",
           "Property": "VideoRangeType",
-          "Value": av1VideoRangeTypes,
+          "Value": uniqueRangeTypes(av1VideoRangeTypes),
           "IsRequired": false
         }
       ]
@@ -1289,7 +1307,7 @@ function getCodecProfiles(caps = invalid as dynamic) as object
         {
           "Condition": "EqualsAny",
           "Property": "VideoRangeType",
-          "Value": hevcVideoRangeTypes,
+          "Value": uniqueRangeTypes(hevcVideoRangeTypes),
           "IsRequired": false
         }
       ]
@@ -1347,7 +1365,7 @@ function getCodecProfiles(caps = invalid as dynamic) as object
         {
           "Condition": "EqualsAny",
           "Property": "VideoRangeType",
-          "Value": vp9VideoRangeTypes,
+          "Value": uniqueRangeTypes(vp9VideoRangeTypes),
           "IsRequired": false
         }
       ]
@@ -1839,7 +1857,7 @@ end function
 '
 ' Solves two constraints simultaneously:
 ' 1. Buffer: (bitrate × segmentDuration) / 8 ≤ bufferSize × BUFFER_SAFETY_FACTOR
-' 2. Playlist: videoDuration / segmentDuration ≤ MAX_HLS_PLAYLIST_ENTRIES
+' 2. Playlist: videoDuration / segmentDuration ≤ maxPlaylistEntries
 '
 ' Targets 6s segments for optimal startup and seek performance. Goes shorter if the buffer
 ' forces it, or longer (up to 9s) only when the playlist constraint requires it.
@@ -1848,10 +1866,12 @@ end function
 ' @param {LongInteger} bitrateBps - Source media total bitrate in bits per second
 ' @param {Integer} videoDurationSeconds - Video duration in seconds
 ' @param {LongInteger} bufferSizeBytes - Device video buffer size in bytes
+' @param {Integer} maxPlaylistEntries - most playlist entries allowed (maxPlaylistEntriesFor() gives
+'                  the count that fits the real URL)
 ' @return {Object} { segmentLength: Integer, maxBitrate: LongInteger }
 '         segmentLength: optimal HLS segment duration (1-9 seconds)
 '         maxBitrate: max streaming bitrate in bps (0 = no reduction needed)
-function calculateOptimalTranscodingParams(bitrateBps as longinteger, videoDurationSeconds as integer, bufferSizeBytes as longinteger) as object
+function calculateOptimalTranscodingParams(bitrateBps as longinteger, videoDurationSeconds as integer, bufferSizeBytes as longinteger, maxPlaylistEntries = MAX_HLS_PLAYLIST_ENTRIES as integer) as object
   defaultResult = { segmentLength: 6, maxBitrate: 0& }
 
   ' Guard: invalid inputs - return defaults
@@ -1872,9 +1892,9 @@ function calculateOptimalTranscodingParams(bitrateBps as longinteger, videoDurat
   ' Calculate min segment duration to keep playlist within entry limit
   ' Formula: minDuration = ceil(videoDuration / maxPlaylistEntries)
   minSegDuration = 1
-  if videoDurationSeconds > MAX_HLS_PLAYLIST_ENTRIES
+  if maxPlaylistEntries > 0 and videoDurationSeconds > maxPlaylistEntries
     ' Ceiling division without floating point: (a + b - 1) / b
-    minSegDuration = (videoDurationSeconds + MAX_HLS_PLAYLIST_ENTRIES - 1) \ MAX_HLS_PLAYLIST_ENTRIES
+    minSegDuration = (videoDurationSeconds + maxPlaylistEntries - 1) \ maxPlaylistEntries
   end if
 
   ' Clamp maxSegDuration to valid range [1, 9] (buffer upper bound)
@@ -1897,8 +1917,8 @@ function calculateOptimalTranscodingParams(bitrateBps as longinteger, videoDurat
   end if
 
   ' Case 3+: Playlist forces longer than 6s, or source bitrate overflows even 1s segments.
-  ' Use minSegDuration (capped at 9s). Content over ~12.5h (45,000s) cannot satisfy the
-  ' playlist constraint within this range, but that duration is beyond expected use.
+  ' Use minSegDuration (capped at 9s). Content longer than maxPlaylistEntries segments of 9 s each
+  ' cannot fit the playlist constraint (#1321 tracks longer films).
   segmentLength = minSegDuration
   if segmentLength > 9 then segmentLength = 9
 
@@ -1912,6 +1932,79 @@ function calculateOptimalTranscodingParams(bitrateBps as longinteger, videoDurat
   maxBitrate& = (segmentBudget& * 8&) \ segmentLength
 
   return { segmentLength: segmentLength, maxBitrate: maxBitrate& }
+end function
+
+' estimatePlaylistBytes: How large the server's HLS media playlist will be.
+'
+' Jellyfin's HLS is stateless: it echoes the whole request query into every entry, so an entry is
+' about as long as the TranscodingUrl, plus PLAYLIST_ENTRY_OVERHEAD_BYTES.
+'
+' @param {dynamic} transcodingUrl - the TranscodingUrl of PlaybackInfo's answer
+' @param {integer} durationSeconds - the film's length
+' @param {integer} segmentLength - seconds per segment
+' @return {longinteger} the estimate in bytes, 0 when the duration or segment length is unknown
+function estimatePlaylistBytes(transcodingUrl as dynamic, durationSeconds as integer, segmentLength as integer) as longinteger
+  if durationSeconds <= 0 or segmentLength <= 0 then return 0&
+  entries = (durationSeconds + segmentLength - 1) \ segmentLength
+  return entries * (Len(textOrEmpty(transcodingUrl)) + PLAYLIST_ENTRY_OVERHEAD_BYTES)
+end function
+
+' playlistByteBudget: The most playlist bytes to plan for.
+'
+' @return {longinteger} ROKU_MAX_PLAYLIST_BYTES scaled by PLAYLIST_BUDGET_FRACTION
+function playlistByteBudget() as longinteger
+  return Int(ROKU_MAX_PLAYLIST_BYTES * PLAYLIST_BUDGET_FRACTION)
+end function
+
+' maxPlaylistEntriesFor: How many entries fit in the byte budget at this URL's entry size.
+'
+' @param {dynamic} transcodingUrl - the TranscodingUrl of PlaybackInfo's answer
+' @return {integer} the entry count to pass to calculateOptimalTranscodingParams
+function maxPlaylistEntriesFor(transcodingUrl as dynamic) as integer
+  return playlistByteBudget() \ (Len(textOrEmpty(transcodingUrl)) + PLAYLIST_ENTRY_OVERHEAD_BYTES)
+end function
+
+' hlsSegmentLengthFromUrl: The SegmentLength a TranscodingUrl asks for, whatever the query's case.
+'
+' @param {dynamic} url - a TranscodingUrl
+' @return {integer} seconds per segment, 0 when the URL has none
+function hlsSegmentLengthFromUrl(url as dynamic) as integer
+  text = textOrEmpty(url)
+  queryStart = Instr(1, text, "?")
+  if queryStart = 0 then return 0
+  for each pair in Mid(text, queryStart + 1).split("&")
+    eq = Instr(1, pair, "=")
+    if eq > 0 and LCase(Left(pair, eq - 1)) = "segmentlength" then return Val(Mid(pair, eq + 1), 10)
+  end for
+  return 0
+end function
+
+' estimateAnswerPlaylistBytes: estimatePlaylistBytes at the segment length the TranscodingUrl itself
+' asks for (hlsSegmentLengthFromUrl), so a first answer and a re-ask are measured the same way.
+'
+' @param {dynamic} transcodingUrl - the TranscodingUrl of PlaybackInfo's answer
+' @param {integer} durationSeconds - the film's length
+' @return {longinteger} the estimate in bytes, 0 when the URL names no SegmentLength
+function estimateAnswerPlaylistBytes(transcodingUrl as dynamic, durationSeconds as integer) as longinteger
+  return estimatePlaylistBytes(transcodingUrl, durationSeconds, hlsSegmentLengthFromUrl(transcodingUrl))
+end function
+
+' uniqueRangeTypes: A pipe-separated VideoRangeType list without repeats, in first-seen order.
+' The display-capability blocks of getCodecProfiles add some of the same values (DOVIWithEL,
+' DOVIWithELHDR10Plus), and the server echoes the list into every playlist entry.
+'
+' @param {string} pipeList - for example "SDR|DOVIWithSDR|DOVI|DOVIWithSDR"
+' @return {string} the same values once each
+function uniqueRangeTypes(pipeList as string) as string
+  seen = {}
+  kept = []
+  for each value in pipeList.split("|")
+    if value <> "" and not seen.doesExist(value)
+      seen[value] = true
+      kept.push(value)
+    end if
+  end for
+  return kept.join("|")
 end function
 
 ' exceedsH264Ceiling: Whether a video size is beyond what a Roku decodes as H.264 (1920x1080).
