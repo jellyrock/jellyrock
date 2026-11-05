@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-04
+last-updated: 2026-11-05
 ---
 
 # Progress
@@ -873,6 +873,18 @@ The SyncPlay wait-on-me correction (`SyncPlayManager.checkSettle`, gated on `las
 It shows today, one video early. The Repeat One pick is a gear press during the intro, so `stillWatchingOnAdvance` resets the count at the intro's end, but it also moves `itemStartedAt` to the episode's start. The press then predates the episode, so the episode's end counts as unattended: with the short preset (2 videos) the prompt comes after the second replay instead of the third. It needs Cinema Mode, a served intro, Repeat One picked during it and the prompt on. Not a regression: `main` does the same. A repeat mode set without a key press (the SyncPlay group half, reading the group's `RepeatMode`) would add one more count.
 
 Close it by deciding "leaving an intro" from the item that ended rather than from the target's tag, with a unit case for Repeat One at an intro's end. Found reviewing the intro-slot fix that followed #1308.
+
+#### The photo viewer's Slideshow and Random settings should mean auto-advance and shuffle, so every combination works `[fid: photo-viewer-shuffle-autoplay-model]` `[captured 2026-11-05]`
+
+The photo viewer treats Slideshow and Random as two advance modes, and Slideshow wins when both are on: `PhotoDetails.nextSlide` checks `m.slideshow` first, and Random picks a fresh random index on each tick (repeats allowed) while Left and Right still walk the album in order. The library-tab work (ADR 0054) moved the two toggles to **Settings → User Interface → Libraries → Photos** (`photosSlideshow`, `photosRandom`), where a user can turn both on, so the Random Order description now says it has no effect while Slideshow is on. Album Shuffle (`QueueManager.launchPhotoAlbum`) sets both flags, so it probably plays in order today; not checked on a device.
+
+The agreed model: Slideshow means start playing automatically (off opens the album paused on the first photo; Play already pauses and resumes), and Random means Shuffle: shuffle the album's order once, no repeats, and have the slideshow and Left/Right walk that order. Every combination then means something, and the registry keys stay as they are. Close it by changing `PhotoDetails` to that model with a spec, rewording the two descriptions in `settings/settings.json` and `docs/user/features/photos.md`, and checking album Shuffle on a device. Why not now: it changes the viewer's behavior and needs a photo-album fixture (see `slideshow-wait-untested-no-album`).
+
+#### The library layout choice must move when the options dialog is retired `[fid: layout-choice-outlives-options-dialog]` `[captured 2026-11-05]`
+
+The layout choice (presentation or poster grid, the per-library `display.<id>.layout` from ADR 0054) is reachable only through the options dialog: `optionsViewList` lists a movie library's Movies tab once per layout in `ItemGridOptions`' View menu. Retiring that dialog (tech-debt `itemgridoptions-hand-rolled-dialog`) removes the only way to switch layout unless the replacement carries it, for example the per-screen settings scope under the gear.
+
+Close it by moving the layout choice to its new home in the same change that retires `ItemGridOptions`, then deleting `source/GridView/optionsViewList.bs`, its spec and the `layouts` list the presenters return for it, if the new home reads layouts another way. Why not now: the dialog's replacement does not exist yet.
 
 ### source
 

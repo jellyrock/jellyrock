@@ -65,3 +65,4 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0051](0051-retire-signals-backlog.md) | Upstream watches are CI issues, and the server-upgrade anchor is the newest committed fingerprint | Accepted | 2026-10-20 |
 | [0052](0052-flac-seek-server-stream.md) | A seek in a direct-played FLAC loads a FLAC stream the server starts at the target | Accepted | 2026-10-21 |
 | [0053](0053-back-cancels-every-wait.md) | Back cancels every wait; only a local commit ignores it (partially supersedes 0044) | Accepted | 2026-10-22 |
+| [0054](0054-library-tab-ids-and-layout.md) | Library tabs have JellyRock's own ids, and layout is a setting of its own | Accepted | 2026-11-05 |
