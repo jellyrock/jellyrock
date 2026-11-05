@@ -46,6 +46,162 @@ namespace log
     return invalid
   end function
 
+  ' Masks secrets and addresses in a log line, so a shared log identifies no one. Pure: it reads
+  ' no node and holds only its compiled patterns and a fingerprint cache, so it adds no thread
+  ' crossing on whichever thread logs. A Logger builds one on its first line.
+  '
+  ' A token or device ID becomes a 4-character fingerprint (the start of its MD5), which still
+  ' shows whether two lines used the same one. A host or IP becomes its class, which still shows
+  ' whether the app talked to the LAN, the internet or itself. Free text (titles, user names)
+  ' has no shape to find, so the roku-log plugin's `log-personal-text` rule keeps it out instead.
+  class Redactor
+    private credential
+    private deviceName
+    private url
+    private ipv4
+    private fingerprints
+
+    sub new()
+      ' A credential key, its separator (`=`, `:`, `":"`, or `=\"` inside JSON), then its value
+      m.credential = CreateObject("roRegex", "(\b[a-z_-]*?(?:token|api_?key|secret|password|device_?id)|\bpw)(""?\s*[:=]\s*\\?""?)([^""\\&\s,;}\])]+)", "i")
+      ' The free-text Device= field of the Authorization header, which holds the Roku's name
+      m.deviceName = CreateObject("roRegex", "(\bDevice=\\?"")([^""\\]*)", "")
+      ' Scheme, user info (or an empty group, so every group always reports), then the host
+      ' (a bracketed IPv6 literal or a name)
+      m.url = CreateObject("roRegex", "\b(https?|wss?)://([^/@\s]*@|)(\[[0-9a-f:.]+\]|[^/:?#\s""'\\]+)", "i")
+      m.ipv4 = CreateObject("roRegex", "(?<![\d.])(\d{1,3}(?:\.\d{1,3}){3})(?![\d.])", "")
+      m.fingerprints = {}
+      m.fingerprints.SetModeCaseSensitive()
+    end sub
+
+    function redact(text as string) as string
+      ' Every rule goes through MatchAll and replaceInOrder rather than ReplaceAll with a
+      ' back-reference, which the BrightScript simulator does not substitute.
+      matches = m.deviceName.MatchAll(text)
+      if matches.count() > 0
+        replacements = []
+        for each match in matches
+          replacements.push(match[1] + "<device-name>")
+        end for
+        text = log.replaceInOrder(text, matches, replacements)
+      end if
+
+      matches = m.credential.MatchAll(text)
+      if matches.count() > 0
+        replacements = []
+        for each match in matches
+          key = LCase(match[1])
+          if key = "pw" or Instr(1, key, "password") > 0 or Instr(1, key, "secret") > 0
+            label = "<secret>"
+          else if Instr(1, key, "device") > 0
+            label = "<device:" + m.fingerprint(match[3]) + ">"
+          else
+            label = "<token:" + m.fingerprint(match[3]) + ">"
+          end if
+          replacements.push(match[1] + match[2] + label)
+        end for
+        text = log.replaceInOrder(text, matches, replacements)
+      end if
+
+      matches = m.url.MatchAll(text)
+      if matches.count() > 0
+        replacements = []
+        for each match in matches
+          userInfo = ""
+          if match[2] <> "" then userInfo = "<secret>@"
+          replacements.push(match[1] + "://" + userInfo + log.hostClass(match[3]))
+        end for
+        text = log.replaceInOrder(text, matches, replacements)
+      end if
+
+      matches = m.ipv4.MatchAll(text)
+      if matches.count() > 0
+        replacements = []
+        for each match in matches
+          addressClass = log.ipv4Class(match[0])
+          if addressClass = "" then addressClass = match[0]
+          replacements.push(addressClass)
+        end for
+        text = log.replaceInOrder(text, matches, replacements)
+      end if
+
+      return text
+    end function
+
+    private function fingerprint(value as string) as string
+      cached = m.fingerprints[value]
+      if cached <> invalid then return cached
+      bytes = CreateObject("roByteArray")
+      bytes.FromAsciiString(value)
+      digest = CreateObject("roEVPDigest")
+      digest.Setup("md5")
+      result = LCase(Left(digest.Process(bytes), 4))
+      m.fingerprints[value] = result
+      return result
+    end function
+  end class
+
+  ' Replaces each MatchAll match with its replacement, walking left to right, so a match
+  ' that is also part of a later, longer one is not rewritten inside it.
+  function replaceInOrder(text as string, matches as object, replacements as object) as string
+    result = ""
+    cursor = 1
+    for i = 0 to matches.count() - 1
+      found = matches[i][0]
+      position = Instr(cursor, text, found)
+      if position = 0 then continue for
+      result = result + Mid(text, cursor, position - cursor) + replacements[i]
+      cursor = position + Len(found)
+    end for
+    return result + Mid(text, cursor)
+  end function
+
+  ' The class of a URL host: a loopback, LAN or public address, or a LAN or public name.
+  function hostClass(host as string) as string
+    lowered = LCase(host)
+    if Left(lowered, 1) = "["
+      return log.ipv6Class(Mid(lowered, 2, Len(lowered) - 2))
+    end if
+    addressClass = log.ipv4Class(lowered)
+    if addressClass <> "" then return addressClass
+    if lowered = "localhost" then return "<loopback>"
+    if Instr(1, lowered, ".") = 0 then return "<lan-host>"
+    for each suffix in [".local", ".lan", ".home.arpa", ".internal", ".localdomain"]
+      if Right(lowered, Len(suffix)) = suffix then return "<lan-host>"
+    end for
+    return "<host>"
+  end function
+
+  ' The class of a dotted IPv4 address, or "" when the text is not one (a part over 255).
+  function ipv4Class(address as string) as string
+    parts = address.Split(".")
+    if parts.count() <> 4 then return ""
+    octets = []
+    for each part in parts
+      if part = "" or Len(part) > 3 then return ""
+      value = part.ToInt()
+      if value > 255 or value.ToStr() <> part then return ""
+      octets.push(value)
+    end for
+    first = octets[0]
+    second = octets[1]
+    if first = 127 then return "<loopback>"
+    if first = 10 or first = 0 then return "<lan-ip>"
+    if first = 172 and second >= 16 and second <= 31 then return "<lan-ip>"
+    if first = 192 and second = 168 then return "<lan-ip>"
+    if first = 169 and second = 254 then return "<lan-ip>"
+    return "<public-ip>"
+  end function
+
+  ' The class of an IPv6 address: loopback, link-local or unique-local (LAN), or public.
+  function ipv6Class(address as string) as string
+    if address = "::1" then return "<loopback>"
+    prefix = Left(address, 3)
+    if prefix = "fe8" or prefix = "fe9" or prefix = "fea" or prefix = "feb" then return "<lan-ip>"
+    if Left(address, 2) = "fc" or Left(address, 2) = "fd" then return "<lan-ip>"
+    return "<public-ip>"
+  end function
+
   class Logger
     public enabled = true
     private name
@@ -57,6 +213,8 @@ namespace log
     private includeDate = false
     private logMode = 1
     private transports = []
+    ' Built on the first line this Logger writes, so a component that never logs pays nothing
+    private redactor = invalid
 
     ' Copies the manager's settings once. A Logger built before the manager exists keeps
     ' `rLog = invalid`, and every level method then returns at once.
@@ -87,12 +245,14 @@ namespace log
         level = m.rLog.dateText + " " + level
       end if
 
+      text = level + " " + m.toString(message) + " " + m.toString(value) + " " + m.toString(value2) + " " + m.toString(value3) + " " + m.toString(value4) + " " + m.toString(value5) + " " + m.toString(value6) + " " + m.toString(value7) + " " + m.toString(value8) + " " + m.toString(value9)
+      if m.redactor = invalid then m.redactor = new log.Redactor()
+      text = m.redactor.redact(text)
+
       ' This class is what m.log calls, so its print is the console output itself.
       if m.logMode = 1
-        print level " " m.toString(message) " " m.toString(value) " " m.toString(value2) " " m.toString(value3) " " m.toString(value4) " " m.toString(value5) " " m.toString(value6) " " m.toString(value7) " " m.toString(value8) " " + m.toString(value9) ' bsc-disable-line print-locations
+        print text ' bsc-disable-line print-locations
       else
-        text = level + " " + m.toString(message) + " " + m.toString(value) + " " + m.toString(value2) + " " + m.toString(value3) + " " + m.toString(value4) + " " + m.toString(value5) + " " + m.toString(value6) + " " + m.toString(value7) + " " + m.toString(value8) + " " + m.toString(value9)
-
         if m.logMode = 3
           print text ' bsc-disable-line print-locations
         end if

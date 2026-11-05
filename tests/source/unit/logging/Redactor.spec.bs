@@ -1,0 +1,159 @@
+import "pkg:/source/logging/Logger.bs"
+
+namespace tests
+
+  ' log.Redactor masks secrets and addresses in a log line before it is written. Each case
+  ' pins exact output: the fingerprint is the first 4 hex characters of the value's MD5, so a
+  ' change to the algorithm fails here instead of quietly changing every log.
+  @suite("log redactor")
+  class RedactorTests extends tests.BaseTestSuite
+
+    private TOKEN = "0123456789abcdef0123456789abcdef"
+    private OTHER_TOKEN = "fedcba9876543210fedcba9876543210"
+    private DEVICE = "roku-device-1234"
+
+    function redact(text as string) as string
+      return m.newRedactor().redact(text)
+    end function
+
+    function newRedactor() as object
+      return new log.Redactor()
+    end function
+
+    @describe("lines with nothing to mask")
+
+    @it("leaves a plain line alone")
+    sub _()
+      line = "INFO screen-load settled - component preLogin variant start ms 3 fills 0"
+      m.assertEqual(m.redact(line), line)
+    end sub
+
+    @it("leaves a dev build's source path alone")
+    sub _()
+      line = "INFO file:///home/user/jellyrock/components/home/HomeRows.bs:459 latest-rows run complete 10 rows 2654 ms"
+      m.assertEqual(m.redact(line), line)
+    end sub
+
+    @it("leaves version numbers alone")
+    sub _()
+      line = "server 10.11.8 on Roku OS 15.3.4.4210"
+      m.assertEqual(m.redact(line), line)
+    end sub
+
+    @it("leaves item and user IDs alone")
+    sub _()
+      line = "itemId 6b7f3c2a9d1e4f5a8b0c1d2e3f4a5b6c UserId=" + chr(34) + "u1" + chr(34)
+      m.assertEqual(m.redact(line), line)
+    end sub
+
+    @it("leaves a sentence about a token alone")
+    sub _()
+      line = "Quick Connect token exchange refused statusCode: 401"
+      m.assertEqual(m.redact(line), line)
+    end sub
+
+    @describe("tokens and device IDs")
+
+    @it("fingerprints an ApiKey query value")
+    sub _()
+      m.assertEqual(m.redact("stream?ApiKey=" + m.TOKEN + "&Static=true"), "stream?ApiKey=<token:8516>&Static=true")
+    end sub
+
+    @it("fingerprints a legacy api_key query value")
+    sub _()
+      m.assertEqual(m.redact("socket?api_key=" + m.TOKEN), "socket?api_key=<token:8516>")
+    end sub
+
+    @it("gives the same token the same fingerprint, and another token a different one")
+    sub _()
+      subject = m.newRedactor()
+      m.assertEqual(subject.redact("ApiKey=" + m.TOKEN), "ApiKey=<token:8516>")
+      m.assertEqual(subject.redact("ApiKey=" + m.TOKEN), "ApiKey=<token:8516>")
+      m.assertEqual(subject.redact("ApiKey=" + m.OTHER_TOKEN), "ApiKey=<token:753d>")
+    end sub
+
+    @it("masks the token, device ID and device name in an Authorization header")
+    sub _()
+      q = chr(34)
+      header = "MediaBrowser Client=" + q + "JellyRock" + q + ", Device=" + q + "Charles's Roku (Roku Ultra)" + q + ", Version=" + q + "3.3.1" + q + ", UserId=" + q + "u1" + q + ", DeviceId=" + q + m.DEVICE + q + ", Token=" + q + m.TOKEN + q
+      expected = "MediaBrowser Client=" + q + "JellyRock" + q + ", Device=" + q + "<device-name>" + q + ", Version=" + q + "3.3.1" + q + ", UserId=" + q + "u1" + q + ", DeviceId=" + q + "<device:7534>" + q + ", Token=" + q + "<token:8516>" + q
+      m.assertEqual(m.redact(header), expected)
+    end sub
+
+    @it("masks a header inside a logged associative array")
+    sub _()
+      line = "AA(" + formatJson({ Authorization: "MediaBrowser Token=" + chr(34) + m.TOKEN + chr(34) }) + ")"
+      m.assertEqual(m.redact(line), "AA(" + formatJson({ Authorization: "MediaBrowser Token=" + chr(34) + "<token:8516>" + chr(34) }) + ")")
+    end sub
+
+    @it("fingerprints an AccessToken in a JSON body")
+    sub _()
+      q = chr(34)
+      m.assertEqual(m.redact("{" + q + "AccessToken" + q + ":" + q + m.TOKEN + q + "}"), "{" + q + "AccessToken" + q + ":" + q + "<token:8516>" + q + "}")
+    end sub
+
+    @it("hides a password completely")
+    sub _()
+      q = chr(34)
+      m.assertEqual(m.redact("{" + q + "Pw" + q + ":" + q + "hunter2" + q + "}"), "{" + q + "Pw" + q + ":" + q + "<secret>" + q + "}")
+      m.assertEqual(m.redact("password=hunter2"), "password=<secret>")
+    end sub
+
+    @it("fingerprints a deviceId query value")
+    sub _()
+      m.assertEqual(m.redact("socket?deviceId=" + m.DEVICE), "socket?deviceId=<device:7534>")
+    end sub
+
+    @describe("addresses")
+
+    @it("masks a public host name and keeps the rest of the URL")
+    sub _()
+      m.assertEqual(m.redact("https://jellyfin.example.com/System/Info?x=1"), "https://<host>/System/Info?x=1")
+    end sub
+
+    @it("marks a host with no dot or a local suffix as a LAN host")
+    sub _()
+      m.assertEqual(m.redact("http://jellyfin:8096/Items"), "http://<lan-host>:8096/Items")
+      m.assertEqual(m.redact("http://media.local:8096/Items"), "http://<lan-host>:8096/Items")
+      m.assertEqual(m.redact("http://nas.home.arpa/Items"), "http://<lan-host>/Items")
+    end sub
+
+    @it("masks a socket URL's host, token and device ID together")
+    sub _()
+      m.assertEqual(m.redact("ws://10.0.0.5:8096/socket?ApiKey=" + m.TOKEN + "&deviceId=" + m.DEVICE), "ws://<lan-ip>:8096/socket?ApiKey=<token:8516>&deviceId=<device:7534>")
+    end sub
+
+    @it("marks loopback hosts")
+    sub _()
+      m.assertEqual(m.redact("http://localhost:8096/a"), "http://<loopback>:8096/a")
+      m.assertEqual(m.redact("http://127.0.0.1:8096/a"), "http://<loopback>:8096/a")
+      m.assertEqual(m.redact("http://[::1]:8096/a"), "http://<loopback>:8096/a")
+    end sub
+
+    @it("classes IPv6 hosts")
+    sub _()
+      m.assertEqual(m.redact("http://[fe80::1]:8096/a"), "http://<lan-ip>:8096/a")
+      m.assertEqual(m.redact("http://[fd12:3456::1]/a"), "http://<lan-ip>/a")
+      m.assertEqual(m.redact("http://[2001:db8::1]/a"), "http://<public-ip>/a")
+    end sub
+
+    @it("hides user info in a URL")
+    sub _()
+      m.assertEqual(m.redact("http://bob:pass@jellyfin.example.com/a"), "http://<secret>@<host>/a")
+    end sub
+
+    @it("classes a bare IPv4 address")
+    sub _()
+      m.assertEqual(m.redact("found server at 192.168.1.20"), "found server at <lan-ip>")
+      m.assertEqual(m.redact("found 172.16.0.1 and 172.32.0.1"), "found <lan-ip> and <public-ip>")
+      m.assertEqual(m.redact("link-local 169.254.1.1, public 8.8.8.8"), "link-local <lan-ip>, public <public-ip>")
+    end sub
+
+    @it("leaves a dotted number that cannot be an address alone")
+    sub _()
+      m.assertEqual(m.redact("value 256.1.1.1"), "value 256.1.1.1")
+    end sub
+
+  end class
+
+end namespace
