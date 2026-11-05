@@ -1,0 +1,105 @@
+import "pkg:/source/enums/PlaybackErrorRetry.bs"
+import "pkg:/source/utils/playbackRetry.bs"
+
+namespace tests
+
+  @suite("playbackRetry.bs - chooseErrorRetry()")
+  class PlaybackRetryTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a buffer overflow")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("takes the Dolby Vision retry first when both fallbacks are available")
+    function _()
+      m.assertEqual(chooseErrorRetry(true, true, true, false, false), PlaybackErrorRetry.DOVI_DIRECT_PLAY)
+    end function
+
+    @it("re-encodes the video when only the re-encode is available")
+    function _()
+      m.assertEqual(chooseErrorRetry(true, false, true, false, false), PlaybackErrorRetry.REENCODE_VIDEO)
+    end function
+
+    @it("re-encodes the video after the stream has played")
+    function _()
+      m.assertEqual(chooseErrorRetry(true, false, true, true, false), PlaybackErrorRetry.REENCODE_VIDEO)
+    end function
+
+    @it("takes the transcode retry when a direct play failed and no overflow fallback is left")
+    function _()
+      m.assertEqual(chooseErrorRetry(true, false, false, false, true), PlaybackErrorRetry.TRANSCODE)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("any other error")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("does not re-encode or fall back to direct play")
+    function _()
+      m.assertEqual(chooseErrorRetry(false, true, true, true, false), PlaybackErrorRetry.NONE)
+    end function
+
+    @it("falls back to a transcode before the first frame, as before")
+    function _()
+      m.assertEqual(chooseErrorRetry(false, false, false, false, true), PlaybackErrorRetry.TRANSCODE)
+    end function
+
+    @it("does not fall back to a transcode once the stream has played")
+    function _()
+      m.assertEqual(chooseErrorRetry(false, false, false, true, true), PlaybackErrorRetry.NONE)
+    end function
+
+    @it("fails when no retry is available")
+    function _()
+      m.assertEqual(chooseErrorRetry(true, false, false, false, false), PlaybackErrorRetry.NONE)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("retryFlagsWith")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("starts with every flag off")
+    function _()
+      m.assertEqual(noRetryFlags(), { bypassDovi: false, forceTranscode: false, disallowVideoCopy: false })
+    end function
+
+    @it("turns on the flag each retry stands for")
+    function _()
+      m.assertTrue(retryFlagsWith(noRetryFlags(), PlaybackErrorRetry.DOVI_DIRECT_PLAY).bypassDovi)
+      m.assertTrue(retryFlagsWith(noRetryFlags(), PlaybackErrorRetry.TRANSCODE).forceTranscode)
+      m.assertTrue(retryFlagsWith(noRetryFlags(), PlaybackErrorRetry.REENCODE_VIDEO).disallowVideoCopy)
+    end function
+
+    @it("keeps the forced transcode when the re-encode follows it, so direct play is never offered again")
+    function _()
+      flags = retryFlagsWith(noRetryFlags(), PlaybackErrorRetry.TRANSCODE)
+      flags = retryFlagsWith(flags, PlaybackErrorRetry.REENCODE_VIDEO)
+
+      m.assertEqual(flags, { bypassDovi: false, forceTranscode: true, disallowVideoCopy: true })
+    end function
+
+    @it("keeps the Dolby Vision bypass when the re-encode follows it")
+    function _()
+      flags = retryFlagsWith(retryFlagsWith(noRetryFlags(), PlaybackErrorRetry.DOVI_DIRECT_PLAY), PlaybackErrorRetry.REENCODE_VIDEO)
+
+      m.assertTrue(flags.bypassDovi)
+      m.assertTrue(flags.disallowVideoCopy)
+    end function
+
+    @it("returns a new AA and leaves the flags in place alone")
+    function _()
+      before = noRetryFlags()
+      after = retryFlagsWith(before, PlaybackErrorRetry.TRANSCODE)
+
+      m.assertFalse(before.forceTranscode)
+      m.assertTrue(after.forceTranscode)
+    end function
+
+    @it("treats invalid flags as none")
+    function _()
+      m.assertEqual(retryFlagsWith(invalid, PlaybackErrorRetry.NONE), noRetryFlags())
+    end function
+
+  end class
+
+end namespace

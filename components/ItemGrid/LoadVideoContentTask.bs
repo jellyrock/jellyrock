@@ -16,10 +16,12 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/episodeQueue.bs"
+import "pkg:/source/utils/hlsMaster.bs"
 import "pkg:/source/utils/liveStreamHandoff.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
+import "pkg:/source/utils/playbackCaps.bs"
 import "pkg:/source/utils/probedStreams.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamSelection.bs"
@@ -94,8 +96,9 @@ sub loadItems()
   audioStreamIdx = m.top.selectedAudioStreamIndex
   forceTranscoding = m.top.shouldForceTranscoding
   bypassDoviPreservation = m.top.shouldBypassDoviPreservation
+  disallowVideoCopy = m.top.shouldDisallowVideoCopy
 
-  m.top.content = [LoadItems_VideoPlayer(id, mediaSourceId, audioStreamIdx, forceTranscoding, bypassDoviPreservation)]
+  m.top.content = [LoadItems_VideoPlayer(id, mediaSourceId, audioStreamIdx, forceTranscoding, bypassDoviPreservation, disallowVideoCopy)]
 end sub
 
 ' resolveResumeVersion: Which of an item's versions resumes, and from where.
@@ -207,21 +210,21 @@ sub fetchVersionPositions(positions as object, sourceIds as object)
   end for
 end sub
 
-function LoadItems_VideoPlayer(id as string, mediaSourceId as dynamic, audioStreamIdx = 1 as integer, forceTranscoding = false as boolean, bypassDoviPreservation = false as boolean) as dynamic
+function LoadItems_VideoPlayer(id as string, mediaSourceId as dynamic, audioStreamIdx = 1 as integer, forceTranscoding = false as boolean, bypassDoviPreservation = false as boolean, disallowVideoCopy = false as boolean) as dynamic
 
   video = {}
   video.id = id
   video.content = createObject("RoSGNode", "ContentNode")
   video.content.addField("trickplayMetadata", "assocarray", false)
 
-  LoadItems_AddVideoContent(video, mediaSourceId, audioStreamIdx, forceTranscoding, bypassDoviPreservation)
+  LoadItems_AddVideoContent(video, mediaSourceId, audioStreamIdx, forceTranscoding, bypassDoviPreservation, disallowVideoCopy)
 
   if not isValid(video.content) then return invalid
 
   return video
 end function
 
-sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioStreamIdx = 1 as integer, forceTranscoding = false as boolean, bypassDoviPreservation = false as boolean)
+sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioStreamIdx = 1 as integer, forceTranscoding = false as boolean, bypassDoviPreservation = false as boolean, disallowVideoCopy = false as boolean)
 
   meta = ItemMetaData(video.id)
   if not isValid(meta)
@@ -459,7 +462,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   ' The quality caps the viewer picked for this queue in the OSD's gear, read once for both
   ' requests below. invalid when there are none, and Settings applies.
   pickedCaps = queueManager.callFunc("getPlaybackCaps")
-  res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, openLimitMs, pickedCaps)
+  res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, openLimitMs, pickedCaps, disallowVideoCopy)
   m.playbackInfo = invalid
   if isValid(res) and res.ok then m.playbackInfo = res.json
 
@@ -553,7 +556,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
       ' A transcode was built for the picks made before the probe, so ask for one built for these,
       ' unless the device plays the upstream URL or the player's retry asks the server with our picks.
       if answerPlays and probedPicksNeedNewAnswer(manifestSource, audioStreamIdx, subtitleIdx, sentSubtitleIdx)
-        res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, 0, pickedCaps)
+        res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, 0, pickedCaps, disallowVideoCopy)
         if isValid(res) and res.ok and isValid(res.json) and isValidAndNotEmpty(res.json.MediaSources) and not isValidAndNotEmpty(res.json.ErrorCode)
           m.playbackInfo = res.json
         else
@@ -564,6 +567,12 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
         end if
       end if
     end if
+  end if
+
+  ' The re-encode retry can come back as H.264 at the source's size, which a Roku cannot decode
+  ' above 1080p: check the answer's playlist and ask again with a 1080p cap if so.
+  if disallowVideoCopy and not isLive
+    capReencodedResolution(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, pickedCaps, userSettings)
   end if
 
   ' Call addSubtitlesToVideo ONCE after ItemPostPlaybackInfo
@@ -730,11 +739,75 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
         video.isDoviDirectPlayFallbackAvailable = true
       end if
     end if
+
+    ' A remux can copy the video, and the server then cuts HLS segments only at the source's
+    ' keyframes: a long-GOP source gives a segment larger than the device's whole video buffer
+    ' (a buffer:loop: error). Flag that the player may retry with the video re-encoded, which
+    ' forces a keyframe per segment. Not offered to a load that already asked for that.
+    '
+    ' Not offered for Live TV, until a live overflow is measured: every one so far was a file.
+    ' A live re-encode would also need its own check for H.264 above 1080p, since
+    ' capReencodedResolution skips live loads (its second PlaybackInfo opens a second stream).
+    if not disallowVideoCopy and not isLive
+      video.isReencodeFallbackAvailable = true
+    end if
   end if
 
   setCertificateAuthority(video.content)
   ' Convert Jellyfin audio stream index to Roku Track identifier (Index + 1 for MKV)
   video.audioTrack = getRokuAudioTrackPosition(audioStreamIdx, video.fullAudioData)
+end sub
+
+' capReencodedResolution: After a re-encode retry's PlaybackInfo answer, make sure the stream is
+' not H.264 above 1080p.
+'
+' The retry asks the server not to copy the video and lists HEVC first, but a server that does not
+' encode HEVC (Jellyfin's default) re-encodes to H.264 at the source's size, and a Roku stops at
+' AVC level 4.2 and buffers forever on a 4K one. The server's master playlist declares the codec and
+' size before any segment exists, so read it, and ask PlaybackInfo once more with a 1080p
+' resolution cap when reencodeCapDecision says so. A second request that fails keeps the first
+' answer (m.playbackInfo). A resolution cap of the viewer's own at or below 1080p (Settings or the
+' gear pick) skips the check: the first answer already honors it, and a forced 1080 would raise it.
+'
+' @param {string} itemId - the item
+sub capReencodedResolution(itemId as string, mediaSourceId as dynamic, audioStreamIdx as integer, subtitleIdx as integer, playbackPosition as dynamic, meta as object, bypassDoviPreservation as boolean, forceTranscoding as boolean, pickedCaps as dynamic, userSettings as object)
+  if not isValidAndNotEmpty(m.playbackInfo.MediaSources) then return
+  source = m.playbackInfo.MediaSources[0]
+  if not isValid(source) or not isValidAndNotEmpty(source.TranscodingUrl) then return
+  if LCase(textOrEmpty(source.TranscodingSubProtocol)) <> "hls" then return
+
+  ' The server's first answer already keeps the video within the viewer's own cap.
+  limit = playbackCaps.heightLimit(userSettings, pickedCaps)
+  if limit > 0 and limit <= 1080
+    m.log.info("Re-encode keeps the viewer's resolution cap", "maxHeight", limit, "itemId", itemId)
+    return
+  end if
+
+  playedSource = invalid
+  if isValid(meta.mediaSourcesData) then playedSource = mediaSourceForId(meta.mediaSourcesData.mediaSources, mediaSourceId)
+  sourceAboveCeiling = false
+  if isValid(playedSource) then sourceAboveCeiling = videoStreamAboveH264Ceiling(getFirstVideoStream(playedSource.MediaStreams))
+
+  fetched = fetchManifestText(buildURL(source.TranscodingUrl), timeouts.HLS_MASTER_PROBE_MS)
+  decision = reencodeCapDecision(fetched, sourceAboveCeiling)
+  if isValid(decision.variant)
+    m.log.info("Re-encode master playlist", "codecs", decision.variant.codecs, "width", decision.variant.width, "height", decision.variant.height, "itemId", itemId)
+  else
+    m.log.warn("Could not read the re-encode's master playlist", "reason", decision.reason, "sourceAboveCeiling", sourceAboveCeiling, "itemId", itemId)
+  end if
+  if not decision.cap then return
+
+  ' The viewer's own picks stay; only the resolution is lowered.
+  cappedCaps = {}
+  if type(pickedCaps) = "roAssociativeArray" then cappedCaps.append(pickedCaps)
+  cappedCaps.maxResolution = "1080"
+  res = ItemPostPlaybackInfoResponse(itemId, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, 0, cappedCaps, true)
+  if isUsablePlaybackInfoResponse(res)
+    m.log.info("Playing the re-encode capped at 1080p", "reason", decision.reason, "itemId", itemId)
+    m.playbackInfo = res.json
+  else
+    m.log.warn("PlaybackInfo with a 1080p cap failed; keeping the server's answer", "reason", decision.reason, "itemId", itemId)
+  end if
 end sub
 
 ' upstreamManifestAnswers: Whether THIS device can load a source's upstream manifest URL.
@@ -751,8 +824,32 @@ end sub
 ' @param {string} format - "hls" or "dash" (upstreamManifestFormat)
 ' @returns {boolean}
 function upstreamManifestAnswers(url as dynamic, format as string) as boolean
+  elapsed = CreateObject("roTimespan")
+  elapsed.mark()
+  fetched = fetchManifestText(url, timeouts.UPSTREAM_PREFLIGHT_MS)
+  if not isValid(fetched)
+    m.log.info("Upstream manifest check got no answer", "format", format, "ms", elapsed.TotalMilliseconds())
+    return false
+  end if
+
+  answers = isUpstreamManifestResponse(format, fetched.code, fetched.body)
+  m.log.info("Upstream manifest check", "answers", answers, "responseCode", fetched.code, "fetchMs", fetched.fetchMs, "checkMs", elapsed.TotalMilliseconds() - fetched.fetchMs)
+  return answers
+end function
+
+' fetchManifestText: GET a manifest URL from this Task thread and return what came back.
+'
+' Raw roUrlTransfer with no Jellyfin auth header: an upstream URL is not Jellyfin's, and the
+' server's own TranscodingUrl carries its key in the URL. The URL is never logged, because upstream
+' URLs carry session tokens.
+'
+' @param {dynamic} url - the manifest URL
+' @param {integer} timeoutMs - how long to wait for the response
+' @return {dynamic} { code: integer, body: string, fetchMs: integer }, or invalid when the request
+'                   did not start or got no response in time
+function fetchManifestText(url as dynamic, timeoutMs as integer) as dynamic
   target = textOrEmpty(url)
-  if target = "" then return false
+  if target = "" then return invalid
 
   req = CreateObject("roUrlTransfer")
   port = CreateObject("roMessagePort")
@@ -765,23 +862,19 @@ function upstreamManifestAnswers(url as dynamic, format as string) as boolean
 
   elapsed = CreateObject("roTimespan")
   elapsed.mark()
-  if not req.AsyncGetToString() then return false
+  if not req.AsyncGetToString() then return invalid
 
-  remaining = timeouts.UPSTREAM_PREFLIGHT_MS
+  remaining = timeoutMs
   while remaining > 0
     msg = wait(remaining, port)
     if type(msg) = "roUrlEvent"
-      fetchedMs = elapsed.TotalMilliseconds()
-      answers = isUpstreamManifestResponse(format, msg.GetResponseCode(), msg.GetString())
-      m.log.info("Upstream manifest check", "answers", answers, "responseCode", msg.GetResponseCode(), "fetchMs", fetchedMs, "checkMs", elapsed.TotalMilliseconds() - fetchedMs)
-      return answers
+      return { code: msg.GetResponseCode(), body: msg.GetString(), fetchMs: elapsed.TotalMilliseconds() }
     end if
-    remaining = timeouts.UPSTREAM_PREFLIGHT_MS - elapsed.TotalMilliseconds()
+    remaining = timeoutMs - elapsed.TotalMilliseconds()
   end while
 
   req.AsyncCancel()
-  m.log.info("Upstream manifest check timed out", "format", format, "ms", elapsed.TotalMilliseconds())
-  return false
+  return invalid
 end function
 
 ' setupVideoContentWithAuth: Configures video content URL and applies authentication

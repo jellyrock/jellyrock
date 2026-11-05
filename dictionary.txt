@@ -83,6 +83,7 @@ autocomplete
 autoscale
 autosub
 AV1
+AVC
 backends
 backfill
 Backfill
@@ -381,6 +382,8 @@ JSONC
 JSONL
 Keep-a-Changelog
 keepalive
+keyframe
+keyframes
 last-checked
 last-updated
 lexically

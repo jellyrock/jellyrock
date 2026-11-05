@@ -2527,6 +2527,16 @@ The auth guard (`AuthManager.canActivate`) refuses a guarded route requested whi
 
 Ruled out: redirecting to `/users` with `UserSelect` fetching its own list, which still moves the viewer, is still wrong with no server and adds a second list builder; and refusing, then running `reenterLogin()` on the main thread, which pulls a viewer typing a password back to the picker. Recheck if the app ever signs a user out mid-session (on a 401, say): that viewer is on a guarded screen, and a refusal would strand them there, so that path needs its own route to sign-in.
 
+## decision-id: remux-overflow-reencode-retry
+
+**date**: 2026-11-03
+**status**: accepted
+**related-files**: `components/video/VideoPlayerView.bs`, `components/ItemGrid/LoadVideoContentTask.bs`, `source/utils/playbackRetry.bs`, `source/utils/hlsMaster.bs`, `source/utils/playbackReport.bs`
+
+A `buffer:loop:` error on a transcoded HLS stream (Live TV aside) retries once with the video re-encoded (`AllowVideoStreamCopy = false`), because a copied video can only be cut at the source's keyframes and segment length cannot bound it. Measured 2026-11-03 on a Roku Ultra against a 12.2 server: a 140 Mbps HEVC source with keyframes 8.34 s apart asked for 1 s segments and got a 165 MB one, against a 31.6 MB buffer. The retry lists HEVC first, so a server that encodes HEVC keeps 4K. A default server (`AllowHevcEncoding` off) encodes 4K H.264 instead, which froze in buffering on the Ultra (Roku documents AVC to level 4.2), and a width limit in a codec profile caps every codec, not H.264 alone. So the retry's load reads the master playlist's `CODECS` and `RESOLUTION` and asks once more at 1080p for H.264 above it, or for a source above 1080p whose playlist cannot be read; with it, the same source played 7 s after the retry. A retry's flags then last for the rest of the version's playback: every audio, subtitle or gear reload carries them, and only a version switch resets them. The server still allows direct play when it may not copy the video (`MediaInfoHelper`), so a re-encode that dropped an earlier forced transcode could be offered the direct play that had failed, and the retries could cycle. Live TV is left out until a live overflow is measured: a live re-encode would need its own 1080p check, and the playlist read skips live loads, whose second `PlaybackInfo` opens a second stream.
+
+Ruled out: a progressive MKV remux (reverted 2026-04-27: no duration, so no scrubbing); always capping the retry at 1080p, which loses 4K on servers that encode HEVC; HEVC first alone, which still stalls on default servers; starting each reload without the retry's flags, which repeats a recovered failure on every track or gear change; and choosing the retry from bitrate before playing, since the client cannot see keyframe spacing and a 55 Mbps short-GOP remux plays as copied. To re-evaluate: if Jellyfin gains per-codec resolution limits, or reports the encoder it will use.
+
 ## decision-id: syncplay-group-repeat-rides-queue
 
 **date**: 2026-11-03

@@ -1208,6 +1208,12 @@
       ]
     },
     {
+      "name": "AllowVideoStreamCopy",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
       "name": "ArtistIds",
       "sourceFiles": [
         "source/api/items.bs"
@@ -1565,6 +1571,12 @@
     },
     {
       "name": "Value",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "VideoCodec",
       "sourceFiles": [
         "source/api/items.bs"
       ]
@@ -3632,18 +3644,18 @@
     },
     "counts": {
       "endpoints": 99,
-      "requestFields": 62,
+      "requestFields": 64,
       "responseFields": 223,
       "unresolvedEndpointSinks": 3
     },
     "unresolvedEndpointSinks": [
       {
         "sourceFile": "source/api/items.bs",
-        "line": 445
+        "line": 476
       },
       {
         "sourceFile": "source/api/items.bs",
-        "line": 460
+        "line": 491
       },
       {
         "sourceFile": "source/utils/subtitles.bs",
