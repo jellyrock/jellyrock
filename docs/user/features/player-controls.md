@@ -27,7 +27,7 @@ Move along the row with **Left** and **Right**, and press **OK** to select. A bu
 - **Previous and next:** go to the previous or next item in your queue. They're grayed out when there is none. With **Repeat all** on, they wrap around at both ends of the queue; with **Repeat one**, either plays the same video again and a message says so.
 - **Play and pause.**
 - **Version:** switch between the versions of a video that has more than one.
-- **Audio:** switch to another audio track.
+- **Audio:** switch to another audio track. A video never starts on a commentary track while it has another one, so choose it here to hear it. Audio description is skipped the same way, unless the file marks it as its default track (with [Play Default Audio Track](../app-settings.md#playbackPlayDefaultAudioTrack) on) or your Roku's Audio Guide is on.
 - **Subtitles:** turn subtitles on or off, or pick another track.
 - **Chapters:** open the video's chapter list.
 - **LIVE:** on a live channel, go back to the live broadcast. See [Live TV and recordings](live-tv.md).
@@ -46,6 +46,8 @@ In the gear menu, pick **Repeat**, then **Off**, **Repeat all** or **Repeat one*
 During a Cinema Mode intro, **Repeat one** plays the video the intro is for, not the intro. Previous and next start that video too, with no message.
 
 Your pick lasts for this video and the rest of what you queued with it; the next thing you play starts with repeat off. While repeat is on, or a quality cap is set, the gear shows in the highlight color. Music has its own repeat button on the [now-playing screen](music.md).
+
+In a [SyncPlay](syncplay.md) group, **Repeat** sets the group's repeat mode, so it changes what plays next for everyone, and the gear gains **Shuffle**, **SyncPlay Time Offset** and **Leave Group**.
 
 ## Seek
 

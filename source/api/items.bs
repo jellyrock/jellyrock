@@ -969,8 +969,8 @@ end sub
 ' multichannel codec setting (playbackPreferredMultichannelCodec). Clamped to the reliably-
 ' encodeable HLS surround targets: eac3 (default) and ac3. dts is intentionally excluded: the
 ' Jellyfin server emits no audio stream for a dts transcode target (verified on 10.11), so a dts
-' fallback would itself re-trigger the issue #573 failure. Both eac3 and ac3 are valid HLS audio
-' targets in every video transcoding container (ts and mp4), so no per-container clamp is needed.
+' fallback would itself re-trigger the issue #573 failure. Both eac3 and ac3 are valid audio
+' targets in the ts HLS profile, the only video transcoding profile offered.
 function resolveMultichannelSurroundTarget(preferredMultichannelCodec as string) as string
   if isValidAndNotEmpty(preferredMultichannelCodec) and LCase(preferredMultichannelCodec) = "ac3"
     return "ac3"

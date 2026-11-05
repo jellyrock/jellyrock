@@ -1877,6 +1877,7 @@ Ruled out: one merged editor bsconfig (all-tests plus the plugins in `bsconfig.j
 
 **date**: 2026-10-01
 **status**: accepted
+**partially-superseded-by**: `hls-transcodes-ts-only` (its ruled-out "dropping the `fmp4` transcode profile")
 **related-files**: `source/utils/deviceCapabilities.bs`
 
 The device profile advertises an audio format only where Roku's media spec documents it AND the device reports it, and `dts` / `truehd` are never transcode targets. This carries `audio-direct-play-surround-containers` from the audio rows to the video rows: TrueHD, absent from the spec, is direct-played nowhere; DTS-HD and `DTS:X` (`dtshd`, `dtsx`), also absent, are direct-played nowhere either, and the DTS-HD MA tracks measured were reported by Jellyfin as `dts` and played as their DTS core; DTS, which the spec lists as passthrough and whose core carries at most 5.1, is direct-played up to 6 channels; and neither appears in a transcode profile's `AudioCodec`, because Jellyfin copies a source codec it finds there rather than converting it. The mid-play track switch (`isStreamDirectPlayable`) asks the same question, `getActualCodecSupport` plus the same refusals, the Decode Multichannel Audio cap and the AAC profile rule, so a switch goes native only where the server would have direct-played the track, and otherwise reloads. Measured on a Roku Ultra `4850X` whose soundbar advertises `MAT`, `DTS` and `DTSHD` at 8ch: TrueHD failed to start, direct or copied into `fmp4` HLS; a `DTS-HD MA + DTS:X` 7.1 track failed to start (error -3); DTS copied into `fmp4` HLS played silent (#821, #892) while the same soundbar plays direct DTS with sound. With this change each converts to `eac3` in ts and plays with sound. (Where the earlier note says the device "really can decode" DTS, that is passthrough: the spec lists DTS as passthrough only.) `getSupportedPassthruCodecs` still counts a `dtshd` sink: it only detects surround passthrough for choosing a transcode target, and never adds a direct-play row.
@@ -2493,7 +2494,7 @@ Ruled out: a watchdog that nudges a stuck node, which recovers but leaves the gr
 **status**: accepted
 **related-files**: `components/syncplay/SyncPlayManager.bs`, `source/syncplay/syncPlayPlayback.bs`
 
-A SyncPlay member behind the group whose last seek the tracker gave up (`trackPlayerEvent`'s `seekGaveUp`: the landing budget ran out with the node still buffering, which it reports as a stall, or without the node ever reaching `playing`; kept as `SyncPlayManager.lastSeekGaveUp`, cleared by a seek that lands and settles) does not seek to catch up: it posts a Seek to its own position, so the server brings the others to it, and the Seek that comes back finds the node where it asked (`seekIsWhereWeAre`), so the node pauses and reports Ready with no seek. Once per pause chain, so a member that keeps falling behind rewinds the group once, not every few seconds; after that the correction is skipped until a group Pause. The hold for a member ahead is unchanged. On a direct-played 100 Mbps file (Stick 4K, local 12.2 server, 2026-11-01) every seek-correction was given up at the landing budget: a frozen picture for them, a stall the whole group waited on, and the member behind anyway; with this, the group's Seek came back to the member's position, no seek was written, and the drift settled at 0 to 4 ms (a run with an injected seek the node never landed). The bar was first a 6 s time proxy (`seekOutlastsBudgets`, replaced in commit `677d6c70`): the manager records how long the tracker took to end a seek, and a real slow seek reports its target position at once so only the landing budget runs (the records show seeks timed at 3.7 s and 10.4 s recorded as about 3.1 s and 3.2 s), so that bar fired only for a seek whose position never reached the target. Ruled out: a cap on the lead alone (only a seek that landed recorded its time, so the lead was already bounded at about 6.5 s by accident, and the freeze and the stall stay); a plain skip (the member stays behind until the next command); Buffering then Ready (`WaitingGroupState.HandleRequest(ReadyGroupRequest)` answers a Ready more than 500 ms off the group's position with a corrective Seek on servers through 12.0 and after any Seek; from 12.1 a Ready with `IsPlaying` true and no position jump is accepted up to a 60 s catch-up offset, so that alternative only fails on the older lines the app still supports). Playback-rate catch-up, web's speed-to-sync, has no Roku `Video` field to drive it.
+A SyncPlay member behind the group whose last seek the tracker gave up (`trackPlayerEvent`'s `seekGaveUp`: the landing budget ran out with the node still buffering, which it reports as a stall, or without the node ever reaching `playing`; kept as `SyncPlayManager.lastSeekGaveUp`, cleared by a seek that lands and settles) does not seek to catch up: it posts a Seek to its own position, so the server brings the others to it, and the Seek that comes back finds the node where it asked (`seekIsWhereWeAre`), so the node pauses and reports Ready with no seek. Once per pause chain, so a member that keeps falling behind rewinds the group once, not every few seconds; after that the correction is skipped until a group Pause. The hold for a member ahead is unchanged. On a direct-played 100 Mbps file (Stick 4K, local 12.2 server, 2026-11-01) every seek-correction was given up at the landing budget: a frozen picture for them, a stall the whole group waited on, and the member behind anyway; with this, the group's Seek came back to the member's position, no seek was written, and the drift settled at 0 to 4 ms (a run with an injected seek the node never landed). The bar was first a 6 s time proxy (`seekOutlastsBudgets`, replaced in commit `677d6c70`): the manager records how long the tracker took to end a seek, and a real slow seek reports its target position at once so only the landing budget runs (the records show seeks timed at 3.7 s and 10.4 s recorded as about 3.1 s and 3.2 s), so that bar fired only for a seek whose position never reached the target. Ruled out: a cap on the lead alone (only a seek that landed recorded its time, so the lead was already bounded at about 6.5 s by accident, and the freeze and the stall stay); a plain skip (the member stays behind until the next command); Buffering then Ready (`WaitingGroupState.HandleRequest(ReadyGroupRequest)` answers a Ready more than 500 ms off the group's position with a corrective Seek on servers through 12.0 and after any Seek; from 12.1 a Ready with `IsPlaying` true and no position jump is accepted up to a 60 s catch-up offset, so that alternative only fails on the older lines the app still supports). Playback-rate catch-up, web's speed-to-sync, would need Roku's undocumented `Video.playbackSpeed`, which the Stick 4K and the Ultra follow for stereo AAC but a Roku Stick `3600X` ignores (measured 2026-11-03, #1316).
 
 ## decision-id: catalog-release-dates-newest-line
 
@@ -2535,6 +2536,81 @@ Ruled out: redirecting to `/users` with `UserSelect` fetching its own list, whic
 A `buffer:loop:` error on a transcoded HLS stream retries once with the video re-encoded (`AllowVideoStreamCopy = false`), because a copied video can only be cut at the source's keyframes and segment length cannot bound it. Measured 2026-11-03 on a Roku Ultra against a 12.2 server: a 140 Mbps HEVC source with keyframes 8.34 s apart asked for 1 s segments and got a 165 MB one, against a 31.6 MB buffer. The retry lists HEVC first, so a server that encodes HEVC keeps 4K. A default server (`AllowHevcEncoding` off) encodes 4K H.264 instead, which froze in buffering on the Ultra (Roku documents AVC to level 4.2), and a width limit in a codec profile caps every codec, not H.264 alone. So the retry's load reads the master playlist's `CODECS` and `RESOLUTION` and asks once more at 1080p for H.264 above it; with it, the same source played 7 s after the retry.
 
 Ruled out: a progressive MKV remux (reverted 2026-04-27: no duration, so no scrubbing); always capping the retry at 1080p, which loses 4K on servers that encode HEVC; HEVC first alone, which still stalls on default servers; and choosing the retry from bitrate before playing, since the client cannot see keyframe spacing and a 55 Mbps short-GOP remux plays as copied. To re-evaluate: if Jellyfin gains per-codec resolution limits, or reports the encoder it will use.
+
+## decision-id: syncplay-group-repeat-rides-queue
+
+**date**: 2026-11-03
+**status**: accepted
+**related-files**: `components/syncplay/SyncPlayManager.bs`, `source/syncplay/syncPlayQueue.bs`, `source/syncplay/syncPlayHooks.bs`, `source/utils/playbackSettingsMenu.bs`, `components/video/OSD.bs`
+
+In a SyncPlay group the group's repeat mode is written onto the local queue: `SyncPlayManager.syncGroupModes` copies each `PlayQueue` update's `RepeatMode` to `QueueManager.setRepeatMode` while the queue holds the group's item (and `applyQueue` does as it sets the queue), then publishes and tells the player `queuechanged`, so an open OSD reads again. The OSD, the gear's tint and the step buttons keep one holder in and out of a group, which `video-repeat-belongs-to-queue` chose the mode's words for. A pick while following goes to the server (`control({ kind: "repeat" })`) and comes back as the update that writes every member. Published first, told after: the OSD reads the group's modes off `sync` as it refreshes, and told first it read the modes from before the update (RTA, Stick 4K, 2026-11-03).
+
+Ruled out: a published `sync.repeatMode` the OSD reads only while following, which leaves two readers to keep in step and a race between them after a leave. The shuffle mode stays the group's alone (`sync.shuffleMode`): no local video shuffle exists to mirror into. The operator chose `mirror` over `sync-field` (project `2026-10-syncplay`, phase F step 2, 2026-11-03).
+
+## decision-id: syncplay-offset-applies-at-pick
+
+**date**: 2026-11-03
+**status**: accepted
+**related-files**: `components/syncplay/SyncPlayManager.bs`, `source/syncplay/syncPlayPlayback.bs`, `source/utils/playbackSettingsMenu.bs`
+
+A SyncPlay Time Offset picked in the player's gear takes effect at once. The pick sends a `timeOffset` control that arms the drift check with a bar of its own, `PICK_CORRECTION_MS` (50 ms either way), so a member behind seeks ahead with a "Syncing with the group" toast and one ahead holds, without waiting for the next `Unpause`. Normal drift keeps the resume bars (150 ms ahead, 400 ms behind), so the drift reading's own noise never seeks.
+
+The bar is half the gear's 100 ms step (`playbackSettingsMenu.TIME_OFFSET_STEP_MS`; a unit test pins the two), halfway between the reading's noise and one step. Settled readings ran from −8 to +2 ms and one step read 74 to 106 ms (Stick 4K, 12.4 server, 2026-11-04), so every step starts a correction and noise alone never does. The drift reading uses the notified `Video.position`, so a step down crosses the bar only while that reading's phase error after the last resume is under 50 ms. Readings after resumes and seeks sat 49 to 73 ms off in some runs (Stick 4K, 2026-11-04), and whether that is the node or the reading is an open question. A value between the steps is typed in Settings and applies at the next resume. A pick promises a correction, not a landing inside the bar: a seek resumes a little late (one landed about 55 ms behind in the same run). The gear's label shows the offset alone, so the drift is published per position in RTA builds only. The cost is the seek's frozen picture when the offset is raised (2.1 to 2.6 s on a Stick 4K, measured 2026-10-31).
+
+Ruled out:
+
+- Applying the pick at the next resume, which made a change seem to do nothing.
+- The resume bars for a pick, which left any raise under 400 ms uncorrected.
+- A bar equal to the step (the first version), which corrected 1 of 10 one-step raises in the 2026-11-04 run.
+- A 200 ms step, which leaves three choices to tune by ear.
+- Matching playback speed, deferred to #1316.
+
+50 ms steps were first ruled out as sitting at the reading's noise. The 2026-11-04 noise allows them (a 25 ms bar would keep about 15 ms of margin), so they stay open if 100 ms proves too coarse by ear. The operator chose `midpoint` over `coarser` (2026-11-04).
+
+## decision-id: syncplay-leave-ends-group-repeat
+
+**date**: 2026-11-03
+**status**: accepted
+**related-files**: `components/syncplay/SyncPlayManager.bs`, `components/manager/QueueManager.bs`, `source/utils/queueRepeat.bs`
+
+When following ends, by a halt or a leave, the repeat a SyncPlay group wrote onto the local queue goes off (`SyncPlayManager.releaseGroupRepeat`, from `haltFollowing` and `leaveLocally`), then the manager publishes and tells the player `queuechanged` so an open OSD reads it again. The queue records who set its mode (`QueueManager.setRepeatMode(mode, by)`, with `queueRepeat.BY_VIEWER` or `BY_GROUP`; `set()` keeps the setter and `clear()` forgets it), and `releaseRepeatMode(BY_GROUP)` turns the mode off only while the group still holds it. So a mode the viewer picked after a halt, or a new local queue, keeps its own, and a follow again writes the group's mode back (`applyQueue`). Once following ends, what plays is the viewer's own, and jellyfin-web restores its own queue on leave, so a group's mode never carries into local playback.
+
+Ruled out: deciding by whether the queue's current item is the group's (the first version). It kept the group's repeat after a halt, missed a queue still on the group's previous item after a failed load, and wiped a halted viewer's own pick at leave; all three were reproduced as failing unit tests (Stick 4K, 2026-11-04). Also ruled out: a boolean on the manager, which can't see a `clear()` and so could write onto a queue it never touched. The operator chose `owner` over `flag` and `proxy` (2026-11-04).
+
+## decision-id: syncplay-duplicate-restart-absorbed
+
+**date**: 2026-11-03
+**status**: accepted
+**related-files**: `components/syncplay/SyncPlayManager.bs`, `source/syncplay/syncPlayQueue.bs`
+
+A `NextItem` or `PreviousItem` update whose playlist id is unchanged reloads nothing when it finds this member still loading that restart or ready at its start before the group's `Unpause` (`syncPlayQueue.restartAbsorbed`). While loading, the `Ready` at the load's end answers both; when the `Ready` already went out, it is sent again, because the server started a new wait. Under `RepeatOne` the server's `Next()` keeps the index and bumps `LastChange`, and drops a duplicate only by `PlaylistItemId` (`WaitingGroupState` and `PlayQueueManager`, read 2026-11-03), so two members pressing next restarted the group twice. Reproduced on a Stick 4K against a 12.2 server: a second `NextItem` sent while the Roku loaded the first restart reloaded the item twice, and once with this. Two frames arriving together never showed it, since the newer fetch supersedes the older.
+
+## decision-id: hls-transcodes-ts-only
+
+**date**: 2026-11-03
+**status**: accepted
+**partially-supersedes**: `audio-profile-documented-and-reported` (its ruled-out "dropping the `fmp4` transcode profile")
+**related-files**: `source/utils/deviceCapabilities.bs`
+
+The device profile offers one HLS video transcoding profile, `ts`; the `mp4` (`fMP4`) one is gone. Roku's media spec lists TS as the only HLS chunk format that may mux audio and video ("muxing audio and video not supported for CMAF"), and Jellyfin's `fMP4` HLS puts both tracks in the same fragments, so video plays and audio never starts. Measured 2026-11-03 against a 12.2 server on a Streaming Stick 4K, a Roku Ultra `4850X` and a Roku Stick `3600X`: every `fMP4` variant tried (AAC copied or re-encoded, stereo or 5.1, H.264 or HEVC) reported `audioFormat` none with the audio clock at 0, while TS with AAC played with sound. With TS only, the AAC 5.1, AC3 5.1 and EAC3 5.1 titles that were silent in `fMP4` on the Stick 4K play AAC in TS; the Ultra is unchanged.
+
+Array order was not enough: from 10.8 the server ranks profiles by video and audio fit and uses order only to break a tie, so the `mp4` profile's longer audio list (`alac`, `flac`, `opus`) won whenever it fit the source better. #573 (stereo) and #1079 (copied DTS) were this one cause, patched per trigger. The older note kept `fMP4` for Dolby Vision; on the Ultra the Dolby Vision 8.1 remux was already TS (`-hls_segment_type mpegts`, video copied, `eac3` with sound), and nothing in the server or the profile sends Dolby Vision to `fMP4`. Ruled out: equalizing the two audio lists so the tie goes to TS, which still routes HEVC and some sources to `fMP4`. To re-evaluate: if Roku's spec gains muxed CMAF, or Jellyfin serves `fMP4` HLS with audio and video in separate tracks.
+
+## decision-id: playable-default-audio-track
+
+**date**: 2026-11-03
+**status**: accepted
+**related-files**: `source/utils/streamSelection.bs`, `source/utils/deviceCapabilities.bs`
+
+With "Play default audio track" on, a default track this Roku cannot direct-play (TrueHD, for one) gives way to a same-language, non-commentary track it can play, with no fewer channels than the viewer would get from the default once the server converts it: the least of its channels, the device maximum and `SURROUND_TRANSCODE_MAX_CHANNELS` (6), because the server's `eac3` and `ac3` encoders stop at 5.1. So a 7.1 default gives way to a 5.1 track even on a 7.1 system, and a playable 7.1 track still beats a 5.1 one; `playableAlternativeToDefault()` decides. The 5.1 limit is read from Jellyfin 12.2's source (`_audioTranscodeChannelLookup`), not measured on a 7.1 system. The server converts an unplayable default anyway, and a playable track lets the video direct-play or copy, which avoids remuxing long-GOP 4K sources at all. Measured 2026-11-03 on a Roku Ultra: a 4K HDR10 file with a TrueHD default and an `AC3` 5.1 track went from a remux to `PlayMethod: DirectPlay ... Reasons: 0`. A playable default is kept, so a playable AAC 2.0 default still beats an `AC3` 5.1. Ruled out: leaving the choice to the server, which converts the audio and can lose the original video; a setting for it, which most viewers would never find.
+
+## decision-id: audio-description-never-auto-picked
+
+**date**: 2026-11-04
+**status**: accepted
+**related-files**: `source/utils/streamSelection.bs`
+
+Commentary and audio-description tracks stay out of the automatic audio pick while the file has another track (#500, `isHiddenFromAutoPick()`), so a stereo narration track can't win on channel count. Audio description is the main track for blind and low-vision viewers, so it is kept where its viewer has asked for it: the file flags it default and "Play default audio track" is on, or the Roku's Audio Guide (screen reader) is on, when it ranks like a main track. The swap in `playableAlternativeToDefault()` replaces a default only with a track of the same kind and never with commentary. Detection is by title only ("description", "descriptive" or "described" anywhere, or "AD" as a capitalized whole word): Jellyfin 12.2's media probe sets `IsHearingImpaired` from the `hearing_impaired` disposition ffmpeg reports and never reads `visual_impaired`, so `MediaStream` carries no audio-description flag. Ruled out: hiding audio description in every case, which made a viewer who flagged it default in their own files pick it for each video; hiding it only in the swap, since the channel ranking could already pick it by accident; and preferring it whenever Audio Guide is on, since some screen-reader users don't want narration. Re-evaluate if Jellyfin adds an audio-description flag, or if viewers ask for a setting to prefer it.
 
 ## Migrated to ADRs
 

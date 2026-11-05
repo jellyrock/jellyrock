@@ -129,6 +129,7 @@ sub init()
   m.osd.observeField("action", "onOSDAction")
   m.osd.observeField("playbackCapsPick", "onPlaybackCapsPicked")
   m.osd.observeField("repeatModePick", "onRepeatModePicked")
+  m.osd.observeField("syncPlayPick", "onSyncPlayPicked")
   m.trickplayCarousel = m.top.findNode("trickplayCarousel")
 
   ' Trickplay seek position tracking - we parse Roku's trickPlayBar text to get
@@ -310,10 +311,19 @@ end sub
 ' @param {string} action - skip action to take
 sub handleItemSkipAction(action as string)
   ' In a SyncPlay group the step is the group's: the server's queue update moves every member.
+  ' A step whose target is this item (RepeatOne, or RepeatAll on a one-item playlist) has the
+  ' server start it over for everyone, so the press says why here as it does outside a group.
   group = syncPlayHooks.groupQueue()
   if isValid(group)
-    if action = "itemnext" and group.hasNext then syncPlayHooks.control({ kind: "next" })
-    if action = "itemback" and group.hasPrevious then syncPlayHooks.control({ kind: "previous" })
+    asked = false
+    stepTarget = group.previousIndex
+    if action = "itemnext"
+      stepTarget = group.nextIndex
+      if group.hasNext then asked = syncPlayHooks.control({ kind: "next" })
+    else if action = "itemback" and group.hasPrevious
+      asked = syncPlayHooks.control({ kind: "previous" })
+    end if
+    if asked and stepTarget = group.index then sayPlayingAgain()
     return
   end if
 
@@ -341,10 +351,12 @@ sub handleItemSkipAction(action as string)
   ' A press that plays this item again says why, once: the viewer asked for the next item and
   ' gets this one. An automatic replay at the end says nothing, since that is what repeat is for.
   ' A press on an intro moves to the launched item, the next thing to play, so it says nothing.
-  if targetPosition = queuePosition and not isTvChannel and not m.isIntro
-    displayToast(translate(translationKeys.MessageRepeatPlayingAgain), "info")
-  end if
+  if targetPosition = queuePosition and not isTvChannel and not m.isIntro then sayPlayingAgain()
   switchToQueueItem(queueManager, targetPosition)
+end sub
+
+sub sayPlayingAgain()
+  displayToast(translate(translationKeys.MessageRepeatPlayingAgain), "info")
 end sub
 
 ' The channel's playback start is opened before this player stops, and the player mounted next
@@ -799,15 +811,43 @@ end sub
 
 ' The viewer picked a repeat mode in the OSD's gear menu. It belongs to this queue, is not
 ' saved, and nothing reloads: the host reads it when this item finishes, and the OSD's step
-' buttons read it as the OSD opens.
+' buttons read it as the OSD opens. In a SyncPlay group the mode is the group's: the pick goes
+' to the server (syncPlayHooks.control), whose queue update writes it onto every member's queue
+' (SyncPlayManager.syncGroupModes), this one included, and tells the OSD then.
 sub onRepeatModePicked()
   mode = m.osd.repeatModePick
   if not isValidAndNotEmpty(mode) then return
-  m.global.queueManager.callFunc("setRepeatMode", mode)
+  if syncPlayHooks.control({ kind: "repeat", mode: mode })
+    m.log.info("Repeat mode asked of the group", "mode", mode)
+    return
+  end if
+  m.global.queueManager.callFunc("setRepeatMode", mode, queueRepeat.BY_VIEWER)
   m.log.info("Repeat mode picked", "mode", mode)
   ' The step buttons and the gear's tint read the mode: show the pick now. The Next Episode
   ' prompt reads it on each position tick (checkTimeToDisplayNextEpisode).
   m.osd.callFunc("refreshFromQueue")
+end sub
+
+' The viewer picked one of the gear's SyncPlay rows ({ kind, value }, OSD.syncPlayPick). A shuffle
+' goes to the group, which answers every member with its reordered playlist. The time offset is
+' the viewer's own saved setting (the same one the Playback settings screen edits): the manager
+' takes it at once and corrects the drift it makes, with no Unpause (SyncPlayManager.control).
+' Leave Group posts the Leave; what plays goes on as the viewer's own.
+sub onSyncPlayPicked()
+  pick = m.osd.syncPlayPick
+  if not isValid(pick) or not isValidAndNotEmpty(pick.kind) then return
+  if pick.kind = "shuffle"
+    if syncPlayHooks.control({ kind: "shuffle", mode: pick.value }) then m.log.info("Shuffle asked of the group", "mode", pick.value)
+  else if pick.kind = "timeOffset"
+    if not isValid(pick.value) then return
+    user.settings.Save("playbackSyncPlayTimeOffsetMs", int(pick.value))
+    m.log.info("SyncPlay time offset picked", "ms", int(pick.value))
+    ' The manager takes the saved setting at once and corrects the drift it makes, without an Unpause.
+    syncPlayHooks.control({ kind: "timeOffset" })
+    m.osd.callFunc("refreshFromQueue")
+  else if pick.kind = "leave"
+    if syncPlayHooks.leaveGroup() then m.log.info("Leave Group picked in the player")
+  end if
 end sub
 
 ' onVideoSourceChange: Handles video source switching from OSD
@@ -2716,6 +2756,7 @@ sub onDestroy()
     m.osd.unobserveField("action")
     m.osd.unobserveField("playbackCapsPick")
     m.osd.unobserveField("repeatModePick")
+    m.osd.unobserveField("syncPlayPick")
     m.osd.callFunc("onDestroy")
   end if
 
@@ -2967,6 +3008,14 @@ function handleTransport(evt as object) as object
   if cmd = "seekto"
     if not isValid(evt.position) then return { status: "error.generic" }
     return seekToWithBounds(evt.position, evt.fromGroup = true)
+  end if
+
+  ' The SyncPlay group's queue changed under this player (a mode, a reorder, a playlist edit),
+  ' so an open OSD reads its step buttons and the gear's tint again (SyncPlayManager.syncGroupModes).
+  if cmd = "queuechanged"
+    if evt.fromGroup <> true then return { status: "unhandled" }
+    if isValid(m.osd) then m.osd.callFunc("refreshFromQueue")
+    return { status: "success" }
   end if
 
   if cmd = "playpause"

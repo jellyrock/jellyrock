@@ -42,6 +42,7 @@ aac
 AAs
 ABI
 ac3
+AC3
 Accessors
 ack
 ack-aware
@@ -158,6 +159,7 @@ CLI-driven
 CLIs
 cloneable
 closable
+CMAF
 codebase
 codebehind
 codebehinds
@@ -426,7 +428,9 @@ multicast
 multichannel
 multiline
 musicvideo
+mux
 muxed
+muxing
 MVC
 namespace
 namespaced
@@ -785,6 +789,7 @@ Vitest
 Vitest's
 vorbis
 Vorbis
+VP9
 vscode
 VSCode
 VTT
