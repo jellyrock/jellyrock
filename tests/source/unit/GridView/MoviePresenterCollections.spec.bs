@@ -1,4 +1,4 @@
-import "pkg:/source/GridView/collectionsView.bs"
+import "pkg:/source/GridView/libraryTab.bs"
 import "pkg:/source/GridView/MoviePresenter.bs"
 
 namespace tests
@@ -31,7 +31,7 @@ namespace tests
     ' `top.callFunc` records instead of dispatching: it is how a presenter asks the host
     ' to run the filter load, so recording it is what lets a test see whether the load was
     ' requested at all.
-    private sub attach(serverVersion as string, currentView = "MoviesGrid" as string)
+    private sub attach(serverVersion as string, currentView = "movies" as string)
       m.hostCalls = []
       m.presenter.onInit({
         top: {
@@ -89,8 +89,7 @@ namespace tests
 
       names = m.viewNames(m.presenter.getOptions(m.library()))
 
-      m.assertTrue(inArray(names, collectionsView.VIEW_NAME))
-      m.assertEqual(names.count(), 5, "it is added to the four existing views, not replacing one")
+      m.assertEqual(names, ["movies", "collections", "genres", "studios"], "second, where the web puts it, added to the other three")
     end function
 
     @it("does not offer Collections on a server that ignores the scope")
@@ -102,17 +101,17 @@ namespace tests
 
       names = m.viewNames(m.presenter.getOptions(m.library()))
 
-      m.assertFalse(inArray(names, collectionsView.VIEW_NAME))
-      m.assertEqual(names, ["Movies", "MoviesGrid", "Studios", "Genres"])
+      m.assertFalse(inArray(names, libraryTab.COLLECTIONS))
+      m.assertEqual(names, ["movies", "genres", "studios"])
     end function
 
-    @it("does not offer Collections inside a genre, which lists only the two movie views")
+    @it("does not offer Collections inside a genre, which lists only its movies")
     function _()
       m.attach("12.0.0")
 
       names = m.viewNames(m.presenter.getOptions({ Id: "g1", type: "Genre" }))
 
-      m.assertEqual(names, ["Movies", "MoviesGrid"])
+      m.assertEqual(names, ["movies"])
     end function
 
     @it("does not offer Collections inside a studio, only on the library itself")
@@ -123,7 +122,7 @@ namespace tests
 
       names = m.viewNames(m.presenter.getOptions({ Id: "s1", type: "Studio", parentId: "movies-lib" }))
 
-      m.assertEqual(names, ["Movies", "MoviesGrid", "Studios", "Genres"])
+      m.assertEqual(names, ["movies", "genres", "studios"])
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -135,7 +134,7 @@ namespace tests
     ' collection holding it: offering them is a control that appears to do nothing. The
     ' surviving list is the one jellyfin-web uses on its own Collections tab.
     function _()
-      m.attach("12.0.0", collectionsView.VIEW_NAME)
+      m.attach("12.0.0", libraryTab.COLLECTIONS)
 
       sorts = m.optionNames(m.presenter.getOptions(m.library()).sort)
 
@@ -144,7 +143,7 @@ namespace tests
 
     @it("drops Resumable, which is not a thing a collection is")
     function _()
-      m.attach("12.0.0", collectionsView.VIEW_NAME)
+      m.attach("12.0.0", libraryTab.COLLECTIONS)
 
       filters = m.optionNames(m.presenter.getOptions(m.library()).filter)
 
@@ -157,7 +156,7 @@ namespace tests
     ' BoxSets returns nothing at all. The cached lists are still present here: this is
     ' the view suppressing them, not the load never having run.
     function _()
-      m.attach("12.0.0", collectionsView.VIEW_NAME)
+      m.attach("12.0.0", libraryTab.COLLECTIONS)
       ' Delivered through the real path the filter load uses, so the cache is populated
       ' exactly as a live load would leave it.
       m.presenter.onFiltersLoaded({
@@ -175,7 +174,7 @@ namespace tests
     @it("still offers the movie sorts and dynamic categories in the other views")
     ' The guard above must be scoped to the Collections view, not to the presenter.
     function _()
-      m.attach("12.0.0", "MoviesGrid")
+      m.attach("12.0.0", "movies")
       m.presenter.onFiltersLoaded({ Genres: ["Drama"] }, "")
 
       options = m.presenter.getOptions(m.library())
@@ -193,10 +192,10 @@ namespace tests
     ' Recursive is what the 12.x servers scope correctly. With Recursive=false, 10.11
     ' ignores IncludeItemTypes as well and answers with the user's root library folders.
     function _()
-      m.attach("12.0.0", collectionsView.VIEW_NAME)
+      m.attach("12.0.0", libraryTab.COLLECTIONS)
       task = { isRecursive: true, itemType: "", view: "", studioIds: "", genreIds: "", additionalFields: "" }
 
-      m.presenter.configureLoadTask(task, m.library(), collectionsView.VIEW_NAME)
+      m.presenter.configureLoadTask(task, m.library(), libraryTab.COLLECTIONS)
 
       m.assertEqual(task.itemType, "BoxSet")
       m.assertEqual(task.itemId, "movies-lib")
@@ -207,17 +206,17 @@ namespace tests
 
     @it("does not pay for movie fields a BoxSet has no use for")
     function _()
-      m.attach("12.0.0", collectionsView.VIEW_NAME)
+      m.attach("12.0.0", libraryTab.COLLECTIONS)
       task = { isRecursive: true, itemType: "", view: "", studioIds: "", genreIds: "", additionalFields: "" }
 
-      m.presenter.configureLoadTask(task, m.library(), collectionsView.VIEW_NAME)
+      m.presenter.configureLoadTask(task, m.library(), libraryTab.COLLECTIONS)
 
       m.assertEqual(task.additionalFields, "", "Taglines and Genres are movie fields")
     end function
 
     @it("still asks for movies in the other views")
-    @params("MoviesGrid")
-    @params("Movies")
+    @params("movies")
+    @params("studios")
     function _(viewMode)
       m.attach("12.0.0", viewMode)
       task = { isRecursive: true, itemType: "", view: "", studioIds: "", genreIds: "", additionalFields: "" }
@@ -233,20 +232,20 @@ namespace tests
     ' session that lands on Collections and stays there never pays for lists it was never
     ' shown, and one that leaves pays exactly once.
     function _()
-      m.attach("12.0.0", collectionsView.VIEW_NAME)
+      m.attach("12.0.0", libraryTab.COLLECTIONS)
       task = { isRecursive: true, itemType: "", view: "", studioIds: "", genreIds: "", additionalFields: "" }
 
-      m.presenter.configureLoadTask(task, m.library(), collectionsView.VIEW_NAME)
+      m.presenter.configureLoadTask(task, m.library(), libraryTab.COLLECTIONS)
 
       m.assertFalse(m.askedForFilters())
     end function
 
     @it("fetches them for a view that does show them")
     function _()
-      m.attach("12.0.0", "MoviesGrid")
+      m.attach("12.0.0", "movies")
       task = { isRecursive: true, itemType: "", view: "", studioIds: "", genreIds: "", additionalFields: "" }
 
-      m.presenter.configureLoadTask(task, m.library(), "MoviesGrid")
+      m.presenter.configureLoadTask(task, m.library(), "movies")
 
       m.assertTrue(m.askedForFilters())
     end function
@@ -255,13 +254,13 @@ namespace tests
     @describe("getGridConfig()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("lays the view out as a poster grid, not as the presentation view")
+    @it("lays the view out as a poster grid, even in a library left in presentation")
     ' The presentation layout drops the grid 650px down to leave room for the info panel.
     ' A Collections view has no panel, so that offset would be dead space.
     function _()
-      m.attach("12.0.0", collectionsView.VIEW_NAME)
+      m.attach("12.0.0", libraryTab.COLLECTIONS)
 
-      config = m.presenter.getGridConfig(collectionsView.VIEW_NAME)
+      config = m.presenter.getGridConfig(libraryTab.COLLECTIONS, libraryLayout.PRESENTATION)
 
       m.assertEqual(config.translation, [96, 102])
       m.assertEqual(config.numRows, "3")
@@ -270,10 +269,10 @@ namespace tests
 
     @it("shows no presentation info for the view")
     function _()
-      m.attach("12.0.0", collectionsView.VIEW_NAME)
+      m.attach("12.0.0", libraryTab.COLLECTIONS)
 
-      m.assertFalse(m.presenter.shouldShowPresentationInfo(collectionsView.VIEW_NAME))
-      m.assertEqual(m.presenter.getBackdropMode(), "fullscreen")
+      m.assertFalse(m.presenter.shouldShowPresentationInfo(libraryTab.COLLECTIONS, libraryLayout.PRESENTATION))
+      m.assertEqual(m.presenter.getBackdropMode(libraryTab.COLLECTIONS, libraryLayout.PRESENTATION), "fullscreen")
     end function
 
   end class

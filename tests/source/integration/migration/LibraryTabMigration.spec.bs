@@ -1,0 +1,264 @@
+namespace tests
+
+  ' LIBRARY_TAB_MIGRATION_VERSION: each library's saved view (`display.<id>.landing`)
+  ' becomes the web client's tab id, and the two movie views become one tab plus a
+  ' `display.<id>.layout`. Run against real `test-` registry sections.
+  @suite("Library Tab Migration - v3.3.2 Migration")
+  @tags("migration")
+  class LibraryTabMigrationTests extends tests.BaseTestSuite
+
+    protected override sub setup()
+      m.needsRegistrySetup = true
+      super.setup()
+    end sub
+
+    ' A user section the runner will migrate: it needs serverId, and a LastRunVersion
+    ' below the migration's.
+    private function userSection(testUserId as string, lastRunVersion = "3.3.1" as string) as object
+      reg = CreateObject("roRegistrySection", testUserId)
+      reg.write("serverId", m.global.server.id)
+      reg.write("LastRunVersion", lastRunVersion)
+      return reg
+    end function
+
+    private function readAll(testUserId as string) as object
+      reg = CreateObject("roRegistrySection", testUserId)
+      values = {}
+      for each key in reg.GetKeyList()
+        values[key] = reg.read(key)
+      end for
+      return values
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("rewriting the saved view")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("migrates every view name the presenters saved, one library each")
+    function _()
+      testUserId = "test-library-tab-001"
+      legacy = {
+        "lib-movies-presentation": ["Movies", "movies", "presentation"],
+        "lib-movies-grid": ["MoviesGrid", "movies", "comfortable"],
+        "lib-studios": ["Studios", "studios", ""],
+        "lib-genres": ["Genres", "genres", ""],
+        "lib-collections": ["Collections", "collections", ""],
+        "lib-shows": ["Shows", "series", ""],
+        "lib-networks": ["Networks", "studios", ""],
+        "lib-album-artists": ["AlbumArtistsGrid", "albumartists", ""],
+        "lib-albums": ["Albums", "albums", ""],
+        "lib-artists": ["ArtistsGrid", "artists", ""],
+        "lib-channels": ["livetv", "channels", ""],
+        "lib-guide": ["tvGuide", "guide", ""],
+        "lib-single-photo": ["singlephoto", "photos", ""],
+        "lib-slideshow-photo": ["slideshowphoto", "photos", ""],
+        "lib-random-photo": ["randomphoto", "photos", ""]
+      }
+
+      reg = m.userSection(testUserId)
+      for each libraryId in legacy
+        reg.write(`display.${libraryId}.landing`, legacy[libraryId][0])
+      end for
+      reg.flush()
+
+      runRegistryUserMigrations([testUserId])
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      for each libraryId in legacy
+        expected = legacy[libraryId]
+        m.assertEqual(reg.read(`display.${libraryId}.landing`), expected[1], `${expected[0]} becomes its tab id`)
+        if expected[2] = ""
+          m.assertFalse(reg.exists(`display.${libraryId}.layout`), `${expected[0]} implies no layout`)
+        else
+          m.assertEqual(reg.read(`display.${libraryId}.layout`), expected[2], `${expected[0]} implies its layout`)
+        end if
+      end for
+    end function
+
+    @it("removes a folder's default view, which names no tab")
+    function _()
+      testUserId = "test-library-tab-002"
+      reg = m.userSection(testUserId)
+      reg.write("display.lib-folder.landing", "default")
+      reg.write("display.lib-folder.sortField", "SortName")
+      reg.flush()
+
+      runRegistryUserMigrations([testUserId])
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertFalse(reg.exists("display.lib-folder.landing"))
+      m.assertEqual(reg.read("display.lib-folder.sortField"), "SortName", "the folder's other settings stay")
+    end function
+
+    @it("leaves a value it does not recognize alone")
+    ' The grid's resolveView falls back from it at load, without overwriting it.
+    function _()
+      testUserId = "test-library-tab-003"
+      reg = m.userSection(testUserId)
+      reg.write("display.lib-1.landing", "SomethingNewer")
+      reg.flush()
+
+      runRegistryUserMigrations([testUserId])
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertEqual(reg.read("display.lib-1.landing"), "SomethingNewer")
+      m.assertFalse(reg.exists("display.lib-1.layout"))
+    end function
+
+    @it("touches no other display setting")
+    function _()
+      testUserId = "test-library-tab-004"
+      reg = m.userSection(testUserId)
+      reg.write("display.lib-1.landing", "MoviesGrid")
+      reg.write("display.lib-1.sortField", "DateCreated")
+      reg.write("display.lib-1.sortAscending", "false")
+      reg.write("display.lib-1.filter", "Favorites")
+      reg.write("display.lib-1.filterOptions", "{}")
+      reg.flush()
+
+      runRegistryUserMigrations([testUserId])
+
+      values = m.readAll(testUserId)
+      m.assertEqual(values["display.lib-1.sortField"], "DateCreated")
+      m.assertEqual(values["display.lib-1.sortAscending"], "false")
+      m.assertEqual(values["display.lib-1.filter"], "Favorites")
+      m.assertEqual(values["display.lib-1.filterOptions"], "{}")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("running more than once")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("changes nothing on a second run")
+    ' A sideloaded build runs the user migrations at every launch.
+    function _()
+      testUserId = "test-library-tab-005"
+      reg = m.userSection(testUserId)
+      reg.write("display.lib-a.landing", "Movies")
+      reg.write("display.lib-b.landing", "Shows")
+      reg.write("display.lib-c.landing", "default")
+      reg.flush()
+
+      runRegistryUserMigrations([testUserId])
+      afterFirst = m.readAll(testUserId)
+      runRegistryUserMigrations([testUserId])
+
+      m.assertEqual(m.readAll(testUserId), afterFirst)
+    end function
+
+    @it("keeps a grid layout chosen after the migration")
+    ' The trap: `movies` folded to lowercase reads the same as the old presentation view
+    ' `Movies`, so a run that matched case-insensitively would put this library back into
+    ' presentation on every launch of a sideloaded build.
+    function _()
+      testUserId = "test-library-tab-006"
+      reg = m.userSection(testUserId)
+      reg.write("display.lib-1.landing", "movies")
+      reg.write("display.lib-1.layout", "comfortable")
+      reg.flush()
+
+      runRegistryUserMigrations([testUserId])
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertEqual(reg.read("display.lib-1.landing"), "movies")
+      m.assertEqual(reg.read("display.lib-1.layout"), "comfortable")
+    end function
+
+    @it("writes the layout an old name implies over one already stored")
+    ' A user who went back to an older build and picked Movies (Presentation) there:
+    ' the old name is the latest choice.
+    function _()
+      testUserId = "test-library-tab-007"
+      reg = m.userSection(testUserId)
+      reg.write("display.lib-1.landing", "Movies")
+      reg.write("display.lib-1.layout", "comfortable")
+      reg.flush()
+
+      runRegistryUserMigrations([testUserId])
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertEqual(reg.read("display.lib-1.landing"), "movies")
+      m.assertEqual(reg.read("display.lib-1.layout"), "presentation")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the version gate")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("does not run for a section already on the migration's version")
+    @params("3.3.2")
+    @params("3.4.0")
+    function _(lastRunVersion)
+      testUserId = "test-library-tab-008"
+      reg = m.userSection(testUserId, lastRunVersion)
+      reg.write("display.lib-1.landing", "MoviesGrid")
+      reg.flush()
+
+      runRegistryUserMigrations([testUserId])
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertEqual(reg.read("display.lib-1.landing"), "MoviesGrid")
+      m.assertFalse(reg.exists("display.lib-1.layout"))
+    end function
+
+    @it("runs for a section below the migration's version")
+    @params("3.3.1")
+    @params("2.13.0")
+    function _(lastRunVersion)
+      testUserId = "test-library-tab-009"
+      reg = m.userSection(testUserId, lastRunVersion)
+      reg.write("display.lib-1.landing", "MoviesGrid")
+      reg.flush()
+
+      runRegistryUserMigrations([testUserId])
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertEqual(reg.read("display.lib-1.landing"), "movies")
+      m.assertEqual(reg.read("display.lib-1.layout"), "comfortable")
+    end function
+
+    @it("follows the music view migration for a user from before it")
+    ' MUSIC_VIEW_MIGRATION_VERSION turns ArtistsPresentation into ArtistsGrid first; this
+    ' one then turns that into the web's id. File order is version order.
+    function _()
+      testUserId = "test-library-tab-010"
+      reg = m.userSection(testUserId, "1.9.0")
+      reg.write("display.lib-1.landing", "ArtistsPresentation")
+      reg.write("display.lib-2.landing", "AlbumArtistsPresentation")
+      reg.flush()
+
+      runRegistryUserMigrations([testUserId])
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertEqual(reg.read("display.lib-1.landing"), "artists")
+      m.assertEqual(reg.read("display.lib-2.landing"), "albumartists")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("more than one user")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("migrates each user's own views")
+    function _()
+      firstUser = "test-library-tab-011"
+      secondUser = "test-library-tab-012"
+      reg1 = m.userSection(firstUser)
+      reg1.write("display.lib-shared.landing", "Movies")
+      reg1.flush()
+      reg2 = m.userSection(secondUser)
+      reg2.write("display.lib-shared.landing", "MoviesGrid")
+      reg2.flush()
+
+      runRegistryUserMigrations([firstUser, secondUser])
+
+      reg1 = CreateObject("roRegistrySection", firstUser)
+      reg2 = CreateObject("roRegistrySection", secondUser)
+      m.assertEqual(reg1.read("display.lib-shared.layout"), "presentation")
+      m.assertEqual(reg2.read("display.lib-shared.layout"), "comfortable")
+      m.assertEqual(reg1.read("display.lib-shared.landing"), "movies")
+      m.assertEqual(reg2.read("display.lib-shared.landing"), "movies")
+    end function
+
+  end class
+
+end namespace

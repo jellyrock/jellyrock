@@ -238,13 +238,21 @@ export async function seedUserSelect(session, locale) {
  * seedHome and before relaunch; the per-key write merges into the user section
  * seedHome wrote.
  *
+ * `view` is a tab id from the web client's vocabulary (`movies`, `series`, `genres`;
+ * `source/GridView/libraryTab.bs`), never a name saved before it: the app's registry
+ * migration rewrites an old name at launch, so `assertSeedTookEffect` would then find
+ * the app holding a different value from the seed. How a tab is drawn is a separate
+ * setting, `display.<libraryId>.layout`: pass `layout` (`presentation`) to seed it too,
+ * or leave it out for the library's default (the poster grid).
+ *
+ * @param {{layout?: string}} [options]
  * @returns {Promise<{libraryId: string, view: string}|null>} what was written, for
  *   `assertSeedTookEffect`'s `landing` option; `null` when nothing was.
  */
-export async function seedLibraryLanding(session, libraryId, view) {
+export async function seedLibraryLanding(session, libraryId, view, { layout } = {}) {
   if (!libraryId || !view) return null;
-  await odc.writeRegistry({
-    values: { [session.userId]: { [`display.${libraryId}.landing`]: view } },
-  });
+  const keys = { [`display.${libraryId}.landing`]: view };
+  if (layout) keys[`display.${libraryId}.layout`] = layout;
+  await odc.writeRegistry({ values: { [session.userId]: keys } });
   return { libraryId, view };
 }

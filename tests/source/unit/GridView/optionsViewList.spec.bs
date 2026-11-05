@@ -1,0 +1,105 @@
+import "pkg:/source/GridView/libraryTab.bs"
+import "pkg:/source/GridView/optionsViewList.bs"
+
+namespace tests
+
+  ' The options dialog shows a tab with a layout choice once per layout, so a movie
+  ' library's View list reads as it did before the view and its layout split apart.
+  @suite("optionsViewList - the dialog's View list")
+  class OptionsViewListTests extends tests.BaseTestSuite
+
+    private function movieViews() as object
+      return [
+        { Title: "Movies", Name: libraryTab.MOVIES },
+        { Title: "Collections", Name: libraryTab.COLLECTIONS },
+        { Title: "Genres", Name: libraryTab.GENRES },
+        { Title: "Studios", Name: libraryTab.STUDIOS }
+      ]
+    end function
+
+    private function movieLayouts() as object
+      return {
+        movies: [
+          { Title: "Movies (Presentation)", Name: libraryLayout.PRESENTATION },
+          { Title: "Movies (Grid)", Name: libraryLayout.COMFORTABLE }
+        ]
+      }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("build()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("spells out each layout of a tab that offers a choice, in place")
+    function _()
+      entries = optionsViewList.build(m.movieViews(), m.movieLayouts())
+
+      m.assertEqual(entries, [
+        { Title: "Movies (Presentation)", Name: "movies", Layout: "presentation" },
+        { Title: "Movies (Grid)", Name: "movies", Layout: "comfortable" },
+        { Title: "Collections", Name: "collections", Layout: "" },
+        { Title: "Genres", Name: "genres", Layout: "" },
+        { Title: "Studios", Name: "studios", Layout: "" }
+      ])
+    end function
+
+    @it("lists every tab once when none offers a layout")
+    @params(invalid)
+    @params({})
+    function _(layouts)
+      entries = optionsViewList.build([{ Title: "Channels", Name: "channels" }, { Title: "Guide", Name: "guide" }], layouts)
+
+      m.assertEqual(entries, [
+        { Title: "Channels", Name: "channels", Layout: "" },
+        { Title: "Guide", Name: "guide", Layout: "" }
+      ])
+    end function
+
+    @it("treats an empty layout list as no choice")
+    function _()
+      entries = optionsViewList.build([{ Title: "Movies", Name: "movies" }], { movies: [] })
+
+      m.assertEqual(entries, [{ Title: "Movies", Name: "movies", Layout: "" }])
+    end function
+
+    @it("answers an empty list for anything that is not a list of tabs")
+    @params(invalid)
+    @params({})
+    function _(views)
+      m.assertEqual(optionsViewList.build(views, {}), [])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isSelected()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("ticks exactly one entry for each view and layout")
+    @params("movies", "presentation", 0)
+    @params("movies", "comfortable", 1)
+    @params("studios", "presentation", 4)
+    @params("studios", "comfortable", 4)
+    @params("MOVIES", "comfortable", 1)
+    function _(view, layout, expectedIndex)
+      entries = optionsViewList.build(m.movieViews(), m.movieLayouts())
+
+      ticked = []
+      for i = 0 to entries.count() - 1
+        if optionsViewList.isSelected(entries[i], view, layout) then ticked.push(i)
+      end for
+
+      m.assertEqual(ticked, [expectedIndex])
+    end function
+
+    @it("ticks nothing for a view the list does not hold")
+    function _()
+      entries = optionsViewList.build(m.movieViews(), m.movieLayouts())
+
+      for each entry in entries
+        m.assertFalse(optionsViewList.isSelected(entry, "", "comfortable"))
+      end for
+      m.assertFalse(optionsViewList.isSelected(invalid, "movies", "comfortable"))
+    end function
+
+  end class
+
+end namespace

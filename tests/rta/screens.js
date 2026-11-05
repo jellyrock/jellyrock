@@ -234,7 +234,7 @@ const vw = (name, nav, collectionType, landing, assert) => ({
  * `specs/leaks.spec.js` drives the same walks outside this registry and must seed the
  * same view. One definition, so the two cannot drift into testing different screens.
  */
-export const MOVIES_GRID = { collectionType: 'movies', landing: 'MoviesGrid' };
+export const MOVIES_GRID = { collectionType: 'movies', landing: 'movies' };
 
 /**
  * The hero film must actually be on this server.
@@ -468,29 +468,33 @@ export const SCREENS = [
   // capture never depends on whatever view is stickily persisted on the device.
   // `view.collectionType` is stable; the library id is resolved at runtime.
   // (Movies "Presentation" view == the store `libraryGrid`, so it isn't duplicated.)
-  vw('moviesLibraryGrid', navLibraryGrid, 'movies', 'MoviesGrid'),
-  vw('moviesLibraryStudios', navLibraryGrid, 'movies', 'Studios'),
-  vw('moviesLibraryGenres', navLibraryGrid, 'movies', 'Genres', assertGenreRowsOwnTheirItems),
-  vw('tvLibraryShows', navTvLibrary, 'tvshows', 'Shows'),
+  // Seeded by tab id (source/GridView/libraryTab.bs). A TV library's Networks tab is
+  // `studios`, as on the web.
+  vw('moviesLibraryGrid', navLibraryGrid, 'movies', 'movies'),
+  vw('moviesLibraryStudios', navLibraryGrid, 'movies', 'studios'),
+  vw('moviesLibraryGenres', navLibraryGrid, 'movies', 'genres', assertGenreRowsOwnTheirItems),
+  vw('tvLibraryShows', navTvLibrary, 'tvshows', 'series'),
   // Networks view is empty on the demo (its single series has no network), but the
   // empty-state ("No Items") is itself a valid, capture-worthy screen.
-  vw('tvLibraryNetworks', navTvLibrary, 'tvshows', 'Networks'),
-  vw('tvLibraryGenres', navTvLibrary, 'tvshows', 'Genres'),
-  vw('musicLibraryAlbumArtists', navMusicLibrary, 'music', 'AlbumArtistsGrid'),
-  vw('musicLibraryAlbums', navMusicLibrary, 'music', 'Albums'),
-  vw('musicLibraryArtists', navMusicLibrary, 'music', 'ArtistsGrid'),
-  vw('musicLibraryGenres', navMusicLibrary, 'music', 'Genres'),
-  vw('playlistsLibrary', navPlaylistsLibrary, 'playlists', 'default'),
+  vw('tvLibraryNetworks', navTvLibrary, 'tvshows', 'studios'),
+  vw('tvLibraryGenres', navTvLibrary, 'tvshows', 'genres'),
+  vw('musicLibraryAlbumArtists', navMusicLibrary, 'music', 'albumartists'),
+  vw('musicLibraryAlbums', navMusicLibrary, 'music', 'albums'),
+  vw('musicLibraryArtists', navMusicLibrary, 'music', 'artists'),
+  vw('musicLibraryGenres', navMusicLibrary, 'music', 'genres'),
+  // A playlists library is a folder with one view and no tabs, so nothing is seeded:
+  // the reset before each screen leaves it on that view.
+  vw('playlistsLibrary', navPlaylistsLibrary, 'playlists', ''),
 
   // --- Per-item-type detail screens (Movie detail is `movieDetails`, above) ----
   // Each opens the first tile of its (view-seeded) library as a representative.
-  vw('seriesDetails', navSeriesDetails, 'tvshows', 'Shows'),
-  vw('seasonDetails', navSeasonDetails, 'tvshows', 'Shows'),
-  vw('episodeDetails', navEpisodeDetails, 'tvshows', 'Shows'),
-  vw('musicAlbumDetails', navMusicDetail, 'music', 'Albums'),
-  vw('musicArtistDetails', navMusicDetail, 'music', 'ArtistsGrid'),
-  vw('audioDetails', navAudioDetails, 'music', 'Albums'),
-  vw('playlistDetails', navPlaylistDetails, 'playlists', 'default'),
+  vw('seriesDetails', navSeriesDetails, 'tvshows', 'series'),
+  vw('seasonDetails', navSeasonDetails, 'tvshows', 'series'),
+  vw('episodeDetails', navEpisodeDetails, 'tvshows', 'series'),
+  vw('musicAlbumDetails', navMusicDetail, 'music', 'albums'),
+  vw('musicArtistDetails', navMusicDetail, 'music', 'artists'),
+  vw('audioDetails', navAudioDetails, 'music', 'albums'),
+  vw('playlistDetails', navPlaylistDetails, 'playlists', ''),
   // Person detail (movie -> Cast & Crew extras row -> first person) + the grid
   // options dialog (View / Sort / Filter). Both chain through the movie/grid navs.
   { name: 'personDetails', state: 'home', nav: navPersonDetails, capture: { eligible: true } },
