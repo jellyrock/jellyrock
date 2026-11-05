@@ -84,6 +84,18 @@ async function playEpisodeWithNextQueued() {
   });
 }
 
+// Sends the player the transport command a dashboard's Next or Previous button (or a voice
+// command) ends in. The handler is driven through ODC: the remote's NextTrack/PreviousTrack to
+// transport-command mapping is covered by remoteCommand's unit tests, and a REST command needs
+// a command channel to the Roku that an https server without the companion plugin lacks.
+async function sendTransportCommand(command) {
+  await odc.callFunc({
+    keyPath: `#${episode.id}`,
+    funcName: 'handleTransport',
+    funcParams: [{ command }],
+  });
+}
+
 // Seeks to SECONDS_BEFORE_END before the end and returns the position sought. Seek from the
 // SERVER's runtime, not the player's `duration`; see findEpisodeWithNext.
 async function seekNearEnd() {
@@ -166,6 +178,80 @@ it('an episode on Repeat One plays again from its start instead of advancing', a
       interval: 2000,
       label: `played ${episode.id} again from its start`,
       read: readPlayer(episode.id),
+    });
+  } finally {
+    await stopPlayback();
+  }
+}, 300000);
+
+// A remote or voice Next follows the queue's repeat mode like the OSD button: on Repeat One it
+// plays this item again instead of moving on (queueRepeat.nextIndex). The seek goes to the
+// middle, not the end, so the natural end's own replay cannot satisfy the wait.
+it('a remote Next on Repeat One plays the episode again instead of advancing', async () => {
+  try {
+    await playEpisodeWithNextQueued();
+    await odc.setValue({ base: 'scene', keyPath: '#osd.repeatModePick', value: 'RepeatOne' });
+    await waitFor('#showPlaybackSettings.isButtonSelected', (v) => v === true, {
+      timeout: 10000,
+      label: 'Repeat One recorded on the queue',
+    });
+
+    const seekTo = Math.min(60, Math.floor(episode.runTimeSeconds / 2));
+    await odc.setValue({ base: 'scene', keyPath: `#${episode.id}.seek`, value: seekTo });
+    await waitFor('position', (v) => typeof v === 'number' && v >= seekTo - 1, {
+      timeout: 30000,
+      interval: 1000,
+      label: 'seek landed',
+      read: readPlayer(episode.id),
+    });
+
+    await sendTransportCommand('next');
+    await waitFor('position', (v) => typeof v === 'number' && v < seekTo - 15, {
+      timeout: 60000,
+      interval: 1000,
+      label: `${episode.id} played again from its start after a Next`,
+      read: readPlayer(episode.id),
+    });
+  } finally {
+    await stopPlayback();
+  }
+}, 300000);
+
+// Previous on the first item of a queue on Repeat All wraps to the last (queueRepeat.previousIndex).
+// The queue holds the series' episodes after this one, so the last is not `episode.nextId`.
+it('a remote Previous on Repeat All wraps from the first episode to the last', async () => {
+  const queueCallFunc = async (funcName) =>
+    (await odc.callFunc({ base: 'global', keyPath: 'queueManager', funcName })).value;
+  try {
+    await playEpisodeWithNextQueued();
+    await odc.setValue({ base: 'scene', keyPath: '#osd.repeatModePick', value: 'RepeatAll' });
+    await waitFor('#showPlaybackSettings.isButtonSelected', (v) => v === true, {
+      timeout: 10000,
+      label: 'Repeat All recorded on the queue',
+    });
+    // The rest of the series joins the queue after the player loads; with one item queued,
+    // Previous on Repeat All wraps to the same item and the case could not tell a wrap.
+    await waitFor('getCount()', (v) => v >= 2, {
+      timeout: 30000,
+      interval: 1000,
+      label: 'next episode queued',
+      read: () => queueCallFunc('getCount'),
+    });
+    expect(await queueCallFunc('getPosition'), 'the case starts on the first episode').toBe(0);
+    const count = await queueCallFunc('getCount');
+
+    await sendTransportCommand('previous');
+    await waitFor('getPosition()', (v) => v === count - 1, {
+      timeout: 60000,
+      interval: 1000,
+      label: `wrapped to the last of ${count} queued episodes after a Previous`,
+      read: () => queueCallFunc('getPosition'),
+    });
+    await waitFor('state', (v) => v === 'playing', {
+      timeout: ADVANCE_TIMEOUT_MS,
+      interval: 2000,
+      label: 'the last episode playing',
+      read: readPlayer(),
     });
   } finally {
     await stopPlayback();
