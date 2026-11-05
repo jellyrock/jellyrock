@@ -70,7 +70,8 @@
          at each sign-in (Home.checkServerCapabilities), and by LoadVideoContentTask before a
          video load that finds it unread. Only a complete answer is stored, so a failed read
          is retried by the next load. Decides whether a first request lists HEVC before H.264
-         (serverCapabilities.serverEncodesHevcInHardware), Live TV included.
+         (serverCapabilities.serverEncodesHevcInHardware), for Live TV too when the
+         channel lists its video stream.
          Reset with the rest of this node on a server switch. -->
     <field id="encodingPolicy" type="assocarray" />
 
