@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-05: fix(playback): Make 4K transcodes play, in HEVC on hardware servers
 - 2026-11-05: fix(playback): Recover when a 4K remux overflows the video buffer
 - 2026-11-05: refactor(logging): adopt `roku-log` as owned code, drop its hook
 - 2026-11-05: feat(syncplay): Repeat, shuffle, time offset and leave in the gear
