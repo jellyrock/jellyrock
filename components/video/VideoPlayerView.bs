@@ -164,8 +164,7 @@ sub init()
   m.playingProgressTimer = m.top.findNode("playingProgressTimer")
   m.playingProgressTimer.duration = STALL_WINDOW_SECONDS
   m.playingProgressTimer.observeField("fire", "playingProgressCheck")
-  m.playingProgressSpan = CreateObject("roTimespan")
-  m.playingProgressPosition = 0.0 ' the position when the current window began
+  m.playingProgressPosition = 0.0 ' the position at the last tick, or when playing began
 
   ' Every m.top observer is registered here, once, and released only in onDestroy.
   ' Never unobserve an m.top field mid-life: it can remove observers OTHER components
@@ -2192,7 +2191,6 @@ sub onState()
 
     ' A fresh window for the position check: a node that says "playing" must also move.
     m.playingProgressPosition = m.top.position
-    m.playingProgressSpan.mark()
     m.playingProgressTimer.control = "start"
 
     ' Un-park. A `play` that did not come through onVideoContentLoaded (a voice or
@@ -2570,11 +2568,8 @@ end sub
 ' A "playing" node whose position has not moved for a stall window: a frozen or black screen with no
 ' error (a 4K H.264 re-encode sat so on a Roku Ultra, 2026-11-04). classifyPlayingProgress decides;
 ' a stall takes the same exits as bufferCheck's. The timer is started by onState's `playing` branch
-' and stopped by every state change and by onDestroy.
-'
-' The timer is one-shot, started again here only after the new window is marked, so a window is
-' never shorter than STALL_WINDOW_SECONDS. A repeating timer keeps its own beat, which this handler
-' runs behind, and a window it measured would come up a little short and read as progress.
+' and stopped by every state change and by onDestroy. Its ticks are the window: each compares the
+' position with the last tick's, and no second clock is checked against it.
 sub playingProgressCheck()
   if m.isDestroyed = true or not isValid(m.playingProgressTimer) then return
   positionNow = m.top.position
@@ -2586,25 +2581,22 @@ sub playingProgressCheck()
     isLive: isLiveTvPlayback(),
     duration: getEffectiveDuration()
   }
-  action = classifyPlayingProgress(positionNow, m.playingProgressPosition, m.playingProgressSpan.totalMilliseconds(), STALL_WINDOW_SECONDS * 1000, flags)
-  if action = BufferCheckAction.STALLED
-    m.log.warn("Node playing with a frozen position", "position", int(positionNow))
-    showPlaybackErrorDialog(translate(translationKeys.ErrorThereWasAnErrorRetrievingThe))
-    m.top.control = "stop"
-    return
-  end if
-
-  ' Open the next window.
+  action = classifyPlayingProgress(positionNow, m.playingProgressPosition, flags)
   m.playingProgressPosition = positionNow
-  m.playingProgressSpan.mark()
-  m.playingProgressTimer.control = "start"
-  if action = BufferCheckAction.LIVE_STALLED
+  if action = BufferCheckAction.PROGRESS
+    return
+  else if action = BufferCheckAction.LIVE_STALLED
     m.log.warn("Live TV node playing with a frozen position", "position", int(positionNow))
     ' Same rule as bufferCheck: the host owns the restart and may destroy this component
-    ' synchronously, so this call is the last statement. A guard that declined leaves the next
-    ' window running, so the check comes back.
+    ' synchronously, so this call is the last statement. A guard that declined leaves the timer
+    ' running, so the next tick checks again.
     host = m.top.getParent()
     if isValid(host) then host.callFunc("onLiveStreamStalled")
+  else
+    m.log.warn("Node playing with a frozen position", "position", int(positionNow))
+    m.playingProgressTimer.control = "stop"
+    showPlaybackErrorDialog(translate(translationKeys.ErrorThereWasAnErrorRetrievingThe))
+    m.top.control = "stop"
   end if
 end sub
 
