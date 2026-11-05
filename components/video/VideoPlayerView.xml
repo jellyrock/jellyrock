@@ -79,7 +79,7 @@
     <timer id="reencodeCheckTimer" repeat="false" />
     <timer id="groupSeekFallbackTimer" repeat="false" duration="5" />
     <timer id="bufferCheckTimer" repeat="true" />
-    <timer id="playingProgressTimer" repeat="true" />
+    <timer id="playingProgressTimer" repeat="false" />
     <OSD id="osd" visible="false" inactiveTimeout="5" />
 
     <Rectangle id="chapterList" visible="false" color="0x00000098" width="400" height="380" translation="[103,210]">

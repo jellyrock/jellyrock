@@ -2571,6 +2571,10 @@ end sub
 ' error (a 4K H.264 re-encode sat so on a Roku Ultra, 2026-11-04). classifyPlayingProgress decides;
 ' a stall takes the same exits as bufferCheck's. The timer is started by onState's `playing` branch
 ' and stopped by every state change and by onDestroy.
+'
+' The timer is one-shot, started again here only after the new window is marked, so a window is
+' never shorter than STALL_WINDOW_SECONDS. A repeating timer keeps its own beat, which this handler
+' runs behind, and a window it measured would come up a little short and read as progress.
 sub playingProgressCheck()
   if m.isDestroyed = true or not isValid(m.playingProgressTimer) then return
   positionNow = m.top.position
@@ -2583,23 +2587,24 @@ sub playingProgressCheck()
     duration: getEffectiveDuration()
   }
   action = classifyPlayingProgress(positionNow, m.playingProgressPosition, m.playingProgressSpan.totalMilliseconds(), STALL_WINDOW_SECONDS * 1000, flags)
-  ' Each tick opens the next window.
-  m.playingProgressPosition = positionNow
-  m.playingProgressSpan.mark()
-  if action = BufferCheckAction.PROGRESS
-    return
-  else if action = BufferCheckAction.LIVE_STALLED
-    m.log.warn("Live TV node playing with a frozen position", "position", positionNow)
-    ' Same rule as bufferCheck: the host owns the restart and may destroy this component
-    ' synchronously, so this call is the last statement. A guard that declined leaves the timer
-    ' running, so the next tick checks again.
-    host = m.top.getParent()
-    if isValid(host) then host.callFunc("onLiveStreamStalled")
-  else
+  if action = BufferCheckAction.STALLED
     m.log.warn("Node playing with a frozen position", "position", positionNow)
-    m.playingProgressTimer.control = "stop"
     showPlaybackErrorDialog(translate(translationKeys.ErrorThereWasAnErrorRetrievingThe))
     m.top.control = "stop"
+    return
+  end if
+
+  ' Open the next window.
+  m.playingProgressPosition = positionNow
+  m.playingProgressSpan.mark()
+  m.playingProgressTimer.control = "start"
+  if action = BufferCheckAction.LIVE_STALLED
+    m.log.warn("Live TV node playing with a frozen position", "position", positionNow)
+    ' Same rule as bufferCheck: the host owns the restart and may destroy this component
+    ' synchronously, so this call is the last statement. A guard that declined leaves the next
+    ' window running, so the check comes back.
+    host = m.top.getParent()
+    if isValid(host) then host.callFunc("onLiveStreamStalled")
   end if
 end sub
 
