@@ -682,6 +682,7 @@ superset
 SVG
 SVGs
 SyncPlay
+Tailscale
 Tasker
 TCP
 teardown

@@ -99,6 +99,20 @@ namespace tests
       m.assertEqual(m.redact("password=hunter2"), "password=<secret>")
     end sub
 
+    @it("fingerprints a token in JSON that is itself escaped inside a string")
+    sub _()
+      e = chr(92) + chr(34)
+      m.assertEqual(m.redact("{" + e + "AccessToken" + e + ":" + e + m.TOKEN + e + "}"), "{" + e + "AccessToken" + e + ":" + e + "<token:8516>" + e + "}")
+    end sub
+
+    @it("leaves a true or false value alone, since it holds no secret")
+    sub _()
+      q = chr(34)
+      line = "{" + q + "HasPassword" + q + ":true," + q + "HasConfiguredPassword" + q + ":false}"
+      m.assertEqual(m.redact(line), line)
+      m.assertEqual(m.redact("hasToken=TRUE"), "hasToken=TRUE")
+    end sub
+
     @it("fingerprints a deviceId query value")
     sub _()
       m.assertEqual(m.redact("socket?deviceId=" + m.DEVICE), "socket?deviceId=<device:7534>")
@@ -158,6 +172,46 @@ namespace tests
     @it("classes an address that ends a sentence")
     sub _()
       m.assertEqual(m.redact("could not reach 192.168.1.20."), "could not reach <lan-ip>.")
+    end sub
+
+    @it("classes the shared address range Tailscale uses as LAN")
+    sub _()
+      m.assertEqual(m.redact("server at 100.64.0.1 and 100.127.255.1"), "server at <lan-ip> and <lan-ip>")
+      m.assertEqual(m.redact("public 100.63.0.1 and 100.128.0.1"), "public <public-ip> and <public-ip>")
+    end sub
+
+    @it("masks a line that is only an address")
+    sub _()
+      m.assertEqual(m.redact("10.0.0.1"), "<lan-ip>")
+      m.assertEqual(m.redact("10.0.0.1,10.0.0.2"), "<lan-ip>,<lan-ip>")
+      m.assertEqual(m.redact("10.0.0.1 then 10.0.0.1"), "<lan-ip> then <lan-ip>")
+    end sub
+
+    @it("masks a URL host with an IPv6 zone ID")
+    sub _()
+      m.assertEqual(m.redact("http://[fe80::1%25eth0]:8096/a"), "http://<lan-ip>:8096/a")
+    end sub
+
+    @it("classes a bare IPv6 address")
+    sub _()
+      m.assertEqual(m.redact("connect to fe80::1c2:3ff:fe4:5 failed, 2001:db8::1"), "connect to <lan-ip> failed, <public-ip>")
+      m.assertEqual(m.redact("bound to ::1"), "bound to <loopback>")
+      m.assertEqual(m.redact("could not reach fd12:3456::1."), "could not reach <lan-ip>.")
+      m.assertEqual(m.redact("full 2001:0db8:85a3:0000:0000:8a2e:0370:7334 end"), "full <public-ip> end")
+    end sub
+
+    @it("leaves colons that are not an IPv6 address alone")
+    sub _()
+      line = "at 16:46:25:656 log::Redactor Logger::add mac aa:bb:cc:dd:ee:ff"
+      m.assertEqual(m.redact(line), line)
+    end sub
+
+    @describe("text a pattern skipped earlier in the line")
+
+    @it("masks the match, not an earlier copy the pattern rejected")
+    sub _()
+      m.assertEqual(m.redact("build 10.0.0.1.7 from 10.0.0.1"), "build 10.0.0.1.7 from <lan-ip>")
+      m.assertEqual(m.redact("rpw=hunter2 pw=hunter2"), "rpw=hunter2 pw=<secret>")
     end sub
 
     @describe("hosts seen in a URL")

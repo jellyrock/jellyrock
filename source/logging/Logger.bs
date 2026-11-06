@@ -61,6 +61,7 @@ namespace log
     private credential
     private deviceName
     private url
+    private ipv6
     private ipv4
     private fingerprints
     ' Each dotted host the URL rule masked, with its class, so a later mention without a
@@ -71,6 +72,8 @@ namespace log
     private CREDENTIAL_TRIGGERS = ["token", "apikey", "api_key", "secret", "password", "deviceid", "device_id", "pw"]
     ' Hosts remembered at most, so the check each line makes stays small
     private MAX_HOSTS = 16
+    ' Colons an IPv6 address without "::" holds: eight groups, seven colons between them
+    private FULL_IPV6_COLONS = 7
 
     sub new()
       m.hosts = {}
@@ -80,13 +83,17 @@ namespace log
     ' Builds the patterns. A node's `m` handed to another thread keeps only data, and Roku drops
     ' roRegex objects from it, so redact() calls this again when they are gone.
     private sub compile()
-      ' A credential key, its separator (`=`, `:`, `":"`, or `=\"` inside JSON), then its value
-      m.credential = CreateObject("roRegex", "(\b[a-z_-]*?(?:token|api_?key|secret|password|device_?id)|\bpw)(""?\s*[:=]\s*\\?""?)([^""\\&\s,;}\])]+)", "i")
+      ' A credential key, its separator (`=`, `:`, `":"`, or `=\"` and `\":\"` in escaped JSON),
+      ' then its value
+      m.credential = CreateObject("roRegex", "(\b[a-z_-]*?(?:token|api_?key|secret|password|device_?id)|\bpw)(\\?""?\s*[:=]\s*\\?""?)([^""\\&\s,;}\])]+)", "i")
       ' The free-text Device= field of the Authorization header, which holds the Roku's name
       m.deviceName = CreateObject("roRegex", "(\bDevice=\\?"")([^""\\]*)", "")
       ' Scheme, user info (or an empty group, so every group always reports), then the host
-      ' (a bracketed IPv6 literal or a name)
-      m.url = CreateObject("roRegex", "\b(https?|wss?)://([^/@\s]*@|)(\[[0-9a-f:.]+\]|[^/:?#\s""'\\]+)", "i")
+      ' (a bracketed IPv6 literal, with its zone ID if any, or a name)
+      m.url = CreateObject("roRegex", "\b(https?|wss?)://([^/@\s]*@|)(\[[0-9a-f:.]+(?:%[0-9a-z._~-]+)?\]|[^/:?#\s""'\\]+)", "i")
+      ' An IPv6 address outside a URL: eight groups, or fewer around "::" with a group on at
+      ' least one side, then an optional zone ID; not inside a longer word (log::Redactor)
+      m.ipv6 = CreateObject("roRegex", "(?<![\w:.])((?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,6}::(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,6})?|::[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,6})(?:%[0-9a-z._~-]+)?(?!\w|:|\.\w)", "i")
       ' Four dotted parts, not inside a longer dotted number; a sentence's final period may follow
       m.ipv4 = CreateObject("roRegex", "(?<![\d.])(\d{1,3}(?:\.\d{1,3}){3})(?!\d|\.\d)", "")
       m.fingerprints = {}
@@ -97,7 +104,7 @@ namespace log
       if m.ipv4 = invalid then m.compile()
       lowered = LCase(text)
 
-      ' Every rule goes through MatchAll and replaceInOrder rather than ReplaceAll with a
+      ' Every rule goes through MatchAll and replaceMatches rather than ReplaceAll with a
       ' back-reference, which the BrightScript simulator does not substitute.
       if Instr(1, lowered, "device=") > 0
         matches = m.deviceName.MatchAll(text)
@@ -106,7 +113,7 @@ namespace log
           for each match in matches
             replacements.push(match[1] + "<device-name>")
           end for
-          text = log.replaceInOrder(text, matches, replacements)
+          text = log.replaceMatches(text, m.deviceName, matches, replacements)
         end if
       end if
 
@@ -116,7 +123,11 @@ namespace log
           replacements = []
           for each match in matches
             key = LCase(match[1])
-            if key = "pw" or Instr(1, key, "password") > 0 or Instr(1, key, "secret") > 0
+            value = LCase(match[3])
+            if value = "true" or value = "false"
+              ' A flag such as HasPassword holds no secret, and hiding it costs the reader
+              label = match[3]
+            else if key = "pw" or Instr(1, key, "password") > 0 or Instr(1, key, "secret") > 0
               label = "<secret>"
             else if Instr(1, key, "device") > 0
               label = "<device:" + m.fingerprint(match[3]) + ">"
@@ -125,7 +136,7 @@ namespace log
             end if
             replacements.push(match[1] + match[2] + label)
           end for
-          text = log.replaceInOrder(text, matches, replacements)
+          text = log.replaceMatches(text, m.credential, matches, replacements)
         end if
       end if
 
@@ -140,11 +151,34 @@ namespace log
             m.rememberHost(match[3], hostClass)
             replacements.push(match[1] + "://" + userInfo + hostClass)
           end for
-          text = log.replaceInOrder(text, matches, replacements)
+          text = log.replaceMatches(text, m.url, matches, replacements)
         end if
       end if
 
       if m.hosts.count() > 0 then text = m.maskKnownHosts(text)
+
+      ' An IPv6 address holds "::", or seven colons when written out in full. The count stops
+      ' at seven, so a line with a few colons costs a few substring searches.
+      mayHoldIpv6 = Instr(1, text, "::") > 0
+      if not mayHoldIpv6
+        colons = 0
+        position = Instr(1, text, ":")
+        while position > 0 and colons < m.FULL_IPV6_COLONS
+          colons++
+          position = Instr(position + 1, text, ":")
+        end while
+        mayHoldIpv6 = colons >= m.FULL_IPV6_COLONS
+      end if
+      if mayHoldIpv6
+        matches = m.ipv6.MatchAll(text)
+        if matches.count() > 0
+          replacements = []
+          for each match in matches
+            replacements.push(log.ipv6Class(LCase(match[0])))
+          end for
+          text = log.replaceMatches(text, m.ipv6, matches, replacements)
+        end if
+      end if
 
       matches = m.ipv4.MatchAll(text)
       if matches.count() > 0
@@ -154,7 +188,7 @@ namespace log
           if addressClass = "" then addressClass = match[0]
           replacements.push(addressClass)
         end for
-        text = log.replaceInOrder(text, matches, replacements)
+        text = log.replaceMatches(text, m.ipv4, matches, replacements)
       end if
 
       return text
@@ -228,19 +262,55 @@ namespace log
     return log.isHostBoundary(character)
   end function
 
-  ' Replaces each MatchAll match with its replacement, walking left to right, so a match
-  ' that is also part of a later, longer one is not rewritten inside it.
-  function replaceInOrder(text as string, matches as object, replacements as object) as string
-    result = ""
-    cursor = 1
-    for i = 0 to matches.count() - 1
-      found = matches[i][0]
-      position = Instr(cursor, text, found)
-      if position = 0 then continue for
-      result = result + Mid(text, cursor, position - cursor) + replacements[i]
-      cursor = position + Len(found)
+  ' Rebuilds the text with each of the pattern's MatchAll matches swapped for its replacement.
+  ' roRegex reports no match positions, so the usual way finds each match by searching for its
+  ' text, left to right. That search can stop at an earlier copy the pattern skipped
+  ' ("10.0.0.1.7" before "10.0.0.1"), and then the real match stays raw. So when a match's text
+  ' appears in the line more often than the pattern matched it (copies counted overlapping, so
+  ' any doubt counts), the line is rebuilt from Split() instead, which costs another pattern
+  ' pass. Split() cuts at the pattern's own matches, so its pieces are the text between them.
+  ' It keeps empty pieces at the start and between matches but drops them at the end, so a
+  ' missing piece is empty. One function, not three: on a Roku each call costs time.
+  function replaceMatches(text as string, pattern as object, matches as object, replacements as object) as string
+    searchFinds = true
+    for each match in matches
+      found = match[0]
+      matched = 0
+      for each other in matches
+        if other[0] = found then matched++
+      end for
+      copies = 0
+      position = Instr(1, text, found)
+      while position > 0
+        copies++
+        if copies > matched then exit while
+        position = Instr(position + 1, text, found)
+      end while
+      if copies > matched
+        searchFinds = false
+        exit for
+      end if
     end for
-    return result + Mid(text, cursor)
+
+    result = ""
+    if searchFinds
+      cursor = 1
+      for i = 0 to matches.count() - 1
+        found = matches[i][0]
+        position = Instr(cursor, text, found)
+        result = result + Mid(text, cursor, position - cursor) + replacements[i]
+        cursor = position + Len(found)
+      end for
+      return result + Mid(text, cursor)
+    end if
+
+    pieces = pattern.Split(text)
+    for i = 0 to matches.count() - 1
+      if i < pieces.count() then result = result + pieces[i]
+      result = result + replacements[i]
+    end for
+    if pieces.count() > matches.count() then result = result + pieces[matches.count()]
+    return result
   end function
 
   ' The class of a URL host: a loopback, LAN or public address, or a LAN or public name.
@@ -277,11 +347,16 @@ namespace log
     if first = 172 and second >= 16 and second <= 31 then return "<lan-ip>"
     if first = 192 and second = 168 then return "<lan-ip>"
     if first = 169 and second = 254 then return "<lan-ip>"
+    ' Shared address space (100.64.0.0/10): never on the internet; Tailscale gives out these
+    if first = 100 and second >= 64 and second <= 127 then return "<lan-ip>"
     return "<public-ip>"
   end function
 
   ' The class of an IPv6 address: loopback, link-local or unique-local (LAN), or public.
   function ipv6Class(address as string) as string
+    ' A zone ID (%eth0, or %25eth0 inside a URL) names the Roku's own interface, not the host
+    zone = Instr(1, address, "%")
+    if zone > 0 then address = Left(address, zone - 1)
     if address = "::1" then return "<loopback>"
     prefix = Left(address, 3)
     if prefix = "fe8" or prefix = "fe9" or prefix = "fea" or prefix = "feb" then return "<lan-ip>"

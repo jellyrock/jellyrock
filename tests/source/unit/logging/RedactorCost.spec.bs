@@ -2,8 +2,8 @@ import "pkg:/source/logging/Logger.bs"
 
 namespace tests
 
-  ' What masking adds to each log line, in microseconds, for the three shapes a line takes:
-  ' nothing to mask, a URL, and an Authorization header. It prints the numbers and asserts
+  ' What masking adds to each log line, in microseconds, for the shapes a line takes: nothing
+  ' to mask, a URL, an Authorization header, and nothing to mask once a host is remembered. It prints the numbers and asserts
   ' nothing about them, so it runs only when asked for: `test:tdd` with this spec selected.
   @suite("log redactor cost")
   @tags("measurement")
@@ -25,10 +25,17 @@ namespace tests
         url: "INFO Playback path: DIRECT PLAY finalUrl http://192.168.1.20:8096/Videos/6b7f3c2a/stream?Static=true&ApiKey=0123456789abcdef0123456789abcdef",
         header: "DEBUG headers AA({" + q + "Authorization" + q + ":" + q + "MediaBrowser Client=\" + q + "JellyRock\" + q + ", Device=\" + q + "Living Room (Roku Ultra)\" + q + ", DeviceId=\" + q + "roku-device-1234\" + q + ", Token=\" + q + "0123456789abcdef0123456789abcdef\" + q + q + "})"
       }
-      subject = m.newRedactor()
+      ' A server reached by name leaves its host remembered, and every later line then pays to
+      ' look for it, so a plain line is timed again with one host remembered.
+      shapes.plainAfterHost = shapes.plain
+      fresh = m.newRedactor()
+      withHost = m.newRedactor()
+      withHost.redact("GET https://jellyfin.example.com/System/Info")
       clock = CreateObject("roTimespan")
-      for each shape in ["plain", "url", "header"]
+      for each shape in ["plain", "url", "header", "plainAfterHost"]
         line = shapes[shape]
+        subject = fresh
+        if shape = "plainAfterHost" then subject = withHost
         subject.redact(line)
         clock.Mark()
         for i = 1 to m.LINES_PER_SHAPE
