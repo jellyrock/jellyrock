@@ -2646,6 +2646,14 @@ A re-encode the server runs above the buffer bitrate is found from the server's 
 
 A player that reports "playing" while its position does not move counts as a stall after the same 30 s window as a buffering stall, and takes the same exits: the error dialog for a movie or episode, the restart rule for Live TV. Seen 2026-11-04 on a Roku Ultra: a 4K H.264 re-encode sat at "play" position 0 with no error; with the check, the player stopped 31 s later, and a normal remux played 52 s without a false stall. Ruled out for now: retrying one step down the transcode ladder before the error, since nothing yet shows a lower step rescues a server too slow for the stream.
 
+## decision-id: hls-cap-judges-shown-variant
+
+**date**: 2026-11-06
+**status**: accepted
+**related-files**: `source/utils/hlsMaster.bs`, `components/ItemGrid/LoadVideoContentTask.bs`
+
+The 1080p cap check (`capH264Resolution()`) judges the first variant of the server's HLS master playlist that the display shows, not the first variant listed: `hlsVariantShown()` counts a `PQ` variant only when the device profile's HEVC `VideoRangeType` list has `HDR10`, `HDR10Plus` or `DOVI`, and an `HLG` one only with `HLG`, so the check reads the display the same way the request does. It caps when that variant is H.264 above 1080p, or when the display shows none. With no range list (a server before 10.9) every variant counts. The list is built only when the playlist has an HDR variant. Measured 2026-11-06 on a Streaming Stick 4K on a display without HDR, against Jellyfin 12.4: two 4K Dolby Vision MKV files whose playlists listed HEVC `PQ` before 4K H.264 failed with "all streams filtered" and now play as 1080p H.264. Ruled out: capping whenever any variant is 4K H.264, which on an HDR TV turns a playable 4K HEVC copy into a 1080p re-encode; and asking with video copy off whenever the display lacks the source's HDR, a second rule about copying for every HDR file on an SDR display. Re-evaluate if a Roku plays a variant whose range its display cannot show, or if the server stops listing a `PQ` variant for an SDR range list.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
