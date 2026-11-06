@@ -727,14 +727,17 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     video.isTranscoded = true
     m.log.info("Playback path: TRANSCODED", "finalUrl", transcodingUrl, "streamFormat", video.content.StreamFormat, "subProtocol", subProtocol, "transcodeReasons", video.transcodeReasons)
 
-    ' If DoVi preservation caused this transcode, flag that direct play is a viable buffer-overflow fallback.
-    ' VideoRangeTypeNotSupported is the reason Jellyfin returns when our DoVi container profile blocks the MKV.
-    ' On a buffer:loop: error the player will retry with bypassDoviPreservation=true, letting the server
-    ' re-evaluate without the DoVi constraint and (usually) grant direct play instead.
-    if userSettings.playbackPreserveDovi and not bypassDoviPreservation
-      if arrayHasValue(video.transcodeReasons, "VideoRangeTypeNotSupported")
-        video.isDoviDirectPlayFallbackAvailable = true
-      end if
+    ' A buffer:loop: error retries with bypassDoviPreservation=true, which drops the Dolby Vision
+    ' remux profile so the server can direct-play. Offered only when this load's request added it:
+    ' otherwise that retry sends the same request again.
+    playedStreams = invalid
+    playedContainer = invalid
+    if isValid(playedSource)
+      playedStreams = playedSource.MediaStreams
+      playedContainer = playedSource.Container
+    end if
+    if offersDoviDirectPlayFallback(video.transcodeReasons, playedStreams, playedContainer, userSettings.playbackPreserveDovi, bypassDoviPreservation, getApiVersionFromGlobal())
+      video.isDoviDirectPlayFallbackAvailable = true
     end if
 
     ' A remux can copy the video, and the server then cuts HLS segments only at the source's

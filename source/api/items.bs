@@ -341,6 +341,30 @@ function doviRemuxContainerProfile(mediaStreams as dynamic, container as dynamic
   return invalid
 end function
 
+' offersDoviDirectPlayFallback: Whether a retry with Preserve DoVi bypassed can turn this transcode
+' into a direct play.
+'
+' That holds only when the server named VideoRangeTypeNotSupported and this load's request added
+' the remux profile. It asks doviRemuxContainerProfile() with the request's own arguments, so a
+' stream the remux does not apply to (DOVIInvalid, AV1, a non-mkv container) gets no fallback:
+' the bypass retry would send the identical request.
+'
+' @param {dynamic} transcodeReasons - the transcode reasons the server returned, or invalid
+' @param {dynamic} mediaStreams - MediaStream array of the played source, or invalid
+' @param {dynamic} container - the played source's container, or invalid
+' @param {dynamic} preserveDovi - the playbackPreserveDovi user setting, or invalid
+' @param {boolean} bypass - true when this load already bypassed Preserve DoVi
+' @param {integer} apiVersion - the server's API tier
+' @param {dynamic} mockCapabilities - capabilities AA with isMock = true, for tests
+' @return {boolean} true when a bypass retry is worth offering
+function offersDoviDirectPlayFallback(transcodeReasons as dynamic, mediaStreams as dynamic, container as dynamic, preserveDovi as dynamic, bypass as boolean, apiVersion as integer, mockCapabilities = invalid as dynamic) as boolean
+  if not arrayHasValue(transcodeReasons, "VideoRangeTypeNotSupported")
+    return false
+  end if
+
+  return isValid(doviRemuxContainerProfile(mediaStreams, container, preserveDovi, bypass, apiVersion, mockCapabilities))
+end function
+
 ' allowHdr10DoviInvalid: Let the server direct-play a DOVIInvalid video stream whose base layer is
 ' plain HDR10, on a display that takes HDR10.
 '

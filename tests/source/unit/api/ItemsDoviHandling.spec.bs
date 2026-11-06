@@ -27,6 +27,10 @@ namespace tests
     end function
 
     ' The profile the function returns for a stream whose VideoRangeType is the given value
+    private function fallbackStream(rangeType as string, dvProfile as integer, compatId as integer) as object
+      return { Type: "Video", Codec: "hevc", VideoRangeType: rangeType, DvProfile: dvProfile, DvBlSignalCompatibilityId: compatId, ColorSpace: "bt2020nc", ColorTransfer: "smpte2084", ColorPrimaries: "bt2020" }
+    end function
+
     private function expectedProfile(videoRangeType as string) as object
       return {
         "Type": "Video",
@@ -322,6 +326,91 @@ namespace tests
       result = doviRemuxContainerProfile([], "mkv", true, false, 2, m.mockCaps(true))
 
       m.assertInvalid(result)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("offersDoviDirectPlayFallback()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true when the request added the remux and the server named VideoRangeTypeNotSupported")
+    function _()
+      streams = [m.fallbackStream("DOVIWithHDR10", 8, 1)]
+
+      result = offersDoviDirectPlayFallback(["VideoRangeTypeNotSupported"], streams, "mkv", true, false, 2, m.mockCaps(true))
+
+      m.assertTrue(result)
+    end function
+
+    @it("is false when the reason is absent")
+    function _()
+      streams = [m.fallbackStream("DOVIWithHDR10", 8, 1)]
+
+      result = offersDoviDirectPlayFallback(["ContainerNotSupported"], streams, "mkv", true, false, 2, m.mockCaps(true))
+
+      m.assertFalse(result)
+    end function
+
+    @it("is false when the transcode reasons are invalid")
+    function _()
+      streams = [m.fallbackStream("DOVIWithHDR10", 8, 1)]
+
+      result = offersDoviDirectPlayFallback(invalid, streams, "mkv", true, false, 2, m.mockCaps(true))
+
+      m.assertFalse(result)
+    end function
+
+    @it("is false for a DOVIInvalid stream, where the request added no remux")
+    function _()
+      streams = [m.fallbackStream("DOVIInvalid", 8, 1)]
+
+      result = offersDoviDirectPlayFallback(["VideoRangeTypeNotSupported"], streams, "mkv", true, false, 2, m.mockCaps(true))
+
+      m.assertFalse(result)
+    end function
+
+    @it("is false for out-of-spec profile 8 with compatibility id 6 and HDR10 tags")
+    function _()
+      streams = [m.fallbackStream("DOVIWithHDR10", 8, 6)]
+
+      result = offersDoviDirectPlayFallback(["VideoRangeTypeNotSupported"], streams, "mkv", true, false, 2, m.mockCaps(true))
+
+      m.assertFalse(result)
+    end function
+
+    @it("is false when the load already bypassed Preserve DoVi")
+    function _()
+      streams = [m.fallbackStream("DOVIWithHDR10", 8, 1)]
+
+      result = offersDoviDirectPlayFallback(["VideoRangeTypeNotSupported"], streams, "mkv", true, true, 2, m.mockCaps(true))
+
+      m.assertFalse(result)
+    end function
+
+    @it("is false when the Preserve DoVi setting is off")
+    function _()
+      streams = [m.fallbackStream("DOVIWithHDR10", 8, 1)]
+
+      result = offersDoviDirectPlayFallback(["VideoRangeTypeNotSupported"], streams, "mkv", false, false, 2, m.mockCaps(true))
+
+      m.assertFalse(result)
+    end function
+
+    @it("is false when the device lacks Dolby Vision")
+    function _()
+      streams = [m.fallbackStream("DOVIWithHDR10", 8, 1)]
+
+      result = offersDoviDirectPlayFallback(["VideoRangeTypeNotSupported"], streams, "mkv", true, false, 2, m.mockCaps(false))
+
+      m.assertFalse(result)
+    end function
+
+    @it("is false for a non-MKV container")
+    function _()
+      streams = [m.fallbackStream("DOVIWithHDR10", 8, 1)]
+
+      result = offersDoviDirectPlayFallback(["VideoRangeTypeNotSupported"], streams, "mp4", true, false, 2, m.mockCaps(true))
+
+      m.assertFalse(result)
     end function
 
   end class
