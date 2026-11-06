@@ -109,7 +109,9 @@ Console logs get shared: pasted into issues, and copied into `.device-runs/` by 
 
 **The patterns are rebuilt on the thread that uses them.** A `Logger` builds its redactor on its first line, and keeps it in the component's `m`. When a node's `m` is handed to another thread (a node created from the main thread, called later on the render thread), Roku keeps only data and drops the `roRegex` objects ([threading.md](threading.md#constructing-components)). So `redact()` compiles the patterns again when they are gone. The redactor reads no node, so it adds no thread crossing.
 
-**Not covered:** `print` statements, which bypass the logger; the `[http]` request trace of `roku-requests`, which prints each request's full URL and headers, token included, in every build; and Roku OS's own console lines. The first two are followups `log-print-through-redactor` and `rr-http-trace-leaks-token` in [`docs/progress.md`](../progress.md).
+**The request trace is ours.** `roku-requests` printed 12 `[http]` lines per request, the URL and headers with the token among them, with no switch to turn that off. The build removes them (`strip-vendor-prints.cjs`, [build-and-tooling.md](build-and-tooling.md#transform-plugins)), and `requestWithJsonOnSuccess()` in [`baseRequest.bs`](../../source/api/baseRequest.bs) writes one line per request through the caller's `m.log`: the method, the URL with the query's keys but not their values (`requestLogUrl()`), the status and the attempts. It is `debug` for an answer, a `4xx` included, and `warn` when no answer came back or the server failed (`requestTraceLevel()`). A caller with no `m.log` gets no line.
+
+**Not covered:** `print` statements, which bypass the logger (followup `log-print-through-redactor` in [`docs/progress.md`](../progress.md)), and Roku OS's own console lines.
 
 ## Where `print` is allowed
 
