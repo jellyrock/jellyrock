@@ -1341,6 +1341,14 @@ Close it on a device: seek to 50% in an Ogg file holding FLAC whose last frame i
 
 **Tracked in** [#1272](https://github.com/jellyrock/jellyrock/issues/1272); close it with the fix.
 
+#### Out-of-spec Dolby Vision `mp4` files may still direct-play into Dolby Vision mode on 10.9 and 10.10 `[fid: dovi-out-of-spec-mp4-before-1011]` `[captured 2026-11-06]`
+
+Jellyfin 10.9 and 10.10 report a Dolby Vision profile 8 stream with compatibility ID 6 as `DOVIWithHDR10`, which the HEVC range list already takes, so `allowHdr10DoviInvalid` (`source/api/items.bs`, MKV only since PR #1325) never sees it and an `mp4` file of it direct-plays. On 10.11.11 the same file tagged `hvc1` played with the Roku in Dolby Vision mode, carrying the out-of-spec configuration (measured 2026-11-05 on a Roku Ultra `4850X`, decision `dovi-invalid-hdr10-direct-play`), so it most likely does the same on 10.9 and 10.10, as it did before PR #1325. A `dvh1`-tagged one is repackaged on every server from 10.9 by `refuseDvh1DolbyVision`; that conversion keeps the Dolby Vision data in the video, and on 10.9 and 10.10 no server code strips it.
+
+Check first: play the compatibility ID 6 `hvc1` and `dvh1` clips under `dovi-invalid/` in the test servers' Testing library from 10.9.11 and 10.10.7 on a Roku with a Dolby Vision TV, and read `Video.streamingSegment.hdrModeStr`. If either plays in Dolby Vision mode and the picture is wrong, or fails, have those requests drop the Dolby Vision range types for a stream `isOutOfSpecHdr10Dovi` marks, as `refuseDvh1DolbyVision` does.
+
+Not checked: any of this on 10.9 or 10.10 on a device; whether a Roku shows the out-of-spec Dolby Vision with the right colors.
+
 ### tests
 
 #### Re-derive what actually reddened PR #800 — the device-contention explanation is REFUTED. `[fid: pr-800-red-cause-rederive]` `[captured 2026-08-10]`
