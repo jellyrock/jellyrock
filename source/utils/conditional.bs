@@ -1,16 +1,11 @@
 ' @fileoverview Conditional functions that depend on 'bs_const' values specified in the manifest file
 
-' Print out all of the registry contents to the debug log
+' Print each registry section's keys to the debug log, not their values: a value can be the
+' access token, the user name or the search history
 sub printRegistry()
   #if debug
-    ' get a list of every registry section
-    regSections = getRegistrySections()
-    for each section in regSections
-      ' read all the data from the section
-      sectionData = RegistryReadAll(section)
-      ' print the assocArray with all the data
-      print "Registry section: " + section
-      print sectionData
+    for each section in getRegistrySections()
+      print "Registry section: "; section; " keys: "; RegistryReadAll(section).keys().join(", ")
     end for
   #end if
 end sub
