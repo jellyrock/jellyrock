@@ -204,6 +204,29 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hlsMasterNeedsRangeList")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for a read playlist with an HDR variant")
+    function _()
+      m.assertTrue(hlsMasterNeedsRangeList({ code: 200, body: m.dolbyVisionSdrDisplayMaster() }))
+      m.assertTrue(hlsMasterNeedsRangeList({ code: 200, body: m.hlgSdrDisplayMaster() }))
+    end function
+
+    @it("is false for an all-SDR playlist")
+    function _()
+      body = m.master("VIDEO-RANGE=SDR,CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34) + ",RESOLUTION=3840x2160")
+      m.assertFalse(hlsMasterNeedsRangeList({ code: 200, body: body }))
+    end function
+
+    @it("is false when the playlist did not arrive")
+    function _()
+      m.assertFalse(hlsMasterNeedsRangeList(invalid))
+      m.assertFalse(hlsMasterNeedsRangeList({ code: 500, body: m.dolbyVisionSdrDisplayMaster() }))
+      m.assertFalse(hlsMasterNeedsRangeList({ code: 200, body: invalid }))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("needsH264ResolutionCap")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -320,6 +343,16 @@ namespace tests
       retry = h264CapDecision({ code: 200, body: body }, true, true, "SDR|DOVIWithSDR")
       m.assertTrue(retry.cap)
       m.assertEqual(retry.reason, "noShownVariant")
+    end function
+
+    @it("does not cap a retry of a source within the ceiling when no variant is shown")
+    function _()
+      body = m.master("VIDEO-RANGE=PQ,CODECS=" + chr(34) + "hvc1.2.4.L150.B0,ac-3" + chr(34) + ",RESOLUTION=1920x1080")
+      decision = h264CapDecision({ code: 200, body: body }, false, true, "SDR|DOVIWithSDR")
+
+      m.assertFalse(decision.cap)
+      m.assertEqual(decision.reason, "noShownVariant")
+      m.assertEqual(decision.variant.range, "PQ")
     end function
 
     @it("keeps a 4K HEVC SDR variant listed after a hidden PQ one")

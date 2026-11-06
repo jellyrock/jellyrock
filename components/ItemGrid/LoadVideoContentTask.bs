@@ -844,13 +844,18 @@ function capH264Resolution(itemId as string, mediaSourceId as dynamic, audioStre
   end if
 
   fetched = fetchManifestText(buildURL(source.TranscodingUrl), timeouts.HLS_MASTER_PROBE_MS)
-  ' The range list only matters when a variant is HDR, and building the codec profiles costs many
-  ' CanDecodeVideo calls.
   hevcRangeTypes = invalid
   rangeTypesForLog = "notBuilt"
-  if type(fetched) = "roAssociativeArray" and hlsMasterListsHdr(textOrEmpty(fetched.body))
+  if hlsMasterNeedsRangeList(fetched)
     hevcRangeTypes = hevcRangeTypesOfProfile({ CodecProfiles: getCodecProfiles(pickedCaps) })
-    rangeTypesForLog = textOrEmpty(hevcRangeTypes)
+    if not isValid(hevcRangeTypes)
+      rangeTypesForLog = "noHevcProfile"
+    else if hevcRangeTypes = ""
+      ' A server before 10.9 is sent no range types.
+      rangeTypesForLog = "noRangeCondition"
+    else
+      rangeTypesForLog = textOrEmpty(hevcRangeTypes)
+    end if
   end if
   decision = h264CapDecision(fetched, sourceAboveCeiling, disallowVideoCopy, hevcRangeTypes)
   if isValid(decision.variant)
