@@ -20,6 +20,8 @@ A video in an HDR format your TV shows plays in that format. A video in an HDR f
 
 Some files carry Dolby Vision that doesn't follow Dolby's specification, for example some converted from a Blu-ray. When the picture underneath is HDR10, the file plays as HDR10 on a TV that shows HDR10, without Dolby Vision: an MKV file as it is, any other file repackaged by your server. Otherwise your server converts it.
 
+Some Dolby Vision mp4 files are packaged in a way Roku doesn't play. With Jellyfin 10.9 or later, your server repackages them so they play, still in Dolby Vision on a TV that shows it.
+
 **Playback Info** in the player shows the video's HDR format, and the reason when the server converts it. See [Watch in original quality](original-quality.md#see-how-something-is-playing).
 
 ## Dolby Vision in MKV files
@@ -39,5 +41,6 @@ Some of these repackaged streams are too much for the Roku to hold. When one fai
 
 - **A Dolby Vision MKV file plays without Dolby Vision.** Check that [Preserve DoVi](../app-settings.md#playbackPreserveDovi) is on and your server runs Jellyfin 10.9 or later. Then open **Playback Info**: it says whether the stream was repackaged.
 - **A Dolby Vision file plays as HDR10.** Its Dolby Vision may not follow Dolby's specification, and JellyRock plays those as HDR10 (see [How HDR plays](#how-hdr-plays)). Open **Playback Info**: a format such as `DV 8.6` is one of them, and Preserve DoVi doesn't change it.
+- **A Dolby Vision mp4 file is repackaged by the server.** Open **Playback Info**: a codec tag of `dvh1` means the file is packaged in a way Roku doesn't play, so your server repackaged it (see [How HDR plays](#how-hdr-plays)).
 - **HDR video looks washed out or dark.** Open **Playback Info** to see whether the server converted it, and why.
 - **Other playback problems.** See [Playback troubleshooting](../playback-troubleshooting.md).

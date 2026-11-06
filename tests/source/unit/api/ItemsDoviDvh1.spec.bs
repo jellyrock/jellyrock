@@ -1,0 +1,141 @@
+import "pkg:/source/api/items.bs"
+import "pkg:/source/enums/SubtitleSelection.bs"
+import "pkg:/source/utils/streamSelection.bs"
+
+namespace tests
+
+  @suite("Items.bs - refuseDvh1DolbyVision()")
+  class ItemsDoviDvh1Tests extends tests.BaseTestSuite
+
+    ' A Dolby Vision profile 8.1 video stream with the given codec tag, as Jellyfin reports one.
+    private function dv81(codecTag as dynamic) as object
+      stream = { Type: "Video", Codec: "hevc", VideoRangeType: "DOVIWithHDR10", DvProfile: 8, DvBlSignalCompatibilityId: 1, ColorSpace: "bt2020nc", ColorTransfer: "smpte2084", ColorPrimaries: "bt2020" }
+      if isValid(codecTag) then stream.CodecTag = codecTag
+      return stream
+    end function
+
+    private function codecProfile(codec as string, rangeTypes as string) as object
+      return {
+        "Type": "Video",
+        "Codec": codec,
+        "Conditions": [
+          { "Condition": "EqualsAny", "Property": "VideoProfile", "Value": "main|main 10", "IsRequired": false },
+          { "Condition": "EqualsAny", "Property": "VideoRangeType", "Value": rangeTypes, "IsRequired": false }
+        ]
+      }
+    end function
+
+    private function rangeTypesOf(profile as object) as dynamic
+      for each condition in profile.Conditions
+        if condition.Property = "VideoRangeType" then return condition.Value
+      end for
+      return invalid
+    end function
+
+    ' The lists a 4K Roku on a TV that shows Dolby Vision, HDR10, HDR10+ and HLG sends.
+    private function dvProfiles() as object
+      return [
+        m.codecProfile("h264,avc", "SDR|DOVIWithSDR|DOVI|DOVIWithEL|DOVIWithELHDR10Plus"),
+        m.codecProfile("h265,hevc", "SDR|DOVIWithSDR|DOVI|DOVIWithEL|DOVIWithELHDR10Plus|HDR10|DOVIWithHDR10|HDR10Plus|DOVIWithHDR10Plus|HLG|DOVIWithHLG"),
+        m.codecProfile("av1", "SDR|DOVIWithSDR|DOVI|DOVIWithEL|DOVIWithELHDR10Plus|HDR10|DOVIWithHDR10")
+      ]
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("refuses Dolby Vision for a profile 8 stream tagged dvh1")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("removes every Dolby Vision range type from the hevc list only")
+    function _()
+      profiles = m.dvProfiles()
+      refuseDvh1DolbyVision(profiles, [{ Type: "Audio", Codec: "ac3" }, m.dv81("dvh1")])
+
+      m.assertEqual(m.rangeTypesOf(profiles[0]), "SDR|DOVIWithSDR|DOVI|DOVIWithEL|DOVIWithELHDR10Plus")
+      m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|HDR10|HDR10Plus|HLG")
+      m.assertEqual(m.rangeTypesOf(profiles[2]), "SDR|DOVIWithSDR|DOVI|DOVIWithEL|DOVIWithELHDR10Plus|HDR10|DOVIWithHDR10")
+    end function
+
+    @it("matches the tag in any case")
+    function _()
+      profiles = m.dvProfiles()
+      refuseDvh1DolbyVision(profiles, [m.dv81("DVH1")])
+
+      m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|HDR10|HDR10Plus|HLG")
+    end function
+
+    @it("removes the same types for an out-of-spec one")
+    function _()
+      stream = m.dv81("dvh1")
+      stream.VideoRangeType = "DOVIInvalid"
+      stream.DvBlSignalCompatibilityId = 6
+      profiles = m.dvProfiles()
+      refuseDvh1DolbyVision(profiles, [stream])
+
+      m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|HDR10|HDR10Plus|HLG")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("leaves the profile alone")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("when the stream is tagged hev1 or hvc1")
+    @params("hev1")
+    @params("hvc1")
+    function _(codecTag as string)
+      profiles = m.dvProfiles()
+      refuseDvh1DolbyVision(profiles, [m.dv81(codecTag)])
+
+      m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|DOVI|DOVIWithEL|DOVIWithELHDR10Plus|HDR10|DOVIWithHDR10|HDR10Plus|DOVIWithHDR10Plus|HLG|DOVIWithHLG")
+    end function
+
+    @it("when the stream has no codec tag (an MKV)")
+    function _()
+      profiles = m.dvProfiles()
+      refuseDvh1DolbyVision(profiles, [m.dv81(invalid)])
+
+      m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|DOVI|DOVIWithEL|DOVIWithELHDR10Plus|HDR10|DOVIWithHDR10|HDR10Plus|DOVIWithHDR10Plus|HLG|DOVIWithHLG")
+    end function
+
+    @it("when a dvh1 stream is not profile 8 (profile 5 has no base layer to fall back to)")
+    @params(5)
+    @params(7)
+    function _(dvProfile as integer)
+      stream = m.dv81("dvh1")
+      stream.DvProfile = dvProfile
+      profiles = m.dvProfiles()
+      refuseDvh1DolbyVision(profiles, [stream])
+
+      m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|DOVI|DOVIWithEL|DOVIWithELHDR10Plus|HDR10|DOVIWithHDR10|HDR10Plus|DOVIWithHDR10Plus|HLG|DOVIWithHLG")
+    end function
+
+    @it("when there is no video stream, or no streams")
+    function _()
+      profiles = m.dvProfiles()
+      refuseDvh1DolbyVision(profiles, [{ Type: "Audio", Codec: "ac3" }])
+      refuseDvh1DolbyVision(profiles, invalid)
+      refuseDvh1DolbyVision(invalid, [m.dv81("dvh1")])
+
+      m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|DOVI|DOVIWithEL|DOVIWithELHDR10Plus|HDR10|DOVIWithHDR10|HDR10Plus|DOVIWithHDR10Plus|HLG|DOVIWithHLG")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("in the PlaybackInfo request")
+    ' These use this Roku's own device profile, so they hold on any TV.
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("lists no Dolby Vision range type for HEVC for a dvh1 profile 8 MP4")
+    function _()
+      versions = { mediaSourcesData: { mediaSources: [{ Id: "dvh1", Container: "mp4", MediaStreams: [m.dv81("dvh1")] }] } }
+      rangeTypes = hevcRangeTypesOfProfile(buildPlaybackInfoPostData("dvh1", -1, SubtitleSelection.NONE, 0&, versions).DeviceProfile)
+      m.assertTrue(isValidAndNotEmpty(rangeTypes), "the device profile needs HEVC range types")
+
+      if isValidAndNotEmpty(rangeTypes)
+        for each rangeType in rangeTypes.split("|")
+          m.assertNotEqual(LCase(rangeType.Left(4)), "dovi", "HEVC range types: " + rangeTypes)
+        end for
+      end if
+    end function
+
+  end class
+
+end namespace
