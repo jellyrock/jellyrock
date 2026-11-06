@@ -63,7 +63,7 @@ related-files:
   - source/syncplay/syncPlayQueue.bs
   - source/syncplay/syncPlayHooks.bs
   - source/syncplay/syncPlayState.bs
-last-reviewed: 2026-11-06
+last-reviewed: 2026-11-05
 ---
 
 # Video and audio playback

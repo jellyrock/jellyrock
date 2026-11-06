@@ -934,6 +934,28 @@ Check first: a never-played `.strm` item's `RunTimeTicks` before the probe. If i
 
 Not checked: any of this on a device.
 
+#### A transcode of a source with no audio track never starts on Roku: endless buffering `[fid: video-only-transcode-never-starts]` `[captured 2026-11-06]`
+
+A source with no audio track that the server transcodes never starts: Roku's player stays in `buffering` with no error, and JellyRock shows an endless spinner. Found while reviewing PR #1331, which does not cause it.
+
+Measured 2026-11-06 on a Streaming Stick 4K (Roku OS 15.3.4) against Jellyfin 12.4, with four synthetic 1080p HEVC HLG clips (one variable at a time). The two without audio (24 and 60 fps) stuck in `buffer` for 60 s; the two with AAC played to the end. A one-`Video`-node channel outside JellyRock, given the same server URLs, did the same: `state=buffering errorCode=0` for 45 s on the video-only stream, with `ts` and with `fMP4` segments, while the stream with audio played. Roku never requests the first segment (the server wrote no transcode log for the video-only clip in any run, and did for the clip with audio); requested by hand, the server encodes a valid video-only segment in about 4 s. So the fault is Roku's handling of the server's video-only HLS stream (master `CODECS="avc1.42E02A"`), not the app or the server. The Dolby Vision 8.4 test files with an HLG base layer and no audio show it too.
+
+Options:
+
+- `notice` (recommended): before a transcode play in `LoadVideoContentTask`, if the played source lists no audio stream, show a clear message instead of starting a play that hangs. One translation key and a unit test; direct play left alone. Risk: it blocks a video-only transcode some other Roku or OS version can play.
+- `watchdog`: a general stall check (a play stuck in `buffer` at position 0 for N seconds stops with an error), designed with followup `level-override-direct-play-hangs-no-fallback`.
+- `report`: report it to Roku's developer forum with the one-node channel to reproduce it; can go alongside either.
+
+Not checked:
+
+- direct play of a video-only file;
+- other Roku models and Roku OS versions;
+- whether Roku plays a video-only HLS stream from another source;
+- how common video-only files are in real libraries;
+- whether Jellyfin can add a silent audio track.
+
+To rebuild a clip: `ffmpeg -f lavfi -i testsrc2=size=1920x1080:rate=24 -t 20 -vf format=yuv420p10le -c:v hevc_nvenc -profile:v main10 -color_primaries bt2020 -color_trc arib-std-b67 -colorspace bt2020nc out.mkv` (add an AAC input for the control).
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -1208,6 +1230,16 @@ An H.264 source caps the H.264 codec profile at `1920x1080` in `buildPlaybackInf
 #### `mediaNumber` loses the low digits of large values `[fid: media-number-long-precision]` `[captured 2026-11-04]`
 
 `mediaNumber` in `source/utils/misc.bs` reads a long integer through a float, so a large value loses its low digits (94848001 reads as 94848000, found 2026-11-04). It is harmless for the values it serves today, but wrong for bitrate and byte values; `reencodeCheck.bitsPerSecond` was added to avoid it. Decide whether `mediaNumber` should keep integers whole, and check its callers.
+
+#### The 1080p cap check hides HLG variants on an SDR display without a measurement behind it `[fid: hls-cap-hlg-rule-unmeasured]` `[captured 2026-11-06]`
+
+`hlsVariantShown()` (`source/utils/hlsMaster.bs`, PR #1331) hides an `HLG` variant when the device profile's HEVC range list lacks `HLG`, the same way it hides `PQ`. Only `PQ` was measured: on a Streaming Stick 4K at **4K TV** (no HDR), 2026-11-06, Roku dropped the HEVC `PQ` variant and the cap made the file play at 1080p. For `HLG` it is unknown whether Roku drops the variant or plays it on an SDR display. HLG was designed to look acceptable on SDR screens.
+
+Kept on purpose: if the rule is wrong, the cost is a needless 1080p re-encode that still plays, while counting `HLG` as shown risks a file that fails to start, as the `PQ` files did.
+
+The library's only HLG files (Dolby Vision 8.4 with an HLG base layer) cannot settle it: they have no audio track, and a transcode with no audio never starts on Roku at all (followup `video-only-transcode-never-starts`). Jellyfin 12.4's playlist for an HLG source on an SDR range list lists HEVC `HLG` 4K first, then H.264 `SDR` 4K.
+
+To close: on the Stick at **4K TV**, against a server with default encoding, play a 4K HLG file that has audio twice through the RTA deep-link probe: once as the branch is, once with `HLG` counted as shown. If the second plays at 4K, count `HLG` as shown and update decision `hls-cap-judges-shown-variant`; if it fails to start, the rule stands and the decision gets the measurement.
 
 ### api
 

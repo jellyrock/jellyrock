@@ -39,13 +39,16 @@ function hlsMasterVariants(text as string) as object
 end function
 
 ' The text after `prefix` up to the next `terminator` (or the end), or "" when `prefix` is absent.
+' `prefix` matches only a whole attribute name, at the start or after a comma, so CODECS= never
+' matches inside SUPPLEMENTAL-CODECS=.
 function hlsAttributeValue(attributes as string, prefix as string, terminator as string) as string
-  start = inStr(1, attributes, prefix)
+  padded = "," + attributes
+  start = inStr(1, padded, "," + prefix)
   if start = 0 then return ""
-  valueStart = start + len(prefix)
-  valueEnd = inStr(valueStart, attributes, terminator)
-  if valueEnd = 0 then valueEnd = len(attributes) + 1
-  return mid(attributes, valueStart, valueEnd - valueStart)
+  valueStart = start + 1 + len(prefix)
+  valueEnd = inStr(valueStart, padded, terminator)
+  if valueEnd = 0 then valueEnd = len(padded) + 1
+  return mid(padded, valueStart, valueEnd - valueStart)
 end function
 
 ' Whether the playlist lists a variant whose range is not SDR.
@@ -61,7 +64,7 @@ end function
 
 ' Whether the display shows a variant's range, judged from the device profile's HEVC range types.
 '
-' A display that cannot show PQ drops a PQ variant from the stream list. An unknown list ("" for
+' The Roku drops a PQ variant when its display cannot show PQ. An unknown list ("" for
 ' a server before 10.9, or invalid) and a range this does not know show everything, so nothing is
 ' dropped on a guess. DOVIWithSDR is an SDR base layer and does not make PQ shown.
 '

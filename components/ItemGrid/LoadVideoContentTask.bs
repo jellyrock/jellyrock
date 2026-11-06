@@ -847,13 +847,15 @@ function capH264Resolution(itemId as string, mediaSourceId as dynamic, audioStre
   ' The range list only matters when a variant is HDR, and building the codec profiles costs many
   ' CanDecodeVideo calls.
   hevcRangeTypes = invalid
+  rangeTypesForLog = "notBuilt"
   if type(fetched) = "roAssociativeArray" and hlsMasterListsHdr(textOrEmpty(fetched.body))
     hevcRangeTypes = hevcRangeTypesOfProfile({ CodecProfiles: getCodecProfiles(pickedCaps) })
+    rangeTypesForLog = textOrEmpty(hevcRangeTypes)
   end if
   decision = h264CapDecision(fetched, sourceAboveCeiling, disallowVideoCopy, hevcRangeTypes)
   if isValid(decision.variant)
     m.log.info("Master playlist", "codecs", decision.variant.codecs, "width", decision.variant.width, "height", decision.variant.height, "itemId", itemId)
-    m.log.info("Master playlist variant judged", "range", decision.variant.range, "reason", decision.reason, "hevcRangeTypes", textOrEmpty(hevcRangeTypes), "itemId", itemId)
+    m.log.info("Master playlist variant judged", "range", decision.variant.range, "reason", decision.reason, "hevcRangeTypes", rangeTypesForLog, "itemId", itemId)
   else
     m.log.warn("Could not read the master playlist", "reason", decision.reason, "sourceAboveCeiling", sourceAboveCeiling, "isReencode", disallowVideoCopy, "itemId", itemId)
   end if
