@@ -1021,7 +1021,7 @@ sub setupVideoContentWithAuth(video, mediaSourceId, audioStreamIdx)
       ' create a new URI by appending the received path to the server URL
       ' later we will substitute the users provided URL for this case
       if not isValid(uri[4])
-        m.log.error("Localhost stream has no path component", "sourceUrl", m.playbackInfo.MediaSources[0].Path)
+        m.log.error("Localhost stream has no path component", "mediaSourceId", m.playbackInfo.MediaSources[0].Id)
         m.top.errorMsg = translate(translationKeys.ErrorAnErrorWasEncounteredWhilePlaying)
         video.content = invalid
         return
@@ -1029,7 +1029,7 @@ sub setupVideoContentWithAuth(video, mediaSourceId, audioStreamIdx)
 
       localUrl = buildURL(uri[4])
       if not isValid(localUrl)
-        m.log.error("Failed to build localhost stream URL — server URL not set", "path", uri[4])
+        m.log.error("Failed to build localhost stream URL — server URL not set", "mediaSourceId", m.playbackInfo.MediaSources[0].Id)
         m.top.errorMsg = translate(translationKeys.ErrorAnErrorWasEncounteredWhilePlaying)
         video.content = invalid
         return

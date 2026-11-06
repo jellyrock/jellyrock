@@ -30,6 +30,19 @@ describe('roku-log personal text', () => {
     ['a series name', 'm.log.debug("next up", m.top.seriesName)'],
     ['a group name', 'm.log.info("creating group", "groupName", groupName)'],
     ['a converted name', 'm.log.info("album", item.album.toStr())'],
+    ['any name ending in Name', 'm.log.info("season", item.seasonName)'],
+    ['a playlist name', 'm.log.info("playlist", playlistName)'],
+    ['the search text', 'm.log.warn("superseded search", m.top.query)'],
+    ['a voice search term', 'm.log.info("fetching", "searchTerm", searchTerm)'],
+    [
+      'a media file path',
+      'm.log.error("no stream", "sourceUrl", m.playbackInfo.MediaSources[0].Path)',
+    ],
+    ['a name joined into the message', 'm.log.info("playing " + item.name)'],
+    ['a name in brackets', 'm.log.info("playing", (item.name))'],
+    ['a name inside a template string', 'm.log.info(`playing ${item.title}`)'],
+    ['a name as the value of an AA literal', 'm.log.warn("signed in", { user: user.name })'],
+    ['a name as the key of an AA literal', 'm.log.warn("signed in", { name: who })'],
   ])('fails %s', (_label, statement) => {
     const found = check(statement);
     expect(found).toHaveLength(1);
@@ -42,6 +55,18 @@ describe('roku-log personal text', () => {
     ['a setting name', 'm.log.warn("no default", selectedSetting.settingName)'],
     ['the word name inside the message', 'm.log.info("name and number matches", count)'],
     ['a call that is not on m.log', 'print item.name'],
+    ['a selected subtitle index', 'm.log.info("reload", "subtitleIndex", m.top.selectedSubtitle)'],
+    ['a setting field name', 'm.log.warn("cannot sync", { field: fieldName })'],
+    [
+      'a subtitle track label',
+      'm.log.warn("not in the track list", "trackName", selected.trackName)',
+    ],
+    ['numbers inside a template string', 'm.log.info("size", `${width}x${height}`)'],
+    [
+      'IDs in an AA literal',
+      'm.log.info("syncing", { libraryId: libraryId, settingsCount: count })',
+    ],
+    ['a path built from the item ID', 'm.log.info("cached", "cachePath", cachePath)'],
   ])('passes %s', (_label, statement) => {
     expect(check(statement)).toHaveLength(0);
   });

@@ -82,24 +82,23 @@ const ARITY_CODE = 'log-too-many-values';
 // and a shared log can show who someone is or what they watch, so the build keeps them out
 // of m.log by the name of the argument instead. An ID is fine: it identifies nothing alone.
 const PERSONAL_CODE = 'log-personal-text';
+// Names that hold free text without ending in "name" or "title": what a user searched for, and
+// a file path, which holds the title (and sometimes an account name).
 const PERSONAL_NAMES = new Set([
-  'name',
   'username',
-  'itemname',
-  'seriesname',
-  'albumname',
   'album',
   'albumartist',
   'artist',
   'artists',
-  'artistname',
-  'groupname',
-  'devicename',
-  'friendlyname',
-  'displayname',
-  'servername',
-  'sortname',
-  'fullname',
+  'query',
+  'searchterm',
+  'path',
+]);
+// Names that end in "name" or "title" but hold neither: each says what it holds instead.
+const NOT_PERSONAL = new Set([
+  'settingname', // a setting's key, such as playbackSubsCustom
+  'fieldname', // a setting node's field, which is a setting's key
+  'trackname', // an audio or subtitle track label, such as "English SDH"
 ]);
 const PERSONAL_DISABLE_LINE = /'\s*bsc-disable-line\s+log-personal-text\b/i;
 const PERSONAL_DISABLE_NEXT_LINE = /'\s*bsc-disable-next-line\s+log-personal-text\b/i;
@@ -283,9 +282,8 @@ class RokuLogPlugin {
               PERSONAL_DISABLE_LINE.test(sourceLines[line] ?? '') ||
               (line > 0 && PERSONAL_DISABLE_NEXT_LINE.test(sourceLines[line - 1] ?? ''));
             if (!personalSuppressed) {
-              for (const arg of call.args) {
-                const argName = finalName(arg);
-                if (!argName || !isPersonalName(argName)) continue;
+              for (const [argName, arg] of call.args.flatMap((a) => namesIn(a))) {
+                if (!isPersonalName(argName)) continue;
                 event.program.diagnostics.register({
                   code: PERSONAL_CODE,
                   severity: 1, // Error
@@ -361,16 +359,44 @@ function finalName(expression) {
 }
 
 /**
- * True for a name that says it holds a title or a person's name. `subtitle` is the one
- * common name ending in "title" that holds neither.
+ * Every name a log argument passes on, each with the expression to report it at. Besides the
+ * argument itself, it looks into what joins values into one string or one value: both sides of
+ * `+`, brackets, a template string's `${}` parts, and an AA literal's keys and values.
+ * @param {object} expression
+ * @returns {Array<[string, object]>}
+ */
+function namesIn(expression) {
+  if (!expression) return [];
+  if (brighterscript.isBinaryExpression(expression)) {
+    return [...namesIn(expression.left), ...namesIn(expression.right)];
+  }
+  if (brighterscript.isGroupingExpression(expression)) return namesIn(expression.expression);
+  if (brighterscript.isTemplateStringExpression(expression)) {
+    return (expression.expressions ?? []).flatMap((part) => namesIn(part));
+  }
+  if (brighterscript.isAALiteralExpression(expression)) {
+    return (expression.elements ?? []).flatMap((member) => {
+      if (!brighterscript.isAAMemberExpression(member)) return [];
+      const key = (member.tokens?.key?.text ?? '').replace(/^"|"$/g, '');
+      return [...(key ? [[key, member]] : []), ...namesIn(member.value)];
+    });
+  }
+  const name = finalName(expression);
+  return name ? [[name, expression]] : [];
+}
+
+/**
+ * True for a name that says it holds a title, a person's name or other free text: any name
+ * ending in "name" or "title" (but not "subtitle", which names a track or its index), and the few
+ * in PERSONAL_NAMES. NOT_PERSONAL lists the exceptions, so a new free-text name fails the build
+ * until someone says it holds none.
  * @param {string} name
  * @returns {boolean}
  */
 function isPersonalName(name) {
   const lowered = name.toLowerCase();
-  if (lowered.endsWith('subtitle')) return false;
-  if (lowered.endsWith('title')) return true;
-  if (lowered.endsWith('username')) return true;
+  if (NOT_PERSONAL.has(lowered) || lowered.endsWith('subtitle')) return false;
+  if (lowered.endsWith('name') || lowered.endsWith('title')) return true;
   return PERSONAL_NAMES.has(lowered);
 }
 

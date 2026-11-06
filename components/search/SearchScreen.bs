@@ -451,7 +451,7 @@ function applyRouteQuery() as boolean
   if query = "" then return false
 
   m.lastAppliedQuery = query
-  m.log.info("route voice query: " + query)
+  m.log.info("route voice query", "length", Len(query))
   applyQueryAndSubmit(query)
   return true
 end function
@@ -693,7 +693,7 @@ sub startHintsFetch()
 
   m.hintsSeq += 1
   m.hintsInFlight = true
-  m.log.verbose("hints query=" + query)
+  m.log.verbose("hints query", "length", Len(query))
 
   ' The query rides the promise context (the no-closure state channel) so the
   ' handler can tell what it asked for, independent of what is typed now.
@@ -886,7 +886,7 @@ end sub
 '
 ' `isSubmitted` says whether this run reports its outcome when it lands (showSearchOutcome).
 sub runFullSearch(query as string, isSubmitted = false as boolean)
-  m.log.verbose("runFullSearch query=" + query)
+  m.log.verbose("runFullSearch", "length", Len(query))
 
   ' A new query (or a retry) clears what the last one ended with.
   clearSearchOutcome()
@@ -920,7 +920,7 @@ end sub
 ' (only if we don't already have results for this exact query), and collapses
 ' the overlay so the user can browse results.
 sub submitSearch(query as string)
-  m.log.info("submit query=" + query)
+  m.log.info("submit query", "length", Len(query))
   showSearchStatus(query)
 
   ' Cancel the pending full search: the submit runs its own. The hints debounce is left
@@ -986,7 +986,7 @@ sub onFullSearchResults(event as object)
       stale = event.getData()
       answered = ""
       if isValid(stale) and isValid(stale.query) then answered = stale.query
-      m.log.warn("superseded search delivery dropped - answered", answered, "current", m.top.query)
+      m.log.warn("superseded search delivery dropped", "answeredLength", Len(answered), "currentLength", Len(m.top.query))
     end if
     return
   end if
