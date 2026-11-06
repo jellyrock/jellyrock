@@ -1229,7 +1229,7 @@ After a slow silent seek on a SyncPlay member, the `Ready` goes out at the `play
 
 #### Route every print through the log redactor `[fid: log-print-through-redactor]` `[captured 2026-11-05]`
 
-**Route every `print` through the redactor.** The 161 `print` statements in `source/` and `components/` bypass `log.Redactor`; most print user IDs or the server URL (`inferServerUrl` in `source/utils/misc.bs`), and none print a token today. Agreed shape (2026-11-05): a free function such as `log.print(...)` that masks and prints, usable before the log manager exists, and the `print-locations` plugin failing any raw `print` outside `source/logging/`. Comes after `rr-http-trace-leaks-token`.
+**Route every `print` through the redactor.** The 161 `print` statements in `source/` and `components/` bypass `log.Redactor`; most print user IDs or the server URL (`inferServerUrl` in `source/utils/misc.bs`). `source/utils/session.bs` printed the access token among every user setting until PR #1329 cut that print to keys only. Agreed shape (2026-11-05): a free function such as `log.print(...)` that masks and prints, usable before the log manager exists, and the `print-locations` plugin failing any raw `print` outside `source/logging/`. Comes after `rr-http-trace-leaks-token`.
 
 **Added 2026-11-06:** masking cannot hide free text in a `print`: `source/utils/session.bs` prints every user setting (`"Loading user setting:"`), the username and the recent searches included, seen on a device console during PR #1329's review. Route that dump through `m.log` with values left out, or drop it. A `log.print()` that caches patterns must rebuild them when missing, as `log.Redactor` does: a node's `m` handed to another thread loses its `roRegex` objects.
 
