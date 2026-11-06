@@ -91,29 +91,18 @@ function transcodeCauseSettingKey(reason as string, ctx as object) as string
 end function
 
 ' Mirrors the DoVi container-profile injection in buildPlaybackInfoPostData()
-' (source/api/items.bs). Every conjunct there is reproduced here, because each one
-' is a way the constraint is not injected and therefore a way this reason belongs
-' to someone else:
+' (source/api/items.bs). Each way the constraint is not injected is a way this
+' reason belongs to someone else:
 '   - the setting off, or the caller bypassing it on a buffer-overflow retry
 '   - a device that cannot do DoVi (the injection is skipped entirely)
-'   - a server below apiVersion 2, where VideoRangeType does not exist
-'   - a non-mkv container, or an AV1 stream, both explicitly exempted there
+'   - a stream the remux does not apply to, which isDoviRemuxCandidate() decides
+'     for both the injection and this check, so they cannot drift apart
 function causedByPreserveDovi(ctx as object, settings as object) as boolean
   if not isBooleanTrue(settings.playbackPreserveDovi) then return false
   if isBooleanTrue(ctx.doviPreservationBypassed) then return false
   if not isBooleanTrue(ctx.deviceSupportsDovi) then return false
 
-  apiVersion = mediaNumber(ctx.apiVersion)
-  if apiVersion < 2 then return false
-
-  if LCase(textOrEmpty(ctx.container)) <> "mkv" then return false
-
-  stream = ctx.videoStream
-  if not isValid(stream) then return false
-  if not isValidAndNotEmpty(stream.Codec) then return false
-  if LCase(stream.Codec) = "av1" then return false
-  if not isValidAndNotEmpty(stream.VideoRangeType) then return false
-  return inStr(1, LCase(stream.VideoRangeType), "dovi") > 0
+  return isDoviRemuxCandidate(ctx.videoStream, ctx.container, mediaNumber(ctx.apiVersion))
 end function
 
 ' Mirrors getAnamorphicCondition() in deviceCapabilities.bs, which emits its
