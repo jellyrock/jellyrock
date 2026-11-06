@@ -139,6 +139,14 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
     postData.AllowVideoStreamCopy = false
   end if
 
+  mediaStreams = invalid
+  if isValid(playedSource) and isValid(playedSource.MediaStreams)
+    mediaStreams = playedSource.MediaStreams
+  end if
+
+  ' Before the HEVC-first choice below, which reads the HEVC range types this can extend.
+  allowHdr10DoviInvalid(postData.DeviceProfile.CodecProfiles, mediaStreams)
+
   ' The server takes the first codec it may encode. List HEVC first for a source H.264 cannot carry
   ' on this device, so a server that encodes HEVC keeps its size and range. A first request does so
   ' only when the server's own settings say it encodes HEVC in hardware: software HEVC measured
@@ -150,9 +158,7 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
   ' has no playlist check.
   listHevcFirst = disallowVideoCopy
   if not listHevcFirst and serverCapabilities.serverEncodesHevcInHardware(m.global.server.encodingPolicy)
-    sourceVideoStream = invalid
-    if isValid(playedSource) then sourceVideoStream = getFirstVideoStream(playedSource.MediaStreams)
-    listHevcFirst = prefersHevcTranscode(sourceVideoStream, hevcRangeTypesOfProfile(postData.DeviceProfile), false)
+    listHevcFirst = prefersHevcTranscode(getFirstVideoStream(mediaStreams), hevcRangeTypesOfProfile(postData.DeviceProfile), false)
   end if
   if listHevcFirst
     for each profile in postData.DeviceProfile.TranscodingProfiles
@@ -160,11 +166,6 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
         profile.VideoCodec = hevcFirstCodecList(profile.VideoCodec)
       end if
     end for
-  end if
-
-  mediaStreams = invalid
-  if isValid(playedSource) and isValid(playedSource.MediaStreams)
-    mediaStreams = playedSource.MediaStreams
   end if
 
   playedContainer = ""
@@ -175,7 +176,6 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
   if isValid(doviProfile)
     postData.DeviceProfile.ContainerProfiles.push(doviProfile)
   end if
-  allowHdr10DoviInvalid(postData.DeviceProfile.CodecProfiles, mediaStreams)
 
   ' Cap H264 codec profile when the source video is H264.
   ' Applied dynamically here rather than in the static device profile so it doesn't
@@ -291,7 +291,9 @@ end function
 ' stream's own value.
 '
 ' Hardware is read only after the cheap checks pass: the setting must be on and the caller must
-' not have bypassed it. Only the first video stream with a codec other than AV1 is considered.
+' not have bypassed it. Only the first video stream with a codec other than AV1 is considered, and
+' isDoviRemuxCandidate() decides whether it needs the remux; the playback report asks the same
+' function (causedByPreserveDovi), so the two agree.
 '
 ' @param {dynamic} mediaStreams - MediaStream array of the played source, or invalid
 ' @param {dynamic} container - the played source's container, or invalid
@@ -316,29 +318,20 @@ function doviRemuxContainerProfile(mediaStreams as dynamic, container as dynamic
     ' always use the first video stream for now
     ' Note: don't force remux on AV1 codec - see #194
     if isValid(stream.Type) and stream.Type = "Video" and isValid(stream.Codec) and LCase(stream.Codec) <> "av1"
-      containerString = JDT_normalizeContainer(container ?? "")
-
-      ' DOVI remux logic requires VideoRangeType which was added in Jellyfin 10.9
-      ' Only apply this for API v2+ servers (10.9+)
-      if apiVersion >= 2 and containerString = "mkv" and isValid(stream.VideoRangeType) and stream.VideoRangeType <> ""
-        ' is DOVI in the string? DOVIInvalid and out-of-spec HDR10 Dolby Vision are not: a remux
-        ' cannot make them play as Dolby Vision, so they direct-play as HDR10 instead
-        ' (allowHdr10DoviInvalid(), isOutOfSpecHdr10Dovi())
-        if inStr(LCase(stream.VideoRangeType), "dovi") > 0 and LCase(stream.VideoRangeType) <> "doviinvalid" and not isOutOfSpecHdr10Dovi(stream)
-          ' add a condition to the mkv container profile to force remux (container swap)
-          return {
-            "Type": "Video",
-            "Container": "mkv",
-            "Conditions": [
-              {
-                "Condition": "NotEquals",
-                "Property": "VideoRangeType",
-                "Value": stream.VideoRangeType,
-                "IsRequired": true
-              }
-            ]
-          }
-        end if
+      if isDoviRemuxCandidate(stream, container, apiVersion)
+        ' add a condition to the mkv container profile to force remux (container swap)
+        return {
+          "Type": "Video",
+          "Container": "mkv",
+          "Conditions": [
+            {
+              "Condition": "NotEquals",
+              "Property": "VideoRangeType",
+              "Value": stream.VideoRangeType,
+              "IsRequired": true
+            }
+          ]
+        }
       end if
       exit for
     end if
@@ -354,22 +347,15 @@ end function
 ' ID is outside Dolby's spec. When the stream's color tags are still the HDR10 ones (bt2020nc, smpte2084,
 ' bt2020), Roku plays it as HDR10, so this adds DOVIInvalid to the hevc and av1 VideoRangeType
 ' lists that already take HDR10. Any other DOVIInvalid stream is left for the server to convert.
-' Only the first video stream counts, as in doviRemuxContainerProfile().
+' Reads the first video stream.
 '
 ' @param {dynamic} codecProfiles - the DeviceProfile's CodecProfiles, changed in place
 ' @param {dynamic} mediaStreams - MediaStream array of the played source, or invalid
 sub allowHdr10DoviInvalid(codecProfiles as dynamic, mediaStreams as dynamic)
-  if not isValid(codecProfiles) or not isValid(mediaStreams) then return
+  if not isValid(codecProfiles) then return
 
-  video = invalid
-  for each stream in mediaStreams
-    if isValid(stream.Type) and stream.Type = "Video"
-      video = stream
-      exit for
-    end if
-  end for
-  if not isValid(video) or not isValid(video.VideoRangeType) or LCase(video.VideoRangeType) <> "doviinvalid" then return
-  if not hasHdr10ColorTags(video) then return
+  video = getFirstVideoStream(mediaStreams)
+  if not isValid(video) or LCase(textOrEmpty(video.VideoRangeType)) <> "doviinvalid" or not hasHdr10ColorTags(video) then return
 
   for each codecProfile in codecProfiles
     codecs = LCase(codecProfile.Codec ?? "")
@@ -385,31 +371,6 @@ sub allowHdr10DoviInvalid(codecProfiles as dynamic, mediaStreams as dynamic)
     end if
   end for
 end sub
-
-' hasHdr10ColorTags: Whether a video stream carries the HDR10 color tags (bt2020nc, smpte2084,
-' bt2020), in any case.
-'
-' @param {object} stream - a video MediaStream
-' @returns {boolean}
-function hasHdr10ColorTags(stream as object) as boolean
-  if not isValid(stream.ColorSpace) or LCase(stream.ColorSpace) <> "bt2020nc" then return false
-  if not isValid(stream.ColorTransfer) or LCase(stream.ColorTransfer) <> "smpte2084" then return false
-  return isValid(stream.ColorPrimaries) and LCase(stream.ColorPrimaries) = "bt2020"
-end function
-
-' isOutOfSpecHdr10Dovi: Whether a video stream is Dolby Vision profile 8 or 10 whose base-layer
-' compatibility ID is outside Dolby's spec (0, 1, 2, 4) and whose base layer carries the HDR10 color
-' tags. Servers before 10.11 call such a stream DOVIWithHDR10 (compatibility ID 6), and 10.11 and later
-' DOVIInvalid; either way a remux cannot make it play as Dolby Vision, and Roku plays it as HDR10.
-'
-' @param {object} stream - a video MediaStream
-' @returns {boolean}
-function isOutOfSpecHdr10Dovi(stream as object) as boolean
-  if not isValid(stream.DvProfile) or (stream.DvProfile <> 8 and stream.DvProfile <> 10) then return false
-  compatId = stream.DvBlSignalCompatibilityId
-  if not isValid(compatId) or compatId = 0 or compatId = 1 or compatId = 2 or compatId = 4 then return false
-  return hasHdr10ColorTags(stream)
-end function
 
 ' MetaData about an item. Returns a JellyfinBaseItem node.
 ' @param {string} fields - Comma-separated Jellyfin fields to request. Defaults to Chapters and Trickplay only.

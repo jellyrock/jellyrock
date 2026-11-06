@@ -237,6 +237,17 @@ namespace tests
       m.assertEqual(doviRemuxContainerProfile([untagged], "mkv", true, false, 2, m.mockCaps(true)), m.expectedProfile("DOVIWithHDR10"), "no HDR10 tags")
     end function
 
+    @it("reads compatibility ID 0 as out of spec for profile 8 and in spec for profile 10, as Jellyfin 10.11 does")
+    function _()
+      profile8 = { Type: "Video", Codec: "hevc", DvProfile: 8, DvBlSignalCompatibilityId: 0, ColorSpace: "bt2020nc", ColorTransfer: "smpte2084", ColorPrimaries: "bt2020" }
+      profile10 = { Type: "Video", Codec: "hevc", DvProfile: 10, DvBlSignalCompatibilityId: 0, ColorSpace: "bt2020nc", ColorTransfer: "smpte2084", ColorPrimaries: "bt2020" }
+      noCompatId = { Type: "Video", Codec: "hevc", DvProfile: 8, ColorSpace: "bt2020nc", ColorTransfer: "smpte2084", ColorPrimaries: "bt2020" }
+
+      m.assertTrue(isOutOfSpecHdr10Dovi(profile8), "profile 8")
+      m.assertFalse(isOutOfSpecHdr10Dovi(profile10), "profile 10")
+      m.assertFalse(isOutOfSpecHdr10Dovi(noCompatId), "no compatibility ID")
+    end function
+
     @it("returns invalid for an empty VideoRangeType")
     function _()
       streams = [m.videoStream("hevc", "")]

@@ -1,4 +1,5 @@
 import "pkg:/source/api/items.bs"
+import "pkg:/source/enums/SubtitleSelection.bs"
 import "pkg:/source/utils/streamSelection.bs"
 
 namespace tests
@@ -35,6 +36,50 @@ namespace tests
         m.codecProfile("vp9", "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL"),
         m.codecProfile("av1", "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL")
       ]
+    end function
+
+    ' The PlaybackInfo body for an MKV whose only stream is the given one.
+    private function postDataFor(stream as object) as object
+      versions = { mediaSourcesData: { mediaSources: [{ Id: "dovi", Container: "mkv", MediaStreams: [stream] }] } }
+      return buildPlaybackInfoPostData("dovi", -1, SubtitleSelection.NONE, 0&, versions)
+    end function
+
+    ' The request's HEVC range types as a list. The device profile comes from this Roku and its
+    ' TV, so a test reads whether they take HDR10 rather than assuming it.
+    private function hevcRangeTypes(postData as object) as object
+      rangeTypes = hevcRangeTypesOfProfile(postData.DeviceProfile)
+      m.assertTrue(isValidAndNotEmpty(rangeTypes), "the device profile needs HEVC range types")
+      if not isValidAndNotEmpty(rangeTypes) then return []
+      return rangeTypes.split("|")
+    end function
+
+    ' Whether every video transcoding profile lists hevc before h264.
+    private function listsHevcFirst(postData as object) as boolean
+      found = false
+      for each profile in postData.DeviceProfile.TranscodingProfiles
+        if profile.Type = "Video" and isValid(profile.VideoCodec)
+          found = true
+          codecs = profile.VideoCodec.split(",")
+          hevcAt = -1
+          h264At = -1
+          for i = 0 to codecs.count() - 1
+            if codecs[i] = "hevc" and hevcAt < 0 then hevcAt = i
+            if codecs[i] = "h264" and h264At < 0 then h264At = i
+          end for
+          if hevcAt < 0 or (h264At >= 0 and h264At < hevcAt) then return false
+        end if
+      end for
+      return found
+    end function
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.global.server.setField("encodingPolicy", invalid)
+    end function
+
+    protected override function afterEach()
+      m.global.server.setField("encodingPolicy", invalid)
+      super.afterEach()
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -130,6 +175,28 @@ namespace tests
       allowHdr10DoviInvalid(profiles, [m.hdr10Tagged("hevc", "DOVIInvalid")])
 
       m.assertEqual(profiles[0].Conditions.Count(), 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("in the PlaybackInfo request")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("lists DOVIInvalid for HEVC exactly when this display takes HDR10")
+    function _()
+      rangeTypes = m.hevcRangeTypes(m.postDataFor(m.hdr10Tagged("hevc", "DOVIInvalid")))
+
+      m.assertEqual(arrayHasValue(rangeTypes, "DOVIInvalid"), arrayHasValue(rangeTypes, "HDR10"), "HEVC range types: " + rangeTypes.join("|"))
+    end function
+
+    @it("lists hevc first for a 1080p one on a hardware HEVC server exactly when this display takes HDR10")
+    function _()
+      m.global.server.encodingPolicy = { HardwareAccelerationType: "nvenc", EnableHardwareEncoding: true, AllowHevcEncoding: true }
+      stream = m.hdr10Tagged("hevc", "DOVIInvalid")
+      stream.Width = 1920
+      stream.Height = 1080
+      postData = m.postDataFor(stream)
+
+      m.assertEqual(m.listsHevcFirst(postData), arrayHasValue(m.hevcRangeTypes(postData), "HDR10"))
     end function
 
   end class
