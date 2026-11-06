@@ -70,7 +70,7 @@ Each method takes a message and up to 8 values. A ninth fails the build with `lo
 m.log.info("Received data", json.result, "http call", m.top.uri)
 ```
 
-You don't mask anything yourself: the logger turns tokens, device IDs and addresses into placeholders such as `<token:3fa9>` and `<lan-ip>` before the line is written. A title or a person's name can't be masked, so passing one fails the build with `log-personal-text`. Log the ID instead:
+You don't mask anything yourself: the logger turns tokens, device IDs and addresses into placeholders such as `<token:3fa9>` and `<lan-ip>` before the line is written. A title, a person's name, search text or a file path can't be masked, so passing one fails the build with `log-personal-text`. Log the ID, or the text's length, instead:
 
 ```brighterscript
 m.log.info("Playing", item.id)    ' not item.name
@@ -85,5 +85,5 @@ The logger converts the values to text, so you don't have to. The exception: a `
 - **Import the logger** in every file that logs.
 - **Create one logger per component or class**, so each line shows where it came from.
 - **Pick the level by the table above**, so filtering works.
-- **Log IDs, never titles or names.** The build rejects them (`log-personal-text`); the [architecture doc](../architecture/logging.md#masking-what-a-line-could-leak) says why.
+- **Log IDs, never titles, names, search text or file paths.** The build rejects them (`log-personal-text`); the [architecture doc](../architecture/logging.md#masking-what-a-line-could-leak) says why.
 - **Use `m.log.*`, not `print`.** `print` is allowed only in `source/main.bs` and in the `#if debug` block of `source/utils/globals.bs`. The `print-locations` BrighterScript plugin enforces this (see [build-and-tooling.md](../architecture/build-and-tooling.md)).

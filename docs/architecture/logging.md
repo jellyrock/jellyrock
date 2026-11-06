@@ -6,7 +6,7 @@ related-files:
   - components/logging/Log.bs
   - source/logging/Logger.bs
   - scripts/bsc-plugins/roku-log.cjs
-last-reviewed: 2026-11-05
+last-reviewed: 2026-11-06
 ---
 
 # Logging
@@ -90,7 +90,7 @@ Nodes created in `setGlobals()`, which `Main()` calls, are built before any mana
 
 ## Masking what a line could leak
 
-Console logs get shared: pasted into issues, and copied into `.device-runs/` by `scripts/lib/console-capture.js`. So `Logger.log()` passes every line through `log.Redactor` (in [`source/logging/Logger.bs`](../../source/logging/Logger.bs)) before it is written, in every build:
+Console logs get shared: pasted into issues, and copied into `.device-runs/` by `scripts/lib/console-capture.js`. A log a user sends from the app must be safe to paste publicly too (followup `log-upload-to-server`), so it has to be masked before it is kept anywhere. So `Logger.log()` passes every line through `log.Redactor` (in [`source/logging/Logger.bs`](../../source/logging/Logger.bs)) before it is written, in every build:
 
 | Found | Becomes |
 |---|---|
@@ -99,12 +99,15 @@ Console logs get shared: pasted into issues, and copied into `.device-runs/` by 
 | A password, a secret, or user info in a URL | `<secret>` |
 | The `Device=` field of the `Authorization` header (the Roku's user-set name) | `<device-name>` |
 | A URL host, or a bare `IPv4` address | `<loopback>`, `<lan-ip>`, `<public-ip>`, `<lan-host>` or `<host>` |
+| A host name with a dot, named again without a scheme after a URL showed it (`Could not resolve host: …`) | Its class, as in the URL |
 
 **A fingerprint still answers the debugging question.** Two lines with the same `<token:…>` used the same token, and a host class still says whether the app talked to the LAN, the internet or itself. Scheme, port, path and query keys stay. Item and user IDs stay too: they identify nothing alone.
 
-**Free text cannot be masked, so the build keeps it out.** A title or a person's name has no shape the redactor could find. The `log-personal-text` check in [`roku-log.cjs`](../../scripts/bsc-plugins/roku-log.cjs) fails an `m.log` argument whose name says it holds one (`rowTitle`, `item.name`, `username`, `groupName` and the like).
+**Free text cannot be masked, so the build keeps it out.** A title, a person's name, search text or a file path has no shape the redactor could find. The `log-personal-text` check in [`roku-log.cjs`](../../scripts/bsc-plugins/roku-log.cjs) fails an `m.log` argument whose name says it holds one: any name ending in `name` or `title`, plus `query`, `searchTerm`, `path` and a few music fields. It reads each argument, both sides of a `+`, the `${}` parts of a template string, and the keys and values of an AA literal. `NOT_PERSONAL` in the plugin lists the names that hold no free text (`settingName`, `fieldName`, `trackName`), so a new free-text name fails the build until someone decides otherwise. A name the build cannot read (`answered`, `uri[4]`) is the call site's job: log an ID or a length instead.
 
-**The redactor adds no thread crossing.** It reads no node and keeps no shared state, only its compiled patterns and a fingerprint cache, and a `Logger` builds it on its first line. Its cost per line on a device is not measured yet: `tests/source/unit/logging/RedactorCost.spec.bs` prints it through `test:tdd`. A production build strips every `m.log` call, so the cost is a dev and test build cost.
+**Each pattern runs only on a line that holds its trigger word.** On a Roku a pattern search costs several times a substring search, and most lines hold nothing to mask, so `redact()` first looks for `://`, `device=` and the credential words, and skips each pattern whose word is missing. The `IPv4` pattern runs on every line. A trigger list that misses a key the credential pattern knows lets that key through, so the "every key the credential pattern knows" case in `Redactor.spec.bs` covers each one. `tests/source/unit/logging/RedactorCost.spec.bs` prints the cost per line through `test:tdd`.
+
+**The patterns are rebuilt on the thread that uses them.** A `Logger` builds its redactor on its first line, and keeps it in the component's `m`. When a node's `m` is handed to another thread (a node created from the main thread, called later on the render thread), Roku keeps only data and drops the `roRegex` objects ([threading.md](threading.md#constructing-components)). So `redact()` compiles the patterns again when they are gone. The redactor reads no node, so it adds no thread crossing.
 
 **Not covered:** `print` statements, which bypass the logger; the `[http]` request trace of `roku-requests`, which prints each request's full URL and headers, token included, in every build; and Roku OS's own console lines. The first two are followups `log-print-through-redactor` and `rr-http-trace-leaks-token` in [`docs/progress.md`](../progress.md).
 
