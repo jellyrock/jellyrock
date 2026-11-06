@@ -1231,16 +1231,6 @@ An H.264 source caps the H.264 codec profile at `1920x1080` in `buildPlaybackInf
 
 `mediaNumber` in `source/utils/misc.bs` reads a long integer through a float, so a large value loses its low digits (94848001 reads as 94848000, found 2026-11-04). It is harmless for the values it serves today, but wrong for bitrate and byte values; `reencodeCheck.bitsPerSecond` was added to avoid it. Decide whether `mediaNumber` should keep integers whole, and check its callers.
 
-#### The 1080p cap check hides HLG variants on an SDR display without a measurement behind it `[fid: hls-cap-hlg-rule-unmeasured]` `[captured 2026-11-06]`
-
-`hlsVariantShown()` (`source/utils/hlsMaster.bs`, PR #1331) hides an `HLG` variant when the device profile's HEVC range list lacks `HLG`, the same way it hides `PQ`. Only `PQ` was measured: on a Streaming Stick 4K at **4K TV** (no HDR), 2026-11-06, Roku dropped the HEVC `PQ` variant and the cap made the file play at 1080p. For `HLG` it is unknown whether Roku drops the variant or plays it on an SDR display. HLG was designed to look acceptable on SDR screens.
-
-Kept on purpose: if the rule is wrong, the cost is a needless 1080p re-encode that still plays, while counting `HLG` as shown risks a file that fails to start, as the `PQ` files did.
-
-The library's only HLG files (Dolby Vision 8.4 with an HLG base layer) cannot settle it: they have no audio track, and a transcode with no audio never starts on Roku at all (followup `video-only-transcode-never-starts`). Jellyfin 12.4's playlist for an HLG source on an SDR range list lists HEVC `HLG` 4K first, then H.264 `SDR` 4K.
-
-To close: on the Stick at **4K TV**, against a server with default encoding, play a 4K HLG file that has audio twice through the RTA deep-link probe: once as the branch is, once with `HLG` counted as shown. If the second plays at 4K, count `HLG` as shown and update decision `hls-cap-judges-shown-variant`; if it fails to start, the rule stands and the decision gets the measurement.
-
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`

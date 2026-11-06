@@ -168,9 +168,10 @@ namespace tests
       m.assertFalse(hlsVariantShown({ range: "PQ" }, "SDR|DOVIWithHDR10|DOVIWithEL"))
     end function
 
-    @it("shows HLG only when the list has HLG")
+    @it("shows HLG whatever the list holds")
     function _()
-      m.assertFalse(hlsVariantShown({ range: "HLG" }, "SDR|HDR10"))
+      m.assertTrue(hlsVariantShown({ range: "HLG" }, "SDR|DOVIWithSDR"))
+      m.assertTrue(hlsVariantShown({ range: "HLG" }, "SDR|HDR10"))
       m.assertTrue(hlsVariantShown({ range: "HLG" }, "SDR|HLG"))
     end function
 
@@ -188,35 +189,23 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("hlsMasterListsHdr")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("is true when a variant is not SDR")
-    function _()
-      m.assertTrue(hlsMasterListsHdr(m.dolbyVisionSdrDisplayMaster()))
-    end function
-
-    @it("is false for an all-SDR playlist and one with no VIDEO-RANGE")
-    function _()
-      m.assertFalse(hlsMasterListsHdr(m.master("VIDEO-RANGE=SDR,CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34) + ",RESOLUTION=1920x1080")))
-      m.assertFalse(hlsMasterListsHdr(m.master("CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34) + ",RESOLUTION=1920x1080")))
-      m.assertFalse(hlsMasterListsHdr("garbage"))
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("hlsMasterNeedsRangeList")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("is true for a read playlist with an HDR variant")
+    @it("is true for a read playlist with a PQ variant")
     function _()
       m.assertTrue(hlsMasterNeedsRangeList({ code: 200, body: m.dolbyVisionSdrDisplayMaster() }))
-      m.assertTrue(hlsMasterNeedsRangeList({ code: 200, body: m.hlgSdrDisplayMaster() }))
+      m.assertTrue(hlsMasterNeedsRangeList({ code: 200, body: m.hevcEncoderSdrDisplayMaster() }))
     end function
 
-    @it("is false for an all-SDR playlist")
+    @it("is false for a playlist with no PQ variant: all SDR, HLG, or no VIDEO-RANGE")
     function _()
       body = m.master("VIDEO-RANGE=SDR,CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34) + ",RESOLUTION=3840x2160")
       m.assertFalse(hlsMasterNeedsRangeList({ code: 200, body: body }))
+      m.assertFalse(hlsMasterNeedsRangeList({ code: 200, body: m.hlgSdrDisplayMaster() }))
+      body = m.master("CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34) + ",RESOLUTION=1920x1080")
+      m.assertFalse(hlsMasterNeedsRangeList({ code: 200, body: body }))
+      m.assertFalse(hlsMasterNeedsRangeList({ code: 200, body: "garbage" }))
     end function
 
     @it("is false when the playlist did not arrive")
@@ -365,18 +354,13 @@ namespace tests
       m.assertEqual(decision.variant.range, "SDR")
     end function
 
-    @it("skips an HLG variant the range list does not take, and keeps one it takes")
+    @it("keeps the HEVC HLG variant on a display without HDR")
     function _()
-      fetched = { code: 200, body: m.hlgSdrDisplayMaster() }
-      hidden = h264CapDecision(fetched, true, false, "SDR|DOVIWithSDR|HDR10")
-      m.assertTrue(hidden.cap)
-      m.assertEqual(hidden.reason, "h264AboveCeiling")
-      m.assertEqual(hidden.variant.codecs, "avc1.424029")
-
-      shown = h264CapDecision(fetched, true, false, "SDR|DOVIWithSDR|HLG|DOVIWithHLG")
-      m.assertFalse(shown.cap)
-      m.assertEqual(shown.reason, "playable")
-      m.assertEqual(shown.variant.range, "HLG")
+      decision = h264CapDecision({ code: 200, body: m.hlgSdrDisplayMaster() }, true, false, "SDR|DOVIWithSDR")
+      m.assertFalse(decision.cap)
+      m.assertEqual(decision.reason, "playable")
+      m.assertEqual(decision.variant.range, "HLG")
+      m.assertEqual(decision.variant.codecs, "hvc1.2.4.L153.B0")
     end function
 
     @it("reads the first variant when the server sends no range list")

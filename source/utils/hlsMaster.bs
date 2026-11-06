@@ -51,33 +51,26 @@ function hlsAttributeValue(attributes as string, prefix as string, terminator as
   return mid(padded, valueStart, valueEnd - valueStart)
 end function
 
-' Whether the playlist lists a variant whose range is not SDR.
-'
-' @param {string} text - the playlist body
-' @return {boolean}
-function hlsMasterListsHdr(text as string) as boolean
-  for each variant in hlsMasterVariants(text)
-    if variant.range <> "SDR" then return true
-  end for
-  return false
-end function
-
 ' Whether h264CapDecision needs the device profile's HEVC range list for this answer: only a read
-' playlist with an HDR variant does. Building the list costs many CanDecodeVideo calls, so a load
-' builds it only then.
+' playlist with a PQ variant does, since PQ is the one range hlsVariantShown judges by the list.
+' Building the list costs many CanDecodeVideo calls, so a load builds it only then.
 '
 ' @param {dynamic} fetched - fetchManifestText()'s answer ({ code, body }), or invalid
 ' @return {boolean}
 function hlsMasterNeedsRangeList(fetched as dynamic) as boolean
   if type(fetched) <> "roAssociativeArray" or mediaNumber(fetched.code) <> 200 then return false
-  return hlsMasterListsHdr(textOrEmpty(fetched.body))
+  for each variant in hlsMasterVariants(textOrEmpty(fetched.body))
+    if variant.range = "PQ" then return true
+  end for
+  return false
 end function
 
 ' Whether the display shows a variant's range, judged from the device profile's HEVC range types.
 '
-' The Roku drops a PQ variant when its display cannot show PQ. An unknown list ("" for
-' a server before 10.9, or invalid) and a range this does not know show everything, so nothing is
-' dropped on a guess. DOVIWithSDR is an SDR base layer and does not make PQ shown.
+' The Roku drops a PQ variant when its display cannot show PQ, and plays an HLG variant on any
+' display. So only PQ is judged by the list: it counts when the list has HDR10, HDR10Plus or DOVI.
+' DOVIWithSDR is an SDR base layer and does not make PQ shown. An unknown list ("" for a server
+' before 10.9, or invalid) and every other range show everything, so nothing is dropped on a guess.
 '
 ' @param {dynamic} variant - one of hlsMasterVariants()
 ' @param {dynamic} hevcRangeTypes - the "|" list from hevcRangeTypesOfProfile(), or invalid
@@ -85,14 +78,9 @@ end function
 function hlsVariantShown(variant as dynamic, hevcRangeTypes as dynamic) as boolean
   if type(hevcRangeTypes) <> "String" and type(hevcRangeTypes) <> "roString" then return true
   if hevcRangeTypes = "" then return true
-  range = variant.range
-  if range = "SDR" then return true
+  if variant.range <> "PQ" then return true
   tokens = "|" + LCase(hevcRangeTypes) + "|"
-  if range = "PQ"
-    return inStr(1, tokens, "|hdr10|") > 0 or inStr(1, tokens, "|hdr10plus|") > 0 or inStr(1, tokens, "|dovi|") > 0
-  end if
-  if range = "HLG" then return inStr(1, tokens, "|hlg|") > 0
-  return true
+  return inStr(1, tokens, "|hdr10|") > 0 or inStr(1, tokens, "|hdr10plus|") > 0 or inStr(1, tokens, "|dovi|") > 0
 end function
 
 ' Whether a variant is H.264 larger than a Roku decodes (AVC level 4.2, about 1080p).
