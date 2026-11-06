@@ -2078,3 +2078,60 @@ function hevcRangeTypesOfProfile(deviceProfile as dynamic) as dynamic
   end for
   return invalid
 end function
+
+' isDoviRemuxCandidate: Whether Preserve DoVi has the server remux this stream out of its MKV, so
+' that it plays as Dolby Vision.
+'
+' The request (doviRemuxContainerProfile) and the playback report (causedByPreserveDovi) both ask
+' this, so the report blames the setting only when the request applied it. Each caller checks
+' its own setting, bypass retry and the device's Dolby Vision support.
+'
+' The stream must be MKV, not AV1 (#194), with a range type that names Dolby Vision, on a server
+' that sends VideoRangeType (API tier 2, Jellyfin 10.9). Out-of-spec Dolby Vision is left out: a
+' remux cannot make it play as Dolby Vision, so it direct-plays as HDR10 (allowHdr10DoviInvalid).
+'
+' @param {dynamic} stream - a video MediaStream, or invalid
+' @param {dynamic} container - the source's container, or invalid
+' @param {integer} apiVersion - the server's API tier
+' @return {boolean}
+function isDoviRemuxCandidate(stream as dynamic, container as dynamic, apiVersion as integer) as boolean
+  if apiVersion < 2 or not isValid(stream) then return false
+  if LCase(textOrEmpty(container)) <> "mkv" then return false
+  if not isValid(stream.Codec) or LCase(stream.Codec) = "av1" then return false
+
+  rangeType = LCase(textOrEmpty(stream.VideoRangeType))
+  if inStr(1, rangeType, "dovi") = 0 or rangeType = "doviinvalid" then return false
+  return not isOutOfSpecHdr10Dovi(stream)
+end function
+
+' isOutOfSpecHdr10Dovi: Whether a video stream is Dolby Vision profile 8 or 10 with a base-layer
+' compatibility ID Dolby does not define for its profile, and an HDR10 base layer.
+'
+' Dolby defines 8.1, 8.2 and 8.4, and 10.0, 10.1, 10.2 and 10.4. Jellyfin 10.11 and later mark any
+' other ID DOVIInvalid; servers before 10.11 call ID 6 DOVIWithHDR10. Either way a remux cannot
+' make the stream play as Dolby Vision, and Roku plays its base layer as HDR10.
+'
+' @param {object} stream - a video MediaStream
+' @return {boolean}
+function isOutOfSpecHdr10Dovi(stream as object) as boolean
+  dvProfile = mediaNumber(stream.DvProfile)
+  if dvProfile <> 8 and dvProfile <> 10 then return false
+
+  ' Checked before the number: mediaNumber() reads a missing ID as 0, which is out of spec for profile 8.
+  if not isValid(stream.DvBlSignalCompatibilityId) then return false
+  compatId = mediaNumber(stream.DvBlSignalCompatibilityId)
+  if compatId = 1 or compatId = 2 or compatId = 4 then return false
+  if compatId = 0 and dvProfile = 10 then return false
+  return hasHdr10ColorTags(stream)
+end function
+
+' hasHdr10ColorTags: Whether a video stream carries the HDR10 color tags (bt2020nc, smpte2084,
+' bt2020), in any case.
+'
+' @param {object} stream - a video MediaStream
+' @return {boolean}
+function hasHdr10ColorTags(stream as object) as boolean
+  if LCase(textOrEmpty(stream.ColorSpace)) <> "bt2020nc" then return false
+  if LCase(textOrEmpty(stream.ColorTransfer)) <> "smpte2084" then return false
+  return LCase(textOrEmpty(stream.ColorPrimaries)) = "bt2020"
+end function

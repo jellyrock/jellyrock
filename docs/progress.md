@@ -926,6 +926,14 @@ Tracked publicly in [#1330](https://github.com/jellyrock/jellyrock/issues/1330).
 
 A reload in place while following a SyncPlay group reaches `syncPlayPlayback.trackPlayerEvent` as a stall followed by more buffering, and its Ready carries the node's own position (`positionTicks = -1`), which reads 0 at the first frame of a load that starts partway in; only the `mounted` path corrects for that with `loadStartTicks`. A Ready at 0 makes the server send a corrective Seek. Because of this the re-encode bitrate check (decision `reencode-bitrate-checked-from-session`) skips groups. Fix by sending the load's start position in that Ready, then let the check run in groups and test it with the REST second member.
 
+#### Unconfirmed: a never-played `.strm` item may skip the playlist-size fit and the buffer cap on its first play `[fid: strm-first-play-stale-run-time]` `[captured 2026-11-06]`
+
+`LoadItems_AddVideoContent` in `LoadVideoContentTask` passes `playedSource`, read before the probe, to `fitHlsPlaylist` (its `RunTimeTicks`) and `reencodeCheck.bufferCapBps` (its `Bitrate` and `RunTimeTicks`), both from #1324. `reloadProbedStreams` replaces `meta`'s sources after the first `PlaybackInfo` of a source that lists no streams, and `playedSource` is never read again. If a never-played `.strm` source has no `RunTimeTicks` before its probe, both stand down on that first play, so a long `.strm` film could hit the playlist-too-large failure #1324 fixed. Found while reviewing PR #1325, which fixed the same stale read for the Dolby Vision bypass retry.
+
+Check first: a never-played `.strm` item's `RunTimeTicks` before the probe. If it is missing, read both from the source the current answer's request read (`m.playbackInfoRequestSource`, added by PR #1325). If it is present, close this followup. A `.strm` item's `Bitrate` describes the text file (11 bit/s, measured 2026-10-12), so `bufferCapBps` may need its own fix either way.
+
+Not checked: any of this on a device.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -1332,6 +1340,14 @@ Close it on a device: seek to 50% in an Ogg file holding FLAC whose last frame i
 **Not checked:** whether any of those callers fires twice under the same id while the first is pending (for example, `fetchQueue` seeing the same `lastUpdateMs` twice through a re-follow); the early settle of the second promise by the leftover observer is from reading the code, not a device run.
 
 **Tracked in** [#1272](https://github.com/jellyrock/jellyrock/issues/1272); close it with the fix.
+
+#### Out-of-spec Dolby Vision `mp4` files may still direct-play into Dolby Vision mode on 10.9 and 10.10 `[fid: dovi-out-of-spec-mp4-before-1011]` `[captured 2026-11-06]`
+
+Jellyfin 10.9 and 10.10 report a Dolby Vision profile 8 stream with compatibility ID 6 as `DOVIWithHDR10`, which the HEVC range list already takes, so `allowHdr10DoviInvalid` (`source/api/items.bs`, MKV only since PR #1325) never sees it and an `mp4` file of it direct-plays. On 10.11.11 the same file tagged `hvc1` played with the Roku in Dolby Vision mode, carrying the out-of-spec configuration (measured 2026-11-05 on a Roku Ultra `4850X`, decision `dovi-invalid-hdr10-direct-play`), so it most likely does the same on 10.9 and 10.10, as it did before PR #1325. A `dvh1`-tagged one is repackaged on every server from 10.9 by `refuseDvh1DolbyVision`; that conversion keeps the Dolby Vision data in the video, and on 10.9 and 10.10 no server code strips it.
+
+Check first: play the compatibility ID 6 `hvc1` and `dvh1` clips under `dovi-invalid/` in the test servers' Testing library from 10.9.11 and 10.10.7 on a Roku with a Dolby Vision TV, and read `Video.streamingSegment.hdrModeStr`. If either plays in Dolby Vision mode and the picture is wrong, or fails, have those requests drop the Dolby Vision range types for a stream `isOutOfSpecHdr10Dovi` marks, as `refuseDvh1DolbyVision` does.
+
+Not checked: any of this on 10.9 or 10.10 on a device; whether a Roku shows the out-of-spec Dolby Vision with the right colors.
 
 ### tests
 

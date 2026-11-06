@@ -115,6 +115,20 @@ namespace tests
       end for
     end function
 
+    @it("says nothing for DOVIInvalid, which the injection leaves out")
+    @params("DOVIInvalid")
+    @params("doviinvalid")
+    function _(rangeType as string)
+      m.doviCtx.videoStream.VideoRangeType = rangeType
+      m.assertEqual(transcodeCauseSettingKey("VideoRangeTypeNotSupported", m.doviCtx), "")
+    end function
+
+    @it("says nothing for out-of-spec Dolby Vision a server before 10.11 calls DOVIWithHDR10")
+    function _()
+      m.doviCtx.videoStream = { Codec: "hevc", VideoRangeType: "DOVIWithHDR10", DvProfile: 8, DvBlSignalCompatibilityId: 6, ColorSpace: "bt2020nc", ColorTransfer: "smpte2084", ColorPrimaries: "bt2020" }
+      m.assertEqual(transcodeCauseSettingKey("VideoRangeTypeNotSupported", m.doviCtx), "")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Force Transcode Anamorphic Video")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

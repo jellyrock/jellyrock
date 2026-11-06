@@ -230,6 +230,8 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
 
   ' The playlist entry limit the answer in m.playbackInfo was cut for (fitHlsPlaylist), 0 for the default.
   m.playlistEntryLimit = 0
+  ' The played source as the request behind m.playbackInfo read it (setPlaybackInfoAnswer), invalid when there is none.
+  m.playbackInfoRequestSource = invalid
 
   meta = ItemMetaData(video.id)
   if not isValid(meta)
@@ -472,8 +474,8 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   ' request.
   if not isLive then readServerEncodingPolicy()
   res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, openLimitMs, pickedCaps, disallowVideoCopy)
-  m.playbackInfo = invalid
-  if isValid(res) and res.ok then m.playbackInfo = res.json
+  setPlaybackInfoAnswer(invalid, meta, mediaSourceId)
+  if isValid(res) and res.ok then setPlaybackInfoAnswer(res.json, meta, mediaSourceId)
 
   if isLive
     liveStreamId = ""
@@ -567,7 +569,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
       if answerPlays and probedPicksNeedNewAnswer(manifestSource, audioStreamIdx, subtitleIdx, sentSubtitleIdx)
         res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, 0, pickedCaps, disallowVideoCopy)
         if isValid(res) and res.ok and isValid(res.json) and isValidAndNotEmpty(res.json.MediaSources) and not isValidAndNotEmpty(res.json.ErrorCode)
-          m.playbackInfo = res.json
+          setPlaybackInfoAnswer(res.json, meta, mediaSourceId)
         else
           ' Play the first answer, and describe it as the server built it.
           m.log.warn("PlaybackInfo for the probed picks failed; keeping the server's", "cause", apiResponse.jsonFailure(res), "itemId", video.id)
@@ -727,14 +729,18 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     video.isTranscoded = true
     m.log.info("Playback path: TRANSCODED", "finalUrl", transcodingUrl, "streamFormat", video.content.StreamFormat, "subProtocol", subProtocol, "transcodeReasons", video.transcodeReasons)
 
-    ' If DoVi preservation caused this transcode, flag that direct play is a viable buffer-overflow fallback.
-    ' VideoRangeTypeNotSupported is the reason Jellyfin returns when our DoVi container profile blocks the MKV.
-    ' On a buffer:loop: error the player will retry with bypassDoviPreservation=true, letting the server
-    ' re-evaluate without the DoVi constraint and (usually) grant direct play instead.
-    if userSettings.playbackPreserveDovi and not bypassDoviPreservation
-      if arrayHasValue(video.transcodeReasons, "VideoRangeTypeNotSupported")
-        video.isDoviDirectPlayFallbackAvailable = true
-      end if
+    ' A buffer:loop: error retries with bypassDoviPreservation=true, which drops the Dolby Vision
+    ' remux profile so the server can direct-play. Offered only when this load's request added it:
+    ' otherwise that retry sends the same request again. The check reads the source the request
+    ' behind this answer read, which is not playedSource once a re-probe replaced the streams.
+    playedStreams = invalid
+    playedContainer = invalid
+    if isValid(m.playbackInfoRequestSource)
+      playedStreams = m.playbackInfoRequestSource.MediaStreams
+      playedContainer = m.playbackInfoRequestSource.Container
+    end if
+    if offersDoviDirectPlayFallback(video.transcodeReasons, playedStreams, playedContainer, userSettings.playbackPreserveDovi, bypassDoviPreservation, getApiVersionFromGlobal())
+      video.isDoviDirectPlayFallbackAvailable = true
     end if
 
     ' A remux can copy the video, and the server then cuts HLS segments only at the source's
@@ -779,6 +785,23 @@ sub readServerEncodingPolicy()
     m.log.info("Server encoder settings", "hardware", policy.HardwareAccelerationType, "enableHardwareEncoding", policy.EnableHardwareEncoding, "allowHevcEncoding", policy.AllowHevcEncoding)
   else
     m.log.warn("Could not read the server's encoder settings; H.264 stays first")
+  end if
+end sub
+
+' setPlaybackInfoAnswer: Keep a PlaybackInfo answer, with the source its request read.
+'
+' Every answer goes through here. Each request is built from meta as it stands then, and
+' reloadProbedStreams() can replace meta's sources mid-load, so the Dolby Vision fallback reads
+' the source that answer's request read.
+'
+' @param {dynamic} json - the answer, or invalid for none
+' @param {object} meta - item metadata the request was built from
+' @param {dynamic} mediaSourceId - chosen MediaSource ID
+sub setPlaybackInfoAnswer(json as dynamic, meta as object, mediaSourceId as dynamic)
+  m.playbackInfo = json
+  m.playbackInfoRequestSource = invalid
+  if isValid(json) and isValid(meta.mediaSourcesData)
+    m.playbackInfoRequestSource = mediaSourceForId(meta.mediaSourcesData.mediaSources, mediaSourceId)
   end if
 end sub
 
@@ -843,7 +866,7 @@ function capH264Resolution(itemId as string, mediaSourceId as dynamic, audioStre
   res = ItemPostPlaybackInfoResponse(itemId, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, 0, cappedCaps, disallowVideoCopy)
   if isUsablePlaybackInfoResponse(res)
     m.log.info("Playing the answer capped at 1080p", "reason", decision.reason, "itemId", itemId)
-    m.playbackInfo = res.json
+    setPlaybackInfoAnswer(res.json, meta, mediaSourceId)
     return cappedCaps
   end if
   m.log.warn("PlaybackInfo with a 1080p cap failed; keeping the server's answer", "reason", decision.reason, "itemId", itemId)
@@ -879,7 +902,7 @@ sub fitHlsPlaylist(itemId as string, mediaSourceId as dynamic, audioStreamIdx as
   maxEntries = maxPlaylistEntriesFor(source.TranscodingUrl)
   res = ItemPostPlaybackInfoResponse(itemId, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, 0, pickedCaps, disallowVideoCopy, maxEntries)
   if isUsablePlaybackInfoResponse(res)
-    m.playbackInfo = res.json
+    setPlaybackInfoAnswer(res.json, meta, mediaSourceId)
     m.playlistEntryLimit = maxEntries
     ' The re-ask is kept either way: it has fewer entries. Segments stop at 9 s, so a film long
     ' enough stays over the budget, and the log says so rather than claim it fits.
