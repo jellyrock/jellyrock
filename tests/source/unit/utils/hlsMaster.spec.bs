@@ -2,22 +2,36 @@ import "pkg:/source/utils/hlsMaster.bs"
 
 namespace tests
 
-  @suite("hlsMaster.bs - hlsMasterVariant() and needsH264ResolutionCap()")
+  @suite("hlsMaster.bs - hlsMasterVariants() and needsH264ResolutionCap()")
   class HlsMasterTests extends tests.BaseTestSuite
 
     private function master(streamInf as string) as string
       return "#EXTM3U" + chr(10) + "#EXT-X-STREAM-INF:" + streamInf + chr(10) + "main.m3u8?x=1" + chr(10)
     end function
 
+
+    private function dolbyVisionSdrDisplayMaster() as string
+      q = chr(34)
+      text = "#EXTM3U" + chr(10)
+      text += "#EXT-X-STREAM-INF:BANDWIDTH=69802938,AVERAGE-BANDWIDTH=69802938,VIDEO-RANGE=PQ,CODECS=" + q + "hvc1.2.4.L153.B0,mp4a.40.2" + q + ",RESOLUTION=3840x2160,FRAME-RATE=23.976" + chr(10)
+      text += "main.m3u8?VideoCodec=h264,hevc&AudioCodec=aac" + chr(10)
+      text += "#EXT-X-STREAM-INF:BANDWIDTH=69802938,AVERAGE-BANDWIDTH=69802938,VIDEO-RANGE=SDR,CODECS=" + q + "avc1.42E02A,mp4a.40.2" + q + ",RESOLUTION=3840x2160,FRAME-RATE=23.976" + chr(10)
+      text += "main.m3u8?VideoCodec=h264&AudioCodec=aac" + chr(10)
+      text += "#EXT-X-IMAGE-STREAM-INF:BANDWIDTH=13729,RESOLUTION=320x180,CODECS=" + q + "jpeg" + q + ",URI=" + q + "Trickplay/320/tiles.m3u8?MediaSourceId=x" + q + chr(10)
+      return text
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("hlsMasterVariant")
+    @describe("hlsMasterVariants - one variant")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("reads the codecs and size of an H.264 4K variant")
     function _()
       text = m.master("BANDWIDTH=94208000,AVERAGE-BANDWIDTH=94208000,CODECS=" + chr(34) + "avc1.42E02A,ec-3" + chr(34) + ",RESOLUTION=3840x2160,FRAME-RATE=23.976")
-      variant = hlsMasterVariant(text)
+      variants = hlsMasterVariants(text)
+      variant = variants[0]
 
+      m.assertEqual(variants.count(), 1)
       m.assertEqual(variant.codecs, "avc1.42E02A,ec-3")
       m.assertEqual(variant.width, 3840)
       m.assertEqual(variant.height, 2160)
@@ -28,34 +42,138 @@ namespace tests
       text = m.master("CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34) + ",RESOLUTION=1920x1080")
       text += "#EXT-X-STREAM-INF:CODECS=" + chr(34) + "hvc1.2.4.L153.B0,ec-3" + chr(34) + ",RESOLUTION=3840x2160" + chr(10) + "other.m3u8" + chr(10)
 
-      m.assertEqual(hlsMasterVariant(text).width, 1920)
+      m.assertEqual(hlsMasterVariants(text)[0].width, 1920)
     end function
 
     @it("reads a playlist with Windows line endings")
     function _()
       text = "#EXTM3U" + chr(13) + chr(10) + "#EXT-X-STREAM-INF:CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34) + ",RESOLUTION=1280x720" + chr(13) + chr(10) + "main.m3u8" + chr(13) + chr(10)
 
-      m.assertEqual(hlsMasterVariant(text).height, 720)
+      m.assertEqual(hlsMasterVariants(text)[0].height, 720)
     end function
 
     @it("is invalid for an empty string")
     function _()
-      m.assertInvalid(hlsMasterVariant(""))
+      m.assertEqual(hlsMasterVariants("").count(), 0)
     end function
 
     @it("is invalid for text that is not a playlist")
     function _()
-      m.assertInvalid(hlsMasterVariant("<html>502 Bad Gateway</html>"))
+      m.assertEqual(hlsMasterVariants("<html>502 Bad Gateway</html>").count(), 0)
     end function
 
     @it("is invalid for a variant with no CODECS")
     function _()
-      m.assertInvalid(hlsMasterVariant(m.master("BANDWIDTH=1000,RESOLUTION=1920x1080")))
+      m.assertEqual(hlsMasterVariants(m.master("BANDWIDTH=1000,RESOLUTION=1920x1080")).count(), 0)
     end function
 
     @it("is invalid for a variant with no RESOLUTION")
     function _()
-      m.assertInvalid(hlsMasterVariant(m.master("CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34))))
+      m.assertEqual(hlsMasterVariants(m.master("CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34))).count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hlsMasterVariants")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads every variant in order with its range and ignores the image stream")
+    function _()
+      variants = hlsMasterVariants(m.dolbyVisionSdrDisplayMaster())
+
+      m.assertEqual(variants.count(), 2)
+      m.assertEqual(variants[0].range, "PQ")
+      m.assertEqual(variants[0].codecs, "hvc1.2.4.L153.B0,mp4a.40.2")
+      m.assertEqual(variants[1].range, "SDR")
+      m.assertEqual(variants[1].codecs, "avc1.42E02A,mp4a.40.2")
+      m.assertEqual(variants[1].height, 2160)
+    end function
+
+    @it("reads a variant with no VIDEO-RANGE as SDR")
+    function _()
+      variants = hlsMasterVariants(m.master("CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34) + ",RESOLUTION=1920x1080"))
+
+      m.assertEqual(variants.count(), 1)
+      m.assertEqual(variants[0].range, "SDR")
+    end function
+
+    @it("reads a lowercase VIDEO-RANGE uppercased")
+    function _()
+      variants = hlsMasterVariants(m.master("VIDEO-RANGE=hlg,CODECS=" + chr(34) + "hvc1.2.4.L153.B0,ac-3" + chr(34) + ",RESOLUTION=3840x2160"))
+
+      m.assertEqual(variants[0].range, "HLG")
+    end function
+
+    @it("skips a variant with no CODECS or no RESOLUTION")
+    function _()
+      text = m.master("BANDWIDTH=1000,RESOLUTION=1920x1080")
+      text += "#EXT-X-STREAM-INF:CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34) + chr(10) + "b.m3u8" + chr(10)
+      text += "#EXT-X-STREAM-INF:CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34) + ",RESOLUTION=1280x720" + chr(10) + "c.m3u8" + chr(10)
+
+      variants = hlsMasterVariants(text)
+      m.assertEqual(variants.count(), 1)
+      m.assertEqual(variants[0].width, 1280)
+    end function
+
+    @it("is empty for text that is not a playlist")
+    function _()
+      m.assertEqual(hlsMasterVariants("<html>502 Bad Gateway</html>").count(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hlsVariantShown")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("hides PQ on a display that lists only SDR and DOVIWithSDR")
+    function _()
+      m.assertFalse(hlsVariantShown({ range: "PQ" }, "SDR|DOVIWithSDR"))
+    end function
+
+    @it("shows PQ when the list has HDR10, HDR10Plus or DOVI")
+    function _()
+      m.assertTrue(hlsVariantShown({ range: "PQ" }, "SDR|DOVIWithSDR|HDR10"))
+      m.assertTrue(hlsVariantShown({ range: "PQ" }, "SDR|HDR10Plus"))
+      m.assertTrue(hlsVariantShown({ range: "PQ" }, "SDR|DOVI"))
+      m.assertTrue(hlsVariantShown({ range: "PQ" }, "sdr|dovi"))
+    end function
+
+    @it("does not count DOVIWithHDR10 or DOVIWithEL as a whole DOVI token")
+    function _()
+      m.assertFalse(hlsVariantShown({ range: "PQ" }, "SDR|DOVIWithHDR10|DOVIWithEL"))
+    end function
+
+    @it("shows HLG only when the list has HLG")
+    function _()
+      m.assertFalse(hlsVariantShown({ range: "HLG" }, "SDR|HDR10"))
+      m.assertTrue(hlsVariantShown({ range: "HLG" }, "SDR|HLG"))
+    end function
+
+    @it("always shows SDR and a range it does not know")
+    function _()
+      m.assertTrue(hlsVariantShown({ range: "SDR" }, "SDR|DOVIWithSDR"))
+      m.assertTrue(hlsVariantShown({ range: "SOMETHING" }, "SDR"))
+    end function
+
+    @it("shows every range when the list is unknown or empty")
+    function _()
+      m.assertTrue(hlsVariantShown({ range: "PQ" }, invalid))
+      m.assertTrue(hlsVariantShown({ range: "PQ" }, ""))
+      m.assertTrue(hlsVariantShown({ range: "HLG" }, invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hlsMasterListsHdr")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true when a variant is not SDR")
+    function _()
+      m.assertTrue(hlsMasterListsHdr(m.dolbyVisionSdrDisplayMaster()))
+    end function
+
+    @it("is false for an all-SDR playlist and one with no VIDEO-RANGE")
+    function _()
+      m.assertFalse(hlsMasterListsHdr(m.master("VIDEO-RANGE=SDR,CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34) + ",RESOLUTION=1920x1080")))
+      m.assertFalse(hlsMasterListsHdr(m.master("CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34) + ",RESOLUTION=1920x1080")))
+      m.assertFalse(hlsMasterListsHdr("garbage"))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -85,11 +203,6 @@ namespace tests
     @it("is false for no variant")
     function _()
       m.assertFalse(needsH264ResolutionCap(invalid))
-    end function
-
-    @it("is false for a variant read from garbage")
-    function _()
-      m.assertFalse(needsH264ResolutionCap(hlsMasterVariant("garbage")))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -133,6 +246,49 @@ namespace tests
 
       m.assertFalse(decision.cap)
       m.assertEqual(decision.reason, "playable")
+    end function
+
+    @it("caps the SDR H.264 variant when the display hides the PQ one")
+    function _()
+      fetched = { code: 200, body: m.dolbyVisionSdrDisplayMaster() }
+      decision = h264CapDecision(fetched, true, true, "SDR|DOVIWithSDR")
+
+      m.assertTrue(decision.cap)
+      m.assertEqual(decision.reason, "h264AboveCeiling")
+      m.assertEqual(left(decision.variant.codecs, 4), "avc1")
+
+      first = h264CapDecision(fetched, true, false, "SDR|DOVIWithSDR")
+      m.assertTrue(first.cap)
+      m.assertEqual(first.reason, "h264AboveCeiling")
+    end function
+
+    @it("keeps the HEVC PQ variant when the display shows HDR")
+    function _()
+      fetched = { code: 200, body: m.dolbyVisionSdrDisplayMaster() }
+      decision = h264CapDecision(fetched, true, true, "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL")
+
+      m.assertFalse(decision.cap)
+      m.assertEqual(decision.reason, "playable")
+      m.assertEqual(left(decision.variant.codecs, 4), "hvc1")
+    end function
+
+    @it("reads the first variant when the range list is unknown")
+    function _()
+      decision = h264CapDecision({ code: 200, body: m.dolbyVisionSdrDisplayMaster() }, true, true, invalid)
+
+      m.assertFalse(decision.cap)
+      m.assertEqual(decision.reason, "playable")
+      m.assertEqual(left(decision.variant.codecs, 4), "hvc1")
+    end function
+
+    @it("caps when no variant is one the display shows")
+    function _()
+      body = m.master("VIDEO-RANGE=PQ,CODECS=" + chr(34) + "hvc1.2.4.L153.B0,ac-3" + chr(34) + ",RESOLUTION=3840x2160")
+      decision = h264CapDecision({ code: 200, body: body }, true, false, "SDR|DOVIWithSDR")
+
+      m.assertTrue(decision.cap)
+      m.assertEqual(decision.reason, "noShownVariant")
+      m.assertEqual(decision.variant.range, "PQ")
     end function
 
     @it("caps a re-encode of a source above 1080p when the playlist did not arrive")

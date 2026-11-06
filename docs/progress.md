@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-05
+last-updated: 2026-11-06
 ---
 
 # Progress
@@ -892,7 +892,7 @@ The same channel has a second path to the same hang, found by reading the code a
 
 Two facts limit the fix. The channel item lists no media streams before it opens (seen on 10.9.11 and 12.4), so no check can read its size from the item, and the HEVC first rule from PR #1323 never fires for such a channel. And a file's 1080p check (`LoadVideoContentTask.capH264Resolution`) does not fit live: its second `PlaybackInfo` would open a second live stream.
 
-Not done in PR #1323: the gap is in live playback, which that PR does not change, and the fix is a design choice. For the upstream link, read the upstream playlist's `CODECS` and `RESOLUTION` before playing it (`hlsMasterVariant()` on the upstream master, where one exists) and send the stream through the server when it is H.264 beyond the ceiling. For the server's stream, read its master playlist the same way and, when it declares H.264 beyond the ceiling, close that live stream before asking again at 1080p. A stall fallback that moves to a capped server stream would cover both. Then check a 4K H.264 channel plays on both server setups, through the upstream link and through the server.
+Not done in PR #1323: the gap is in live playback, which that PR does not change, and the fix is a design choice. For the upstream link, read the upstream playlist's `CODECS` and `RESOLUTION` before playing it (`hlsMasterVariants()` on the upstream master, where one exists) and send the stream through the server when it is H.264 beyond the ceiling. For the server's stream, read its master playlist the same way and, when it declares H.264 beyond the ceiling, close that live stream before asking again at 1080p. A stall fallback that moves to a capped server stream would cover both. Then check a 4K H.264 channel plays on both server setups, through the upstream link and through the server.
 
 #### With a level setting on, a direct play the decoder never starts hangs at position 0 with no fallback `[fid: level-override-direct-play-hangs-no-fallback]` `[captured 2026-11-05]` `[pinned]`
 

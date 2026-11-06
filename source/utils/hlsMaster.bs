@@ -1,33 +1,41 @@
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
 
-' What the first variant of an HLS master playlist declares, or invalid when the text has no
-' variant with both CODECS and RESOLUTION.
+' Every variant of an HLS master playlist, in order. A variant without both CODECS and a valid
+' RESOLUTION is skipped, and an #EXT-X-IMAGE-STREAM-INF line is not a variant.
 '
 ' The server's transcode of a source above 1080p can pick H.264 at the source's own size, and a
 ' Roku plays AVC only up to level 4.2, so the player needs to know before it plays: the master
 ' playlist says it without waiting for a segment.
 '
 ' @param {string} text - the playlist body
-' @return {dynamic} { codecs: string, width: integer, height: integer }, or invalid
-function hlsMasterVariant(text as string) as dynamic
+' @return {object} an array of { codecs: string, width: integer, height: integer, range: string }.
+'   range is the VIDEO-RANGE attribute uppercased, or "SDR" when absent (the HLS default).
+function hlsMasterVariants(text as string) as object
+  variants = []
   marker = "#EXT-X-STREAM-INF:"
   start = inStr(1, text, marker)
-  if start = 0 then return invalid
+  while start > 0
+    lineStart = start + len(marker)
+    lineEnd = inStr(lineStart, text, chr(10))
+    if lineEnd = 0 then lineEnd = len(text) + 1
+    attributes = mid(text, lineStart, lineEnd - lineStart)
 
-  lineStart = start + len(marker)
-  lineEnd = inStr(lineStart, text, chr(10))
-  if lineEnd = 0 then lineEnd = len(text) + 1
-  attributes = mid(text, lineStart, lineEnd - lineStart)
+    codecs = hlsAttributeValue(attributes, "CODECS=" + chr(34), chr(34))
+    size = hlsAttributeValue(attributes, "RESOLUTION=", ",").trim().split("x")
+    if codecs <> "" and size.count() = 2
+      width = size[0].toInt()
+      height = size[1].toInt()
+      if width > 0 and height > 0
+        range = UCase(hlsAttributeValue(attributes, "VIDEO-RANGE=", ",").trim())
+        if range = "" then range = "SDR"
+        variants.push({ codecs: codecs, width: width, height: height, range: range })
+      end if
+    end if
 
-  codecs = hlsAttributeValue(attributes, "CODECS=" + chr(34), chr(34))
-  size = hlsAttributeValue(attributes, "RESOLUTION=", ",").trim().split("x")
-  if codecs = "" or size.count() <> 2 then return invalid
-
-  width = size[0].toInt()
-  height = size[1].toInt()
-  if width <= 0 or height <= 0 then return invalid
-  return { codecs: codecs, width: width, height: height }
+    start = inStr(lineEnd, text, marker)
+  end while
+  return variants
 end function
 
 ' The text after `prefix` up to the next `terminator` (or the end), or "" when `prefix` is absent.
@@ -40,9 +48,42 @@ function hlsAttributeValue(attributes as string, prefix as string, terminator as
   return mid(attributes, valueStart, valueEnd - valueStart)
 end function
 
+' Whether the playlist lists a variant whose range is not SDR.
+'
+' @param {string} text - the playlist body
+' @return {boolean}
+function hlsMasterListsHdr(text as string) as boolean
+  for each variant in hlsMasterVariants(text)
+    if variant.range <> "SDR" then return true
+  end for
+  return false
+end function
+
+' Whether the display shows a variant's range, judged from the device profile's HEVC range types.
+'
+' A display that cannot show PQ drops a PQ variant from the stream list. An unknown list ("" for
+' a server before 10.9, or invalid) and a range this does not know show everything, so nothing is
+' dropped on a guess. DOVIWithSDR is an SDR base layer and does not make PQ shown.
+'
+' @param {dynamic} variant - one of hlsMasterVariants()
+' @param {dynamic} hevcRangeTypes - the "|" list from hevcRangeTypesOfProfile(), or invalid
+' @return {boolean}
+function hlsVariantShown(variant as dynamic, hevcRangeTypes as dynamic) as boolean
+  if type(hevcRangeTypes) <> "String" and type(hevcRangeTypes) <> "roString" then return true
+  if hevcRangeTypes = "" then return true
+  range = variant.range
+  if range = "SDR" then return true
+  tokens = "|" + LCase(hevcRangeTypes) + "|"
+  if range = "PQ"
+    return inStr(1, tokens, "|hdr10|") > 0 or inStr(1, tokens, "|hdr10plus|") > 0 or inStr(1, tokens, "|dovi|") > 0
+  end if
+  if range = "HLG" then return inStr(1, tokens, "|hlg|") > 0
+  return true
+end function
+
 ' Whether a variant is H.264 larger than a Roku decodes (AVC level 4.2, about 1080p).
 '
-' @param {dynamic} variant - hlsMasterVariant()'s answer
+' @param {dynamic} variant - one of hlsMasterVariants()
 ' @return {boolean} true for an H.264 stream beyond exceedsH264Ceiling
 function needsH264ResolutionCap(variant as dynamic) as boolean
   if not isValid(variant) then return false
@@ -85,24 +126,35 @@ end function
 ' h264CapDecision: Whether a PlaybackInfo answer must be asked for again at 1080p, and why.
 '
 ' The server's master playlist declares the codec and size the transcode will have, and H.264
-' above 1080p needs the cap. A playlist that did not arrive or cannot be read says nothing. On the
-' re-encode retry the source then decides: one above 1080p is capped, since a 4K H.264 re-encode
-' buffers forever with no error while a 1080p one plays. A first request keeps its answer instead:
-' the server may be copying the video, and the cap would turn a 4K copy into a 1080p re-encode.
+' above 1080p needs the cap. The Roku drops every variant its display cannot show, so the first
+' variant hlsVariantShown accepts is the one it plays. When none is shown, the cap makes the server
+' re-encode, the only answer that can play. A playlist that did not arrive or cannot be read says
+' nothing. On the re-encode retry the source then decides: one above 1080p is capped, since a 4K
+' H.264 re-encode buffers forever with no error while a 1080p one plays. A first request keeps its
+' answer instead: the server may be copying the video, and the cap would turn a 4K copy into a
+' 1080p re-encode.
 '
 ' @param {dynamic} fetched - fetchManifestText()'s answer ({ code, body }), or invalid
 ' @param {boolean} sourceAboveCeiling - the source's video is above 1080p (videoStreamAboveH264Ceiling)
 ' @param {boolean} isReencode - the load asked the server not to copy the video (disallowVideoCopy)
+' @param {dynamic} hevcRangeTypes - the device profile's HEVC VideoRangeType list
+'   (hevcRangeTypesOfProfile), or invalid to treat every range as shown
 ' @return {object} { cap: boolean, reason: string, variant: dynamic }. reason is
-'   "h264AboveCeiling" or "playable" when the playlist was read (variant is hlsMasterVariant()'s
-'   answer), "playlistUnread" (no answer, or not HTTP 200) or "playlistUnparsed" otherwise.
-function h264CapDecision(fetched as dynamic, sourceAboveCeiling as boolean, isReencode as boolean) as object
+'   "h264AboveCeiling", "playable" or "noShownVariant" when the playlist was read (variant is the
+'   variant judged, or the first one for "noShownVariant"), "playlistUnread" (no answer, or not
+'   HTTP 200) or "playlistUnparsed" otherwise.
+function h264CapDecision(fetched as dynamic, sourceAboveCeiling as boolean, isReencode as boolean, hevcRangeTypes = invalid as dynamic) as object
   capWhenUnread = sourceAboveCeiling and isReencode
   if type(fetched) <> "roAssociativeArray" or mediaNumber(fetched.code) <> 200
     return { cap: capWhenUnread, reason: "playlistUnread", variant: invalid }
   end if
-  variant = hlsMasterVariant(textOrEmpty(fetched.body))
-  if not isValid(variant) then return { cap: capWhenUnread, reason: "playlistUnparsed", variant: invalid }
-  if needsH264ResolutionCap(variant) then return { cap: true, reason: "h264AboveCeiling", variant: variant }
-  return { cap: false, reason: "playable", variant: variant }
+  variants = hlsMasterVariants(textOrEmpty(fetched.body))
+  if variants.count() = 0 then return { cap: capWhenUnread, reason: "playlistUnparsed", variant: invalid }
+  for each variant in variants
+    if hlsVariantShown(variant, hevcRangeTypes)
+      if needsH264ResolutionCap(variant) then return { cap: true, reason: "h264AboveCeiling", variant: variant }
+      return { cap: false, reason: "playable", variant: variant }
+    end if
+  end for
+  return { cap: true, reason: "noShownVariant", variant: variants[0] }
 end function
