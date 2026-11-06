@@ -19,6 +19,7 @@
   "plugins": [
     "@rokucommunity/bslint",
     "./scripts/bsc-plugins/roku-log.cjs",
+    "./scripts/bsc-plugins/strip-vendor-prints.cjs",
     "./scripts/bsc-plugins/translation-keys.cjs",
     "./scripts/bsc-plugins/jrscreen-on-destroy.cjs",
     "./scripts/bsc-plugins/print-locations.cjs",

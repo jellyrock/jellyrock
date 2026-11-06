@@ -1,4 +1,5 @@
 {
+  "stripVendorPrints": { "modules": ["rr"], "allowedCalls": ["GetURL"] },
   "compilerOptions": {
     "autoImportComponentScript": true,
     "sourceMap": true

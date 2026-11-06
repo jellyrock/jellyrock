@@ -12,6 +12,7 @@ related-files:
   - scripts/harden-prod-manifest.js
   - manifest
   - scripts/bsc-plugins/roku-log.cjs
+  - scripts/bsc-plugins/strip-vendor-prints.cjs
   - scripts/bsc-plugins/translation-keys.cjs
   - scripts/bsc-plugins/auto-abandon-promises.cjs
   - scripts/bsc-plugins/jrscreen-on-destroy.cjs
@@ -99,7 +100,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-11-05
+last-reviewed: 2026-11-06
 ---
 
 # Build and tooling
@@ -198,6 +199,7 @@ These change the emitted code.
 | Plugin | What it does |
 |---|---|
 | `roku-log.cjs` | Ours, replacing the unmaintained `roku-log-bsc-plugin`; the logging runtime it serves, adopted from roku-log, is ours too ([logging.md](logging.md#logging-is-two-parts-and-both-are-ours)). `strip` removes every `m.log.*()` call (prod), `insertPkgPath` prepends the source path to log lines (dev), `removeComments` strips comments (on by default, off in dev). `guard` wraps calls in a check, but no config turns it on ([logging.md](logging.md#the-guard-transform-only-knows-mlog)) |
+| `strip-vendor-prints.cjs` | Removes every `print` from the vendored modules `stripVendorPrints` lists in `bsconfig-base.json` (`rr` today, whose `[http]` trace printed the token), in every build, tests included: every config loads it, and a test fails when one does not. The build fails when a listed module matches no file (`vendor-print-module-missing`), holds no print (`vendor-print-none`), or has a print that calls something outside `allowedCalls` (`vendor-print-call`), since removing it would stop the call. These report on `manifest`, because the base config filters every diagnostic inside `roku_modules` ([logging.md](logging.md#masking-what-a-line-could-leak)) |
 | `translation-keys.cjs` | Generates a virtual `pkg:/source/translationKeys.bs` with one constant per key in `locale/custom/en_US.json`. It watches that file, so the editor sees new keys without a rebuild. See [translations.md](translations.md) |
 | `auto-abandon-promises.cjs` | Puts `abandonApiPromises()` first in the `onDestroy()` of every component that calls `fetchAsync`, so a late response never calls into a destroyed node. A component that calls `fetchAsync` with no `onDestroy()` is a build error. See [promises.md](../dev/promises.md) |
 | `auto-destroyed-guard.cjs` | Adds a teardown guard to `onKeyEvent` (next section) |
@@ -478,7 +480,7 @@ ropm copies Roku libraries into the project at install time; nothing resolves at
 | `sgRouter` | `@rokucommunity/sgrouter` | Screen routing ([navigation.md](navigation.md)) |
 | (none) | `@rokucommunity/bslib` | BrighterScript's standard library |
 
-They land in the gitignored `source/roku_modules/` and `components/roku_modules/` when `npm run ropm` runs `ropm copy`. Nothing edits them, and every check skips them.
+They land in the gitignored `source/roku_modules/` and `components/roku_modules/` when `npm run ropm` runs `ropm copy`. Nothing edits the files, and every check skips them. The build does change what one of them ships: `strip-vendor-prints.cjs` removes the prints of the modules it lists, so `rr`'s source shows an `[http]` trace the app never prints.
 
 Third-party code kept in the repo is different: JellyRock owns it, and every check applies ([ADR 0054](../adr/0054-owned-code-gets-every-check.md)). There are two such libraries: the logging runtime in `source/logging/` and `components/logging/`, adopted from roku-log ([logging.md](logging.md)), and the socket client in `components/websocket/` ([remote-control.md](remote-control.md)). Each folder has a README with its upstream, pinned commit and local changes.
 
