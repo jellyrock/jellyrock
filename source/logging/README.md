@@ -22,6 +22,7 @@ The public names are unchanged, so no call site changed: `log.Logger`, `log.init
 - **`method()` level deleted**, with the `isMethod` parameter of `log()`. Nothing called it.
 - **Unreachable fallback deleted.** A `Logger` built with no manager replaced its `log` method with one that printed `NO LOGGER FOUND`, but every level method returns before calling it in that case.
 - **Lint fixes:** `sub` for every function with no return value, consistent `rLog` casing, and comments rewritten. `onTransportsChange` now loops over the local it null-checks; upstream checked it and then looped over the field.
+- **Masking added:** `log.Redactor` rewrites every line before it is written, so tokens, device IDs, secrets, the Roku's name and addresses never reach the console. Upstream had nothing like it. What it masks and why: [`logging.md`](../../docs/architecture/logging.md#masking-what-a-line-could-leak). The console format is otherwise unchanged.
 
 ## Known issues
 

@@ -12,6 +12,7 @@ related-files:
   - scripts/harden-prod-manifest.js
   - manifest
   - scripts/bsc-plugins/roku-log.cjs
+  - scripts/bsc-plugins/strip-vendor-prints.cjs
   - scripts/bsc-plugins/translation-keys.cjs
   - scripts/bsc-plugins/auto-abandon-promises.cjs
   - scripts/bsc-plugins/jrscreen-on-destroy.cjs
@@ -99,7 +100,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-11-05
+last-reviewed: 2026-11-06
 ---
 
 # Build and tooling
@@ -198,6 +199,7 @@ These change the emitted code.
 | Plugin | What it does |
 |---|---|
 | `roku-log.cjs` | Ours, replacing the unmaintained `roku-log-bsc-plugin`; the logging runtime it serves, adopted from roku-log, is ours too ([logging.md](logging.md#logging-is-two-parts-and-both-are-ours)). `strip` removes every `m.log.*()` call (prod), `insertPkgPath` prepends the source path to log lines (dev), `removeComments` strips comments (on by default, off in dev). `guard` wraps calls in a check, but no config turns it on ([logging.md](logging.md#the-guard-transform-only-knows-mlog)) |
+| `strip-vendor-prints.cjs` | Removes every `print` from the vendored modules `stripVendorPrints` lists in `bsconfig-base.json` (`rr` today, whose `[http]` trace printed the token), in every build, tests included: every config loads it, and a test fails when one does not. The build fails when a listed module matches no file (`vendor-print-module-missing`), holds no print (`vendor-print-none`), or has a print that calls something outside `allowedCalls` (`vendor-print-call`), since removing it would stop the call. These report on `manifest`, because the base config filters every diagnostic inside `roku_modules` ([logging.md](logging.md#masking-what-a-line-could-leak)) |
 | `translation-keys.cjs` | Generates a virtual `pkg:/source/translationKeys.bs` with one constant per key in `locale/custom/en_US.json`. It watches that file, so the editor sees new keys without a rebuild. See [translations.md](translations.md) |
 | `auto-abandon-promises.cjs` | Puts `abandonApiPromises()` first in the `onDestroy()` of every component that calls `fetchAsync`, so a late response never calls into a destroyed node. A component that calls `fetchAsync` with no `onDestroy()` is a build error. See [promises.md](../dev/promises.md) |
 | `auto-destroyed-guard.cjs` | Adds a teardown guard to `onKeyEvent` (next section) |
@@ -243,6 +245,8 @@ These turn conventions from `components/CLAUDE.md` and `source/CLAUDE.md` into e
 | `register-once-observer` | error | A member observed once, in `init()`, then unobserved anywhere but `onDestroy()`. Nothing re-registers it, so its handler never runs again | [ADR 0034](../adr/0034-component-observers-init-to-ondestroy.md), decision [`register-once-observer-gate`](../decisions.md#decision-id-register-once-observer-gate) |
 | `dead-code` | error | A declaration nothing in the app consumes | [Dead code](#dead-code), [ADR 0047](../adr/0047-dead-code-gate.md) |
 | `log-too-many-values` | error | An `m.log.<level>()` call with more than eight values after the message. The runtime function takes the message plus nine values and the build prepends the file and line, so a longer call builds clean and crashes at runtime. Split it into two log lines. `roku-log.cjs` reports it, and `LOG_FUNCTION_PARAMS` in that file is checked against `source/logging/Logger.bs` by a test | [logging.md](logging.md#logging-is-two-parts-and-both-are-ours) |
+| `log-personal-text` | error | An `m.log.<level>()` argument, or a part of one (either side of `+`, a template string's `${}`, an AA literal's key or value), whose name says it holds free text: a name ending in `name`, `title`, `query` or `term`, or `voiceText`, `path`. `NOT_PERSONAL` lists the exceptions. Masking cannot find free text, so the build keeps it out. `roku-log.cjs` reports it | [logging.md](logging.md#masking-what-a-line-could-leak) |
+| `log-secret-value` | error | An `m.log.<level>()` argument, or a part of one (read the same way), whose name says it holds a secret: a name ending in `token`, `apiKey`, `api_key`, `secret`, `password`, `deviceId` or `device_id`, or `Pw`. The logger masks a secret only after `key=` or `key:`, and `m.log` joins its arguments with a space, so the build keeps it out. `roku-log.cjs` reports it | [logging.md](logging.md#masking-what-a-line-could-leak) |
 
 The three Task rules work together. `no-raw-run` bounds where a thread may start, `no-task-fanout` bounds how many start at once, and `no-same-node-relaunch` catches a launch the platform can ignore ([threading.md](threading.md#measured-findings)). Epic #728 needed the first two: its crash came from concurrent launches in one screen load, through an ordinary launch site.
 
@@ -281,6 +285,8 @@ Not every plugin honors every marker, and an unsupported one fails silently: the
 |---|---|---|---|---|
 | `print-locations` | ✅ | ✅ | ✅ | |
 | `log-too-many-values` | ✅ | ✅ | ❌ | Same reason as `no-raw-run` |
+| `log-personal-text` | ✅ | ✅ | ❌ | A whole-file opt-out would let any title or name through |
+| `log-secret-value` | ✅ | ✅ | ❌ | A whole-file opt-out would let any token through |
 | `observe-without-on-destroy` | ✅ | ✅ | ✅ | |
 | `unobserve-before-release` | ✅ | ✅ | ✅ | Put it on the `unobserveField` line, where the diagnostic lands |
 | `callfunc-interface` | ✅ | ✅ | ✅ | Should be rare: an undeclared target is normally a real bug |
@@ -476,7 +482,7 @@ ropm copies Roku libraries into the project at install time; nothing resolves at
 | `sgRouter` | `@rokucommunity/sgrouter` | Screen routing ([navigation.md](navigation.md)) |
 | (none) | `@rokucommunity/bslib` | BrighterScript's standard library |
 
-They land in the gitignored `source/roku_modules/` and `components/roku_modules/` when `npm run ropm` runs `ropm copy`. Nothing edits them, and every check skips them.
+They land in the gitignored `source/roku_modules/` and `components/roku_modules/` when `npm run ropm` runs `ropm copy`. Nothing edits the files, and every check skips them. The build does change what one of them ships: `strip-vendor-prints.cjs` removes the prints of the modules it lists, so `rr`'s source shows an `[http]` trace the app never prints.
 
 Third-party code kept in the repo is different: JellyRock owns it, and every check applies ([ADR 0054](../adr/0054-owned-code-gets-every-check.md)). There are two such libraries: the logging runtime in `source/logging/` and `components/logging/`, adopted from roku-log ([logging.md](logging.md)), and the socket client in `components/websocket/` ([remote-control.md](remote-control.md)). Each folder has a README with its upstream, pinned commit and local changes.
 

@@ -1,0 +1,50 @@
+namespace tests
+
+  ' The build removes roku-requests' own [http] trace (strip-vendor-prints), and
+  ' requestWithJsonOnSuccess() writes one line per request in its place. These pin what that line
+  ' shows: a query's keys without their values, which can be free text such as the search, and a
+  ' warning only when no answer came back or the server failed.
+  @suite("baseRequest - the request trace")
+  class BaseRequestTraceTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("requestLogUrl")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps the query's keys and drops their values")
+    function _()
+      url = "http://10.0.0.5:8096/Users/u1/Items?searchTerm=star&ApiKey=0123&Limit=20"
+      m.assertEqual(requestLogUrl(url), "http://10.0.0.5:8096/Users/u1/Items?searchTerm&ApiKey&Limit")
+    end function
+
+    @it("leaves a URL with no query as it is")
+    function _()
+      m.assertEqual(requestLogUrl("https://jellyfin.example.com/System/Info"), "https://jellyfin.example.com/System/Info")
+    end function
+
+    @it("keeps a key that has no value, and skips an empty part")
+    function _()
+      m.assertEqual(requestLogUrl("http://h/a?Static&&b=1"), "http://h/a?Static&b")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("requestTraceLevel")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is debug for an answer, a 4xx included: the app reads those as data")
+    function _()
+      m.assertEqual(requestTraceLevel({ ok: true, statusCode: 200 }), "debug")
+      m.assertEqual(requestTraceLevel({ ok: false, statusCode: 404 }), "debug")
+    end function
+
+    @it("is warn when no answer came back or the server failed")
+    function _()
+      m.assertEqual(requestTraceLevel({ ok: false, statusCode: 0 }), "warn")
+      m.assertEqual(requestTraceLevel({ ok: false }), "warn")
+      m.assertEqual(requestTraceLevel({ ok: false, statusCode: 503 }), "warn")
+      m.assertEqual(requestTraceLevel(invalid), "warn")
+    end function
+
+  end class
+
+end namespace

@@ -68,7 +68,7 @@ sub loadChannels()
 
     if hasSearch
       ' Fetch all channels for client-side name filtering (no pagination)
-      m.log.info("loadChannels: fetching all via /LiveTv/Channels (voice search)", "searchTerm", searchTerm)
+      m.log.info("loadChannels: fetching all via /LiveTv/Channels (voice search)", "searchTermLength", Len(searchTerm))
     else
       ' Normal paginated load
       params.startIndex = m.top.startIndex

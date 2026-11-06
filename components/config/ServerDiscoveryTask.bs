@@ -41,7 +41,7 @@ sub execute()
 
   FetchServerIds()
   m.top.content = m.servers
-  m.log.debug("Jellyfin servers found", m.servers[0], m.servers[1], m.servers[2])
+  m.log.debug("Jellyfin servers found", m.servers.count())
 end sub
 
 ' Fetch server IDs and names from /system/info/public for all discovered servers.

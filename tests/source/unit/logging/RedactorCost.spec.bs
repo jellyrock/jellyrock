@@ -1,0 +1,52 @@
+import "pkg:/source/logging/Logger.bs"
+
+namespace tests
+
+  ' What masking adds to each log line, in microseconds, for the shapes a line takes: nothing
+  ' to mask, a URL, an Authorization header, and nothing to mask once a host is remembered. It prints the numbers and asserts
+  ' nothing about them, so it runs only when asked for: `test:tdd` with this spec selected.
+  @suite("log redactor cost")
+  @tags("measurement")
+  class RedactorCostTests extends tests.BaseTestSuite
+
+    private LINES_PER_SHAPE = 2000
+
+    function newRedactor() as object
+      return new log.Redactor()
+    end function
+
+    @describe("microseconds per line")
+
+    @it("prints the cost of each line shape")
+    sub _()
+      q = chr(34)
+      shapes = {
+        plain: "INFO file:///home/user/jellyrock/components/home/HomeRows.bs:459 latest-rows run complete 10 rows 2654 ms",
+        url: "INFO Playback path: DIRECT PLAY finalUrl http://192.168.1.20:8096/Videos/6b7f3c2a/stream?Static=true&ApiKey=0123456789abcdef0123456789abcdef",
+        header: "DEBUG headers AA({" + q + "Authorization" + q + ":" + q + "MediaBrowser Client=\" + q + "JellyRock\" + q + ", Device=\" + q + "Living Room (Roku Ultra)\" + q + ", DeviceId=\" + q + "roku-device-1234\" + q + ", Token=\" + q + "0123456789abcdef0123456789abcdef\" + q + q + "})"
+      }
+      ' A server reached by name leaves its host remembered, and every later line then pays to
+      ' look for it, so a plain line is timed again with one host remembered.
+      shapes.plainAfterHost = shapes.plain
+      fresh = m.newRedactor()
+      withHost = m.newRedactor()
+      withHost.redact("GET https://jellyfin.example.com/System/Info")
+      clock = CreateObject("roTimespan")
+      for each shape in ["plain", "url", "header", "plainAfterHost"]
+        line = shapes[shape]
+        subject = fresh
+        if shape = "plainAfterHost" then subject = withHost
+        subject.redact(line)
+        clock.Mark()
+        for i = 1 to m.LINES_PER_SHAPE
+          subject.redact(line)
+        end for
+        elapsedMs = clock.TotalMilliseconds()
+        print "[RedactorCost] "; shape; " us/line="; (elapsedMs * 1000) / m.LINES_PER_SHAPE; " lines="; m.LINES_PER_SHAPE
+      end for
+      m.assertTrue(true)
+    end sub
+
+  end class
+
+end namespace

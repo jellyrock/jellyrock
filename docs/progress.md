@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-06: update(logging): Mask secrets in logs, keep names and search text out
 - 2026-11-06: fix(playback): Start 4K Dolby Vision on a display without HDR
 - 2026-11-06: fix(playback): Play more Dolby Vision files, end a wasted retry
 - 2026-11-05: fix(playback): Handle long films, big re-encodes and frozen playback
@@ -347,6 +348,8 @@ Closes with a lint in `npm run lint` and its CI home that fails a tracked code c
 #### The RTA runner captures no device console, so an app crash during a spec reads as a wait timeout `[fid: rta-run-hides-device-crash]` `[captured 2026-10-24]`
 
 A BrightScript runtime error during an RTA spec suspends the app in the micro debugger, and every later wait in the run times out with `last={}` and no hint of the crash. [`scripts/rta-run.js`](../scripts/rta-run.js) and [`tests/rta/lib/driver.js`](../tests/rta/lib/driver.js) open no console tail; `driver.js` only names the telnet command in its deploy-timeout message. **Evidence:** SyncPlay phase C (2026-10-23, Streaming Stick 4K): a type mismatch in `syncPlayQueue.isStaleQueueUpdate` failed seven of eight specs as plain timeouts, and the backtrace surfaced only after a rerun with `nc` on port 8085 held open by hand. Not done in that PR: it is a runner change with its own tests. **Close:** have `rta-run.js` hold a console tail for the run (share the reader `two-roku-console-readers` proposes rather than writing a third), surface any `runtime error` or `Backtrace:` lines seen since the spec started in the failed wait's diagnosis, and save the tail beside the run record.
+
+**Update 2026-11-06:** since #1305 the runner does save the console (`console-capture.js`), but it still never reads it. On PR #1329's dev build the app stopped at launch with `runtime error &hf3` before ODC answered, and the run printed `registry.js`'s `readTimedOut()` message (blaming the `setupClientSocket` defect of the RTA library, followup `rta-odc-connect-hang`). The `uncaughtException` handler exits without printing the console path, and the run closes as `crashed`, which the ledger drops from the pass/fail record, so a build that crashes at launch is never counted as failing. Recommended fix (`scan`): on the read timeout or any `uncaughtException`, read the lines captured since the deploy; if they hold `runtime error` or `Backtrace:`, report the app crash with its error line, print the console path, and close the run `failed`. Rejected: printing the path only (keeps the wrong verdict and the dropped record). Not checked: whether a Vitest worker's own mid-suite ODC calls mislabel a crash the same way.
 
 #### An RTA run whose named specs skip every case looks like a pass `[fid: rta-run-silent-skips]` `[captured 2026-11-01]`
 
@@ -1208,10 +1211,6 @@ Several checks compare a number's `type()` against a partial list of names. On a
 
 After a slow silent seek on a SyncPlay member, the `Ready` goes out at the `playing` edge with the node's own position, which `docs/architecture/playback.md` says can still read the position from before the seek; a position off by more than 500 ms draws a corrective `Seek` from the server. Read from the code in PR #1296's review (2026-11-01), never reproduced; refiled from `syncplay-slow-seek-catch-up-unbounded` when the SyncPlay project's consolidation step closed it (the unbounded lead and the seek-stall cycle end with the wait-on-me correction, commit `a151efbc`). Closes with a device capture of a `Ready` after a slow seek compared against the seek's target, and a read of the position from a later notification when they differ, or a decision to drop it.
 
-#### Mask tokens and addresses in every log line `[fid: log-redact-secrets]` `[captured 2026-11-05]` `[pinned]`
-
-**Mask secrets and addresses in every log line, in every build.** Stream URLs carry the access token in their query (`source/utils/streamOrigin.bs`), and the `m.log` calls that print a URL put it on the debug console, which `scripts/lib/console-capture.js` copies into `.device-runs/`. Agreed shape (#986 planning, 2026-11-05): one pure `redact()` step in `Logger.log()` before any output, with no shared state, so it adds no thread crossing. A token becomes a short fingerprint such as `<token:3fa9>`, so a log still shows whether two requests used the same one. A URL keeps its scheme, port, path and query keys, and its host becomes a class (`<lan-host>`, `<host>`). An IP becomes `<lan-ip>`, `<public-ip>` or `<loopback>`, never a hash, since a home network has 256 addresses to try. User names need known values, and must not cost a per-line `m.global` read. Test-first in `tests/source/unit/logging/LogManager.spec.bs`, and measure the per-line cost on a device. Limit: `print` and Roku OS console lines bypass the logger.
-
 #### `initializeLogManager` leaves `enabled` false, which `guard` would turn into silence `[fid: log-enabled-default-false]` `[captured 2026-11-05]`
 
 **`log.initializeLogManager` defaults `enabled` to `false`, and `JRScene.init()` does not pass it,** so every `Logger.enabled` is `false`. Nothing reads it today, but the `roku-log` plugin's `guard` option wraps each call in `if m.__le = true`, so turning `guard` on would silence every log line without an error. Fix: default it to `true` (or pass it from `JRScene`), with a test in `tests/source/unit/logging/LogManager.spec.bs`. Listed under Known issues in `source/logging/README.md`; remove it there too.
@@ -1219,6 +1218,21 @@ After a slow silent seek on a SyncPlay member, the `Ready` goes out at the `play
 #### Send logs to the user's Jellyfin server (epic) `[fid: log-upload-to-server]` `[captured 2026-11-05]`
 
 **Let a user send the app's logs to their own Jellyfin server.** `POST /ClientLog/Document` takes `text/plain` up to 1,000,000 bytes and returns `{ FileName }`; it exists from 10.8.0 (absent at 10.7.7) and answers 403 when the server's `AllowClientLogUpload` is off, which defaults to on (checked in Jellyfin's source at `v10.11.0`, 2026-11-05). Jellyfin's Android TV client uses it for crash reports. Open questions: a production build strips every `m.log` call, so decide what it keeps (for example warn and error into a bounded buffer) and budget it against the thread-crossing cost model; the 10.8.0 guard and its endpoint-availability ledger entry; masking addresses and names on upload (followup `log-redact-secrets`). Next step: draft the epic issue and show it to the maintainer before filing.
+
+**Findings from PR #1329's review (2026-11-06), for the epic draft:**
+
+- Goal agreed with the maintainer: a sent log is safe to paste publicly as it is. Production keeps warnings and errors at least; info is undecided, and the build should force well-formed log calls (a fixed message, values limited to IDs, numbers and enums, no object dumps) at those levels.
+- Masking happens when a line is written (`log.Redactor` in `Logger.log()`), so a buffer saved for a crash never holds a raw token.
+- Crash detection, from Roku's docs: `main()` receives `lastExitOrTerminationReason` (`EXIT_BRIGHTSCRIPT_CRASH`, `EXIT_BRIGHTSCRIPT_TIMEOUT` and more; lost on reboot). `roAppManager.GetLastExitInfo()` (Roku OS 13.0+) returns the exit code, a timestamp and `console_log`, the last 20 raw console lines, only with `run_as_process=1` in the manifest (not set today). Keep only known-safe `console_log` lines (exit code, error line, backtrace frames); drop the rest, "Local Variables" included.
+- Storage: `tmp:` is lost on exit; the registry is 32 KB for the whole app, shared with settings; `cachefs:` survives an app exit but not a reboot, and the OS may evict it, so check the file exists.
+- Acceptance: missing or unknown exit info means no crash log, never a blocked or slower launch. A found log is masked, offered or sent, then deleted.
+- Not checked: what else `run_as_process=1` changes (enable it, then run the device suites on all three test devices); the per-line cost of a buffer sink (today's transports `callFunc` once per line, the rendezvous-per-item shape).
+
+#### Route every print through the log redactor `[fid: log-print-through-redactor]` `[captured 2026-11-05]`
+
+**Route every `print` through the redactor.** The 161 `print` statements in `source/` and `components/` bypass `log.Redactor`; most print user IDs or the server URL (`inferServerUrl` in `source/utils/misc.bs`). `source/utils/session.bs` printed the access token among every user setting until PR #1329 cut that print to keys only. Agreed shape (2026-11-05): a free function such as `log.print(...)` that masks and prints, usable before the log manager exists, and the `print-locations` plugin failing any raw `print` outside `source/logging/`. Comes after `rr-http-trace-leaks-token`.
+
+**Added 2026-11-06:** masking cannot hide free text or a secret passed without its key. The `session.bs` settings dump showed the username and recent searches until PR #1329 cut it to keys, and `m.log` is held to that by the build (`log-personal-text`, `log-secret-value`), which a `log.print()` needs too. A `log.print()` that caches patterns must rebuild them when missing, as `log.Redactor` does: a node's `m` handed to another thread loses its `roRegex` objects.
 
 #### A 4K H.264 source is re-encoded at 1080p even on a hardware HEVC server `[fid: h264-source-cap-limits-hevc]` `[captured 2026-11-05]`
 

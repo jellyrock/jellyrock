@@ -70,6 +70,16 @@ Each method takes a message and up to 8 values. A ninth fails the build with `lo
 m.log.info("Received data", json.result, "http call", m.top.uri)
 ```
 
+The logger masks addresses wherever they appear, and a token or device ID where a key names it (`ApiKey=…`, `Token="…"`, `"AccessToken":"…"`), turning each into a placeholder such as `<token:3fa9>` or `<lan-ip>` before the line is written. So a URL or a header is safe to log. Two things fail the build instead:
+
+- A title, a person's name, search text or a file path can't be masked (`log-personal-text`). Log the ID, or the text's length.
+- A token, password or device ID passed as its own argument would print raw, because `m.log` joins its arguments with a space and nothing names it (`log-secret-value`). Log whether it is set, or leave it out.
+
+```brighterscript
+m.log.info("Playing", item.id)                 ' not item.name
+m.log.debug("session", "hasToken", isValid(token))  ' not token
+```
+
 The logger converts the values to text, so you don't have to. The exception: a `LongInteger` or `Double` prints as an empty string (followup `roku-log-longinteger-double-empty`), so call `.toStr()` on one until that is fixed.
 
 ## Rules
@@ -79,4 +89,6 @@ The logger converts the values to text, so you don't have to. The exception: a `
 - **Import the logger** in every file that logs.
 - **Create one logger per component or class**, so each line shows where it came from.
 - **Pick the level by the table above**, so filtering works.
+- **Log IDs, never titles, names, search text or file paths.** The build rejects them (`log-personal-text`); the [architecture doc](../architecture/logging.md#masking-what-a-line-could-leak) says why.
+- **Never pass a token, password or device ID as its own argument.** The build rejects it (`log-secret-value`), since masking finds a secret only after its key.
 - **Use `m.log.*`, not `print`.** `print` is allowed only in `source/main.bs` and in the `#if debug` block of `source/utils/globals.bs`. The `print-locations` BrighterScript plugin enforces this (see [build-and-tooling.md](../architecture/build-and-tooling.md)).
