@@ -1,10 +1,11 @@
-' What VideoPlayerView.bufferCheck does on one tick while the player is buffering
-' (classifyBufferCheck in source/utils/bufferStall.bs).
+' What VideoPlayerView does on one stall-check tick: bufferCheck while the player is buffering,
+' playingProgressCheck while it plays (classifyBufferCheck and classifyPlayingProgress in
+' source/utils/bufferStall.bs).
 enum BufferCheckAction
-  ' Buffering moved since the last tick: keep waiting.
+  ' Buffering or the position moved since the last tick: keep waiting.
   PROGRESS = "progress"
-  ' A Live TV channel's buffering stalled: PlayerHostView's Live TV restart rule decides.
+  ' A Live TV channel's buffering or position stalled: PlayerHostView's Live TV restart rule decides.
   LIVE_STALLED = "liveStalled"
-  ' Any other stalled buffering: show the playback error.
+  ' Any other stall: show the playback error.
   STALLED = "stalled"
 end enum

@@ -74,6 +74,7 @@
 (?:autoscale)\.
 (?:autosub)\.
 (?:AV1)\.
+(?:AVC)\.
 (?:backends)\.
 (?:backfill)\.
 (?:Backfill)\.
@@ -372,6 +373,8 @@
 (?:JSONL)\.
 (?:Keep-a-Changelog)\.
 (?:keepalive)\.
+(?:keyframe)\.
+(?:keyframes)\.
 (?:last-checked)\.
 (?:last-updated)\.
 (?:lexically)\.

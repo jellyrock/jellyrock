@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-05
+last-updated: 2026-11-06
 ---
 
 # Progress
@@ -26,6 +26,12 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-06: fix(playback): Start 4K Dolby Vision on a display without HDR
+- 2026-11-06: fix(playback): Play more Dolby Vision files, end a wasted retry
+- 2026-11-05: fix(playback): Handle long films, big re-encodes and frozen playback
+- 2026-11-05: Renamed the Rooibos patch for alpha.56, so `npm install` no longer warns about a version mismatch
+- 2026-11-05: fix(playback): Make 4K transcodes play, in HEVC on hardware servers
+- 2026-11-05: fix(playback): Recover when a 4K remux overflows the video buffer
 - 2026-11-05: refactor(logging): adopt `roku-log` as owned code, drop its hook
 - 2026-11-05: feat(syncplay): Repeat, shuffle, time offset and leave in the gear
 - 2026-11-05: fix(playback): Copy AC3 audio in a remux on 7.1 systems
@@ -68,11 +74,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-23: fix: Hold keys and let Back cancel a Refresh, photo launch or seek
 - 2026-10-23: chore(lint): move the Markdown voice check to shared `voice-check.sh`
 - 2026-10-23: feat: Show a spinner over details and the TV guide while they load, and let Back leave them
-- 2026-10-22: fix(sign-in): Keep a server re-scan from taking focus from a connect
-- 2026-10-22: fix(sign-in): Ignore extra presses and let Back cancel a sign-in
-- 2026-10-22: fix(login): Land on Home after sign-in; drop casts while signed out
-- 2026-10-22: chore(lint): Check only git-visible files in the doc-citation ratchet
-- 2026-10-22: fix(audio): Seek in FLAC without freezing or skipping the end
 
 ## Open followups
 
@@ -295,10 +296,6 @@ In `scripts/bsc-plugins/roku-log.cjs`, the visitor that finds `m.log = new log.L
 #### `server-upgrade.js` links a reused or reopened issue without `replace_parent` `[fid: subissue-attach-without-replace-parent]` `[captured 2026-10-13]`
 
 `attachSubIssue` POSTs only `sub_issue_id`, and `executePlan` calls it for `comment` and `reopen` as well as `file`. An issue that already has a parent may then fail to link; the error is stored as `subIssueError`, not fatal. Unverified: whether GitHub refuses without `replace_parent` needs a throwaway issue pair. Read in the code 2026-10-13.
-
-#### The Rooibos patch file is named for alpha.55 while alpha.56 is installed `[fid: rooibos-patch-name-version-mismatch]` `[captured 2026-10-13]`
-
-`patches/rooibos-roku+6.0.0-alpha.55.patch` sits beside a `package.json` pin of `rooibos-roku` 6.0.0-alpha.56 (since #1067). It still applies, but patch-package matches by name and version. Regenerate it against alpha.56 (`npx patch-package rooibos-roku`) and remove the old file. Checked 2026-10-13; not run.
 
 #### `renovate.json` says "CLI smoke-tested", but the smoke workflow only loads the modules `[fid: renovate-cli-smoke-tested-wording]` `[captured 2026-10-13]`
 
@@ -874,9 +871,87 @@ It shows today, one video early. The Repeat One pick is a gear press during the 
 
 Close it by deciding "leaving an intro" from the item that ended rather than from the target's tag, with a unit case for Repeat One at an intro's end. Found reviewing the intro-slot fix that followed #1308.
 
+#### No audit of what the app does, and shows, for a user the server's access policy restricts `[fid: user-access-policy-ux-audit]` `[captured 2026-11-05]`
+
+The app loads the user's access policy (`SessionDataTransformer` maps `EnableVideoPlaybackTranscoding`, `EnablePlaybackRemuxing` and more onto `m.global.user.policy`), but no playback code reads most of it. So every fallback that asks the server for a transcode can ask for one the policy forbids: the retry that forces a transcode after a failed direct play, and since PR #1318 the re-encode retry after a `buffer:loop:` overflow (`chooseErrorRetry()`, `capH264Resolution()`, whose second `PlaybackInfo` request since PR #1323 also runs on a first request). A restricted user then sees whatever error the refused request yields, not one that says why. What the server actually answers in that case was not checked.
+
+Found in review of PR #1318. The user ruled out a one-off policy check on the re-encode retry: the gap needs a proper audit of user access and its UX instead. Close it with an audit that lists each policy field the server enforces, which app features and fallbacks each one affects, what the server answers when a request crosses it (measured on a server with the policy off), and what the user should see, then file the fixes it finds.
+
 #### File an enhancement issue for an on-screen log overlay `[fid: log-screen-overlay-issue]` `[captured 2026-11-05]`
 
 **File an enhancement issue for an on-screen log overlay in debug builds.** The old roku-log `ScreenTransport` drew the latest lines over the UI; it was deleted in #986 because nothing used it (its code is in git history, in roku-log 0.11.1's `src/components/ScreenTransport.bs`). The maintainer sees value in it beyond the console: RTA screenshots would show the log beside the screen. Draft the issue and show it before filing.
+
+#### A live channel beyond the H.264 ceiling buffers forever, from its upstream link or the server's stream `[fid: live-4k-h264-no-1080p-check]` `[captured 2026-11-05]`
+
+A live channel beyond the H.264 ceiling never plays when the device plays its upstream link. Measured 2026-11-05 on a Roku Ultra with a 4K output mode, against a live `M3U` channel serving H.264 High@5.1 at `3840x2160` (the local test servers' HLS fixture). The load found no blocker (`getUpstreamManifestBlocker` NONE, `deviceLoadsUpstream` true) and direct-played the upstream HLS link, so the server never transcoded it. That held on a server that does not encode HEVC and on 12.4 with `NVENC` and HEVC encoding on alike. The player then sat in `buffer` at position 0 for the 45 s watched, and the transcode fallback (`isTranscodeAvailable`) never ran, because nothing failed.
+
+The same channel has a second path to the same hang, found by reading the code and not yet measured: when the load plays the server's stream instead (a blocker such as the user policy's remote-source transcoding, or a link the device cannot load), the server re-encodes the video to H.264 at the source's size on a server that does not encode HEVC, and nothing caps it. A live load has no playlist check (`capH264Resolution` skips it), and HEVC first never fires for a channel that lists no streams, so a hardware HEVC server sends 4K H.264 too.
+
+Two facts limit the fix. The channel item lists no media streams before it opens (seen on 10.9.11 and 12.4), so no check can read its size from the item, and the HEVC first rule from PR #1323 never fires for such a channel. And a file's 1080p check (`LoadVideoContentTask.capH264Resolution`) does not fit live: its second `PlaybackInfo` would open a second live stream.
+
+Not done in PR #1323: the gap is in live playback, which that PR does not change, and the fix is a design choice. For the upstream link, read the upstream playlist's `CODECS` and `RESOLUTION` before playing it (`hlsMasterVariants()` on the upstream master, where one exists) and send the stream through the server when it is H.264 beyond the ceiling. For the server's stream, read its master playlist the same way and, when it declares H.264 beyond the ceiling, close that live stream before asking again at 1080p. A stall fallback that moves to a capped server stream would cover both. Then check a 4K H.264 channel plays on both server setups, through the upstream link and through the server.
+
+#### With a level setting on, a direct play the decoder never starts hangs at position 0 with no fallback `[fid: level-override-direct-play-hangs-no-fallback]` `[captured 2026-11-05]` `[pinned]`
+
+With `playbackTryDirectHevcProfileLevel` or `playbackTryDirectH264ProfileLevel` on, a source whose only transcode reason is `VideoLevelNotSupported` is direct-played (`triesDirectPlayOverLevel()` in `source/utils/streamSelection.bs`), with the transcode as its fallback (`isTranscodeAvailable`). When the decoder never starts that play, the player reports playing at position 0 indefinitely and the fallback never runs.
+
+Measured 2026-11-05 against 12.4, override on, each case a cold start and a deep-link play: on a Roku Ultra `4850X` (OS 16.0.4, 4K output) a 4K HEVC clip tagged level 6.1, whose stream fits level 5.0, sat at `play`, position 0, for 45 s and for 75 s with no fallback. In the same runs the override helped: the Ultra and the Streaming Stick 4K `3820RW` direct-played a 1080p H.264 clip tagged 5.1 (device level 4.2), and the Ultra a 4K HEVC clip tagged 5.2. The Roku Stick `3600X` refused the H.264 5.1 clip with `-3 ... no memory` after 0.6 s, and its fallback transcode played. So decoders look past an inflated tag within limits the docs do not state, and the setting only helps users who find it.
+
+Root cause: the transcode retry runs only from the `error` branch of `VideoPlayerView`'s state handler (`chooseErrorRetry()`), and the one stall watchdog (`bufferCheck()`) starts only in `buffering`. A play the decoder never starts reports neither. The override and its error-only fallback are in the fork's initial commit, and live and upstream-link direct plays share the same fallback (followup `live-4k-h264-no-1080p-check`).
+
+The same gap covers a file transcode. On a first request, `h264CapDecision()` keeps the answer when the master playlist cannot be read, since the video may be copied, so a 4K H.264 answer then plays and hangs the same way. Measured 2026-11-05 on 12.4 with software encoding, the read is rarely the cause: 20 of 20 answered in a median of 11 ms idle, and 30 of 30 in a median of 21 ms (max 51 ms) while the server encoded 4K at about 8 cores, against the 3 s `timeouts.HLS_MASTER_PROBE_MS`; every line from 10.7.7 to 12.4 declares `CODECS` and `RESOLUTION`. Only a network fault during the read leads there. A start watchdog whose retry asks again with a 1080p cap would cover it.
+
+Options:
+
+- `auto` (recommended): remove both settings; when the server's only reason is the level and the stream's own size, frame rate and bitrate fit the device's level, try direct play for everyone, backed by a start watchdog (the position must move within a measured window, or the load retries through the transcode) and the existing error fallback. Touches the settings, a registry migration to clear the saved keys, the strings and user docs, `triesDirectPlayOverLevel()`, a pure watchdog rule with tests, `VideoPlayerView`, `playback.md` and a decision record. Risk: artifacts no check sees, and a failed try costs the watchdog window before the transcode.
+- `startwatch`: keep the opt-in settings and add only the watchdog.
+- `remove`: remove both settings and always transcode on a level mismatch.
+
+Not done in PR #1323: it is its own change (settings removal, migration, docs, watchdog), and the hang predates the PR.
+
+Not checked:
+
+- whether the picture was correct: a moving position is not a clean picture, and Roku can't capture the video plane;
+- real files whose encoders inflated the tag (all the test clips are synthetic);
+- other Roku models and OS versions;
+- how long a healthy direct play takes to move on the slowest supported Roku, which a watchdog's window depends on;
+- whether the Ultra errors on its own after more than 75 s.
+
+Tracked publicly in [#1330](https://github.com/jellyrock/jellyrock/issues/1330).
+
+#### A SyncPlay reload in place sends Ready at position 0 `[fid: syncplay-reload-ready-position]` `[captured 2026-11-04]`
+
+A reload in place while following a SyncPlay group reaches `syncPlayPlayback.trackPlayerEvent` as a stall followed by more buffering, and its Ready carries the node's own position (`positionTicks = -1`), which reads 0 at the first frame of a load that starts partway in; only the `mounted` path corrects for that with `loadStartTicks`. A Ready at 0 makes the server send a corrective Seek. Because of this the re-encode bitrate check (decision `reencode-bitrate-checked-from-session`) skips groups. Fix by sending the load's start position in that Ready, then let the check run in groups and test it with the REST second member.
+
+#### Unconfirmed: a never-played `.strm` item may skip the playlist-size fit and the buffer cap on its first play `[fid: strm-first-play-stale-run-time]` `[captured 2026-11-06]`
+
+`LoadItems_AddVideoContent` in `LoadVideoContentTask` passes `playedSource`, read before the probe, to `fitHlsPlaylist` (its `RunTimeTicks`) and `reencodeCheck.bufferCapBps` (its `Bitrate` and `RunTimeTicks`), both from #1324. `reloadProbedStreams` replaces `meta`'s sources after the first `PlaybackInfo` of a source that lists no streams, and `playedSource` is never read again. If a never-played `.strm` source has no `RunTimeTicks` before its probe, both stand down on that first play, so a long `.strm` film could hit the playlist-too-large failure #1324 fixed. Found while reviewing PR #1325, which fixed the same stale read for the Dolby Vision bypass retry.
+
+Check first: a never-played `.strm` item's `RunTimeTicks` before the probe. If it is missing, read both from the source the current answer's request read (`m.playbackInfoRequestSource`, added by PR #1325). If it is present, close this followup. A `.strm` item's `Bitrate` describes the text file (11 bit/s, measured 2026-10-12), so `bufferCapBps` may need its own fix either way.
+
+Not checked: any of this on a device.
+
+#### A transcode of a source with no audio track never starts on Roku: endless buffering `[fid: video-only-transcode-never-starts]` `[captured 2026-11-06]`
+
+A source with no audio track that the server transcodes never starts: Roku's player stays in `buffering` with no error, and JellyRock shows an endless spinner. Found while reviewing PR #1331, which does not cause it.
+
+Measured 2026-11-06 on a Streaming Stick 4K (Roku OS 15.3.4) against Jellyfin 12.4, with four synthetic 1080p HEVC HLG clips (one variable at a time). The two without audio (24 and 60 fps) stuck in `buffer` for 60 s; the two with AAC played to the end. A one-`Video`-node channel outside JellyRock, given the same server URLs, did the same: `state=buffering errorCode=0` for 45 s on the video-only stream, with `ts` and with `fMP4` segments, while the stream with audio played. Roku never requests the first segment (the server wrote no transcode log for the video-only clip in any run, and did for the clip with audio); requested by hand, the server encodes a valid video-only segment in about 4 s. So the fault is Roku's handling of the server's video-only HLS stream (master `CODECS="avc1.42E02A"`), not the app or the server. The Dolby Vision 8.4 test files with an HLG base layer and no audio show it too.
+
+Options:
+
+- `notice` (recommended): before a transcode play in `LoadVideoContentTask`, if the played source lists no audio stream, show a clear message instead of starting a play that hangs. One translation key and a unit test; direct play left alone. Risk: it blocks a video-only transcode some other Roku or OS version can play.
+- `watchdog`: a general stall check (a play stuck in `buffer` at position 0 for N seconds stops with an error), designed with followup `level-override-direct-play-hangs-no-fallback`.
+- `report`: report it to Roku's developer forum with the one-node channel to reproduce it; can go alongside either.
+
+Not checked:
+
+- direct play of a video-only file;
+- other Roku models and Roku OS versions;
+- whether Roku plays a video-only HLS stream from another source;
+- how common video-only files are in real libraries;
+- whether Jellyfin can add a silent audio track.
+
+To rebuild a clip: `ffmpeg -f lavfi -i testsrc2=size=1920x1080:rate=24 -t 20 -vf format=yuv420p10le -c:v hevc_nvenc -profile:v main10 -color_primaries bt2020 -color_trc arib-std-b67 -colorspace bt2020nc out.mkv` (add an AAC input for the control).
 
 ### source
 
@@ -1145,6 +1220,14 @@ After a slow silent seek on a SyncPlay member, the `Ready` goes out at the `play
 
 **Route every `print` through the redactor.** The 161 `print` statements in `source/` and `components/` bypass `log.Redactor`; most print user IDs or the server URL (`inferServerUrl` in `source/utils/misc.bs`), and none print a token today. Agreed shape (2026-11-05): a free function such as `log.print(...)` that masks and prints, usable before the log manager exists, and the `print-locations` plugin failing any raw `print` outside `source/logging/`. Comes after `rr-http-trace-leaks-token`.
 
+#### A 4K H.264 source is re-encoded at 1080p even on a hardware HEVC server `[fid: h264-source-cap-limits-hevc]` `[captured 2026-11-05]`
+
+An H.264 source caps the H.264 codec profile at `1920x1080` in `buildPlaybackInfoPostData` (`source/api/items.bs`, the block that caps the H.264 codec profile for an H.264 source), and Jellyfin applies a codec profile's width and height to the whole transcode, so a 4K H.264 source is re-encoded at 1080p even on a server that encodes HEVC in hardware and could keep 4K. Seen 2026-11-04 on a Roku Ultra against Jellyfin 12.4 with `NVENC`: a 4K H.264 source re-encoded as HEVC at `1920x1080`. Rare (4K H.264 sources are uncommon). Not done in PR #1323 because it needs its own device check on two server setups. Fix by dropping that cap where `capH264Resolution` already guards H.264 output, then check a 4K H.264 source keeps 4K on a hardware HEVC server and gets 1080p H.264 on a default one.
+
+#### `mediaNumber` loses the low digits of large values `[fid: media-number-long-precision]` `[captured 2026-11-04]`
+
+`mediaNumber` in `source/utils/misc.bs` reads a long integer through a float, so a large value loses its low digits (94848001 reads as 94848000, found 2026-11-04). It is harmless for the values it serves today, but wrong for bitrate and byte values; `reencodeCheck.bitsPerSecond` was added to avoid it. Decide whether `mediaNumber` should keep integers whole, and check its callers.
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`
@@ -1280,6 +1363,14 @@ Close it on a device: seek to 50% in an Ogg file holding FLAC whose last frame i
 #### `roku-requests` prints the token in every request trace `[fid: rr-http-trace-leaks-token]` `[captured 2026-11-05]` `[pinned]`
 
 **`roku-requests` prints every request's full URL and headers, token included, in every build.** `rr_Requests_run` (`source/roku_modules/rr/Requests.brs`, package-managed) runs `? "[http] URL:"` and `? "[http] Headers: "` with no guard, and every API call reaches it through `executeHttpRequest()` in `source/api/baseRequest.bs`. A `print` is never stripped, so production builds print it too; whether a production install's console can be read was not checked. `log.Redactor` cannot reach these lines. Options weighed 2026-11-05: adopting `rr` as owned code (rejected by the maintainer: it makes every `rr` upgrade a manual merge for the sake of two prints); a `patch-package` patch (needs `postinstall` to apply patches before `ropm copy`, and `--error-on-fail`, since a failed patch exits 0 locally); a build-time step in the `roku-log` plugin that removes `print` statements under `roku_modules/rr/`, which needs no work on upgrade. Whichever is chosen, keep a masked trace of our own in `executeHttpRequest()` (method, URL, status, retries), and update the `[http]` replay advice in `docs/dev/debug-flags.md`, which relies on the token in the trace.
+
+#### Out-of-spec Dolby Vision `mp4` files may still direct-play into Dolby Vision mode on 10.9 and 10.10 `[fid: dovi-out-of-spec-mp4-before-1011]` `[captured 2026-11-06]`
+
+Jellyfin 10.9 and 10.10 report a Dolby Vision profile 8 stream with compatibility ID 6 as `DOVIWithHDR10`, which the HEVC range list already takes, so `allowHdr10DoviInvalid` (`source/api/items.bs`, MKV only since PR #1325) never sees it and an `mp4` file of it direct-plays. On 10.11.11 the same file tagged `hvc1` played with the Roku in Dolby Vision mode, carrying the out-of-spec configuration (measured 2026-11-05 on a Roku Ultra `4850X`, decision `dovi-invalid-hdr10-direct-play`), so it most likely does the same on 10.9 and 10.10, as it did before PR #1325. A `dvh1`-tagged one is repackaged on every server from 10.9 by `refuseDvh1DolbyVision`; that conversion keeps the Dolby Vision data in the video, and on 10.9 and 10.10 no server code strips it.
+
+Check first: play the compatibility ID 6 `hvc1` and `dvh1` clips under `dovi-invalid/` in the test servers' Testing library from 10.9.11 and 10.10.7 on a Roku with a Dolby Vision TV, and read `Video.streamingSegment.hdrModeStr`. If either plays in Dolby Vision mode and the picture is wrong, or fails, have those requests drop the Dolby Vision range types for a stream `isOutOfSpecHdr10Dovi` marks, as `refuseDvh1DolbyVision` does.
+
+Not checked: any of this on 10.9 or 10.10 on a device; whether a Roku shows the out-of-spec Dolby Vision with the right colors.
 
 ### tests
 

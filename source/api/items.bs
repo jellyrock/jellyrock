@@ -9,10 +9,12 @@ import "pkg:/source/utils/audioSeek.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/playbackRetry.bs"
+import "pkg:/source/utils/serverCapabilities.bs"
 import "pkg:/source/utils/streamSelection.bs"
 
-function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean)
-  res = ItemPostPlaybackInfoResponse(id, mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding)
+function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, disallowVideoCopy = false as boolean)
+  res = ItemPostPlaybackInfoResponse(id, mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding, 0, invalid, disallowVideoCopy)
   if isValid(res) and res.ok then return res.json
   return invalid
 end function
@@ -22,12 +24,26 @@ end function
 '
 ' @param {integer} timeoutMs - the request's HTTP limit (apiTimeout); 0 keeps the default
 ' @param {dynamic} caps - the viewer's quality caps for this playback (playbackCaps.bs), or invalid
+' @param {boolean} disallowVideoCopy - ask the server to re-encode the video (see buildPlaybackInfoPostData)
+' @param {integer} maxPlaylistEntries - see buildPlaybackInfoPostData
 ' @return the pool response AA, or invalid when the caller's wait ran out
-function ItemPostPlaybackInfoResponse(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, timeoutMs = 0 as integer, caps = invalid as dynamic) as dynamic
-  postData = buildPlaybackInfoPostData(mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding, caps)
+function ItemPostPlaybackInfoResponse(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, timeoutMs = 0 as integer, caps = invalid as dynamic, disallowVideoCopy = false as boolean, maxPlaylistEntries = 0 as integer) as dynamic
+  postData = buildPlaybackInfoPostData(mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding, caps, disallowVideoCopy, maxPlaylistEntries)
   req = GetApi().BuildPostPlaybackInfoRequest(id, postData)
   if isValid(req) and timeoutMs > 0 then req.timeoutMs = timeoutMs
   return fetchRes(req, "playbackInfo")
+end function
+
+' isUsablePlaybackInfoResponse: Whether an ItemPostPlaybackInfoResponse() answer can replace the
+' one a load already holds: it arrived, parsed, lists a media source and names no error.
+'
+' @param {dynamic} res - the pool response AA, or invalid
+' @return {boolean}
+function isUsablePlaybackInfoResponse(res as dynamic) as boolean
+  if type(res) <> "roAssociativeArray" or not isBooleanTrue(res.ok) then return false
+  json = res.json
+  if type(json) <> "roAssociativeArray" then return false
+  return isValidAndNotEmpty(json.MediaSources) and not isValidAndNotEmpty(json.ErrorCode)
 end function
 
 ' buildPlaybackInfoPostData: The PlaybackInfo request body, tuned to the version being played.
@@ -36,8 +52,14 @@ end function
 '
 ' @param {dynamic} caps - the viewer's quality caps for this playback (playbackCaps.bs), or
 '                        invalid to use Settings alone
+' @param {boolean} disallowVideoCopy - send AllowVideoStreamCopy=false and the buffer bitrate cap
+'                        even when it is below the source bitrate. A copied video can only be cut at
+'                        the source's keyframes, so a long-GOP source gives HLS segments larger than
+'                        the device's whole video buffer; a re-encode forces a keyframe per segment.
+' @param {integer} maxPlaylistEntries - the most HLS playlist entries to plan for (see
+'                        maxPlaylistEntriesFor); 0 keeps the default of calculateOptimalTranscodingParams
 ' @return {object} the POST body for BuildPostPlaybackInfoRequest
-function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, caps = invalid as dynamic) as object
+function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, caps = invalid as dynamic, disallowVideoCopy = false as boolean, maxPlaylistEntries = 0 as integer) as object
   globalUser = m.global.user
   postData = {
     "UserId": globalUser.id,
@@ -47,17 +69,31 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
   }
   postData.DeviceProfile = getDeviceProfile(caps)
 
-  ' Dynamically adjust transcoding segment length and bitrate based on the video's
-  ' bitrate, duration, and the device's video buffer size to prevent buffer overflow
-  ' and playlist-too-large errors during HLS playback.
-  '
-  ' Everything below that reads the source (its bitrate and runtime here, its streams and
-  ' container for the Dolby Vision, H264 and audio decisions) reads the version this request
-  ' is for, not the server's default (mediaSourceForId).
+  ' Everything below that reads the source (its bitrate and runtime, its streams and container
+  ' for the Dolby Vision, H264 and audio decisions) reads the version this request is for, not
+  ' the server's default (mediaSourceForId).
   playedSource = invalid
   if isValid(videoMetadata) and isValid(videoMetadata.mediaSourcesData)
     playedSource = mediaSourceForId(videoMetadata.mediaSourcesData.mediaSources, mediaSourceId)
   end if
+
+  mediaStreams = invalid
+  if isValid(playedSource) and isValid(playedSource.MediaStreams)
+    mediaStreams = playedSource.MediaStreams
+  end if
+
+  playedContainer = ""
+  if isValid(playedSource)
+    playedContainer = playedSource.Container
+  end if
+
+  ' The codec profiles take their range types for this source here, before any code below reads
+  ' them (the HEVC-first choice does).
+  allowHdr10DoviInvalid(postData.DeviceProfile.CodecProfiles, mediaStreams, playedContainer)
+
+  ' Dynamically adjust transcoding segment length and bitrate based on the video's
+  ' bitrate, duration, and the device's video buffer size to prevent buffer overflow
+  ' and playlist-too-large errors during HLS playback.
   if isValid(playedSource)
     mediaSource = playedSource
     sourceBitrate& = 0
@@ -73,7 +109,11 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
 
     if sourceBitrate& > 0 and videoDurationSeconds > 0
       bufferSize& = getDeviceBufferSize()
-      transcodingParams = calculateOptimalTranscodingParams(sourceBitrate&, videoDurationSeconds, bufferSize&)
+      if maxPlaylistEntries > 0
+        transcodingParams = calculateOptimalTranscodingParams(sourceBitrate&, videoDurationSeconds, bufferSize&, maxPlaylistEntries)
+      else
+        transcodingParams = calculateOptimalTranscodingParams(sourceBitrate&, videoDurationSeconds, bufferSize&)
+      end if
 
       ' Apply optimized segment length to all video transcoding profiles
       if isValid(postData.DeviceProfile.TranscodingProfiles)
@@ -87,9 +127,10 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
       ' Reduce max streaming bitrate only when segment length alone isn't enough.
       ' Never set MaxStreamingBitrate below the reported source bitrate + 10% headroom:
       ' Jellyfin would reject a remux/direct-stream as exceeding the limit.
+      ' A re-encode (disallowVideoCopy) has no such risk, so the cap applies at any bitrate.
       if transcodingParams.maxBitrate > 0
         minAllowedBitrate& = sourceBitrate& * 11& \ 10&
-        if transcodingParams.maxBitrate >= minAllowedBitrate&
+        if transcodingParams.maxBitrate >= minAllowedBitrate& or disallowVideoCopy
           postData.DeviceProfile.MaxStreamingBitrate = transcodingParams.maxBitrate
         end if
       end if
@@ -108,15 +149,35 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
 
   applyMediaSourceToPostData(postData, mediaSourceId, forceTranscoding)
 
-  mediaStreams = invalid
-  if isValid(playedSource) and isValid(playedSource.MediaStreams)
-    mediaStreams = playedSource.MediaStreams
+  if disallowVideoCopy
+    postData.AllowVideoStreamCopy = false
   end if
 
-  playedContainer = ""
-  if isValid(playedSource)
-    playedContainer = playedSource.Container
+  ' The server takes the first codec it may encode. List HEVC first for a source H.264 cannot carry
+  ' on this device, so a server that encodes HEVC keeps its size and range. A first request does so
+  ' only when the server's own settings say it encodes HEVC in hardware: software HEVC measured
+  ' below real time and stalled where H.264 plays. A server that does not encode HEVC falls to
+  ' H.264 either way (the load then reads the playlist and caps the resolution, see
+  ' LoadVideoContentTask.capH264Resolution). The re-encode retry always lists HEVC first. Live TV
+  ' follows the same rule, with the settings Home read at sign-in, only when the channel lists its
+  ' video stream: an M3U channel lists none before it opens, so it keeps H.264 first. A live load
+  ' has no playlist check.
+  listHevcFirst = disallowVideoCopy
+  if not listHevcFirst and serverCapabilities.serverEncodesHevcInHardware(m.global.server.encodingPolicy)
+    listHevcFirst = prefersHevcTranscode(getFirstVideoStream(mediaStreams), hevcRangeTypesOfProfile(postData.DeviceProfile), false)
   end if
+  if listHevcFirst
+    for each profile in postData.DeviceProfile.TranscodingProfiles
+      if isValid(profile.Type) and profile.Type = "Video" and isValid(profile.VideoCodec)
+        profile.VideoCodec = hevcFirstCodecList(profile.VideoCodec)
+      end if
+    end for
+  end if
+
+  ' After the HEVC-first choice on purpose: the TV still shows such a source's HDR, so it is
+  ' still worth an HEVC transcode.
+  refuseDvh1DolbyVision(postData.DeviceProfile.CodecProfiles, mediaStreams)
+
   doviProfile = doviRemuxContainerProfile(mediaStreams, playedContainer, globalUser.settings.playbackPreserveDovi, bypassDoviPreservation, getApiVersionFromGlobal())
   if isValid(doviProfile)
     postData.DeviceProfile.ContainerProfiles.push(doviProfile)
@@ -132,8 +193,8 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
       if isValid(stream.Type) and stream.Type = "Video" and isValid(stream.Codec) and LCase(stream.Codec) = "h264"
         if isValid(postData.DeviceProfile.CodecProfiles)
           ' Start from the H264 hardware ceiling, then clamp down to the user's cap if lower
-          h264CapHeight = 1080
-          h264CapWidth = 1920
+          h264CapHeight = H264_MAX_HEIGHT
+          h264CapWidth = H264_MAX_WIDTH
           userResConditions = getResolutionConditions(false, caps)
           for each condition in userResConditions
             if condition.Property = "Height" and condition.Value.toInt() < h264CapHeight
@@ -236,7 +297,10 @@ end function
 ' stream's own value.
 '
 ' Hardware is read only after the cheap checks pass: the setting must be on and the caller must
-' not have bypassed it. Only the first video stream with a codec other than AV1 is considered.
+' not have bypassed it. Only the first video stream with a codec other than AV1 is considered, and
+' isDoviRemuxCandidate() decides whether it needs the remux. The playback report asks the same
+' function (causedByPreserveDovi) of the first video stream whatever its codec, so when that
+' stream is AV1 and a later one is not, the report does not blame a remux this request added.
 '
 ' @param {dynamic} mediaStreams - MediaStream array of the played source, or invalid
 ' @param {dynamic} container - the played source's container, or invalid
@@ -261,27 +325,20 @@ function doviRemuxContainerProfile(mediaStreams as dynamic, container as dynamic
     ' always use the first video stream for now
     ' Note: don't force remux on AV1 codec - see #194
     if isValid(stream.Type) and stream.Type = "Video" and isValid(stream.Codec) and LCase(stream.Codec) <> "av1"
-      containerString = JDT_normalizeContainer(container ?? "")
-
-      ' DOVI remux logic requires VideoRangeType which was added in Jellyfin 10.9
-      ' Only apply this for API v2+ servers (10.9+)
-      if apiVersion >= 2 and containerString = "mkv" and isValid(stream.VideoRangeType) and stream.VideoRangeType <> ""
-        ' is DOVI in the string?
-        if inStr(LCase(stream.VideoRangeType), "dovi") > 0
-          ' add a condition to the mkv container profile to force remux (container swap)
-          return {
-            "Type": "Video",
-            "Container": "mkv",
-            "Conditions": [
-              {
-                "Condition": "NotEquals",
-                "Property": "VideoRangeType",
-                "Value": stream.VideoRangeType,
-                "IsRequired": true
-              }
-            ]
-          }
-        end if
+      if isDoviRemuxCandidate(stream, container, apiVersion)
+        ' add a condition to the mkv container profile to force remux (container swap)
+        return {
+          "Type": "Video",
+          "Container": "mkv",
+          "Conditions": [
+            {
+              "Condition": "NotEquals",
+              "Property": "VideoRangeType",
+              "Value": stream.VideoRangeType,
+              "IsRequired": true
+            }
+          ]
+        }
       end if
       exit for
     end if
@@ -289,6 +346,99 @@ function doviRemuxContainerProfile(mediaStreams as dynamic, container as dynamic
 
   return invalid
 end function
+
+' offersDoviDirectPlayFallback: Whether a retry with Preserve DoVi bypassed can turn this transcode
+' into a direct play.
+'
+' That holds only when the server named VideoRangeTypeNotSupported and this load's request added
+' the remux profile. It asks doviRemuxContainerProfile() with the request's own arguments, so a
+' stream the remux does not apply to (DOVIInvalid, AV1, a non-mkv container) gets no fallback:
+' the bypass retry would send the identical request.
+'
+' @param {dynamic} transcodeReasons - the transcode reasons the server returned, or invalid
+' @param {dynamic} mediaStreams - MediaStream array of the played source, or invalid
+' @param {dynamic} container - the played source's container, or invalid
+' @param {dynamic} preserveDovi - the playbackPreserveDovi user setting, or invalid
+' @param {boolean} bypass - true when this load already bypassed Preserve DoVi
+' @param {integer} apiVersion - the server's API tier
+' @param {dynamic} mockCapabilities - capabilities AA with isMock = true, for tests
+' @return {boolean} true when a bypass retry is worth offering
+function offersDoviDirectPlayFallback(transcodeReasons as dynamic, mediaStreams as dynamic, container as dynamic, preserveDovi as dynamic, bypass as boolean, apiVersion as integer, mockCapabilities = invalid as dynamic) as boolean
+  if not arrayHasValue(transcodeReasons, "VideoRangeTypeNotSupported")
+    return false
+  end if
+
+  return isValid(doviRemuxContainerProfile(mediaStreams, container, preserveDovi, bypass, apiVersion, mockCapabilities))
+end function
+
+' allowHdr10DoviInvalid: Let the server direct-play a DOVIInvalid HEVC stream whose base layer is
+' plain HDR10, on a display that takes HDR10.
+'
+' Jellyfin 10.11 and later mark Dolby Vision profile 8 or 10 video DOVIInvalid when its base-layer
+' compatibility ID is outside Dolby's spec. When the stream's color tags are still the HDR10 ones
+' (bt2020nc, smpte2084, bt2020) and the file is MKV, Roku plays it as HDR10, so this adds
+' DOVIInvalid to the hevc VideoRangeType list when it already takes HDR10.
+'
+' Only HEVC in MKV: Roku ignores Dolby Vision in MKV, while from MP4 it plays the out-of-spec
+' Dolby Vision itself, or refuses the file, and no AV1 file of this kind has been played on a
+' Roku. Any other DOVIInvalid stream is left for the server to convert, and for a display that
+' takes Dolby Vision it leaves the Dolby Vision out. Reads the first video stream.
+'
+' @param {dynamic} codecProfiles - the DeviceProfile's CodecProfiles, changed in place
+' @param {dynamic} mediaStreams - MediaStream array of the played source, or invalid
+' @param {dynamic} container - the played source's container, or invalid
+sub allowHdr10DoviInvalid(codecProfiles as dynamic, mediaStreams as dynamic, container as dynamic)
+  if not isValid(codecProfiles) or LCase(textOrEmpty(container)) <> "mkv" then return
+
+  video = getFirstVideoStream(mediaStreams)
+  if not isValid(video) or LCase(textOrEmpty(video.VideoRangeType)) <> "doviinvalid" or not hasHdr10ColorTags(video) then return
+  codec = LCase(textOrEmpty(video.Codec))
+  if codec <> "hevc" and codec <> "h265" then return
+
+  for each codecProfile in codecProfiles
+    if inStr(1, LCase(codecProfile.Codec ?? ""), "hevc") > 0
+      for each condition in codecProfile.Conditions ?? []
+        if condition.Property = "VideoRangeType" and isValid(condition.Value)
+          rangeTypes = condition.Value.Split("|")
+          if arrayHasValue(rangeTypes, "HDR10") and not arrayHasValue(rangeTypes, "DOVIInvalid")
+            condition.Value = condition.Value + "|DOVIInvalid"
+          end if
+        end if
+      end for
+    end if
+  end for
+end sub
+
+' refuseDvh1DolbyVision: Have the server repackage a Dolby Vision profile 8 MP4 whose video is
+' tagged dvh1, which Roku refuses to play ("invalid DV entry").
+'
+' This removes every Dolby Vision range type from that request's hevc VideoRangeType list. The
+' server then copies the video into its HLS stream, which the Roku plays: the Dolby Vision data
+' stays in the video, so a TV that shows Dolby Vision still gets it. Only MP4-family files carry
+' a codec tag. Reads the first video stream.
+'
+' @param {dynamic} codecProfiles - the DeviceProfile's CodecProfiles, changed in place
+' @param {dynamic} mediaStreams - MediaStream array of the played source, or invalid
+sub refuseDvh1DolbyVision(codecProfiles as dynamic, mediaStreams as dynamic)
+  if not isValid(codecProfiles) then return
+
+  video = getFirstVideoStream(mediaStreams)
+  if not isValid(video) or LCase(textOrEmpty(video.CodecTag)) <> "dvh1" or mediaNumber(video.DvProfile) <> 8 then return
+
+  for each codecProfile in codecProfiles
+    if inStr(1, LCase(codecProfile.Codec ?? ""), "hevc") > 0
+      for each condition in codecProfile.Conditions ?? []
+        if condition.Property = "VideoRangeType" and isValid(condition.Value)
+          kept = []
+          for each rangeType in condition.Value.Split("|")
+            if LCase(rangeType.Left(4)) <> "dovi" then kept.push(rangeType)
+          end for
+          condition.Value = kept.Join("|")
+        end if
+      end for
+    end if
+  end for
+end sub
 
 ' MetaData about an item. Returns a JellyfinBaseItem node.
 ' @param {string} fields - Comma-separated Jellyfin fields to request. Defaults to Chapters and Trickplay only.

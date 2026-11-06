@@ -20,6 +20,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (playback) Start 4K Dolby Vision on a display without HDR ([#1331](https://github.com/jellyrock/jellyrock/pull/1331))
+- (playback) Play more Dolby Vision files, end a wasted retry ([#1325](https://github.com/jellyrock/jellyrock/pull/1325))
+- (playback) Handle long films, big re-encodes and frozen playback ([#1324](https://github.com/jellyrock/jellyrock/pull/1324))
+- (playback) Make 4K transcodes play, in HEVC on hardware servers ([#1323](https://github.com/jellyrock/jellyrock/pull/1323))
+- (playback) Recover when a 4K remux overflows the video buffer ([#1318](https://github.com/jellyrock/jellyrock/pull/1318))
 - (playback) Copy AC3 audio in a remux on 7.1 systems ([#1327](https://github.com/jellyrock/jellyrock/pull/1327))
 - (playback) Pick a playable audio track, not audio description ([#1320](https://github.com/jellyrock/jellyrock/pull/1320))
 - (playback) Stop transcoded videos playing with no sound ([#1317](https://github.com/jellyrock/jellyrock/pull/1317))
@@ -33,7 +38,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update rimraf from v6.1.3 to v6.1.4 ([#1319](https://github.com/jellyrock/jellyrock/pull/1319))
 - Update eslint from v10.13.0 to v10.14.0 ([#1287](https://github.com/jellyrock/jellyrock/pull/1287))
+- Rename the Rooibos patch for the installed alpha.56 ([eda2baf](https://github.com/jellyrock/jellyrock/commit/eda2bafa))
 - Lock file maintenance ([#1300](https://github.com/jellyrock/jellyrock/pull/1300))
 
 ## [3.3.1](https://github.com/jellyrock/jellyrock/compare/v3.3.0...v3.3.1) - 2026-10-30

@@ -14,3 +14,33 @@ function classifyBufferCheck(percentage as integer, previousPercentage as intege
   if isLive then return BufferCheckAction.LIVE_STALLED
   return BufferCheckAction.STALLED
 end function
+
+' How long a stall window is, in seconds: buffering that gains nothing across it (bufferCheck), or a
+' "playing" position that does not move across it (playingProgressCheck), is a stall.
+const STALL_WINDOW_SECONDS = 30
+
+' Within this many seconds of the item's end the node may hold the last frame, which is not a stall.
+const STALL_END_MARGIN_SECONDS = 5
+
+' What one playing-progress tick should do. A node can report "playing" while its position never
+' moves (a frozen or black screen with no error), and bufferCheck never sees it because that timer
+' runs only while the node buffers. The ticks are a stall window apart, so a position unchanged
+' since the last tick is a stall, and goes the same way as a buffering stall: Live TV to the host's
+' restart rule, anything else to the error. Anything that legitimately holds the position (pause,
+' seek, scrub, a non-playing state, the end of the item) is PROGRESS, "keep waiting". A seek back
+' changes the position, so it reads as progress.
+'
+' The timer alone measures the window. A second clock checked against it reads a hair either side
+' of the timer's duration, so a check against both misses stalls at random.
+'
+' @param {float} positionNow - the node's position now, in seconds
+' @param {float} positionAtLastTick - its position at the last tick, or when playing began
+' @param {object} flags - { isPlaying, isPaused, isSeeking, isScrubbing, isLive, duration }
+' @returns {string} a BufferCheckAction
+function classifyPlayingProgress(positionNow as float, positionAtLastTick as float, flags as object) as string
+  if not flags.isPlaying or flags.isPaused or flags.isSeeking or flags.isScrubbing then return BufferCheckAction.PROGRESS
+  if positionNow <> positionAtLastTick then return BufferCheckAction.PROGRESS
+  if not flags.isLive and flags.duration > 0 and positionNow >= flags.duration - STALL_END_MARGIN_SECONDS then return BufferCheckAction.PROGRESS
+  if flags.isLive then return BufferCheckAction.LIVE_STALLED
+  return BufferCheckAction.STALLED
+end function

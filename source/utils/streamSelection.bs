@@ -1042,6 +1042,33 @@ function getTranscodeReasons(url as string) as object
   return []
 end function
 
+' triesDirectPlayOverLevel: Whether a load tries direct play of a source the server would
+' transcode only for its encoding level.
+'
+' The device can decode many sources tagged above its level, sometimes with artifacts, so the
+' viewer's "try direct play" settings (H.264 and HEVC) ask for it, and the player falls back to
+' a transcode when it fails. Only when the level is the server's one reason. A source beyond the
+' H.264 size ceiling is skipped: no level tolerance plays a 4K H.264 file, and many encoders tag
+' 1080p content above its real decode load, which is what the setting is for.
+'
+' @param {dynamic} answerSource - the PlaybackInfo answer's MediaSource, or invalid
+' @param {object} userSettings - the viewer's settings
+' @param {boolean} forceTranscoding - the retry after a failed direct play, which must transcode
+' @returns {boolean}
+function triesDirectPlayOverLevel(answerSource as dynamic, userSettings as object, forceTranscoding as boolean) as boolean
+  if forceTranscoding then return false
+  if not isValid(answerSource) or not isValidAndNotEmpty(answerSource.TranscodingUrl) then return false
+
+  videoStream = getFirstVideoStream(answerSource.MediaStreams)
+  if not isValid(videoStream) or not isValid(videoStream.codec) then return false
+  tryDirectPlay = userSettings.playbackTryDirectH264ProfileLevel and videoStream.codec = "h264"
+  tryDirectPlay = tryDirectPlay or (userSettings.playbackTryDirectHevcProfileLevel and videoStream.codec = "hevc")
+  if not tryDirectPlay or not isWithinH264HardwareCeiling(videoStream) then return false
+
+  reasons = getTranscodeReasons(answerSource.TranscodingUrl)
+  return reasons.Count() = 1 and reasons[0] = "VideoLevelNotSupported"
+end function
+
 ' getDeviceVideoCapabilities: Detects device video resolution and HDR support
 '
 ' Strategy:
