@@ -888,7 +888,7 @@ The same channel has a second path to the same hang, found by reading the code a
 
 Two facts limit the fix. The channel item lists no media streams before it opens (seen on 10.9.11 and 12.4), so no check can read its size from the item, and the HEVC first rule from PR #1323 never fires for such a channel. And a file's 1080p check (`LoadVideoContentTask.capH264Resolution`) does not fit live: its second `PlaybackInfo` would open a second live stream.
 
-Not done in PR #1323: the gap is in live playback, which that PR does not change, and the fix is a design choice. For the upstream link, read the upstream playlist's `CODECS` and `RESOLUTION` before playing it (`hlsMasterVariant()` on the upstream master, where one exists) and send the stream through the server when it is H.264 beyond the ceiling. For the server's stream, read its master playlist the same way and, when it declares H.264 beyond the ceiling, close that live stream before asking again at 1080p. A stall fallback that moves to a capped server stream would cover both. Then check a 4K H.264 channel plays on both server setups, through the upstream link and through the server.
+Not done in PR #1323: the gap is in live playback, which that PR does not change, and the fix is a design choice. For the upstream link, read the upstream playlist's `CODECS` and `RESOLUTION` before playing it (`hlsMasterVariants()` on the upstream master, where one exists) and send the stream through the server when it is H.264 beyond the ceiling. For the server's stream, read its master playlist the same way and, when it declares H.264 beyond the ceiling, close that live stream before asking again at 1080p. A stall fallback that moves to a capped server stream would cover both. Then check a 4K H.264 channel plays on both server setups, through the upstream link and through the server.
 
 #### With a level setting on, a direct play the decoder never starts hangs at position 0 with no fallback `[fid: level-override-direct-play-hangs-no-fallback]` `[captured 2026-11-05]` `[pinned]`
 
@@ -929,6 +929,28 @@ A reload in place while following a SyncPlay group reaches `syncPlayPlayback.tra
 Check first: a never-played `.strm` item's `RunTimeTicks` before the probe. If it is missing, read both from the source the current answer's request read (`m.playbackInfoRequestSource`, added by PR #1325). If it is present, close this followup. A `.strm` item's `Bitrate` describes the text file (11 bit/s, measured 2026-10-12), so `bufferCapBps` may need its own fix either way.
 
 Not checked: any of this on a device.
+
+#### A transcode of a source with no audio track never starts on Roku: endless buffering `[fid: video-only-transcode-never-starts]` `[captured 2026-11-06]`
+
+A source with no audio track that the server transcodes never starts: Roku's player stays in `buffering` with no error, and JellyRock shows an endless spinner. Found while reviewing PR #1331, which does not cause it.
+
+Measured 2026-11-06 on a Streaming Stick 4K (Roku OS 15.3.4) against Jellyfin 12.4, with four synthetic 1080p HEVC HLG clips (one variable at a time). The two without audio (24 and 60 fps) stuck in `buffer` for 60 s; the two with AAC played to the end. A one-`Video`-node channel outside JellyRock, given the same server URLs, did the same: `state=buffering errorCode=0` for 45 s on the video-only stream, with `ts` and with `fMP4` segments, while the stream with audio played. Roku never requests the first segment (the server wrote no transcode log for the video-only clip in any run, and did for the clip with audio); requested by hand, the server encodes a valid video-only segment in about 4 s. So the fault is Roku's handling of the server's video-only HLS stream (master `CODECS="avc1.42E02A"`), not the app or the server. The Dolby Vision 8.4 test files with an HLG base layer and no audio show it too.
+
+Options:
+
+- `notice` (recommended): before a transcode play in `LoadVideoContentTask`, if the played source lists no audio stream, show a clear message instead of starting a play that hangs. One translation key and a unit test; direct play left alone. Risk: it blocks a video-only transcode some other Roku or OS version can play.
+- `watchdog`: a general stall check (a play stuck in `buffer` at position 0 for N seconds stops with an error), designed with followup `level-override-direct-play-hangs-no-fallback`.
+- `report`: report it to Roku's developer forum with the one-node channel to reproduce it; can go alongside either.
+
+Not checked:
+
+- direct play of a video-only file;
+- other Roku models and Roku OS versions;
+- whether Roku plays a video-only HLS stream from another source;
+- how common video-only files are in real libraries;
+- whether Jellyfin can add a silent audio track.
+
+To rebuild a clip: `ffmpeg -f lavfi -i testsrc2=size=1920x1080:rate=24 -t 20 -vf format=yuv420p10le -c:v hevc_nvenc -profile:v main10 -color_primaries bt2020 -color_trc arib-std-b67 -colorspace bt2020nc out.mkv` (add an AAC input for the control).
 
 ### source
 

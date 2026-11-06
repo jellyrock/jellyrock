@@ -810,8 +810,9 @@ end sub
 ' A Roku stops at AVC level 4.2 and buffers forever on a 4K H.264 stream. A server that does not
 ' encode HEVC (Jellyfin's default) re-encodes a source above 1080p to H.264 at the source's size,
 ' whatever the request lists first. The server's master playlist declares the codec and size before
-' any segment exists, so read it, and ask PlaybackInfo once more with a 1080p resolution cap when
-' h264CapDecision says so. A second request that fails keeps the first answer (m.playbackInfo).
+' any segment exists, so read it (the first variant the display's range list shows), and ask
+' PlaybackInfo once more with a 1080p resolution cap when h264CapDecision says so. A second
+' request that fails keeps the first answer (m.playbackInfo).
 '
 ' h264OutputCheck decides when the playlist is read: only for a transcode that plays, never under
 ' a viewer cap at or below 1080p, and on a first request only for a source above 1080p. An answer
@@ -843,9 +844,24 @@ function capH264Resolution(itemId as string, mediaSourceId as dynamic, audioStre
   end if
 
   fetched = fetchManifestText(buildURL(source.TranscodingUrl), timeouts.HLS_MASTER_PROBE_MS)
-  decision = h264CapDecision(fetched, sourceAboveCeiling, disallowVideoCopy)
+  answer = hlsMasterAnswer(fetched)
+  hevcRangeTypes = invalid
+  rangeTypesForLog = "notBuilt"
+  if hlsMasterNeedsRangeList(answer)
+    hevcRangeTypes = hevcRangeTypesOfProfile({ CodecProfiles: getCodecProfiles(pickedCaps) })
+    if not isValid(hevcRangeTypes)
+      rangeTypesForLog = "noHevcProfile"
+    else if hevcRangeTypes = ""
+      ' A server before 10.9 is sent no range types.
+      rangeTypesForLog = "noRangeCondition"
+    else
+      rangeTypesForLog = textOrEmpty(hevcRangeTypes)
+    end if
+  end if
+  decision = h264CapDecision(answer, sourceAboveCeiling, disallowVideoCopy, hevcRangeTypes)
   if isValid(decision.variant)
     m.log.info("Master playlist", "codecs", decision.variant.codecs, "width", decision.variant.width, "height", decision.variant.height, "itemId", itemId)
+    m.log.info("Master playlist variant judged", "range", decision.variant.range, "reason", decision.reason, "hevcRangeTypes", rangeTypesForLog, "itemId", itemId)
   else
     m.log.warn("Could not read the master playlist", "reason", decision.reason, "sourceAboveCeiling", sourceAboveCeiling, "isReencode", disallowVideoCopy, "itemId", itemId)
   end if
