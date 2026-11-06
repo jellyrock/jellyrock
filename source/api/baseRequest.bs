@@ -244,7 +244,47 @@ end function
 ' @return roku-requests result (.ok / .statusCode / .json / .text)
 function requestWithJsonOnSuccess(method as string, url as string, args as object) as dynamic
   args.parseJson = false
-  return responseWithJson(rr_Requests().request(method, url, args))
+  res = responseWithJson(rr_Requests().request(method, url, args))
+  traceRequest(method, url, res)
+  return res
+end function
+
+' One line per request, through the caller's logger, in place of roku-requests' own [http]
+' trace: the build removes that one (strip-vendor-prints), since it printed the token. A caller
+' with no `m.log` (FontDownloadTask, the main thread) gets no line.
+sub traceRequest(method as string, url as string, res as dynamic)
+  if not isValid(m.log) then return
+  status = invalid
+  tries = invalid
+  if isValid(res)
+    status = res.statusCode
+    tries = res.timesTried
+  end if
+  if requestTraceLevel(res) = "warn"
+    m.log.warn("http request failed", method, requestLogUrl(url), "status", status, "tries", tries)
+  else
+    m.log.debug("http", method, requestLogUrl(url), "status", status, "tries", tries)
+  end if
+end sub
+
+' The URL a request trace shows: the query keeps its keys and drops their values, which can be
+' free text (searchTerm) the logger's masking cannot find.
+function requestLogUrl(url as string) as string
+  mark = Instr(1, url, "?")
+  if mark = 0 then return url
+  keys = []
+  for each part in Mid(url, mark + 1).Split("&")
+    if part <> "" then keys.push(part.Split("=")[0])
+  end for
+  return Left(url, mark) + keys.Join("&")
+end function
+
+' The level of a request's trace line: warn when no answer came back (no status, or 0 or less)
+' or the server failed (5xx). A 4xx is debug: the app reads those as data.
+function requestTraceLevel(res as dynamic) as string
+  if not isValid(res) or not isValid(res.statusCode) then return "warn"
+  if res.statusCode <= 0 or res.statusCode >= 500 then return "warn"
+  return "debug"
 end function
 
 ' Sets res.json from res.text when the response succeeded and has a body, and to invalid

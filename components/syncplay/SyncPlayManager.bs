@@ -162,7 +162,7 @@ end function
 function newGroup(groupName as string) as boolean
   ensureReady()
   if not isValidAndNotEmpty(groupName) then return false
-  m.log.info("creating group", "groupName", groupName)
+  m.log.info("creating group")
   return post("New", syncPlayRequests.newGroup(groupName))
 end function
 
