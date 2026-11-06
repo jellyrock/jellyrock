@@ -3,34 +3,32 @@ topic: logging
 related-files:
   - components/JRScene.bs
   - components/JRScreen.bs
+  - components/logging/Log.bs
+  - source/logging/Logger.bs
   - scripts/bsc-plugins/roku-log.cjs
-last-reviewed: 2026-11-04
+last-reviewed: 2026-11-05
 ---
 
 # Logging
 
-How JellyRock's logging works inside: the two parts of roku-log, where and when the log manager starts, and why that point cannot move. To log from your code, see the how-to in [`docs/dev/logging.md`](../dev/logging.md). Debug tooling is in [`debug-tools.md`](debug-tools.md), test setup in [`testing.md`](testing.md).
+How JellyRock's logging works inside: its two parts, where and when the log manager starts, and why that point cannot move. To log from your code, see the how-to in [`docs/dev/logging.md`](../dev/logging.md). Debug tooling is in [`debug-tools.md`](debug-tools.md), test setup in [`testing.md`](testing.md).
 
 ## roku-log
 
-JellyRock logs through roku-log (the `log` ropm package): named loggers, per-logger levels and a choice of transports. The app uses one transport, `log_PrintTransport`, which writes to the debug console.
+JellyRock logs through code adopted from roku-log 0.11.1: named loggers and per-logger levels. The app uses one transport, `log_PrintTransport`, which writes to the debug console.
 
-### "roku-log" is two artifacts, and only one of them is ours
+### Logging is two parts, and both are ours
 
 Say which one you mean. They fail differently, and a bug in the second reads like a bug in the first.
 
-| | What | Who owns it |
+| | What | Where it came from |
 |---|---|---|
-| **Runtime library** | `source/roku_modules/log/` and `components/roku_modules/log/`: `Logger`, the transports, `initializeLogManager` | **Upstream, unchanged.** `npm:roku-log@0.11.1`, vendored by ropm, which prefixes every symbol (`Logger` becomes `log_Logger`, `"Log"` becomes `"log_Log"`) |
-| **Compile-time plugin** | [`scripts/bsc-plugins/roku-log.cjs`](../../scripts/bsc-plugins/roku-log.cjs): `strip`, `insertPkgPath`, `guard`, `removeComments`, and the `log-too-many-values` check, which fails a call with more values than the runtime function takes once `insertPkgPath` has added its argument | **Ours.** Written from scratch to replace the unmaintained `roku-log-bsc-plugin@0.9.0-beta.1`, which BrighterScript v1 broke. There is nothing upstream to sync from |
+| **Runtime** | [`source/logging/Logger.bs`](../../source/logging/Logger.bs) (`log.Logger`, `log.initializeLogManager`) and [`components/logging/Log.bs`](../../components/logging/Log.bs) (the `log_Log` manager node) | Adopted from roku-log 0.11.1, whose last release was in 2023. Its [README](../../source/logging/README.md) lists every change from upstream. Edit it like any other code ([ADR 0054](../adr/0054-owned-code-gets-every-check.md)) |
+| **Compile-time plugin** | [`scripts/bsc-plugins/roku-log.cjs`](../../scripts/bsc-plugins/roku-log.cjs): `strip`, `insertPkgPath`, `guard`, `removeComments`, and the `log-too-many-values` check, which fails a call with more values than the runtime function takes once `insertPkgPath` has added its argument | Written from scratch to replace the unmaintained `roku-log-bsc-plugin@0.9.0-beta.1`, which BrighterScript v1 broke |
 
-**Never hand-edit the vendored runtime files.** `roku_modules` is gitignored, so those files are regenerated on every install: an edit there disappears at the next `npm i` and leaves no trace. The installed copy differs from the npm package only by the prefixes ropm adds. To check:
+**The console format is a contract.** `npm run measure` parses `<LEVEL> file://<path>:<line> <message>` (`LOG_LINE` in [`scripts/measurements.js`](../../scripts/measurements.js)), so a change to how `Logger.log()` writes a line must keep that shape or update the parser in the same change.
 
-```bash
-diff node_modules/log/dist/source/LogMixin.brs source/roku_modules/log/LogMixin.brs
-```
-
-So when logging misbehaves, first ask which artifact is at fault. The plugin rewrites your source before the compiler sees it, so it can add a statement your file never contained (see the next section).
+So when logging misbehaves, first ask which part is at fault. The plugin rewrites your source before the compiler sees it, so it can add a statement your file never contained (see the next section).
 
 ### The `guard` transform only knows `m.log`
 
@@ -62,7 +60,7 @@ The start used to live in `JRScreen.init()`, on the assumption that a screen alw
 
 ### Why it cannot start earlier
 
-`JRScene.init()` is the earliest point in the app that can create the manager. `initializeLogManager` creates a `log_Log` node, whose own `init()` always creates a `Timer` (`components/roku_modules/log/Log.brs`). Creating a `Timer` on the main thread before `m.screen.show()` fails. Measured 2026-08-02 on a Streaming Stick 4K, Roku OS 15.2.4:
+`JRScene.init()` is the earliest point in the app that can create the manager. `initializeLogManager` creates a `log_Log` node, whose own `init()` always creates a `Timer` (`init()` in [`components/logging/Log.bs`](../../components/logging/Log.bs)). Creating a `Timer` on the main thread before `m.screen.show()` fails. Measured 2026-08-02 on a Streaming Stick 4K, Roku OS 15.2.4:
 
 ```text
 [probe] bare Timer pre-show   → type=Invalid
@@ -92,8 +90,8 @@ Nodes created in `setGlobals()`, which `Main()` calls, are built before any mana
 
 ## Where `print` is allowed
 
-The `print-locations` plugin flags a `print` wherever an `m.log` is available: any function in a component, and any class method. It allows `print` where no logger can exist: `source/main.bs`, the `#if debug` block in `source/utils/globals.bs`, and free functions in `source/`, which have no `m` to hold one. Unlike `m.log` calls, a `print` is not stripped from a production build.
+The `print-locations` plugin flags a `print` wherever an `m.log` is available: any function in a component, and any class method. It allows `print` where no logger can exist: `source/main.bs`, the `#if debug` block in `source/utils/globals.bs`, and free functions in `source/`, which have no `m` to hold one. The logging runtime's own `print` statements are suppressed line by line, since they are the console output. Unlike `m.log` calls, a `print` is not stripped from a production build.
 
 ## Known cruft
 
-Tracked in [`tech-debt.md`](tech-debt.md): `log-level-welded-to-debug-const`, `no-lint-for-mlog-without-logger` and `ropm-hook-fails-silently`.
+Tracked in [`tech-debt.md`](tech-debt.md): `log-level-welded-to-debug-const` and `no-lint-for-mlog-without-logger`. The runtime's known bugs are listed in its [README](../../source/logging/README.md#known-issues).

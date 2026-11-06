@@ -24,8 +24,5 @@
     "caps-emphasis": 3,
     "em-dash": 11,
     "latin-abbrev": 1
-  },
-  "scripts/ropm-hook.cjs": {
-    "caps-emphasis": 1
   }
 }

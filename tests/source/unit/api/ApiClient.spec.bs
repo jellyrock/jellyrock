@@ -860,6 +860,14 @@ namespace tests
       m.assertTrue(result.url.inStr("/System/Configuration") >= 0, "should target /System/Configuration")
     end function
 
+    @it("BuildGetNamedConfigurationRequest reads /System/Configuration/{key}")
+    function _()
+      result = m.apiClient.BuildGetNamedConfigurationRequest("encoding")
+
+      m.assertEqual(result.method, "GET")
+      m.assertTrue(result.url.inStr("/System/Configuration/encoding") >= 0, "should target /System/Configuration/encoding")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Resume Items - media-type narrowing")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -994,6 +1002,8 @@ namespace tests
     @params("NextItem")
     @params("PreviousItem")
     @params("SetPlaylistItem")
+    @params("SetRepeatMode")
+    @params("SetShuffleMode")
     function _(action)
       result = m.apiClient.BuildSyncPlayRequest(action)
       route = "/SyncPlay/" + action

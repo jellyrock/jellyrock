@@ -21,8 +21,8 @@
       "addLabels": ["brighterscript"]
     },
     {
-      "description": "Roku runtime BS libs — bundled into .zip; API caught by bsc --validate. Includes real names + npm aliases (log → roku-log, rr → roku-requests).",
-      "matchPackageNames": ["@rokucommunity/bslib", "roku-log", "log", "roku-requests", "rr"],
+      "description": "Roku runtime BS libs — bundled into .zip; API caught by bsc --validate. Includes real names + npm aliases (rr → roku-requests).",
+      "matchPackageNames": ["@rokucommunity/bslib", "roku-requests", "rr"],
       "groupName": "roku runtime",
       "addLabels": ["roku-runtime"]
     },

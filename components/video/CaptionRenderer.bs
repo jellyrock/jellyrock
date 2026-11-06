@@ -10,7 +10,7 @@
 ' Its own lifetime is the player's. A subtitle change swaps the FETCH node, never
 ' this one, so `currentPos` and `playerState` (the live playback bridge) survive
 ' a track change untouched.
-import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/tasks.bs"
 

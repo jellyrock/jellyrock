@@ -34,6 +34,7 @@
     <function name="setPrerollStatus" />
     <function name="setPlaybackCaps" />
     <function name="setRepeatMode" />
+    <function name="releaseRepeatMode" />
     <function name="setVersionPreference" />
     <function name="startCurrentFresh" />
     <function name="toggleShuffle" />

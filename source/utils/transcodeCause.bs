@@ -24,15 +24,9 @@
 ' more here than anywhere else in the report: these are the claims that can be
 ' WRONG rather than merely missing.
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/playbackCaps.bs"
-
-' The 1080p hardware ceiling buildPlaybackInfoPostData() (source/api/items.bs)
-' clamps h264 to, independently of any setting. Renamed from
-' TRANSCODE_CAUSE_DEFAULT_MAX_HEIGHT when the resolution predicate stopped treating
-' 1080 as a cap the user could not beat: this is now the only thing 1080 means in
-' this file, and the old name claimed the other one.
-const TRANSCODE_CAUSE_H264_CEILING_HEIGHT = 1080
 
 ' Codecs whose decode path JellyRock caps at 2 channels when the user turns
 ' "Decode Multichannel Audio" off. Mirrors getStereoOutputCodecs() in
@@ -86,13 +80,13 @@ function transcodeCauseSettingKey(reason as string, ctx as object) as string
   end if
 
   ' ContainerBitrateExceedsLimit is absent on purpose. It compares the source's
-  ' total bitrate against DeviceProfile.MaxStreamingBitrate, and the only thing
-  ' that ever lowers ours is the transcoding-buffer calculation in
-  ' buildPlaybackInfoPostData(), which explicitly refuses to go below the source's
-  ' own bitrate plus 10% headroom. So our cap cannot produce this reason, and the
-  ' user's "Maximum Bitrate" setting does not write that field at all (it writes a
-  ' per-codec VideoBitrate condition, which surfaces as VideoBitrateNotSupported).
-  ' Attributing it here would be a guess wearing a predicate's clothes.
+  ' total bitrate against DeviceProfile.MaxStreamingBitrate, which no setting
+  ' writes: the user's "Maximum Bitrate" writes a per-codec VideoBitrate condition
+  ' (surfacing as VideoBitrateNotSupported). Only the transcoding-buffer
+  ' calculation in buildPlaybackInfoPostData() lowers it, and below the source's
+  ' bitrate plus 10% only on the re-encode retry, which the report names in a row
+  ' of its own (reasonsSection). So no setting causes this reason, and
+  ' attributing it here would be a guess wearing a predicate's clothes.
   return ""
 end function
 
@@ -212,7 +206,6 @@ function causedByResolutionCap(ctx as object, settings as object) as boolean
   if not isValid(stream) then return false
 
   sourceHeight = mediaNumber(stream.Height)
-  sourceWidth = mediaNumber(stream.Width)
   ' Height only, on purpose. getResolutionConditions emits a paired Height AND
   ' Width condition, so an unusually wide source can violate the width cap while
   ' sitting under the height one, and this returns false for it. That is a false
@@ -223,9 +216,9 @@ function causedByResolutionCap(ctx as object, settings as object) as boolean
   ' mistake.
   if sourceHeight <= cap then return false
 
-  ' The h264 hardware ceiling would have forced this regardless of the setting.
+  ' The h264 hardware ceiling (exceedsH264Ceiling) would have forced this regardless of the setting.
   if isValidAndNotEmpty(stream.Codec) and LCase(stream.Codec) = "h264"
-    if sourceHeight > TRANSCODE_CAUSE_H264_CEILING_HEIGHT or sourceWidth > 1920 then return false
+    if exceedsH264Ceiling(stream.Width, stream.Height) then return false
   end if
 
   ' A device that cannot exceed the user's cap anyway makes the setting moot.

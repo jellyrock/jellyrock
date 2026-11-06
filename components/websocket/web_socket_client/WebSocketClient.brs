@@ -4,10 +4,10 @@
 '
 ' BrightScript web socket client (RFC 6455)
 '
-' JellyRock modifications (vendored — see ../../README.md; diff vs the pinned upstream SHA):
+' JellyRock modifications (see ../README.md; diff against the pinned upstream SHA):
 '   - Removed all TLS/wss:// support (TlsUtil.brs, ByteUtil.rsa_encrypt, m._secure/m._tls
 '     branches). Upstream's TLS was an unimplemented skeleton (stubbed asymmetric crypto,
-'     no cert validation) and Roku cannot do socket TLS regardless — JellyRock is ws:// only.
+'     no cert validation) and Roku cannot do socket TLS regardless. JellyRock is ws:// only.
 '   - _read_socket_data reads all the socket holds per pass (up to _buffer_size) and decodes every
 '     complete frame through _decode_frame, where upstream read 1024 bytes and decoded one frame.
 
@@ -437,7 +437,7 @@ function WebSocketClient() as object
         return false
       end if
       ' JellyRock: skip the 4 mask-key bytes. Server->client frames are never masked (RFC 6455),
-      ' so we don't unmask — upstream read the key into a variable it never used (removed).
+      ' so we don't unmask. Upstream read the key into a variable it never used (removed).
       payload_index += 4
     end if
     ' Wait for payload

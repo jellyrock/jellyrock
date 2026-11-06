@@ -1,0 +1,235 @@
+import "pkg:/source/utils/hlsMaster.bs"
+
+namespace tests
+
+  @suite("hlsMaster.bs - hlsMasterVariant() and needsH264ResolutionCap()")
+  class HlsMasterTests extends tests.BaseTestSuite
+
+    private function master(streamInf as string) as string
+      return "#EXTM3U" + chr(10) + "#EXT-X-STREAM-INF:" + streamInf + chr(10) + "main.m3u8?x=1" + chr(10)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hlsMasterVariant")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads the codecs and size of an H.264 4K variant")
+    function _()
+      text = m.master("BANDWIDTH=94208000,AVERAGE-BANDWIDTH=94208000,CODECS=" + chr(34) + "avc1.42E02A,ec-3" + chr(34) + ",RESOLUTION=3840x2160,FRAME-RATE=23.976")
+      variant = hlsMasterVariant(text)
+
+      m.assertEqual(variant.codecs, "avc1.42E02A,ec-3")
+      m.assertEqual(variant.width, 3840)
+      m.assertEqual(variant.height, 2160)
+    end function
+
+    @it("reads the first variant when the playlist lists several")
+    function _()
+      text = m.master("CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34) + ",RESOLUTION=1920x1080")
+      text += "#EXT-X-STREAM-INF:CODECS=" + chr(34) + "hvc1.2.4.L153.B0,ec-3" + chr(34) + ",RESOLUTION=3840x2160" + chr(10) + "other.m3u8" + chr(10)
+
+      m.assertEqual(hlsMasterVariant(text).width, 1920)
+    end function
+
+    @it("reads a playlist with Windows line endings")
+    function _()
+      text = "#EXTM3U" + chr(13) + chr(10) + "#EXT-X-STREAM-INF:CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34) + ",RESOLUTION=1280x720" + chr(13) + chr(10) + "main.m3u8" + chr(13) + chr(10)
+
+      m.assertEqual(hlsMasterVariant(text).height, 720)
+    end function
+
+    @it("is invalid for an empty string")
+    function _()
+      m.assertInvalid(hlsMasterVariant(""))
+    end function
+
+    @it("is invalid for text that is not a playlist")
+    function _()
+      m.assertInvalid(hlsMasterVariant("<html>502 Bad Gateway</html>"))
+    end function
+
+    @it("is invalid for a variant with no CODECS")
+    function _()
+      m.assertInvalid(hlsMasterVariant(m.master("BANDWIDTH=1000,RESOLUTION=1920x1080")))
+    end function
+
+    @it("is invalid for a variant with no RESOLUTION")
+    function _()
+      m.assertInvalid(hlsMasterVariant(m.master("CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34))))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("needsH264ResolutionCap")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for H.264 above 1080p")
+    function _()
+      m.assertTrue(needsH264ResolutionCap({ codecs: "avc1.42E02A,ec-3", width: 3840, height: 2160 }))
+    end function
+
+    @it("is true for H.264 wider than 1920 at a short height")
+    function _()
+      m.assertTrue(needsH264ResolutionCap({ codecs: "avc1.640033,ac-3", width: 3840, height: 1600 }))
+    end function
+
+    @it("is false for HEVC at 4K")
+    function _()
+      m.assertFalse(needsH264ResolutionCap({ codecs: "hvc1.2.4.L153.B0,ec-3", width: 3840, height: 2160 }))
+    end function
+
+    @it("is false for H.264 at 1080p")
+    function _()
+      m.assertFalse(needsH264ResolutionCap({ codecs: "avc1.640028,ec-3", width: 1920, height: 1080 }))
+    end function
+
+    @it("is false for no variant")
+    function _()
+      m.assertFalse(needsH264ResolutionCap(invalid))
+    end function
+
+    @it("is false for a variant read from garbage")
+    function _()
+      m.assertFalse(needsH264ResolutionCap(hlsMasterVariant("garbage")))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("videoStreamAboveH264Ceiling")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for a 4K HEVC stream")
+    function _()
+      m.assertTrue(videoStreamAboveH264Ceiling({ Codec: "hevc", Width: 3840, Height: 2160 }))
+    end function
+
+    @it("is false for a 1080p stream")
+    function _()
+      m.assertFalse(videoStreamAboveH264Ceiling({ Codec: "hevc", Width: 1920, Height: 1080 }))
+    end function
+
+    @it("is false for an unknown stream")
+    function _()
+      m.assertFalse(videoStreamAboveH264Ceiling(invalid))
+      m.assertFalse(videoStreamAboveH264Ceiling({ Codec: "hevc" }))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("h264CapDecision")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("caps H.264 above 1080p")
+    function _()
+      body = m.master("CODECS=" + chr(34) + "avc1.640033,ac-3" + chr(34) + ",RESOLUTION=3840x2160")
+      decision = h264CapDecision({ code: 200, body: body }, true, true)
+
+      m.assertTrue(decision.cap)
+      m.assertEqual(decision.reason, "h264AboveCeiling")
+      m.assertEqual(decision.variant.width, 3840)
+    end function
+
+    @it("keeps HEVC at 4K")
+    function _()
+      body = m.master("CODECS=" + chr(34) + "hvc1.2.4.L153.B0,ac-3" + chr(34) + ",RESOLUTION=3840x2160")
+      decision = h264CapDecision({ code: 200, body: body }, true, true)
+
+      m.assertFalse(decision.cap)
+      m.assertEqual(decision.reason, "playable")
+    end function
+
+    @it("caps a re-encode of a source above 1080p when the playlist did not arrive")
+    function _()
+      decision = h264CapDecision(invalid, true, true)
+
+      m.assertTrue(decision.cap)
+      m.assertEqual(decision.reason, "playlistUnread")
+    end function
+
+    @it("caps a re-encode of a source above 1080p when the playlist answered with an error")
+    function _()
+      m.assertTrue(h264CapDecision({ code: 500, body: "" }, true, true).cap)
+    end function
+
+    @it("caps a re-encode of a source above 1080p when the playlist cannot be read")
+    function _()
+      decision = h264CapDecision({ code: 200, body: "<html>502 Bad Gateway</html>" }, true, true)
+
+      m.assertTrue(decision.cap)
+      m.assertEqual(decision.reason, "playlistUnparsed")
+    end function
+
+    @it("keeps the answer for a source at or below 1080p when the playlist did not arrive")
+    function _()
+      m.assertFalse(h264CapDecision(invalid, false, true).cap)
+      m.assertFalse(h264CapDecision({ code: 200, body: "garbage" }, false, true).cap)
+    end function
+
+    @it("caps a first request that the playlist declares H.264 above 1080p")
+    function _()
+      body = m.master("CODECS=" + chr(34) + "avc1.640033,ac-3" + chr(34) + ",RESOLUTION=3840x2160")
+      decision = h264CapDecision({ code: 200, body: body }, true, false)
+
+      m.assertTrue(decision.cap)
+      m.assertEqual(decision.reason, "h264AboveCeiling")
+    end function
+
+    @it("keeps a first request's answer when its playlist did not arrive, since the video may be copied")
+    function _()
+      decision = h264CapDecision(invalid, true, false)
+
+      m.assertFalse(decision.cap)
+      m.assertEqual(decision.reason, "playlistUnread")
+    end function
+
+    @it("keeps a first request's answer when its playlist cannot be read")
+    function _()
+      decision = h264CapDecision({ code: 200, body: "<html>502 Bad Gateway</html>" }, true, false)
+
+      m.assertFalse(decision.cap)
+      m.assertEqual(decision.reason, "playlistUnparsed")
+      m.assertFalse(h264CapDecision({ code: 500, body: "" }, true, false).cap)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("h264OutputCheck")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads the playlist on the re-encode retry, whatever the source's size")
+    function _()
+      m.assertTrue(h264OutputCheck(true, 0, false, true).read)
+      m.assertTrue(h264OutputCheck(true, 0, true, true).read)
+    end function
+
+    @it("reads the playlist on a first request for a source beyond the ceiling")
+    function _()
+      check = h264OutputCheck(true, 0, true, false)
+
+      m.assertTrue(check.read)
+      m.assertEqual(check.reason, "")
+    end function
+
+    @it("skips a first request for a source within the ceiling")
+    function _()
+      check = h264OutputCheck(true, 0, false, false)
+
+      m.assertFalse(check.read)
+      m.assertEqual(check.reason, "withinCeiling")
+    end function
+
+    @it("skips under a viewer cap at or below 1080p, and reads above it")
+    function _()
+      m.assertEqual(h264OutputCheck(true, 1080, true, true).reason, "viewerCap")
+      m.assertEqual(h264OutputCheck(true, 720, true, false).reason, "viewerCap")
+      m.assertTrue(h264OutputCheck(true, 2160, true, false).read)
+    end function
+
+    @it("skips a load that does not play the transcode, before any other reason")
+    function _()
+      ' The level override's direct play, or the device playing the upstream link.
+      check = h264OutputCheck(false, 720, true, true)
+
+      m.assertFalse(check.read)
+      m.assertEqual(check.reason, "notPlayed")
+    end function
+
+  end class
+
+end namespace

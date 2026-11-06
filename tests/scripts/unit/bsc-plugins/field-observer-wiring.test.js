@@ -648,19 +648,21 @@ describe('top-unobserve-outside-ondestroy — what it must NOT flag', () => {
     expect(diagnosticsByCode(diagnostics, TOP_UNOBSERVE)).toHaveLength(0);
   });
 
-  it('skips both vendored trees', () => {
+  it('skips roku_modules and checks third-party code kept in the repo', () => {
     const body = `
       sub runLoop()
         m.top.unobserveField("buffer_size")
       end sub
     `;
     const diagnostics = run({
-      'components/vendor/Socket/SocketTask.xml': xml('SocketTask'),
-      'components/vendor/Socket/SocketTask.bs': body,
+      'components/websocket/SocketTask.xml': xml('SocketTask'),
+      'components/websocket/SocketTask.bs': body,
       'components/roku_modules/log/LogNode.xml': xml('LogNode'),
       'components/roku_modules/log/LogNode.bs': body,
     });
-    expect(diagnosticsByCode(diagnostics, TOP_UNOBSERVE)).toHaveLength(0);
+    const found = diagnosticsByCode(diagnostics, TOP_UNOBSERVE);
+    expect(found).toHaveLength(1);
+    expect(found[0].location.uri).toMatch(/components[\\/]websocket[\\/]SocketTask\.bs$/);
   });
 
   it('honours bsc-disable-next-line', () => {
@@ -796,18 +798,20 @@ describe('top-observer-outside-init — what it must NOT flag', () => {
     expect(diagnosticsByCode(diagnostics, TOP_OBSERVE)).toHaveLength(0);
   });
 
-  it('skips both vendored trees', () => {
+  it('skips roku_modules and checks third-party code kept in the repo', () => {
     const body = `
       sub runLoop()
         m.top.observeField("__updateNow", "onUpdate")
       end sub
     `;
     const diagnostics = run({
-      'components/vendor/Socket/SocketTask.xml': xml('SocketTask'),
-      'components/vendor/Socket/SocketTask.bs': body,
+      'components/websocket/SocketTask.xml': xml('SocketTask'),
+      'components/websocket/SocketTask.bs': body,
       'components/roku_modules/log/LogNode.xml': xml('LogNode'),
       'components/roku_modules/log/LogNode.bs': body,
     });
-    expect(diagnosticsByCode(diagnostics, TOP_OBSERVE)).toHaveLength(0);
+    const found = diagnosticsByCode(diagnostics, TOP_OBSERVE);
+    expect(found).toHaveLength(1);
+    expect(found[0].location.uri).toMatch(/components[\\/]websocket[\\/]SocketTask\.bs$/);
   });
 });

@@ -4,21 +4,24 @@
 '
 ' BrightScript, SceneGraph Task wrapper for the web socket client
 '
-' JellyRock modification (see ../../README.md): removed the `secure`/TLS field
-' handling (ws:// only — upstream TLS was unimplemented and Roku can't do socket TLS).
+' JellyRock modification (see ../README.md): removed the `secure`/TLS field
+' handling (ws:// only: upstream TLS was unimplemented and Roku can't do socket TLS).
 
 ' Entry point
 sub init()
   ' Task init
   m.top.functionName = "runSocketLoop"
-  m.top.control = "RUN"
+  ' The Task starts itself as soon as it is created, so its thread bypasses launchTask's count.
+  ' RemoteControlTask holds at most one socket at a time, and the task-thread-peak RTA spec
+  ' bounds the total that the count misses.
+  m.top.control = "RUN" ' bsc-disable-line no-raw-run
 end sub
 
 ' Main task loop.
-' JellyRock modification: renamed from `run` — a top-level `run()` collides with the built-in
+' JellyRock modification: renamed from `run`, because a top-level `run()` collides with the built-in
 ' global `Run()` (BSC: cannot-use-reserved-word / native-function-collision). It worked upstream
 ' only because the Task dispatches it by the `functionName` STRING, never a scope call; renamed so
-' we don't rely on that and the diagnostic is genuinely resolved, not just suppressed.
+' we don't rely on that and the diagnostic is resolved rather than suppressed.
 sub runSocketLoop()
   m.ws = WebSocketClient()
   m.port = createObject("roMessagePort")
@@ -45,7 +48,7 @@ sub runSocketLoop()
   ' control="RUN", so a caller that sets `headers` right after CreateObject races this thread's
   ' startup and upstream silently discarded the value. Seeding AFTER the observers are registered
   ' closes the window in both directions: a write that landed earlier is picked up here, a later one
-  ' arrives as a field event. Load-bearing — the remote-control receiver sets the Authorization
+  ' arrives as a field event. The remote-control receiver depends on it: it sets the Authorization
   ' header that binds the socket's Jellyfin DeviceId, and losing it re-splits the session (#743).
   if m.top.headers <> invalid and m.top.headers.count() > 0
     m.ws.set_headers(m.top.headers)
@@ -65,7 +68,7 @@ sub runSocketLoop()
 
   while true
     ' Check task messages. JellyRock hardening: poll every 100ms instead of the upstream
-    ' 1ms busy-loop — this is a latency-tolerant remote-control channel (commands seconds
+    ' 1ms busy-loop. This is a latency-tolerant remote-control channel (commands seconds
     ' apart), so ~100ms adds no perceptible latency but cuts idle CPU ~100x.
     msg = wait(100, m.port)
 
@@ -73,10 +76,10 @@ sub runSocketLoop()
     ' forever, holding one thread per connect attempt against RokuOS's 100-thread cap (the #728
     ' &h29 crash class). Single-connection contract now: reopening after close needs a fresh node.
     '
-    ' This test MUST sit at the HEAD of an iteration, not after m.ws.run() below. run() is what
+    ' This test sits at the head of an iteration, never after m.ws.run() below. run() is what
     ' performs the CLOSED transition AND posts the final ready_state/on_close/on_error messages to
     ' m.port (WebSocketClient.brs `_state` / `_close` / `_error`), so a drained-port observation
-    ' taken BEFORE run() says nothing about what run() then enqueued — exiting on it strands those
+    ' taken before run() says nothing about what run() then enqueued. Exiting on it strands those
     ' events in the queue, m.top.on_close is never written, and RemoteControlTask.connectAndPump
     ' blocks forever instead of reconnecting. Reaching here with msg = invalid means a wait() taken
     ' AFTER the CLOSED transition found the port empty, so every terminal event has been forwarded.
@@ -137,7 +140,7 @@ sub runSocketLoop()
     m.ws.run()
 
     ' JellyRock modification: arm the loop-exit test above. Gated on connect_requested because
-    ' ready_state is CLOSED before open() is ever called — an un-opened node must keep waiting for
+    ' ready_state is CLOSED before open() is ever called. An un-opened node keeps waiting for
     ' its `open` field event rather than releasing the thread immediately.
     if m.connect_requested and m.ws.get_ready_state() = m.ws.STATE.CLOSED
       m.connection_closed = true

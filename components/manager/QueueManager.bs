@@ -4,7 +4,7 @@ import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/api/items.bs"
 import "pkg:/source/enums/LoadingKind.bs"
-import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/utils/appWaits.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
@@ -38,8 +38,9 @@ sub init()
   ' to the queue for the same reason as the version pick.
   m.playbackCaps = invalid
   ' The repeat mode picked for this queue (queueRepeat.bs), a RepeatMode value; off when empty.
-  ' Belongs to the queue too.
+  ' Belongs to the queue too, with who set it (queueRepeat.BY_VIEWER or BY_GROUP).
   m.repeatMode = ""
+  m.repeatModeBy = queueRepeat.BY_VIEWER
   ' The playback start no player has taken yet (beginPlaybackStart / takePlaybackStart).
   m.playbackStart = invalid
 end sub
@@ -100,6 +101,7 @@ sub clear()
   m.versionPreference = invalid
   m.playbackCaps = invalid
   m.repeatMode = ""
+  m.repeatModeBy = queueRepeat.BY_VIEWER
   m.isPrerollActive = m.global.user.settings.playbackCinemaMode
   setPosition(0)
 end sub
@@ -618,11 +620,13 @@ sub set(items)
   versionPreference = m.versionPreference
   caps = m.playbackCaps
   repeatMode = m.repeatMode
+  repeatModeBy = m.repeatModeBy
   isPlaying = m.isPlaying
   clear()
   m.versionPreference = versionPreference
   m.playbackCaps = caps
   m.repeatMode = repeatMode
+  m.repeatModeBy = repeatModeBy
   m.isPlaying = isPlaying
   m.queue = items
   for each item in items
@@ -676,11 +680,26 @@ function getPlaybackCaps() as dynamic
   return m.playbackCaps
 end function
 
-' setRepeatMode: Record the repeat mode the viewer picked for the rest of this queue (the OSD's
-' gear): a queueRepeat value. Anything else is off.
-sub setRepeatMode(mode as dynamic)
+' setRepeatMode: Record the repeat mode for the rest of this queue: a queueRepeat value, anything
+' else off. The viewer picks it in the OSD's gear; a SyncPlay group the viewer follows writes its
+' own (SyncPlayManager), which ends with the following (releaseRepeatMode).
+' @param by - who set it, queueRepeat.BY_VIEWER or BY_GROUP
+sub setRepeatMode(mode as dynamic, by = queueRepeat.BY_VIEWER as string)
   m.repeatMode = queueRepeat.normalize(mode)
+  m.repeatModeBy = by
 end sub
+
+' releaseRepeatMode: The setter `by` gives the mode back: off when it still holds it, and the
+' viewer's from then on. A mode the viewer set since, or a new queue (clear), is left alone.
+' @param by - who set it, queueRepeat.BY_GROUP
+' @return {boolean} whether the mode changed, so the caller tells an open OSD
+function releaseRepeatMode(by as string) as boolean
+  if m.repeatModeBy <> by then return false
+  m.repeatModeBy = queueRepeat.BY_VIEWER
+  if queueRepeat.normalize(m.repeatMode) = queueRepeat.OFF then return false
+  m.repeatMode = queueRepeat.OFF
+  return true
+end function
 
 ' getRepeatMode: The repeat mode picked for this queue, a queueRepeat value; off when none was.
 function getRepeatMode() as string

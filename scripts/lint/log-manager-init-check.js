@@ -168,7 +168,7 @@ function collectBsFiles(rootDir, relDir, out) {
     const rel = path.join(relDir, entry);
     const abs = path.join(rootDir, rel);
     if (statSync(abs).isDirectory()) {
-      if (entry === 'roku_modules' || entry === 'vendor') continue;
+      if (entry === 'roku_modules') continue;
       collectBsFiles(rootDir, rel, out);
     } else if (entry.endsWith('.bs')) {
       out.set(rel.split(path.sep).join('/'), readFileSync(abs, 'utf8'));

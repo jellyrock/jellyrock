@@ -9,10 +9,12 @@ import "pkg:/source/utils/audioSeek.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/mediaSegments.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/playbackRetry.bs"
+import "pkg:/source/utils/serverCapabilities.bs"
 import "pkg:/source/utils/streamSelection.bs"
 
-function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean)
-  res = ItemPostPlaybackInfoResponse(id, mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding)
+function ItemPostPlaybackInfo(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, disallowVideoCopy = false as boolean)
+  res = ItemPostPlaybackInfoResponse(id, mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding, 0, invalid, disallowVideoCopy)
   if isValid(res) and res.ok then return res.json
   return invalid
 end function
@@ -22,12 +24,26 @@ end function
 '
 ' @param {integer} timeoutMs - the request's HTTP limit (apiTimeout); 0 keeps the default
 ' @param {dynamic} caps - the viewer's quality caps for this playback (playbackCaps.bs), or invalid
+' @param {boolean} disallowVideoCopy - ask the server to re-encode the video (see buildPlaybackInfoPostData)
+' @param {integer} maxPlaylistEntries - see buildPlaybackInfoPostData
 ' @return the pool response AA, or invalid when the caller's wait ran out
-function ItemPostPlaybackInfoResponse(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, timeoutMs = 0 as integer, caps = invalid as dynamic) as dynamic
-  postData = buildPlaybackInfoPostData(mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding, caps)
+function ItemPostPlaybackInfoResponse(id as string, mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, timeoutMs = 0 as integer, caps = invalid as dynamic, disallowVideoCopy = false as boolean, maxPlaylistEntries = 0 as integer) as dynamic
+  postData = buildPlaybackInfoPostData(mediaSourceId, audioTrackIndex, subtitleTrackIndex, startTimeTicks, videoMetadata, bypassDoviPreservation, forceTranscoding, caps, disallowVideoCopy, maxPlaylistEntries)
   req = GetApi().BuildPostPlaybackInfoRequest(id, postData)
   if isValid(req) and timeoutMs > 0 then req.timeoutMs = timeoutMs
   return fetchRes(req, "playbackInfo")
+end function
+
+' isUsablePlaybackInfoResponse: Whether an ItemPostPlaybackInfoResponse() answer can replace the
+' one a load already holds: it arrived, parsed, lists a media source and names no error.
+'
+' @param {dynamic} res - the pool response AA, or invalid
+' @return {boolean}
+function isUsablePlaybackInfoResponse(res as dynamic) as boolean
+  if type(res) <> "roAssociativeArray" or not isBooleanTrue(res.ok) then return false
+  json = res.json
+  if type(json) <> "roAssociativeArray" then return false
+  return isValidAndNotEmpty(json.MediaSources) and not isValidAndNotEmpty(json.ErrorCode)
 end function
 
 ' buildPlaybackInfoPostData: The PlaybackInfo request body, tuned to the version being played.
@@ -36,8 +52,14 @@ end function
 '
 ' @param {dynamic} caps - the viewer's quality caps for this playback (playbackCaps.bs), or
 '                        invalid to use Settings alone
+' @param {boolean} disallowVideoCopy - send AllowVideoStreamCopy=false and the buffer bitrate cap
+'                        even when it is below the source bitrate. A copied video can only be cut at
+'                        the source's keyframes, so a long-GOP source gives HLS segments larger than
+'                        the device's whole video buffer; a re-encode forces a keyframe per segment.
+' @param {integer} maxPlaylistEntries - the most HLS playlist entries to plan for (see
+'                        maxPlaylistEntriesFor); 0 keeps the default of calculateOptimalTranscodingParams
 ' @return {object} the POST body for BuildPostPlaybackInfoRequest
-function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, caps = invalid as dynamic) as object
+function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex = -1 as integer, subtitleTrackIndex = SubtitleSelection.NONE as integer, startTimeTicks = 0& as longinteger, videoMetadata = invalid as dynamic, bypassDoviPreservation = false as boolean, forceTranscoding = false as boolean, caps = invalid as dynamic, disallowVideoCopy = false as boolean, maxPlaylistEntries = 0 as integer) as object
   globalUser = m.global.user
   postData = {
     "UserId": globalUser.id,
@@ -73,7 +95,11 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
 
     if sourceBitrate& > 0 and videoDurationSeconds > 0
       bufferSize& = getDeviceBufferSize()
-      transcodingParams = calculateOptimalTranscodingParams(sourceBitrate&, videoDurationSeconds, bufferSize&)
+      if maxPlaylistEntries > 0
+        transcodingParams = calculateOptimalTranscodingParams(sourceBitrate&, videoDurationSeconds, bufferSize&, maxPlaylistEntries)
+      else
+        transcodingParams = calculateOptimalTranscodingParams(sourceBitrate&, videoDurationSeconds, bufferSize&)
+      end if
 
       ' Apply optimized segment length to all video transcoding profiles
       if isValid(postData.DeviceProfile.TranscodingProfiles)
@@ -87,9 +113,10 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
       ' Reduce max streaming bitrate only when segment length alone isn't enough.
       ' Never set MaxStreamingBitrate below the reported source bitrate + 10% headroom:
       ' Jellyfin would reject a remux/direct-stream as exceeding the limit.
+      ' A re-encode (disallowVideoCopy) has no such risk, so the cap applies at any bitrate.
       if transcodingParams.maxBitrate > 0
         minAllowedBitrate& = sourceBitrate& * 11& \ 10&
-        if transcodingParams.maxBitrate >= minAllowedBitrate&
+        if transcodingParams.maxBitrate >= minAllowedBitrate& or disallowVideoCopy
           postData.DeviceProfile.MaxStreamingBitrate = transcodingParams.maxBitrate
         end if
       end if
@@ -107,6 +134,33 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
   end if
 
   applyMediaSourceToPostData(postData, mediaSourceId, forceTranscoding)
+
+  if disallowVideoCopy
+    postData.AllowVideoStreamCopy = false
+  end if
+
+  ' The server takes the first codec it may encode. List HEVC first for a source H.264 cannot carry
+  ' on this device, so a server that encodes HEVC keeps its size and range. A first request does so
+  ' only when the server's own settings say it encodes HEVC in hardware: software HEVC measured
+  ' below real time and stalled where H.264 plays. A server that does not encode HEVC falls to
+  ' H.264 either way (the load then reads the playlist and caps the resolution, see
+  ' LoadVideoContentTask.capH264Resolution). The re-encode retry always lists HEVC first. Live TV
+  ' follows the same rule, with the settings Home read at sign-in, only when the channel lists its
+  ' video stream: an M3U channel lists none before it opens, so it keeps H.264 first. A live load
+  ' has no playlist check.
+  listHevcFirst = disallowVideoCopy
+  if not listHevcFirst and serverCapabilities.serverEncodesHevcInHardware(m.global.server.encodingPolicy)
+    sourceVideoStream = invalid
+    if isValid(playedSource) then sourceVideoStream = getFirstVideoStream(playedSource.MediaStreams)
+    listHevcFirst = prefersHevcTranscode(sourceVideoStream, hevcRangeTypesOfProfile(postData.DeviceProfile), false)
+  end if
+  if listHevcFirst
+    for each profile in postData.DeviceProfile.TranscodingProfiles
+      if isValid(profile.Type) and profile.Type = "Video" and isValid(profile.VideoCodec)
+        profile.VideoCodec = hevcFirstCodecList(profile.VideoCodec)
+      end if
+    end for
+  end if
 
   mediaStreams = invalid
   if isValid(playedSource) and isValid(playedSource.MediaStreams)
@@ -133,8 +187,8 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
       if isValid(stream.Type) and stream.Type = "Video" and isValid(stream.Codec) and LCase(stream.Codec) = "h264"
         if isValid(postData.DeviceProfile.CodecProfiles)
           ' Start from the H264 hardware ceiling, then clamp down to the user's cap if lower
-          h264CapHeight = 1080
-          h264CapWidth = 1920
+          h264CapHeight = H264_MAX_HEIGHT
+          h264CapWidth = H264_MAX_WIDTH
           userResConditions = getResolutionConditions(false, caps)
           for each condition in userResConditions
             if condition.Property = "Height" and condition.Value.toInt() < h264CapHeight
