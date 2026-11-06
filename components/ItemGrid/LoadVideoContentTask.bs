@@ -844,9 +844,10 @@ function capH264Resolution(itemId as string, mediaSourceId as dynamic, audioStre
   end if
 
   fetched = fetchManifestText(buildURL(source.TranscodingUrl), timeouts.HLS_MASTER_PROBE_MS)
+  answer = hlsMasterAnswer(fetched)
   hevcRangeTypes = invalid
   rangeTypesForLog = "notBuilt"
-  if hlsMasterNeedsRangeList(fetched)
+  if hlsMasterNeedsRangeList(answer)
     hevcRangeTypes = hevcRangeTypesOfProfile({ CodecProfiles: getCodecProfiles(pickedCaps) })
     if not isValid(hevcRangeTypes)
       rangeTypesForLog = "noHevcProfile"
@@ -857,7 +858,7 @@ function capH264Resolution(itemId as string, mediaSourceId as dynamic, audioStre
       rangeTypesForLog = textOrEmpty(hevcRangeTypes)
     end if
   end if
-  decision = h264CapDecision(fetched, sourceAboveCeiling, disallowVideoCopy, hevcRangeTypes)
+  decision = h264CapDecision(answer, sourceAboveCeiling, disallowVideoCopy, hevcRangeTypes)
   if isValid(decision.variant)
     m.log.info("Master playlist", "codecs", decision.variant.codecs, "width", decision.variant.width, "height", decision.variant.height, "itemId", itemId)
     m.log.info("Master playlist variant judged", "range", decision.variant.range, "reason", decision.reason, "hevcRangeTypes", rangeTypesForLog, "itemId", itemId)

@@ -146,6 +146,53 @@ namespace tests
       m.assertEqual(variants[0].range, "HLG")
     end function
 
+    @it("reads 150 variants in order, ignoring the image stream")
+    function _()
+      q = chr(34)
+      text = "#EXTM3U" + chr(10)
+      for i = 1 to 150
+        text += "#EXT-X-STREAM-INF:BANDWIDTH=1000,CODECS=" + q + "avc1.640028,ac-3" + q + ",RESOLUTION=" + str(i).trim() + "x1080" + chr(10) + "v" + str(i).trim() + ".m3u8" + chr(10)
+      end for
+      text += "#EXT-X-IMAGE-STREAM-INF:BANDWIDTH=13729,RESOLUTION=320x180,CODECS=" + q + "jpeg" + q + ",URI=" + q + "tiles.m3u8" + q + chr(10)
+
+      variants = hlsMasterVariants(text)
+      m.assertEqual(variants.count(), 150)
+      m.assertEqual(variants[0].width, 1)
+      m.assertEqual(variants[149].width, 150)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hlsMasterAnswer")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is unread with no variants for no answer")
+    function _()
+      answer = hlsMasterAnswer(invalid)
+      m.assertFalse(answer.read)
+      m.assertEqual(answer.variants.count(), 0)
+    end function
+
+    @it("is unread for a response that is not HTTP 200")
+    function _()
+      answer = hlsMasterAnswer({ code: 500, body: m.dolbyVisionSdrDisplayMaster() })
+      m.assertFalse(answer.read)
+      m.assertEqual(answer.variants.count(), 0)
+    end function
+
+    @it("is read with no variants for a body that is not a playlist")
+    function _()
+      answer = hlsMasterAnswer({ code: 200, body: invalid })
+      m.assertTrue(answer.read)
+      m.assertEqual(answer.variants.count(), 0)
+    end function
+
+    @it("is read with the variants of a playlist")
+    function _()
+      answer = hlsMasterAnswer({ code: 200, body: m.dolbyVisionSdrDisplayMaster() })
+      m.assertTrue(answer.read)
+      m.assertEqual(answer.variants.count(), 2)
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("hlsVariantShown")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -194,25 +241,25 @@ namespace tests
 
     @it("is true for a read playlist with a PQ variant")
     function _()
-      m.assertTrue(hlsMasterNeedsRangeList({ code: 200, body: m.dolbyVisionSdrDisplayMaster() }))
-      m.assertTrue(hlsMasterNeedsRangeList({ code: 200, body: m.hevcEncoderSdrDisplayMaster() }))
+      m.assertTrue(hlsMasterNeedsRangeList(hlsMasterAnswer({ code: 200, body: m.dolbyVisionSdrDisplayMaster() })))
+      m.assertTrue(hlsMasterNeedsRangeList(hlsMasterAnswer({ code: 200, body: m.hevcEncoderSdrDisplayMaster() })))
     end function
 
     @it("is false for a playlist with no PQ variant: all SDR, HLG, or no VIDEO-RANGE")
     function _()
       body = m.master("VIDEO-RANGE=SDR,CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34) + ",RESOLUTION=3840x2160")
-      m.assertFalse(hlsMasterNeedsRangeList({ code: 200, body: body }))
-      m.assertFalse(hlsMasterNeedsRangeList({ code: 200, body: m.hlgSdrDisplayMaster() }))
+      m.assertFalse(hlsMasterNeedsRangeList(hlsMasterAnswer({ code: 200, body: body })))
+      m.assertFalse(hlsMasterNeedsRangeList(hlsMasterAnswer({ code: 200, body: m.hlgSdrDisplayMaster() })))
       body = m.master("CODECS=" + chr(34) + "avc1.640028,ac-3" + chr(34) + ",RESOLUTION=1920x1080")
-      m.assertFalse(hlsMasterNeedsRangeList({ code: 200, body: body }))
-      m.assertFalse(hlsMasterNeedsRangeList({ code: 200, body: "garbage" }))
+      m.assertFalse(hlsMasterNeedsRangeList(hlsMasterAnswer({ code: 200, body: body })))
+      m.assertFalse(hlsMasterNeedsRangeList(hlsMasterAnswer({ code: 200, body: "garbage" })))
     end function
 
     @it("is false when the playlist did not arrive")
     function _()
-      m.assertFalse(hlsMasterNeedsRangeList(invalid))
-      m.assertFalse(hlsMasterNeedsRangeList({ code: 500, body: m.dolbyVisionSdrDisplayMaster() }))
-      m.assertFalse(hlsMasterNeedsRangeList({ code: 200, body: invalid }))
+      m.assertFalse(hlsMasterNeedsRangeList(hlsMasterAnswer(invalid)))
+      m.assertFalse(hlsMasterNeedsRangeList(hlsMasterAnswer({ code: 500, body: m.dolbyVisionSdrDisplayMaster() })))
+      m.assertFalse(hlsMasterNeedsRangeList(hlsMasterAnswer({ code: 200, body: invalid })))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -271,7 +318,7 @@ namespace tests
     @it("caps H.264 above 1080p")
     function _()
       body = m.master("CODECS=" + chr(34) + "avc1.640033,ac-3" + chr(34) + ",RESOLUTION=3840x2160")
-      decision = h264CapDecision({ code: 200, body: body }, true, true)
+      decision = h264CapDecision(hlsMasterAnswer({ code: 200, body: body }), true, true)
 
       m.assertTrue(decision.cap)
       m.assertEqual(decision.reason, "h264AboveCeiling")
@@ -281,7 +328,7 @@ namespace tests
     @it("keeps HEVC at 4K")
     function _()
       body = m.master("CODECS=" + chr(34) + "hvc1.2.4.L153.B0,ac-3" + chr(34) + ",RESOLUTION=3840x2160")
-      decision = h264CapDecision({ code: 200, body: body }, true, true)
+      decision = h264CapDecision(hlsMasterAnswer({ code: 200, body: body }), true, true)
 
       m.assertFalse(decision.cap)
       m.assertEqual(decision.reason, "playable")
@@ -290,13 +337,13 @@ namespace tests
     @it("caps the SDR H.264 variant when the display hides the PQ one")
     function _()
       fetched = { code: 200, body: m.dolbyVisionSdrDisplayMaster() }
-      decision = h264CapDecision(fetched, true, true, "SDR|DOVIWithSDR")
+      decision = h264CapDecision(hlsMasterAnswer(fetched), true, true, "SDR|DOVIWithSDR")
 
       m.assertTrue(decision.cap)
       m.assertEqual(decision.reason, "h264AboveCeiling")
       m.assertEqual(left(decision.variant.codecs, 4), "avc1")
 
-      first = h264CapDecision(fetched, true, false, "SDR|DOVIWithSDR")
+      first = h264CapDecision(hlsMasterAnswer(fetched), true, false, "SDR|DOVIWithSDR")
       m.assertTrue(first.cap)
       m.assertEqual(first.reason, "h264AboveCeiling")
     end function
@@ -304,7 +351,7 @@ namespace tests
     @it("keeps the HEVC PQ variant when the display shows HDR")
     function _()
       fetched = { code: 200, body: m.dolbyVisionSdrDisplayMaster() }
-      decision = h264CapDecision(fetched, true, true, "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL")
+      decision = h264CapDecision(hlsMasterAnswer(fetched), true, true, "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL")
 
       m.assertFalse(decision.cap)
       m.assertEqual(decision.reason, "playable")
@@ -313,7 +360,7 @@ namespace tests
 
     @it("reads the first variant when the range list is unknown")
     function _()
-      decision = h264CapDecision({ code: 200, body: m.dolbyVisionSdrDisplayMaster() }, true, true, invalid)
+      decision = h264CapDecision(hlsMasterAnswer({ code: 200, body: m.dolbyVisionSdrDisplayMaster() }), true, true, invalid)
 
       m.assertFalse(decision.cap)
       m.assertEqual(decision.reason, "playable")
@@ -323,13 +370,13 @@ namespace tests
     @it("caps when no variant is one the display shows")
     function _()
       body = m.master("VIDEO-RANGE=PQ,CODECS=" + chr(34) + "hvc1.2.4.L153.B0,ac-3" + chr(34) + ",RESOLUTION=3840x2160")
-      decision = h264CapDecision({ code: 200, body: body }, true, false, "SDR|DOVIWithSDR")
+      decision = h264CapDecision(hlsMasterAnswer({ code: 200, body: body }), true, false, "SDR|DOVIWithSDR")
 
       m.assertTrue(decision.cap)
       m.assertEqual(decision.reason, "noShownVariant")
       m.assertEqual(decision.variant.range, "PQ")
 
-      retry = h264CapDecision({ code: 200, body: body }, true, true, "SDR|DOVIWithSDR")
+      retry = h264CapDecision(hlsMasterAnswer({ code: 200, body: body }), true, true, "SDR|DOVIWithSDR")
       m.assertTrue(retry.cap)
       m.assertEqual(retry.reason, "noShownVariant")
     end function
@@ -337,7 +384,7 @@ namespace tests
     @it("does not cap a retry of a source within the ceiling when no variant is shown")
     function _()
       body = m.master("VIDEO-RANGE=PQ,CODECS=" + chr(34) + "hvc1.2.4.L150.B0,ac-3" + chr(34) + ",RESOLUTION=1920x1080")
-      decision = h264CapDecision({ code: 200, body: body }, false, true, "SDR|DOVIWithSDR")
+      decision = h264CapDecision(hlsMasterAnswer({ code: 200, body: body }), false, true, "SDR|DOVIWithSDR")
 
       m.assertFalse(decision.cap)
       m.assertEqual(decision.reason, "noShownVariant")
@@ -346,7 +393,7 @@ namespace tests
 
     @it("keeps a 4K HEVC SDR variant listed after a hidden PQ one")
     function _()
-      decision = h264CapDecision({ code: 200, body: m.hevcEncoderSdrDisplayMaster() }, true, false, "SDR|DOVIWithSDR")
+      decision = h264CapDecision(hlsMasterAnswer({ code: 200, body: m.hevcEncoderSdrDisplayMaster() }), true, false, "SDR|DOVIWithSDR")
 
       m.assertFalse(decision.cap)
       m.assertEqual(decision.reason, "playable")
@@ -356,7 +403,7 @@ namespace tests
 
     @it("keeps the HEVC HLG variant on a display without HDR")
     function _()
-      decision = h264CapDecision({ code: 200, body: m.hlgSdrDisplayMaster() }, true, false, "SDR|DOVIWithSDR")
+      decision = h264CapDecision(hlsMasterAnswer({ code: 200, body: m.hlgSdrDisplayMaster() }), true, false, "SDR|DOVIWithSDR")
       m.assertFalse(decision.cap)
       m.assertEqual(decision.reason, "playable")
       m.assertEqual(decision.variant.range, "HLG")
@@ -365,7 +412,7 @@ namespace tests
 
     @it("reads the first variant when the server sends no range list")
     function _()
-      decision = h264CapDecision({ code: 200, body: m.dolbyVisionSdrDisplayMaster() }, true, false, "")
+      decision = h264CapDecision(hlsMasterAnswer({ code: 200, body: m.dolbyVisionSdrDisplayMaster() }), true, false, "")
 
       m.assertFalse(decision.cap)
       m.assertEqual(decision.reason, "playable")
@@ -374,7 +421,7 @@ namespace tests
 
     @it("caps a re-encode of a source above 1080p when the playlist did not arrive")
     function _()
-      decision = h264CapDecision(invalid, true, true)
+      decision = h264CapDecision(hlsMasterAnswer(invalid), true, true)
 
       m.assertTrue(decision.cap)
       m.assertEqual(decision.reason, "playlistUnread")
@@ -382,12 +429,12 @@ namespace tests
 
     @it("caps a re-encode of a source above 1080p when the playlist answered with an error")
     function _()
-      m.assertTrue(h264CapDecision({ code: 500, body: "" }, true, true).cap)
+      m.assertTrue(h264CapDecision(hlsMasterAnswer({ code: 500, body: "" }), true, true).cap)
     end function
 
     @it("caps a re-encode of a source above 1080p when the playlist cannot be read")
     function _()
-      decision = h264CapDecision({ code: 200, body: "<html>502 Bad Gateway</html>" }, true, true)
+      decision = h264CapDecision(hlsMasterAnswer({ code: 200, body: "<html>502 Bad Gateway</html>" }), true, true)
 
       m.assertTrue(decision.cap)
       m.assertEqual(decision.reason, "playlistUnparsed")
@@ -395,14 +442,14 @@ namespace tests
 
     @it("keeps the answer for a source at or below 1080p when the playlist did not arrive")
     function _()
-      m.assertFalse(h264CapDecision(invalid, false, true).cap)
-      m.assertFalse(h264CapDecision({ code: 200, body: "garbage" }, false, true).cap)
+      m.assertFalse(h264CapDecision(hlsMasterAnswer(invalid), false, true).cap)
+      m.assertFalse(h264CapDecision(hlsMasterAnswer({ code: 200, body: "garbage" }), false, true).cap)
     end function
 
     @it("caps a first request that the playlist declares H.264 above 1080p")
     function _()
       body = m.master("CODECS=" + chr(34) + "avc1.640033,ac-3" + chr(34) + ",RESOLUTION=3840x2160")
-      decision = h264CapDecision({ code: 200, body: body }, true, false)
+      decision = h264CapDecision(hlsMasterAnswer({ code: 200, body: body }), true, false)
 
       m.assertTrue(decision.cap)
       m.assertEqual(decision.reason, "h264AboveCeiling")
@@ -410,7 +457,7 @@ namespace tests
 
     @it("keeps a first request's answer when its playlist did not arrive, since the video may be copied")
     function _()
-      decision = h264CapDecision(invalid, true, false)
+      decision = h264CapDecision(hlsMasterAnswer(invalid), true, false)
 
       m.assertFalse(decision.cap)
       m.assertEqual(decision.reason, "playlistUnread")
@@ -418,11 +465,11 @@ namespace tests
 
     @it("keeps a first request's answer when its playlist cannot be read")
     function _()
-      decision = h264CapDecision({ code: 200, body: "<html>502 Bad Gateway</html>" }, true, false)
+      decision = h264CapDecision(hlsMasterAnswer({ code: 200, body: "<html>502 Bad Gateway</html>" }), true, false)
 
       m.assertFalse(decision.cap)
       m.assertEqual(decision.reason, "playlistUnparsed")
-      m.assertFalse(h264CapDecision({ code: 500, body: "" }, true, false).cap)
+      m.assertFalse(h264CapDecision(hlsMasterAnswer({ code: 500, body: "" }), true, false).cap)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

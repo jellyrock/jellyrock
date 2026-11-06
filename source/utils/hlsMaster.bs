@@ -14,27 +14,24 @@ import "pkg:/source/utils/misc.bs"
 function hlsMasterVariants(text as string) as object
   variants = []
   marker = "#EXT-X-STREAM-INF:"
-  start = inStr(1, text, marker)
-  while start > 0
-    lineStart = start + len(marker)
-    lineEnd = inStr(lineStart, text, chr(10))
-    if lineEnd = 0 then lineEnd = len(text) + 1
-    attributes = mid(text, lineStart, lineEnd - lineStart)
+  markerLength = len(marker)
+  for each line in text.split(chr(10))
+    if left(line, markerLength) = marker
+      attributes = mid(line, markerLength + 1)
 
-    codecs = hlsAttributeValue(attributes, "CODECS=" + chr(34), chr(34))
-    size = hlsAttributeValue(attributes, "RESOLUTION=", ",").trim().split("x")
-    if codecs <> "" and size.count() = 2
-      width = size[0].toInt()
-      height = size[1].toInt()
-      if width > 0 and height > 0
-        range = UCase(hlsAttributeValue(attributes, "VIDEO-RANGE=", ",").trim())
-        if range = "" then range = "SDR"
-        variants.push({ codecs: codecs, width: width, height: height, range: range })
+      codecs = hlsAttributeValue(attributes, "CODECS=" + chr(34), chr(34))
+      size = hlsAttributeValue(attributes, "RESOLUTION=", ",").trim().split("x")
+      if codecs <> "" and size.count() = 2
+        width = size[0].toInt()
+        height = size[1].toInt()
+        if width > 0 and height > 0
+          range = UCase(hlsAttributeValue(attributes, "VIDEO-RANGE=", ",").trim())
+          if range = "" then range = "SDR"
+          variants.push({ codecs: codecs, width: width, height: height, range: range })
+        end if
       end if
     end if
-
-    start = inStr(lineEnd, text, marker)
-  end while
+  end for
   return variants
 end function
 
@@ -51,15 +48,26 @@ function hlsAttributeValue(attributes as string, prefix as string, terminator as
   return mid(padded, valueStart, valueEnd - valueStart)
 end function
 
+' What a fetched master playlist says: whether it was read, and its variants. Parse once per load and
+' hand the answer to hlsMasterNeedsRangeList and h264CapDecision, since parsing walks the whole body.
+'
+' @param {dynamic} fetched - fetchManifestText()'s answer ({ code, body }), or invalid
+' @return {object} { read: boolean, variants: object }. read is true only for an HTTP 200 answer;
+'   variants is hlsMasterVariants() of its body, and empty when not read.
+function hlsMasterAnswer(fetched as dynamic) as object
+  if type(fetched) <> "roAssociativeArray" or mediaNumber(fetched.code) <> 200 then return { read: false, variants: [] }
+  return { read: true, variants: hlsMasterVariants(textOrEmpty(fetched.body)) }
+end function
+
 ' Whether h264CapDecision needs the device profile's HEVC range list for this answer: only a read
 ' playlist with a PQ variant does, since PQ is the one range hlsVariantShown judges by the list.
 ' Building the list costs many CanDecodeVideo calls, so a load builds it only then.
 '
-' @param {dynamic} fetched - fetchManifestText()'s answer ({ code, body }), or invalid
+' @param {object} answer - hlsMasterAnswer()'s answer
 ' @return {boolean}
-function hlsMasterNeedsRangeList(fetched as dynamic) as boolean
-  if type(fetched) <> "roAssociativeArray" or mediaNumber(fetched.code) <> 200 then return false
-  for each variant in hlsMasterVariants(textOrEmpty(fetched.body))
+function hlsMasterNeedsRangeList(answer as object) as boolean
+  if not answer.read then return false
+  for each variant in answer.variants
     if variant.range = "PQ" then return true
   end for
   return false
@@ -137,7 +145,7 @@ end function
 ' answer instead: the server may be copying the video, and the cap would turn a 4K copy into a
 ' 1080p re-encode.
 '
-' @param {dynamic} fetched - fetchManifestText()'s answer ({ code, body }), or invalid
+' @param {object} answer - hlsMasterAnswer()'s answer for the master playlist
 ' @param {boolean} sourceAboveCeiling - the source's video is above 1080p (videoStreamAboveH264Ceiling)
 ' @param {boolean} isReencode - the load asked the server not to copy the video (disallowVideoCopy)
 ' @param {dynamic} hevcRangeTypes - the device profile's HEVC VideoRangeType list
@@ -146,12 +154,12 @@ end function
 '   "h264AboveCeiling", "playable" or "noShownVariant" when the playlist was read (variant is the
 '   variant judged, or the first one for "noShownVariant"), "playlistUnread" (no answer, or not
 '   HTTP 200) or "playlistUnparsed" otherwise.
-function h264CapDecision(fetched as dynamic, sourceAboveCeiling as boolean, isReencode as boolean, hevcRangeTypes = invalid as dynamic) as object
+function h264CapDecision(answer as object, sourceAboveCeiling as boolean, isReencode as boolean, hevcRangeTypes = invalid as dynamic) as object
   capWhenUnread = sourceAboveCeiling and isReencode
-  if type(fetched) <> "roAssociativeArray" or mediaNumber(fetched.code) <> 200
+  if not answer.read
     return { cap: capWhenUnread, reason: "playlistUnread", variant: invalid }
   end if
-  variants = hlsMasterVariants(textOrEmpty(fetched.body))
+  variants = answer.variants
   if variants.count() = 0 then return { cap: capWhenUnread, reason: "playlistUnparsed", variant: invalid }
   for each variant in variants
     if hlsVariantShown(variant, hevcRangeTypes)
