@@ -46,22 +46,40 @@ namespace log
     return invalid
   end function
 
-  ' Masks secrets and addresses in a log line, so a shared log identifies no one. Pure: it reads
-  ' no node and holds only its compiled patterns and a fingerprint cache, so it adds no thread
-  ' crossing on whichever thread logs. A Logger builds one on its first line.
+  ' Masks secrets and addresses in a log line, so a shared log identifies no one. It reads no
+  ' node, so it adds no thread crossing on whichever thread logs. A Logger builds one on its
+  ' first line.
   '
   ' A token or device ID becomes a 4-character fingerprint (the start of its MD5), which still
   ' shows whether two lines used the same one. A host or IP becomes its class, which still shows
   ' whether the app talked to the LAN, the internet or itself. Free text (titles, user names)
   ' has no shape to find, so the roku-log plugin's `log-personal-text` rule keeps it out instead.
+  '
+  ' Each pattern runs only on a line holding its trigger word: most lines hold none, and a
+  ' substring search costs a fraction of a pattern search on a Roku.
   class Redactor
     private credential
     private deviceName
     private url
     private ipv4
     private fingerprints
+    ' Each dotted host the URL rule masked, with its class, so a later mention without a
+    ' scheme ("Could not resolve host: ...") is masked too
+    private hosts
+
+    ' Words that mark a line the credential pattern could match: keep them in step with it
+    private CREDENTIAL_TRIGGERS = ["token", "apikey", "api_key", "secret", "password", "deviceid", "device_id", "pw"]
+    ' Hosts remembered at most, so the check each line makes stays small
+    private MAX_HOSTS = 16
 
     sub new()
+      m.hosts = {}
+      m.compile()
+    end sub
+
+    ' Builds the patterns. A node's `m` handed to another thread keeps only data, and Roku drops
+    ' roRegex objects from it, so redact() calls this again when they are gone.
+    private sub compile()
       ' A credential key, its separator (`=`, `:`, `":"`, or `=\"` inside JSON), then its value
       m.credential = CreateObject("roRegex", "(\b[a-z_-]*?(?:token|api_?key|secret|password|device_?id)|\bpw)(""?\s*[:=]\s*\\?""?)([^""\\&\s,;}\])]+)", "i")
       ' The free-text Device= field of the Authorization header, which holds the Roku's name
@@ -69,50 +87,64 @@ namespace log
       ' Scheme, user info (or an empty group, so every group always reports), then the host
       ' (a bracketed IPv6 literal or a name)
       m.url = CreateObject("roRegex", "\b(https?|wss?)://([^/@\s]*@|)(\[[0-9a-f:.]+\]|[^/:?#\s""'\\]+)", "i")
-      m.ipv4 = CreateObject("roRegex", "(?<![\d.])(\d{1,3}(?:\.\d{1,3}){3})(?![\d.])", "")
+      ' Four dotted parts, not inside a longer dotted number; a sentence's final period may follow
+      m.ipv4 = CreateObject("roRegex", "(?<![\d.])(\d{1,3}(?:\.\d{1,3}){3})(?!\d|\.\d)", "")
       m.fingerprints = {}
       m.fingerprints.SetModeCaseSensitive()
     end sub
 
     function redact(text as string) as string
+      if m.ipv4 = invalid then m.compile()
+      lowered = LCase(text)
+
       ' Every rule goes through MatchAll and replaceInOrder rather than ReplaceAll with a
       ' back-reference, which the BrightScript simulator does not substitute.
-      matches = m.deviceName.MatchAll(text)
-      if matches.count() > 0
-        replacements = []
-        for each match in matches
-          replacements.push(match[1] + "<device-name>")
-        end for
-        text = log.replaceInOrder(text, matches, replacements)
+      if Instr(1, lowered, "device=") > 0
+        matches = m.deviceName.MatchAll(text)
+        if matches.count() > 0
+          replacements = []
+          for each match in matches
+            replacements.push(match[1] + "<device-name>")
+          end for
+          text = log.replaceInOrder(text, matches, replacements)
+        end if
       end if
 
-      matches = m.credential.MatchAll(text)
-      if matches.count() > 0
-        replacements = []
-        for each match in matches
-          key = LCase(match[1])
-          if key = "pw" or Instr(1, key, "password") > 0 or Instr(1, key, "secret") > 0
-            label = "<secret>"
-          else if Instr(1, key, "device") > 0
-            label = "<device:" + m.fingerprint(match[3]) + ">"
-          else
-            label = "<token:" + m.fingerprint(match[3]) + ">"
-          end if
-          replacements.push(match[1] + match[2] + label)
-        end for
-        text = log.replaceInOrder(text, matches, replacements)
+      if m.hasCredentialTrigger(lowered)
+        matches = m.credential.MatchAll(text)
+        if matches.count() > 0
+          replacements = []
+          for each match in matches
+            key = LCase(match[1])
+            if key = "pw" or Instr(1, key, "password") > 0 or Instr(1, key, "secret") > 0
+              label = "<secret>"
+            else if Instr(1, key, "device") > 0
+              label = "<device:" + m.fingerprint(match[3]) + ">"
+            else
+              label = "<token:" + m.fingerprint(match[3]) + ">"
+            end if
+            replacements.push(match[1] + match[2] + label)
+          end for
+          text = log.replaceInOrder(text, matches, replacements)
+        end if
       end if
 
-      matches = m.url.MatchAll(text)
-      if matches.count() > 0
-        replacements = []
-        for each match in matches
-          userInfo = ""
-          if match[2] <> "" then userInfo = "<secret>@"
-          replacements.push(match[1] + "://" + userInfo + log.hostClass(match[3]))
-        end for
-        text = log.replaceInOrder(text, matches, replacements)
+      if Instr(1, lowered, "://") > 0
+        matches = m.url.MatchAll(text)
+        if matches.count() > 0
+          replacements = []
+          for each match in matches
+            userInfo = ""
+            if match[2] <> "" then userInfo = "<secret>@"
+            hostClass = log.hostClass(match[3])
+            m.rememberHost(match[3], hostClass)
+            replacements.push(match[1] + "://" + userInfo + hostClass)
+          end for
+          text = log.replaceInOrder(text, matches, replacements)
+        end if
       end if
+
+      if m.hosts.count() > 0 then text = m.maskKnownHosts(text)
 
       matches = m.ipv4.MatchAll(text)
       if matches.count() > 0
@@ -128,6 +160,46 @@ namespace log
       return text
     end function
 
+    private function hasCredentialTrigger(lowered as string) as boolean
+      for each trigger in m.CREDENTIAL_TRIGGERS
+        if Instr(1, lowered, trigger) > 0 then return true
+      end for
+      return false
+    end function
+
+    ' Remembers a host name with a dot. A name without one ("jellyfin") is also a folder in
+    ' the source paths dev builds print, and an address is masked by the IPv4 rule anyway, so
+    ' the class already worked out decides: only a name has one of the two name classes.
+    private sub rememberHost(host as string, hostClass as string)
+      if hostClass <> "<host>" and hostClass <> "<lan-host>" then return
+      lowered = LCase(host)
+      if Instr(1, lowered, ".") = 0 then return
+      if m.hosts.count() >= m.MAX_HOSTS and not m.hosts.doesExist(lowered) then return
+      m.hosts[lowered] = hostClass
+    end sub
+
+    ' Masks each remembered host where it stands alone: not part of a longer name.
+    private function maskKnownHosts(text as string) as string
+      for each host in m.hosts
+        lowered = LCase(text)
+        result = ""
+        cursor = 1
+        position = Instr(cursor, lowered, host)
+        while position > 0
+          after = position + Len(host)
+          before = ""
+          if position > 1 then before = Mid(lowered, position - 1, 1)
+          if log.isHostBoundary(before) and log.isHostEnd(lowered, after)
+            result = result + Mid(text, cursor, position - cursor) + m.hosts[host]
+            cursor = after
+          end if
+          position = Instr(after, lowered, host)
+        end while
+        if cursor > 1 then text = result + Mid(text, cursor)
+      end for
+      return text
+    end function
+
     private function fingerprint(value as string) as string
       cached = m.fingerprints[value]
       if cached <> invalid then return cached
@@ -140,6 +212,21 @@ namespace log
       return result
     end function
   end class
+
+  ' True when a character cannot be part of a host name, so a host next to it stands alone.
+  ' An empty string (the start of the line) counts.
+  function isHostBoundary(character as string) as boolean
+    if character = "" then return true
+    return Instr(1, "abcdefghijklmnopqrstuvwxyz0123456789-.", character) = 0
+  end function
+
+  ' True when a host ending before `position` ends there: a period may follow it (the end of a
+  ' sentence), but not a period that starts another label (example.com.au).
+  function isHostEnd(lowered as string, position as integer) as boolean
+    character = Mid(lowered, position, 1)
+    if character = "." then return log.isHostBoundary(Mid(lowered, position + 1, 1))
+    return log.isHostBoundary(character)
+  end function
 
   ' Replaces each MatchAll match with its replacement, walking left to right, so a match
   ' that is also part of a later, longer one is not rewritten inside it.

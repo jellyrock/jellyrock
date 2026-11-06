@@ -152,6 +152,71 @@ namespace tests
     @it("leaves a dotted number that cannot be an address alone")
     sub _()
       m.assertEqual(m.redact("value 256.1.1.1"), "value 256.1.1.1")
+      m.assertEqual(m.redact("version 1.2.3.4.5"), "version 1.2.3.4.5")
+    end sub
+
+    @it("classes an address that ends a sentence")
+    sub _()
+      m.assertEqual(m.redact("could not reach 192.168.1.20."), "could not reach <lan-ip>.")
+    end sub
+
+    @describe("hosts seen in a URL")
+
+    @it("masks a host named again without a scheme in the same line")
+    sub _()
+      line = "Caption fetch failed URL: https://jellyfin.example.com/Videos/1/Subtitles reason: Could not resolve host: jellyfin.example.com"
+      m.assertEqual(m.redact(line), "Caption fetch failed URL: https://<host>/Videos/1/Subtitles reason: Could not resolve host: <host>")
+    end sub
+
+    @it("masks a host named in a later line, in any case")
+    sub _()
+      subject = m.newRedactor()
+      subject.redact("GET http://media.home.arpa:8096/System/Info")
+      m.assertEqual(subject.redact("Failed to connect to Media.Home.Arpa port 8096"), "Failed to connect to <lan-host> port 8096")
+    end sub
+
+    @it("leaves a longer name that only starts with a known host alone")
+    sub _()
+      subject = m.newRedactor()
+      subject.redact("GET https://example.com/a")
+      m.assertEqual(subject.redact("see example.com.au and myexample.com"), "see example.com.au and myexample.com")
+    end sub
+
+    @it("does not remember a host with no dot, so a source path keeps its folder name")
+    sub _()
+      subject = m.newRedactor()
+      subject.redact("GET http://jellyfin:8096/Items")
+      line = "INFO file:///home/user/jellyrock/components/data/jellyfin/JellyfinUserSettings.bs:51 Auto-sync enabled"
+      m.assertEqual(subject.redact(line), line)
+    end sub
+
+    @describe("patterns lost in a thread hand-over")
+
+    ' A node's `m` handed to another thread keeps only data: Roku drops the roRegex objects.
+    @it("compiles its patterns again when they are gone")
+    sub _()
+      subject = m.newRedactor()
+      for each field in ["credential", "deviceName", "url", "ipv4"]
+        subject.delete(field)
+      end for
+      m.assertEqual(subject.redact("ws://10.0.0.5:8096/socket?ApiKey=" + m.TOKEN), "ws://<lan-ip>:8096/socket?ApiKey=<token:8516>")
+    end sub
+
+    @describe("every key the credential pattern knows")
+
+    @it("masks each key, whatever its case")
+    sub _()
+      cases = [
+        ["X-Emby-Token: abc123", "X-Emby-Token: <token:"],
+        ["APIKEY=abc123", "APIKEY=<token:"],
+        ["client_secret=abc123", "client_secret=<secret>"],
+        ["Password: abc123", "Password: <secret>"],
+        ["device_id=abc123", "device_id=<device:"],
+        ["PW=abc123", "PW=<secret>"]
+      ]
+      for each pair in cases
+        m.assertEqual(Left(m.redact(pair[0]), Len(pair[1])), pair[1], pair[0])
+      end for
     end sub
 
   end class
