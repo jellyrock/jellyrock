@@ -18,6 +18,8 @@ JellyRock asks your Roku which HDR formats your TV can show and tells your Jelly
 
 A video in an HDR format your TV shows plays in that format. A video in an HDR format your TV doesn't show, or any HDR video on a Roku that doesn't play 4K, is converted by your server.
 
+Some files carry Dolby Vision that doesn't follow Dolby's specification, for example some converted from a Blu-ray. When the picture underneath is HDR10, JellyRock plays the file as HDR10 on a TV that shows HDR10, without Dolby Vision. Otherwise your server converts it.
+
 **Playback Info** in the player shows the video's HDR format, and the reason when the server converts it. See [Watch in original quality](original-quality.md#see-how-something-is-playing).
 
 ## Dolby Vision in MKV files
@@ -28,8 +30,6 @@ Some of these repackaged streams are too much for the Roku to hold. When one fai
 
 [Preserve DoVi](../app-settings.md#playbackPreserveDovi) turns this on or off. It's on by default.
 
-Some files carry Dolby Vision that doesn't follow Dolby's specification. When the picture underneath is HDR10, JellyRock plays the file as HDR10 on a TV that shows HDR10, without Dolby Vision. Otherwise your server converts it.
-
 ## Settings
 
 - [Preserve DoVi](../app-settings.md#playbackPreserveDovi): repackage Dolby Vision MKV files so they play in Dolby Vision.
@@ -38,5 +38,6 @@ Some files carry Dolby Vision that doesn't follow Dolby's specification. When th
 ## Troubleshooting
 
 - **A Dolby Vision MKV file plays without Dolby Vision.** Check that [Preserve DoVi](../app-settings.md#playbackPreserveDovi) is on and your server runs Jellyfin 10.9 or later. Then open **Playback Info**: it says whether the stream was repackaged.
+- **A Dolby Vision file plays as HDR10.** Its Dolby Vision may not follow Dolby's specification, and JellyRock plays those as HDR10 (see [How HDR plays](#how-hdr-plays)). Open **Playback Info**: a format such as `DV 8.6` is one of them, and Preserve DoVi doesn't change it.
 - **HDR video looks washed out or dark.** Open **Playback Info** to see whether the server converted it, and why.
 - **Other playback problems.** See [Playback troubleshooting](../playback-troubleshooting.md).
