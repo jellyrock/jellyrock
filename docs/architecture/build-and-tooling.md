@@ -246,6 +246,7 @@ These turn conventions from `components/CLAUDE.md` and `source/CLAUDE.md` into e
 | `dead-code` | error | A declaration nothing in the app consumes | [Dead code](#dead-code), [ADR 0047](../adr/0047-dead-code-gate.md) |
 | `log-too-many-values` | error | An `m.log.<level>()` call with more than eight values after the message. The runtime function takes the message plus nine values and the build prepends the file and line, so a longer call builds clean and crashes at runtime. Split it into two log lines. `roku-log.cjs` reports it, and `LOG_FUNCTION_PARAMS` in that file is checked against `source/logging/Logger.bs` by a test | [logging.md](logging.md#logging-is-two-parts-and-both-are-ours) |
 | `log-personal-text` | error | An `m.log.<level>()` argument, or a part of one (either side of `+`, a template string's `${}`, an AA literal's key or value), whose name says it holds free text: a name ending in `name` or `title`, or `query`, `searchTerm`, `path`. `NOT_PERSONAL` lists the exceptions. Masking cannot find free text, so the build keeps it out. `roku-log.cjs` reports it | [logging.md](logging.md#masking-what-a-line-could-leak) |
+| `log-secret-value` | error | An `m.log.<level>()` argument, or a part of one (read the same way), whose name says it holds a secret: a name ending in `token`, `apiKey`, `api_key`, `secret`, `password`, `deviceId` or `device_id`, or `Pw`. The logger masks a secret only after `key=` or `key:`, and `m.log` joins its arguments with a space, so the build keeps it out. `roku-log.cjs` reports it | [logging.md](logging.md#masking-what-a-line-could-leak) |
 
 The three Task rules work together. `no-raw-run` bounds where a thread may start, `no-task-fanout` bounds how many start at once, and `no-same-node-relaunch` catches a launch the platform can ignore ([threading.md](threading.md#measured-findings)). Epic #728 needed the first two: its crash came from concurrent launches in one screen load, through an ordinary launch site.
 
@@ -285,6 +286,7 @@ Not every plugin honors every marker, and an unsupported one fails silently: the
 | `print-locations` | ✅ | ✅ | ✅ | |
 | `log-too-many-values` | ✅ | ✅ | ❌ | Same reason as `no-raw-run` |
 | `log-personal-text` | ✅ | ✅ | ❌ | A whole-file opt-out would let any title or name through |
+| `log-secret-value` | ✅ | ✅ | ❌ | A whole-file opt-out would let any token through |
 | `observe-without-on-destroy` | ✅ | ✅ | ✅ | |
 | `unobserve-before-release` | ✅ | ✅ | ✅ | Put it on the `unobserveField` line, where the diagnostic lands |
 | `callfunc-interface` | ✅ | ✅ | ✅ | Should be rare: an undeclared target is normally a real bug |

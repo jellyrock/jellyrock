@@ -23,6 +23,8 @@
  *                    plus 8 values (`log-too-many-values`, see below)
  *  - personal text:  Error on an m.log.<level>() argument whose name says it holds a
  *                    title or a name (`log-personal-text`, see below)
+ *  - secret value:   Error on an m.log.<level>() argument whose name says it holds a
+ *                    token, a password or a device ID (`log-secret-value`, see below)
  *
  * Call arity: each level function in the runtime library takes `message` plus nine
  * values (ten parameters), and insertPkgPath prepends a file-and-line argument, so
@@ -102,6 +104,22 @@ const NOT_PERSONAL = new Set([
 ]);
 const PERSONAL_DISABLE_LINE = /'\s*bsc-disable-line\s+log-personal-text\b/i;
 const PERSONAL_DISABLE_NEXT_LINE = /'\s*bsc-disable-next-line\s+log-personal-text\b/i;
+// The logger masks a secret only where a key and a separator name it (`token=…`), but m.log
+// joins its arguments with a space, so `m.log.debug("token", token)` would print it raw. The
+// build rejects such an argument by its name instead. These are the endings the redactor's
+// credential pattern knows (log.Redactor in source/logging/Logger.bs): keep the two in step.
+const SECRET_CODE = 'log-secret-value';
+const SECRET_ENDINGS = [
+  'token',
+  'apikey',
+  'api_key',
+  'secret',
+  'password',
+  'deviceid',
+  'device_id',
+];
+const SECRET_DISABLE_LINE = /'\s*bsc-disable-line\s+log-secret-value\b/i;
+const SECRET_DISABLE_NEXT_LINE = /'\s*bsc-disable-next-line\s+log-secret-value\b/i;
 // Calls that only convert or trim a value, so the name of what they convert is what counts.
 const PASS_THROUGH_CALLS = new Set(['tostr', 'trim', 'toupper', 'tolower', 'tostring']);
 const ARITY_DISABLE_LINE = /'\s*bsc-disable-line\s+log-too-many-values\b/i;
@@ -294,6 +312,22 @@ class RokuLogPlugin {
               }
             }
 
+            const secretSuppressed =
+              SECRET_DISABLE_LINE.test(sourceLines[line] ?? '') ||
+              (line > 0 && SECRET_DISABLE_NEXT_LINE.test(sourceLines[line - 1] ?? ''));
+            if (!secretSuppressed) {
+              for (const [argName, arg] of call.args.flatMap((a) => namesIn(a))) {
+                if (!isSecretName(argName)) continue;
+                event.program.diagnostics.register({
+                  code: SECRET_CODE,
+                  severity: 1, // Error
+                  source: this.name,
+                  message: `m.log.${level}() is given \`${argName}\`, which looks like a token, a password or a device ID. The logger masks one only after \`key=\` or \`key:\`, and m.log joins its arguments with a space, so this would print it raw. Leave it out, log whether it is set (isValid) or its length, or add ' bsc-disable-line ${SECRET_CODE} with why it holds no secret.`,
+                  location: arg.location ?? call.location,
+                });
+              }
+            }
+
             const argCount = call.args.length;
             if (argCount <= MAX_SOURCE_ARGS) return;
 
@@ -398,6 +432,17 @@ function isPersonalName(name) {
   if (NOT_PERSONAL.has(lowered) || lowered.endsWith('subtitle')) return false;
   if (lowered.endsWith('name') || lowered.endsWith('title')) return true;
   return PERSONAL_NAMES.has(lowered);
+}
+
+/**
+ * True for a name that says it holds a token, an API key, a secret, a password or a device ID:
+ * one ending in a SECRET_ENDINGS entry, or the sign-in body's `Pw`.
+ * @param {string} name
+ * @returns {boolean}
+ */
+function isSecretName(name) {
+  const lowered = name.toLowerCase();
+  return lowered === 'pw' || SECRET_ENDINGS.some((ending) => lowered.endsWith(ending));
 }
 
 /**
