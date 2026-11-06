@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-06: fix(playback): Start 4K Dolby Vision on a display without HDR
 - 2026-11-06: fix(playback): Play more Dolby Vision files, end a wasted retry
 - 2026-11-05: fix(playback): Handle long films, big re-encodes and frozen playback
 - 2026-11-05: Renamed the Rooibos patch for alpha.56, so `npm install` no longer warns about a version mismatch
