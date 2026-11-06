@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-06: fix(playback): Play more Dolby Vision files, end a wasted retry
 - 2026-11-05: fix(playback): Handle long films, big re-encodes and frozen playback
 - 2026-11-05: Renamed the Rooibos patch for alpha.56, so `npm install` no longer warns about a version mismatch
 - 2026-11-05: fix(playback): Make 4K transcodes play, in HEVC on hardware servers
@@ -72,11 +73,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-23: fix: Hold keys and let Back cancel a Refresh, photo launch or seek
 - 2026-10-23: chore(lint): move the Markdown voice check to shared `voice-check.sh`
 - 2026-10-23: feat: Show a spinner over details and the TV guide while they load, and let Back leave them
-- 2026-10-22: fix(sign-in): Keep a server re-scan from taking focus from a connect
-- 2026-10-22: fix(sign-in): Ignore extra presses and let Back cancel a sign-in
-- 2026-10-22: fix(login): Land on Home after sign-in; drop casts while signed out
-- 2026-10-22: chore(lint): Check only git-visible files in the doc-citation ratchet
-- 2026-10-22: fix(audio): Seek in FLAC without freezing or skipping the end
 
 ## Open followups
 
