@@ -105,6 +105,18 @@ namespace tests
       m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL|DOVIInvalid")
     end function
 
+    @it("turns the HEVC-first choice on for a 1080p one, which reads the range types it extends")
+    function _()
+      stream = m.hdr10Tagged("hevc", "DOVIInvalid")
+      stream.Width = 1920
+      stream.Height = 1080
+      profiles = m.hdrProfiles()
+
+      m.assertFalse(prefersHevcTranscode(stream, hevcRangeTypesOfProfile({ CodecProfiles: profiles }), false), "before")
+      allowHdr10DoviInvalid(profiles, [stream])
+      m.assertTrue(prefersHevcTranscode(stream, hevcRangeTypesOfProfile({ CodecProfiles: profiles }), false), "after")
+    end function
+
     @it("does not add it twice")
     function _()
       profiles = [m.codecProfile("h265,hevc", "SDR|HDR10|DOVIInvalid")]
@@ -179,6 +191,8 @@ namespace tests
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("in the PlaybackInfo request")
+    ' These use this Roku's own device profile, so they check the call in buildPlaybackInfoPostData
+    ' only on a TV that takes HDR10; on any other they check that nothing is added.
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("lists DOVIInvalid for HEVC exactly when this display takes HDR10")

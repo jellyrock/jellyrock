@@ -69,17 +69,26 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
   }
   postData.DeviceProfile = getDeviceProfile(caps)
 
-  ' Dynamically adjust transcoding segment length and bitrate based on the video's
-  ' bitrate, duration, and the device's video buffer size to prevent buffer overflow
-  ' and playlist-too-large errors during HLS playback.
-  '
-  ' Everything below that reads the source (its bitrate and runtime here, its streams and
-  ' container for the Dolby Vision, H264 and audio decisions) reads the version this request
-  ' is for, not the server's default (mediaSourceForId).
+  ' Everything below that reads the source (its bitrate and runtime, its streams and container
+  ' for the Dolby Vision, H264 and audio decisions) reads the version this request is for, not
+  ' the server's default (mediaSourceForId).
   playedSource = invalid
   if isValid(videoMetadata) and isValid(videoMetadata.mediaSourcesData)
     playedSource = mediaSourceForId(videoMetadata.mediaSourcesData.mediaSources, mediaSourceId)
   end if
+
+  mediaStreams = invalid
+  if isValid(playedSource) and isValid(playedSource.MediaStreams)
+    mediaStreams = playedSource.MediaStreams
+  end if
+
+  ' The codec profiles take their range types for this source here, before any code below reads
+  ' them (the HEVC-first choice does).
+  allowHdr10DoviInvalid(postData.DeviceProfile.CodecProfiles, mediaStreams)
+
+  ' Dynamically adjust transcoding segment length and bitrate based on the video's
+  ' bitrate, duration, and the device's video buffer size to prevent buffer overflow
+  ' and playlist-too-large errors during HLS playback.
   if isValid(playedSource)
     mediaSource = playedSource
     sourceBitrate& = 0
@@ -138,14 +147,6 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
   if disallowVideoCopy
     postData.AllowVideoStreamCopy = false
   end if
-
-  mediaStreams = invalid
-  if isValid(playedSource) and isValid(playedSource.MediaStreams)
-    mediaStreams = playedSource.MediaStreams
-  end if
-
-  ' Before the HEVC-first choice below, which reads the HEVC range types this can extend.
-  allowHdr10DoviInvalid(postData.DeviceProfile.CodecProfiles, mediaStreams)
 
   ' The server takes the first codec it may encode. List HEVC first for a source H.264 cannot carry
   ' on this device, so a server that encodes HEVC keeps its size and range. A first request does so
@@ -343,11 +344,11 @@ end function
 ' allowHdr10DoviInvalid: Let the server direct-play a DOVIInvalid video stream whose base layer is
 ' plain HDR10, on a display that takes HDR10.
 '
-' Jellyfin marks Dolby Vision profile 8 or 10 video DOVIInvalid when its base-layer compatibility
-' ID is outside Dolby's spec. When the stream's color tags are still the HDR10 ones (bt2020nc, smpte2084,
-' bt2020), Roku plays it as HDR10, so this adds DOVIInvalid to the hevc and av1 VideoRangeType
-' lists that already take HDR10. Any other DOVIInvalid stream is left for the server to convert.
-' Reads the first video stream.
+' Jellyfin 10.11 and later mark Dolby Vision profile 8 or 10 video DOVIInvalid when its base-layer
+' compatibility ID is outside Dolby's spec. When the stream's color tags are still the HDR10 ones
+' (bt2020nc, smpte2084, bt2020), Roku plays it as HDR10, so this adds DOVIInvalid to the hevc and
+' av1 VideoRangeType lists that already take HDR10. Any other DOVIInvalid stream is left for the
+' server to convert. Reads the first video stream.
 '
 ' @param {dynamic} codecProfiles - the DeviceProfile's CodecProfiles, changed in place
 ' @param {dynamic} mediaStreams - MediaStream array of the played source, or invalid
