@@ -1079,6 +1079,9 @@ sub reloadProbedStreams(meta as object, mediaSourceId as dynamic)
   probed = ItemMetaData(meta.id)
   if not isValid(probed) or not isValid(probed.mediaSourcesData) then return
   meta.mediaSourcesData = probed.mediaSourcesData
+  ' The OSD shows its audio and subtitle buttons from these, which the read before the probe left
+  ' at 0 and false.
+  meta.setFields({ audioStreamCount: probed.audioStreamCount, hasSubtitles: probed.hasSubtitles })
   probedSource = mediaSourceForId(probed.mediaSourcesData.mediaSources, mediaSourceId)
   streamCount = 0
   if isValid(probedSource) and isValid(probedSource.MediaStreams) then streamCount = probedSource.MediaStreams.count()
