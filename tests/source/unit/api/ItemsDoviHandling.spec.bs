@@ -26,11 +26,11 @@ namespace tests
       return stream
     end function
 
-    ' The profile the function returns for a stream whose VideoRangeType is the given value
     private function fallbackStream(rangeType as string, dvProfile as integer, compatId as integer) as object
       return { Type: "Video", Codec: "hevc", VideoRangeType: rangeType, DvProfile: dvProfile, DvBlSignalCompatibilityId: compatId, ColorSpace: "bt2020nc", ColorTransfer: "smpte2084", ColorPrimaries: "bt2020" }
     end function
 
+    ' The profile the function returns for a stream whose VideoRangeType is the given value
     private function expectedProfile(videoRangeType as string) as object
       return {
         "Type": "Video",
