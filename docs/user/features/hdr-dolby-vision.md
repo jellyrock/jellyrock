@@ -18,7 +18,7 @@ JellyRock asks your Roku which HDR formats your TV can show and tells your Jelly
 
 A video in an HDR format your TV shows plays in that format. A video in an HDR format your TV doesn't show, or any HDR video on a Roku that doesn't play 4K, is converted by your server.
 
-Some files carry Dolby Vision that doesn't follow Dolby's specification, for example some converted from a Blu-ray. When the picture underneath is HDR10, JellyRock plays the file as HDR10 on a TV that shows HDR10, without Dolby Vision. Otherwise your server converts it.
+Some files carry Dolby Vision that doesn't follow Dolby's specification, for example some converted from a Blu-ray. When the picture underneath is HDR10, the file plays as HDR10 on a TV that shows HDR10, without Dolby Vision: an MKV file as it is, any other file repackaged by your server. Otherwise your server converts it.
 
 **Playback Info** in the player shows the video's HDR format, and the reason when the server converts it. See [Watch in original quality](original-quality.md#see-how-something-is-playing).
 

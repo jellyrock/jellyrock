@@ -82,9 +82,14 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
     mediaStreams = playedSource.MediaStreams
   end if
 
+  playedContainer = ""
+  if isValid(playedSource)
+    playedContainer = playedSource.Container
+  end if
+
   ' The codec profiles take their range types for this source here, before any code below reads
   ' them (the HEVC-first choice does).
-  allowHdr10DoviInvalid(postData.DeviceProfile.CodecProfiles, mediaStreams)
+  allowHdr10DoviInvalid(postData.DeviceProfile.CodecProfiles, mediaStreams, playedContainer)
 
   ' Dynamically adjust transcoding segment length and bitrate based on the video's
   ' bitrate, duration, and the device's video buffer size to prevent buffer overflow
@@ -169,10 +174,6 @@ function buildPlaybackInfoPostData(mediaSourceId = "" as string, audioTrackIndex
     end for
   end if
 
-  playedContainer = ""
-  if isValid(playedSource)
-    playedContainer = playedSource.Container
-  end if
   doviProfile = doviRemuxContainerProfile(mediaStreams, playedContainer, globalUser.settings.playbackPreserveDovi, bypassDoviPreservation, getApiVersionFromGlobal())
   if isValid(doviProfile)
     postData.DeviceProfile.ContainerProfiles.push(doviProfile)
@@ -371,14 +372,19 @@ end function
 '
 ' Jellyfin 10.11 and later mark Dolby Vision profile 8 or 10 video DOVIInvalid when its base-layer
 ' compatibility ID is outside Dolby's spec. When the stream's color tags are still the HDR10 ones
-' (bt2020nc, smpte2084, bt2020), Roku plays it as HDR10, so this adds DOVIInvalid to the hevc and
-' av1 VideoRangeType lists that already take HDR10. Any other DOVIInvalid stream is left for the
-' server to convert. Reads the first video stream.
+' (bt2020nc, smpte2084, bt2020) and the file is MKV, Roku plays it as HDR10, so this adds
+' DOVIInvalid to the hevc and av1 VideoRangeType lists that already take HDR10.
+'
+' Only MKV: Roku ignores Dolby Vision in MKV, while from MP4 it plays the out-of-spec Dolby Vision
+' itself, or refuses the file. Any other DOVIInvalid stream is left for the server to convert,
+' and for a display that takes Dolby Vision it leaves the Dolby Vision out. Reads the first video
+' stream.
 '
 ' @param {dynamic} codecProfiles - the DeviceProfile's CodecProfiles, changed in place
 ' @param {dynamic} mediaStreams - MediaStream array of the played source, or invalid
-sub allowHdr10DoviInvalid(codecProfiles as dynamic, mediaStreams as dynamic)
-  if not isValid(codecProfiles) then return
+' @param {dynamic} container - the played source's container, or invalid
+sub allowHdr10DoviInvalid(codecProfiles as dynamic, mediaStreams as dynamic, container as dynamic)
+  if not isValid(codecProfiles) or LCase(textOrEmpty(container)) <> "mkv" then return
 
   video = getFirstVideoStream(mediaStreams)
   if not isValid(video) or LCase(textOrEmpty(video.VideoRangeType)) <> "doviinvalid" or not hasHdr10ColorTags(video) then return

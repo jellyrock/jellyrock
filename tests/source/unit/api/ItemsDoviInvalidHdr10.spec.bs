@@ -38,9 +38,9 @@ namespace tests
       ]
     end function
 
-    ' The PlaybackInfo body for an MKV whose only stream is the given one.
-    private function postDataFor(stream as object) as object
-      versions = { mediaSourcesData: { mediaSources: [{ Id: "dovi", Container: "mkv", MediaStreams: [stream] }] } }
+    ' The PlaybackInfo body for a file (MKV unless named) whose only stream is the given one.
+    private function postDataFor(stream as object, container = "mkv" as string) as object
+      versions = { mediaSourcesData: { mediaSources: [{ Id: "dovi", Container: container, MediaStreams: [stream] }] } }
       return buildPlaybackInfoPostData("dovi", -1, SubtitleSelection.NONE, 0&, versions)
     end function
 
@@ -89,7 +89,7 @@ namespace tests
     @it("adds DOVIInvalid to the hevc and av1 range types only")
     function _()
       profiles = m.hdrProfiles()
-      allowHdr10DoviInvalid(profiles, [{ Type: "Audio", Codec: "ac3" }, m.hdr10Tagged("hevc", "DOVIInvalid")])
+      allowHdr10DoviInvalid(profiles, [{ Type: "Audio", Codec: "ac3" }, m.hdr10Tagged("hevc", "DOVIInvalid")], "mkv")
 
       m.assertEqual(m.rangeTypesOf(profiles[0]), "SDR|DOVIWithSDR")
       m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL|DOVIInvalid")
@@ -100,7 +100,15 @@ namespace tests
     @it("matches the range type and the color tags in any case")
     function _()
       profiles = m.hdrProfiles()
-      allowHdr10DoviInvalid(profiles, [{ Type: "Video", Codec: "HEVC", VideoRangeType: "doviinvalid", ColorSpace: "BT2020NC", ColorTransfer: "SMPTE2084", ColorPrimaries: "BT2020" }])
+      allowHdr10DoviInvalid(profiles, [{ Type: "Video", Codec: "HEVC", VideoRangeType: "doviinvalid", ColorSpace: "BT2020NC", ColorTransfer: "SMPTE2084", ColorPrimaries: "BT2020" }], "mkv")
+
+      m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL|DOVIInvalid")
+    end function
+
+    @it("matches the container in any case")
+    function _()
+      profiles = m.hdrProfiles()
+      allowHdr10DoviInvalid(profiles, [m.hdr10Tagged("hevc", "DOVIInvalid")], "MKV")
 
       m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL|DOVIInvalid")
     end function
@@ -113,14 +121,14 @@ namespace tests
       profiles = m.hdrProfiles()
 
       m.assertFalse(prefersHevcTranscode(stream, hevcRangeTypesOfProfile({ CodecProfiles: profiles }), false), "before")
-      allowHdr10DoviInvalid(profiles, [stream])
+      allowHdr10DoviInvalid(profiles, [stream], "mkv")
       m.assertTrue(prefersHevcTranscode(stream, hevcRangeTypesOfProfile({ CodecProfiles: profiles }), false), "after")
     end function
 
     @it("does not add it twice")
     function _()
       profiles = [m.codecProfile("h265,hevc", "SDR|HDR10|DOVIInvalid")]
-      allowHdr10DoviInvalid(profiles, [m.hdr10Tagged("hevc", "DOVIInvalid")])
+      allowHdr10DoviInvalid(profiles, [m.hdr10Tagged("hevc", "DOVIInvalid")], "mkv")
 
       m.assertEqual(m.rangeTypesOf(profiles[0]), "SDR|HDR10|DOVIInvalid")
     end function
@@ -129,10 +137,24 @@ namespace tests
     @describe("leaves the profile alone")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+    @it("when the file is not MKV, where Roku plays the Dolby Vision itself or refuses the file")
+    @params("mp4")
+    @params("m4v")
+    @params("mov")
+    @params("ts")
+    function _(container as string)
+      profiles = m.hdrProfiles()
+      allowHdr10DoviInvalid(profiles, [m.hdr10Tagged("hevc", "DOVIInvalid")], container)
+      allowHdr10DoviInvalid(profiles, [m.hdr10Tagged("hevc", "DOVIInvalid")], invalid)
+
+      m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL")
+      m.assertEqual(m.rangeTypesOf(profiles[3]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL")
+    end function
+
     @it("when the display does not take HDR10")
     function _()
       profiles = [m.codecProfile("h265,hevc", "SDR|DOVIWithSDR")]
-      allowHdr10DoviInvalid(profiles, [m.hdr10Tagged("hevc", "DOVIInvalid")])
+      allowHdr10DoviInvalid(profiles, [m.hdr10Tagged("hevc", "DOVIInvalid")], "mkv")
 
       m.assertEqual(m.rangeTypesOf(profiles[0]), "SDR|DOVIWithSDR")
     end function
@@ -143,7 +165,7 @@ namespace tests
     @params("DOVI")
     function _(videoRangeType as string)
       profiles = m.hdrProfiles()
-      allowHdr10DoviInvalid(profiles, [m.hdr10Tagged("hevc", videoRangeType)])
+      allowHdr10DoviInvalid(profiles, [m.hdr10Tagged("hevc", videoRangeType)], "mkv")
 
       m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL")
     end function
@@ -156,7 +178,7 @@ namespace tests
       stream = m.hdr10Tagged("hevc", "DOVIInvalid")
       stream[field] = value
       profiles = m.hdrProfiles()
-      allowHdr10DoviInvalid(profiles, [stream])
+      allowHdr10DoviInvalid(profiles, [stream], "mkv")
 
       m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL")
     end function
@@ -166,7 +188,7 @@ namespace tests
       stream = m.hdr10Tagged("hevc", "DOVIInvalid")
       stream.Delete("ColorPrimaries")
       profiles = m.hdrProfiles()
-      allowHdr10DoviInvalid(profiles, [stream])
+      allowHdr10DoviInvalid(profiles, [stream], "mkv")
 
       m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL")
     end function
@@ -174,9 +196,9 @@ namespace tests
     @it("when there is no video stream, or no streams")
     function _()
       profiles = m.hdrProfiles()
-      allowHdr10DoviInvalid(profiles, [{ Type: "Audio", Codec: "ac3" }])
-      allowHdr10DoviInvalid(profiles, invalid)
-      allowHdr10DoviInvalid(invalid, [m.hdr10Tagged("hevc", "DOVIInvalid")])
+      allowHdr10DoviInvalid(profiles, [{ Type: "Audio", Codec: "ac3" }], "mkv")
+      allowHdr10DoviInvalid(profiles, invalid, "mkv")
+      allowHdr10DoviInvalid(invalid, [m.hdr10Tagged("hevc", "DOVIInvalid")], "mkv")
 
       m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL")
     end function
@@ -184,7 +206,7 @@ namespace tests
     @it("when the profile has no VideoRangeType condition (a server before 10.9)")
     function _()
       profiles = [{ "Type": "Video", "Codec": "h265,hevc", "Conditions": [{ "Condition": "EqualsAny", "Property": "VideoProfile", "Value": "main", "IsRequired": false }] }]
-      allowHdr10DoviInvalid(profiles, [m.hdr10Tagged("hevc", "DOVIInvalid")])
+      allowHdr10DoviInvalid(profiles, [m.hdr10Tagged("hevc", "DOVIInvalid")], "mkv")
 
       m.assertEqual(profiles[0].Conditions.Count(), 1)
     end function
@@ -200,6 +222,13 @@ namespace tests
       rangeTypes = m.hevcRangeTypes(m.postDataFor(m.hdr10Tagged("hevc", "DOVIInvalid")))
 
       m.assertEqual(arrayHasValue(rangeTypes, "DOVIInvalid"), arrayHasValue(rangeTypes, "HDR10"), "HEVC range types: " + rangeTypes.join("|"))
+    end function
+
+    @it("lists no DOVIInvalid for an MP4 one")
+    function _()
+      rangeTypes = m.hevcRangeTypes(m.postDataFor(m.hdr10Tagged("hevc", "DOVIInvalid"), "mp4"))
+
+      m.assertFalse(arrayHasValue(rangeTypes, "DOVIInvalid"), "HEVC range types: " + rangeTypes.join("|"))
     end function
 
     @it("lists hevc first for a 1080p one on a hardware HEVC server exactly when this display takes HDR10")
