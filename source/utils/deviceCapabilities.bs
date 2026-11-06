@@ -2114,11 +2114,13 @@ end function
 ' @param {object} stream - a video MediaStream
 ' @return {boolean}
 function isOutOfSpecHdr10Dovi(stream as object) as boolean
-  dvProfile = stream.DvProfile
-  if not isValid(dvProfile) or (dvProfile <> 8 and dvProfile <> 10) then return false
+  dvProfile = mediaNumber(stream.DvProfile)
+  if dvProfile <> 8 and dvProfile <> 10 then return false
 
-  compatId = stream.DvBlSignalCompatibilityId
-  if not isValid(compatId) or compatId = 1 or compatId = 2 or compatId = 4 then return false
+  ' Checked before the number: mediaNumber() reads a missing ID as 0, which is out of spec for profile 8.
+  if not isValid(stream.DvBlSignalCompatibilityId) then return false
+  compatId = mediaNumber(stream.DvBlSignalCompatibilityId)
+  if compatId = 1 or compatId = 2 or compatId = 4 then return false
   if compatId = 0 and dvProfile = 10 then return false
   return hasHdr10ColorTags(stream)
 end function

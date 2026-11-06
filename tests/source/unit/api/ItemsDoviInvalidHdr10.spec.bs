@@ -86,7 +86,7 @@ namespace tests
     @describe("allows an HDR10-tagged DOVIInvalid stream on an HDR10 display")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("adds DOVIInvalid to the hevc and av1 range types only")
+    @it("adds DOVIInvalid to the hevc range types only")
     function _()
       profiles = m.hdrProfiles()
       allowHdr10DoviInvalid(profiles, [{ Type: "Audio", Codec: "ac3" }, m.hdr10Tagged("hevc", "DOVIInvalid")], "mkv")
@@ -94,7 +94,15 @@ namespace tests
       m.assertEqual(m.rangeTypesOf(profiles[0]), "SDR|DOVIWithSDR")
       m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL|DOVIInvalid")
       m.assertEqual(m.rangeTypesOf(profiles[2]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL")
-      m.assertEqual(m.rangeTypesOf(profiles[3]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL|DOVIInvalid")
+      m.assertEqual(m.rangeTypesOf(profiles[3]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL")
+    end function
+
+    @it("matches the codec through either name Jellyfin uses for HEVC")
+    function _()
+      profiles = m.hdrProfiles()
+      allowHdr10DoviInvalid(profiles, [m.hdr10Tagged("H265", "DOVIInvalid")], "mkv")
+
+      m.assertEqual(m.rangeTypesOf(profiles[1]), "SDR|DOVIWithSDR|HDR10|DOVIWithHDR10|DOVIWithEL|DOVIInvalid")
     end function
 
     @it("matches the range type and the color tags in any case")
@@ -157,6 +165,18 @@ namespace tests
       allowHdr10DoviInvalid(profiles, [m.hdr10Tagged("hevc", "DOVIInvalid")], "mkv")
 
       m.assertEqual(m.rangeTypesOf(profiles[0]), "SDR|DOVIWithSDR")
+    end function
+
+    @it("when the stream is not HEVC, which no Roku has played that way")
+    @params("av1")
+    @params("vp9")
+    function _(codec as string)
+      profiles = m.hdrProfiles()
+      allowHdr10DoviInvalid(profiles, [m.hdr10Tagged(codec, "DOVIInvalid")], "mkv")
+
+      for each profile in profiles
+        m.assertFalse(inStr(1, m.rangeTypesOf(profile), "DOVIInvalid") > 0, profile.Codec)
+      end for
     end function
 
     @it("when the stream is not DOVIInvalid")

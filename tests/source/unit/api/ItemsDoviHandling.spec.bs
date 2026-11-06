@@ -252,6 +252,15 @@ namespace tests
       m.assertFalse(isOutOfSpecHdr10Dovi(noCompatId), "no compatibility ID")
     end function
 
+    @it("reads a profile and compatibility ID sent as text the same as numbers")
+    function _()
+      outOfSpec = { Type: "Video", Codec: "hevc", DvProfile: "8", DvBlSignalCompatibilityId: "6", ColorSpace: "bt2020nc", ColorTransfer: "smpte2084", ColorPrimaries: "bt2020" }
+      inSpec = { Type: "Video", Codec: "hevc", DvProfile: "8", DvBlSignalCompatibilityId: "1", ColorSpace: "bt2020nc", ColorTransfer: "smpte2084", ColorPrimaries: "bt2020" }
+
+      m.assertTrue(isOutOfSpecHdr10Dovi(outOfSpec), "8.6")
+      m.assertFalse(isOutOfSpecHdr10Dovi(inSpec), "8.1")
+    end function
+
     @it("returns invalid for an empty VideoRangeType")
     function _()
       streams = [m.videoStream("hevc", "")]
