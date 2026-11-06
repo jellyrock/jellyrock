@@ -34,6 +34,9 @@ describe('roku-log personal text', () => {
     ['a playlist name', 'm.log.info("playlist", playlistName)'],
     ['the search text', 'm.log.warn("superseded search", m.top.query)'],
     ['a voice search term', 'm.log.info("fetching", "searchTerm", searchTerm)'],
+    ['the text of a voice search', 'm.log.info("voice input: " + voiceText)'],
+    ['a saved search term', 'm.log.info("remove confirmed term=" + term)'],
+    ['any name ending in Query', 'm.log.info("hints", lastQuery)'],
     [
       'a media file path',
       'm.log.error("no stream", "sourceUrl", m.playbackInfo.MediaSources[0].Path)',
@@ -67,6 +70,7 @@ describe('roku-log personal text', () => {
       'm.log.info("syncing", { libraryId: libraryId, settingsCount: count })',
     ],
     ['a path built from the item ID', 'm.log.info("cached", "cachePath", cachePath)'],
+    ['a name holding term only inside it', 'm.log.info("terminal", terminalState)'],
   ])('passes %s', (_label, statement) => {
     expect(check(statement)).toHaveLength(0);
   });

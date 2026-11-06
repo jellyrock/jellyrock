@@ -430,7 +430,7 @@ end sub
 
 sub submitVoiceText(voiceText as string)
   m.voiceBox.text = "" ' reset for next voice search
-  m.log.info("voice input: " + voiceText)
+  m.log.info("voice input", "length", Len(voiceText))
   applyQueryAndSubmit(voiceText)
 end sub
 
@@ -822,7 +822,7 @@ sub onSuggestionRemoveRequested()
   if not isValid(term) or term = "" then return
 
   m.pendingRemoveTerm = term
-  m.log.info("remove confirm for term=" + term)
+  m.log.info("remove confirm for a saved search", "length", Len(term))
 
   title = translate(translationKeys.LabelRemove)
   msg = translate(translationKeys.MessageAreYouSureYouWantToRemoveTerm, [term])
@@ -842,7 +842,7 @@ sub onRemoveDialogResponse()
   if not isValid(term) or term = "" then return
   m.pendingRemoveTerm = invalid
 
-  m.log.info("remove confirmed term=" + term)
+  m.log.info("remove confirmed for a saved search", "length", Len(term))
   searchHistory.remove(term)
   renderRecentSuggestions()
 end sub

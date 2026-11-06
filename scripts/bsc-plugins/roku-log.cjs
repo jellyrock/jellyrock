@@ -22,7 +22,7 @@
  *  - arity check:    Error on an m.log.<level>() call with more than the message
  *                    plus 8 values (`log-too-many-values`, see below)
  *  - personal text:  Error on an m.log.<level>() argument whose name says it holds a
- *                    title or a name (`log-personal-text`, see below)
+ *                    title, a name or search text (`log-personal-text`, see below)
  *  - secret value:   Error on an m.log.<level>() argument whose name says it holds a
  *                    token, a password or a device ID (`log-secret-value`, see below)
  *
@@ -84,18 +84,13 @@ const ARITY_CODE = 'log-too-many-values';
 // and a shared log can show who someone is or what they watch, so the build keeps them out
 // of m.log by the name of the argument instead. An ID is fine: it identifies nothing alone.
 const PERSONAL_CODE = 'log-personal-text';
-// Names that hold free text without ending in "name" or "title": what a user searched for, and
-// a file path, which holds the title (and sometimes an account name).
-const PERSONAL_NAMES = new Set([
-  'username',
-  'album',
-  'albumartist',
-  'artist',
-  'artists',
-  'query',
-  'searchterm',
-  'path',
-]);
+// Endings that mark free text, as "name" and "title" do: what a user searched for
+// (searchTerm, lastQuery, a saved search's term).
+const PERSONAL_ENDINGS = ['name', 'title', 'query', 'term'];
+// Names that hold free text without one of those endings: a voice search's text, music fields,
+// and a file path, which holds the title (and sometimes an account name). Path is matched whole,
+// not as an ending: cachePath and routePath hold IDs.
+const PERSONAL_NAMES = new Set(['voicetext', 'album', 'albumartist', 'artist', 'artists', 'path']);
 // Names that end in "name" or "title" but hold neither: each says what it holds instead.
 const NOT_PERSONAL = new Set([
   'settingname', // a setting's key, such as playbackSubsCustom
@@ -306,7 +301,7 @@ class RokuLogPlugin {
                   code: PERSONAL_CODE,
                   severity: 1, // Error
                   source: this.name,
-                  message: `m.log.${level}() is given \`${argName}\`, which looks like a title or a name. Logs get shared, and free text can show who someone is or what they watch, and masking cannot find it. Log the ID instead, or add ' bsc-disable-line ${PERSONAL_CODE} with why it cannot identify anyone.`,
+                  message: `m.log.${level}() is given \`${argName}\`, which looks like a title, a name or search text. Logs get shared, and free text can show who someone is or what they watch, and masking cannot find it. Log the ID instead, or add ' bsc-disable-line ${PERSONAL_CODE} with why it cannot identify anyone.`,
                   location: arg.location ?? call.location,
                 });
               }
@@ -420,17 +415,17 @@ function namesIn(expression) {
 }
 
 /**
- * True for a name that says it holds a title, a person's name or other free text: any name
- * ending in "name" or "title" (but not "subtitle", which names a track or its index), and the few
- * in PERSONAL_NAMES. NOT_PERSONAL lists the exceptions, so a new free-text name fails the build
- * until someone says it holds none.
+ * True for a name that says it holds a title, a person's name, search text or other free text:
+ * any name with a PERSONAL_ENDINGS ending (but not "subtitle", which names a track or its index),
+ * and the few in PERSONAL_NAMES. NOT_PERSONAL lists the exceptions, so a new free-text name fails
+ * the build until someone says it holds none.
  * @param {string} name
  * @returns {boolean}
  */
 function isPersonalName(name) {
   const lowered = name.toLowerCase();
   if (NOT_PERSONAL.has(lowered) || lowered.endsWith('subtitle')) return false;
-  if (lowered.endsWith('name') || lowered.endsWith('title')) return true;
+  if (PERSONAL_ENDINGS.some((ending) => lowered.endsWith(ending))) return true;
   return PERSONAL_NAMES.has(lowered);
 }
 
