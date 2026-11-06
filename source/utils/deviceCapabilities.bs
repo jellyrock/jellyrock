@@ -2083,7 +2083,7 @@ end function
 ' that it plays as Dolby Vision.
 '
 ' The request (doviRemuxContainerProfile) and the playback report (causedByPreserveDovi) both ask
-' this, so the report blames the setting exactly when the request applied it. Each caller checks
+' this, so the report blames the setting only when the request applied it. Each caller checks
 ' its own setting, bypass retry and the device's Dolby Vision support.
 '
 ' The stream must be MKV, not AV1 (#194), with a range type that names Dolby Vision, on a server

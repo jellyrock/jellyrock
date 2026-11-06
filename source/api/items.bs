@@ -293,8 +293,9 @@ end function
 '
 ' Hardware is read only after the cheap checks pass: the setting must be on and the caller must
 ' not have bypassed it. Only the first video stream with a codec other than AV1 is considered, and
-' isDoviRemuxCandidate() decides whether it needs the remux; the playback report asks the same
-' function (causedByPreserveDovi), so the two agree.
+' isDoviRemuxCandidate() decides whether it needs the remux. The playback report asks the same
+' function (causedByPreserveDovi) of the first video stream whatever its codec, so when that
+' stream is AV1 and a later one is not, the report does not blame a remux this request added.
 '
 ' @param {dynamic} mediaStreams - MediaStream array of the played source, or invalid
 ' @param {dynamic} container - the played source's container, or invalid
