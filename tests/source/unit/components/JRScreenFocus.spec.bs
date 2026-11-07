@@ -105,6 +105,37 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("handleFocus — an overlay dialog holds focus")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves the focus on the dialog when the router claims focus after a navigation settles")
+    function _()
+      dialog = showConfirmDialog("Title", "Message")
+      m.assertTrue(dialog.isInFocusChain())
+
+      taken = m.screen.callFunc("handleFocus", { routerFocused: true })
+
+      m.assertFalse(taken)
+      m.assertTrue(dialog.isInFocusChain())
+      m.assertFalse(m.screen.isInFocusChain())
+      abandonDialog(dialog)
+    end function
+
+    @it("leaves the focus on the dialog on the first call after the view is shown")
+    function _()
+      m.screen.callFunc("onViewOpen", {})
+      dialog = showConfirmDialog("Title", "Message")
+      m.assertTrue(dialog.isInFocusChain())
+
+      taken = m.screen.callFunc("handleFocus", { routerFocused: true })
+
+      m.assertFalse(taken)
+      m.assertTrue(dialog.isInFocusChain())
+      m.assertFalse(m.screen.isInFocusChain())
+      abandonDialog(dialog)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("handleFocus — the overhang row holds focus")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
