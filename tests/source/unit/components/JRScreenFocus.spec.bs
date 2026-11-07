@@ -136,6 +136,83 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a screen that opens under an open dialog")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps the dialog focused through onViewOpen, then focuses the new screen when it closes")
+    function _()
+      m.child.setFocus(true)
+      dialog = showConfirmDialog("Title", "Message")
+      m.assertTrue(dialog.isInFocusChain())
+      arrived = m.arriveUnderDialog("onViewOpen")
+
+      m.assertTrue(dialog.isInFocusChain())
+      m.assertFalse(arrived.callFunc("handleFocus", { routerFocused: true }))
+
+      m.screen.callFunc("hideCovered")
+      dialog.callFunc("cancelDialog")
+
+      m.assertTrue(arrived.isInFocusChain())
+      m.assertFalse(m.child.hasFocus())
+      m.mountedIn.removeChild(arrived)
+    end function
+
+    @it("keeps the dialog focused through onViewResume, then focuses the resumed screen when it closes")
+    function _()
+      m.child.setFocus(true)
+      dialog = showConfirmDialog("Title", "Message")
+      m.assertTrue(dialog.isInFocusChain())
+      arrived = m.arriveUnderDialog("onViewResume")
+
+      m.assertTrue(dialog.isInFocusChain())
+      m.assertFalse(arrived.callFunc("handleFocus", { routerFocused: true }))
+
+      m.screen.callFunc("hideCovered")
+      dialog.callFunc("cancelDialog")
+
+      m.assertTrue(arrived.isInFocusChain())
+      m.assertFalse(m.child.hasFocus())
+      m.mountedIn.removeChild(arrived)
+    end function
+
+    @it("gives the focus back to the opener when no navigation happened")
+    function _()
+      m.child.setFocus(true)
+      dialog = showConfirmDialog("Title", "Message")
+      m.assertTrue(dialog.isInFocusChain())
+
+      dialog.callFunc("cancelDialog")
+
+      m.assertTrue(m.child.hasFocus())
+    end function
+
+    @it("gives the focus back inside a screen nested in the active view (the OSD in the player)")
+    function _()
+      inner = m.screen.createChild("JRScreen")
+      innerChild = inner.createChild("Group")
+      innerChild.focusable = true
+      m.global.activeRoutedView = m.screen
+      innerChild.setFocus(true)
+      dialog = showConfirmDialog("Title", "Message")
+      m.assertTrue(dialog.isInFocusChain())
+
+      dialog.callFunc("cancelDialog")
+
+      m.assertTrue(innerChild.hasFocus())
+    end function
+
+    @it("gives the focus back to a node outside every screen")
+    function _()
+      m.overlay.setFocus(true)
+      dialog = showConfirmDialog("Title", "Message")
+      m.assertTrue(dialog.isInFocusChain())
+
+      dialog.callFunc("cancelDialog")
+
+      m.assertTrue(m.overlay.hasFocus())
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("handleFocus — the overhang row holds focus")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -154,6 +231,16 @@ namespace tests
       m.assertTrue(m.overhang.hasFocus())
       m.assertFalse(m.screen.isInFocusChain())
       m.assertEqual(m.screen.overhangReturnIcon, "")
+    end function
+
+    ' Mount a second screen, make it the active routed view and run the router hook on it.
+    private function arriveUnderDialog(hook as string) as object
+      arrived = CreateObject("roSGNode", "JRScreen")
+      arrivedChild = arrived.createChild("Group")
+      arrivedChild.focusable = true
+      m.mountedIn.appendChild(arrived)
+      arrived.callFunc(hook, {})
+      return arrived
     end function
 
   end class
