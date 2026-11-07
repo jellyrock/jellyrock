@@ -461,6 +461,7 @@ sub initRouter()
   if not m.isObservingSyncPlay
     m.global.syncPlayManager.observeField("inGroup", "applySyncPlayIcon")
     m.global.syncPlayManager.observeField("notice", "onSyncPlayNotice")
+    m.global.syncPlayManager.observeField("playHeld", "onSyncPlayHeldChanged")
     ' Whether the server has a push channel to this Roku (RemoteControlTask writes it, once per
     ' run): the icon stays hidden until it is known, and is disabled without one. The server node
     ' is reset in place on a server switch, so this observer outlives it.
@@ -1344,6 +1345,11 @@ end sub
 sub onSyncPlayNotice(event as object)
   notice = event.getData()
   if isValid(notice) and notice.kind = "confirmPlay"
+    ' The hold can end before its notice is read (its start ended, the group moved on).
+    if m.global.syncPlayManager.playHeld <> true then return
+    ' A dialog still up for an earlier play is superseded below with a cancelled result. Forgotten
+    ' first, so that result reads as stale and cannot cancel this play.
+    m.syncPlayConfirmDialog = invalid
     m.syncPlayConfirmDialog = showConfirmDialog(translate(translationKeys.LabelSyncPlay), translate(translationKeys.MessageSyncPlayConfirmPlay, [notice.groupName]), "onSyncPlayConfirmPlayResult", translate(translationKeys.ButtonPlayForEveryone), translate(translationKeys.ButtonCancel))
     return
   end if
@@ -1352,16 +1358,27 @@ sub onSyncPlayNotice(event as object)
   showToast(translate(toast.key, [toast.arg]), toast.toastType)
 end sub
 
-' Cancel, Back and a dialog closed from outside all keep the group's playback.
-sub onSyncPlayConfirmPlayResult()
-  dialog = m.syncPlayConfirmDialog
+' Cancel, Back and a dialog closed from outside all keep the group's playback. Only the dialog
+' asking about the play held now acts: a superseded one's result is stale.
+sub onSyncPlayConfirmPlayResult(event as object)
+  dialog = event.getRoSGNode()
+  if not isValid(m.syncPlayConfirmDialog) or not m.syncPlayConfirmDialog.isSameNode(dialog) then return
   m.syncPlayConfirmDialog = invalid
   manager = m.global.syncPlayManager
-  if isValid(dialog) and isValid(dialog.result) and dialog.result.confirmed = true
+  if isValid(dialog.result) and dialog.result.confirmed = true
     manager.callFunc("confirmPlay")
   else
     manager.callFunc("cancelPlay")
   end if
+end sub
+
+' The held play ended with no answer (its start ended, a newer press, the group's new playlist, a
+' leave or a refusal): the dialog asking about it closes as if Back were pressed. Its result then
+' cancels nothing, since nothing is held.
+sub onSyncPlayHeldChanged()
+  if m.global.syncPlayManager.playHeld = true then return
+  dialog = m.syncPlayConfirmDialog
+  if isValid(dialog) then dialog.callFunc("cancelDialog")
 end sub
 
 ' The SyncPlay icon shows the membership and the policy: active while in a group, absent when

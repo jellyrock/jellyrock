@@ -19,6 +19,9 @@
     <!-- In a group and following its playback: the local auto-behaviors stand down and the
          player answers to the group. False when halted (Back during group playback). -->
     <field id="following" type="boolean" value="false" />
+    <!-- A halted member's play waits on the viewer's answer (claimPlay's confirmPlay notice).
+         JRScene closes the dialog asking it when this clears without an answer. -->
+    <field id="playHeld" type="boolean" value="false" />
     <field id="groupId" type="string" value="" />
     <field id="groupName" type="string" value="" />
     <field id="groupState" type="string" value="" />
@@ -45,10 +48,11 @@
          the play, passing the playback start the press opened. True when it was posted
          (SetNewQueue or SetPlaylistItem) and no local player should start; false when it plays
          locally. The claim lasts as long as that start. A halted member's play is held with a
-         confirmPlay notice until one of the two below. -->
+         confirmPlay notice until one of the two below, or until playHeld clears. -->
     <function name="claimPlay" />
     <!-- confirmPlay(): the viewer confirmed the held play; it follows the group again and posts.
-         cancelPlay(): the viewer kept the group's playback; the start the press opened ends. -->
+         cancelPlay(): the viewer kept the group's playback; the start the press opened ends.
+         Both answer false when nothing is held any more. -->
     <function name="confirmPlay" />
     <function name="cancelPlay" />
     <!-- Sign-out and server switch: POST /SyncPlay/Leave while in a group, then forget it and

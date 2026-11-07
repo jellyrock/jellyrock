@@ -520,6 +520,76 @@ namespace tests
       m.assertFalse(m.manager.callFunc("confirmPlay"), "nothing is held any more")
     end function
 
+    @it("a held play is published while it waits, and the viewer's answer clears it")
+    function _()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i9", type: "Movie" }])
+      m.assertFalse(m.manager.playHeld)
+      m.manager.callFunc("claimPlay", promises.create())
+      m.assertTrue(m.manager.playHeld, "the scene asks while this is true")
+      m.manager.callFunc("cancelPlay")
+      m.assertFalse(m.manager.playHeld)
+    end function
+
+    @it("a held play ends with its start, and nothing is left to confirm")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i9", type: "Movie" }])
+      start = promises.create()
+      m.manager.callFunc("claimPlay", start)
+      ' The start's time limit, or a newer press replacing it.
+      promises.reject({ message: "cancelled" }, start)
+      m.assertFalse(m.manager.playHeld, "the dialog closes with the start")
+      m.assertFalse(m.manager.callFunc("confirmPlay"), "nothing is held any more")
+      m.assertEqual(posts.getChildCount(), 0, "nothing was posted")
+    end function
+
+    @it("a newer halted play replaces the held one and ends its start")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i9", type: "Movie" }])
+      first = promises.create()
+      m.manager.callFunc("claimPlay", first)
+      m.pressPlay([{ id: "i8", type: "Movie" }])
+      second = promises.create()
+      m.manager.callFunc("claimPlay", second)
+      m.assertEqual(first.promiseState, "rejected", "the first press's start ends")
+      m.assertTrue(appWaits.isOpen(second), "the second waits under its own dialog")
+      m.assertTrue(m.manager.callFunc("confirmPlay"))
+      m.assertTrue(m.lastPost(posts).body.instr("i8") >= 0, "the newest press is the one posted")
+    end function
+
+    @it("a new playlist from the group ends a held play: the group's pick stands")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i9", type: "Movie" }])
+      start = promises.create()
+      m.manager.callFunc("claimPlay", start)
+      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:30.000Z", Playlist: [{ ItemId: "i5", PlaylistItemId: "p5" }], PlayingItemIndex: 0, StartPositionTicks: 0 })
+      m.assertTrue(m.manager.following, "another member's new playlist brings this member back")
+      m.assertFalse(m.manager.playHeld, "the dialog asking about the held play closes")
+      m.assertEqual(start.promiseState, "rejected", "the held press's start ends")
+      m.assertFalse(m.manager.callFunc("confirmPlay"), "a late confirm cannot replace the group's pick")
+      for i = 0 to posts.getChildCount() - 1
+        m.assertFalse(posts.getChild(i).request.url.instr("/SyncPlay/SetNewQueue") >= 0, "nothing replaced the group's pick")
+      end for
+    end function
+
+    @it("leaving the group ends a held play and its start")
+    function _()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i9", type: "Movie" }])
+      start = promises.create()
+      m.manager.callFunc("claimPlay", start)
+      m.manager.frame = m.update("GroupLeft", invalid)
+      m.assertFalse(m.manager.playHeld)
+      m.assertEqual(start.promiseState, "rejected")
+      m.assertFalse(m.manager.callFunc("confirmPlay"), "nothing is held any more")
+    end function
+
     @it("a halted member is waited on again before its play reaches the group")
     function _()
       ' The server marks every member buffering on a new queue, but its wait skips a member
