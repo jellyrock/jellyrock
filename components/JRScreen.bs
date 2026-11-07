@@ -60,7 +60,7 @@ end sub
 function onViewOpen(_params = {} as object) as dynamic
   m.global.activeRoutedView = m.top
   m.isShowFocusPending = true
-  onScreenShown()
+  showScreenKeepingDialogFocus()
   return promises.resolve(invalid)
 end function
 
@@ -70,7 +70,7 @@ function onViewResume(_params = {} as object) as dynamic
   m.isCoverPending = false
   m.global.activeRoutedView = m.top
   m.isShowFocusPending = true
-  onScreenShown()
+  showScreenKeepingDialogFocus()
   return promises.resolve(invalid)
 end function
 
@@ -95,6 +95,25 @@ sub hideCovered()
   if m.isCoverPending <> true then return
   m.isCoverPending = false
   onScreenHidden()
+end sub
+
+' Run onScreenShown without letting it take the focus from an open overlay dialog. Every screen's
+' onScreenShown takes focus unconditionally, and it runs before the router's handleFocus (which
+' already leaves a dialog alone), so a screen opening under a dialog would leave it on screen
+' and deaf to every key.
+sub showScreenKeepingDialogFocus()
+  held = invalid
+  dialog = openOverlayDialog()
+  if isValid(dialog) and dialog.isInFocusChain()
+    held = dialog
+    while isValid(held) and held.hasFocus() = false
+      held = held.focusedChild
+    end while
+  end if
+  onScreenShown()
+  if not isValid(held) then return
+  stillOpen = openOverlayDialog()
+  if isValid(stillOpen) and stillOpen.isSameNode(dialog) then held.setFocus(true)
 end sub
 
 ' Router: this view is about to be permanently destroyed.
