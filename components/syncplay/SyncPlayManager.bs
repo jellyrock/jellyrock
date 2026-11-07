@@ -17,6 +17,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/queueRepeat.bs"
 import "pkg:/source/utils/tasks.bs"
+import "pkg:/source/utils/voiceTransport.bs"
 
 ' Rounds in the burst a join starts (the spike's "best of eight") and in each later one; when the
 ' next burst runs is syncPlayOffset.nextBurstSeconds.
@@ -92,7 +93,8 @@ sub ensureReady()
   ' nothing to clear here.
   m.claimedStart = invalid
   ' A halted member's play, built and held until the viewer confirms it (confirmPlay) or not
-  ' (cancelPlay): { request, action, start }. It replaces what the whole group is watching, and a
+  ' (cancelPlay): { request, action, start, title, moreCount }, the title the dialog names and the
+  ' videos that follow it in the queue. It replaces what the whole group is watching, and a
   ' remote makes an accidental play easy. Not a claim until confirmed: the group's frames meanwhile
   ' are read as for any halted member. Any other end (its start ending, a newer press, the group's
   ' new playlist, a leave, a refusal) fails its start and clears playHeld, which closes the dialog.
@@ -372,7 +374,10 @@ function claimPlay(start = invalid as dynamic) as boolean
   ' dialog, and the hold ends with it.
   if not isFollowing()
     releaseHeldPlay("replaced by a newer play")
-    m.heldClaim = { request: req, action: handoff.action, start: start }
+    title = voiceTransport.formatNowPlayingTitle(queueItems[position])
+    moreCount = 0
+    if handoff.action = "setNewQueue" then moreCount = handoff.itemIds.count() - 1
+    m.heldClaim = { request: req, action: handoff.action, start: start, title: title, moreCount: moreCount }
     ' A field observer, not promises.onFinally: that runs on a later timer, through state kept on
     ' this node. Never unobserved: the start is short-lived, and an unobserve can drop the
     ' observers QueueManager and AppWaitHost keep on it (#898).
@@ -381,7 +386,7 @@ function claimPlay(start = invalid as dynamic) as boolean
     ' the spinner waits for the answer (confirmPlay resumes it). Back still cancels the start.
     appWaits.pause(start)
     publish()
-    notify("confirmPlay", m.state.groupName, "")
+    m.top.notice = { kind: "confirmPlay", groupName: m.state.groupName, userName: "", title: title, moreCount: moreCount }
     return true
   end if
   m.claimedStart = start

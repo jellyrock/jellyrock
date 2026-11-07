@@ -18,7 +18,8 @@
          false when it had already ended. -->
     <function name="commit" />
     <!-- appWaits.pause / appWaits.resume: a start waiting on the viewer's answer shows its
-         screen and leaves the spinner, then hides it again; false when it had already ended. -->
+         screen and leaves the spinner, then hides it again with its time limit and its age started
+         over; false when it had already ended. -->
     <function name="pause" />
     <function name="resume" />
   </interface>

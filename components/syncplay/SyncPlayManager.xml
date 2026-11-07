@@ -31,7 +31,9 @@
          viewer's time offset setting), loadCount (the loads performed for queue frames, a monotonic count), correctionsDone (the drift corrections that ran to their resume, a monotonic count), repeatMode and shuffleMode (the group's, in the server's words,
          from the last queue update) } -->
     <field id="sync" type="assocarray" />
-    <!-- Something the viewer is told: { kind, groupName, userName }. kind is joined, left, leftStale,
+    <!-- Something the viewer is told: { kind, groupName, userName }; a confirmPlay notice also
+         carries title (the formatted title of the video to play, "" for none) and moreCount (the
+         videos after it in a new queue). kind is joined, left, leftStale,
          userJoined, userLeft, groupStarted, confirmPlay, playedToGroup, followingAgain, syncing, halted, or a refusal's update type
          (GroupDoesNotExist, LibraryAccessDenied, CreateGroupDenied, JoinGroupDenied). JRScene
          turns it into a toast; the manager holds no translation. alwaysNotify: two notices of

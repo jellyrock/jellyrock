@@ -512,6 +512,20 @@ namespace tests
       m.assertEqual(m.host.openWaits.count(), 1)
     end function
 
+    @it("starts the spinner's clock over when resumed, so the viewer's reading time is not loading time")
+    function _()
+      appWait = m.begin("Movie")
+      startedAtBegin = m.host.openWaits.items()[0].value.startedMs
+      appWaits.pause(appWait)
+      ' Let the clock tick past a millisecond, as a viewer reading a question does.
+      clock = CreateObject("roTimespan")
+      while clock.TotalMilliseconds() < 5
+      end while
+      m.assertTrue(appWaits.resume(appWait))
+      startedAfterResume = m.host.openWaits.items()[0].value.startedMs
+      m.assertTrue(startedAfterResume > startedAtBegin, "the wait's age counts from the resume")
+    end function
+
     @it("keeps the screen hidden while another start from it still loads")
     function _()
       first = m.begin()

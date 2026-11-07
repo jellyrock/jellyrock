@@ -1362,7 +1362,8 @@ sub onSyncPlayNotice(event as object)
     ' A dialog still up for an earlier play is superseded below with a cancelled result. Forgotten
     ' first, so that result reads as stale and cannot cancel this play.
     m.syncPlayConfirmDialog = invalid
-    m.syncPlayConfirmDialog = showConfirmDialog(translate(translationKeys.LabelSyncPlay), translate(translationKeys.MessageSyncPlayConfirmPlay, [notice.groupName]), "onSyncPlayConfirmPlayResult", translate(translationKeys.ButtonPlayForEveryone), translate(translationKeys.ButtonCancel))
+    confirm = syncPlayMenu.confirmFor(notice)
+    m.syncPlayConfirmDialog = showConfirmDialog(translate(translationKeys.LabelSyncPlay), translate(confirm.key, confirm.params), "onSyncPlayConfirmPlayResult", translate(translationKeys.ButtonPlayForEveryone), translate(translationKeys.ButtonCancel))
     return
   end if
   toast = syncPlayMenu.toastFor(notice)

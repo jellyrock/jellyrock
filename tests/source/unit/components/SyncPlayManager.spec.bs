@@ -504,6 +504,22 @@ namespace tests
       m.assertFalse(m.manager.callFunc("confirmPlay"), "nothing is held any more")
     end function
 
+    @it("the confirm notice carries the formatted title of the current item and how many more follow")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.enableServer()
+      m.manager.notice = invalid
+      m.global.queueManager.callFunc("set", [{ id: "e1", type: "Episode", name: "Pilot", seriesName: "Show" }, { id: "e2", type: "Episode", name: "Two", seriesName: "Show" }, { id: "e3", type: "Episode", name: "Three", seriesName: "Show" }])
+      m.global.queueManager.callFunc("setPosition", 0)
+      m.assertTrue(m.manager.callFunc("claimPlay"))
+      m.assertEqual(m.manager.notice.kind, "confirmPlay")
+      m.assertEqual(m.manager.notice.title, "Show - Pilot")
+      m.assertEqual(m.manager.notice.moreCount, 2)
+    end function
+
     @it("a halted member's play of the video the group is watching catches up: nothing asks, and nothing starts it over")
     function _()
       posts = m.capturePosts()

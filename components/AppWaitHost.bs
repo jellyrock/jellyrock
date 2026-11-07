@@ -223,7 +223,8 @@ function pause(promise as object) as boolean
 end function
 
 ' The wait `promise` resumes (appWaits.resume): its screen and the overhang hide again, the
-' spinner shows it, and its time limit starts over. Only through callFunc.
+' spinner shows it, and its time limit and its age start over, so the stage text does not count
+' the time the viewer spent answering. Only through callFunc.
 '
 ' @return {boolean} whether the wait was still open and is now running
 function resume(promise as object) as boolean
@@ -231,7 +232,9 @@ function resume(promise as object) as boolean
   if key = "" then return false
   entry = m.waits[key]
   entry.paused = false
-  entry.deadlineMs = loadingStages.nowMs() + appWaits.limitMs(entry.kind)
+  now = loadingStages.nowMs()
+  entry.startedMs = now
+  entry.deadlineMs = now + appWaits.limitMs(entry.kind)
   if isValid(entry.hidden)
     entry.hidden.opacity = 0
     setOverhangShown(false)

@@ -259,6 +259,38 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the question a halted member's play asks")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("one video with a title names it and the group")
+    function _()
+      confirm = syncPlayMenu.confirmFor({ kind: "confirmPlay", groupName: "Movie night", title: "Heat", moreCount: 0 })
+      m.assertEqual(confirm.key, translationKeys.MessageSyncPlayConfirmPlayTitledZero)
+      m.assertEqual(confirm.params, ["Heat", "Movie night"])
+    end function
+
+    @it("a queue of several videos says how many more follow")
+    function _()
+      confirm = syncPlayMenu.confirmFor({ kind: "confirmPlay", groupName: "Movie night", title: "Heat", moreCount: 1 })
+      m.assertEqual(confirm.key, translationKeys.MessageSyncPlayConfirmPlayTitledOne)
+      m.assertEqual(confirm.params, ["Heat", "Movie night"])
+      confirm = syncPlayMenu.confirmFor({ kind: "confirmPlay", groupName: "Movie night", title: "Heat", moreCount: 4 })
+      m.assertEqual(confirm.key, translationKeys.MessageSyncPlayConfirmPlayTitledMany)
+      m.assertEqual(confirm.params, ["Heat", "Movie night", "4"])
+    end function
+
+    @it("no usable title keeps the question that names only the group")
+    function _()
+      for each title in [invalid, ""]
+        confirm = syncPlayMenu.confirmFor({ kind: "confirmPlay", groupName: "Movie night", title: title, moreCount: 3 })
+        m.assertEqual(confirm.key, translationKeys.MessageSyncPlayConfirmPlay)
+        m.assertEqual(confirm.params, ["Movie night"])
+      end for
+      confirm = syncPlayMenu.confirmFor({ kind: "confirmPlay", groupName: "Movie night" })
+      m.assertEqual(confirm.key, translationKeys.MessageSyncPlayConfirmPlay)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("groups to join")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
