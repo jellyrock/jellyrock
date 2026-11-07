@@ -130,6 +130,18 @@ namespace tests
       m.assertTrue(m.manager.inGroup)
     end function
 
+    @it("a queue frame with no readable LastUpdate changes nothing and does not crash")
+    @params(invalid)
+    @params("2026-10-23T20:47:25+00:00")
+    function _(lastUpdate)
+      m.joinGroup()
+      inner = { Reason: "NewPlaylist", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }], PlayingItemIndex: 0, StartPositionTicks: 0 }
+      if lastUpdate <> invalid then inner.LastUpdate = lastUpdate
+      m.manager.frame = m.update("PlayQueue", inner)
+      m.assertTrue(m.manager.inGroup)
+      m.assertEqual(m.manager.groupName, "Movie night")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("The interface")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

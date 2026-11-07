@@ -204,8 +204,17 @@ sub handleFrame(data as object)
   ' without needing this gate updated again.
   if kind <> "ignore"
     marshalCommand(command)
+  else
+    logDroppedSyncPlayFrame(command)
   end if
   ' kind = "ignore" -> dropped (KeepAlive echo, Sessions, volume, unknown types).
+end sub
+
+' A SyncPlay frame the parser dropped as malformed would otherwise vanish. Routine ignores
+' (KeepAlive echoes, Sessions, volume) are not logged. Only the message type is named.
+sub logDroppedSyncPlayFrame(command as object)
+  messageType = remoteCommand.droppedSyncPlayType(command)
+  if messageType <> "" then m.log.warn("malformed SyncPlay frame ignored", "messageType", messageType)
 end sub
 
 ' Marshal a normalized command to the main thread. Drops the bulky original 'raw' Data first (a whole
@@ -418,6 +427,7 @@ function dispatchEnvelope(envelope as object) as boolean
   if isValidAndNotEmpty(command.messageId) then m.lastAckId = command.messageId
 
   kind = command.kind
+  if kind = "ignore" then logDroppedSyncPlayFrame(command)
   if kind = "ignore" or kind = "keepalive" then return false
 
   ' Dedupe: at-least-once redelivers a batch whose response we lost, so a command we've ALREADY enacted
