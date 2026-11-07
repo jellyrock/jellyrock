@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process';
+
 /**
  * Signals the whole process group of a child spawned with `detached: true`.
  *
@@ -47,4 +49,33 @@ export function exitWithParent({ intervalMs = 1000 } = {}) {
   }, intervalMs);
   timer.unref();
   return () => clearInterval(timer);
+}
+
+// Runs under `node -e <code> <args...>`, where `process.argv` is `[node, ...args]`. The
+// helper's fd 1 and 2 are the caller's (fd 3 here is the caller's stdout), and the pid goes
+// to this launcher's own stdout pipe.
+const LAUNCHER = `
+  const { spawn } = require('node:child_process');
+  const child = spawn(process.execPath, process.argv.slice(1), {
+    detached: true,
+    stdio: ['ignore', 3, 2],
+  });
+  child.unref();
+  process.stdout.write(String(child.pid));
+`;
+
+/**
+ * Starts `node <args>` in a process that is not a descendant of this one, and returns its pid.
+ *
+ * A tool that stops a task signals every descendant of it, including detached children. A
+ * launcher that spawns the helper and exits at once leaves the helper reparented out of the
+ * tree before any stop, so it is not signaled. The helper keeps this process's stdout and
+ * stderr.
+ */
+export function spawnOutsideTree(args, { env = process.env } = {}) {
+  const out = execFileSync(process.execPath, ['-e', LAUNCHER, '--', ...args], {
+    stdio: ['ignore', 'pipe', 'inherit', 1],
+    env,
+  });
+  return Number(String(out).trim());
 }
