@@ -38,12 +38,19 @@ sub closeOverlayDialog(dialog as object)
   if not wasFocused or not isValid(returnFocusTo) then return
 
   activeView = m.global.activeRoutedView
-  if isValid(activeView) and isInOtherScreen(returnFocusTo, activeView)
+  if closeRedirectsToActiveView(returnFocusTo, activeView)
     activeView.callFunc("handleFocus", {})
   else
     returnFocusTo.setFocus(true)
   end if
 end sub
+
+' Whether closing a dialog that would give the focus back to returnFocusTo gives it to
+' activeView instead (THE REDIRECT). AppWaitHost asks it too: a start that hides activeView takes
+' that focus itself.
+function closeRedirectsToActiveView(returnFocusTo as dynamic, activeView as dynamic) as boolean
+  return isValid(returnFocusTo) and isValid(activeView) and isInOtherScreen(returnFocusTo, activeView)
+end function
 
 ' True when node sits inside a screen that is not activeView and never passes through activeView.
 ' A screen nested in the active view (the OSD in the player) is part of it, so it returns false.

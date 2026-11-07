@@ -140,19 +140,57 @@ namespace tests
       m.mountedIn.removeChild(dialog)
     end function
 
-    @it("leaves a dialog alone when it gives the focus back somewhere else")
+    @it("leaves a dialog alone when it gives the focus back outside every screen")
     function _()
+      outside = CreateObject("roSGNode", "Group")
       dialog = CreateObject("roSGNode", "Group")
       dialog.id = "jrDialog"
       dialog.focusable = true
       dialog.addField("returnFocusTo", "node", false)
-      dialog.returnFocusTo = m.other
-      m.mountedIn.appendChild(dialog)
+      dialog.returnFocusTo = outside
+      m.mountedIn.appendChildren([outside, dialog])
       dialog.setFocus(true)
 
       m.begin()
-      m.assertTrue(dialog.returnFocusTo.isSameNode(m.other))
-      m.mountedIn.removeChild(dialog)
+      m.assertTrue(dialog.returnFocusTo.isSameNode(outside))
+      m.mountedIn.removeChildren([dialog, outside])
+    end function
+
+    @it("takes the focus a dialog opened over a screen the viewer left would give the hidden screen (a cast under a dialog)")
+    function _()
+      ' The dialog opened over m.other; a navigation then made m.launcher the active view, and
+      ' closing the dialog hands the focus to it (closeOverlayDialog), the screen this start hides.
+      covered = m.other.createChild("Group")
+      covered.focusable = true
+      covered.setFocus(true)
+      dialog = showConfirmDialog("Title", "Message")
+      m.assertTrue(dialog.isInFocusChain())
+
+      appWait = m.begin()
+      m.assertTrue(m.launcher.opacity = 0)
+
+      dialog.callFunc("cancelDialog")
+      m.assertTrue(m.host.hasFocus(), "the hidden screen takes no keys while the start runs")
+
+      appWaits.done(appWait)
+      m.assertTrue(m.launcher.isInFocusChain(), "the screen the viewer is on takes the focus back")
+      m.assertFalse(covered.hasFocus())
+    end function
+
+    @it("gives a dialog opened over a screen the viewer left its own target back when the wait ends first")
+    function _()
+      covered = m.other.createChild("Group")
+      covered.focusable = true
+      covered.setFocus(true)
+      dialog = showConfirmDialog("Title", "Message")
+
+      appWait = m.begin()
+      appWaits.done(appWait)
+      m.assertTrue(dialog.returnFocusTo.isSameNode(covered))
+
+      dialog.callFunc("cancelDialog")
+      m.assertTrue(m.launcher.isInFocusChain(), "the close hands the focus to the screen the viewer is on")
+      m.assertFalse(covered.hasFocus())
     end function
 
     @it("is what appWaits.begin opens")
