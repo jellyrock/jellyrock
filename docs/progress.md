@@ -946,6 +946,20 @@ To rebuild a clip: `ffmpeg -f lavfi -i testsrc2=size=1920x1080:rate=24 -t 20 -vf
 
 Closes after a measurement on the real path: a capture or an ODC read of the overhang right after a width-changing tick (the device clock set to 9:59 in 12-hour format), comparing `textWidth` with the drawn digits. If they differ, measure from the labels instead (their widths plus `itemSpacings`) with a spec that fails first; if not, close as not reproduced.
 
+#### A cast over a SyncPlay member's fresh player meets a halted member: the player left right after it started `[fid: syncplay-cast-over-player-halts-first]` `[captured 2026-11-07]`
+
+The `syncplay-menu.spec.js` RTA case "a cast while halted follows the group again, and a cast over its player ends the start it opened" fails in its second half: `nav timed out waiting for the group's answer to the cast over the player`. Seen on a Streaming Stick 4K against a local Jellyfin 12.4 server on 2026-11-07, after the dialog focus fix (`fix(ui): Keep the focus on an open dialog when a navigation settles under it`); the case had never passed on a device, and it failed the same way earlier on this branch's head before that fix.
+
+What the device console showed: after the first cast's player started (a transcoded stream), `SyncPlayManager` logged `halting reason the player left while following`, right after a `VideoPlayerView` `voice transport pause` line. The second cast then reached a halted member, so it raised the halted-member confirm dialog (`following again`, `play handed to the group`, a reload, then a halt again), where the case expects an in-place reload of a following member's player with no dialog.
+
+Not checked: why the player left right after it started, and whether the pause line is the test's own step. Closes when that is known and either the app keeps the member following through the start, or the case is changed to match a premise shown correct.
+
+#### Joining a playing SyncPlay group shows a Playing toast after the Joined toast in the menu RTA spec `[fid: syncplay-join-toast-sequence]` `[captured 2026-11-07]`
+
+The `syncplay-menu.spec.js` RTA case "joining a group that is already playing opens its item with the joined toast alone" fails: a `Playing <title>` toast replaces `Joined RTA watch party.` when the case reads `#toast.message`. Seen on a Streaming Stick 4K against a local Jellyfin 12.4 server on 2026-11-07, with and without this branch's review fixes, so it predates them; it runs right after the halted-cast case, which also fails.
+
+Not checked: whether the toast comes from the join's own load (the player's deep-link title toast, `m.global.deepLinkOpeningTitle`, left set by the earlier cast) or from state the failed case before it left behind. Closes when the case passes on its own (run it first in a fresh session) and the source of the extra toast is known: suppress it on a join, or correct the expectation.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
