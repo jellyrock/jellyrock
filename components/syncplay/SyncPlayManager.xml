@@ -34,7 +34,7 @@
     <!-- Something the viewer is told: { kind, groupName, userName }; a confirmPlay notice also
          carries title (the formatted title of the video to play, "" for none) and moreCount (the
          videos after it in a new queue). kind is joined, left, leftStale,
-         userJoined, userLeft, groupStarted, confirmPlay, playedToGroup, followingAgain, syncing, halted, or a refusal's update type
+         userJoined, userLeft, groupStarted, confirmPlay, playedToGroup, followingAgain, alreadyWatching (a play of the video the member's player is already on: it keeps playing), syncing, halted, or a refusal's update type
          (GroupDoesNotExist, LibraryAccessDenied, CreateGroupDenied, JoinGroupDenied). JRScene
          turns it into a toast; the manager holds no translation. alwaysNotify: two notices of
          one kind in a row are two. -->
@@ -53,6 +53,11 @@
          posts nothing and loads it at the group's position. A halted member's other plays are
          held with a confirmPlay notice until one of the two below, or until playHeld clears. -->
     <function name="claimPlay" />
+    <!-- keepsPlayingFor(item): whether a cast of this video (JRScene.onDeepLinkResolved) changes nothing
+         because this member follows the group and its player is already on the group's playing
+         item. True also tells the viewer (an alreadyWatching notice); the caller then launches
+         nothing, so the queue, its quality caps and its version pick stay as they are. -->
+    <function name="keepsPlayingFor" />
     <!-- confirmPlay(): the viewer confirmed the held play; it follows the group again and posts.
          cancelPlay(): the viewer kept the group's playback; the start the press opened ends.
          Both answer false when nothing is held any more. -->

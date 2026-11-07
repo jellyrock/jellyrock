@@ -907,42 +907,53 @@ it('a cast while halted follows the group again, and a cast over its player ends
   expect(await getGlobalVal('syncPlayManager.following')).toBe(true);
 
   // The same video cast again, now the group's own: nothing reaches the group, since the server
-  // would start it over for everyone. The player loads it at the group's position instead.
+  // would start it over for everyone, and the player is already on it, so nothing reloads it
+  // either (a reload makes the Roku rebuffer, which pauses every member). The viewer is told.
   await waitFor('position', (v) => typeof v === 'number' && v > 25, {
     read: readPlayer(second),
     timeout: 45000,
     interval: 500,
     label: 'the group well into the cast',
   });
-  const [loadsBefore, emittedBefore, positionBefore] = await Promise.all([
+  const [loadsBefore, positionBefore] = await Promise.all([
     getGlobalVal('syncPlayManager.sync.loadCount'),
-    getGlobalVal('syncPlayManager.sync.lastCommand.emittedAtMs'),
     readPlayer(second)('position'),
   ]);
   expect(typeof positionBefore, 'the position before the cast was read').toBe('number');
-  expect(typeof emittedBefore, "the group's last command before the cast was read").toBe('number');
+  // A quality cap in the queue: a launch would clear it, so it proves the cast rewrote nothing.
+  const queueCall = (funcName, funcParams = []) =>
+    odc.callFunc(
+      { base: 'global', keyPath: 'queueManager', funcName, funcParams },
+      { timeout: 10000 },
+    );
+  await queueCall('setPlaybackCaps', [{ maxBitrateMbps: 7 }]);
   await playOnSession(member, roku.Id, [second]);
-  await waitFor('syncPlayManager.sync.loadCount', (v) => v > loadsBefore, {
-    read: getGlobalVal,
-    timeout: 30000,
-    label: "the cast of the group's own video loaded it",
+  await waitToast(`You're already watching this with ${GROUP_NAME}.`, {
+    label: 'the already-watching toast',
   });
-  // The reload reports buffering, and the group goes on from the position it plays at; a
-  // restart answers from 0.
-  await waitFor('syncPlayManager.sync.lastCommand.emittedAtMs', (v) => v > emittedBefore, {
-    read: getGlobalVal,
-    timeout: 30000,
-    label: "the group's command after the reload",
-  });
-  expect(
-    Number(await getGlobalVal('syncPlayManager.sync.lastCommand.positionTicks')) / 10_000_000,
-    'the group goes on from where it was, not from the start',
-  ).toBeGreaterThan(positionBefore - 1);
   await waitFor('#appWaitHost.openWaits', (v) => v && Object.keys(v).length === 0, {
     read: getVal,
     timeout: 20000,
     label: "no wait left open after the cast of the group's own video",
   });
+  expect(await getGlobalVal('syncPlayManager.sync.loadCount'), 'the player was not reloaded').toBe(
+    loadsBefore,
+  );
+  const { value: capsAfter } = await queueCall('getPlaybackCaps');
+  expect(
+    capsAfter?.maxbitratembps ?? capsAfter?.maxBitrateMbps,
+    'the cast left the queue alone',
+  ).toBe(7);
+  await queueCall('setPlaybackCaps', [null]);
+  expect(await getActiveVal('subtype()'), 'the player stays mounted').toBe('PlayerHostView');
+  expect(await getGlobalVal('syncPlayManager.following')).toBe(true);
+  await waitFor('position', (v) => typeof v === 'number' && v > positionBefore, {
+    read: readPlayer(second),
+    timeout: 20000,
+    interval: 500,
+    label: 'the video playing on past the cast',
+  });
+  await waitMediaPlaying('the video after the cast of its own', 60000);
 
   await stopPlayback();
 });

@@ -730,6 +730,7 @@
   "MessageSwitchServerToPlay": "A play request came in for content on '{0}'. Switch servers to open it? You'll be signed out of the current server.",
   "MessageSwitchServerToPlayTitled": "Play '{0}' on '{1}'? You'll switch servers and be signed out of the current one.",
   "MessageSwitchingToServer": "Switching to '{0}'…",
+  "MessageSyncPlayAlreadyWatching": "You're already watching this with {0}.",
   "MessageSyncPlayConfirmPlay": "Play this for {0}? Everyone in the group will watch it instead of what is playing now.",
   "MessageSyncPlayConfirmPlayTitledMany": "Play '{0}' and {2} more for {1}? Everyone in the group will watch them instead of what is playing now.",
   "MessageSyncPlayConfirmPlayTitledOne": "Play '{0}' and 1 more for {1}? Everyone in the group will watch them instead of what is playing now.",

@@ -147,6 +147,23 @@ namespace tests
       m.assertEqual(syncPlayMenu.toastFor({ kind: "LibraryAccessDenied" }).key, translationKeys.MessageSyncPlayLibraryAccessDenied)
     end function
 
+    @it("a play of the video already playing is an info toast naming the group")
+    function _()
+      toast = syncPlayMenu.toastFor({ kind: "alreadyWatching", groupName: "Movie night" })
+      m.assertTrue(isValid(toast), "a toast is shown")
+      key = ""
+      toastType = ""
+      arg = ""
+      if isValid(toast)
+        key = toast.key
+        toastType = toast.toastType
+        arg = toast.arg
+      end if
+      m.assertEqual(key, translationKeys.MessageSyncPlayAlreadyWatching)
+      m.assertEqual(toastType, "info")
+      m.assertEqual(arg, "Movie night")
+    end function
+
     @it("a time offset pick's correction is an info toast that the member is syncing")
     function _()
       toast = syncPlayMenu.toastFor({ kind: "syncing" })

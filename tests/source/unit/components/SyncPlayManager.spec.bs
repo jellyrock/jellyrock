@@ -1,5 +1,7 @@
 import "pkg:/source/remotecontrol/remoteCommand.bs"
+import "pkg:/source/syncplay/syncPlayQueue.bs"
 import "pkg:/source/utils/appWaits.bs"
+import "pkg:/source/utils/queueRepeat.bs"
 
 namespace tests
 
@@ -558,7 +560,12 @@ namespace tests
       m.assertFalse(m.manager.following)
     end function
 
-    @it("a following member's play of the video the group is watching loads it at the group's position and posts nothing")
+    ' A player host on the play route, as the router would mount it. Its init builds no player.
+    private sub mountHost()
+      m.global.activeRoutedView = CreateObject("roSGNode", "PlayerHostView")
+    end sub
+
+    @it("a following member's play of the video the group is watching loads it when no player is mounted, and posts nothing")
     function _()
       posts = m.capturePosts()
       m.joinGroup()
@@ -574,6 +581,118 @@ namespace tests
       m.assertTrue(m.manager.following)
       m.assertInvalid(m.manager.notice, "nothing changed for the group to tell")
       m.assertTrue(appWaits.isOpen(start), "the start waits for the group's item to load")
+    end function
+
+    @it("a following member whose player is on the group's item keeps playing: nothing posts, nothing reloads, and the viewer is told")
+    function _()
+      posts = m.capturePosts()
+      m.joinGroup()
+      m.playGroupItem()
+      m.mountHost()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.enableServer()
+      m.manager.notice = invalid
+      m.pressPlay([{ id: "i1", type: "Movie" }])
+      start = promises.create()
+      m.assertTrue(m.manager.callFunc("claimPlay", start))
+      m.assertEqual(posts.getChildCount(), 0, "nothing reaches the group")
+      m.assertEqual(m.manager.sync.loadCount, 0, "the player is not reloaded")
+      m.assertEqual(m.manager.sync.trackerPhase, "loading", "the player's tracking is left as it was")
+      m.assertTrue(m.manager.following)
+      notice = m.manager.notice
+      kind = ""
+      groupName = ""
+      if isValid(notice) and isValid(notice.kind)
+        kind = notice.kind
+        groupName = notice.groupName
+      end if
+      m.assertEqual(kind, "alreadyWatching")
+      m.assertEqual(groupName, "Movie night")
+      m.assertEqual(start.promiseState, "resolved", "no spinner stays over the video")
+    end function
+
+    ' The member watches the group's item i1 on a mounted player, with a quality cap and the group's repeat mode in the queue.
+    private sub watchWithCap()
+      m.joinGroup()
+      m.playGroupItem()
+      m.mountHost()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.global.queueManager.callFunc("setPlaybackCaps", { maxBitrate: 4000000 })
+      m.global.queueManager.callFunc("setRepeatMode", queueRepeat.ALL, queueRepeat.BY_GROUP)
+      m.manager.notice = invalid
+    end sub
+
+    @it("keepsPlayingFor: a cast of the video the player is on is told and changes nothing else")
+    function _()
+      posts = m.capturePosts()
+      m.watchWithCap()
+      m.enableServer()
+      kept = m.manager.callFunc("keepsPlayingFor", { id: "i1", type: "Movie" })
+      m.assertTrue(kept)
+      notice = m.manager.notice
+      kind = ""
+      if isValid(notice) and isValid(notice.kind) then kind = notice.kind
+      m.assertEqual(kind, "alreadyWatching")
+      queueManager = m.global.queueManager
+      m.assertTrue(isValid(queueManager.callFunc("getPlaybackCaps")), "the viewer's quality cap is still in force")
+      m.assertEqual(queueManager.callFunc("getRepeatMode"), queueRepeat.ALL)
+      m.assertTrue(syncPlayQueue.isGroupItem(queueManager.callFunc("getCurrentItem"), "p1"), "the queue still holds the group's stamped item")
+      m.assertEqual(posts.getChildCount(), 0)
+      m.assertEqual(m.manager.sync.loadCount, 0)
+    end function
+
+    @it("keepsPlayingFor: a halted member's cast goes on to the group's play")
+    function _()
+      m.haltWithServer()
+      m.mountHost()
+      m.manager.notice = invalid
+      m.assertFalse(m.manager.callFunc("keepsPlayingFor", { id: "i1", type: "Movie" }))
+      m.assertInvalid(m.manager.notice)
+    end function
+
+    @it("keepsPlayingFor: with no player host mounted the cast goes on")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.notice = invalid
+      m.assertFalse(m.manager.callFunc("keepsPlayingFor", { id: "i1", type: "Movie" }))
+      m.assertInvalid(m.manager.notice)
+    end function
+
+    @it("keepsPlayingFor: a cast of another video goes on")
+    function _()
+      m.watchWithCap()
+      m.assertFalse(m.manager.callFunc("keepsPlayingFor", { id: "i2", type: "Movie" }))
+      m.assertInvalid(m.manager.notice)
+    end function
+
+    @it("a following member's player that is not on the group's item still loads it")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      ' A host the member joined over: no mount was reported for the group's item.
+      m.mountHost()
+      m.enableServer()
+      m.manager.notice = invalid
+      m.pressPlay([{ id: "i1", type: "Movie" }])
+      start = promises.create()
+      m.assertTrue(m.manager.callFunc("claimPlay", start))
+      m.assertInvalid(m.manager.notice)
+      m.assertTrue(appWaits.isOpen(start), "the start waits for the group's item to load")
+    end function
+
+    @it("a halted member's player still loads the group's item and says it follows again")
+    function _()
+      m.haltWithServer()
+      m.mountHost()
+      m.manager.notice = invalid
+      m.pressPlay([{ id: "i1", type: "Movie" }])
+      start = promises.create()
+      m.assertTrue(m.manager.callFunc("claimPlay", start))
+      m.assertTrue(m.manager.following)
+      m.assertEqual(m.manager.notice.kind, "followingAgain")
+      m.assertTrue(appWaits.isOpen(start))
     end function
 
     @it("a halted member's play of the video a stopped group was watching is held: the group's answer starts it")

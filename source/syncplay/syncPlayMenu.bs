@@ -158,6 +158,7 @@ namespace syncPlayMenu
     if kind = "userLeft" then return { key: translationKeys.MessageSyncPlayUserLeft, toastType: "info", arg: userName }
     if kind = "groupStarted" then return { key: translationKeys.MessageSyncPlayGroupStarted, toastType: "info", arg: groupName }
     if kind = "playedToGroup" then return { key: translationKeys.MessageSyncPlayPlayedToGroup, toastType: "info", arg: groupName }
+    if kind = "alreadyWatching" then return { key: translationKeys.MessageSyncPlayAlreadyWatching, toastType: "info", arg: groupName }
     if kind = "followingAgain" then return { key: translationKeys.MessageSyncPlayFollowingAgain, toastType: "info", arg: groupName }
     if kind = "resumeFailed" then return { key: translationKeys.MessageSyncPlayResumeFailed, toastType: "warning", arg: groupName }
     if kind = "syncing" then return { key: translationKeys.MessageSyncPlaySyncingWithGroup, toastType: "info", arg: "" }

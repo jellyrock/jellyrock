@@ -742,5 +742,33 @@ namespace tests
       m.assertEqual(syncPlayQueue.noticeAtLoad(invalid, "launch", false), "groupStarted")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("playerIsOnGroupItem() and writeQueue()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a player is on the group's item only when it is following, mounted, not remounting and tracked")
+    function _()
+      m.assertTrue(syncPlayQueue.playerIsOnGroupItem(true, true, false, "ready"))
+      m.assertTrue(syncPlayQueue.playerIsOnGroupItem(true, true, false, "loading"))
+      m.assertFalse(syncPlayQueue.playerIsOnGroupItem(false, true, false, "ready"), "halted")
+      m.assertFalse(syncPlayQueue.playerIsOnGroupItem(true, false, false, "ready"), "no player")
+      m.assertFalse(syncPlayQueue.playerIsOnGroupItem(true, true, true, "ready"), "remounting")
+      m.assertFalse(syncPlayQueue.playerIsOnGroupItem(true, true, false, "idle"), "no mount reported for the group's item")
+    end function
+
+    @it("writeQueue puts the group's item back, stamped, at its position, with the group's repeat mode")
+    function _()
+      queueManager = CreateObject("roSGNode", "QueueManager")
+      queueManager.callFunc("set", [{ id: "i-9", type: "Movie" }])
+      queueManager.callFunc("setPosition", 0)
+      queueItems = syncPlayQueue.queueItemsFor([m.playlist[0]], m.items())
+      syncPlayQueue.writeQueue(queueManager, queueItems, 0, queueRepeat.ALL, true)
+      current = queueManager.callFunc("getCurrentItem")
+      m.assertEqual(current.id, "i-1")
+      m.assertTrue(syncPlayQueue.isGroupItem(current, "p-1"))
+      m.assertEqual(queueManager.callFunc("getQueue").count(), 1, "the pressed item is gone")
+      m.assertEqual(queueManager.callFunc("getRepeatMode"), queueRepeat.ALL)
+    end function
+
   end class
 end namespace

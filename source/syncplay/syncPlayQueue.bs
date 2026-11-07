@@ -109,6 +109,33 @@ namespace syncPlayQueue
     return playKind.of(queueItem.type) = playKind.VIDEO
   end function
 
+  ' Whether the mounted player is already playing the group's item (SyncPlayManager.catchUp): the
+  ' member follows, a player host is mounted and none is owed a reload, and the ready tracker has
+  ' left "idle". Only a mount of the group's item moves the tracker (a mount of anything else
+  ' halts), and an unmount returns it to idle, so a host the member joined over, or one between
+  ' two mounts, is not counted.
+  ' @param trackerPhase - the ready tracker's phase (syncPlayPlayback.newReadyTracker)
+  function playerIsOnGroupItem(following as boolean, hasPlayer as boolean, expectingRemount as boolean, trackerPhase as string) as boolean
+    return following and hasPlayer and not expectingRemount and trackerPhase <> "idle"
+  end function
+
+  ' Writes the group's queue into QueueManager: the items, the playing position, the group's
+  ' repeat mode and no Cinema Mode intro. A new playlist clears the queue first, so the viewer's
+  ' version pick and gear caps from the queue before do not carry into it. Both of
+  ' SyncPlayManager.applyQueue's ways out use it: a load, and the keep of a player already on the
+  ' group's item.
+  ' @param repeatMode - the group's RepeatMode, which a clear() forgets
+  sub writeQueue(queueManager as object, queueItems as object, index as integer, repeatMode as dynamic, clearFirst as boolean)
+    if clearFirst then queueManager.callFunc("clear")
+    queueManager.callFunc("set", queueItems)
+    queueManager.callFunc("setPosition", index)
+    ' The group's repeat mode rides on its queue (syncGroupModes): a clear() above forgot it.
+    queueManager.callFunc("setRepeatMode", repeatMode, queueRepeat.BY_GROUP)
+    ' Cinema Mode: no intro in front of the group's item. set() went through clear(), which
+    ' re-reads the setting, so this comes after it.
+    queueManager.callFunc("setPrerollStatus", false)
+  end sub
+
   ' Whether a cast's play over this Roku's player goes straight to the group (JRScene.
   ' onDeepLinkResolved): a plain play of an item the group can follow, while following. The group
   ' takes it as this viewer's own press, and its answer reloads the player in place. Tearing the
