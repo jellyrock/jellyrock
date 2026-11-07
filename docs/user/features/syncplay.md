@@ -29,6 +29,7 @@ While you're in a group, the **SyncPlay** icon is highlighted.
 ## Watch together
 
 - **Play something as you usually would.** While you're in a group, it plays for the whole group.
+- **A group mark in the player.** Press **Up** during playback: a group symbol next to the clock says this video plays with the group. It dims while you have stepped out of the group's video.
 - **Use the remote as usual.** Play, pause, seeking, skipping and next or previous all go to the group, so everyone moves together.
 - **People coming and going.** A message tells you when someone joins or leaves the group.
 - **Staying in step.** JellyRock keeps your Roku on the group's clock by itself. If a resume leaves it noticeably ahead or behind, it corrects itself: the picture holds for a moment and starts again in step with the group. If the sound from your TV still lags the other people's devices, raise **SyncPlay Time Offset** until they line up, up to 500 milliseconds.

@@ -23,7 +23,7 @@ namespace tests
       if not m.global.doesExist("syncPlayManager") then m.global.addField("syncPlayManager", "node", false)
       m.previousManager = m.global.syncPlayManager
       manager = CreateObject("roSGNode", "ContentNode")
-      manager.addFields({ following: true, sync: {} })
+      manager.addFields({ following: true, inGroup: true, sync: {} })
       m.global.syncPlayManager = manager
       m.osd = CreateObject("roSGNode", "OSD")
       ' Hidden, as VideoPlayerView.xml declares it, so opening it is a change.
@@ -62,6 +62,14 @@ namespace tests
 
     private function button(id as string) as object
       return m.osd.findNode(id)
+    end function
+
+    ' A color read back from a node is an RGBA integer; the theme constants are strings.
+    ' Round-trip the expected one through a Poster so both sides read the same way.
+    private function asBlend(color as dynamic) as dynamic
+      p = CreateObject("roSGNode", "Poster")
+      p.blendColor = color
+      return p.blendColor
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -124,6 +132,38 @@ namespace tests
       m.assertTrue(m.button("itemBack").isEnabled)
     end function
 
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("The SyncPlay mark reads the membership as the OSD opens")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("following: the mark shows in the text color")
+    function _()
+      m.osd.itemData = m.item()
+      m.osd.visible = true
+      mark = m.osd.findNode("syncPlayMark")
+      m.assertTrue(mark.visible)
+      m.assertEqual(mark.blendColor, m.asBlend(m.global.constants.colorTextPrimary))
+    end function
+
+    @it("halted: the mark shows dim")
+    function _()
+      m.global.syncPlayManager.following = false
+      m.osd.itemData = m.item()
+      m.osd.visible = true
+      mark = m.osd.findNode("syncPlayMark")
+      m.assertTrue(mark.visible)
+      m.assertEqual(mark.blendColor, m.asBlend(m.global.constants.colorTextDisabled))
+    end function
+
+    @it("outside a group there is no mark")
+    function _()
+      m.global.syncPlayManager.following = false
+      m.global.syncPlayManager.inGroup = false
+      m.osd.itemData = m.item()
+      m.osd.visible = true
+      m.assertFalse(m.osd.findNode("syncPlayMark").visible)
+    end function
   end class
 
 end namespace

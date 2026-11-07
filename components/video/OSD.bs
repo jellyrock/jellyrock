@@ -12,6 +12,14 @@ import "pkg:/source/utils/playbackSettingsMenu.bs"
 import "pkg:/source/utils/queueRepeat.bs"
 import "pkg:/source/utils/translate.bs"
 
+' The SyncPlay mark's glyph (images/icons/groups_fhd.png, 63 px), its gap to the clock's digits,
+' the action-safe right edge it takes when the clock is hidden, and its top: centered on the
+' clock's 64 px text box at y 39 (Clock.xml).
+const SYNCPLAY_MARK_SIZE = 63
+const SYNCPLAY_MARK_GAP = 24
+const SYNCPLAY_MARK_RIGHT = 1824
+const SYNCPLAY_MARK_TOP = 40
+
 sub init()
   m.log = new log.Logger("OSD")
   m.inactivityTimer = m.top.findNode("inactivityTimer")
@@ -33,6 +41,7 @@ sub init()
   m.progressBar = m.top.findNode("progressBar")
   m.progressBarBackground = m.top.findNode("progressBarBackground")
   m.clock = m.top.findNode("clock")
+  m.syncPlayMark = m.top.findNode("syncPlayMark")
 
   if isValid(m.clock)
     m.clock.observeField("minutes", "setEndsAtText")
@@ -764,6 +773,31 @@ end sub
 sub refreshFromQueue()
   applyStepButtons()
   applyGearState()
+  applySyncPlayMark()
+end sub
+
+' The SyncPlay mark: shown while in a group, in the text color while following and dim while
+' halted (the overhang icon's disabled look), read from the manager as the OSD opens and never
+' cached. It sits left of the clock's digits, whose width the time decides, and takes the
+' clock's place when the clock is hidden.
+sub applySyncPlayMark()
+  manager = m.global.syncPlayManager
+  inGroup = isValid(manager) and manager.inGroup = true
+  m.syncPlayMark.visible = inGroup
+  if not inGroup then return
+  constants = m.global.constants
+  if manager.following = true
+    m.syncPlayMark.blendColor = constants.colorTextPrimary
+  else
+    m.syncPlayMark.blendColor = constants.colorTextDisabled
+  end if
+  right = SYNCPLAY_MARK_RIGHT
+  clockGroup = m.top.findNode("clockGroup")
+  if isValid(clockGroup) and clockGroup.visible
+    rect = clockGroup.boundingRect()
+    if rect.width > 0 then right = rect.x - SYNCPLAY_MARK_GAP
+  end if
+  m.syncPlayMark.translation = [right - SYNCPLAY_MARK_SIZE, SYNCPLAY_MARK_TOP]
 end sub
 
 sub onVisibleChanged()
@@ -1231,6 +1265,7 @@ sub onDestroy()
   m.top.unobserveField("positionTime")
 
   ' Unobserve clock (guarded: may be invalid if clock node not found in init)
+  m.syncPlayMark = invalid
   if isValid(m.clock)
     m.clock.unobserveField("minutes")
     m.clock = invalid

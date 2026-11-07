@@ -194,6 +194,11 @@ it("another member's Pause pauses this Roku with the OSD up, and its Unpause pla
     timeout: 10000,
     label: "the node paused on the group's pause",
   });
+  // The OSD's SyncPlay mark, left of the clock while following (OSD.applySyncPlayMark).
+  expect(await player()('#osd.#syncPlayMark.visible'), 'the group mark shows in the OSD').toBe(
+    true,
+  );
+  if (CAPTURE) await captureRawUI('syncPlayOsdMark');
   await syncPlay(member, 'Unpause');
   await waitFor('state', (s) => s === 'playing', {
     read: playerState,
