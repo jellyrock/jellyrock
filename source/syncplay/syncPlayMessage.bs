@@ -111,7 +111,8 @@ namespace syncPlayMessage
   ' --- helpers ---
 
   ' An id in the form the server's websocket and REST answers write it: lowercase, no dashes. The
-  ' plugin's long poll writes GUIDs with dashes (plain System.Text.Json), and a dashed id would
+  ' companion plugin's long poll wrote GUIDs with dashes before its PR #33 (plain System.Text.Json;
+  ' it now serializes with the server's own options), and a dashed id from an older plugin would
   ' never match the dash-free item ids the queue fetch returns. Every id the parser reads goes
   ' through here, so the rest of the layer compares ids in one form. Empty or missing stays "".
   function serverId(value as dynamic) as string

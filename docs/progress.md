@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-06
+last-updated: 2026-11-07
 ---
 
 # Progress
@@ -842,14 +842,6 @@ Closes after a manual check: pause from another member (jellyfin-web) within a s
 
 Not checked: whether the flash of the default background is visible on a device. Check that first; fix by tracking "fetched" separately (an `isSplashscreenLoaded` field) or declaring the field so it starts invalid. Not done now: it needs a device check and an app change outside the screenshot work.
 
-#### The SyncPlay halt toast after Back promises 'What plays now is your own', but the next video play re-follows the group `[fid: syncplay-halt-toast-promises-local]` `[captured 2026-10-29]`
-
-`MessageSyncPlayStoppedFollowing` ("No longer following {0}. What plays now is your own.") is the toast for every `halted` notice `SyncPlayManager.haltFollowing` sends, but it is true for only one of the five halts that send it: "a player mounted for an item the group is not playing" (music or Live TV played locally). After the other four (Back, "the group's queue could not be loaded", "the group is playing an item this player cannot follow", "the player would not stay paused"), `SyncPlayManager.claimPlay` hands the member's next video play to the group and follows again, as decision `syncplay-play-handed-to-group` intends. All three arrived together in 08759649 (#1270); only `en_US.json` has the key, and it ships in 3.3.0. Found while writing `docs/user/features/syncplay.md`.
-
-Options: `reword` (recommended): make the one string true after every halt, for example "No longer following {0}. Pick Resume with Group in the SyncPlay menu to catch up." (`en_US.json` only). `split`: keep "What plays now is your own" for the local-play halt and give the other four a new message (a new key, `haltFollowing` passes which kind, `syncPlayMenu.toastFor`, both specs). Not offered: making a halted member's play local, which reverses the accepted decision.
-
-Not checked: how the toast looks on a device; whether jellyfin-web words this case differently.
-
 #### Recently Added in a library with no collection type follows the episode image setting `[fid: recently-added-follows-episode-image-setting]` `[captured 2026-10-31]`
 
 `HomeRows` uses `JRRowItem`, so an episode in a Recently Added row for a library with no collection type follows the **Episode Images Next Up** setting. The setting's text names only Next Up and Continue Watching, so what it covers and what it says differ. Surfaced while fixing the Favorites cell in #1290.
@@ -1134,12 +1126,6 @@ Investigate before planning:
 - The exact /pair field name and version handling on both sides.
 
 The app-side half (one name helper used by the auth header and `buildPairPayload`, plus its unit spec) waits on the /pair field this plugin settles. When the contract is decided, send a message back to jellyrock/jellyrock naming the field and its rules.
-
-#### Remove the SyncPlay on-off switch once phase F ships `[fid: syncplay-remove-enabled-switch]` `[captured 2026-10-28]`
-
-`syncPlayMenu.IS_ENABLED` is a switch added in PR #1270 so a release could ship with SyncPlay hidden if phases E and F were not ready: set to `false`, `canJoin` refuses every user, so the cluster icon (the one way into a group), its menu and the badge's group-list reads all go away. It ships `true`. It is a temporary carve-out, not a setting.
-
-Closes when the in-player SyncPlay surface (phase F of epic #1251) ships: delete the constant, fold `joinAllowed` back into `canJoin`, and drop the two `syncPlayMenu.spec.bs` cases that drive the switch.
 
 #### SyncPlay in a group offers no queue edits from the Roku, and voice fast-forward and rewind are unchecked `[fid: syncplay-queue-edits-shuffle-voice-scrub]` `[captured 2026-10-29]`
 

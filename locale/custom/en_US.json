@@ -742,7 +742,7 @@
   "MessageSyncPlayNeedsPlugin": "SyncPlay on an HTTPS server needs the JellyRock plugin installed on that server.",
   "MessageSyncPlayPlayedToGroup": "Playing this for {0}.",
   "MessageSyncPlayResumeFailed": "Couldn't resume with {0}. Try again from the SyncPlay menu.",
-  "MessageSyncPlayStoppedFollowing": "No longer following {0}. What plays now is your own.",
+  "MessageSyncPlayStoppedFollowing": "No longer following {0}. Pick Resume with Group in the SyncPlay menu to catch up.",
   "MessageSyncPlaySyncingWithGroup": "Syncing with the group",
   "MessageSyncPlayTimeOffset": "How many milliseconds ahead of the group this Roku plays while in a SyncPlay group, to make up for the delay your TV or sound system adds. Raise it if this Roku sounds behind the others. 0 keeps it on the group's clock.",
   "MessageSyncPlayUserJoined": "{0} has joined the group.",

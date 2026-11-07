@@ -481,9 +481,12 @@ it('Play on a movie while in a group goes to the group, whose answer starts the 
 
   // Back halts: the member stays in the group, the player closes, and the viewer is told.
   await stopPlayback();
-  await waitToast(`No longer following ${GROUP_NAME}. What plays now is your own.`, {
-    label: 'the halted toast',
-  });
+  await waitToast(
+    `No longer following ${GROUP_NAME}. Pick Resume with Group in the SyncPlay menu to catch up.`,
+    {
+      label: 'the halted toast',
+    },
+  );
   expect(await getGlobalVal('syncPlayManager.inGroup')).toBe(true);
   expect(await getGlobalVal('syncPlayManager.following')).toBe(false);
 });
@@ -530,9 +533,12 @@ it('while halted the menu offers Resume with Group, which opens the player follo
 
   // Back halts again, leaving the state the next case starts from.
   await stopPlayback();
-  await waitToast(`No longer following ${GROUP_NAME}. What plays now is your own.`, {
-    label: 'the halted toast after the resume',
-  });
+  await waitToast(
+    `No longer following ${GROUP_NAME}. Pick Resume with Group in the SyncPlay menu to catch up.`,
+    {
+      label: 'the halted toast after the resume',
+    },
+  );
   expect(await getGlobalVal('syncPlayManager.following')).toBe(false);
 });
 
