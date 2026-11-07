@@ -48,7 +48,7 @@ import {
 } from './run-record.js';
 import { acquireDeviceLock } from './device-lock.js';
 import { startConsoleCapture } from './lib/console-capture.js';
-import { signalGroup } from './lib/process-group.js';
+import { relayJobControl, signalGroup } from './lib/process-group.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const watch = process.argv.includes('--watch');
@@ -177,7 +177,9 @@ child = spawn(
   // `detached` makes Vitest lead its own process group, so every signal below reaches
   // its forked workers too (`signalGroup`). A terminal Ctrl-C therefore reaches only this
   // process, which forwards it; without the group, a `kill <pid>` of this runner left the
-  // worker running after the restore.
+  // worker running after the restore. Two things the terminal no longer does for Vitest
+  // are done elsewhere: Ctrl-Z is relayed below, and a runner killed outright (SIGKILL,
+  // nothing forwarded) is caught by the watchdog in `tests/rta/setup/global-setup.js`.
   {
     cwd: repoRoot,
     stdio: 'inherit',
@@ -185,6 +187,7 @@ child = spawn(
     env: { ...process.env, RTA_RUNNER: '1', ...run.env },
   },
 );
+relayJobControl(child);
 
 let interrupting = false;
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
