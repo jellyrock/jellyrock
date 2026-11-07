@@ -405,6 +405,32 @@ namespace tests
       m.assertFalse(syncPlayQueue.isGroupsPlayingItem({ id: "i-1" }, { playlist: playlist, playingItemId: "p-2" }))
     end function
 
+    @it("is false for a group that stopped: a Stop at or after the last queue update keeps the queue but plays nothing")
+    function _()
+      state = { playlist: m.playlist, playingItemId: "p-2", lastUpdateMs: 1000& }
+      m.assertFalse(syncPlayQueue.isGroupsPlayingItem({ id: "i-2", type: "Movie" }, state, { command: "Stop", emittedAtMs: 1000& }))
+      m.assertFalse(syncPlayQueue.isGroupsPlayingItem({ id: "i-2", type: "Movie" }, state, { command: "Stop", emittedAtMs: 2500& }))
+    end function
+
+    @it("is still true when the Stop predates the last queue update: a newer queue is playing")
+    function _()
+      state = { playlist: m.playlist, playingItemId: "p-2", lastUpdateMs: 1000& }
+      m.assertTrue(syncPlayQueue.isGroupsPlayingItem({ id: "i-2", type: "Movie" }, state, { command: "Stop", emittedAtMs: 999& }))
+    end function
+
+    @it("is still true after any command but a Stop, or with no command")
+    function _()
+      state = { playlist: m.playlist, playingItemId: "p-2", lastUpdateMs: 1000& }
+      m.assertTrue(syncPlayQueue.isGroupsPlayingItem({ id: "i-2", type: "Movie" }, state, { command: "Unpause", emittedAtMs: 2500& }))
+      m.assertTrue(syncPlayQueue.isGroupsPlayingItem({ id: "i-2", type: "Movie" }, state, invalid))
+    end function
+
+    @it("is still true when the queue's last update time is unknown: a Stop cannot be placed against it, and no crash")
+    function _()
+      state = { playlist: m.playlist, playingItemId: "p-2", lastUpdateMs: invalid }
+      m.assertTrue(syncPlayQueue.isGroupsPlayingItem({ id: "i-2", type: "Movie" }, state, { command: "Stop", emittedAtMs: 2500& }))
+    end function
+
     @it("is false while the group plays nothing, and for no item")
     function _()
       m.assertFalse(syncPlayQueue.isGroupsPlayingItem({ id: "i-1" }, { playlist: m.playlist, playingItemId: "" }))

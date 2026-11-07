@@ -363,7 +363,7 @@ function claimPlay(start = invalid as dynamic) as boolean
   ' Every launcher reaches here, so the rule is the same for a press, a quick play, a deep link
   ' and a cast. The server answers SetPlaylistItem for the playing entry by starting the video
   ' over for every member, and nobody asked for that.
-  if syncPlayQueue.isGroupsPlayingItem(queueItems[position], m.state)
+  if syncPlayQueue.isGroupsPlayingItem(queueItems[position], m.state, m.lastCommand)
     catchUp(start)
     return true
   end if

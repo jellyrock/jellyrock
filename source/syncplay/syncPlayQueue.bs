@@ -122,12 +122,18 @@ namespace syncPlayQueue
   ' queued it (SyncPlayManager.claimPlay). The group never takes such a play: the server answers
   ' SetPlaylistItem by starting the item over for every member (Group.SetPlayingItem), so the
   ' member loads the group's item at the group's position instead. Read from the playing entry,
-  ' so an item the playlist holds twice counts only where it plays now.
+  ' so an item the playlist holds twice counts only where it plays now. A group that stopped
+  ' keeps its queue and sends no state update, so it is not playing it: a catch-up to it gets
+  ' the player stopped, and the play goes to the group, which starts it. With the queue's update
+  ' time unknown the group counts as playing: a wrong "stopped" would restart it for everyone.
   ' @param state - syncPlayState
-  function isGroupsPlayingItem(queueItem as dynamic, state as object) as boolean
+  ' @param lastCommand - the last group command applied, scheduled or recorded, or invalid
+  function isGroupsPlayingItem(queueItem as dynamic, state as object, lastCommand = invalid as dynamic) as boolean
     if not isValid(queueItem) then return false
     entry = playingEntry(state)
-    return isValid(entry) and entry.itemId = queueItem.id
+    if not isValid(entry) or entry.itemId <> queueItem.id then return false
+    if isValid(lastCommand) and lastCommand.command = "Stop" and syncPlayTime.isWholeNumber(lastCommand.emittedAtMs) and syncPlayTime.isWholeNumber(state.lastUpdateMs) and syncPlayTime.asLong(lastCommand.emittedAtMs) >= state.lastUpdateMs then return false
+    return true
   end function
 
   ' Whether a QueueManager item is the one the group is playing: queueItemsFor stamps the

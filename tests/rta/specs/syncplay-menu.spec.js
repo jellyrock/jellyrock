@@ -659,6 +659,50 @@ it("a halted member's Play on the group's own video catches up at the group's po
   expect(await getActiveVal('subtype()'), 'nothing played after Back').toBe('ItemDetails');
 });
 
+it("a halted member's Play on the video of a group that stopped starts the group again: the player stays open", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  // The case above leaves the Roku halted in the group, the group still on the hero movie.
+  expect(await getGlobalVal('syncPlayManager.following'), 'halted by its Back').toBe(false);
+  await backOutToHome();
+  await waitHome();
+  // The server keeps the queue on a Stop and sends no state update, so the stopped group still
+  // names the hero. A catch-up to it would load a player the idle server then stops again.
+  await syncPlay(member, 'Stop');
+  await waitFor('syncPlayManager.sync.lastCommand.command', (v) => v === 'Stop', {
+    read: getGlobalVal,
+    timeout: 20000,
+    label: "the group's Stop recorded while halted",
+  });
+  await startPlayback(ctx);
+  await waitFor('#jrDialog.id', (v) => v === 'jrDialog', {
+    timeout: 20000,
+    label: "the confirm dialog: the stopped group's play is asked like any other",
+  });
+  // Play for Everyone: the play is posted, and an idle group starts it for every member.
+  await press(ecp.Key.Right);
+  await press(ecp.Key.Ok);
+  await waitFor('subtype()', (v) => v === 'PlayerHostView', {
+    read: getActiveVal,
+    timeout: 30000,
+    interval: 250,
+    label: 'the player mounted from the group starting',
+  });
+  await waitMediaPlaying('the stopped group, started again', 60000);
+  expect(await getGlobalVal('syncPlayManager.following')).toBe(true);
+  expect(await getActiveVal('subtype()'), 'the player did not close on a Stop').toBe(
+    'PlayerHostView',
+  );
+  // Back halts again, leaving the state the next case starts from.
+  await stopPlayback();
+  await waitToast(
+    `No longer following ${GROUP_NAME}. Pick Resume with Group in the SyncPlay menu to catch up.`,
+    { label: 'the halted toast after the restart' },
+  );
+});
+
 it("a halted member's play asks first over its screen; Cancel keeps the group's playback, and another member's new playlist closes the question", async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(

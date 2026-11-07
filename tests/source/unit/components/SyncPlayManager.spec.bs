@@ -560,6 +560,44 @@ namespace tests
       m.assertTrue(appWaits.isOpen(start), "the start waits for the group's item to load")
     end function
 
+    @it("a halted member's play of the video a stopped group was watching is held: the group's answer starts it")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      ' The server keeps the queue on a Stop and sends no state update, only the command.
+      m.manager.frame = m.command("Stop")
+      m.assertEqual(m.manager.sync.lastCommand.command, "Stop")
+      m.manager.notice = invalid
+      m.pressPlay([{ id: "i1", type: "Movie" }])
+      m.assertTrue(m.manager.callFunc("claimPlay", promises.create()))
+      m.assertTrue(m.manager.playHeld, "asked like any play that replaces what the group is doing")
+      m.assertEqual(m.manager.notice.kind, "confirmPlay")
+      m.assertFalse(m.manager.following)
+      m.assertEqual(posts.getChildCount(), 0, "nothing is posted before the viewer answers")
+    end function
+
+    @it("a following member's play of the video a stopped group was watching posts SetPlaylistItem and fetches nothing")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      m.manager.frame = m.command("Stop")
+      ' Following again with the Stop still the last command: the viewer confirms a play of another
+      ' video, which follows again and posts it.
+      m.pressPlay([{ id: "i2", type: "Movie" }])
+      m.assertTrue(m.manager.callFunc("claimPlay", promises.create()))
+      m.assertTrue(m.manager.callFunc("confirmPlay"))
+      m.assertTrue(m.manager.following)
+      m.assertEqual(m.manager.sync.lastCommand.command, "Stop")
+      m.manager.notice = invalid
+      postsBefore = posts.getChildCount()
+      m.pressPlay([{ id: "i1", type: "Movie" }])
+      m.assertTrue(m.manager.callFunc("claimPlay", promises.create()))
+      m.assertFalse(m.manager.playHeld)
+      m.assertEqual(posts.getChildCount(), postsBefore + 1, "the play is posted to the group")
+      m.assertTrue(m.lastPost(posts).url.instr("/SyncPlay/SetPlaylistItem") >= 0)
+      m.assertEqual(m.manager.notice.kind, "playedToGroup", "told as a play handed over, not as a catch-up")
+    end function
+
     @it("a halted member's play the viewer cancels goes nowhere and ends the start the press opened")
     function _()
       posts = m.capturePosts()
