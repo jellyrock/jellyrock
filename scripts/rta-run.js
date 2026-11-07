@@ -48,6 +48,7 @@ import {
 } from './run-record.js';
 import { acquireDeviceLock } from './device-lock.js';
 import { startConsoleCapture } from './lib/console-capture.js';
+import { signalGroup } from './lib/process-group.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const watch = process.argv.includes('--watch');
@@ -105,7 +106,7 @@ for (const event of ['uncaughtException', 'unhandledRejection']) {
       // permanently unsettled, which is exactly right: on this path the handler owns
       // the exit, and the record's net gets to label the run for what it was.
       child.removeAllListeners('exit');
-      child.kill('SIGKILL');
+      signalGroup(child, 'SIGKILL');
       // Same trade the second-interrupt path makes: the registry is left as the
       // suite had it, and the snapshot on disk is the repair.
       console.log('[rta] the device is left dirty. Recover: npm run rta:restore');
@@ -172,7 +173,17 @@ child = spawn(
   ],
   // `run.env` carries RTA_RUN_DIR: the child is a separate process, so it cannot
   // inherit which directory this run's records belong in any other way.
-  { cwd: repoRoot, stdio: 'inherit', env: { ...process.env, RTA_RUNNER: '1', ...run.env } },
+  //
+  // `detached` makes Vitest lead its own process group, so every signal below reaches
+  // its forked workers too (`signalGroup`). A terminal Ctrl-C therefore reaches only this
+  // process, which forwards it; without the group, a `kill <pid>` of this runner left the
+  // worker running after the restore.
+  {
+    cwd: repoRoot,
+    stdio: 'inherit',
+    detached: true,
+    env: { ...process.env, RTA_RUNNER: '1', ...run.env },
+  },
 );
 
 let interrupting = false;
@@ -186,7 +197,7 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
       // server underneath three restore attempts), which is far worse than a
       // device left dirty, because it silently fights the recovery.
       console.log('\n[rta] second interrupt — abandoning restore. Recover: npm run rta:restore');
-      child.kill('SIGKILL');
+      signalGroup(child, 'SIGKILL');
       // Fold before the exit rather than leaving it to the net, which would label
       // an operator's deliberate abandon `crashed`. The device is left dirty here;
       // the RECORD does not have to be wrong as well.
@@ -202,7 +213,9 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
       `\n[rta] ${signal} — stopping the suite, then restoring the device (~30s).` +
         ' Ctrl-C again to abandon.',
     );
-    child.kill('SIGTERM'); // a terminal Ctrl-C already reached it; this covers the rest
+    // Forward the signal we got, to the whole group: Vitest's worker is a grandchild.
+    // SIGINT stays SIGINT so Vitest's own graceful handling still runs.
+    signalGroup(child, signal);
   });
 }
 
