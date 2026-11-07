@@ -2,6 +2,8 @@
 
 JellyRock is a Jellyfin client for Roku, written in **BrighterScript** (`.bs`, transpiled to `.brs`) with **Roku SceneGraph** (`.xml`) for the UI. The Jellyfin REST API is wrapped by an in-house client and a persistent Task pool: see [`source/api/CLAUDE.md`](source/api/CLAUDE.md) and [`docs/architecture/api.md`](docs/architecture/api.md).
 
+**JellyRock's upstream is [jellyfin-roku-legacy](https://github.com/jellyfin-archive/jellyfin-roku-legacy), forked at v2.2.5.** The repo now named `jellyfin/jellyfin-roku` is a separate fork (viv) that branched from the development line after v2.1.4, the last release in its history, so its issues and PRs are a sibling project's, not upstream's. History up to that branch point is shared by both.
+
 ## ⚠️ Mandatory rules
 
 1. Don't make things up or assume them.

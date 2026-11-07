@@ -10,8 +10,10 @@ import "pkg:/source/enums/LiveStreamStage.bs"
 import "pkg:/source/enums/MediaSegmentAction.bs"
 import "pkg:/source/enums/MediaSegmentType.bs"
 import "pkg:/source/enums/PlaybackEndReport.bs"
+import "pkg:/source/enums/PlaybackErrorRetry.bs"
+import "pkg:/source/enums/ReencodeVerdict.bs"
 import "pkg:/source/enums/SubtitleSelection.bs"
-import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/syncplay/syncPlayHooks.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/appWaits.bs"
@@ -26,8 +28,10 @@ import "pkg:/source/utils/playbackCaps.bs"
 import "pkg:/source/utils/playbackCheckIn.bs"
 import "pkg:/source/utils/playbackEnd.bs"
 import "pkg:/source/utils/playbackErrorInfo.bs"
+import "pkg:/source/utils/playbackRetry.bs"
 import "pkg:/source/utils/queueBackdropHelper.bs"
 import "pkg:/source/utils/queueRepeat.bs"
+import "pkg:/source/utils/reencodeCheck.bs"
 import "pkg:/source/utils/screenReadiness.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamOrigin.bs"
@@ -55,6 +59,14 @@ sub init()
   ' injects this line only when init() does not already open with it, so keeping it
   ' first is what stops the build from carrying a second, redundant copy.
   m.isDestroyed = false
+
+  ' The re-encode check (reencodeCheck.bs) belongs to one load. startVideoLoad runs below, before the
+  ' timer is bound, so these exist first. The seq is bumped to cancel: an answer carries the seq it
+  ' was asked under and is dropped when it no longer matches.
+  m.reencodeCheckSeq = 0
+  m.reencodeAttempt = 0
+  m.reencodeCapBps = 0&
+  m.holdPausedAfterReload = false ' a capped restart of a paused stream pauses again at its first frame
 
   ' Open the readiness ledger for one playback start. This is the RTA `osd` and
   ' `trickplay` screens' load: both navs drive `startPlayback` and then wait for the
@@ -87,6 +99,9 @@ sub init()
 
   ' Load meta data
   m.isIntro = false
+  ' The retries this playback has taken (playbackRetry.noRetryFlags): every load reads them
+  ' (startVideoLoad), retryPlayback adds one, and a version switch starts over.
+  m.retryFlags = noRetryFlags()
   ' The item each run of the video load loads (startVideoLoad): the queue item, later the one
   ' that loaded, which is a Cinema Mode intro's own id while the intro plays.
   m.loadItemId = m.currentItem.id
@@ -127,6 +142,7 @@ sub init()
   m.osd.observeField("action", "onOSDAction")
   m.osd.observeField("playbackCapsPick", "onPlaybackCapsPicked")
   m.osd.observeField("repeatModePick", "onRepeatModePicked")
+  m.osd.observeField("syncPlayPick", "onSyncPlayPicked")
   m.trickplayCarousel = m.top.findNode("trickplayCarousel")
 
   ' Trickplay seek position tracking - we parse Roku's trickPlayBar text to get
@@ -142,6 +158,13 @@ sub init()
   m.groupSeekFallbackTimer = m.top.findNode("groupSeekFallbackTimer")
   m.pauseCheck = new playbackCheckIn.PauseCheck(m.log, "pauseReadBack-")
   m.bufferCheckTimer = m.top.findNode("bufferCheckTimer")
+  ' Watches a "playing" node whose position never moves, which bufferCheck cannot see (it runs only
+  ' while buffering). Its own timer, registered once here and driven by `control` alone, so it
+  ' cannot double up with bufferCheckTimer's observe-on-enter toggle.
+  m.playingProgressTimer = m.top.findNode("playingProgressTimer")
+  m.playingProgressTimer.duration = STALL_WINDOW_SECONDS
+  m.playingProgressTimer.observeField("fire", "playingProgressCheck")
+  m.playingProgressPosition = 0.0 ' the position at the last tick, or when playing began
 
   ' Every m.top observer is registered here, once, and released only in onDestroy.
   ' Never unobserve an m.top field mid-life: it can remove observers OTHER components
@@ -165,6 +188,8 @@ sub init()
 
   m.playbackTimer.observeField("fire", "reportPlayback")
   m.pauseConfirmTimer.observeField("fire", "onPauseConfirmDue")
+  m.reencodeCheckTimer = m.top.findNode("reencodeCheckTimer")
+  m.reencodeCheckTimer.observeField("fire", "onReencodeCheckDue")
   m.groupSeekFallbackTimer.observeField("fire", "onGroupSeekOverdue")
   m.bufferPercentage = 0 ' Track whether content is being loaded
   m.isPlayReported = false
@@ -174,7 +199,7 @@ sub init()
   m.loadedMediaSourceId = ""
   m.playerParked = false ' see parkPlayerAfterSupersede
   m.top.transcodeReasons = []
-  m.bufferCheckTimer.duration = 30
+  m.bufferCheckTimer.duration = STALL_WINDOW_SECONDS
 
   if userSettings.uiDesignHideClock = true
     clockNode = findNodeBySubtype(m.top, "clock")
@@ -308,10 +333,19 @@ end sub
 ' @param {string} action - skip action to take
 sub handleItemSkipAction(action as string)
   ' In a SyncPlay group the step is the group's: the server's queue update moves every member.
+  ' A step whose target is this item (RepeatOne, or RepeatAll on a one-item playlist) has the
+  ' server start it over for everyone, so the press says why here as it does outside a group.
   group = syncPlayHooks.groupQueue()
   if isValid(group)
-    if action = "itemnext" and group.hasNext then syncPlayHooks.control({ kind: "next" })
-    if action = "itemback" and group.hasPrevious then syncPlayHooks.control({ kind: "previous" })
+    asked = false
+    stepTarget = group.previousIndex
+    if action = "itemnext"
+      stepTarget = group.nextIndex
+      if group.hasNext then asked = syncPlayHooks.control({ kind: "next" })
+    else if action = "itemback" and group.hasPrevious
+      asked = syncPlayHooks.control({ kind: "previous" })
+    end if
+    if asked and stepTarget = group.index then sayPlayingAgain()
     return
   end if
 
@@ -352,12 +386,14 @@ function stepLocalQueue(action as string) as boolean
   ' A press that plays this item again says why, once: the viewer asked for the next item and
   ' gets this one. An automatic replay at the end says nothing, since that is what repeat is for.
   ' A press on an intro moves to the launched item, the next thing to play, so it says nothing.
-  if targetPosition = queuePosition and not isTvChannel and not m.isIntro
-    displayToast(translate(translationKeys.MessageRepeatPlayingAgain), "info")
-  end if
+  if targetPosition = queuePosition and not isTvChannel and not m.isIntro then sayPlayingAgain()
   switchToQueueItem(queueManager, targetPosition)
   return true
 end function
+
+sub sayPlayingAgain()
+  displayToast(translate(translationKeys.MessageRepeatPlayingAgain), "info")
+end sub
 
 ' The channel's playback start is opened before this player stops, and the player mounted next
 ' takes it (QueueManager.takePlaybackStart), so nothing this player does on its way out can end it.
@@ -811,15 +847,43 @@ end sub
 
 ' The viewer picked a repeat mode in the OSD's gear menu. It belongs to this queue, is not
 ' saved, and nothing reloads: the host reads it when this item finishes, and the OSD's step
-' buttons read it as the OSD opens.
+' buttons read it as the OSD opens. In a SyncPlay group the mode is the group's: the pick goes
+' to the server (syncPlayHooks.control), whose queue update writes it onto every member's queue
+' (SyncPlayManager.syncGroupModes), this one included, and tells the OSD then.
 sub onRepeatModePicked()
   mode = m.osd.repeatModePick
   if not isValidAndNotEmpty(mode) then return
-  m.global.queueManager.callFunc("setRepeatMode", mode)
+  if syncPlayHooks.control({ kind: "repeat", mode: mode })
+    m.log.info("Repeat mode asked of the group", "mode", mode)
+    return
+  end if
+  m.global.queueManager.callFunc("setRepeatMode", mode, queueRepeat.BY_VIEWER)
   m.log.info("Repeat mode picked", "mode", mode)
   ' The step buttons and the gear's tint read the mode: show the pick now. The Next Episode
   ' prompt reads it on each position tick (checkTimeToDisplayNextEpisode).
   m.osd.callFunc("refreshFromQueue")
+end sub
+
+' The viewer picked one of the gear's SyncPlay rows ({ kind, value }, OSD.syncPlayPick). A shuffle
+' goes to the group, which answers every member with its reordered playlist. The time offset is
+' the viewer's own saved setting (the same one the Playback settings screen edits): the manager
+' takes it at once and corrects the drift it makes, with no Unpause (SyncPlayManager.control).
+' Leave Group posts the Leave; what plays goes on as the viewer's own.
+sub onSyncPlayPicked()
+  pick = m.osd.syncPlayPick
+  if not isValid(pick) or not isValidAndNotEmpty(pick.kind) then return
+  if pick.kind = "shuffle"
+    if syncPlayHooks.control({ kind: "shuffle", mode: pick.value }) then m.log.info("Shuffle asked of the group", "mode", pick.value)
+  else if pick.kind = "timeOffset"
+    if not isValid(pick.value) then return
+    user.settings.Save("playbackSyncPlayTimeOffsetMs", int(pick.value))
+    m.log.info("SyncPlay time offset picked", "ms", int(pick.value))
+    ' The manager takes the saved setting at once and corrects the drift it makes, without an Unpause.
+    syncPlayHooks.control({ kind: "timeOffset" })
+    m.osd.callFunc("refreshFromQueue")
+  else if pick.kind = "leave"
+    if syncPlayHooks.leaveGroup() then m.log.info("Leave Group picked in the player")
+  end if
 end sub
 
 ' onVideoSourceChange: Handles video source switching from OSD
@@ -876,6 +940,8 @@ sub onVideoSourceChange()
   m.videoLoadMediaSourceId = newSourceId
   m.isVersionSwitchLoading = true
   m.versionSwitchAudioIndex = audioStreamIdx
+  ' Another file: what a retry learned about the last one does not apply to it.
+  m.retryFlags = noRetryFlags()
   ' Subtitles reset to auto-detect for the new source
   startVideoLoad(audioStreamIdx, SubtitleSelection.NOT_SET)
 end sub
@@ -1218,7 +1284,7 @@ sub onVideoContentLoaded(event as object)
   if videoContent[0].needsServerStream = true
     m.log.warn("Upstream URL unreachable from this device; asking the server for its stream", "itemId", m.top.id)
     releaseUnplayedLiveStream(loadedLiveStream, "a load handed to the server's stream")
-    retryPlayback(false, true)
+    retryPlayback(PlaybackErrorRetry.TRANSCODE)
     return
   end if
 
@@ -1259,6 +1325,7 @@ sub onVideoContentLoaded(event as object)
   m.top.cachedPlaybackInfo = videoContent[0].playbackInfo
   m.top.isShortcut = isValid(videoContent[0].meta) and isShortcutPath(videoContent[0].meta.path)
   m.top.isDoviDirectPlayFallbackAvailable = isValid(videoContent[0].isDoviDirectPlayFallbackAvailable) and videoContent[0].isDoviDirectPlayFallbackAvailable
+  m.top.isReencodeFallbackAvailable = isValid(videoContent[0].isReencodeFallbackAvailable) and videoContent[0].isReencodeFallbackAvailable
   m.top.isTranscodeAvailable = isValid(videoContent[0].isTranscodeAvailable) and videoContent[0].isTranscodeAvailable
 
   ' Not a user selection either: without this, onVideoSourceChange reloads in a loop.
@@ -1274,9 +1341,10 @@ sub onVideoContentLoaded(event as object)
   if isValidAndNotEmpty(m.loadedMediaSourceId) then m.videoLoadMediaSourceId = m.loadedMediaSourceId
   m.isVersionSwitchLoading = false
 
-  ' A later reload (an audio or subtitle change) is a fresh evaluation, not a retry: its run
-  ' starts with both retry flags off (startVideoLoad), and the report must say so too.
-  m.top.isDoviPreservationBypassed = false
+  ' What this run asked the server for, from its own inputs: a reload carries the retry flags
+  ' (startVideoLoad), so the report reads them for every stream, not only a retry's.
+  m.top.isDoviPreservationBypassed = m.LoadMetaDataTask.shouldBypassDoviPreservation
+  m.top.isVideoCopyDisallowed = m.LoadMetaDataTask.shouldDisallowVideoCopy
 
   ' Pass JellyfinBaseItem node to OSD for typed field access
   if isValid(videoContent[0].meta)
@@ -1420,6 +1488,7 @@ sub onVideoContentLoaded(event as object)
   ' focus out of it: same rule as handleHideAction.
   if not m.global.sceneManager.callFunc("isDialogOpen") then m.top.setFocus(true)
   m.top.control = "play"
+  armReencodeCheck(videoContent[0].reencodeCapBps)
 end sub
 
 ' populateChapterMenu: ' Parse chapter data from API and appeand to chapter list menu
@@ -1911,11 +1980,16 @@ sub onTrickPlayBarTextChange()
   end if
 end sub
 
-' retryPlayback: Re-runs the content loader from the current position with updated task flags.
+' retryPlayback: Re-runs the content loader from the current position with one more retry flag.
 ' Used by error handlers to retry without exiting the player.
-' @param {boolean} bypassDovi - skips DoVi container profile so the server can grant direct play
-' @param {boolean} forceTranscode - disables direct play so the server returns a transcode URL
-sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
+'
+' The flag joins the ones already taken (playbackRetry.retryFlagsWith) and stays for the rest of
+' this version's playback, so a later reload asks the same way.
+'
+' @param {PlaybackErrorRetry} retry - the retry to take: DOVI_DIRECT_PLAY skips the DoVi container
+'                                    profile, TRANSCODE disables direct play, REENCODE_VIDEO asks
+'                                    the server not to copy the video
+sub retryPlayback(retry as PlaybackErrorRetry)
   ' Only a stream that has played has a position worth saving. A retry before the first
   ' frame (direct play failing over to transcode) has none of its own, and saving what the
   ' player reads then would replace the resume point the queue already holds.
@@ -1925,9 +1999,8 @@ sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
   ' Prevents PlayerHostView from advancing/exiting when stop causes Roku to fire "finished".
   m.top.isRetrying = true
   m.top.control = "stop"
-  ' Surfaced so the playback report does not attribute a range transcode to the
-  ' Preserve DoVi setting on a pass where that profile was not sent.
-  m.top.isDoviPreservationBypassed = bypassDovi
+  m.retryFlags = retryFlagsWith(m.retryFlags, retry)
+  m.log.info("Retry flags", "retry", retry, "bypassDovi", m.retryFlags.bypassDovi, "forceTranscode", m.retryFlags.forceTranscode, "disallowVideoCopy", m.retryFlags.disallowVideoCopy)
   ' Unlike the three reload paths, this one CAN run before the first frame, and when it
   ' does the retry is still the same load (the user has been waiting since init and has
   ' seen no frame), so the second fetch is recorded as a second `metadata` fill rather than
@@ -1935,7 +2008,7 @@ sub retryPlayback(bypassDovi as boolean, forceTranscode as boolean)
   ' to transcode reports both round trips, which is exactly why its first frame took as
   ' long as it did. `buffer` stays open across the retry (`pending` keeps the first
   ' declaration), so it spans the whole wait rather than restarting mid-way.
-  startVideoLoad(m.top.audioIndex, m.top.SelectedSubtitle, bypassDovi, forceTranscode)
+  startVideoLoad(m.top.audioIndex, m.top.SelectedSubtitle)
 end sub
 
 ' Close the live stream a load opened when no player will ever play it: the load failed, or it is
@@ -1978,13 +2051,16 @@ end function
 '
 ' A new node starts with every field at its default, so this passes the full input set each
 ' time. The item is m.loadItemId and the version m.videoLoadMediaSourceId, with m.isIntro
-' marking a Cinema Mode intro; the retry flags apply to one run only.
+' marking a Cinema Mode intro, and the retry flags are m.retryFlags: every run carries the
+' retries this version's playback has taken (retryPlayback).
 '
 ' @param {integer} audioStreamIndex - server index of the audio stream; 0 lets the load pick
 ' @param {integer} subtitleIndex - server index of the subtitle stream, or a SubtitleSelection value
-' @param {boolean} bypassDovi - skip the DoVi container profile (retryPlayback)
-' @param {boolean} forceTranscode - disable direct play (retryPlayback)
-sub startVideoLoad(audioStreamIndex as integer, subtitleIndex as integer, bypassDovi = false as boolean, forceTranscode = false as boolean)
+sub startVideoLoad(audioStreamIndex as integer, subtitleIndex as integer)
+  ' A new load is a new item or a new answer: the re-encode check of the one it replaces is over.
+  cancelReencodeCheck()
+  if isValid(m.playingProgressTimer) then m.playingProgressTimer.control = "stop"
+  m.holdPausedAfterReload = false
   if isValid(m.LoadMetaDataTask)
     m.LoadMetaDataTask.unobserveField("content")
     releaseVideoLoad(m.LoadMetaDataTask)
@@ -1998,8 +2074,9 @@ sub startVideoLoad(audioStreamIndex as integer, subtitleIndex as integer, bypass
     selectedAudioStreamIndex: audioStreamIndex,
     selectedSubtitleIndex: subtitleIndex,
     mediaSourceId: m.videoLoadMediaSourceId,
-    shouldBypassDoviPreservation: bypassDovi,
-    shouldForceTranscoding: forceTranscode
+    shouldBypassDoviPreservation: m.retryFlags.bypassDovi,
+    shouldForceTranscoding: m.retryFlags.forceTranscode,
+    shouldDisallowVideoCopy: m.retryFlags.disallowVideoCopy
   })
   m.LoadMetaDataTask.observeField("content", "onVideoContentLoaded")
   ' Every run declares the fill, because the handler cannot tell which call started it. A
@@ -2039,6 +2116,9 @@ sub onState()
   ' Pass video state into OSD
   m.osd.playbackState = osdPlaybackState()
 
+  ' A state change ends the playing-progress window; only `playing` starts a new one.
+  if isValid(m.playingProgressTimer) then m.playingProgressTimer.control = "stop"
+
   if m.top.state = "buffering"
     ' Each buffering episode gets its own progress baseline. `bufferingStatus` is
     ' per-episode (Roku invalidates it once buffering completes), so carrying the
@@ -2061,23 +2141,35 @@ sub onState()
       startLoadingSpinner(false)
     end if
   else if m.top.state = "error"
+    ' The error branch owns the flow now; a retry's own load decides for itself.
+    cancelReencodeCheck()
     m.log.error(m.top.errorCode, m.top.errorMsg, m.top.errorStr, m.isPlayReported, m.top.isTranscodeAvailable)
 
     print m.top.errorInfo
 
-    ' Detect a Roku video buffer overflow (buffer:loop: source) caused by DoVi transcoding.
-    ' When DoVi preservation forced a transcode and the HLS segments overflow the device buffer,
-    ' retry with direct play by bypassing the DoVi container profile injection.
+    ' Detect a Roku video buffer overflow (buffer:loop: source): one HLS segment is larger than
+    ' the device's whole video buffer. Two causes have a retry (chooseErrorRetry decides which):
+    ' - DoVi preservation forced the transcode: retry with direct play by bypassing the DoVi
+    '   container profile injection.
+    ' - The server copied the video: it can only cut a segment at the source's keyframes, so a
+    '   long-GOP source gives an oversized one. Retry with the video re-encoded, which forces a
+    '   keyframe per segment.
     isBufferLoopError = isValid(m.top.errorInfo) and isValid(m.top.errorInfo.source) and m.top.errorInfo.source = "buffer:loop:"
 
-    if isBufferLoopError and m.top.isDoviDirectPlayFallbackAvailable
+    retry = chooseErrorRetry(isBufferLoopError, m.top.isDoviDirectPlayFallbackAvailable, m.top.isReencodeFallbackAvailable, m.isPlayReported, m.top.isTranscodeAvailable)
+
+    if retry = PlaybackErrorRetry.DOVI_DIRECT_PLAY
       m.log.warn("Buffer overflow in DoVi transcode; falling back to direct play", m.currentItem.id)
       m.top.isDoviDirectPlayFallbackAvailable = false ' prevent retry loop if direct play also fails
-      retryPlayback(true, false)
-    else if not m.isPlayReported and m.top.isTranscodeAvailable
+      retryPlayback(retry)
+    else if retry = PlaybackErrorRetry.REENCODE_VIDEO
+      m.log.warn("Video buffer overflow on a remux; retrying with the video re-encoded", m.currentItem.id)
+      m.top.isReencodeFallbackAvailable = false ' prevent retry loop if the re-encode also fails
+      retryPlayback(retry)
+    else if retry = PlaybackErrorRetry.TRANSCODE
       m.log.warn("Direct play failed; falling back to transcode", m.currentItem.id)
       m.top.isTranscodeAvailable = false ' prevent retry loop if transcode also fails
-      retryPlayback(false, true)
+      retryPlayback(retry)
     else
       ' If an error was encountered, stop timers and display dialog. From here the dialog
       ' owns the exit, and this player stops reacting to its own state. That is a FLAG,
@@ -2110,6 +2202,10 @@ sub onState()
     ' stop is what makes each episode's window fresh rather than that assumption.
     m.bufferCheckTimer.control = "stop"
     m.bufferCheckTimer.unobserveField("fire")
+
+    ' A fresh window for the position check: a node that says "playing" must also move.
+    m.playingProgressPosition = m.top.position
+    m.playingProgressTimer.control = "start"
 
     ' Un-park. A `play` that did not come through onVideoContentLoaded (a voice or
     ' remote-control resume of a stopped player) is the one route back from
@@ -2158,6 +2254,11 @@ sub onState()
       reportPlayback()
     end if
     restartPlaybackTimer(playbackCheckIn.PLAYING_REPORT_SECONDS)
+    ' The capped restart of a paused stream: its first frame is where it pauses again.
+    if m.holdPausedAfterReload
+      m.holdPausedAfterReload = false
+      m.top.control = "pause"
+    end if
   else if m.top.state = "paused"
     stopLoadingSpinner()
     ' Same reason as `playing`: a paused player is not stalling, and the stall window
@@ -2244,6 +2345,103 @@ sub onPauseConfirmDue()
   end sub)
 end sub
 
+' Starts the re-encode check for the stream handed to the player (reencodeCheck.bs): the server
+' may be re-encoding the video at a bitrate the device's video buffer cannot hold, which a first
+' request cannot rule out. It runs on a timer from the handoff, not from `playing`: a stream like that
+' never leaves buffering. It stands down for a stream the server does not transcode, Live TV, a load
+' that already asked for a re-encode, and a SyncPlay group.
+'
+' The group is skipped because a restart here is a reload in place, which the group sees only as a
+' stall: the tracker's Ready after it carries the node's own position, which the node reads as 0 at
+' the first frame of a load that starts partway in (syncPlayPlayback.trackPlayerEvent, "mounted"),
+' and no run of a reload under a group has shown the Ready lands where the group is.
+'
+' @param {dynamic} capBps - LoadVideoContentTask's reencodeCapBps for this load: 0 or invalid for none
+sub armReencodeCheck(capBps as dynamic)
+  m.reencodeCapBps = reencodeCheck.bitsPerSecond(capBps)
+  if not m.top.isTranscoded or isLiveTvPlayback() or m.retryFlags.disallowVideoCopy or m.reencodeCapBps <= 0 then return
+  if syncPlayHooks.following()
+    m.log.info("Re-encode check skipped while following a SyncPlay group", "itemId", m.loadItemId)
+    return
+  end if
+  m.reencodeAttempt = 1
+  m.reencodeCheckTimer.control = "stop"
+  m.reencodeCheckTimer.duration = reencodeCheck.FIRST_CHECK_SECONDS
+  m.reencodeCheckTimer.control = "start"
+end sub
+
+' The re-encode check is over, or belongs to a load that is: stop its timer, and drop any answer
+' still on its way (it carries the seq it was asked under).
+sub cancelReencodeCheck()
+  m.reencodeCheckSeq++
+  if isValid(m.reencodeCheckTimer) then m.reencodeCheckTimer.control = "stop"
+end sub
+
+' The re-encode check is due: read this device's session from the server, off the render thread.
+sub onReencodeCheckDue()
+  if m.isDestroyed then return
+  if m.hasPlaybackFailed or m.top.state = "error" or m.top.state = "stopped" or m.top.state = "finished" then return
+  req = playbackCheckIn.sessionRequest()
+  if not isValid(req) then return
+  ctx = { seq: m.reencodeCheckSeq, attempt: m.reencodeAttempt, itemId: m.loadItemId }
+  promises.chain(fetchAsync(req, "reencodeCheck-" + ctx.seq.toStr()), ctx).then(sub(res as object, ctx as object)
+    onReencodeSessionRead(res, ctx)
+  end sub).catch(sub(err as object, _ctx as object)
+    m.log.warn("Re-encode check could not read the session; leaving the stream as it is", err)
+  end sub)
+end sub
+
+' The session came back: restart with the cap, read again later, or leave the stream alone
+' (reencodeCheck.reencodeNeedsBufferCap decides).
+'
+' @param {object} res - the fetchAsync response AA
+' @param {object} ctx - { seq, attempt, itemId } as the read was asked
+sub onReencodeSessionRead(res as object, ctx as object)
+  if m.isDestroyed then return
+  playerState = m.top.state
+  flags = {
+    attempt: ctx.attempt,
+    isLive: isLiveTvPlayback(),
+    askedNoCopy: m.retryFlags.disallowVideoCopy,
+    isFollowingGroup: syncPlayHooks.following(),
+    hasFailed: m.hasPlaybackFailed or playerState = "error",
+    ' A newer load since the read began, another item, or a stream that has ended.
+    isStale: ctx.seq <> m.reencodeCheckSeq or LCase(ctx.itemId) <> LCase(m.loadItemId) or playerState = "stopped" or playerState = "finished"
+  }
+  decision = reencodeCheck.reencodeNeedsBufferCap(res, m.reencodeCapBps, ctx.itemId, flags)
+  verdict = decision.verdict
+  if verdict = ReencodeVerdict.RESTART
+    m.log.info("The server re-encodes above the buffer cap; restarting once with the cap", "capBps", m.reencodeCapBps.toStr(), "attempt", ctx.attempt, "itemId", ctx.itemId)
+    restartForBufferCap()
+  else if verdict = ReencodeVerdict.LATER
+    m.log.info("The server shows no transcode to judge yet; reading again", "attempt", ctx.attempt, "itemId", ctx.itemId)
+    m.reencodeAttempt = ctx.attempt + 1
+    m.reencodeCheckTimer.duration = reencodeCheck.SECOND_CHECK_SECONDS
+    m.reencodeCheckTimer.control = "start"
+  else
+    ' An unreadable answer says how it failed (no answer, an HTTP status); every other reason is the decision's own.
+    reason = decision.reason
+    if reason = "unreadable" then reason = playbackCheckIn.unreadableCause(res)
+    m.log.info("Re-encode check: nothing to restart", "attempt", ctx.attempt, "reason", reason, "itemId", ctx.itemId)
+  end if
+end sub
+
+' Restart the stream with the video re-encoded under the buffer cap, from where it is. This is the
+' re-encode retry (PlaybackErrorRetry.REENCODE_VIDEO), and not reloadAtCurrentPosition: that one
+' saves the player's position unconditionally, and a stream that never left buffering reads 0, which
+' would replace the resume point. retryPlayback saves a position only for a stream that played, and
+' sets isRetrying so the stop does not advance the queue. The request it makes applies the cap at any
+' bitrate and lists HEVC first (buildPlaybackInfoPostData). The flag stays for the rest of this
+' version's playback (retryFlagsWith), so no later load of it checks again.
+sub restartForBufferCap()
+  cancelReencodeCheck()
+  isHeldPaused = m.isPlayReported and m.top.state = "paused"
+  ' The retry is spent for this chain: an error on the capped stream goes to the dialog.
+  m.top.isReencodeFallbackAvailable = false
+  retryPlayback(PlaybackErrorRetry.REENCODE_VIDEO)
+  m.holdPausedAfterReload = isHeldPaused
+end sub
+
 ' Report the end of this stream, once (classifyPlaybackEnd decides which report, if any). Every end
 ' needs one: the stop is also what stops the server's transcode and releases a Live TV live stream
 ' this session reported playing, which a terminal `error` would otherwise leave open until the
@@ -2318,7 +2516,7 @@ sub submitPlaybackReport(state as string, failed as boolean, closesLiveStream = 
   ' Live TV requires MediaSourceId/LiveStreamId for server-side stream tracking
   if isLiveTvPlayback() and isValid(m.top.transcodeParams)
     params.append(liveStreamReportFields(m.top.transcodeParams, closesLiveStream))
-    m.bufferCheckTimer.duration = 30
+    m.bufferCheckTimer.duration = STALL_WINDOW_SECONDS
   end if
 
   if (state = "stop" or state = "finished") and isValid(m.originalClosedCaptionState)
@@ -2383,6 +2581,41 @@ sub bufferCheck()
     end if
   end if
 
+end sub
+
+' A "playing" node whose position has not moved for a stall window: a frozen or black screen with no
+' error (a 4K H.264 re-encode sat so on a Roku Ultra, 2026-11-04). classifyPlayingProgress decides;
+' a stall takes the same exits as bufferCheck's. The timer is started by onState's `playing` branch
+' and stopped by every state change and by onDestroy. Its ticks are the window: each compares the
+' position with the last tick's, and no second clock is checked against it.
+sub playingProgressCheck()
+  if m.isDestroyed = true or not isValid(m.playingProgressTimer) then return
+  positionNow = m.top.position
+  flags = {
+    isPlaying: m.top.state = "playing",
+    isPaused: m.top.state = "paused",
+    isSeeking: syncPlayHooks.seekInFlight(),
+    isScrubbing: m.top.trickPlayBar.visible or m.isTrackingSeek,
+    isLive: isLiveTvPlayback(),
+    duration: getEffectiveDuration()
+  }
+  action = classifyPlayingProgress(positionNow, m.playingProgressPosition, flags)
+  m.playingProgressPosition = positionNow
+  if action = BufferCheckAction.PROGRESS
+    return
+  else if action = BufferCheckAction.LIVE_STALLED
+    m.log.warn("Live TV node playing with a frozen position", "position", int(positionNow))
+    ' Same rule as bufferCheck: the host owns the restart and may destroy this component
+    ' synchronously, so this call is the last statement. A guard that declined leaves the timer
+    ' running, so the next tick checks again.
+    host = m.top.getParent()
+    if isValid(host) then host.callFunc("onLiveStreamStalled")
+  else
+    m.log.warn("Node playing with a frozen position", "position", int(positionNow))
+    m.playingProgressTimer.control = "stop"
+    showPlaybackErrorDialog(translate(translationKeys.ErrorThereWasAnErrorRetrievingThe))
+    m.top.control = "stop"
+  end if
 end sub
 
 function isLiveTvPlayback() as boolean
@@ -2714,6 +2947,7 @@ sub onDestroy()
     m.osd.unobserveField("action")
     m.osd.unobserveField("playbackCapsPick")
     m.osd.unobserveField("repeatModePick")
+    m.osd.unobserveField("syncPlayPick")
     m.osd.callFunc("onDestroy")
   end if
 
@@ -2737,6 +2971,12 @@ sub onDestroy()
     m.pauseConfirmTimer = invalid
   end if
 
+  if isValid(m.reencodeCheckTimer)
+    cancelReencodeCheck()
+    m.reencodeCheckTimer.unobserveField("fire")
+    m.reencodeCheckTimer = invalid
+  end if
+
   if isValid(m.groupSeekFallbackTimer)
     m.groupSeekFallbackTimer.control = "stop"
     m.groupSeekFallbackTimer.unobserveField("fire")
@@ -2747,6 +2987,12 @@ sub onDestroy()
     m.bufferCheckTimer.control = "stop"
     m.bufferCheckTimer.unobserveField("fire")
     m.bufferCheckTimer = invalid
+  end if
+
+  if isValid(m.playingProgressTimer)
+    m.playingProgressTimer.control = "stop"
+    m.playingProgressTimer.unobserveField("fire")
+    m.playingProgressTimer = invalid
   end if
 
   ' Stop and release task nodes. The video load is released by releaseVideoLoad, because a load
@@ -2965,6 +3211,14 @@ function handleTransport(evt as object) as object
   if cmd = "seekto"
     if not isValid(evt.position) then return { status: "error.generic" }
     return seekToWithBounds(evt.position, evt.fromGroup = true)
+  end if
+
+  ' The SyncPlay group's queue changed under this player (a mode, a reorder, a playlist edit),
+  ' so an open OSD reads its step buttons and the gear's tint again (SyncPlayManager.syncGroupModes).
+  if cmd = "queuechanged"
+    if evt.fromGroup <> true then return { status: "unhandled" }
+    if isValid(m.osd) then m.osd.callFunc("refreshFromQueue")
+    return { status: "success" }
   end if
 
   if cmd = "playpause"

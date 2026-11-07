@@ -43,8 +43,8 @@
  *     there is no way to tell those apart statically, which is why the check
  *     requires an `opacity` (a DIMMING rectangle) and why the escape hatch below
  *     exists.
- *   - Vendored third-party code, in BOTH trees (`components/roku_modules/`,
- *     `source/roku_modules/`, `components/vendor/`).
+ *   - Package-managed code, in BOTH trees (`components/roku_modules/`,
+ *     `source/roku_modules/`).
  *
  * Known gap, stated rather than papered over: a backdrop whose size is set in
  * BrightScript (`m.dim.width = 1920`) rather than in the XML is not caught. The
@@ -80,8 +80,7 @@ const ALLOWED_DEST_PATHS = new Set([
 ]);
 
 const EXCLUDED_DEST_PREFIXES = [
-  'components/vendor/',
-  // BOTH vendored trees. `source/roku_modules/` alone left
+  // BOTH package-managed trees. `source/roku_modules/` alone left
   // `components/roku_modules/` (log, promises, sgrouter) inside the rule, which
   // is third-party code we cannot edit and would have to suppress line by line.
   'components/roku_modules/',

@@ -26,6 +26,15 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-06: update(logging): Mask secrets in logs, keep names and search text out
+- 2026-11-06: fix(playback): Start 4K Dolby Vision on a display without HDR
+- 2026-11-06: fix(playback): Play more Dolby Vision files, end a wasted retry
+- 2026-11-05: fix(playback): Handle long films, big re-encodes and frozen playback
+- 2026-11-05: Renamed the Rooibos patch for alpha.56, so `npm install` no longer warns about a version mismatch
+- 2026-11-05: fix(playback): Make 4K transcodes play, in HEVC on hardware servers
+- 2026-11-05: fix(playback): Recover when a 4K remux overflows the video buffer
+- 2026-11-05: refactor(logging): adopt `roku-log` as owned code, drop its hook
+- 2026-11-05: feat(syncplay): Repeat, shuffle, time offset and leave in the gear
 - 2026-11-05: fix(playback): Copy AC3 audio in a remux on 7.1 systems
 - 2026-11-05: fix(playback): Pick a playable audio track, not audio description
 - 2026-11-04: chore(build): Fail the build on an `m.log` call with too many values
@@ -66,11 +75,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-23: fix: Hold keys and let Back cancel a Refresh, photo launch or seek
 - 2026-10-23: chore(lint): move the Markdown voice check to shared `voice-check.sh`
 - 2026-10-23: feat: Show a spinner over details and the TV guide while they load, and let Back leave them
-- 2026-10-22: fix(sign-in): Keep a server re-scan from taking focus from a connect
-- 2026-10-22: fix(sign-in): Ignore extra presses and let Back cancel a sign-in
-- 2026-10-22: fix(login): Land on Home after sign-in; drop casts while signed out
-- 2026-10-22: chore(lint): Check only git-visible files in the doc-citation ratchet
-- 2026-10-22: fix(audio): Seek in FLAC without freezing or skipping the end
 
 ## Open followups
 
@@ -294,10 +298,6 @@ In `scripts/bsc-plugins/roku-log.cjs`, the visitor that finds `m.log = new log.L
 
 `attachSubIssue` POSTs only `sub_issue_id`, and `executePlan` calls it for `comment` and `reopen` as well as `file`. An issue that already has a parent may then fail to link; the error is stored as `subIssueError`, not fatal. Unverified: whether GitHub refuses without `replace_parent` needs a throwaway issue pair. Read in the code 2026-10-13.
 
-#### The Rooibos patch file is named for alpha.55 while alpha.56 is installed `[fid: rooibos-patch-name-version-mismatch]` `[captured 2026-10-13]`
-
-`patches/rooibos-roku+6.0.0-alpha.55.patch` sits beside a `package.json` pin of `rooibos-roku` 6.0.0-alpha.56 (since #1067). It still applies, but patch-package matches by name and version. Regenerate it against alpha.56 (`npx patch-package rooibos-roku`) and remove the old file. Checked 2026-10-13; not run.
-
 #### `renovate.json` says "CLI smoke-tested", but the smoke workflow only loads the modules `[fid: renovate-cli-smoke-tested-wording]` `[captured 2026-10-13]`
 
 The `roku-deploy` and `rooibos-roku` group and the husky and lint-staged group descriptions in `renovate.json` say "CLI smoke-tested by `_smoke-test-deps.yml`". That workflow's header says it loads modules and does not run the CLIs, and no step covers `rooibos-roku`. Related: `smoke-test-checks-unused-roku-deploy-api`. Fix the wording (or add the coverage). Checked 2026-10-13.
@@ -348,6 +348,8 @@ Closes with a lint in `npm run lint` and its CI home that fails a tracked code c
 #### The RTA runner captures no device console, so an app crash during a spec reads as a wait timeout `[fid: rta-run-hides-device-crash]` `[captured 2026-10-24]`
 
 A BrightScript runtime error during an RTA spec suspends the app in the micro debugger, and every later wait in the run times out with `last={}` and no hint of the crash. [`scripts/rta-run.js`](../scripts/rta-run.js) and [`tests/rta/lib/driver.js`](../tests/rta/lib/driver.js) open no console tail; `driver.js` only names the telnet command in its deploy-timeout message. **Evidence:** SyncPlay phase C (2026-10-23, Streaming Stick 4K): a type mismatch in `syncPlayQueue.isStaleQueueUpdate` failed seven of eight specs as plain timeouts, and the backtrace surfaced only after a rerun with `nc` on port 8085 held open by hand. Not done in that PR: it is a runner change with its own tests. **Close:** have `rta-run.js` hold a console tail for the run (share the reader `two-roku-console-readers` proposes rather than writing a third), surface any `runtime error` or `Backtrace:` lines seen since the spec started in the failed wait's diagnosis, and save the tail beside the run record.
+
+**Update 2026-11-06:** since #1305 the runner does save the console (`console-capture.js`), but it still never reads it. On PR #1329's dev build the app stopped at launch with `runtime error &hf3` before ODC answered, and the run printed `registry.js`'s `readTimedOut()` message (blaming the `setupClientSocket` defect of the RTA library, followup `rta-odc-connect-hang`). The `uncaughtException` handler exits without printing the console path, and the run closes as `crashed`, which the ledger drops from the pass/fail record, so a build that crashes at launch is never counted as failing. Recommended fix (`scan`): on the read timeout or any `uncaughtException`, read the lines captured since the deploy; if they hold `runtime error` or `Backtrace:`, report the app crash with its error line, print the console path, and close the run `failed`. Rejected: printing the path only (keeps the wrong verdict and the dropped record). Not checked: whether a Vitest worker's own mid-suite ODC calls mislabel a crash the same way.
 
 #### An RTA run whose named specs skip every case looks like a pass `[fid: rta-run-silent-skips]` `[captured 2026-11-01]`
 
@@ -880,6 +882,88 @@ Options: `cycle` (recommended): voice `loop` cycles Off, All, One through a unit
 
 Not checked: Roku's exact wording for a "loop" request; whether a toast should confirm the new mode; how a SyncPlay group should take a repeat change.
 
+#### No audit of what the app does, and shows, for a user the server's access policy restricts `[fid: user-access-policy-ux-audit]` `[captured 2026-11-05]`
+
+The app loads the user's access policy (`SessionDataTransformer` maps `EnableVideoPlaybackTranscoding`, `EnablePlaybackRemuxing` and more onto `m.global.user.policy`), but no playback code reads most of it. So every fallback that asks the server for a transcode can ask for one the policy forbids: the retry that forces a transcode after a failed direct play, and since PR #1318 the re-encode retry after a `buffer:loop:` overflow (`chooseErrorRetry()`, `capH264Resolution()`, whose second `PlaybackInfo` request since PR #1323 also runs on a first request). A restricted user then sees whatever error the refused request yields, not one that says why. What the server actually answers in that case was not checked.
+
+Found in review of PR #1318. The user ruled out a one-off policy check on the re-encode retry: the gap needs a proper audit of user access and its UX instead. Close it with an audit that lists each policy field the server enforces, which app features and fallbacks each one affects, what the server answers when a request crosses it (measured on a server with the policy off), and what the user should see, then file the fixes it finds.
+
+#### File an enhancement issue for an on-screen log overlay `[fid: log-screen-overlay-issue]` `[captured 2026-11-05]`
+
+**File an enhancement issue for an on-screen log overlay in debug builds.** The old roku-log `ScreenTransport` drew the latest lines over the UI; it was deleted in #986 because nothing used it (its code is in git history, in roku-log 0.11.1's `src/components/ScreenTransport.bs`). The maintainer sees value in it beyond the console: RTA screenshots would show the log beside the screen. Draft the issue and show it before filing.
+
+#### A live channel beyond the H.264 ceiling buffers forever, from its upstream link or the server's stream `[fid: live-4k-h264-no-1080p-check]` `[captured 2026-11-05]`
+
+A live channel beyond the H.264 ceiling never plays when the device plays its upstream link. Measured 2026-11-05 on a Roku Ultra with a 4K output mode, against a live `M3U` channel serving H.264 High@5.1 at `3840x2160` (the local test servers' HLS fixture). The load found no blocker (`getUpstreamManifestBlocker` NONE, `deviceLoadsUpstream` true) and direct-played the upstream HLS link, so the server never transcoded it. That held on a server that does not encode HEVC and on 12.4 with `NVENC` and HEVC encoding on alike. The player then sat in `buffer` at position 0 for the 45 s watched, and the transcode fallback (`isTranscodeAvailable`) never ran, because nothing failed.
+
+The same channel has a second path to the same hang, found by reading the code and not yet measured: when the load plays the server's stream instead (a blocker such as the user policy's remote-source transcoding, or a link the device cannot load), the server re-encodes the video to H.264 at the source's size on a server that does not encode HEVC, and nothing caps it. A live load has no playlist check (`capH264Resolution` skips it), and HEVC first never fires for a channel that lists no streams, so a hardware HEVC server sends 4K H.264 too.
+
+Two facts limit the fix. The channel item lists no media streams before it opens (seen on 10.9.11 and 12.4), so no check can read its size from the item, and the HEVC first rule from PR #1323 never fires for such a channel. And a file's 1080p check (`LoadVideoContentTask.capH264Resolution`) does not fit live: its second `PlaybackInfo` would open a second live stream.
+
+Not done in PR #1323: the gap is in live playback, which that PR does not change, and the fix is a design choice. For the upstream link, read the upstream playlist's `CODECS` and `RESOLUTION` before playing it (`hlsMasterVariants()` on the upstream master, where one exists) and send the stream through the server when it is H.264 beyond the ceiling. For the server's stream, read its master playlist the same way and, when it declares H.264 beyond the ceiling, close that live stream before asking again at 1080p. A stall fallback that moves to a capped server stream would cover both. Then check a 4K H.264 channel plays on both server setups, through the upstream link and through the server.
+
+#### With a level setting on, a direct play the decoder never starts hangs at position 0 with no fallback `[fid: level-override-direct-play-hangs-no-fallback]` `[captured 2026-11-05]` `[pinned]`
+
+With `playbackTryDirectHevcProfileLevel` or `playbackTryDirectH264ProfileLevel` on, a source whose only transcode reason is `VideoLevelNotSupported` is direct-played (`triesDirectPlayOverLevel()` in `source/utils/streamSelection.bs`), with the transcode as its fallback (`isTranscodeAvailable`). When the decoder never starts that play, the player reports playing at position 0 indefinitely and the fallback never runs.
+
+Measured 2026-11-05 against 12.4, override on, each case a cold start and a deep-link play: on a Roku Ultra `4850X` (OS 16.0.4, 4K output) a 4K HEVC clip tagged level 6.1, whose stream fits level 5.0, sat at `play`, position 0, for 45 s and for 75 s with no fallback. In the same runs the override helped: the Ultra and the Streaming Stick 4K `3820RW` direct-played a 1080p H.264 clip tagged 5.1 (device level 4.2), and the Ultra a 4K HEVC clip tagged 5.2. The Roku Stick `3600X` refused the H.264 5.1 clip with `-3 ... no memory` after 0.6 s, and its fallback transcode played. So decoders look past an inflated tag within limits the docs do not state, and the setting only helps users who find it.
+
+Root cause: the transcode retry runs only from the `error` branch of `VideoPlayerView`'s state handler (`chooseErrorRetry()`), and the one stall watchdog (`bufferCheck()`) starts only in `buffering`. A play the decoder never starts reports neither. The override and its error-only fallback are in the fork's initial commit, and live and upstream-link direct plays share the same fallback (followup `live-4k-h264-no-1080p-check`).
+
+The same gap covers a file transcode. On a first request, `h264CapDecision()` keeps the answer when the master playlist cannot be read, since the video may be copied, so a 4K H.264 answer then plays and hangs the same way. Measured 2026-11-05 on 12.4 with software encoding, the read is rarely the cause: 20 of 20 answered in a median of 11 ms idle, and 30 of 30 in a median of 21 ms (max 51 ms) while the server encoded 4K at about 8 cores, against the 3 s `timeouts.HLS_MASTER_PROBE_MS`; every line from 10.7.7 to 12.4 declares `CODECS` and `RESOLUTION`. Only a network fault during the read leads there. A start watchdog whose retry asks again with a 1080p cap would cover it.
+
+Options:
+
+- `auto` (recommended): remove both settings; when the server's only reason is the level and the stream's own size, frame rate and bitrate fit the device's level, try direct play for everyone, backed by a start watchdog (the position must move within a measured window, or the load retries through the transcode) and the existing error fallback. Touches the settings, a registry migration to clear the saved keys, the strings and user docs, `triesDirectPlayOverLevel()`, a pure watchdog rule with tests, `VideoPlayerView`, `playback.md` and a decision record. Risk: artifacts no check sees, and a failed try costs the watchdog window before the transcode.
+- `startwatch`: keep the opt-in settings and add only the watchdog.
+- `remove`: remove both settings and always transcode on a level mismatch.
+
+Not done in PR #1323: it is its own change (settings removal, migration, docs, watchdog), and the hang predates the PR.
+
+Not checked:
+
+- whether the picture was correct: a moving position is not a clean picture, and Roku can't capture the video plane;
+- real files whose encoders inflated the tag (all the test clips are synthetic);
+- other Roku models and OS versions;
+- how long a healthy direct play takes to move on the slowest supported Roku, which a watchdog's window depends on;
+- whether the Ultra errors on its own after more than 75 s.
+
+Tracked publicly in [#1330](https://github.com/jellyrock/jellyrock/issues/1330).
+
+#### A SyncPlay reload in place sends Ready at position 0 `[fid: syncplay-reload-ready-position]` `[captured 2026-11-04]`
+
+A reload in place while following a SyncPlay group reaches `syncPlayPlayback.trackPlayerEvent` as a stall followed by more buffering, and its Ready carries the node's own position (`positionTicks = -1`), which reads 0 at the first frame of a load that starts partway in; only the `mounted` path corrects for that with `loadStartTicks`. A Ready at 0 makes the server send a corrective Seek. Because of this the re-encode bitrate check (decision `reencode-bitrate-checked-from-session`) skips groups. Fix by sending the load's start position in that Ready, then let the check run in groups and test it with the REST second member.
+
+#### Unconfirmed: a never-played `.strm` item may skip the playlist-size fit and the buffer cap on its first play `[fid: strm-first-play-stale-run-time]` `[captured 2026-11-06]`
+
+`LoadItems_AddVideoContent` in `LoadVideoContentTask` passes `playedSource`, read before the probe, to `fitHlsPlaylist` (its `RunTimeTicks`) and `reencodeCheck.bufferCapBps` (its `Bitrate` and `RunTimeTicks`), both from #1324. `reloadProbedStreams` replaces `meta`'s sources after the first `PlaybackInfo` of a source that lists no streams, and `playedSource` is never read again. If a never-played `.strm` source has no `RunTimeTicks` before its probe, both stand down on that first play, so a long `.strm` film could hit the playlist-too-large failure #1324 fixed. Found while reviewing PR #1325, which fixed the same stale read for the Dolby Vision bypass retry.
+
+Check first: a never-played `.strm` item's `RunTimeTicks` before the probe. If it is missing, read both from the source the current answer's request read (`m.playbackInfoRequestSource`, added by PR #1325). If it is present, close this followup. A `.strm` item's `Bitrate` describes the text file (11 bit/s, measured 2026-10-12), so `bufferCapBps` may need its own fix either way.
+
+Not checked: any of this on a device.
+
+#### A transcode of a source with no audio track never starts on Roku: endless buffering `[fid: video-only-transcode-never-starts]` `[captured 2026-11-06]`
+
+A source with no audio track that the server transcodes never starts: Roku's player stays in `buffering` with no error, and JellyRock shows an endless spinner. Found while reviewing PR #1331, which does not cause it.
+
+Measured 2026-11-06 on a Streaming Stick 4K (Roku OS 15.3.4) against Jellyfin 12.4, with four synthetic 1080p HEVC HLG clips (one variable at a time). The two without audio (24 and 60 fps) stuck in `buffer` for 60 s; the two with AAC played to the end. A one-`Video`-node channel outside JellyRock, given the same server URLs, did the same: `state=buffering errorCode=0` for 45 s on the video-only stream, with `ts` and with `fMP4` segments, while the stream with audio played. Roku never requests the first segment (the server wrote no transcode log for the video-only clip in any run, and did for the clip with audio); requested by hand, the server encodes a valid video-only segment in about 4 s. So the fault is Roku's handling of the server's video-only HLS stream (master `CODECS="avc1.42E02A"`), not the app or the server. The Dolby Vision 8.4 test files with an HLG base layer and no audio show it too.
+
+Options:
+
+- `notice` (recommended): before a transcode play in `LoadVideoContentTask`, if the played source lists no audio stream, show a clear message instead of starting a play that hangs. One translation key and a unit test; direct play left alone. Risk: it blocks a video-only transcode some other Roku or OS version can play.
+- `watchdog`: a general stall check (a play stuck in `buffer` at position 0 for N seconds stops with an error), designed with followup `level-override-direct-play-hangs-no-fallback`.
+- `report`: report it to Roku's developer forum with the one-node channel to reproduce it; can go alongside either.
+
+Not checked:
+
+- direct play of a video-only file;
+- other Roku models and Roku OS versions;
+- whether Roku plays a video-only HLS stream from another source;
+- how common video-only files are in real libraries;
+- whether Jellyfin can add a silent audio track.
+
+To rebuild a clip: `ffmpeg -f lavfi -i testsrc2=size=1920x1080:rate=24 -t 20 -vf format=yuv420p10le -c:v hevc_nvenc -profile:v main10 -color_primaries bt2020 -color_trc arib-std-b67 -colorspace bt2020nc out.mkv` (add an AAC input for the control).
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -946,7 +1030,7 @@ Production builds STRIP every `m.log.*` call (`bsconfig-prod.json` `"strip": tru
 
 #### roku-log prints a `LongInteger` or `Double` argument as an empty string `[fid: roku-log-longinteger-double-empty]` `[captured 2026-09-19]`
 
-**roku-log prints a `LongInteger` or `Double` argument as an empty string**, so any `m.log` value that is a tick count or the Video node's `position` (a Double) logs blank unless the caller `.toStr()`s it (`LogMixin.toString` handles Integer/Float/String/Boolean/node/AA only). Still blank as of 2026-09-19: `VideoPlayerView`'s "Subtitle change requires stream reload" and "Audio index changed by user" (`position`), and `LoadVideoContentTask`'s "Playback position resolved" (`startingPoint`). **Fix shape:** one change to how the logger turns values into text rather than per-call-site `.toStr()` — but `LogMixin.brs` is a vendored ropm module, so check how it is patched/pinned first.
+**The logger prints a `LongInteger` or `Double` argument as an empty string**, so any `m.log` value that is a tick count or the Video node's `position` (a Double) logs blank unless the caller `.toStr()`s it (`Logger.toString` in `source/logging/Logger.bs` handles Integer, Float, String, Boolean, node and AA only). Still blank as of 2026-09-19: `VideoPlayerView`'s "Subtitle change requires stream reload" and "Audio index changed by user" (`position`), and `LoadVideoContentTask`'s "Playback position resolved" (`startingPoint`). **Fix shape:** one change to `Logger.toString`, test-first in `tests/source/unit/logging/LogManager.spec.bs`, rather than `.toStr()` at each call site. The logger is owned code since #986 (ADR 0054), so it is edited in place.
 
 #### Triage the Hint-severity diagnostics every bsconfig reports `[fid: bsconfig-hint-diagnostics-triage]` `[captured 2026-09-21]`
 
@@ -1065,21 +1149,13 @@ The app-side half (one name helper used by the auth header and `buildPairPayload
 
 Closes when the in-player SyncPlay surface (phase F of epic #1251) ships: delete the constant, fold `joinAllowed` back into `canJoin`, and drop the two `syncPlayMenu.spec.bs` cases that drive the switch.
 
-#### SyncPlay repeat modes are not read: a `RepeatOne` member is left on a finished player and `RepeatAll` grays out Next on the last item `[fid: syncplay-repeat-modes]` `[captured 2026-10-28]`
+#### SyncPlay in a group offers no queue edits from the Roku, and voice fast-forward and rewind are unchecked `[fid: syncplay-queue-edits-shuffle-voice-scrub]` `[captured 2026-10-29]`
 
-Under `RepeatAll` or `RepeatOne`, Jellyfin's SyncPlay `PlayQueueManager.Next()` and `Previous()` answer on the playlist's ends: `RepeatAll` wraps around, `RepeatOne` keeps the same index (read upstream 2026-10-28). A jellyfin-web member can set either mode. JellyRock parses `RepeatMode` (`syncPlayMessage`) but `syncPlayState` drops it, and `syncPlayQueue.changesPlayingItem()` treats a `NextItem` with the same id as no change. So, from reading the code and not yet seen on a device: a `RepeatOne` member is left on a finished player (and leaves playback on the last item, `syncPlayQueue.isLastItem()`), and a `RepeatAll` member's **Next** grays out on the last item (`syncPlayQueue.stepBounds()`).
-
-Deferred from #1276 to the SyncPlay project's hardening phase, where the control itself is designed: the operator expects it in the playback settings menu of the OSD (the gear), and the player has no native loop yet, so what repeat means outside a group is part of the design.
-
-The proposed shape: keep `repeatMode` in the state; `stepBounds()` and `isLastItem()` follow `RepeatAll`; every `NextItem` or `PreviousItem` reloads, since the server sends one only after a step. Closes when a group with a REST member setting each mode plays through the last item on a device, and the gear offers the control.
-
-#### SyncPlay in a group offers no queue edits or shuffle from the Roku, and voice fast-forward and rewind are unchecked `[fid: syncplay-queue-edits-shuffle-voice-scrub]` `[captured 2026-10-29]`
-
-Phase E (#1276) chose honor-only for the group's modes: the server applies shuffle and owns the playlist, so the Roku offers no queue editing and no shuffle control while following. Design both with the repeat control in the OSD gear (followup `syncplay-repeat-modes`), in the SyncPlay project's hardening phase.
+Phase E (#1276) chose honor-only for the group's playlist: the server owns it, so the Roku offers no queue editing while following (add, remove or move an item in the group's playlist). The group's repeat and shuffle now ship in the OSD gear (decision `syncplay-group-repeat-rides-queue`), so queue edits are the part left to design, in the SyncPlay project's hardening phase.
 
 Also unchecked: voice fast-forward and rewind still write the node (`control` set to `fastforward` or `rewind` in `VideoPlayerView.handleTransport`) instead of going to the group. The remote's OK on the trick-play bar posts the group seek, but nobody has checked on a device whether a voice scrub can land with no OK, which would move this member alone.
 
-Closes when the queue-edit and shuffle design ships or is declined in a decision note, and a device check shows a voice scrub in a group either reaches the group or cannot land without an OK.
+Closes when the queue-edit design ships or is declined in a decision note, and a device check shows a voice scrub in a group either reaches the group or cannot land without an OK.
 
 #### A halt landing just after a SyncPlay correction's pause write can leave the node paused `[fid: syncplay-correction-pause-in-flight]` `[captured 2026-11-01]`
 
@@ -1142,6 +1218,37 @@ Several checks compare a number's `type()` against a partial list of names. On a
 #### A SyncPlay Ready after a slow silent seek can carry the position from before the seek and draw a corrective Seek `[fid: syncplay-ready-stale-position-after-slow-seek]` `[captured 2026-11-02]`
 
 After a slow silent seek on a SyncPlay member, the `Ready` goes out at the `playing` edge with the node's own position, which `docs/architecture/playback.md` says can still read the position from before the seek; a position off by more than 500 ms draws a corrective `Seek` from the server. Read from the code in PR #1296's review (2026-11-01), never reproduced; refiled from `syncplay-slow-seek-catch-up-unbounded` when the SyncPlay project's consolidation step closed it (the unbounded lead and the seek-stall cycle end with the wait-on-me correction, commit `a151efbc`). Closes with a device capture of a `Ready` after a slow seek compared against the seek's target, and a read of the position from a later notification when they differ, or a decision to drop it.
+
+#### `initializeLogManager` leaves `enabled` false, which `guard` would turn into silence `[fid: log-enabled-default-false]` `[captured 2026-11-05]`
+
+**`log.initializeLogManager` defaults `enabled` to `false`, and `JRScene.init()` does not pass it,** so every `Logger.enabled` is `false`. Nothing reads it today, but the `roku-log` plugin's `guard` option wraps each call in `if m.__le = true`, so turning `guard` on would silence every log line without an error. Fix: default it to `true` (or pass it from `JRScene`), with a test in `tests/source/unit/logging/LogManager.spec.bs`. Listed under Known issues in `source/logging/README.md`; remove it there too.
+
+#### Send logs to the user's Jellyfin server (epic) `[fid: log-upload-to-server]` `[captured 2026-11-05]`
+
+**Let a user send the app's logs to their own Jellyfin server.** `POST /ClientLog/Document` takes `text/plain` up to 1,000,000 bytes and returns `{ FileName }`; it exists from 10.8.0 (absent at 10.7.7) and answers 403 when the server's `AllowClientLogUpload` is off, which defaults to on (checked in Jellyfin's source at `v10.11.0`, 2026-11-05). Jellyfin's Android TV client uses it for crash reports. Open questions: a production build strips every `m.log` call, so decide what it keeps (for example warn and error into a bounded buffer) and budget it against the thread-crossing cost model; the 10.8.0 guard and its endpoint-availability ledger entry; masking addresses and names on upload (followup `log-redact-secrets`). Next step: draft the epic issue and show it to the maintainer before filing.
+
+**Findings from PR #1329's review (2026-11-06), for the epic draft:**
+
+- Goal agreed with the maintainer: a sent log is safe to paste publicly as it is. Production keeps warnings and errors at least; info is undecided, and the build should force well-formed log calls (a fixed message, values limited to IDs, numbers and enums, no object dumps) at those levels.
+- Masking happens when a line is written (`log.Redactor` in `Logger.log()`), so a buffer saved for a crash never holds a raw token.
+- Crash detection, from Roku's docs: `main()` receives `lastExitOrTerminationReason` (`EXIT_BRIGHTSCRIPT_CRASH`, `EXIT_BRIGHTSCRIPT_TIMEOUT` and more; lost on reboot). `roAppManager.GetLastExitInfo()` (Roku OS 13.0+) returns the exit code, a timestamp and `console_log`, the last 20 raw console lines, only with `run_as_process=1` in the manifest (not set today). Keep only known-safe `console_log` lines (exit code, error line, backtrace frames); drop the rest, "Local Variables" included.
+- Storage: `tmp:` is lost on exit; the registry is 32 KB for the whole app, shared with settings; `cachefs:` survives an app exit but not a reboot, and the OS may evict it, so check the file exists.
+- Acceptance: missing or unknown exit info means no crash log, never a blocked or slower launch. A found log is masked, offered or sent, then deleted.
+- Not checked: what else `run_as_process=1` changes (enable it, then run the device suites on all three test devices); the per-line cost of a buffer sink (today's transports `callFunc` once per line, the rendezvous-per-item shape).
+
+#### Route every print through the log redactor `[fid: log-print-through-redactor]` `[captured 2026-11-05]`
+
+**Route every `print` through the redactor.** The 161 `print` statements in `source/` and `components/` bypass `log.Redactor`; most print user IDs or the server URL (`inferServerUrl` in `source/utils/misc.bs`). `source/utils/session.bs` printed the access token among every user setting until PR #1329 cut that print to keys only. Agreed shape (2026-11-05): a free function such as `log.print(...)` that masks and prints, usable before the log manager exists, and the `print-locations` plugin failing any raw `print` outside `source/logging/`. Comes after `rr-http-trace-leaks-token`.
+
+**Added 2026-11-06:** masking cannot hide free text or a secret passed without its key. The `session.bs` settings dump showed the username and recent searches until PR #1329 cut it to keys, and `m.log` is held to that by the build (`log-personal-text`, `log-secret-value`), which a `log.print()` needs too. A `log.print()` that caches patterns must rebuild them when missing, as `log.Redactor` does: a node's `m` handed to another thread loses its `roRegex` objects.
+
+#### A 4K H.264 source is re-encoded at 1080p even on a hardware HEVC server `[fid: h264-source-cap-limits-hevc]` `[captured 2026-11-05]`
+
+An H.264 source caps the H.264 codec profile at `1920x1080` in `buildPlaybackInfoPostData` (`source/api/items.bs`, the block that caps the H.264 codec profile for an H.264 source), and Jellyfin applies a codec profile's width and height to the whole transcode, so a 4K H.264 source is re-encoded at 1080p even on a server that encodes HEVC in hardware and could keep 4K. Seen 2026-11-04 on a Roku Ultra against Jellyfin 12.4 with `NVENC`: a 4K H.264 source re-encoded as HEVC at `1920x1080`. Rare (4K H.264 sources are uncommon). Not done in PR #1323 because it needs its own device check on two server setups. Fix by dropping that cap where `capH264Resolution` already guards H.264 output, then check a 4K H.264 source keeps 4K on a hardware HEVC server and gets 1080p H.264 on a default one.
+
+#### `mediaNumber` loses the low digits of large values `[fid: media-number-long-precision]` `[captured 2026-11-04]`
+
+`mediaNumber` in `source/utils/misc.bs` reads a long integer through a float, so a large value loses its low digits (94848001 reads as 94848000, found 2026-11-04). It is harmless for the values it serves today, but wrong for bitrate and byte values; `reencodeCheck.bitsPerSecond` was added to avoid it. Decide whether `mediaNumber` should keep integers whole, and check its callers.
 
 ### api
 
@@ -1274,6 +1381,14 @@ Close it on a device: seek to 50% in an Ogg file holding FLAC whose last frame i
 **Not checked:** whether any of those callers fires twice under the same id while the first is pending (for example, `fetchQueue` seeing the same `lastUpdateMs` twice through a re-follow); the early settle of the second promise by the leftover observer is from reading the code, not a device run.
 
 **Tracked in** [#1272](https://github.com/jellyrock/jellyrock/issues/1272); close it with the fix.
+
+#### Out-of-spec Dolby Vision `mp4` files may still direct-play into Dolby Vision mode on 10.9 and 10.10 `[fid: dovi-out-of-spec-mp4-before-1011]` `[captured 2026-11-06]`
+
+Jellyfin 10.9 and 10.10 report a Dolby Vision profile 8 stream with compatibility ID 6 as `DOVIWithHDR10`, which the HEVC range list already takes, so `allowHdr10DoviInvalid` (`source/api/items.bs`, MKV only since PR #1325) never sees it and an `mp4` file of it direct-plays. On 10.11.11 the same file tagged `hvc1` played with the Roku in Dolby Vision mode, carrying the out-of-spec configuration (measured 2026-11-05 on a Roku Ultra `4850X`, decision `dovi-invalid-hdr10-direct-play`), so it most likely does the same on 10.9 and 10.10, as it did before PR #1325. A `dvh1`-tagged one is repackaged on every server from 10.9 by `refuseDvh1DolbyVision`; that conversion keeps the Dolby Vision data in the video, and on 10.9 and 10.10 no server code strips it.
+
+Check first: play the compatibility ID 6 `hvc1` and `dvh1` clips under `dovi-invalid/` in the test servers' Testing library from 10.9.11 and 10.10.7 on a Roku with a Dolby Vision TV, and read `Video.streamingSegment.hdrModeStr`. If either plays in Dolby Vision mode and the picture is wrong, or fails, have those requests drop the Dolby Vision range types for a stream `isOutOfSpecHdr10Dovi` marks, as `refuseDvh1DolbyVision` does.
+
+Not checked: any of this on 10.9 or 10.10 on a device; whether a Roku shows the out-of-spec Dolby Vision with the right colors.
 
 ### tests
 
@@ -1525,10 +1640,6 @@ Not checked: on a device, whether the app's `Main` code after `Rooibos_init` run
 
 Closes when the line is gone from every tracked config, the lint text is corrected, and `npm run test:unit` passes. Ships as its own PR from `main`.
 
-#### `ropm-hook.test.js` rewrites the real `roku_modules` XML on every run and asserts nothing that can fail `[fid: ropm-hook-test-rewrites-real-modules]` `[captured 2026-10-13]` `[prompt: /snag ropm-hook.test.js rewrites the real roku_modules XML on every test:scripts run and its only assertion cannot fail]`
-
-The test spawns `scripts/ropm-hook.cjs`, which resolves `components/roku_modules` and `source/roku_modules` from its own directory, so it rewrites the checkout's real `.xml` files in place (idempotent today). The script catches every error, and the only assertion is that the exit code is a number. Tech-debt `ropm-hook-fails-silently` (#986) covers the hook, not the test. A `/snag` candidate.
-
 #### The stale-budget test for `dialogs.spec.js` hardcodes the sleep count `[fid: rta-sleep-budget-test-hardcoded]` `[captured 2026-10-13]`
 
 In `tests/scripts/unit/lint/rta-sleep-budgeted.test.js`, the `dialogs.spec.js` case uses `sleep(1)` against a `BUDGETS` entry of 2 in `scripts/lint/eslint-rules/rta-sleep-budgeted.js`. The next budget change breaks it again, as one already did. Derive it as the entry minus one. Checked 2026-10-13.
@@ -1626,6 +1737,14 @@ Cause not confirmed. A playback error dialog is only a guess, because the record
 **Also seen in the same run, 05:48 UTC:** "Play on a song's details opens the audio player" timed out waiting for focus in `#extrasGrid` (`wait-focused-timeout`, view `ItemDetails`, focus on an `IconButton`), then passed 3 of 3 alone. Cause not found, and this exact timeout has no earlier record. File it separately if it comes back.
 
 **Not checked:** which dialog appeared; whether the failure repeats in `dialogs.spec.js` run alone; whether the sibling followup has the same cause; whether the memory monitor plays any part, though the same wait failed on a commit without it.
+
+#### RTA cannot reach the ready branch of the SyncPlay duplicate-restart fix `[fid: syncplay-absorb-ready-branch-no-rta]` `[captured 2026-11-04]`
+
+`syncPlayQueue.restartAbsorbed` has two branches (decision `syncplay-duplicate-restart-absorbed`). The RTA case in `tests/rta/specs/syncplay-controls.spec.js` covers the loading branch only. The ready branch (a duplicate restart that finds the Roku already ready at the start, so it sends `Ready` again) has unit tests alone: the REST second member ignores the wait, so the group's `Unpause` follows the Roku's `Ready` within about 100 ms and a poll cannot land in that window. Not done now because it needs the REST member to send its own `Ready` (`IgnoreWait` off) so the wait stays open. Closes when an RTA case drives the ready branch.
+
+#### Document the BrightScript simulator for one-spec and boot checks `[fid: brs-simulator-howto]` `[captured 2026-11-05]`
+
+**Document the BrightScript simulator (`brs-node`, `brs-cli`) as a no-device check.** Tried 2026-11-05 with `brs-node` 2.6.2: a dev build boots to pre-login and prints log lines in the device format, then the engine faults (`e.registerCallback is not a function`) when the first Task (`ServerDiscoveryTask`) starts. A single-spec TDD build runs cleanly (the logger spec, 6 of 6). The whole unit suite ran 90 suites (697 pass, 67 fail) before the process ran out of memory with an 8 GB heap; failures cluster in focus and visual suites, Task-relaunch platform suites and codec answers, and none was checked against a device. So it suits one spec at a time and boot checks, never as a replacement for `test:all` on a device. Add a short how-to to `docs/dev/unit-tests-tdd.md` (zip `build/`, `npx brs-cli <zip> -c 0`). The maintainer does not want upstream bug reports filed.
 
 ### docs
 

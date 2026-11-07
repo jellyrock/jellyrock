@@ -117,10 +117,9 @@ const UNDETACHABLE = 'undetachable-observer';
 const TOP_UNOBSERVE = 'top-unobserve-outside-ondestroy';
 const TOP_OBSERVE = 'top-observer-outside-init';
 
-// Third-party code we cannot edit. Both vendored trees, for the reason
-// no-hand-rolled-dialog gives: excluding only one leaves the other to be suppressed
-// line by line.
-const VENDORED_PREFIXES = ['components/vendor/', 'components/roku_modules/'];
+// Package-managed code (ropm), which an install regenerates, so we cannot edit it.
+// Code kept in the repo is ours and gets every check, whatever its origin.
+const VENDORED_PREFIXES = ['components/roku_modules/'];
 
 module.exports = () =>
   createScopeRule({

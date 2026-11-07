@@ -182,14 +182,6 @@ namespace tests
 
           ' Add to global
           m.global.addFields({ rLog: rLog })
-
-          ' Add logIndent fields that roku-log expects
-          if not m.global.doesExist("logIndent")
-            m.global.addFields({ logIndent: 0 })
-          end if
-          if not m.global.doesExist("logIndentText")
-            m.global.addFields({ logIndentText: "" })
-          end if
         end if
       end if
     end sub

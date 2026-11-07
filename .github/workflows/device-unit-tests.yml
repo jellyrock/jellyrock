@@ -182,7 +182,9 @@ jobs:
     timeout-minutes: 15
     environment: roku-device
     steps:
-      - run: echo "Maintainer approved device tests for fork PR #${{ github.event.pull_request.number }}."
+      # A block scalar: on a plain `run:` line, YAML reads " #" as the start of a comment.
+      - run: |
+          echo "Maintainer approved device tests for fork PR #${{ github.event.pull_request.number }}."
 
   all-tests:
     needs: [check-skip, fork-gate]

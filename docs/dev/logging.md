@@ -3,13 +3,15 @@ topic: logging
 related-files:
   - components/JRScene.bs
   - components/JRScreen.bs
+  - components/logging/Log.bs
+  - source/logging/Logger.bs
   - scripts/bsc-plugins/roku-log.cjs
-last-reviewed: 2026-11-04
+last-reviewed: 2026-11-05
 ---
 
-# Logging guide (roku-log)
+# Logging guide
 
-JellyRock logs through roku-log. To log from your code, import the mixin, create a logger, and call it at the right level. How the logging system works inside is in [architecture/logging.md](../architecture/logging.md).
+JellyRock logs through its own logger in `source/logging/`, adopted from roku-log. To log from your code, import the logger, create one, and call it at the right level. How the logging system works inside is in [architecture/logging.md](../architecture/logging.md).
 
 ## 1. The log manager is already set up
 
@@ -19,21 +21,17 @@ JellyRock logs through roku-log. To log from your code, import the mixin, create
 
 The manager takes these settings:
 
-- **Transports**, one or more of:
-  - `log_PrintTransport` (telnet output)
-  - `log_ScreenTransport` (on-screen overlay)
-  - `log_NodeTransport` (RALE node)
-  - `log_HTTPTransport` (HTTP endpoint)
+- **Transports:** `log_PrintTransport` writes to the debug console (telnet on port 8085). It is the only one.
 - **Log level**: `0` error, `1` warn, `2` info, `3` verbose, `4` debug. A call is written when its level number is at most the configured level. The app's default of `2` writes error, warn and info, and drops verbose and debug.
 
 **Production builds remove every `m.log.*` call** when they compile (`rokuLog.strip` in `bsconfig-prod.json`, applied by the `roku-log` BrighterScript plugin). A production build logs nothing, whatever the level. If a log line you expect is missing, check whether you're on a production build before you look at levels or filters.
 
-## 2. Import the logging mixin
+## 2. Import the logger
 
-Import the mixin in every `.bs` file that logs:
+Import the logger in every `.bs` file that logs:
 
 ```brighterscript
-import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/logging/Logger.bs"
 ```
 
 ## 3. Create a logger in each component or class
@@ -72,29 +70,25 @@ Each method takes a message and up to 8 values. A ninth fails the build with `lo
 m.log.info("Received data", json.result, "http call", m.top.uri)
 ```
 
-roku-log converts the values to text, so you don't have to.
+The logger masks addresses wherever they appear, and a token or device ID where a key names it (`ApiKey=…`, `Token="…"`, `"AccessToken":"…"`), turning each into a placeholder such as `<token:3fa9>` or `<lan-ip>` before the line is written. So a URL or a header is safe to log. Two things fail the build instead:
 
-## 5. Indent related lines
-
-Indent related log lines to group them:
+- A title, a person's name, search text or a file path can't be masked (`log-personal-text`). Log the ID, or the text's length.
+- A token, password or device ID passed as its own argument would print raw, because `m.log` joins its arguments with a space and nothing names it (`log-secret-value`). Log whether it is set, or leave it out.
 
 ```brighterscript
-m.log.increaseIndent("Fetching user data")
-' ...log actions...
-m.log.decreaseIndent()
-m.log.resetIndent()
+m.log.info("Playing", item.id)                 ' not item.name
+m.log.debug("session", "hasToken", isValid(token))  ' not token
 ```
 
-- `increaseIndent([title])`: indents one level, with an optional title.
-- `decreaseIndent()`: goes back one level.
-- `resetIndent()`: removes all indentation.
+The logger converts the values to text, so you don't have to. The exception: a `LongInteger` or `Double` prints as an empty string (followup `roku-log-longinteger-double-empty`), so call `.toStr()` on one until that is fixed.
 
 ## Rules
 
 - **Don't set up the log manager yourself.** `JRScene.init()` owns it, and `lint:log-manager-init` enforces that.
 - **Don't create a `log.Logger` in anything built before the scene exists** (`setGlobals()`, early `main.bs`). It stores `invalid` and never logs. Use `print` where it is allowed.
-- **Import the mixin** in every file that logs.
+- **Import the logger** in every file that logs.
 - **Create one logger per component or class**, so each line shows where it came from.
 - **Pick the level by the table above**, so filtering works.
-- **Group related lines** with indentation, so a sequence is easy to follow.
+- **Log IDs, never titles, names, search text or file paths.** The build rejects them (`log-personal-text`); the [architecture doc](../architecture/logging.md#masking-what-a-line-could-leak) says why.
+- **Never pass a token, password or device ID as its own argument.** The build rejects it (`log-secret-value`), since masking finds a secret only after its key.
 - **Use `m.log.*`, not `print`.** `print` is allowed only in `source/main.bs` and in the `#if debug` block of `source/utils/globals.bs`. The `print-locations` BrighterScript plugin enforces this (see [build-and-tooling.md](../architecture/build-and-tooling.md)).

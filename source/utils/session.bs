@@ -388,7 +388,8 @@ namespace user
 
     ' Use node structure as source of truth to determine where each setting belongs
     for each setting in userSettings
-      print "Loading user setting:", setting, "=", userSettings[setting]
+      ' The key only: a value can be the access token, the user name or the search history
+      print "Loading user setting:", setting
       ' Skip global settings (loaded from global section separately)
       ' Skip display settings (handled separately below via TransformDisplaySettings)
       ' Skip homeSection fields: these are server-authoritative (fetched fresh from

@@ -32,6 +32,61 @@ namespace tests
       m.assertEqual(classifyBufferCheck(33, 33, false), BufferCheckAction.STALLED)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("classifyPlayingProgress()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps waiting while the position advances")
+    function _()
+      m.assertEqual(classifyPlayingProgress(61.5, 31.5, m.playingFlags()), BufferCheckAction.PROGRESS)
+    end function
+
+    @it("calls a position that did not move since the last tick a stall")
+    function _()
+      m.assertEqual(classifyPlayingProgress(0.0, 0.0, m.playingFlags()), BufferCheckAction.STALLED)
+      m.assertEqual(classifyPlayingProgress(120.5, 120.5, m.playingFlags()), BufferCheckAction.STALLED)
+    end function
+
+    @it("does not call a pause, a seek or a scrub a stall")
+    function _()
+      m.assertEqual(classifyPlayingProgress(10.0, 10.0, m.playingFlags({ isPaused: true })), BufferCheckAction.PROGRESS)
+      m.assertEqual(classifyPlayingProgress(10.0, 10.0, m.playingFlags({ isSeeking: true })), BufferCheckAction.PROGRESS)
+      m.assertEqual(classifyPlayingProgress(10.0, 10.0, m.playingFlags({ isScrubbing: true })), BufferCheckAction.PROGRESS)
+    end function
+
+    @it("does not call a state other than playing a stall")
+    function _()
+      m.assertEqual(classifyPlayingProgress(10.0, 10.0, m.playingFlags({ isPlaying: false })), BufferCheckAction.PROGRESS)
+    end function
+
+    @it("counts a seek that moved the position back as progress")
+    function _()
+      m.assertEqual(classifyPlayingProgress(5.0, 600.0, m.playingFlags()), BufferCheckAction.PROGRESS)
+    end function
+
+    @it("lets the node hold the last frame near the end")
+    function _()
+      m.assertEqual(classifyPlayingProgress(5398.0, 5398.0, m.playingFlags({ duration: 5400.0 })), BufferCheckAction.PROGRESS)
+      m.assertEqual(classifyPlayingProgress(5300.0, 5300.0, m.playingFlags({ duration: 5400.0 })), BufferCheckAction.STALLED)
+    end function
+
+    @it("hands a frozen Live TV channel to the host's restart rule")
+    function _()
+      m.assertEqual(classifyPlayingProgress(80.0, 80.0, m.playingFlags({ isLive: true })), BufferCheckAction.LIVE_STALLED)
+      m.assertEqual(classifyPlayingProgress(80.0, 90.0, m.playingFlags({ isLive: true })), BufferCheckAction.PROGRESS)
+    end function
+
+    @it("ignores the end margin for Live TV, where the duration means nothing")
+    function _()
+      m.assertEqual(classifyPlayingProgress(80.0, 80.0, m.playingFlags({ isLive: true, duration: 81.0 })), BufferCheckAction.LIVE_STALLED)
+    end function
+
+    function playingFlags(overrides = {} as object) as object
+      flags = { isPlaying: true, isPaused: false, isSeeking: false, isScrubbing: false, isLive: false, duration: 0.0 }
+      flags.append(overrides)
+      return flags
+    end function
+
   end class
 
 end namespace

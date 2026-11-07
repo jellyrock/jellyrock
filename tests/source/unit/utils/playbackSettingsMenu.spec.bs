@@ -1,3 +1,5 @@
+import "pkg:/source/syncplay/syncPlayPlayback.bs"
+import "pkg:/source/syncplay/syncPlayQueue.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/playbackSettingsMenu.bs"
 import "pkg:/source/utils/queueRepeat.bs"
@@ -41,6 +43,24 @@ namespace tests
       m.assertEqual(menu.labels[2], "Repeat (One)")
       menu = playbackSettingsMenu.rows(false, 0, "auto", m.resolutionSetting(), "")
       m.assertEqual(menu.labels[2], "Repeat (Off)")
+    end function
+
+    @it("adds the SyncPlay rows while following a group, and leaves them out otherwise")
+    function _()
+      menu = playbackSettingsMenu.rows(false, 0, "auto", m.resolutionSetting(), queueRepeat.OFF, invalid)
+      m.assertEqual(menu.ids.count(), 3)
+      group = { shuffleMode: syncPlayQueue.SHUFFLE_ON, offsetMs: 100 }
+      menu = playbackSettingsMenu.rows(false, 0, "auto", m.resolutionSetting(), queueRepeat.ALL, group)
+      m.assertEqual(menu.ids, [playbackSettingsMenu.ROW_MAX_BITRATE, playbackSettingsMenu.ROW_MAX_RESOLUTION, playbackSettingsMenu.ROW_REPEAT, playbackSettingsMenu.ROW_SHUFFLE, playbackSettingsMenu.ROW_TIME_OFFSET, playbackSettingsMenu.ROW_LEAVE_GROUP])
+      m.assertEqual(menu.labels[3], "Shuffle (On)")
+      m.assertEqual(menu.labels[4], "SyncPlay Time Offset (100 ms)")
+      m.assertEqual(menu.labels[5], "Leave Group")
+      m.assertEqual(menu.icons[3], playbackSettingsMenu.ICON_SHUFFLE)
+      m.assertEqual(menu.icons[4], playbackSettingsMenu.ICON_TIME_OFFSET)
+      m.assertEqual(menu.icons[5], playbackSettingsMenu.ICON_LEAVE_GROUP)
+      menu = playbackSettingsMenu.rows(false, 0, "auto", m.resolutionSetting(), queueRepeat.OFF, { shuffleMode: "Sorted", offsetMs: 0 })
+      m.assertEqual(menu.labels[3], "Shuffle (Off)")
+      m.assertEqual(menu.labels[4], "SyncPlay Time Offset (0 ms)", "no reading, no drift")
     end function
 
     ' The row carries the short form; the picker carries the setting's full titles.
@@ -196,6 +216,68 @@ namespace tests
     function _()
       options = playbackSettingsMenu.bitrateOptions(5, 500000)
       m.assertEqual(options.values, [0, 5, 1])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the SyncPlay rows")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the time offset row is the offset alone, with no drift reading")
+    function _()
+      m.assertEqual(playbackSettingsMenu.timeOffsetLabel(100), "100 ms")
+      m.assertEqual(playbackSettingsMenu.timeOffsetLabel(0), "0 ms")
+      m.assertEqual(playbackSettingsMenu.timeOffsetLabel(invalid), "0 ms")
+      m.assertEqual(playbackSettingsMenu.timeOffsetLabel(250&), "250 ms", "a LongInteger, as the manager publishes it")
+    end function
+
+    @it("the picker's step is twice the bar a pick corrects past, so every step starts a correction")
+    function _()
+      ' The bar sits halfway between the drift reading's noise and one step: change one constant and
+      ' the other must be weighed again (decision syncplay-offset-applies-at-pick).
+      m.assertEqual(playbackSettingsMenu.TIME_OFFSET_STEP_MS, syncPlayPlayback.PICK_CORRECTION_MS * 2)
+    end function
+
+    @it("the time offset picker steps by 100 to 500 and checks the value that applies")
+    function _()
+      options = playbackSettingsMenu.timeOffsetOptions(0)
+      m.assertEqual(options.values, [0, 100, 200, 300, 400, 500])
+      m.assertEqual(options.labels[1], "100 ms")
+      m.assertEqual(options.selectedIndex, 0)
+      m.assertEqual(options.defaultIndex, 0)
+      options = playbackSettingsMenu.timeOffsetOptions(200)
+      m.assertEqual(options.selectedIndex, 2)
+      m.assertEqual(options.values[2], 200)
+    end function
+
+    @it("a setting off the grid gets its own row, in order, so the checked row is always the value that applies")
+    function _()
+      options = playbackSettingsMenu.timeOffsetOptions(150)
+      m.assertEqual(options.values, [0, 100, 150, 200, 300, 400, 500])
+      m.assertEqual(options.selectedIndex, 2)
+      m.assertEqual(options.labels[2], "150 ms")
+      options = playbackSettingsMenu.timeOffsetOptions(700)
+      m.assertEqual(options.values[6], 700)
+      m.assertEqual(options.selectedIndex, 6)
+    end function
+
+    @it("the shuffle picker offers Off and On in the server's words, with the group's mode checked")
+    function _()
+      options = playbackSettingsMenu.shuffleOptions("Sorted")
+      m.assertEqual(options.labels, ["Off", "On"])
+      m.assertEqual(options.values, [syncPlayQueue.SHUFFLE_OFF, syncPlayQueue.SHUFFLE_ON])
+      m.assertEqual(options.selectedIndex, 0)
+      options = playbackSettingsMenu.shuffleOptions("Shuffle")
+      m.assertEqual(options.selectedIndex, 1)
+      m.assertEqual(options.defaultIndex, 1)
+      m.assertEqual(playbackSettingsMenu.shuffleLabel(invalid), "Off")
+    end function
+
+    @it("the group's shuffle lights the gear; the time offset, a saved setting, does not")
+    function _()
+      m.assertTrue(playbackSettingsMenu.hasPicks({}, queueRepeat.OFF, syncPlayQueue.SHUFFLE_ON))
+      m.assertFalse(playbackSettingsMenu.hasPicks({}, queueRepeat.OFF, syncPlayQueue.SHUFFLE_OFF))
+      m.assertFalse(playbackSettingsMenu.hasPicks({}, queueRepeat.OFF, invalid))
+      m.assertFalse(playbackSettingsMenu.hasPicks({}, queueRepeat.OFF))
     end function
 
   end class

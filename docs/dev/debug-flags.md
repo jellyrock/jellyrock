@@ -149,7 +149,17 @@ print node.rawApiData
 print node.rawApiData.UserData
 ```
 
-`curl` is often easier. The console's `[http]` trace prints each request's URL and auth token, so you can fetch the same response again and compare. `rawApiData` saves you working out which request produced which node.
+`curl` is often easier. The console's `http` trace (`debug` level) shows each request's method and URL, with the query's keys but not their values, and masks the token, so sign in with `curl` to get a token of your own, then fetch the same response again and compare:
+
+```bash
+TOKEN=$(curl -s -X POST "$SERVER/Users/AuthenticateByName" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: MediaBrowser Client="curl", Device="curl", DeviceId="curl-replay", Version="1.0"' \
+  -d '{"Username":"you","Pw":"your password"}' | jq -r .AccessToken)
+curl -s -H "Authorization: MediaBrowser Token=\"$TOKEN\"" "$SERVER/Users/Me"
+```
+
+Each sign-in adds a `curl` device and session to the server. `rawApiData` saves you working out which request produced which node.
 
 An RTA build cannot read it: `npm run test:rta` turns on `ENABLE_RTA` only, so `debug` stays off and `rawApiData` is `invalid`.
 

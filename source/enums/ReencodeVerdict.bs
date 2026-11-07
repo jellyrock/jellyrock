@@ -1,0 +1,11 @@
+' What the re-encode check decides from the session read back after a stream is handed to the
+' player (reencodeCheck.reencodeNeedsBufferCap in source/utils/reencodeCheck.bs).
+enum ReencodeVerdict
+  ' Nothing to do: the server copies the video, re-encodes within the cap, or the answer cannot be
+  ' judged, or this load is not one the check applies to.
+  NONE = "none"
+  ' The server has not shown its transcode yet: read the session again.
+  LATER = "later"
+  ' The server is re-encoding above the buffer cap: restart once with the cap applied.
+  RESTART = "restart"
+end enum

@@ -25,6 +25,8 @@ BrighterScript modules: shared utilities and the orchestration that doesn't live
 - **Never concatenate values into a log or print message; use the multi-argument form.** In BrightScript, `+` does not turn a boolean (and several other types) into a string, so `"" + someBool` raises `ERR_TM` at runtime. Lint doesn't catch it; only running it on a device does.
   - `print`: separate the label and values with `;` (or `,`): `print "channels="; channelCount; " codec="; codec`
   - `m.log.*`: pass label and value pairs as separate arguments: `m.log.debug("channels", channelCount, "codec", codec)`
+- **Log IDs, never titles or names.** The logger masks addresses, and a token or device ID after its key (`ApiKey=…`), but free text can't be masked, so an argument named like a title, a name, search text or a path (`rowTitle`, `item.name`, `username`, `query`, `path`) fails the build with `log-personal-text`.
+- **Never pass a secret as its own argument.** `m.log` joins arguments with a space, so `m.log.debug("token", token)` has no key for masking to find; an argument named like a token, password or device ID fails the build with `log-secret-value`.
 - **An `m.log.*` call takes at most 9 arguments, the message included.** The logger's methods take a message and nine values, and in dev builds the `roku-log` plugin inserts the file location as the first argument. For more context, split it into two log lines rather than concatenating.
 
 ## What lives where
@@ -37,6 +39,7 @@ BrighterScript modules: shared utilities and the orchestration that doesn't live
 | `source/GridView/` | Grid presenters per library type, and the grid's paging and query helpers. |
 | `source/home/` | Home's row loading and failure handling. |
 | `source/extras/` | The details screen's extras rows. |
+| `source/logging/` | The logger (`log.Logger`, `log.initializeLogManager`), adopted from roku-log and owned here; its README lists every change from upstream. The manager node is in `components/logging/`. |
 | `source/remotecontrol/` | Remote-control commands and their dispatch. |
 | `source/syncplay/` | The pure SyncPlay layer: server time (LongInteger ms, never a Double: an AA demotes one to a 32-bit float), the clock-offset estimate, the frame parser, the request bodies, the membership state, the coordinator's decisions (`syncPlayPlayback.bs`) and the queue mapping. No node, no HTTP; `syncPlayHooks.bs` is the one file that reads `m.global`, for the player. |
 | `source/enums/` | Enum constants. |

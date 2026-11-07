@@ -2,8 +2,8 @@ import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/enums/HomeAction.bs"
+import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/remotecontrol/remoteProtocol.bs"
-import "pkg:/source/roku_modules/log/LogMixin.brs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
@@ -437,15 +437,30 @@ end function
 '
 ' Warms the answer only: a detail screen that finds it still unknown asks itself,
 ' so nothing waits on this reply and a failure here costs nothing.
+'
+' Reads the server's encoder settings too, which decide whether a transcode lists HEVC
+' first (serverCapabilities.serverEncodesHevcInHardware). Read here so every play, Live TV
+' included, follows them from the start; a video load that finds them unknown reads them
+' itself (LoadVideoContentTask.readServerEncodingPolicy). Re-read on each sign-in, so a
+' change the admin made since shows up without restarting the app.
 sub checkServerCapabilities()
   req = GetApi().BuildGetLibraryOptionsInfoRequest()
-  if not isValid(req) then return
+  if isValid(req)
+    promises.chain(fetchAsync(req, "serverCapabilities-home")).then(sub(res as object)
+      serverCapabilities.recordSubtitleProviderStatus(res)
+    end sub).catch(sub(err as object)
+      m.log.warn("server capability check failed", err.reason)
+    end sub)
+  end if
 
-  promises.chain(fetchAsync(req, "serverCapabilities-home")).then(sub(res as object)
-    serverCapabilities.recordSubtitleProviderStatus(res)
-  end sub).catch(sub(err as object)
-    m.log.warn("server capability check failed", err.reason)
-  end sub)
+  encodingReq = GetApi().BuildGetNamedConfigurationRequest("encoding")
+  if isValid(encodingReq)
+    promises.chain(fetchAsync(encodingReq, "encodingPolicy-home")).then(sub(res as object)
+      serverCapabilities.recordEncodingPolicy(res)
+    end sub).catch(sub(err as object)
+      m.log.warn("server encoder settings check failed", err.reason)
+    end sub)
+  end if
 end sub
 
 ' onDestroy: Full teardown releasing all resources before component removal

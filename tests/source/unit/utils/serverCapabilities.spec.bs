@@ -54,6 +54,141 @@ namespace tests
       m.assertTrue(serverCapabilities.shouldOfferSubtitleSearch(serverCapabilities.STATUS_UNKNOWN))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("serverEncodesHevcInHardware()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    private function policy(hardwareType as dynamic, enableHardware as dynamic, allowHevc as dynamic) as object
+      return { HardwareAccelerationType: hardwareType, EnableHardwareEncoding: enableHardware, AllowHevcEncoding: allowHevc }
+    end function
+
+    @it("is true for NVENC with hardware encoding and HEVC encoding on")
+    function _()
+      m.assertTrue(serverCapabilities.serverEncodesHevcInHardware(m.policy("nvenc", true, true)))
+    end function
+
+    @it("is false when the acceleration type is none, even with both switches on")
+    function _()
+      m.assertFalse(serverCapabilities.serverEncodesHevcInHardware(m.policy("none", true, true)))
+    end function
+
+    @it("is false for QSV when HEVC encoding is off")
+    function _()
+      m.assertFalse(serverCapabilities.serverEncodesHevcInHardware(m.policy("qsv", true, false)))
+    end function
+
+    @it("is false when hardware encoding is off")
+    function _()
+      m.assertFalse(serverCapabilities.serverEncodesHevcInHardware(m.policy("nvenc", false, true)))
+    end function
+
+    @it("is false for an unknown policy or a field of the wrong type")
+    function _()
+      m.assertFalse(serverCapabilities.serverEncodesHevcInHardware(invalid))
+      m.assertFalse(serverCapabilities.serverEncodesHevcInHardware({}))
+      m.assertFalse(serverCapabilities.serverEncodesHevcInHardware(m.policy(invalid, true, true)))
+      m.assertFalse(serverCapabilities.serverEncodesHevcInHardware(m.policy("nvenc", "true", true)))
+      m.assertFalse(serverCapabilities.serverEncodesHevcInHardware(m.policy("nvenc", true, invalid)))
+      m.assertFalse(serverCapabilities.serverEncodesHevcInHardware(m.policy("", true, true)))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("encodingPolicyFrom()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps the three fields of a complete reply")
+    function _()
+      res = { ok: true, json: { HardwareAccelerationType: "nvenc", EnableHardwareEncoding: true, AllowHevcEncoding: false, EncodingThreadCount: -1 } }
+      policy = serverCapabilities.encodingPolicyFrom(res)
+      m.assertEqual(policy.HardwareAccelerationType, "nvenc")
+      m.assertTrue(policy.EnableHardwareEncoding)
+      m.assertFalse(policy.AllowHevcEncoding)
+      m.assertFalse(policy.doesExist("EncodingThreadCount"))
+    end function
+
+    @it("is invalid when the reply does not answer both switches")
+    function _()
+      m.assertInvalid(serverCapabilities.encodingPolicyFrom({ ok: false, json: invalid }))
+      m.assertInvalid(serverCapabilities.encodingPolicyFrom({ ok: true, json: {} }))
+      m.assertInvalid(serverCapabilities.encodingPolicyFrom({ ok: true, json: { HardwareAccelerationType: "nvenc", EnableHardwareEncoding: true } }))
+      m.assertInvalid(serverCapabilities.encodingPolicyFrom({ ok: true, json: { HardwareAccelerationType: "nvenc", AllowHevcEncoding: true } }))
+      m.assertInvalid(serverCapabilities.encodingPolicyFrom(invalid))
+    end function
+
+    @it("reads a missing hardware type as none, as a server before 10.10 sends until its Transcoding page is saved")
+    function _()
+      ' The reply of a new 10.8.13 server after its setup wizard: no HardwareAccelerationType.
+      res = { ok: true, json: { EncodingThreadCount: -1, EnableHardwareEncoding: true, AllowHevcEncoding: false } }
+      policy = serverCapabilities.encodingPolicyFrom(res)
+
+      m.assertEqual(policy.HardwareAccelerationType, "none")
+      m.assertFalse(serverCapabilities.serverEncodesHevcInHardware(policy))
+    end function
+
+    @it("reads a missing hardware type as none even with both switches on, as a new 10.7.7 server sends")
+    function _()
+      policy = serverCapabilities.encodingPolicyFrom({ ok: true, json: { EnableHardwareEncoding: true, AllowHevcEncoding: true } })
+
+      m.assertEqual(policy.HardwareAccelerationType, "none")
+      m.assertFalse(serverCapabilities.serverEncodesHevcInHardware(policy))
+    end function
+
+    @it("keeps the dashboard's empty None, which is not hardware")
+    function _()
+      policy = serverCapabilities.encodingPolicyFrom({ ok: true, json: { HardwareAccelerationType: "", EnableHardwareEncoding: true, AllowHevcEncoding: true } })
+
+      m.assertEqual(policy.HardwareAccelerationType, "")
+      m.assertFalse(serverCapabilities.serverEncodesHevcInHardware(policy))
+    end function
+
+    @it("is invalid for a hardware type that is not a string")
+    function _()
+      m.assertInvalid(serverCapabilities.encodingPolicyFrom({ ok: true, json: { HardwareAccelerationType: 3, EnableHardwareEncoding: true, AllowHevcEncoding: true } }))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("recordEncodingPolicy()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    protected override function beforeEach()
+      super.beforeEach()
+      m.global.server.setField("encodingPolicy", invalid)
+    end function
+
+    protected override function afterEach()
+      m.global.server.setField("encodingPolicy", invalid)
+      super.afterEach()
+    end function
+
+    @it("stores a complete reply on the server node, where the playback request reads it")
+    function _()
+      res = { ok: true, json: { HardwareAccelerationType: "nvenc", EnableHardwareEncoding: true, AllowHevcEncoding: true } }
+
+      returned = serverCapabilities.recordEncodingPolicy(res)
+
+      stored = m.global.server.encodingPolicy
+      m.assertEqual(stored.HardwareAccelerationType, "nvenc")
+      m.assertEqual(returned.HardwareAccelerationType, "nvenc")
+      m.assertTrue(serverCapabilities.serverEncodesHevcInHardware(stored))
+    end function
+
+    @it("stores nothing for a failed reply, so the next load asks again")
+    function _()
+      m.assertInvalid(serverCapabilities.recordEncodingPolicy({ ok: false, json: invalid }))
+      m.assertInvalid(m.global.server.encodingPolicy)
+    end function
+
+    @it("keeps a stored policy when a later read fails")
+    function _()
+      serverCapabilities.recordEncodingPolicy({ ok: true, json: { HardwareAccelerationType: "qsv", EnableHardwareEncoding: true, AllowHevcEncoding: true } })
+
+      serverCapabilities.recordEncodingPolicy({ ok: false, json: invalid })
+
+      stored = m.global.server.encodingPolicy
+      m.assertNotInvalid(stored)
+      if isValid(stored) then m.assertEqual(stored.HardwareAccelerationType, "qsv")
+    end function
+
   end class
 
 end namespace

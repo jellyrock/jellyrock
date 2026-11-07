@@ -22,7 +22,7 @@ import {
 const REPO_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..', '..');
 
 const GOOD_SCENE = `
-import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/logging/Logger.bs"
 
 sub init()
   ' a comment ahead of the call must not count as a statement
@@ -178,7 +178,7 @@ describe('smoke — the real committed tree', () => {
     for (const entry of readdirSync(join(REPO_ROOT, relDir))) {
       const rel = join(relDir, entry);
       if (statSync(join(REPO_ROOT, rel)).isDirectory()) {
-        if (entry === 'roku_modules' || entry === 'vendor') continue;
+        if (entry === 'roku_modules') continue;
         collect(rel, out);
       } else if (entry.endsWith('.bs')) {
         out.set(rel.split(sep).join('/'), readFileSync(join(REPO_ROOT, rel), 'utf8'));

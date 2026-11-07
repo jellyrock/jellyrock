@@ -35,7 +35,8 @@
   "plugins": [
     "rooibos-roku",
     "@rokucommunity/bslint",
-    "./scripts/bsc-plugins/translation-keys.cjs"
+    "./scripts/bsc-plugins/translation-keys.cjs",
+    "./scripts/bsc-plugins/strip-vendor-prints.cjs"
   ],
   "rooibos": {
     "tags": ["!measurement"],

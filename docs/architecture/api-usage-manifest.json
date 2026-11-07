@@ -836,6 +836,30 @@
       ]
     },
     {
+      "path": "/SyncPlay/SetRepeatMode",
+      "normalized": "/syncplay/setrepeatmode",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/SyncPlay/SetShuffleMode",
+      "normalized": "/syncplay/setshufflemode",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
       "path": "/SyncPlay/Stop",
       "normalized": "/syncplay/stop",
       "methods": [
@@ -862,6 +886,18 @@
     {
       "path": "/System/Configuration",
       "normalized": "/system/configuration",
+      "methods": [
+        "GET"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
+      "path": "/System/Configuration/{0}",
+      "normalized": "/system/configuration/{}",
       "methods": [
         "GET"
       ],
@@ -1184,6 +1220,12 @@
       ]
     },
     {
+      "name": "AllowVideoStreamCopy",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
       "name": "ArtistIds",
       "sourceFiles": [
         "source/api/items.bs"
@@ -1388,6 +1430,12 @@
       ]
     },
     {
+      "name": "Mode",
+      "sourceFiles": [
+        "source/syncplay/syncPlayRequests.bs"
+      ]
+    },
+    {
       "name": "ParentId",
       "sourceFiles": [
         "source/api/items.bs"
@@ -1535,6 +1583,12 @@
     },
     {
       "name": "Value",
+      "sourceFiles": [
+        "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "VideoCodec",
       "sourceFiles": [
         "source/api/items.bs"
       ]
@@ -3601,19 +3655,19 @@
       }
     },
     "counts": {
-      "endpoints": 97,
-      "requestFields": 61,
+      "endpoints": 100,
+      "requestFields": 64,
       "responseFields": 223,
       "unresolvedEndpointSinks": 3
     },
     "unresolvedEndpointSinks": [
       {
         "sourceFile": "source/api/items.bs",
-        "line": 445
+        "line": 595
       },
       {
         "sourceFile": "source/api/items.bs",
-        "line": 460
+        "line": 610
       },
       {
         "sourceFile": "source/utils/subtitles.bs",

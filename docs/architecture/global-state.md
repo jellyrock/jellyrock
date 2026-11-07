@@ -29,7 +29,9 @@ m.global
 │   │                     the capabilities read later:
 │   ├── isQuickConnectEnabled   defaults to true; UserSelect's probe sets it false
 │   ├── subtitleProviderStatus  "" until Home's session check (serverCapabilities.bs)
-│   └── resumePolicy            invalid until ItemDetails first needs it (versionResume.bs)
+│   ├── remoteChannelStatus     "" until RemoteControlTask settles (serverCapabilities.bs)
+│   ├── resumePolicy            invalid until ItemDetails first needs it (versionResume.bs)
+│   └── encodingPolicy          invalid until Home's session check or a video load (serverCapabilities.bs)
 ├── user                  JellyfinUser: id, name, authToken, fontScaleFactor
 │   ├── settings          JellyfinUserSettings, every per-user setting (see settings.md)
 │   ├── config            JellyfinUserConfiguration, the server's profile for the user
@@ -156,7 +158,7 @@ A component that copies a theme color when it is built keeps the old color until
 
 ## Manager nodes: `sceneManager`, `queueManager`, `audioPlayer`
 
-All of them live for the whole app. `sceneManager` and `queueManager` are called through `callFunc`, so each method must be declared in the node's XML interface. Each is created from the main thread, so its `init()` runs there and must not build the AAs its handlers use: `LongInteger` and `invalid` entries do not survive the hand-over to the render thread ([threading.md](threading.md#constructing-components)); `SyncPlayManager.ensureReady` is the shape. `audioPlayer` extends Roku's `Video` node and is driven through its fields:
+All of them live for the whole app. `sceneManager` and `queueManager` are called through `callFunc`, so each method must be declared in the node's XML interface. Each is created from the main thread, so its `init()` runs there and must not build the AAs its handlers use: `LongInteger` and `invalid` entries, and objects such as an `roRegex`, do not survive the hand-over to the render thread ([threading.md](threading.md#constructing-components)); `SyncPlayManager.ensureReady` is the shape. `audioPlayer` extends Roku's `Video` node and is driven through its fields:
 
 ```brightscript
 m.global.sceneManager.callFunc("reloadHome")

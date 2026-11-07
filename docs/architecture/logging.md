@@ -3,34 +3,32 @@ topic: logging
 related-files:
   - components/JRScene.bs
   - components/JRScreen.bs
+  - components/logging/Log.bs
+  - source/logging/Logger.bs
   - scripts/bsc-plugins/roku-log.cjs
-last-reviewed: 2026-11-04
+last-reviewed: 2026-11-06
 ---
 
 # Logging
 
-How JellyRock's logging works inside: the two parts of roku-log, where and when the log manager starts, and why that point cannot move. To log from your code, see the how-to in [`docs/dev/logging.md`](../dev/logging.md). Debug tooling is in [`debug-tools.md`](debug-tools.md), test setup in [`testing.md`](testing.md).
+How JellyRock's logging works inside: its two parts, where and when the log manager starts, and why that point cannot move. To log from your code, see the how-to in [`docs/dev/logging.md`](../dev/logging.md). Debug tooling is in [`debug-tools.md`](debug-tools.md), test setup in [`testing.md`](testing.md).
 
 ## roku-log
 
-JellyRock logs through roku-log (the `log` ropm package): named loggers, per-logger levels and a choice of transports. The app uses one transport, `log_PrintTransport`, which writes to the debug console.
+JellyRock logs through code adopted from roku-log 0.11.1: named loggers and per-logger levels. The app uses one transport, `log_PrintTransport`, which writes to the debug console.
 
-### "roku-log" is two artifacts, and only one of them is ours
+### Logging is two parts, and both are ours
 
 Say which one you mean. They fail differently, and a bug in the second reads like a bug in the first.
 
-| | What | Who owns it |
+| | What | Where it came from |
 |---|---|---|
-| **Runtime library** | `source/roku_modules/log/` and `components/roku_modules/log/`: `Logger`, the transports, `initializeLogManager` | **Upstream, unchanged.** `npm:roku-log@0.11.1`, vendored by ropm, which prefixes every symbol (`Logger` becomes `log_Logger`, `"Log"` becomes `"log_Log"`) |
-| **Compile-time plugin** | [`scripts/bsc-plugins/roku-log.cjs`](../../scripts/bsc-plugins/roku-log.cjs): `strip`, `insertPkgPath`, `guard`, `removeComments`, and the `log-too-many-values` check, which fails a call with more values than the runtime function takes once `insertPkgPath` has added its argument | **Ours.** Written from scratch to replace the unmaintained `roku-log-bsc-plugin@0.9.0-beta.1`, which BrighterScript v1 broke. There is nothing upstream to sync from |
+| **Runtime** | [`source/logging/Logger.bs`](../../source/logging/Logger.bs) (`log.Logger`, `log.initializeLogManager`) and [`components/logging/Log.bs`](../../components/logging/Log.bs) (the `log_Log` manager node) | Adopted from roku-log 0.11.1, whose last release was in 2023. Its [README](../../source/logging/README.md) lists every change from upstream. Edit it like any other code ([ADR 0054](../adr/0054-owned-code-gets-every-check.md)) |
+| **Compile-time plugin** | [`scripts/bsc-plugins/roku-log.cjs`](../../scripts/bsc-plugins/roku-log.cjs): `strip`, `insertPkgPath`, `guard`, `removeComments`, and the `log-too-many-values` check, which fails a call with more values than the runtime function takes once `insertPkgPath` has added its argument | Written from scratch to replace the unmaintained `roku-log-bsc-plugin@0.9.0-beta.1`, which BrighterScript v1 broke |
 
-**Never hand-edit the vendored runtime files.** `roku_modules` is gitignored, so those files are regenerated on every install: an edit there disappears at the next `npm i` and leaves no trace. The installed copy differs from the npm package only by the prefixes ropm adds. To check:
+**The console format is a contract.** `npm run measure` parses `<LEVEL> file://<path>:<line> <message>` (`LOG_LINE` in [`scripts/measurements.js`](../../scripts/measurements.js)), so a change to how `Logger.log()` writes a line must keep that shape or update the parser in the same change.
 
-```bash
-diff node_modules/log/dist/source/LogMixin.brs source/roku_modules/log/LogMixin.brs
-```
-
-So when logging misbehaves, first ask which artifact is at fault. The plugin rewrites your source before the compiler sees it, so it can add a statement your file never contained (see the next section).
+So when logging misbehaves, first ask which part is at fault. The plugin rewrites your source before the compiler sees it, so it can add a statement your file never contained (see the next section).
 
 ### The `guard` transform only knows `m.log`
 
@@ -62,7 +60,7 @@ The start used to live in `JRScreen.init()`, on the assumption that a screen alw
 
 ### Why it cannot start earlier
 
-`JRScene.init()` is the earliest point in the app that can create the manager. `initializeLogManager` creates a `log_Log` node, whose own `init()` always creates a `Timer` (`components/roku_modules/log/Log.brs`). Creating a `Timer` on the main thread before `m.screen.show()` fails. Measured 2026-08-02 on a Streaming Stick 4K, Roku OS 15.2.4:
+`JRScene.init()` is the earliest point in the app that can create the manager. `initializeLogManager` creates a `log_Log` node, whose own `init()` always creates a `Timer` (`init()` in [`components/logging/Log.bs`](../../components/logging/Log.bs)). Creating a `Timer` on the main thread before `m.screen.show()` fails. Measured 2026-08-02 on a Streaming Stick 4K, Roku OS 15.2.4:
 
 ```text
 [probe] bare Timer pre-show   → type=Invalid
@@ -90,10 +88,40 @@ Nodes created in `setGlobals()`, which `Main()` calls, are built before any mana
 
 **Do not create a `log.Logger` in anything built before the scene exists.** Use `print` there, as `main.bs` does. `lint:log-manager-init` fails on a new one; `JellyfinUserSettings` is its one recorded exception. If you add a global node that logs, check its output on a device: a silent logger looks the same as a quiet one.
 
+## Masking what a line could leak
+
+Console logs get shared: pasted into issues, and copied into `.device-runs/` by `scripts/lib/console-capture.js`. A log a user sends from the app must be safe to paste publicly too (followup `log-upload-to-server`), so it has to be masked before it is kept anywhere. So `Logger.log()` passes every line through `log.Redactor` (in [`source/logging/Logger.bs`](../../source/logging/Logger.bs)) before it is written, in every build:
+
+| Found | Becomes |
+|---|---|
+| A token, API key or `AccessToken` value after its key (`ApiKey=`, `api_key=`, `Token="…"`, JSON keys, escaped JSON too) | `<token:xxxx>`, the first 4 hex characters of its `MD5` hash |
+| A device ID (`DeviceId=`, `deviceId=`) | `<device:xxxx>` |
+| A password, a secret, or user info in a URL | `<secret>` |
+| The `Device=` field of the `Authorization` header (the Roku's user-set name) | `<device-name>` |
+| A URL host, or a bare `IPv4` or `IPv6` address (a zone ID included) | `<loopback>`, `<lan-ip>`, `<public-ip>`, `<lan-host>` or `<host>`. Private ranges, link-local and the shared `100.64.0.0/10` range Tailscale uses count as `<lan-ip>` |
+| A host name with a dot, named again without a scheme after a URL showed it to the same `Logger` (`Could not resolve host: …`) | Its class, as in the URL. Each `Logger` keeps its own list, so another component's line names the host raw |
+| A `true` or `false` value after a credential key (`"HasPassword":true`) | Left as it is: a flag holds no secret |
+
+**A fingerprint still answers the debugging question.** Two lines with the same `<token:…>` used the same token, and a host class still says whether the app talked to the LAN, the internet or itself. Scheme, port, path and query keys stay. Item and user IDs stay too: they identify nothing alone.
+
+**A secret passed as its own argument is kept out by the build.** The logger finds a token only after its key and a `=` or `:`, and `m.log` joins its arguments with a space, so `m.log.debug("token", token)` would print it raw. The `log-secret-value` check in [`roku-log.cjs`](../../scripts/bsc-plugins/roku-log.cjs) fails an argument whose name ends in a credential key the redactor knows (`token`, `apiKey`, `secret`, `password`, `deviceId` and their spellings), read the same way as below. Keep `SECRET_ENDINGS` there in step with the credential pattern.
+
+**Free text cannot be masked, so the build keeps it out.** A title, a person's name, search text or a file path has no shape the redactor could find. The `log-personal-text` check in [`roku-log.cjs`](../../scripts/bsc-plugins/roku-log.cjs) fails an `m.log` argument whose name says it holds one: any name ending in `name`, `title`, `query` or `term`, plus `voiceText`, `path` and a few music fields. `path` is matched whole, since `cachePath` and `routePath` hold IDs. It reads each argument, both sides of a `+`, the `${}` parts of a template string, and the keys and values of an AA literal. `NOT_PERSONAL` in the plugin lists the names that hold no free text (`settingName`, `fieldName`, `trackName`), so a new free-text name fails the build until someone decides otherwise. A name the build cannot read (`answered`, `uri[4]`) is the call site's job: log an ID or a length instead.
+
+**Each pattern runs only on a line that holds its trigger word.** On a Roku a pattern search costs several times a substring search, and most lines hold nothing to mask, so `redact()` first looks for `://`, `device=`, the credential words, and `::` or seven colons for `IPv6`, and skips each pattern whose trigger is missing. The `IPv4` pattern runs on every line. A trigger list that misses a key the credential pattern knows lets that key through, so the "every key the credential pattern knows" case in `Redactor.spec.bs` covers each one. `tests/source/unit/logging/RedactorCost.spec.bs` prints the cost per line through `test:tdd`, a plain line after a host is remembered included.
+
+**A match is replaced where the pattern found it.** `roRegex` reports no positions, so `log.replaceMatches()` finds each match by its text. When that text also appears where the pattern skipped it (`10.0.0.1.7` before `10.0.0.1`), the search could stop there and leave the real match raw, so the line is rebuilt from `Split()` instead, which cuts at the pattern's own matches. That costs another pattern pass, so it runs only when a match's text appears more often than it matched.
+
+**The patterns are rebuilt on the thread that uses them.** A `Logger` builds its redactor on its first line, and keeps it in the component's `m`. When a node's `m` is handed to another thread (a node created from the main thread, called later on the render thread), Roku keeps only data and drops the `roRegex` objects ([threading.md](threading.md#constructing-components)). So `redact()` compiles the patterns again when they are gone. The redactor reads no node, so it adds no thread crossing.
+
+**The request trace is ours.** `roku-requests` printed seven `[http]` lines for each request that succeeded, more on a retry or a timeout, the URL and headers with the token among them, with no switch to turn that off. The build removes them (`strip-vendor-prints.cjs`, [build-and-tooling.md](build-and-tooling.md#transform-plugins)), and `requestWithJsonOnSuccess()` in [`baseRequest.bs`](../../source/api/baseRequest.bs) writes one line per request through the caller's `m.log`: the method, the URL with the query's keys but not their values (`requestLogUrl()`), the status and the attempts. It is `debug` for an answer, a `4xx` included, and `warn` when no answer came back or the server failed (`requestTraceLevel()`). A caller with no `m.log` gets no line.
+
+**Not covered:** `print` statements, which bypass the logger (followup `log-print-through-redactor` in [`docs/progress.md`](../progress.md)), and Roku OS's own console lines.
+
 ## Where `print` is allowed
 
-The `print-locations` plugin flags a `print` wherever an `m.log` is available: any function in a component, and any class method. It allows `print` where no logger can exist: `source/main.bs`, the `#if debug` block in `source/utils/globals.bs`, and free functions in `source/`, which have no `m` to hold one. Unlike `m.log` calls, a `print` is not stripped from a production build.
+The `print-locations` plugin flags a `print` wherever an `m.log` is available: any function in a component, and any class method. It allows `print` where no logger can exist: `source/main.bs`, the `#if debug` block in `source/utils/globals.bs`, and free functions in `source/`, which have no `m` to hold one. The logging runtime's own `print` statements are suppressed line by line, since they are the console output. Unlike `m.log` calls, a `print` is not stripped from a production build.
 
 ## Known cruft
 
-Tracked in [`tech-debt.md`](tech-debt.md): `log-level-welded-to-debug-const`, `no-lint-for-mlog-without-logger` and `ropm-hook-fails-silently`.
+Tracked in [`tech-debt.md`](tech-debt.md): `log-level-welded-to-debug-const` and `no-lint-for-mlog-without-logger`. The runtime's known bugs are listed in its [README](../../source/logging/README.md#known-issues).

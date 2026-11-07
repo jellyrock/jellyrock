@@ -235,7 +235,7 @@ describe('the real committed sources', () => {
 const STATE = { OPEN: 1, CLOSING: 2, CLOSED: 3 };
 
 // WebSocketClient's posting contract, transcribed from
-// components/vendor/BrightWebSocket/web_socket_client/WebSocketClient.brs.
+// components/websocket/web_socket_client/WebSocketClient.brs.
 // The detail that matters: the CLOSED transition and the on_close post BOTH
 // happen inside run(), so a port drained before run() tells you nothing about
 // what run() leaves behind.

@@ -9,15 +9,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- (syncplay) Repeat, shuffle, time offset and leave in the gear ([#1315](https://github.com/jellyrock/jellyrock/pull/1315))
 - (player) Repeat a video or the queue from the OSD gear ([#1308](https://github.com/jellyrock/jellyrock/pull/1308))
 - (syncplay) Stay in step, stop seek freezes, add a time offset ([#1296](https://github.com/jellyrock/jellyrock/pull/1296))
 
 ### Changed
 
+- (logging) Mask secrets in logs, keep names and search text out ([#1329](https://github.com/jellyrock/jellyrock/pull/1329))
+- (logging) adopt `roku-log` as owned code, drop its hook ([#1328](https://github.com/jellyrock/jellyrock/pull/1328))
 - (home) Show vertical posters in TV Recently Added rows ([#1295](https://github.com/jellyrock/jellyrock/pull/1295))
 
 ### Fixed
 
+- (playback) Show `.strm` audio and subtitle buttons on first play ([#1332](https://github.com/jellyrock/jellyrock/pull/1332))
+- (playback) Start 4K Dolby Vision on a display without HDR ([#1331](https://github.com/jellyrock/jellyrock/pull/1331))
+- (playback) Play more Dolby Vision files, end a wasted retry ([#1325](https://github.com/jellyrock/jellyrock/pull/1325))
+- (playback) Handle long films, big re-encodes and frozen playback ([#1324](https://github.com/jellyrock/jellyrock/pull/1324))
+- (playback) Make 4K transcodes play, in HEVC on hardware servers ([#1323](https://github.com/jellyrock/jellyrock/pull/1323))
+- (playback) Recover when a 4K remux overflows the video buffer ([#1318](https://github.com/jellyrock/jellyrock/pull/1318))
 - (playback) Copy AC3 audio in a remux on 7.1 systems ([#1327](https://github.com/jellyrock/jellyrock/pull/1327))
 - (playback) Pick a playable audio track, not audio description ([#1320](https://github.com/jellyrock/jellyrock/pull/1320))
 - (playback) Stop transcoded videos playing with no sound ([#1317](https://github.com/jellyrock/jellyrock/pull/1317))
@@ -31,7 +40,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update rimraf from v6.1.3 to v6.1.4 ([#1319](https://github.com/jellyrock/jellyrock/pull/1319))
 - Update eslint from v10.13.0 to v10.14.0 ([#1287](https://github.com/jellyrock/jellyrock/pull/1287))
+- Rename the Rooibos patch for the installed alpha.56 ([eda2baf](https://github.com/jellyrock/jellyrock/commit/eda2bafa))
 - Lock file maintenance ([#1300](https://github.com/jellyrock/jellyrock/pull/1300))
 
 ## [3.3.1](https://github.com/jellyrock/jellyrock/compare/v3.3.0...v3.3.1) - 2026-10-30

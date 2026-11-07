@@ -1,5 +1,5 @@
 import "pkg:/source/GridView/GridPresenterBase.bs"
-import "pkg:/source/roku_modules/log/LogMixin.brs"
+import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/utils/displaySettings.bs"
 
 ' MusicPresenter handles music library-specific behavior

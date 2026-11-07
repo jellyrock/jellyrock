@@ -131,12 +131,14 @@ describe('comment-voice-ratchet — scope', () => {
     expect(gated.stderr).toContain('em-dash');
   });
 
-  it('ignores locale/ and components/vendor/', () => {
-    const r = makeRoot({
-      'locale/a.js': '// one — two\n',
-      'components/vendor/lib/a.brs': "' one — two\n",
-    });
-    expect(run(r).exitCode).toBe(0);
+  it('ignores locale/', () => {
+    expect(run(makeRoot({ 'locale/a.js': '// one — two\n' })).exitCode).toBe(0);
+  });
+
+  it('checks third-party code kept in the repo like any other', () => {
+    const res = run(makeRoot({ 'components/websocket/lib/a.brs': "' one — two\n" }));
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr).toContain('em-dash');
   });
 
   it('ignores gitignored ephemeral folders (projects / handoffs / plans)', () => {
@@ -217,9 +219,8 @@ describe('comment-voice-ratchet — house voice in code comments', () => {
     expect(res.stderr).toContain('scripts/broken.js');
   });
 
-  it('ignores vendored and generated code', () => {
+  it('ignores package-managed and generated code', () => {
     const r = makeRoot({
-      'components/vendor/x/a.xml': '<!-- one — two -->\n<c />\n',
       'roku_modules/x/a.bs': "' one — two\n",
       'node_modules/x/a.js': '// one — two\n',
       'build/a.js': '// one — two\n',

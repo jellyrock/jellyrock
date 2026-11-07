@@ -63,9 +63,9 @@
 //      precise regression it was written to catch. A guard nobody can test at
 //      runtime has to be adversarial about its own false-passes.
 //
-// 1-4 live in vendored BrightWebSocket code, whose local modifications are
-// documented in components/vendor/BrightWebSocket/README.md. A future upstream
-// re-sync is the single likeliest way they get reverted.
+// 1-4 live in the adopted BrightWebSocket code, whose local modifications are
+// documented in components/websocket/README.md. A future upstream re-sync is the
+// likeliest way they get reverted.
 //
 // Only Node stdlib, so no npm ci needed.
 
@@ -75,8 +75,7 @@ import { pathToFileURL } from 'node:url';
 import { stripComments, indexOf } from './socket-auth-binding-check.js';
 
 export const RECEIVER_REL = 'components/remotecontrol/RemoteControlTask.bs';
-export const WS_TASK_REL =
-  'components/vendor/BrightWebSocket/web_socket_client/WebSocketClientTask.brs';
+export const WS_TASK_REL = 'components/websocket/web_socket_client/WebSocketClientTask.brs';
 export const SIGNOUT_REL = 'source/api/userAuth.bs';
 
 const RE_EXIT = /exit\s+while/;
@@ -284,7 +283,7 @@ function main() {
     "\nWhy this blocks: a held Task thread accumulates silently toward RokuOS's 100-thread hard " +
       'cap (the &h29 crash in epic #728), and a stranded terminal event kills the cast channel ' +
       'with no crash and no failing test. See docs/architecture/remote-control.md ' +
-      '("Socket-thread release") and components/vendor/BrightWebSocket/README.md.',
+      '("Socket-thread release") and components/websocket/README.md.',
   );
   process.exit(1);
 }

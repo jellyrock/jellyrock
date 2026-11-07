@@ -324,6 +324,69 @@ namespace tests
       m.assertInvalid(syncPlayPlayback.clockReference(unpause, unpause.playlistItemId, true))
     end function
 
+    @it("a check armed for a time offset pick reports its notice once, and an ordinary arming never does")
+    function _()
+      check = syncPlayPlayback.newSettleCheck()
+      m.assertFalse(syncPlayPlayback.takePickNotice(check), "a fresh check")
+      syncPlayPlayback.armSettleCheck(check, true)
+      m.assertTrue(syncPlayPlayback.takePickNotice(check), "the pick's arming")
+      m.assertFalse(syncPlayPlayback.takePickNotice(check), "told once")
+      syncPlayPlayback.armSettleCheck(check, true)
+      syncPlayPlayback.armSettleCheck(check)
+      m.assertFalse(syncPlayPlayback.takePickNotice(check), "an Unpause's arming replaces the pick's")
+      syncPlayPlayback.armSettleCheck(check, true)
+      syncPlayPlayback.disarmSettleCheck(check)
+      m.assertFalse(syncPlayPlayback.takePickNotice(check), "a load forgets it")
+    end function
+
+    @it("a spent check armed again by an offset pick corrects the drift the pick made, ahead by a hold and behind by a seek")
+    function _()
+      check = syncPlayPlayback.newSettleCheck()
+      syncPlayPlayback.armSettleCheck(check)
+      syncPlayPlayback.settleCorrectionDue(check, 0&, "playing", "ready", false)
+      m.assertFalse(syncPlayPlayback.settleCorrectionDue(check, 0&, "playing", "ready", false), "in step: spent")
+      ' The offset is lowered by 200 ms: the clock moves, the node is now 200 ms ahead.
+      syncPlayPlayback.armSettleCheck(check, true)
+      syncPlayPlayback.settleCorrectionDue(check, -200&, "playing", "ready", false)
+      m.assertTrue(syncPlayPlayback.settleCorrectionDue(check, -200&, "playing", "ready", false), "ahead past the threshold")
+      ' Raised by 450 ms: behind by as much, past the seek threshold.
+      syncPlayPlayback.armSettleCheck(check, true)
+      syncPlayPlayback.settleCorrectionDue(check, 450&, "playing", "ready", false)
+      m.assertTrue(syncPlayPlayback.settleCorrectionDue(check, 450&, "playing", "ready", false), "behind past the threshold")
+    end function
+
+    @it("a check armed by a time offset pick is due past 50 ms either way, and a normal check keeps its bars")
+    function _()
+      rows = [
+        { drift: 51&, pick: true, due: true }
+        { drift: -51&, pick: true, due: true }
+        { drift: 50&, pick: true, due: false }
+        { drift: -50&, pick: true, due: false }
+        { drift: 120&, pick: false, due: false }
+        { drift: -120&, pick: false, due: false }
+        { drift: 401&, pick: false, due: true }
+        { drift: -151&, pick: false, due: true }
+      ]
+      for each row in rows
+        check = syncPlayPlayback.newSettleCheck()
+        syncPlayPlayback.armSettleCheck(check, row.pick)
+        syncPlayPlayback.settleCorrectionDue(check, row.drift, "playing", "ready", false)
+        m.assertEqual(syncPlayPlayback.settleCorrectionDue(check, row.drift, "playing", "ready", false), row.due, row.drift.toStr() + " pick=" + row.pick.toStr())
+      end for
+    end function
+
+    @it("the plan for a small drift behind seeks ahead and then holds, as for a large one")
+    function _()
+      command = { positionTicks: 0&, whenMs: 1000000& }
+      estimator = syncPlayOffset.newEstimator()
+      plan = syncPlayPlayback.correctionPlan(120&, 100000000&, command, estimator, 200&)
+      m.assertTrue(plan.seek)
+      m.assertEqual(plan.targetTicks, 100000000& + syncPlayTime.msToTicks(120&) + syncPlayTime.msToTicks(200&))
+      plan = syncPlayPlayback.correctionPlan(-120&, 100000000&, command, estimator, 200&)
+      m.assertFalse(plan.seek)
+      m.assertEqual(plan.targetTicks, 100000000&)
+    end function
+
     @it("driftMs is the estimated server position minus the player's: positive when this member is behind")
     function _()
       ' The group is at 70 s now; the player reads 69.5 s.

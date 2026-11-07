@@ -1,0 +1,171 @@
+import "pkg:/source/utils/deviceCapabilities.bs"
+import "pkg:/source/utils/misc.bs"
+
+' Every variant of an HLS master playlist, in order. A variant without both CODECS and a valid
+' RESOLUTION is skipped, and an #EXT-X-IMAGE-STREAM-INF line is not a variant.
+'
+' The server's transcode of a source above 1080p can pick H.264 at the source's own size, and a
+' Roku plays AVC only up to level 4.2, so the player needs to know before it plays: the master
+' playlist says it without waiting for a segment.
+'
+' @param {string} text - the playlist body
+' @return {object} an array of { codecs: string, width: integer, height: integer, range: string }.
+'   range is the VIDEO-RANGE attribute uppercased, or "SDR" when absent (the HLS default).
+function hlsMasterVariants(text as string) as object
+  variants = []
+  marker = "#EXT-X-STREAM-INF:"
+  markerLength = len(marker)
+  for each line in text.split(chr(10))
+    if left(line, markerLength) = marker
+      attributes = mid(line, markerLength + 1)
+
+      codecs = hlsAttributeValue(attributes, "CODECS=" + chr(34), chr(34))
+      size = hlsAttributeValue(attributes, "RESOLUTION=", ",").trim().split("x")
+      if codecs <> "" and size.count() = 2
+        width = size[0].toInt()
+        height = size[1].toInt()
+        if width > 0 and height > 0
+          range = UCase(hlsAttributeValue(attributes, "VIDEO-RANGE=", ",").trim())
+          if range = "" then range = "SDR"
+          variants.push({ codecs: codecs, width: width, height: height, range: range })
+        end if
+      end if
+    end if
+  end for
+  return variants
+end function
+
+' The text after `prefix` up to the next `terminator` (or the end), or "" when `prefix` is absent.
+' `prefix` matches only a whole attribute name, at the start or after a comma, so CODECS= never
+' matches inside SUPPLEMENTAL-CODECS=.
+function hlsAttributeValue(attributes as string, prefix as string, terminator as string) as string
+  padded = "," + attributes
+  start = inStr(1, padded, "," + prefix)
+  if start = 0 then return ""
+  valueStart = start + 1 + len(prefix)
+  valueEnd = inStr(valueStart, padded, terminator)
+  if valueEnd = 0 then valueEnd = len(padded) + 1
+  return mid(padded, valueStart, valueEnd - valueStart)
+end function
+
+' What a fetched master playlist says: whether it was read, and its variants. Parse once per load and
+' hand the answer to hlsMasterNeedsRangeList and h264CapDecision, since parsing walks the whole body.
+'
+' @param {dynamic} fetched - fetchManifestText()'s answer ({ code, body }), or invalid
+' @return {object} { read: boolean, variants: object }. read is true only for an HTTP 200 answer;
+'   variants is hlsMasterVariants() of its body, and empty when not read.
+function hlsMasterAnswer(fetched as dynamic) as object
+  if type(fetched) <> "roAssociativeArray" or mediaNumber(fetched.code) <> 200 then return { read: false, variants: [] }
+  return { read: true, variants: hlsMasterVariants(textOrEmpty(fetched.body)) }
+end function
+
+' Whether h264CapDecision needs the device profile's HEVC range list for this answer: only a read
+' playlist with a PQ variant does, since PQ is the one range hlsVariantShown judges by the list.
+' Building the list costs many CanDecodeVideo calls, so a load builds it only then.
+'
+' @param {object} answer - hlsMasterAnswer()'s answer
+' @return {boolean}
+function hlsMasterNeedsRangeList(answer as object) as boolean
+  if not answer.read then return false
+  for each variant in answer.variants
+    if variant.range = "PQ" then return true
+  end for
+  return false
+end function
+
+' Whether the display shows a variant's range, judged from the device profile's HEVC range types.
+'
+' The Roku drops a PQ variant when its display cannot show PQ, and plays an HLG variant on any
+' display. So only PQ is judged by the list: it counts when the list has HDR10, HDR10Plus or DOVI.
+' DOVIWithSDR is an SDR base layer and does not make PQ shown. An unknown list ("" for a server
+' before 10.9, or invalid) and every other range show everything, so nothing is dropped on a guess.
+'
+' @param {dynamic} variant - one of hlsMasterVariants()
+' @param {dynamic} hevcRangeTypes - the "|" list from hevcRangeTypesOfProfile(), or invalid
+' @return {boolean}
+function hlsVariantShown(variant as dynamic, hevcRangeTypes as dynamic) as boolean
+  if type(hevcRangeTypes) <> "String" and type(hevcRangeTypes) <> "roString" then return true
+  if hevcRangeTypes = "" then return true
+  if variant.range <> "PQ" then return true
+  tokens = "|" + LCase(hevcRangeTypes) + "|"
+  return inStr(1, tokens, "|hdr10|") > 0 or inStr(1, tokens, "|hdr10plus|") > 0 or inStr(1, tokens, "|dovi|") > 0
+end function
+
+' Whether a variant is H.264 larger than a Roku decodes (AVC level 4.2, about 1080p).
+'
+' @param {dynamic} variant - one of hlsMasterVariants()
+' @return {boolean} true for an H.264 stream beyond exceedsH264Ceiling
+function needsH264ResolutionCap(variant as dynamic) as boolean
+  if not isValid(variant) then return false
+  codecs = LCase(variant.codecs)
+  isH264 = inStr(1, codecs, "avc1.") > 0 or inStr(1, codecs, "avc3.") > 0
+  return isH264 and exceedsH264Ceiling(variant.width, variant.height)
+end function
+
+' Whether a source's video stream is above 1080p, whatever its codec. False when the stream or
+' its size is unknown.
+'
+' @param {dynamic} videoStream - a MediaStream (Width, Height), or invalid
+' @return {boolean}
+function videoStreamAboveH264Ceiling(videoStream as dynamic) as boolean
+  if type(videoStream) <> "roAssociativeArray" then return false
+  return exceedsH264Ceiling(videoStream.Width, videoStream.Height)
+end function
+
+' h264OutputCheck: Whether a load reads the master playlist to see if the transcode is H.264
+' beyond the ceiling, and why not when it does not.
+'
+' Only a transcode that plays needs it. A viewer cap at or below 1080p skips it: the answer
+' already honors that cap, and a forced 1080 would raise it. A first request reads it only for a
+' source beyond the ceiling, so other plays make no extra request; the re-encode retry always
+' reads it.
+'
+' @param {boolean} playsTranscode - the load plays the answer's TranscodingUrl (playsServerTranscode)
+' @param {integer} viewerCapHeight - the viewer's resolution cap (playbackCaps.heightLimit), 0 for none
+' @param {boolean} sourceAboveCeiling - the source's video is beyond the ceiling (videoStreamAboveH264Ceiling)
+' @param {boolean} isReencode - the load asked the server not to copy the video (disallowVideoCopy)
+' @return {object} { read: boolean, reason: string }. reason is "" when read, otherwise
+'   "notPlayed", "viewerCap" or "withinCeiling"
+function h264OutputCheck(playsTranscode as boolean, viewerCapHeight as integer, sourceAboveCeiling as boolean, isReencode as boolean) as object
+  if not playsTranscode then return { read: false, reason: "notPlayed" }
+  if viewerCapHeight > 0 and viewerCapHeight <= H264_MAX_HEIGHT then return { read: false, reason: "viewerCap" }
+  if not isReencode and not sourceAboveCeiling then return { read: false, reason: "withinCeiling" }
+  return { read: true, reason: "" }
+end function
+
+' h264CapDecision: Whether a PlaybackInfo answer must be asked for again at 1080p, and why.
+'
+' The server's master playlist declares the codec and size the transcode will have, and H.264
+' above 1080p needs the cap. The Roku drops every variant its display cannot show, so the first
+' variant hlsVariantShown accepts is the one it plays. When none is shown, a source above 1080p is
+' capped, so the server re-encodes it, the only answer that can play. A smaller source is not: a
+' 1080p cap cannot change its answer. A playlist that did not arrive or cannot be read says
+' nothing. On the re-encode retry the source then decides: one above 1080p is capped, since a 4K
+' H.264 re-encode buffers forever with no error while a 1080p one plays. A first request keeps its
+' answer instead: the server may be copying the video, and the cap would turn a 4K copy into a
+' 1080p re-encode.
+'
+' @param {object} answer - hlsMasterAnswer()'s answer for the master playlist
+' @param {boolean} sourceAboveCeiling - the source's video is above 1080p (videoStreamAboveH264Ceiling)
+' @param {boolean} isReencode - the load asked the server not to copy the video (disallowVideoCopy)
+' @param {dynamic} hevcRangeTypes - the device profile's HEVC VideoRangeType list
+'   (hevcRangeTypesOfProfile), or invalid to treat every range as shown
+' @return {object} { cap: boolean, reason: string, variant: dynamic }. reason is
+'   "h264AboveCeiling", "playable" or "noShownVariant" when the playlist was read (variant is the
+'   variant judged, or the first one for "noShownVariant"), "playlistUnread" (no answer, or not
+'   HTTP 200) or "playlistUnparsed" otherwise.
+function h264CapDecision(answer as object, sourceAboveCeiling as boolean, isReencode as boolean, hevcRangeTypes = invalid as dynamic) as object
+  capWhenUnread = sourceAboveCeiling and isReencode
+  if not answer.read
+    return { cap: capWhenUnread, reason: "playlistUnread", variant: invalid }
+  end if
+  variants = answer.variants
+  if variants.count() = 0 then return { cap: capWhenUnread, reason: "playlistUnparsed", variant: invalid }
+  for each variant in variants
+    if hlsVariantShown(variant, hevcRangeTypes)
+      if needsH264ResolutionCap(variant) then return { cap: true, reason: "h264AboveCeiling", variant: variant }
+      return { cap: false, reason: "playable", variant: variant }
+    end if
+  end for
+  return { cap: sourceAboveCeiling, reason: "noShownVariant", variant: variants[0] }
+end function

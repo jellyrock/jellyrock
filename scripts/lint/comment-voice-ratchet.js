@@ -28,8 +28,8 @@
 //   - `.xml`: `<!-- -->` blocks, matched by regex (XML comments cannot nest).
 //   - `.sh` and the extensionless hooks directly under `.husky/`: whole-line `#`
 //     comments only. See `shellComments()` for why.
-// Inline code and URLs are stripped. Vendored and generated code is out of scope:
-// `components/vendor/`, `locale/`, `roku_modules/`, `node_modules/`, `build/` and `out/`.
+// Inline code and URLs are stripped. Package-managed, translated and generated files
+// are out of scope: `locale/`, `roku_modules/`, `node_modules/`, `build/` and `out/`.
 // A directory with its own `.git` is a separate checkout and is skipped, and so is
 // anything git ignores.
 //
@@ -84,8 +84,8 @@ const VOICE_RULES = [
   { id: 'latin-abbrev', re: /\b(?:e\.g\.|i\.e\.)/gi },
 ];
 
-// Out of scope (see the header): translated or vendored.
-const VOICE_EXCLUDED_RELS = ['locale', 'components/vendor'];
+// Out of scope (see the header): translated text.
+const VOICE_EXCLUDED_RELS = ['locale'];
 
 const SKIP_DIRS = new Set([
   'node_modules',

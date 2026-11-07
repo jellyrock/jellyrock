@@ -232,6 +232,19 @@ namespace tests
       m.assertEqual(m.manager.sync.extraOffsetMs, 0&)
     end function
 
+    @it("a time offset pick while following reaches the clock at once and is told as handled; halted, it is not")
+    function _()
+      settings = m.global.user.settings
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      settings.playbackSyncPlayTimeOffsetMs = 300
+      m.assertTrue(m.manager.callFunc("control", { kind: "timeOffset" }))
+      m.assertEqual(m.manager.sync.extraOffsetMs, 300&, "no frame or player event came between")
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.assertFalse(m.manager.callFunc("control", { kind: "timeOffset" }), "halted: the pick stays a setting")
+    end function
+
     @it("the drift is unknown until an Unpause is in force")
     function _()
       m.joinGroup()
@@ -683,15 +696,151 @@ namespace tests
 
     ' No reset() between the two halves: a state rebuilt through callFunc from the test thread
     ' loses its LongInteger entries on the render thread (the app resets from the render thread).
-    @it("nothing is posted while the group plays nothing, or for a kind the group has no verb for")
+    @it("nothing is posted while the group plays nothing, for a kind the group has no verb for, or a mode pick with no mode")
     function _()
       m.joinGroupWithServer()
       posts = m.capturePosts()
       m.assertFalse(m.manager.callFunc("control", { kind: "next" }))
       m.playGroupItem()
       m.assertFalse(m.manager.callFunc("control", { kind: "shuffle" }))
+      m.assertFalse(m.manager.callFunc("control", { kind: "repeat" }))
+      m.assertFalse(m.manager.callFunc("control", { kind: "stop" }))
       m.assertFalse(m.manager.callFunc("control", invalid))
       m.assertEqual(posts.getChildCount(), 0)
+    end function
+
+    @it("a repeat or shuffle pick while following posts the mode in the server's words")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.enableServer()
+      posts = m.capturePosts()
+      m.assertTrue(m.manager.callFunc("control", { kind: "repeat", mode: "RepeatAll" }))
+      last = m.lastPost(posts)
+      m.assertTrue(last.url.instr("/SyncPlay/SetRepeatMode") >= 0)
+      m.assertEqual(last.body, FormatJson({ "Mode": "RepeatAll" }))
+      m.assertTrue(m.manager.callFunc("control", { kind: "repeat", mode: "nonsense" }))
+      m.assertEqual(m.lastPost(posts).body, FormatJson({ "Mode": "RepeatNone" }), "an unknown mode is off")
+      m.assertTrue(m.manager.callFunc("control", { kind: "shuffle", mode: "Shuffle" }))
+      last = m.lastPost(posts)
+      m.assertTrue(last.url.instr("/SyncPlay/SetShuffleMode") >= 0)
+      m.assertEqual(last.body, FormatJson({ "Mode": "Shuffle" }))
+      m.assertEqual(posts.getChildCount(), 3)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("The group's modes ride on the queue")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    private function modeUpdate(reason as string, repeatMode as string, shuffleMode as string, lastUpdate = "2026-10-23T20:47:26.000Z" as string) as object
+      return m.update("PlayQueue", { Reason: reason, LastUpdate: lastUpdate, Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }, { ItemId: "i2", PlaylistItemId: "p2" }], PlayingItemIndex: 0, StartPositionTicks: 0, RepeatMode: repeatMode, ShuffleMode: shuffleMode })
+    end function
+
+    @it("a queue update's repeat mode is written onto the group's queue and published with its shuffle")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.frame = m.modeUpdate("RepeatMode", "RepeatAll", "Shuffle")
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatAll")
+      m.assertEqual(m.manager.sync.repeatMode, "RepeatAll")
+      m.assertEqual(m.manager.sync.shuffleMode, "Shuffle")
+      m.manager.frame = m.modeUpdate("RepeatMode", "RepeatNone", "Sorted", "2026-10-23T20:47:27.000Z")
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatNone")
+    end function
+
+    @it("nothing is written onto a queue that is not the group's: a halted member's own queue keeps its mode")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.global.queueManager.callFunc("set", [{ id: "mine", type: "Movie" }])
+      m.global.queueManager.callFunc("setRepeatMode", "RepeatOne")
+      m.manager.frame = m.modeUpdate("RepeatMode", "RepeatAll", "Sorted")
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatOne")
+      m.assertEqual(m.manager.sync.repeatMode, "RepeatAll", "the state still tracks the group")
+    end function
+
+    @it("leaving the group turns off the repeat it wrote onto the queue")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.frame = m.modeUpdate("RepeatMode", "RepeatOne", "Sorted")
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatOne")
+      m.manager.frame = m.update("GroupLeft", { GroupId: "g1" })
+      m.assertFalse(m.manager.inGroup)
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatNone")
+    end function
+
+    @it("a halt turns off the repeat the group wrote, and tells an open OSD")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.frame = m.modeUpdate("RepeatMode", "RepeatOne", "Sorted")
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.assertFalse(m.manager.following)
+      m.assertTrue(m.manager.inGroup)
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatNone", "what plays now is the viewer's own")
+      m.assertEqual(m.manager.sync.repeatMode, "RepeatOne", "the state still tracks the group, for a follow again")
+    end function
+
+    @it("a halt with the queue still on the group's previous item turns off the repeat the group wrote")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.frame = m.modeUpdate("RepeatMode", "RepeatAll", "Sorted")
+      ' The group steps on and the load of its next item never lands (no server here, as when the
+      ' fetch fails): the local queue still holds p1 while the group plays p2.
+      m.manager.frame = m.update("PlayQueue", { Reason: "NextItem", LastUpdate: "2026-10-23T20:47:27.000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }, { ItemId: "i2", PlaylistItemId: "p2" }], PlayingItemIndex: 1, StartPositionTicks: 0, RepeatMode: "RepeatAll", ShuffleMode: "Sorted" })
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatAll")
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.assertFalse(m.manager.following)
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatNone")
+    end function
+
+    @it("a halted viewer's own repeat pick outlasts the leave")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.frame = m.modeUpdate("RepeatMode", "RepeatOne", "Sorted")
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      ' Not following, so the gear's pick is the viewer's own (VideoPlayerView.onRepeatModePicked).
+      m.assertFalse(m.manager.callFunc("control", { kind: "repeat", mode: "RepeatAll" }))
+      m.global.queueManager.callFunc("setRepeatMode", "RepeatAll")
+      m.manager.frame = m.update("GroupLeft", { GroupId: "g1" })
+      m.assertFalse(m.manager.inGroup)
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatAll")
+    end function
+
+    @it("signing out turns off the repeat the group wrote")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.frame = m.modeUpdate("RepeatMode", "RepeatAll", "Sorted")
+      m.manager.callFunc("reset")
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatNone")
+    end function
+
+    @it("leaving leaves the repeat of a queue that does not hold the group's item")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.global.queueManager.callFunc("set", [{ id: "mine", type: "Movie" }])
+      m.global.queueManager.callFunc("setRepeatMode", "RepeatAll")
+      m.manager.frame = m.update("GroupLeft", { GroupId: "g1" })
+      m.assertEqual(m.global.queueManager.callFunc("getRepeatMode"), "RepeatAll")
+    end function
+
+    @it("the group's modes are published for the OSD's steps: under RepeatAll the last item still has a next")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.frame = m.update("PlayQueue", { Reason: "RepeatMode", LastUpdate: "2026-10-23T20:47:26.000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }, { ItemId: "i2", PlaylistItemId: "p2" }], PlayingItemIndex: 1, StartPositionTicks: 0, RepeatMode: "RepeatAll", ShuffleMode: "Sorted" })
+      m.assertEqual(m.manager.sync.playingItemIndex, 1)
+      m.assertEqual(m.manager.sync.repeatMode, "RepeatAll")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
