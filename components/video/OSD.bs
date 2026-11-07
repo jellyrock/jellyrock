@@ -817,6 +817,8 @@ end sub
 
 ' 1s timer: auto-hide on inactivity AND drive the behind-live countdown while paused
 sub inactiveCheck()
+  ' The OSD stays up while paused, through a halt or a leave: the mark follows each second.
+  applySyncPlayMark()
   if m.global.sceneManager.callFunc("isDialogOpen")
     return
   end if
@@ -1260,7 +1262,6 @@ sub onDestroy()
   m.top.unobserveField("positionTime")
 
   ' Unobserve clock (guarded: may be invalid if clock node not found in init)
-  m.syncPlayMark = invalid
   if isValid(m.clock)
     m.clock.unobserveField("minutes")
     m.clock.unobserveField("textWidth")
@@ -1271,6 +1272,8 @@ sub onDestroy()
   m.inactivityTimer.unobserveField("fire")
   m.inactivityTimer.control = "stop"
   m.inactivityTimer = invalid
+  ' After the clock's and the timer's observers: both run applySyncPlayMark.
+  m.syncPlayMark = invalid
 
   ' Clear node references
   m.endsAtTime = invalid
