@@ -105,13 +105,9 @@ sub audioStateChanged()
   else
     sendReport("update", m.openSession)
   end if
-  ' A full interval from this report: slow while paused, as often as video while playing.
+  ' A full interval from this report, paused or playing, as for video.
   m.reportTimer.control = "stop"
-  if currentState = "paused"
-    m.reportTimer.duration = playbackCheckIn.KEEPALIVE_SECONDS
-  else
-    m.reportTimer.duration = playbackCheckIn.PLAYING_REPORT_SECONDS
-  end if
+  m.reportTimer.duration = playbackCheckIn.REPORT_SECONDS
   m.reportTimer.control = "start"
   if currentState = "paused"
     m.pauseCheck.paused()

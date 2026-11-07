@@ -31,11 +31,11 @@ import {
 const LOCALE = RTA_CONFIG.languages[0];
 // An MP3 on the demo server, long enough to sit paused in (audio-seek.spec.js checks it is there).
 const SONG = 'Thunderdays';
-// The keepalive (playbackCheckIn.KEEPALIVE_SECONDS, 60 s) plus room for the report to land.
-const CHECK_IN_WAIT_MS = 90000;
-// The report while playing (playbackCheckIn.PLAYING_REPORT_SECONDS, 10 s) plus room, and well under
-// the keepalive, so a player reporting only at the keepalive's pace fails it.
-const PLAYING_CHECK_IN_WAIT_MS = 25000;
+// The report interval (playbackCheckIn.REPORT_SECONDS, 10 s, paused or playing) plus room for the
+// report to land, and well under the server's 60-second transcode kill timer, so a player that
+// reports more slowly while paused fails it.
+const CHECK_IN_WAIT_MS = 25000;
+const PLAYING_CHECK_IN_WAIT_MS = CHECK_IN_WAIT_MS;
 
 let session;
 let deviceId;
