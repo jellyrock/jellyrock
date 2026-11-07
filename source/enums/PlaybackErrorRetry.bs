@@ -7,6 +7,9 @@ enum PlaybackErrorRetry
   REENCODE_VIDEO = "reencodeVideo"
   ' A direct play that failed before its first frame: ask for a transcode.
   TRANSCODE = "transcode"
+  ' The server stopped answering for a stream that was playing: ask for it again from the current
+  ' position, so the server starts a new transcode there.
+  RESTART_STREAM = "restartStream"
   ' No retry applies: show the error dialog.
   NONE = "none"
 end enum

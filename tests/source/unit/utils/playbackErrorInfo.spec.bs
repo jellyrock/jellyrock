@@ -54,6 +54,28 @@ namespace tests
       end for
     end function
 
+    @it("names the server, not the format, when the server stopped sending the stream")
+    ' Roku reports a server that kept failing segment requests as -5, whose own
+    ' mapping says the device can't play the format.
+    function _()
+      cause = playbackErrorCause(-5, "", "", m.segmentFailureInfo("404"))
+      m.assertNotEqual(cause, playbackErrorCause(-5))
+      m.assertTrue(Instr(1, cause, "404") > 0, "the cause names the HTTP status: " + cause)
+    end function
+
+    @it("says the connection dropped, with no HTTP status, when the server never answered")
+    function _()
+      cause = playbackErrorCause(-5, "", "", m.segmentFailureInfo("961"))
+      m.assertNotEqual(cause, playbackErrorCause(-5))
+      m.assertNotEqual(cause, playbackErrorCause(-5, "", "", m.segmentFailureInfo("404")))
+      m.assertTrue(Instr(1, cause, "961") = 0, "a code of Roku's own is not shown as a status: " + cause)
+    end function
+
+    @it("still lets a server message win over a segment failure")
+    function _()
+      m.assertEqual(playbackErrorCause(-5, "No compatible streams.", "", m.segmentFailureInfo("404")), "No compatible streams.")
+    end function
+
     @it("falls through to the generic cause for unknown, generic and empty-list codes")
     ' -3 generic, -4 empty list, 0 no-error and an undocumented code must not
     ' invent an explanation: a confident wrong cause is worse than none.
@@ -62,6 +84,38 @@ namespace tests
       m.assertEqual(playbackErrorCause(-4), generic)
       m.assertEqual(playbackErrorCause(0), generic)
       m.assertEqual(playbackErrorCause(-99), generic)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isServerSegmentFailure")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("recognizes Roku's report of failed segment requests, with the status")
+    ' The errorInfo Roku OS 15.3 produced when a proxy failed every segment of a
+    ' Jellyfin 12.4 stream with 404, then with 500.
+    function _()
+      m.assertTrue(isServerSegmentFailure(m.segmentFailureInfo("404")))
+      m.assertEqual(segmentFailureCode(m.segmentFailureInfo("404")), "404")
+      m.assertEqual(segmentFailureCode(m.segmentFailureInfo("500")), "500")
+    end function
+
+    @it("recognizes a failure with no HTTP answer, and does not call its code a status")
+    ' 961 is what Roku OS 15.3 reported when the proxy closed each segment
+    ' connection without answering.
+    function _()
+      m.assertTrue(isServerSegmentFailure(m.segmentFailureInfo("961")))
+      m.assertFalse(isHttpStatus(segmentFailureCode(m.segmentFailureInfo("961"))))
+      m.assertTrue(isHttpStatus("404"))
+      m.assertTrue(isHttpStatus("500"))
+      m.assertFalse(isHttpStatus(""))
+    end function
+
+    @it("does not match a buffer overflow or other media errors")
+    function _()
+      m.assertFalse(isServerSegmentFailure({ category: "mediaerror", source: "buffer:loop:", dbgmsg: "buffer:loop:" }))
+      m.assertFalse(isServerSegmentFailure({ category: "mediaerror", source: "buffer:loop:demux", dbgmsg: "buffer:loop:demux:unsupported" }))
+      m.assertFalse(isServerSegmentFailure(invalid))
+      m.assertEqual(segmentFailureCode({}), "")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -226,6 +280,13 @@ namespace tests
         end for
       end for
       return values
+    end function
+
+    ' The errorInfo Roku OS 15.3 reported when a Jellyfin 12.4 stream's segments kept failing with
+    ' `status`, word for word apart from the status.
+    function segmentFailureInfo(status as string) as object
+      dbgmsg = "buffer:loop:demux:Errors seen on all bitrates:last_err:" + status + ":extra:content_id:1:err_clip_idx:0:etype:buffer:is_init:0:lasterror:" + status + ":num_keys:0:num_lic:0:program_id::retry:0"
+      return { category: "mediaerror", clipid: 1, dbgmsg: dbgmsg, drmerrcode: 0, errcode: 9, ignored: false, source: "buffer:loop:demux" }
     end function
 
   end class

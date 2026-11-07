@@ -12,12 +12,37 @@ import "pkg:/source/utils/misc.bs"
 ' @param {boolean} reencodeFallbackAvailable - the stream is a transcode whose video the server may have copied
 ' @param {boolean} isPlayReported - the stream played at least one frame
 ' @param {boolean} transcodeAvailable - a direct play that can fall back to a transcode
+' @param {boolean} streamRestartAvailable - the server stopped serving the stream (isServerSegmentFailure)
+'   and the one restart is armed (streamRestartArmed)
 ' @return {PlaybackErrorRetry} the retry to take
-function chooseErrorRetry(isBufferLoopError as boolean, doviFallbackAvailable as boolean, reencodeFallbackAvailable as boolean, isPlayReported as boolean, transcodeAvailable as boolean) as PlaybackErrorRetry
+function chooseErrorRetry(isBufferLoopError as boolean, doviFallbackAvailable as boolean, reencodeFallbackAvailable as boolean, isPlayReported as boolean, transcodeAvailable as boolean, streamRestartAvailable = false as boolean) as PlaybackErrorRetry
   if isBufferLoopError and doviFallbackAvailable then return PlaybackErrorRetry.DOVI_DIRECT_PLAY
   if isBufferLoopError and reencodeFallbackAvailable then return PlaybackErrorRetry.REENCODE_VIDEO
+  ' Only a stream that played: before the first frame the transcode fallback, or the dialog,
+  ' answers a failing server better than asking it for the same stream again.
+  if isPlayReported and streamRestartAvailable then return PlaybackErrorRetry.RESTART_STREAM
   if not isPlayReported and transcodeAvailable then return PlaybackErrorRetry.TRANSCODE
   return PlaybackErrorRetry.NONE
+end function
+
+' Seconds a restarted stream must play before a later server failure gets a restart of its own.
+' A server that fails again sooner is still failing, so that failure ends in the dialog.
+const STREAM_RESTART_REARM_SECONDS = 60
+
+' streamRestartArmed: Whether a server failure may restart the stream.
+'
+' One restart per failure: unused, it is armed; used, it is armed again only once the restarted
+' stream has played for STREAM_RESTART_REARM_SECONDS, so separate failures far apart each get one
+' and a server that keeps failing ends in the dialog after one try.
+'
+' @param {boolean} restartUsed - a restart was taken in this playback
+' @param {float} playingSinceSeconds - when the restarted stream reached playing (UpTime), or -1
+' @param {float} nowSeconds - now (UpTime)
+' @return {boolean} the restart is armed
+function streamRestartArmed(restartUsed as boolean, playingSinceSeconds as float, nowSeconds as float) as boolean
+  if not restartUsed then return true
+  if playingSinceSeconds < 0 then return false
+  return nowSeconds - playingSinceSeconds >= STREAM_RESTART_REARM_SECONDS
 end function
 
 ' noRetryFlags: The flags a load runs with before any retry: the server's own choice.

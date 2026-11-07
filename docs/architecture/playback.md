@@ -63,7 +63,7 @@ related-files:
   - source/syncplay/syncPlayQueue.bs
   - source/syncplay/syncPlayHooks.bs
   - source/syncplay/syncPlayState.bs
-last-reviewed: 2026-11-06
+last-reviewed: 2026-11-07
 ---
 
 # Video and audio playback
@@ -604,9 +604,16 @@ A copied video stream can only be cut at the source's keyframes, so a source wit
 - The retry sends `AllowVideoStreamCopy = false` and applies the buffer bitrate cap even below the source bitrate.
 - The report says why the video is re-encoded (`isVideoCopyDisallowed`, a row in its reasons section), since no server reason names it.
 
+### A server that stops sending a stream
+
+Roku rides out an occasional failed segment request by asking again, but once the server keeps answering with an HTTP error it gives up with `-5` and `no valid bitrates`, even with a minute of video still buffered. Its `errorInfo.source` is `buffer:loop:demux`, and the `dbgmsg` holds `Errors seen on all bitrates` and `last_err:<status>` (`isServerSegmentFailure()`, `segmentFailureCode()` in `source/utils/playbackErrorInfo.bs`; Roku does not document it, so the strings were read off a device with a proxy failing a Jellyfin stream's segments). On Jellyfin a segment answers 404 when ffmpeg exited before writing it and 500 when ffmpeg would not start, so the stream itself is fine and the server is in trouble:
+
+- A stream that has played is restarted once from where it is (`PlaybackErrorRetry.RESTART_STREAM`): a new `PlaybackInfo`, so the server starts a new ffmpeg there. The restart is armed again only after the restarted stream has played for `STREAM_RESTART_REARM_SECONDS` (`streamRestartArmed()`), so a server that keeps failing ends in the dialog after one try, and failures far apart each get one.
+- The dialog then names the server and the status ("The server stopped sending this video (HTTP 404)"), instead of the `-5` mapping, which says the device can't play the format. When no HTTP answer came, `last_err` holds a code of Roku's own (961 for a connection closed with no answer), and the dialog says the connection to the server dropped instead.
+
 ### A retry lasts for the version's playback
 
-Each retry adds one flag to `VideoPlayerView`'s `m.retryFlags` (`retryFlagsWith()`): the Dolby Vision bypass, the forced transcode or the re-encode. `startVideoLoad()` sends them on every run, so an audio, subtitle or gear reload asks the server the same way, and only a version switch starts over (`noRetryFlags()`); a new queue item gets a new player. What a retry learned is a property of the file: a reload that dropped it would fail the same way again. A flag only turns on, and a load with a flag on never offers that flag's fallback again (a forced transcode sends `EnableDirectPlay = false`, which also blocks the upstream-URL play), so a playback takes at most one retry of each kind. Dropping a flag is what once let the re-encode cycle with a direct play that had failed: the server still allows direct play when it may not copy the video.
+Each retry adds one flag to `VideoPlayerView`'s `m.retryFlags` (`retryFlagsWith()`): the Dolby Vision bypass, the forced transcode or the re-encode. `startVideoLoad()` sends them on every run, so an audio, subtitle or gear reload asks the server the same way, and only a version switch starts over (`noRetryFlags()`); a new queue item gets a new player. What a retry learned is a property of the file: a reload that dropped it would fail the same way again. A flag only turns on, and a load with a flag on never offers that flag's fallback again (a forced transcode sends `EnableDirectPlay = false`, which also blocks the upstream-URL play), so a playback takes at most one retry of each kind. The stream restart above adds no flag: the server's failure says nothing about the file, so the restart asks for the stream the same way. Dropping a flag is what once let the re-encode cycle with a direct play that had failed: the server still allows direct play when it may not copy the video.
 
 ### A transcode Roku can decode
 

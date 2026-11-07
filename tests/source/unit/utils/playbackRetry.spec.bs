@@ -100,6 +100,56 @@ namespace tests
       m.assertEqual(retryFlagsWith(invalid, PlaybackErrorRetry.NONE), noRetryFlags())
     end function
 
+    @it("turns on no flag for a stream restart")
+    function _()
+      m.assertEqual(retryFlagsWith(invalid, PlaybackErrorRetry.RESTART_STREAM), noRetryFlags())
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a server that stopped sending the stream")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("restarts a stream that has played")
+    function _()
+      m.assertEqual(chooseErrorRetry(false, false, false, true, false, true), PlaybackErrorRetry.RESTART_STREAM)
+    end function
+
+    @it("does not restart a stream that never played")
+    function _()
+      m.assertEqual(chooseErrorRetry(false, false, false, false, false, true), PlaybackErrorRetry.NONE)
+      m.assertEqual(chooseErrorRetry(false, false, false, false, true, true), PlaybackErrorRetry.TRANSCODE)
+    end function
+
+    @it("shows the dialog once the restart is not available")
+    function _()
+      m.assertEqual(chooseErrorRetry(false, false, false, true, false, false), PlaybackErrorRetry.NONE)
+    end function
+
+    @it("leaves a buffer overflow to its own retries")
+    function _()
+      m.assertEqual(chooseErrorRetry(true, false, true, true, false, true), PlaybackErrorRetry.REENCODE_VIDEO)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("streamRestartArmed")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is armed until the restart is used")
+    function _()
+      m.assertTrue(streamRestartArmed(false, -1, 100))
+    end function
+
+    @it("stays disarmed while the restarted stream has not played")
+    function _()
+      m.assertFalse(streamRestartArmed(true, -1, 1000))
+    end function
+
+    @it("re-arms only after the restarted stream played long enough")
+    function _()
+      m.assertFalse(streamRestartArmed(true, 100, 100 + STREAM_RESTART_REARM_SECONDS - 1))
+      m.assertTrue(streamRestartArmed(true, 100, 100 + STREAM_RESTART_REARM_SECONDS))
+    end function
+
   end class
 
 end namespace

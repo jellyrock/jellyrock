@@ -102,6 +102,10 @@ sub init()
   ' The retries this playback has taken (playbackRetry.noRetryFlags): every load reads them
   ' (startVideoLoad), retryPlayback adds one, and a version switch starts over.
   m.retryFlags = noRetryFlags()
+  ' The one restart a server failure gets (playbackRetry.streamRestartArmed): whether this playback
+  ' took it, and when the restarted stream reached playing (UpTime), -1 until it does.
+  m.streamRestartUsed = false
+  m.streamRestartPlayingSince = -1
   ' The item each run of the video load loads (startVideoLoad): the queue item, later the one
   ' that loaded, which is a Cinema Mode intro's own id while the intro plays.
   m.loadItemId = m.currentItem.id
@@ -1056,7 +1060,7 @@ sub showPlaybackErrorDialog(serverMessage = "" as string)
   if isValid(m.top.errorCode) then errorCode = m.top.errorCode
   errorInfo = m.top.errorInfo
 
-  m.playbackErrorCauseText = playbackErrorCause(errorCode, serverMessage, translate(translationKeys.ErrorDuringPlayback))
+  m.playbackErrorCauseText = playbackErrorCause(errorCode, serverMessage, translate(translationKeys.ErrorDuringPlayback), errorInfo)
 
   ' Built ONCE and passed to both calls: it reads m.global and walks the cached
   ' playback info, and the guard and the readout must agree about what they saw.
@@ -2167,7 +2171,11 @@ sub onState()
     '   keyframe per segment.
     isBufferLoopError = isValid(m.top.errorInfo) and isValid(m.top.errorInfo.source) and m.top.errorInfo.source = "buffer:loop:"
 
-    retry = chooseErrorRetry(isBufferLoopError, m.top.isDoviDirectPlayFallbackAvailable, m.top.isReencodeFallbackAvailable, m.isPlayReported, m.top.isTranscodeAvailable)
+    ' The server stopped answering for this stream (ffmpeg exited or would not start): asking for it
+    ' again starts a new transcode at the current position, once (playbackRetry.streamRestartArmed).
+    streamRestartAvailable = isServerSegmentFailure(m.top.errorInfo) and streamRestartArmed(m.streamRestartUsed, m.streamRestartPlayingSince, UpTime(0))
+
+    retry = chooseErrorRetry(isBufferLoopError, m.top.isDoviDirectPlayFallbackAvailable, m.top.isReencodeFallbackAvailable, m.isPlayReported, m.top.isTranscodeAvailable, streamRestartAvailable)
 
     if retry = PlaybackErrorRetry.DOVI_DIRECT_PLAY
       m.log.warn("Buffer overflow in DoVi transcode; falling back to direct play", m.currentItem.id)
@@ -2180,6 +2188,11 @@ sub onState()
     else if retry = PlaybackErrorRetry.TRANSCODE
       m.log.warn("Direct play failed; falling back to transcode", m.currentItem.id)
       m.top.isTranscodeAvailable = false ' prevent retry loop if transcode also fails
+      retryPlayback(retry)
+    else if retry = PlaybackErrorRetry.RESTART_STREAM
+      m.log.warn("The server stopped sending the stream; restarting it from the current position", m.currentItem.id, "code", segmentFailureCode(m.top.errorInfo))
+      m.streamRestartUsed = true
+      m.streamRestartPlayingSince = -1
       retryPlayback(retry)
     else
       ' If an error was encountered, stop timers and display dialog. From here the dialog
@@ -2204,6 +2217,8 @@ sub onState()
     end if
   else if m.top.state = "playing"
     stopLoadingSpinner()
+    ' A restarted stream re-arms its restart once it has played long enough (streamRestartArmed).
+    if m.streamRestartUsed and m.streamRestartPlayingSince < 0 then m.streamRestartPlayingSince = UpTime(0)
 
     ' Buffering is over: end this episode's stall window. Left running, the timer
     ' carries a partially-elapsed 30s window into the NEXT buffering episode, which
