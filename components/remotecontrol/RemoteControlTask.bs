@@ -58,6 +58,8 @@ sub runWsReceiver(serverUrl as string)
   ' Snapshot the token so a reconnect can detect a server-side rotation and stop cleanly.
   m.openedWithToken = m.global.user.authToken
   m.port = CreateObject("roMessagePort")
+  ' Set at the first on_open: until then a close says nothing about a channel this run has had.
+  m.socketHasOpened = false
 
   attempt = 0
   while true
@@ -80,9 +82,10 @@ sub runWsReceiver(serverUrl as string)
     ' actually used rather than skipped straight to 2s.
     if wasStable then attempt = 0
     ' Nothing the server pushes reaches this Roku until the socket is back: SyncPlay reads the
-    ' status, and its icon disables rather than offer a group no command would reach. on_open
-    ' publishes available again.
-    setChannelStatus(serverCapabilities.STATUS_UNAVAILABLE)
+    ' status, and its icon disables rather than offer a group no command would reach. A blip
+    ' after a stable session reconnects first (remoteProtocol.socketDownMarksUnavailable), and
+    ' on_open publishes available again.
+    if remoteProtocol.socketDownMarksUnavailable(m.socketHasOpened, wasStable) then setChannelStatus(serverCapabilities.STATUS_UNAVAILABLE)
     backoffMs = backoff.nextDelayMs(attempt)
     m.log.info("socket closed; reconnecting", "inMs", backoffMs)
     sleep(backoffMs)
@@ -144,6 +147,7 @@ function connectAndPump(url as string) as boolean
         handleFrame(msg.getData())
       else if field = "on_open"
         m.log.info("socket open")
+        m.socketHasOpened = true
         setChannelStatus(serverCapabilities.STATUS_AVAILABLE)
         sessionTimer = CreateObject("roTimespan")
       else if isTerminalSocketEvent(field, msg, isValid(sessionTimer))

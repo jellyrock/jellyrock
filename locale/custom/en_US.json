@@ -743,6 +743,7 @@
   "MessageSyncPlayLibraryAccessDenied": "Access to this content is restricted.",
   "MessageSyncPlayNeedsPlugin": "SyncPlay on an HTTPS server needs the JellyRock plugin installed on that server.",
   "MessageSyncPlayPlayedToGroup": "Playing this for {0}.",
+  "MessageSyncPlayReconnecting": "SyncPlay is waiting for the server to reconnect. Try again in a moment.",
   "MessageSyncPlayResumeFailed": "Couldn't resume with {0}. Try again from the SyncPlay menu.",
   "MessageSyncPlayStoppedFollowing": "No longer following {0}. Pick Resume with Group in the SyncPlay menu to catch up.",
   "MessageSyncPlaySyncingWithGroup": "Syncing with the group",

@@ -3,6 +3,7 @@
 import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/enums/LoadingKind.bs"
 import "pkg:/source/logging/Logger.bs"
+import "pkg:/source/remotecontrol/remoteProtocol.bs"
 import "pkg:/source/syncplay/syncPlayMenu.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/appWaits.bs"
@@ -1212,9 +1213,13 @@ sub openSyncPlayMenu()
   if appWaits.isOpen(m.syncPlayWait) then return
   if not syncPlayMenu.canJoin(syncPlayAccess()) then return ' the icon is not shown then; a stale press
   ' No push channel: the server would take a join but no frame would reach this Roku, so explain
-  ' instead of fetching. The icon is disabled in this state; a press still fires.
-  if m.global.server.remoteChannelStatus = serverCapabilities.STATUS_UNAVAILABLE
-    m.syncPlayDialog = showAlertDialog(translate(translationKeys.LabelSyncPlay), translate(translationKeys.MessageSyncPlayNeedsPlugin), "onSyncPlayAlertResult")
+  ' instead of fetching. The icon is disabled in this state; a press still fires. A member already
+  ' in a group still gets its menu: Leave is a plain request. On http the channel is the session
+  ' socket, down while it reconnects; on https it is the companion plugin.
+  if m.global.server.remoteChannelStatus = serverCapabilities.STATUS_UNAVAILABLE and m.global.syncPlayManager.inGroup <> true
+    messageKey = translationKeys.MessageSyncPlayNeedsPlugin
+    if remoteProtocol.isHttpServer(m.global.server.serverUrl) then messageKey = translationKeys.MessageSyncPlayReconnecting
+    m.syncPlayDialog = showAlertDialog(translate(translationKeys.LabelSyncPlay), translate(messageKey), "onSyncPlayAlertResult")
     return
   end if
   req = GetApi().BuildGetSyncPlayGroupsRequest()

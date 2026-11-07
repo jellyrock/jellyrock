@@ -65,6 +65,7 @@ While you follow a group, the gear in the player's controls has three more rows 
 
 - **There is no SyncPlay icon.** Your account has no SyncPlay access. Ask your server's admin to turn it on.
 - **"SyncPlay on an HTTPS server needs the JellyRock plugin installed on that server."** Install the JellyRock Companion plugin on your server, as [Jellyfin server plugins](../jellyfin-server-plugins.md) describes.
+- **The SyncPlay icon is dim, and selecting it says "SyncPlay is waiting for the server to reconnect."** Your Roku lost its connection to the server and is getting it back. Wait a moment and select the icon again. If you're already in a group, the icon still opens its menu, so you can leave.
 - **"Permission required to create a group."** Your account can join groups but not start them. Join one, or ask your admin for permission to create groups.
 - **"That group no longer exists."** The group ended before you joined. Open the **SyncPlay** icon again to see the groups there are now.
 - **Your Roku sounds a little behind everyone else, every time.** Your TV or sound system may be adding a delay. Raise **SyncPlay Time Offset** in **Settings → Playback** in small steps (try 100) until the sound lines up.
