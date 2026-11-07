@@ -814,11 +814,11 @@ The overhang cluster is hidden on playback screens (`JRScene.registerOverhangDat
 
 What closes it: a now-playing control outside the player that returns to it; a rule for starting other media while a player is suspended under another screen (untested: two `AudioPlayerView`s observing the shared `m.global.audioPlayer`); then the cluster on playback screens again. Not now: it needs its own design.
 
-#### The remote channel status stays available after the session socket dies, so the SyncPlay icon can stay enabled `[fid: remote-channel-status-not-live]` `[captured 2026-10-28]`
+#### The SyncPlay icon's socket-down state has not run on a device `[fid: remote-channel-status-not-live]` `[captured 2026-10-28]`
 
-`RemoteControlTask` publishes `server.remoteChannelStatus` (PR #1270), and the SyncPlay icon follows it: hidden while unknown, disabled while unavailable. The HTTPS path keeps probing the companion plugin, so its status follows the plugin. The HTTP path does not: once the session socket has opened, the status stays `available` while `runWsReceiver` reconnects with backoff. A socket that never comes back leaves the icon enabled, and a join would strand the Roku in a group it cannot follow. Read from the code, not measured.
+`RemoteControlTask.runWsReceiver` now marks `server.remoteChannelStatus` unavailable when the session socket stays down past one quick reconnect (`remoteProtocol.socketDownMarksUnavailable`), so the SyncPlay icon disables and a press says the server is reconnecting; `on_open` makes it available again. The rule has a unit spec; the path has not run on a device.
 
-Closes when the socket path drops the status on a close that does not recover (for example, unknown after the socket has been down longer than its reconnect backoff cap), with a spec and without hiding the icon on a brief blip, or when a device check shows a dead socket does not happen in practice.
+Closes after a device check on an HTTP server: stop the server mid-group and see the icon disable once the reconnect fails, and the press show **SyncPlay is waiting for the server to reconnect**; start the server again and see the icon come back. A member still in the group must still get its menu, to leave.
 
 #### A group Pause during a SyncPlay member's first-frame start hold leaves it paused with no OSD `[fid: syncplay-pause-during-start-hold-no-osd]` `[captured 2026-10-28]`
 
