@@ -79,6 +79,10 @@ sub runWsReceiver(serverUrl as string)
     ' That path never resets, so it can't hot-loop. increment AFTER the sleep so the 0th tier (1s) is
     ' actually used rather than skipped straight to 2s.
     if wasStable then attempt = 0
+    ' Nothing the server pushes reaches this Roku until the socket is back: SyncPlay reads the
+    ' status, and its icon disables rather than offer a group no command would reach. on_open
+    ' publishes available again.
+    setChannelStatus(serverCapabilities.STATUS_UNAVAILABLE)
     backoffMs = backoff.nextDelayMs(attempt)
     m.log.info("socket closed; reconnecting", "inMs", backoffMs)
     sleep(backoffMs)
