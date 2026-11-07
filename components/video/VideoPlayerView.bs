@@ -332,25 +332,36 @@ end sub
 '
 ' @param {string} action - skip action to take
 sub handleItemSkipAction(action as string)
-  ' In a SyncPlay group the step is the group's: the server's queue update moves every member.
-  ' A step whose target is this item (RepeatOne, or RepeatAll on a one-item playlist) has the
-  ' server start it over for everyone, so the press says why here as it does outside a group.
   group = syncPlayHooks.groupQueue()
   if isValid(group)
-    asked = false
-    stepTarget = group.previousIndex
-    if action = "itemnext"
-      stepTarget = group.nextIndex
-      if group.hasNext then asked = syncPlayHooks.control({ kind: "next" })
-    else if action = "itemback" and group.hasPrevious
-      asked = syncPlayHooks.control({ kind: "previous" })
-    end if
-    if asked and stepTarget = group.index then sayPlayingAgain()
+    stepGroupQueue(group, action)
     return
   end if
 
   stepLocalQueue(action)
 end sub
+
+' stepGroupQueue: Asks the SyncPlay group to step one item in the direction of `action`
+' ("itemnext" or "itemback"): the server's queue update moves every member. The OSD buttons and
+' the remote and voice transport commands all end here in a group, as stepLocalQueue outside one.
+' A step whose target is this item (RepeatOne, or RepeatAll on a one-item playlist) has the
+' server start it over for everyone, so the press says why here as it does outside a group.
+'
+' @param {object} group - syncPlayHooks.groupQueue()
+' @param {string} action - "itemnext" or "itemback"
+' @return {boolean} whether the group was asked to step
+function stepGroupQueue(group as object, action as string) as boolean
+  asked = false
+  stepTarget = group.previousIndex
+  if action = "itemnext"
+    stepTarget = group.nextIndex
+    if group.hasNext then asked = syncPlayHooks.control({ kind: "next" })
+  else if action = "itemback" and group.hasPrevious
+    asked = syncPlayHooks.control({ kind: "previous" })
+  end if
+  if asked and stepTarget = group.index then sayPlayingAgain()
+  return asked
+end function
 
 ' stepLocalQueue: Steps this player's own queue one item in the direction of `action`
 ' ("itemnext" or "itemback") by the queue's repeat rule. The OSD buttons and the remote and
@@ -3319,7 +3330,7 @@ end function
 function handleVoiceNextItem() as object
   group = syncPlayHooks.groupQueue()
   if isValid(group)
-    if group.hasNext and syncPlayHooks.control({ kind: "next" }) then return { status: "success" }
+    if stepGroupQueue(group, "itemnext") then return { status: "success" }
     return { status: "error.generic" }
   end if
   if not isValid(m.global.queueManager) then return { status: "error.generic" }
@@ -3332,7 +3343,7 @@ end function
 function handleVideoPreviousItem() as object
   group = syncPlayHooks.groupQueue()
   if isValid(group)
-    if group.hasPrevious and syncPlayHooks.control({ kind: "previous" }) then return { status: "success" }
+    if stepGroupQueue(group, "itemback") then return { status: "success" }
     return { status: "error.generic" }
   end if
   if not isValid(m.global.queueManager) then return { status: "error.generic" }

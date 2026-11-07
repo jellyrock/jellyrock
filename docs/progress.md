@@ -1189,6 +1189,8 @@ Not checked: whether the server sent the frame, or to which socket; and whether 
 
 Closes with the server's side of a failure and either a fix, or a proof it comes from the test's sign-in. Whichever way it goes, decide what a viewer sees when the frame never comes.
 
+Seen again 2026-11-07 on 10.9.11 (Stick 4K, `syncplay-controls`' setup, "the Roku in the group", `last=false`): 2 of 3 runs that day failed the same way, between a pass, while 10.7.7, 10.8.13, 10.10.7, 10.11.11, 12.0.0 and 12.4.0 each passed once.
+
 #### A SyncPlay group Pause landing as a correction's hold resumes shows no OSD `[fid: syncplay-pause-at-hold-resume-no-osd]` `[captured 2026-11-01]`
 
 A group `Pause` that lands as a correction's hold writes its resume shows no OSD. The node still reads `paused` and `m.correction` is already gone, so `applyPlan` sees a paused node and no hold and writes no verb; `owesPause` then pauses the node with the OSD down. Seen once in `syncplay-correction`'s "another member's Pause during a correction's hold brings up the OSD" on 12.2 (Stick 4K, 2026-11-01), with a hold of 83 ms. The group stays correct, and the viewer sees a frozen picture with no controls until a key press. Not fixed now: `applyPlan` writes nothing for a paused node on purpose, and showing the OSD there touches the first-frame hold that `syncplay-pause-during-start-hold-no-osd` is about, so the two want one decision. The spec fails about once in 30 runs for this reason. Closes with that decision and a spec whose hold is long enough to rule the race out.
