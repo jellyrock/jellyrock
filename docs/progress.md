@@ -940,6 +940,12 @@ Not checked:
 
 To rebuild a clip: `ffmpeg -f lavfi -i testsrc2=size=1920x1080:rate=24 -t 20 -vf format=yuv420p10le -c:v hevc_nvenc -profile:v main10 -color_primaries bt2020 -color_trc arib-std-b67 -colorspace bt2020nc out.mkv` (add an AAC input for the control).
 
+#### Whether Clock.textWidth's same-pass read of its layout group can be one minute stale is unsettled `[fid: clock-textwidth-same-pass-read]` `[captured 2026-11-07]`
+
+`Clock.updateTime` measures `Clock.textWidth` as the `localBoundingRect()` of the `clockGroup` layout group on the same pass that sets the labels' text, and the overhang's cluster and the SyncPlay mark in the OSD lay out `overhangRow.CLOCK_GAP` left of it. Whether that read can hold the previous minute's layout is unsettled. A throwaway Rooibos probe on the Stick 4K (2026-11-06) set the clock's labels several times in one function and read the group's width each time: it disagreed with the labels' own widths plus spacing at every step (at 10:00, 111 against 139). A `Clock.spec.bs` case through `resetTime`, including a wider text set between two ticks, matched every time, and at 8:48 the probe's group width (99) agreed with the RTA ink measurement the overhang was laid out against while the label sum (101) did not. If the read is stale in production, the cluster loses about one digit of gap for the minute after a 12-hour rollover from 9 to 10 (and 12 to 1 gains it), so it would touch the clock's first digit.
+
+Closes after a measurement on the real path: a capture or an ODC read of the overhang right after a width-changing tick (the device clock set to 9:59 in 12-hour format), comparing `textWidth` with the drawn digits. If they differ, measure from the labels instead (their widths plus `itemSpacings`) with a spec that fails first; if not, close as not reproduced.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
