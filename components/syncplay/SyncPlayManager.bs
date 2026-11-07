@@ -91,6 +91,10 @@ sub ensureReady()
   ' a refusal, a leave or a halt ends it, and Back, its time limit or a newer press end it with
   ' nothing to clear here.
   m.claimedStart = invalid
+  ' A halted member's play, built and held until the viewer confirms it (confirmPlay) or not
+  ' (cancelPlay): { request, action }. It replaces what the whole group is watching, and a remote
+  ' makes an accidental play easy. Dropped with the claim.
+  m.heldClaim = invalid
   ' A halted member's claim followed the group again at the press, so the group would wait on
   ' it. That follow holds only until the group's load answers it (endUnansweredRefollow).
   m.claimRefollowed = false
@@ -353,17 +357,44 @@ function claimPlay(start = invalid as dynamic) as boolean
     req = syncPlayRequest("SetNewQueue", syncPlayRequests.setNewQueue(handoff.itemIds, handoff.position, handoff.startPositionTicks))
   end if
   if not isValid(req) then return false
-  ' Built before anything is sent, so a play that will run locally re-follows nothing.
-  if not isFollowing()
-    followAgain()
-    m.claimRefollowed = true
-  end if
-  SubmitSideEffect(req)
-  m.log.info("play handed to the group", "action", handoff.action, "groupId", m.state.groupId)
   m.claimedStart = start
-  notify("playedToGroup", m.state.groupName, "")
+  ' Built before anything is sent, so a play that will run locally re-follows nothing. A halted
+  ' member's play is held for the viewer's confirmation first: the start stays open under the
+  ' dialog, as it does across the round trip.
+  if not isFollowing()
+    m.heldClaim = { request: req, action: handoff.action }
+    notify("confirmPlay", m.state.groupName, "")
+    return true
+  end if
+  sendClaim(req, handoff.action)
   return true
 end function
+
+' The held play reaches the group: the viewer confirmed it. The member follows again first, so
+' the group waits on it. True when a play was held.
+function confirmPlay() as boolean
+  held = m.heldClaim
+  if not isValid(held) then return false
+  m.heldClaim = invalid
+  followAgain()
+  m.claimRefollowed = true
+  sendClaim(held.request, held.action)
+  return true
+end function
+
+' The held play goes nowhere: the viewer kept the group's playback. The start the press opened
+' ends, as for a refusal; the queue keeps the item and nothing plays. True when a play was held.
+function cancelPlay() as boolean
+  if not isValid(m.heldClaim) then return false
+  dropClaimedPlay("the viewer kept the group's playback")
+  return true
+end function
+
+sub sendClaim(req as object, action as string)
+  SubmitSideEffect(req)
+  m.log.info("play handed to the group", "action", action, "groupId", m.state.groupId)
+  notify("playedToGroup", m.state.groupName, "")
+end sub
 
 ' A halted member follows the group again: its own play, or another member's new playlist
 ' (as jellyfin-web does), brings it back. The server is told to wait on it again. The caller
@@ -410,6 +441,7 @@ end function
 sub dropClaimedPlay(reason as string)
   appWaits.fail(m.claimedStart, "the group did not play it (" + reason + ")")
   m.claimedStart = invalid
+  m.heldClaim = invalid
 end sub
 
 ' A claim that re-followed and ended with no load from the group (a refusal, Back, the start's
@@ -1156,6 +1188,7 @@ sub leaveLocally()
   m.expectingRemount = false
   m.loadAwaitsReady = false
   m.claimedStart = invalid
+  m.heldClaim = invalid
   m.claimRefollowed = false
   m.joinAwaitsQueue = false
   m.loadNotice = invalid

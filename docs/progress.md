@@ -814,14 +814,6 @@ The overhang cluster is hidden on playback screens (`JRScene.registerOverhangDat
 
 What closes it: a now-playing control outside the player that returns to it; a rule for starting other media while a player is suspended under another screen (untested: two `AudioPlayerView`s observing the shared `m.global.audioPlayer`); then the cluster on playback screens again. Not now: it needs its own design.
 
-#### A halted SyncPlay member's play replaces the group's with no prompt; phase F decides whether it asks first `[fid: syncplay-halted-play-asks-first]` `[captured 2026-10-27]`
-
-A halted SyncPlay member's play goes to the whole group (decision `syncplay-play-handed-to-group`), so a member who pressed Back and then plays something else, a trailer included, replaces what every member is watching, with only the "Playing this for {group}." toast as warning. Raised in the PR #1270 review on 2026-10-27.
-
-The candidate: while halted, a play asks **Play for everyone** or **Only for me** first; Only for me leaves the group's playback alone and plays locally. It changes decision B for every play by a halted member, so it is designed with phase F's in-group controls (the in-player state glyph, Leave, resume), not on its own.
-
-Closes when phase F's plan decides it: built with its strings and specs, or recorded as declined in that decision.
-
 #### The remote channel status stays available after the session socket dies, so the SyncPlay icon can stay enabled `[fid: remote-channel-status-not-live]` `[captured 2026-10-28]`
 
 `RemoteControlTask` publishes `server.remoteChannelStatus` (PR #1270), and the SyncPlay icon follows it: hidden while unknown, disabled while unavailable. The HTTPS path keeps probing the companion plugin, so its status follows the plugin. The HTTP path does not: once the session socket has opened, the status stays `available` while `runWsReceiver` reconnects with backoff. A socket that never comes back leaves the icon enabled, and a join would strand the Roku in a group it cannot follow. Read from the code, not measured.

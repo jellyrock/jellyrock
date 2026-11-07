@@ -1316,7 +1316,9 @@ sub onSyncPlayListResult()
   row = rows[result.optionIndex]
   manager = m.global.syncPlayManager
   if row.action = syncPlayMenu.ACTION_NEW
-    manager.callFunc("newGroup", translate(translationKeys.LabelSyncPlayDefaultGroupName, [m.global.user.name]))
+    ' The group's name is the viewer's to pick: the keyboard opens with the default name in it,
+    ' and OK with it creates the group as before.
+    m.syncPlayNameDialog = showKeyboardDialog(translate(translationKeys.LabelSyncPlayNewGroup), "onSyncPlayGroupNameEntered", translate(translationKeys.LabelSyncPlayDefaultGroupName, [m.global.user.name]))
   else if row.action = syncPlayMenu.ACTION_RESUME
     manager.callFunc("resumeFollowing")
   else if row.action = syncPlayMenu.ACTION_LEAVE
@@ -1326,13 +1328,40 @@ sub onSyncPlayListResult()
   end if
 end sub
 
+sub onSyncPlayGroupNameEntered()
+  dialog = m.syncPlayNameDialog
+  m.syncPlayNameDialog = invalid
+  if not isValid(dialog) or not isValid(dialog.result) or dialog.result.confirmed <> true then return
+  groupName = dialog.result.value.trim()
+  if groupName = "" then return
+  m.global.syncPlayManager.callFunc("newGroup", groupName)
+end sub
+
 ' A SyncPlay notice from the manager: a toast, translated here (the manager is on m.global,
-' outside the scene, and holds no translation). The event's own payload, never the field: a
+' outside the scene, and holds no translation), or, for a halted member's play, the dialog that
+' asks before it replaces the group's playback. The event's own payload, never the field: a
 ' second notice written before this runs would otherwise be read twice and the first lost.
 sub onSyncPlayNotice(event as object)
-  toast = syncPlayMenu.toastFor(event.getData())
+  notice = event.getData()
+  if isValid(notice) and notice.kind = "confirmPlay"
+    m.syncPlayConfirmDialog = showConfirmDialog(translate(translationKeys.LabelSyncPlay), translate(translationKeys.MessageSyncPlayConfirmPlay, [notice.groupName]), "onSyncPlayConfirmPlayResult", translate(translationKeys.ButtonPlayForEveryone), translate(translationKeys.ButtonCancel))
+    return
+  end if
+  toast = syncPlayMenu.toastFor(notice)
   if not isValid(toast) then return
   showToast(translate(toast.key, [toast.arg]), toast.toastType)
+end sub
+
+' Cancel, Back and a dialog closed from outside all keep the group's playback.
+sub onSyncPlayConfirmPlayResult()
+  dialog = m.syncPlayConfirmDialog
+  m.syncPlayConfirmDialog = invalid
+  manager = m.global.syncPlayManager
+  if isValid(dialog) and isValid(dialog.result) and dialog.result.confirmed = true
+    manager.callFunc("confirmPlay")
+  else
+    manager.callFunc("cancelPlay")
+  end if
 end sub
 
 ' The SyncPlay icon shows the membership and the policy: active while in a group, absent when

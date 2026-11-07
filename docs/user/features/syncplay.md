@@ -21,7 +21,7 @@ SyncPlay plays videos: movies, episodes and other videos. If you play music or L
 ## Join or start a group
 
 1. Select the **SyncPlay** icon at the top of the screen.
-2. Pick a group to join it, or pick **New group** to start one. A new group is named after you.
+2. Pick a group to join it, or pick **New group** to start one. Keep the suggested name or type your own, then select **OK**.
 3. JellyRock tells you it joined. If the group is playing, your Roku plays the same video from the same point.
 
 While you're in a group, the **SyncPlay** icon is highlighted.
@@ -40,7 +40,7 @@ So that one person's settings don't move everyone, a few things wait while you'r
 
 Press **Back** to leave the video. You stay in the group, but you stop following it, and the group plays on without you. If the group was repeating, your Roku stops repeating with it.
 
-To catch up, select the **SyncPlay** icon and pick **Resume with Group**. Your Roku plays the group's video from where the group is now. You also follow again when you play a video, which then plays for the whole group, or when someone in the group starts something new.
+To catch up, select the **SyncPlay** icon and pick **Resume with Group**. Your Roku plays the group's video from where the group is now. You also follow again when someone in the group starts something new, or when you play a video yourself: JellyRock asks first, and **Play for everyone** plays it for the whole group in place of what the group is watching, while **Cancel** leaves the group's video alone.
 
 ## Leave a group
 

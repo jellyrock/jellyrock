@@ -555,9 +555,18 @@ it('a cast while halted follows the group again, and a cast over its player ends
   const [first, second] = await moviesOtherThanHero(2);
   const roku = await appSession(member, await getGlobalVal('device.serverDeviceName'));
 
-  // Halted: the cast follows the group again and goes to it as a new queue. The group's answer
-  // opens the player (applyQueue's launch branch), and the follow the cast made holds after it.
+  // Halted: the cast is held for the viewer's confirmation, as any halted member's play is, since
+  // it replaces what the whole group is watching. Confirmed, it follows the group again and goes
+  // to it as a new queue. The group's answer opens the player (applyQueue's launch branch), and
+  // the follow the cast made holds after it.
   await playOnSession(member, roku.Id, [first]);
+  await waitFor('#jrDialog.id', (v) => v === 'jrDialog', {
+    timeout: 20000,
+    label: "the confirm dialog for a halted member's play",
+  });
+  // Cancel has the focus; Play for everyone is to its right.
+  await press(ecp.Key.Right);
+  await press(ecp.Key.Ok);
   await waitToast(`Playing this for ${GROUP_NAME}.`, { label: 'the first cast handed over' });
   await waitFor('subtype()', (v) => v === 'PlayerHostView', {
     read: getActiveVal,

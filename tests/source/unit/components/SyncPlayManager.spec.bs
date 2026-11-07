@@ -493,9 +493,31 @@ namespace tests
       m.assertFalse(m.manager.following)
       m.manager.notice = invalid
       m.pressPlay([{ id: "i9", type: "Movie" }])
+      ' The play is held for the viewer's confirmation: nothing follows or posts until then.
       m.assertTrue(m.manager.callFunc("claimPlay"))
+      m.assertFalse(m.manager.following)
+      m.assertEqual(m.manager.notice.kind, "confirmPlay")
+      m.assertEqual(m.manager.notice.groupName, "Movie night")
+      m.assertTrue(m.manager.callFunc("confirmPlay"))
       m.assertTrue(m.manager.following)
       m.assertEqual(m.manager.notice.kind, "playedToGroup")
+      m.assertFalse(m.manager.callFunc("confirmPlay"), "nothing is held any more")
+    end function
+
+    @it("a halted member's play the viewer cancels goes nowhere and ends the start the press opened")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i9", type: "Movie" }])
+      start = promises.create()
+      m.assertTrue(m.manager.callFunc("claimPlay", start))
+      m.assertTrue(appWaits.isOpen(start), "the start stays open under the dialog")
+      m.assertTrue(m.manager.callFunc("cancelPlay"))
+      m.assertEqual(posts.getChildCount(), 0, "nothing was posted")
+      m.assertFalse(m.manager.following)
+      m.assertEqual(start.promiseState, "rejected")
+      m.assertFalse(m.manager.callFunc("cancelPlay"), "nothing is held any more")
+      m.assertFalse(m.manager.callFunc("confirmPlay"), "nothing is held any more")
     end function
 
     @it("a halted member is waited on again before its play reaches the group")
@@ -507,6 +529,8 @@ namespace tests
       m.haltWithServer()
       m.pressPlay([{ id: "i9", type: "Movie" }])
       m.manager.callFunc("claimPlay", promises.create())
+      m.assertEqual(posts.getChildCount(), 0, "nothing posts before the viewer confirms")
+      m.manager.callFunc("confirmPlay")
       count = posts.getChildCount()
       m.assertEqual(count, 2)
       m.assertTrue(posts.getChild(0).request.url.instr("/SyncPlay/SetIgnoreWait") >= 0, "first: SetIgnoreWait")
@@ -566,7 +590,8 @@ namespace tests
       m.haltWithServer()
       m.pressPlay([{ id: "i9", type: "Movie" }])
       m.manager.callFunc("claimPlay", promises.create())
-      m.assertTrue(m.manager.following, "the press follows again, so the group waits on it")
+      m.manager.callFunc("confirmPlay")
+      m.assertTrue(m.manager.following, "the confirmed press follows again, so the group waits on it")
       m.manager.frame = m.update("LibraryAccessDenied", invalid)
       m.assertFalse(m.manager.following)
       m.assertEqual(m.manager.notice.kind, "LibraryAccessDenied", "the refusal is what the viewer is told")
@@ -581,6 +606,7 @@ namespace tests
       m.pressPlay([{ id: "i9", type: "Movie" }])
       start = promises.create()
       m.manager.callFunc("claimPlay", start)
+      m.manager.callFunc("confirmPlay")
       ' Back, or the start's time limit: the manager is not told, and nothing is owed yet.
       promises.reject({ message: "cancelled" }, start)
       m.assertTrue(m.manager.following)
@@ -612,6 +638,8 @@ namespace tests
       m.pressPlay([{ id: "i8", type: "Movie" }])
       second = promises.create()
       m.manager.callFunc("claimPlay", second)
+      ' The dialog still up confirms the newest press: the second play is the one held.
+      m.manager.callFunc("confirmPlay")
       promises.reject({ message: "replaced by a newer start" }, first)
       m.manager.frame = m.update("StateUpdate", { State: "Waiting", Reason: "Seek" })
       m.assertTrue(m.manager.following, "the second play's answer is still due")
