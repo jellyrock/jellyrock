@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-06
+last-updated: 2026-11-07
 ---
 
 # Progress
@@ -874,6 +874,14 @@ It shows today, one video early. The Repeat One pick is a gear press during the 
 
 Close it by deciding "leaving an intro" from the item that ended rather than from the target's tag, with a unit case for Repeat One at an intro's end. Found reviewing the intro-slot fix that followed #1308.
 
+#### Video repeat can't be set by voice loop or remote `SetRepeatMode` (#1334) `[fid: video-repeat-voice-loop-remote]` `[captured 2026-11-07]`
+
+Tracked publicly as #1334. Voice "loop" while a video plays answers "That is not available": `VideoPlayerView.handleTransport()` returns `error.generic` for `shuffle` and `loop`, under a comment from the voice transport commit `e9f5887f4` (2026-05-06) saying the video player has no loop UI. #1308 (`41f14e62`) made that untrue but wired repeat only into the OSD gear, the same root cause PR #1333 fixed for voice and remote Next and Previous. On the remote side, `getSupportedRemoteCommands()` doesn't advertise `SetRepeatMode`. The `queue-aware-multi-item-casting` followup parks it under multi-item casting, but since #1308 the queue holds the server's own repeat words, so it can be built on its own.
+
+Options: `cycle` (recommended): voice `loop` cycles Off, All, One through a unit-tested `queueRepeat` helper, then `setRepeatMode`, `refreshFromQueue` and a toast naming the mode. It answers `error.generic` on Live TV and in a SyncPlay group, and `voice-control.md` gets updated. `comment`: only correct the stale comment; the voice command still fails. Not done now because it is a small feature with open UX choices, separate from #1333.
+
+Not checked: Roku's exact wording for a "loop" request; whether a toast should confirm the new mode; how a SyncPlay group should take a repeat change.
+
 #### No audit of what the app does, and shows, for a user the server's access policy restricts `[fid: user-access-policy-ux-audit]` `[captured 2026-11-05]`
 
 The app loads the user's access policy (`SessionDataTransformer` maps `EnableVideoPlaybackTranscoding`, `EnablePlaybackRemuxing` and more onto `m.global.user.policy`), but no playback code reads most of it. So every fallback that asks the server for a transcode can ask for one the policy forbids: the retry that forces a transcode after a failed direct play, and since PR #1318 the re-encode retry after a `buffer:loop:` overflow (`chooseErrorRetry()`, `capH264Resolution()`, whose second `PlaybackInfo` request since PR #1323 also runs on a first request). A restricted user then sees whatever error the refused request yields, not one that says why. What the server actually answers in that case was not checked.
@@ -1180,6 +1188,8 @@ A later failure on 10.10.7 had the console captured (2026-11-01, `syncplay-corre
 Not checked: whether the server sent the frame, or to which socket; and whether a viewer can hit this outside the test sign-in (`authenticateForPush`). If they can, pressing OK on a group gives no feedback for as long as it lasts.
 
 Closes with the server's side of a failure and either a fix, or a proof it comes from the test's sign-in. Whichever way it goes, decide what a viewer sees when the frame never comes.
+
+Seen again 2026-11-07 on 10.9.11 (Stick 4K, `syncplay-controls`' setup, "the Roku in the group", `last=false`): 2 of 3 runs that day failed the same way and the third passed, while 10.7.7, 10.8.13, 10.10.7, 10.11.11, 12.0.0 and 12.4.0 each passed once.
 
 #### A SyncPlay group Pause landing as a correction's hold resumes shows no OSD `[fid: syncplay-pause-at-hold-resume-no-osd]` `[captured 2026-11-01]`
 

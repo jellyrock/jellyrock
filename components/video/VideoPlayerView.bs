@@ -328,28 +328,52 @@ sub handleChapterSkipAction(action as string)
   end if
 end sub
 
-' handleItemSkipAction: Handles user command to skip items
+' handleItemSkipAction: Steps the queue one item, for the OSD's previous and next buttons and the
+' remote and voice transport commands alike: the group's step in a SyncPlay group, this player's
+' own outside one.
 '
-' @param {string} action - skip action to take
-sub handleItemSkipAction(action as string)
-  ' In a SyncPlay group the step is the group's: the server's queue update moves every member.
-  ' A step whose target is this item (RepeatOne, or RepeatAll on a one-item playlist) has the
-  ' server start it over for everyone, so the press says why here as it does outside a group.
+' @param {string} action - "itemnext" or "itemback"
+' @return {boolean} whether it stepped, or asked the group to
+function handleItemSkipAction(action as string) as boolean
   group = syncPlayHooks.groupQueue()
-  if isValid(group)
-    asked = false
-    stepTarget = group.previousIndex
-    if action = "itemnext"
-      stepTarget = group.nextIndex
-      if group.hasNext then asked = syncPlayHooks.control({ kind: "next" })
-    else if action = "itemback" and group.hasPrevious
-      asked = syncPlayHooks.control({ kind: "previous" })
-    end if
-    if asked and stepTarget = group.index then sayPlayingAgain()
-    return
-  end if
+  if isValid(group) then return stepGroupQueue(group, action)
+  return stepLocalQueue(action)
+end function
 
+' stepGroupQueue: Asks the SyncPlay group to step one item in the direction of `action`
+' ("itemnext" or "itemback"): the server's queue update moves every member. The OSD buttons and
+' the remote and voice transport commands all end here in a group, as stepLocalQueue outside one.
+' A step whose target is this item (RepeatOne, or RepeatAll on a one-item playlist) has the
+' server start it over for everyone, so the press says why here as it does outside a group.
+'
+' @param {object} group - syncPlayHooks.groupQueue()
+' @param {string} action - "itemnext" or "itemback"
+' @return {boolean} whether the group was asked to step
+function stepGroupQueue(group as object, action as string) as boolean
+  asked = false
+  stepTarget = group.previousIndex
+  if action = "itemnext"
+    stepTarget = group.nextIndex
+    if group.hasNext then asked = syncPlayHooks.control({ kind: "next" })
+  else if action = "itemback" and group.hasPrevious
+    asked = syncPlayHooks.control({ kind: "previous" })
+  end if
+  if asked and stepTarget = group.index then sayPlayingAgain()
+  return asked
+end function
+
+' stepLocalQueue: Steps this player's own queue one item in the direction of `action`
+' ("itemnext" or "itemback") by the queue's repeat rule. The OSD buttons and the remote and
+' voice transport commands all end here, so one press reads the same from each.
+'
+' Nothing may touch the view after switchToQueueItem: the host can destroy it there, so the
+' caller returns only a literal.
+'
+' @param {string} action - "itemnext" or "itemback"
+' @return {boolean} whether it stepped to another item (or this one again)
+function stepLocalQueue(action as string) as boolean
   queueManager = m.global.queueManager
+  if not isValid(queueManager) then return false
   queueCount = queueManager.callFunc("getCount")
   queuePosition = queueManager.callFunc("getPosition")
 
@@ -366,16 +390,17 @@ sub handleItemSkipAction(action as string)
     targetPosition = queueRepeat.previousIndex(repeatMode, queuePosition, queueCount)
     if targetPosition < 0 and isTvChannel then targetPosition = queueCount - 1
   else
-    return
+    return false
   end if
-  if targetPosition < 0 then return
+  if targetPosition < 0 then return false
 
   ' A press that plays this item again says why, once: the viewer asked for the next item and
   ' gets this one. An automatic replay at the end says nothing, since that is what repeat is for.
   ' A press on an intro moves to the launched item, the next thing to play, so it says nothing.
   if targetPosition = queuePosition and not isTvChannel and not m.isIntro then sayPlayingAgain()
   switchToQueueItem(queueManager, targetPosition)
-end sub
+  return true
+end function
 
 sub sayPlayingAgain()
   displayToast(translate(translationKeys.MessageRepeatPlayingAgain), "info")
@@ -3303,43 +3328,15 @@ end function
 ' Reuse the OSD itemNext code path so Live-TV channel advance, queue advance, and
 ' Episode-to-next-Episode all behave identically to pressing the on-screen Next button.
 function handleVoiceNextItem() as object
-  group = syncPlayHooks.groupQueue()
-  if isValid(group)
-    if group.hasNext and syncPlayHooks.control({ kind: "next" }) then return { status: "success" }
-    return { status: "error.generic" }
-  end if
-  queueManager = m.global.queueManager
-  if not isValid(queueManager) then return { status: "error.generic" }
-  queueCount = queueManager.callFunc("getCount")
-  queuePosition = queueManager.callFunc("getPosition")
-  isTvChannel = isLiveTvPlayback() and m.channelListLoaded and queueCount > 1
-
-  targetPosition = -1
-  if queuePosition < queueCount - 1
-    targetPosition = queuePosition + 1
-  else if isTvChannel
-    targetPosition = 0
-  end if
-
-  if targetPosition < 0 then return { status: "error.generic" }
-  switchToQueueItem(queueManager, targetPosition)
-  return { status: "success" }
+  if handleItemSkipAction("itemnext") then return { status: "success" }
+  return { status: "error.generic" }
 end function
 
 ' Remote "PreviousTrack": step back one queue item, symmetric with handleVoiceNextItem.
-' error.generic at the head of the queue (no previous item): no chapter-back concept here.
+' error.generic at the head of the queue (no previous item, repeat off): no chapter-back concept here.
 function handleVideoPreviousItem() as object
-  group = syncPlayHooks.groupQueue()
-  if isValid(group)
-    if group.hasPrevious and syncPlayHooks.control({ kind: "previous" }) then return { status: "success" }
-    return { status: "error.generic" }
-  end if
-  queueManager = m.global.queueManager
-  if not isValid(queueManager) then return { status: "error.generic" }
-  queuePosition = queueManager.callFunc("getPosition")
-  if queuePosition <= 0 then return { status: "error.generic" }
-  switchToQueueItem(queueManager, queuePosition - 1)
-  return { status: "success" }
+  if handleItemSkipAction("itemback") then return { status: "success" }
+  return { status: "error.generic" }
 end function
 
 ' Returns the metadata in the response: main.bs's transport dispatcher calls
