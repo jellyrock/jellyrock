@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-07: fix(video): Follow repeat mode on voice and remote Next and Previous
 - 2026-11-06: update(logging): Mask secrets in logs, keep names and search text out
 - 2026-11-06: fix(playback): Start 4K Dolby Vision on a display without HDR
 - 2026-11-06: fix(playback): Play more Dolby Vision files, end a wasted retry
@@ -67,14 +68,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-25: docs: Use the org contributing guide and security policy
 - 2026-10-24: feat(syncplay): Follow a group, fix Play on buffering, speed up casts
 - 2026-10-24: test(rta): Pin the `home-failure` spec to the built-in Home layout
-- 2026-10-23: feat(syncplay): Add the pure SyncPlay layer and parse its frames in the receiver
-- 2026-10-23: chore(ci): Stop rebuilding the retired API reference site
-- 2026-10-23: fix(dialogs): Keep focus on a dialog opened from another dialog
-- 2026-10-23: feat: Add a quality gear, one cap for all codecs, bigger menu icons
-- 2026-10-23: ci(docs): Trigger docs redeploys and check `docs/user` links
-- 2026-10-23: fix: Hold keys and let Back cancel a Refresh, photo launch or seek
-- 2026-10-23: chore(lint): move the Markdown voice check to shared `voice-check.sh`
-- 2026-10-23: feat: Show a spinner over details and the TV guide while they load, and let Back leave them
 
 ## Open followups
 
