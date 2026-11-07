@@ -219,7 +219,7 @@ it('a remote Next on Repeat One plays the episode again instead of advancing', a
 
 // Previous on the first item of a queue on Repeat All wraps to the last (queueRepeat.previousIndex).
 // The queue holds the series' episodes after this one, so the last is not `episode.nextId`.
-it('a remote Previous on Repeat All wraps from the first episode to the last', async () => {
+it('a remote Previous on Repeat All wraps from the first episode to the last', async (testCtx) => {
   const queueCallFunc = async (funcName) =>
     (await odc.callFunc({ base: 'global', keyPath: 'queueManager', funcName })).value;
   try {
@@ -239,6 +239,8 @@ it('a remote Previous on Repeat All wraps from the first episode to the last', a
     });
     expect(await queueCallFunc('getPosition'), 'the case starts on the first episode').toBe(0);
     const count = await queueCallFunc('getCount');
+    // With two queued, the last is also the next, so a step forward would pass for a wrap.
+    if (count < 3) testCtx.skip(`${session.serverUrl} queues ${count} episodes; a wrap needs 3`);
 
     await sendTransportCommand('previous');
     await waitFor('getPosition()', (v) => v === count - 1, {

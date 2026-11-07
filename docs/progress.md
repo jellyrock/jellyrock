@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-05
+last-updated: 2026-11-07
 ---
 
 # Progress
@@ -871,6 +871,14 @@ The SyncPlay wait-on-me correction (`SyncPlayManager.checkSettle`, gated on `las
 It shows today, one video early. The Repeat One pick is a gear press during the intro, so `stillWatchingOnAdvance` resets the count at the intro's end, but it also moves `itemStartedAt` to the episode's start. The press then predates the episode, so the episode's end counts as unattended: with the short preset (2 videos) the prompt comes after the second replay instead of the third. It needs Cinema Mode, a served intro, Repeat One picked during it and the prompt on. Not a regression: `main` does the same. A repeat mode set without a key press (the SyncPlay group half, reading the group's `RepeatMode`) would add one more count.
 
 Close it by deciding "leaving an intro" from the item that ended rather than from the target's tag, with a unit case for Repeat One at an intro's end. Found reviewing the intro-slot fix that followed #1308.
+
+#### Video repeat can't be set by voice loop or remote `SetRepeatMode` (#1334) `[fid: video-repeat-voice-loop-remote]` `[captured 2026-11-07]`
+
+Tracked publicly as #1334. Voice "loop" while a video plays answers "That is not available": `VideoPlayerView.handleTransport()` returns `error.generic` for `shuffle` and `loop`, under a comment from the voice transport commit `e9f5887f4` (2026-05-06) saying the video player has no loop UI. #1308 (`41f14e62`) made that untrue but wired repeat only into the OSD gear, the same root cause PR #1333 fixed for voice and remote Next and Previous. On the remote side, `getSupportedRemoteCommands()` doesn't advertise `SetRepeatMode`. The `queue-aware-multi-item-casting` followup parks it under multi-item casting, but since #1308 the queue holds the server's own repeat words, so it can be built on its own.
+
+Options: `cycle` (recommended): voice `loop` cycles Off, All, One through a unit-tested `queueRepeat` helper, then `setRepeatMode`, `refreshFromQueue` and a toast naming the mode. It answers `error.generic` on Live TV and in a SyncPlay group, and `voice-control.md` gets updated. `comment`: only correct the stale comment; the voice command still fails. Not done now because it is a small feature with open UX choices, separate from #1333.
+
+Not checked: Roku's exact wording for a "loop" request; whether a toast should confirm the new mode; how a SyncPlay group should take a repeat change.
 
 ### source
 
