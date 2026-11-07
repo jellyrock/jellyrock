@@ -45,6 +45,7 @@ import {
   resendUntilFocused,
   stopPlayback,
   waitDialogClosed,
+  waitFocusInside,
   waitFocused,
   waitFocusInHomeContent,
   waitFor,
@@ -227,6 +228,55 @@ it('outside a group the icon is at rest and the menu ends with New group; Back r
     interval: 250,
     label: 'the icon again after Back',
   });
+});
+
+it('New group opens the keyboard with the default name; a typed name names the group, and a cleared one keeps the default', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip('the SyncPlay menu is not offered without a push channel (the icon is disabled)');
+  expect(await getGlobalVal('syncPlayManager.inGroup'), 'outside a group').toBe(false);
+  // LabelSyncPlayDefaultGroupName with the signed-in user's name, as JRScene builds it.
+  const defaultName = `${await getGlobalVal('user.name')}'s group`;
+
+  // The OS keyboard's own keys are Roku's; the app's part starts at its OK
+  // (JRKeyboardDialog.buttonSelected), so the name is set and OK pressed through ODC.
+  async function createFromMenu(text, label) {
+    // The case before, and the creation before, leave the focus on the icon; the walk to it
+    // starts only from Home's first row.
+    if (!atSyncPlayIcon(await odc.getFocusedNode({ includeNode: true })))
+      await focusOverhangIcon('syncplayIcon');
+    await press(ecp.Key.Ok);
+    const titles = await waitMenuRows((await listGroups(session)).length + 1, label);
+    for (let i = 1; i < titles.length; i++) await press(ecp.Key.Down);
+    await press(ecp.Key.Ok);
+    await waitFor('dialog.subtype()', (v) => v === 'JRKeyboardDialog', {
+      timeout: 10000,
+      label: `${label}: the name keyboard`,
+    });
+    expect(await getVal('dialog.text'), `${label}: the default name is prefilled`).toBe(
+      defaultName,
+    );
+    await odc.setValue({ base: 'scene', keyPath: 'dialog.text', value: text });
+    await odc.setValue({ base: 'scene', keyPath: 'dialog.buttonSelected', value: 0 });
+    await waitFor('syncPlayManager.inGroup', isActive, {
+      read: getGlobalVal,
+      timeout: 20000,
+      label: `${label}: in the new group`,
+    });
+    const name = await getGlobalVal('syncPlayManager.groupName');
+    await odc.callFunc(
+      { base: 'global', keyPath: 'syncPlayManager', funcName: 'leave' },
+      { timeout: 10000 },
+    );
+    await waitFor('syncPlayManager.inGroup', isInactive, {
+      read: getGlobalVal,
+      timeout: 20000,
+      label: `${label}: left again`,
+    });
+    return name;
+  }
+
+  expect(await createFromMenu('RTA named party', 'a typed name')).toBe('RTA named party');
+  expect(await createFromMenu('   ', 'a cleared name')).toBe(defaultName);
 });
 
 it('a second OK while the group list loads is ignored: one wait, and the screen comes back', async (testCtx) => {
@@ -481,9 +531,12 @@ it('Play on a movie while in a group goes to the group, whose answer starts the 
 
   // Back halts: the member stays in the group, the player closes, and the viewer is told.
   await stopPlayback();
-  await waitToast(`No longer following ${GROUP_NAME}. What plays now is your own.`, {
-    label: 'the halted toast',
-  });
+  await waitToast(
+    `No longer following ${GROUP_NAME}. Pick Resume with Group in the SyncPlay menu to catch up.`,
+    {
+      label: 'the halted toast',
+    },
+  );
   expect(await getGlobalVal('syncPlayManager.inGroup')).toBe(true);
   expect(await getGlobalVal('syncPlayManager.following')).toBe(false);
 });
@@ -530,10 +583,136 @@ it('while halted the menu offers Resume with Group, which opens the player follo
 
   // Back halts again, leaving the state the next case starts from.
   await stopPlayback();
-  await waitToast(`No longer following ${GROUP_NAME}. What plays now is your own.`, {
-    label: 'the halted toast after the resume',
-  });
+  await waitToast(
+    `No longer following ${GROUP_NAME}. Pick Resume with Group in the SyncPlay menu to catch up.`,
+    {
+      label: 'the halted toast after the resume',
+    },
+  );
   expect(await getGlobalVal('syncPlayManager.following')).toBe(false);
+});
+
+it("a halted member's play asks first over its screen; Cancel keeps the group's playback, and another member's new playlist closes the question", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  // The case above leaves the Roku halted in the group.
+  expect(await getGlobalVal('syncPlayManager.following'), 'halted by its Back').toBe(false);
+  await backOutToHome();
+  await waitHome();
+  await startPlayback(ctx);
+  await waitFor('#jrDialog.id', (v) => v === 'jrDialog', {
+    timeout: 20000,
+    label: "the confirm dialog for a halted member's play",
+  });
+  // Nothing loads while it asks (appWaits.pause): the details screen shows behind the dialog and
+  // the spinner waits for the answer.
+  expect(await getActiveVal('subtype()'), 'asked over the details screen').toBe('ItemDetails');
+  expect(await getActiveVal('opacity'), 'the details screen shows behind the dialog').toBe(1);
+  expect(await getVal('#spinner.visible'), 'no spinner while it asks').toBe(false);
+
+  // Cancel has the focus: the group's playback stands, nothing plays, and the screen keeps the
+  // remote.
+  await press(ecp.Key.Ok);
+  await waitDialogClosed('the confirm closed by Cancel', { timeout: 10000 });
+  await waitFocusInside('#buttons', {
+    label: 'the focus back on the details buttons',
+    timeout: 10000,
+    interval: 250,
+  });
+  expect(await getActiveVal('subtype()'), 'still on the details screen').toBe('ItemDetails');
+  expect(await getGlobalVal('syncPlayManager.following'), 'still halted').toBe(false);
+  expect(await getGlobalVal('syncPlayManager.playHeld'), 'nothing held').toBe(false);
+  await waitFor('#appWaitHost.openWaits', (v) => v && Object.keys(v).length === 0, {
+    read: getVal,
+    timeout: 10000,
+    label: 'no start left open after Cancel',
+  });
+
+  // Asked again, and another member starts something new before the answer: their pick stands,
+  // the question closes, and this member follows the group into it.
+  await press(ecp.Key.Ok);
+  await waitFor('#jrDialog.id', (v) => v === 'jrDialog', {
+    timeout: 20000,
+    label: 'the confirm dialog for the second press',
+  });
+  const [pick] = await moviesOtherThanHero(1);
+  await syncPlay(member, 'SetNewQueue', {
+    PlayingQueue: [pick],
+    PlayingItemPosition: 0,
+    StartPositionTicks: 0,
+  });
+  await waitDialogClosed("the confirm closed by the other member's pick", { timeout: 20000 });
+  await waitFor('subtype()', (v) => v === 'PlayerHostView', {
+    read: getActiveVal,
+    timeout: 30000,
+    interval: 250,
+    label: "the player mounted for the other member's pick",
+  });
+  expect(await getGlobalVal('syncPlayManager.following'), 'following the group again').toBe(true);
+  await waitMediaPlaying("the other member's pick", 60000);
+
+  // Back halts again, leaving the state the next case starts from.
+  await stopPlayback();
+  await waitToast(
+    `No longer following ${GROUP_NAME}. Pick Resume with Group in the SyncPlay menu to catch up.`,
+    { label: 'the halted toast after the pick' },
+  );
+});
+
+it("a cast while the halted member's confirm is up asks about the cast instead, and the replaced question cancels nothing", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  // The case above leaves the Roku halted in the group.
+  expect(await getGlobalVal('syncPlayManager.following'), 'halted by its Back').toBe(false);
+  await backOutToHome();
+  await waitHome();
+  await startPlayback(ctx);
+  await waitFor('#jrDialog.id', (v) => v === 'jrDialog', {
+    timeout: 20000,
+    label: "the confirm dialog for the halted member's press",
+  });
+  // Marks the first dialog, so the wait below can tell the cast's dialog from it: both ask the
+  // same question.
+  await odc.setValue({ base: 'scene', keyPath: '#jrDialog.title', value: 'replaced-question' });
+
+  // The cast's play is held in place of the press's: its start replaces the press's, which ends
+  // the first hold and closes the first question, and the cast then asks its own. Nothing from
+  // the first question may cancel the cast's play.
+  const [cast] = await moviesOtherThanHero(1);
+  const roku = await appSession(member, await getGlobalVal('device.serverDeviceName'));
+  await playOnSession(member, roku.Id, [cast]);
+  await waitFor('#jrDialog.title', (v) => v === 'SyncPlay', {
+    read: getVal,
+    timeout: 30000,
+    interval: 250,
+    label: "the cast's own confirm dialog",
+  });
+
+  // Play for Everyone answers the cast's dialog. Had the replaced dialog's answer cancelled the
+  // cast's play, that dialog would be gone and nothing would reach the group.
+  await press(ecp.Key.Right);
+  await press(ecp.Key.Ok);
+  await waitToast(`Playing this for ${GROUP_NAME}.`, { label: 'the cast handed over' });
+  await waitFor('subtype()', (v) => v === 'PlayerHostView', {
+    read: getActiveVal,
+    timeout: 30000,
+    interval: 250,
+    label: "the player mounted from the group's answer to the cast",
+  });
+  await waitMediaPlaying('the cast', 60000);
+  expect(await getGlobalVal('syncPlayManager.following'), 'the answered cast follows').toBe(true);
+  expect(await getGlobalVal('syncPlayManager.playHeld'), 'nothing left held').toBe(false);
+
+  // Back halts again, leaving the state the next case starts from.
+  await stopPlayback();
+  await waitToast(
+    `No longer following ${GROUP_NAME}. Pick Resume with Group in the SyncPlay menu to catch up.`,
+    { label: 'the halted toast after the cast' },
+  );
 });
 
 it('a cast while halted follows the group again, and a cast over its player ends the start it opened', async (testCtx) => {
@@ -549,9 +728,18 @@ it('a cast while halted follows the group again, and a cast over its player ends
   const [first, second] = await moviesOtherThanHero(2);
   const roku = await appSession(member, await getGlobalVal('device.serverDeviceName'));
 
-  // Halted: the cast follows the group again and goes to it as a new queue. The group's answer
-  // opens the player (applyQueue's launch branch), and the follow the cast made holds after it.
+  // Halted: the cast is held for the viewer's confirmation, as any halted member's play is, since
+  // it replaces what the whole group is watching. Confirmed, it follows the group again and goes
+  // to it as a new queue. The group's answer opens the player (applyQueue's launch branch), and
+  // the follow the cast made holds after it.
   await playOnSession(member, roku.Id, [first]);
+  await waitFor('#jrDialog.id', (v) => v === 'jrDialog', {
+    timeout: 20000,
+    label: "the confirm dialog for a halted member's play",
+  });
+  // Cancel has the focus; Play for Everyone is to its right.
+  await press(ecp.Key.Right);
+  await press(ecp.Key.Ok);
   await waitToast(`Playing this for ${GROUP_NAME}.`, { label: 'the first cast handed over' });
   await waitFor('subtype()', (v) => v === 'PlayerHostView', {
     read: getActiveVal,

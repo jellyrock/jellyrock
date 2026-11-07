@@ -57,6 +57,32 @@ namespace appWaits
     return host.callFunc("commit", appWait) = true
   end function
 
+  ' Pauses `appWait` while the app waits on the viewer, not on a load (a question asked before
+  ' the start goes on): its screen shows again, the spinner leaves it out and its time limit
+  ' stops. It still holds the keys, and Back still cancels it. resume() undoes it.
+  '
+  ' @return {boolean} whether the wait was still open and is now paused
+  function pause(appWait as dynamic) as boolean
+    return callHost("pause", appWait)
+  end function
+
+  ' Resumes a paused `appWait`: the screen hides again, the spinner shows it, and its time limit
+  ' starts over.
+  '
+  ' @return {boolean} whether the wait was still open and is now running
+  function resume(appWait as dynamic) as boolean
+    return callHost("resume", appWait)
+  end function
+
+  function callHost(funcName as string, appWait as dynamic) as boolean
+    if not promises.isPromise(appWait) then return false
+    scene = appScene()
+    if not isValid(scene) then return false
+    host = scene.findNode("appWaitHost")
+    if not isValid(host) then return false
+    return host.callFunc(funcName, appWait) = true
+  end function
+
   ' Whether `appWait` is a wait that has not ended yet.
   function isOpen(appWait as dynamic) as boolean
     return promises.isPromise(appWait) and not promises.isComplete(appWait)
@@ -64,9 +90,9 @@ namespace appWaits
 
   ' ---- AppWaitHost's rules for its open waits. Pure, so they are the same in a test. ----
   ' `entries` is the host's registry: key -> { kind, label, startedMs, deadlineMs, launchedFrom,
-  ' hidden, held, committed }. `hidden` is the screen a wait hides and `held` the screen whose keys
-  ' it holds, each invalid when the wait does neither. A hiding wait holds the keys too; an
-  ' overlay action only holds them.
+  ' hidden, held, committed, paused }. `hidden` is the screen a wait hides and `held` the screen
+  ' whose keys it holds, each invalid when the wait does neither. A hiding wait holds the keys too;
+  ' an overlay action only holds them. A paused wait (pause()) neither hides nor times out.
 
   ' How long a wait of `kind` may stay open before its time limit ends it. 0 for a kind that is
   ' not an app wait, which the scene ends at once: an app-wait kind without a limit is a bug.
@@ -101,6 +127,7 @@ namespace appWaits
   function overdue(entries as object, now as dynamic) as object
     keys = []
     for each key in entries
+      if entries[key].paused = true then continue for
       if entries[key].deadlineMs <= now then keys.push(key)
     end for
     return keys
@@ -110,6 +137,7 @@ namespace appWaits
   function msUntilNextDeadline(entries as object, now as dynamic) as integer
     nextMs = -1
     for each key in entries
+      if entries[key].paused = true then continue for
       remaining = entries[key].deadlineMs - now
       if remaining < 0 then remaining = 0
       if nextMs < 0 or remaining < nextMs then nextMs = remaining
@@ -138,7 +166,7 @@ namespace appWaits
   function hiding(entries as object) as object
     keys = []
     for each key in entries
-      if isValid(entries[key].hidden) then keys.push(key)
+      if isValid(entries[key].hidden) and entries[key].paused <> true then keys.push(key)
     end for
     return keys
   end function
@@ -166,6 +194,7 @@ namespace appWaits
   ' keeps it hidden when the replaced one ends.
   function hides(entries as object, view as object) as boolean
     for each key in entries
+      if entries[key].paused = true then continue for
       hidden = entries[key].hidden
       if isValid(hidden) and hidden.isSameNode(view) then return true
     end for

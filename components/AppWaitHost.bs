@@ -39,7 +39,7 @@ function begin(kind as string, label as string) as object
   m.waitCount++
   key = "w" + m.waitCount.toStr()
   launchedFrom = m.global.activeRoutedView
-  entry = { kind: kind, label: label, startedMs: now, deadlineMs: now + appWaits.limitMs(kind), promise: promise, launchedFrom: launchedFrom, hidden: invalid, held: invalid, committed: false }
+  entry = { kind: kind, label: label, startedMs: now, deadlineMs: now + appWaits.limitMs(kind), promise: promise, launchedFrom: launchedFrom, hidden: invalid, held: invalid, committed: false, paused: false }
   if appWaits.holdsKeys(kind) and isValid(launchedFrom) and not appWaits.isPlaybackScreen(launchedFrom)
     entry.held = launchedFrom
     holdFocus(launchedFrom)
@@ -205,6 +205,51 @@ function commit(promise as object) as boolean
   return false
 end function
 
+' The wait `promise` pauses (appWaits.pause): the app waits on the viewer, so its screen and the
+' overhang show again unless another wait still hides them, the spinner leaves it out, and its
+' time limit stops. It keeps holding the keys. Only through callFunc.
+'
+' @return {boolean} whether the wait was still open and is now paused
+function pause(promise as object) as boolean
+  key = openKeyFor(promise)
+  if key = "" then return false
+  entry = m.waits[key]
+  entry.paused = true
+  if isValid(entry.hidden) and not appWaits.hides(m.waits, entry.hidden) then entry.hidden.opacity = 1
+  if appWaits.hiding(m.waits).count() = 0 then setOverhangShown(true)
+  armLimit()
+  publish()
+  return true
+end function
+
+' The wait `promise` resumes (appWaits.resume): its screen and the overhang hide again, the
+' spinner shows it, and its time limit starts over. Only through callFunc.
+'
+' @return {boolean} whether the wait was still open and is now running
+function resume(promise as object) as boolean
+  key = openKeyFor(promise)
+  if key = "" then return false
+  entry = m.waits[key]
+  entry.paused = false
+  entry.deadlineMs = loadingStages.nowMs() + appWaits.limitMs(entry.kind)
+  if isValid(entry.hidden)
+    entry.hidden.opacity = 0
+    setOverhangShown(false)
+  end if
+  armLimit()
+  publish()
+  return true
+end function
+
+' The key of the open wait whose Promise is `promise`, or "" when it has ended or is unknown.
+function openKeyFor(promise as dynamic) as string
+  if not isValid(promise) or promises.isComplete(promise) then return ""
+  for each key in m.waits
+    if m.waits[key].promise.isSameNode(promise) then return key
+  end for
+  return ""
+end function
+
 ' The viewer reached `newView`: end the playback starts they have left (appWaits.leftBehind).
 sub failLeftBehind(newView as dynamic)
   for each key in appWaits.leftBehind(m.waits, newView)
@@ -240,6 +285,7 @@ sub publish()
   shown = {}
   for each key in m.waits
     entry = m.waits[key]
+    if entry.paused = true then continue for
     shown[key] = { kind: entry.kind, label: entry.label, startedMs: entry.startedMs }
   end for
   m.top.openWaits = shown

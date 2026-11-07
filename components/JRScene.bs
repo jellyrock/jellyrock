@@ -3,7 +3,9 @@
 import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/enums/LoadingKind.bs"
 import "pkg:/source/logging/Logger.bs"
+import "pkg:/source/remotecontrol/remoteProtocol.bs"
 import "pkg:/source/syncplay/syncPlayMenu.bs"
+import "pkg:/source/syncplay/syncPlayQueue.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/appWaits.bs"
 import "pkg:/source/utils/backdrop.bs"
@@ -461,8 +463,9 @@ sub initRouter()
   if not m.isObservingSyncPlay
     m.global.syncPlayManager.observeField("inGroup", "applySyncPlayIcon")
     m.global.syncPlayManager.observeField("notice", "onSyncPlayNotice")
-    ' Whether the server has a push channel to this Roku (RemoteControlTask writes it, once per
-    ' run): the icon stays hidden until it is known, and is disabled without one. The server node
+    m.global.syncPlayManager.observeField("playHeld", "onSyncPlayHeldChanged")
+    ' Whether the server has a push channel to this Roku (RemoteControlTask writes it as the
+    ' channel comes and goes): the icon stays hidden until it is known, and is disabled without one. The server node
     ' is reset in place on a server switch, so this observer outlives it.
     m.global.server.observeField("remoteChannelStatus", "applySyncPlayIcon")
     m.isObservingSyncPlay = true
@@ -819,6 +822,13 @@ sub onDeepLinkResolved()
   itemRoute = routeForItem(item)
   if not args.isPlayback and isValid(itemRoute) and itemRoute.name = "library"
     navigateThenFocus(itemRoute, { item: item })
+    return
+  end if
+
+  ' A cast over the player while following a SyncPlay group: the group takes the play, as this
+  ' viewer's own press, and its answer reloads the player in place (syncPlayQueue.castGoesToGroup).
+  if args.replacePlayer and syncPlayQueue.castGoesToGroup(args.action, item, m.global.syncPlayManager.following = true)
+    m.global.queueManager.callFunc("launchItem", item)
     return
   end if
 
@@ -1210,10 +1220,12 @@ sub openSyncPlayMenu()
   ' this guard is the backstop.
   if appWaits.isOpen(m.syncPlayWait) then return
   if not syncPlayMenu.canJoin(syncPlayAccess()) then return ' the icon is not shown then; a stale press
-  ' No push channel: the server would take a join but no frame would reach this Roku, so explain
-  ' instead of fetching. The icon is disabled in this state; a press still fires.
-  if m.global.server.remoteChannelStatus = serverCapabilities.STATUS_UNAVAILABLE
-    m.syncPlayDialog = showAlertDialog(translate(translationKeys.LabelSyncPlay), translate(translationKeys.MessageSyncPlayNeedsPlugin), "onSyncPlayAlertResult")
+  ' No push channel: explain instead of fetching (syncPlayMenu.channelMessageKey). The icon is
+  ' disabled in this state; a press still fires.
+  globalServer = m.global.server
+  messageKey = syncPlayMenu.channelMessageKey(globalServer.remoteChannelStatus, m.global.syncPlayManager.inGroup = true, remoteProtocol.isHttpServer(globalServer.serverUrl))
+  if messageKey <> ""
+    m.syncPlayDialog = showAlertDialog(translate(translationKeys.LabelSyncPlay), translate(messageKey), "onSyncPlayAlertResult")
     return
   end if
   req = GetApi().BuildGetSyncPlayGroupsRequest()
@@ -1316,7 +1328,9 @@ sub onSyncPlayListResult()
   row = rows[result.optionIndex]
   manager = m.global.syncPlayManager
   if row.action = syncPlayMenu.ACTION_NEW
-    manager.callFunc("newGroup", translate(translationKeys.LabelSyncPlayDefaultGroupName, [m.global.user.name]))
+    ' The group's name is the viewer's to pick: the keyboard opens with the default name in it,
+    ' and OK with it creates the group as before.
+    m.syncPlayNameDialog = showKeyboardDialog(translate(translationKeys.LabelSyncPlayNewGroup), "onSyncPlayGroupNameEntered", translate(translationKeys.LabelSyncPlayDefaultGroupName, [m.global.user.name]))
   else if row.action = syncPlayMenu.ACTION_RESUME
     manager.callFunc("resumeFollowing")
   else if row.action = syncPlayMenu.ACTION_LEAVE
@@ -1326,13 +1340,57 @@ sub onSyncPlayListResult()
   end if
 end sub
 
+sub onSyncPlayGroupNameEntered()
+  dialog = m.syncPlayNameDialog
+  m.syncPlayNameDialog = invalid
+  if not isValid(dialog) or not isValid(dialog.result) or dialog.result.confirmed <> true then return
+  ' A name cleared to nothing keeps the default the keyboard opened with, so OK always creates.
+  groupName = dialog.result.value.trim()
+  if groupName = "" then groupName = translate(translationKeys.LabelSyncPlayDefaultGroupName, [m.global.user.name])
+  m.global.syncPlayManager.callFunc("newGroup", groupName)
+end sub
+
 ' A SyncPlay notice from the manager: a toast, translated here (the manager is on m.global,
-' outside the scene, and holds no translation). The event's own payload, never the field: a
+' outside the scene, and holds no translation), or, for a halted member's play, the dialog that
+' asks before it replaces the group's playback. The event's own payload, never the field: a
 ' second notice written before this runs would otherwise be read twice and the first lost.
 sub onSyncPlayNotice(event as object)
-  toast = syncPlayMenu.toastFor(event.getData())
+  notice = event.getData()
+  if isValid(notice) and notice.kind = "confirmPlay"
+    ' The hold can end before its notice is read (its start ended, the group moved on).
+    if m.global.syncPlayManager.playHeld <> true then return
+    ' A dialog still up for an earlier play is superseded below with a cancelled result. Forgotten
+    ' first, so that result reads as stale and cannot cancel this play.
+    m.syncPlayConfirmDialog = invalid
+    m.syncPlayConfirmDialog = showConfirmDialog(translate(translationKeys.LabelSyncPlay), translate(translationKeys.MessageSyncPlayConfirmPlay, [notice.groupName]), "onSyncPlayConfirmPlayResult", translate(translationKeys.ButtonPlayForEveryone), translate(translationKeys.ButtonCancel))
+    return
+  end if
+  toast = syncPlayMenu.toastFor(notice)
   if not isValid(toast) then return
   showToast(translate(toast.key, [toast.arg]), toast.toastType)
+end sub
+
+' Cancel, Back and a dialog closed from outside all keep the group's playback. Only the dialog
+' asking about the play held now acts: a superseded one's result is stale.
+sub onSyncPlayConfirmPlayResult(event as object)
+  dialog = event.getRoSGNode()
+  if not isValid(m.syncPlayConfirmDialog) or not m.syncPlayConfirmDialog.isSameNode(dialog) then return
+  m.syncPlayConfirmDialog = invalid
+  manager = m.global.syncPlayManager
+  if isValid(dialog.result) and dialog.result.confirmed = true
+    manager.callFunc("confirmPlay")
+  else
+    manager.callFunc("cancelPlay")
+  end if
+end sub
+
+' The held play ended with no answer (its start ended, a newer press, the group's new playlist, a
+' leave or a refusal): the dialog asking about it closes as if Back were pressed. Its result then
+' cancels nothing, since nothing is held.
+sub onSyncPlayHeldChanged()
+  if m.global.syncPlayManager.playHeld = true then return
+  dialog = m.syncPlayConfirmDialog
+  if isValid(dialog) then dialog.callFunc("cancelDialog")
 end sub
 
 ' The SyncPlay icon shows the membership and the policy: active while in a group, absent when

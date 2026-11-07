@@ -14,6 +14,7 @@ sub init()
   m.hours = m.top.findNode("hours")
   m.minutes = m.top.findNode("minutes")
   m.timeSeperator = m.top.findNode("timeSeperator")
+  m.clockGroup = m.top.findNode("clockGroup")
 
   m.dateTimeObject = CreateObject("roDateTime")
   m.dateTimeObject.ToLocalTime()
@@ -68,6 +69,8 @@ sub updateTime()
   m.hours.text = displayedHour
   m.timeSeperator.visible = true
   m.minutes.text = displayedMinute
+  ' A label's bounds follow its text at once (JROverhang measures its title the same way).
+  m.top.textWidth = -int(-m.clockGroup.localBoundingRect().width)
   m.top.hours = currentHours
   m.top.minutes = currentMinutes
 end sub

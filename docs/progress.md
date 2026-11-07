@@ -807,19 +807,11 @@ The overhang cluster is hidden on playback screens (`JRScene.registerOverhangDat
 
 What closes it: a now-playing control outside the player that returns to it; a rule for starting other media while a player is suspended under another screen (untested: two `AudioPlayerView`s observing the shared `m.global.audioPlayer`); then the cluster on playback screens again. Not now: it needs its own design.
 
-#### A halted SyncPlay member's play replaces the group's with no prompt; phase F decides whether it asks first `[fid: syncplay-halted-play-asks-first]` `[captured 2026-10-27]`
+#### The SyncPlay icon's socket-down state has not run on a device `[fid: remote-channel-status-not-live]` `[captured 2026-10-28]`
 
-A halted SyncPlay member's play goes to the whole group (decision `syncplay-play-handed-to-group`), so a member who pressed Back and then plays something else, a trailer included, replaces what every member is watching, with only the "Playing this for {group}." toast as warning. Raised in the PR #1270 review on 2026-10-27.
+`RemoteControlTask.runWsReceiver` now marks `server.remoteChannelStatus` unavailable when the session socket stays down past one quick reconnect (`remoteProtocol.socketDownMarksUnavailable`), so the SyncPlay icon disables and a press says the server is reconnecting; `on_open` makes it available again. The rule has a unit spec; the path has not run on a device.
 
-The candidate: while halted, a play asks **Play for everyone** or **Only for me** first; Only for me leaves the group's playback alone and plays locally. It changes decision B for every play by a halted member, so it is designed with phase F's in-group controls (the in-player state glyph, Leave, resume), not on its own.
-
-Closes when phase F's plan decides it: built with its strings and specs, or recorded as declined in that decision.
-
-#### The remote channel status stays available after the session socket dies, so the SyncPlay icon can stay enabled `[fid: remote-channel-status-not-live]` `[captured 2026-10-28]`
-
-`RemoteControlTask` publishes `server.remoteChannelStatus` (PR #1270), and the SyncPlay icon follows it: hidden while unknown, disabled while unavailable. The HTTPS path keeps probing the companion plugin, so its status follows the plugin. The HTTP path does not: once the session socket has opened, the status stays `available` while `runWsReceiver` reconnects with backoff. A socket that never comes back leaves the icon enabled, and a join would strand the Roku in a group it cannot follow. Read from the code, not measured.
-
-Closes when the socket path drops the status on a close that does not recover (for example, unknown after the socket has been down longer than its reconnect backoff cap), with a spec and without hiding the icon on a brief blip, or when a device check shows a dead socket does not happen in practice.
+Closes after a device check on an HTTP server: stop the server mid-group and see the icon disable once the reconnect fails, and the press show **SyncPlay is waiting for the server to reconnect**; start the server again and see the icon come back. A member still in the group must still get its menu, to leave.
 
 #### A group Pause during a SyncPlay member's first-frame start hold leaves it paused with no OSD `[fid: syncplay-pause-during-start-hold-no-osd]` `[captured 2026-10-28]`
 
@@ -834,14 +826,6 @@ Closes after a manual check: pause from another member (jellyfin-web) within a s
 `JellyfinServer.isSplashscreenEnabled` (`components/data/jellyfin/JellyfinServer.xml`) is commented "invalid = not loaded yet", but it is `type="boolean"` with no value, so an unset field reads `false`. `UserSelect.loadSplashscreen()` therefore always takes its `isValid()` "already cached" branch and applies "splash disabled" (clearing the backdrop) before the branding fetch delivers the real value. Found while fixing the screenshot capture, whose `settleBackdrop()` reads the server's `/Branding/Configuration` for this reason; the app log shows `Splashscreen disabled - using default background` before every `Branding config cached successfully`.
 
 Not checked: whether the flash of the default background is visible on a device. Check that first; fix by tracking "fetched" separately (an `isSplashscreenLoaded` field) or declaring the field so it starts invalid. Not done now: it needs a device check and an app change outside the screenshot work.
-
-#### The SyncPlay halt toast after Back promises 'What plays now is your own', but the next video play re-follows the group `[fid: syncplay-halt-toast-promises-local]` `[captured 2026-10-29]`
-
-`MessageSyncPlayStoppedFollowing` ("No longer following {0}. What plays now is your own.") is the toast for every `halted` notice `SyncPlayManager.haltFollowing` sends, but it is true for only one of the five halts that send it: "a player mounted for an item the group is not playing" (music or Live TV played locally). After the other four (Back, "the group's queue could not be loaded", "the group is playing an item this player cannot follow", "the player would not stay paused"), `SyncPlayManager.claimPlay` hands the member's next video play to the group and follows again, as decision `syncplay-play-handed-to-group` intends. All three arrived together in 08759649 (#1270); only `en_US.json` has the key, and it ships in 3.3.0. Found while writing `docs/user/features/syncplay.md`.
-
-Options: `reword` (recommended): make the one string true after every halt, for example "No longer following {0}. Pick Resume with Group in the SyncPlay menu to catch up." (`en_US.json` only). `split`: keep "What plays now is your own" for the local-play halt and give the other four a new message (a new key, `haltFollowing` passes which kind, `syncPlayMenu.toastFor`, both specs). Not offered: making a halted member's play local, which reverses the accepted decision.
-
-Not checked: how the toast looks on a device; whether jellyfin-web words this case differently.
 
 #### Recently Added in a library with no collection type follows the episode image setting `[fid: recently-added-follows-episode-image-setting]` `[captured 2026-10-31]`
 
@@ -956,6 +940,12 @@ Not checked:
 - whether Jellyfin can add a silent audio track.
 
 To rebuild a clip: `ffmpeg -f lavfi -i testsrc2=size=1920x1080:rate=24 -t 20 -vf format=yuv420p10le -c:v hevc_nvenc -profile:v main10 -color_primaries bt2020 -color_trc arib-std-b67 -colorspace bt2020nc out.mkv` (add an AAC input for the control).
+
+#### Whether Clock.textWidth's same-pass read of its layout group can be one minute stale is unsettled `[fid: clock-textwidth-same-pass-read]` `[captured 2026-11-07]`
+
+`Clock.updateTime` measures `Clock.textWidth` as the `localBoundingRect()` of the `clockGroup` layout group on the same pass that sets the labels' text, and the overhang's cluster and the SyncPlay mark in the OSD lay out `overhangRow.CLOCK_GAP` left of it. Whether that read can hold the previous minute's layout is unsettled. A throwaway Rooibos probe on the Stick 4K (2026-11-06) set the clock's labels several times in one function and read the group's width each time: it disagreed with the labels' own widths plus spacing at every step (at 10:00, 111 against 139). A `Clock.spec.bs` case through `resetTime`, including a wider text set between two ticks, matched every time, and at 8:48 the probe's group width (99) agreed with the RTA ink measurement the overhang was laid out against while the label sum (101) did not. If the read is stale in production, the cluster loses about one digit of gap for the minute after a 12-hour rollover from 9 to 10 (and 12 to 1 gains it), so it would touch the clock's first digit.
+
+Closes after a measurement on the real path: a capture or an ODC read of the overhang right after a width-changing tick (the device clock set to 9:59 in 12-hour format), comparing `textWidth` with the drawn digits. If they differ, measure from the labels instead (their widths plus `itemSpacings`) with a spec that fails first; if not, close as not reproduced.
 
 ### source
 
@@ -1136,19 +1126,13 @@ Investigate before planning:
 
 The app-side half (one name helper used by the auth header and `buildPairPayload`, plus its unit spec) waits on the /pair field this plugin settles. When the contract is decided, send a message back to jellyrock/jellyrock naming the field and its rules.
 
-#### Remove the SyncPlay on-off switch once phase F ships `[fid: syncplay-remove-enabled-switch]` `[captured 2026-10-28]`
-
-`syncPlayMenu.IS_ENABLED` is a switch added in PR #1270 so a release could ship with SyncPlay hidden if phases E and F were not ready: set to `false`, `canJoin` refuses every user, so the cluster icon (the one way into a group), its menu and the badge's group-list reads all go away. It ships `true`. It is a temporary carve-out, not a setting.
-
-Closes when the in-player SyncPlay surface (phase F of epic #1251) ships: delete the constant, fold `joinAllowed` back into `canJoin`, and drop the two `syncPlayMenu.spec.bs` cases that drive the switch.
-
 #### SyncPlay in a group offers no queue edits from the Roku, and voice fast-forward and rewind are unchecked `[fid: syncplay-queue-edits-shuffle-voice-scrub]` `[captured 2026-10-29]`
 
-Phase E (#1276) chose honor-only for the group's playlist: the server owns it, so the Roku offers no queue editing while following (add, remove or move an item in the group's playlist). The group's repeat and shuffle now ship in the OSD gear (decision `syncplay-group-repeat-rides-queue`), so queue edits are the part left to design, in the SyncPlay project's hardening phase.
+Phase E (#1276) chose honor-only for the group's playlist: the server owns it, so the Roku offers no queue editing while following (add, remove or move an item in the group's playlist). The group's repeat and shuffle ship in the OSD gear (decision `syncplay-group-repeat-rides-queue`), so queue edits are the part left to design, in the SyncPlay project's hardening phase.
 
-Also unchecked: voice fast-forward and rewind still write the node (`control` set to `fastforward` or `rewind` in `VideoPlayerView.handleTransport`) instead of going to the group. The remote's OK on the trick-play bar posts the group seek, but nobody has checked on a device whether a voice scrub can land with no OK, which would move this member alone.
+Voice fast-forward and rewind while following are now a relative group seek (`voiceTransport.groupTrickSeekDelta`, `VideoPlayerView.handleTransport`), with a unit case and an RTA case in `syncplay-controls.spec.js` that passed on the Stick 4K against the local 12.4 server (2026-11-06). Left unchecked: whether a remote fast-forward or rewind key held with the OSD closed can move this member alone before any OK; the scrub bar's own confirm already posts the group seek.
 
-Closes when the queue-edit design ships or is declined in a decision note, and a device check shows a voice scrub in a group either reaches the group or cannot land without an OK.
+Closes when the queue-edit design ships or is declined in a decision note, and a device check shows the held remote key cannot land a scrub without an OK.
 
 #### A halt landing just after a SyncPlay correction's pause write can leave the node paused `[fid: syncplay-correction-pause-in-flight]` `[captured 2026-11-01]`
 
