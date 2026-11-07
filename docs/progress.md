@@ -1189,7 +1189,7 @@ Not checked: whether the server sent the frame, or to which socket; and whether 
 
 Closes with the server's side of a failure and either a fix, or a proof it comes from the test's sign-in. Whichever way it goes, decide what a viewer sees when the frame never comes.
 
-Seen again 2026-11-07 on 10.9.11 (Stick 4K, `syncplay-controls`' setup, "the Roku in the group", `last=false`): 2 of 3 runs that day failed the same way, between a pass, while 10.7.7, 10.8.13, 10.10.7, 10.11.11, 12.0.0 and 12.4.0 each passed once.
+Seen again 2026-11-07 on 10.9.11 (Stick 4K, `syncplay-controls`' setup, "the Roku in the group", `last=false`): 2 of 3 runs that day failed the same way and the third passed, while 10.7.7, 10.8.13, 10.10.7, 10.11.11, 12.0.0 and 12.4.0 each passed once.
 
 #### A SyncPlay group Pause landing as a correction's hold resumes shows no OSD `[fid: syncplay-pause-at-hold-resume-no-osd]` `[captured 2026-11-01]`
 
