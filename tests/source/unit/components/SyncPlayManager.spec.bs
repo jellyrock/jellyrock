@@ -504,6 +504,62 @@ namespace tests
       m.assertFalse(m.manager.callFunc("confirmPlay"), "nothing is held any more")
     end function
 
+    @it("a halted member's play of the video the group is watching catches up: nothing asks, and nothing starts it over")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      m.manager.notice = invalid
+      m.pressPlay([{ id: "i1", type: "Movie" }])
+      start = promises.create()
+      m.assertTrue(m.manager.callFunc("claimPlay", start), "no local player starts")
+      m.assertFalse(m.manager.playHeld, "nothing is asked")
+      m.assertTrue(m.manager.following, "following again, as Resume with Group does")
+      m.assertEqual(m.manager.notice.kind, "followingAgain")
+      m.assertTrue(appWaits.isOpen(start), "the press's start waits for the group's item to load")
+      ' SetPlaylistItem for the playing entry would start the video over for every member.
+      m.assertEqual(posts.getChildCount(), 1, "only the wait is posted")
+      m.assertTrue(posts.getChild(0).request.url.instr("/SyncPlay/SetIgnoreWait") >= 0)
+    end function
+
+    @it("a halted member's Play All whose current item is the group's video catches up too")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i1", type: "Episode" }, { id: "i7", type: "Episode" }])
+      m.assertTrue(m.manager.callFunc("claimPlay", promises.create()))
+      m.assertFalse(m.manager.playHeld)
+      m.assertTrue(m.manager.following)
+      m.assertEqual(posts.getChildCount(), 1, "only the wait is posted")
+    end function
+
+    @it("a halted member's play of another video in the group's playlist still asks: the group would jump to it")
+    function _()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i2", type: "Movie" }])
+      m.assertTrue(m.manager.callFunc("claimPlay", promises.create()))
+      m.assertTrue(m.manager.playHeld)
+      m.assertEqual(m.manager.notice.kind, "confirmPlay")
+      m.assertFalse(m.manager.following)
+    end function
+
+    @it("a following member's play of the video the group is watching loads it at the group's position and posts nothing")
+    function _()
+      posts = m.capturePosts()
+      m.joinGroup()
+      m.playGroupItem()
+      m.enableServer()
+      m.assertTrue(m.manager.following)
+      m.manager.notice = invalid
+      ' Unstamped: a cast or a press, not the manager's own load.
+      m.pressPlay([{ id: "i1", type: "Movie" }])
+      start = promises.create()
+      m.assertTrue(m.manager.callFunc("claimPlay", start))
+      m.assertEqual(posts.getChildCount(), 0, "nothing reaches the group, so nobody starts over")
+      m.assertTrue(m.manager.following)
+      m.assertInvalid(m.manager.notice, "nothing changed for the group to tell")
+      m.assertTrue(appWaits.isOpen(start), "the start waits for the group's item to load")
+    end function
+
     @it("a halted member's play the viewer cancels goes nowhere and ends the start the press opened")
     function _()
       posts = m.capturePosts()

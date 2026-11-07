@@ -382,6 +382,37 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isGroupsPlayingItem() — a play of the video the group is watching")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for the item the group plays, whichever launcher queued it")
+    function _()
+      state = { playlist: m.playlist, playingItemId: "p-2" }
+      m.assertTrue(syncPlayQueue.isGroupsPlayingItem({ id: "i-2", type: "Movie" }, state))
+    end function
+
+    @it("is false for another item of the group's playlist, which the group would jump to")
+    function _()
+      state = { playlist: m.playlist, playingItemId: "p-2" }
+      m.assertFalse(syncPlayQueue.isGroupsPlayingItem({ id: "i-1", type: "Movie" }, state))
+      m.assertFalse(syncPlayQueue.isGroupsPlayingItem({ id: "i-9", type: "Movie" }, state))
+    end function
+
+    @it("reads the entry playing now when the playlist holds the item twice")
+    function _()
+      playlist = [{ itemId: "i-1", playlistItemId: "p-1" }, { itemId: "i-2", playlistItemId: "p-2" }, { itemId: "i-1", playlistItemId: "p-3" }]
+      m.assertTrue(syncPlayQueue.isGroupsPlayingItem({ id: "i-1" }, { playlist: playlist, playingItemId: "p-3" }))
+      m.assertFalse(syncPlayQueue.isGroupsPlayingItem({ id: "i-1" }, { playlist: playlist, playingItemId: "p-2" }))
+    end function
+
+    @it("is false while the group plays nothing, and for no item")
+    function _()
+      m.assertFalse(syncPlayQueue.isGroupsPlayingItem({ id: "i-1" }, { playlist: m.playlist, playingItemId: "" }))
+      m.assertFalse(syncPlayQueue.isGroupsPlayingItem({ id: "i-1" }, { playlist: [], playingItemId: "p-1" }))
+      m.assertFalse(syncPlayQueue.isGroupsPlayingItem(invalid, { playlist: m.playlist, playingItemId: "p-1" }))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("owedLoadAfter()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

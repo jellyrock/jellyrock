@@ -47,8 +47,9 @@
     <!-- claimPlay(start): QueueManager.playQueue asks, while in a group, whether the group takes
          the play, passing the playback start the press opened. True when it was posted
          (SetNewQueue or SetPlaylistItem) and no local player should start; false when it plays
-         locally. The claim lasts as long as that start. A halted member's play is held with a
-         confirmPlay notice until one of the two below, or until playHeld clears. -->
+         locally. The claim lasts as long as that start. A play of the video the group is playing
+         posts nothing and loads it at the group's position. A halted member's other plays are
+         held with a confirmPlay notice until one of the two below, or until playHeld clears. -->
     <function name="claimPlay" />
     <!-- confirmPlay(): the viewer confirmed the held play; it follows the group again and posts.
          cancelPlay(): the viewer kept the group's playback; the start the press opened ends.

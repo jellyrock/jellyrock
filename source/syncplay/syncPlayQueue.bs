@@ -118,6 +118,18 @@ namespace syncPlayQueue
     return following and action = "play" and followsItem(item)
   end function
 
+  ' Whether a play's current item is the video the group is playing now, whichever launcher
+  ' queued it (SyncPlayManager.claimPlay). The group never takes such a play: the server answers
+  ' SetPlaylistItem by starting the item over for every member (Group.SetPlayingItem), so the
+  ' member loads the group's item at the group's position instead. Read from the playing entry,
+  ' so an item the playlist holds twice counts only where it plays now.
+  ' @param state - syncPlayState
+  function isGroupsPlayingItem(queueItem as dynamic, state as object) as boolean
+    if not isValid(queueItem) then return false
+    entry = playingEntry(state)
+    return isValid(entry) and entry.itemId = queueItem.id
+  end function
+
   ' Whether a QueueManager item is the one the group is playing: queueItemsFor stamps the
   ' playlist id, and nothing else in the app sets it.
   function isGroupItem(queueItem as dynamic, playingItemId as string) as boolean

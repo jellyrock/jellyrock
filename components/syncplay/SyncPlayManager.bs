@@ -340,7 +340,8 @@ end sub
 ' follows the group again first: locally, so the answer applies (syncPlayQueue.appliesFetchedQueue),
 ' and on the wire, so the group waits on it (a new queue marks every member buffering, but the
 ' server's wait skips a member still ignoring it). It halts again if the group never loads the
-' play (endUnansweredRefollow).
+' play (endUnansweredRefollow). A play of the video the group is playing goes to no one: it
+' catches this member up instead (catchUp).
 ' @param start - the playback start the press opened (QueueManager.beginPlaybackStart), which
 '   the claim lives as long as; invalid when none is pending
 function claimPlay(start = invalid as dynamic) as boolean
@@ -359,6 +360,13 @@ function claimPlay(start = invalid as dynamic) as boolean
     req = syncPlayRequest("SetNewQueue", syncPlayRequests.setNewQueue(handoff.itemIds, handoff.position, handoff.startPositionTicks))
   end if
   if not isValid(req) then return false
+  ' Every launcher reaches here, so the rule is the same for a press, a quick play, a deep link
+  ' and a cast. The server answers SetPlaylistItem for the playing entry by starting the video
+  ' over for every member, and nobody asked for that.
+  if syncPlayQueue.isGroupsPlayingItem(queueItems[position], m.state)
+    catchUp(start)
+    return true
+  end if
   ' Built before anything is sent, so a play that will run locally re-follows nothing. A halted
   ' member's play is held for the viewer's confirmation first: the start stays open under the
   ' dialog, and the hold ends with it.
@@ -464,12 +472,38 @@ function resumeFollowing() as boolean
     notify("followingAgain", m.state.groupName, "")
     return true
   end if
-  m.owedLoad = { newPlaylist: true }
   m.loadNotice = "followingAgain"
   m.resumeAsked = true
-  fetchQueue("Resume", m.state.lastUpdateMs, false, "-resume")
+  loadGroupItem("-resume")
   return true
 end function
+
+' A play of the video the group is playing (claimPlay), from any launcher: this member loads
+' the group's item at the group's position, as Resume with Group does, and nothing reaches the
+' group. A halted member follows again first and is told so here, as a claim is; Back before
+' the load halts it again, quietly (endUnansweredRefollow). The press's start is the claim's:
+' the load's own start replaces it, or a player reloading in place takes it.
+sub catchUp(start as dynamic)
+  releaseHeldPlay("replaced by a newer play")
+  refreshExtraOffset()
+  m.claimedStart = start
+  if not isFollowing()
+    followAgain()
+    m.claimRefollowed = true
+    m.resumeAsked = true
+    notify("followingAgain", m.state.groupName, "")
+  end if
+  m.log.info("play of the group's own item loads it at the group position", "groupId", m.state.groupId)
+  loadGroupItem("-catchup")
+end sub
+
+' Loads the item the group plays as a new queue at the position the state keeps for it
+' (applyQueue; syncPlayPlayback.startPositionTicks estimates it).
+' @param tag - tells this fetch's request id from the update's own (fetchQueue)
+sub loadGroupItem(tag as string)
+  m.owedLoad = { newPlaylist: true }
+  fetchQueue("Resume", m.state.lastUpdateMs, false, tag)
+end sub
 
 ' Whether a play this viewer handed to the group still waits on the group's answer: the start
 ' its press opened is still open. Back, the start's time limit or a newer press ended it.
@@ -915,6 +949,9 @@ sub fetchQueue(reason as string, lastUpdateMs as longinteger, isRetry as boolean
   requestId = "syncplay-queue-" + lastUpdateMs.toStr() + tag
   if isRetry then requestId = requestId + "-retry"
   promises.chain(fetchAsync(req, requestId), { reason: reason, lastUpdateMs: lastUpdateMs, isRetry: isRetry, tag: tag, entry: entry }).then(sub(res as object, ctx as object)
+    ' A catch-up the viewer backed out of while its item was in flight halts here, and loads
+    ' nothing: no frame need arrive first.
+    endUnansweredRefollow()
     ' A newer update arrived while this one's item was in flight: it will apply its own.
     ' A member that stopped following while the item was in flight applies nothing, as onCommand
     ' does for a halted member.

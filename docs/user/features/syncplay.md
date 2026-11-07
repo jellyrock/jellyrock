@@ -41,7 +41,7 @@ So that one person's settings don't move everyone, a few things wait while you'r
 
 Press **Back** to leave the video. You stay in the group, but you stop following it, and the group plays on without you. If the group was repeating, your Roku stops repeating with it.
 
-To catch up, select the **SyncPlay** icon and pick **Resume with Group**. Your Roku plays the group's video from where the group is now. You also follow again when someone in the group starts something new, or when you play a video yourself: JellyRock asks first, and **Play for Everyone** plays it for the whole group in place of what the group is watching, while **Cancel** leaves the group's video alone. A video someone casts to your Roku while you watch with the group plays for the whole group, as if you had picked it.
+To catch up, select the **SyncPlay** icon and pick **Resume with Group**. Your Roku plays the group's video from where the group is now. Playing the video the group is watching does the same, however you start it, and nobody else's video restarts. You also follow again when someone in the group starts something new, or when you play a different video yourself: JellyRock asks first, and **Play for Everyone** plays it for the whole group in place of what the group is watching, while **Cancel** leaves the group's video alone. A video someone casts to your Roku while you watch with the group plays for the whole group, as if you had picked it.
 
 ## Leave a group
 

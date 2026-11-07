@@ -200,6 +200,10 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // or a GroupLeft/NotInGroup frame moves: false holds until the next join. `syncplay-controls.spec.js`
   // waits on it after Leave Group in the gear.
   'syncPlayManager.inGroup',
+  // `SyncPlayManager.publish` writes `following` from the membership state, which only a follow
+  // (`followAgain`, a join) or a halt (`haltFollowing`, a leave) moves: false holds until the next
+  // follow. `syncplay-menu.spec.js` waits on it after Back during a catch-up's load.
+  'syncPlayManager.following',
   // `SyncPlayManager.checkSettle` publishes the drift from the group on every position
   // notification while an Unpause is in force (every 0.5 s, in RTA builds only: `#if ENABLE_RTA`), and a group command or a Buffering
   // report clears it. Past its thresholds the manager corrects it, and it then holds inside them,
