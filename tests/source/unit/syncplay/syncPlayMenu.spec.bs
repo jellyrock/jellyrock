@@ -233,6 +233,32 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("channelMessageKey() — a press on the icon with no push channel")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("opens the menu while the channel is available or unknown")
+    function _()
+      m.assertEqual(syncPlayMenu.channelMessageKey("available", false, true), "")
+      m.assertEqual(syncPlayMenu.channelMessageKey("", false, false), "")
+    end function
+
+    @it("says the server is reconnecting on http, where the channel is the session socket")
+    function _()
+      m.assertEqual(syncPlayMenu.channelMessageKey("unavailable", false, true), translationKeys.MessageSyncPlayReconnecting)
+    end function
+
+    @it("says the plugin is needed on https, where the channel is the companion plugin")
+    function _()
+      m.assertEqual(syncPlayMenu.channelMessageKey("unavailable", false, false), translationKeys.MessageSyncPlayNeedsPlugin)
+    end function
+
+    @it("opens the menu for a member already in a group, so it can leave")
+    function _()
+      m.assertEqual(syncPlayMenu.channelMessageKey("unavailable", true, true), "")
+      m.assertEqual(syncPlayMenu.channelMessageKey("unavailable", true, false), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("groups to join")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

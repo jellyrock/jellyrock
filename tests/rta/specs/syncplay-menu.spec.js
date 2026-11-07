@@ -661,6 +661,60 @@ it("a halted member's play asks first over its screen; Cancel keeps the group's 
   );
 });
 
+it("a cast while the halted member's confirm is up asks about the cast instead, and the replaced question cancels nothing", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  // The case above leaves the Roku halted in the group.
+  expect(await getGlobalVal('syncPlayManager.following'), 'halted by its Back').toBe(false);
+  await backOutToHome();
+  await waitHome();
+  await startPlayback(ctx);
+  await waitFor('#jrDialog.id', (v) => v === 'jrDialog', {
+    timeout: 20000,
+    label: "the confirm dialog for the halted member's press",
+  });
+  // Marks the first dialog, so the wait below can tell the cast's dialog from it: both ask the
+  // same question.
+  await odc.setValue({ base: 'scene', keyPath: '#jrDialog.title', value: 'replaced-question' });
+
+  // The cast's play is held in place of the press's: its start replaces the press's, which ends
+  // the first hold and closes the first question, and the cast then asks its own. Nothing from
+  // the first question may cancel the cast's play.
+  const [cast] = await moviesOtherThanHero(1);
+  const roku = await appSession(member, await getGlobalVal('device.serverDeviceName'));
+  await playOnSession(member, roku.Id, [cast]);
+  await waitFor('#jrDialog.title', (v) => v === 'SyncPlay', {
+    read: getVal,
+    timeout: 30000,
+    interval: 250,
+    label: "the cast's own confirm dialog",
+  });
+
+  // Play for Everyone answers the cast's dialog. Had the replaced dialog's answer cancelled the
+  // cast's play, that dialog would be gone and nothing would reach the group.
+  await press(ecp.Key.Right);
+  await press(ecp.Key.Ok);
+  await waitToast(`Playing this for ${GROUP_NAME}.`, { label: 'the cast handed over' });
+  await waitFor('subtype()', (v) => v === 'PlayerHostView', {
+    read: getActiveVal,
+    timeout: 30000,
+    interval: 250,
+    label: "the player mounted from the group's answer to the cast",
+  });
+  await waitMediaPlaying('the cast', 60000);
+  expect(await getGlobalVal('syncPlayManager.following'), 'the answered cast follows').toBe(true);
+  expect(await getGlobalVal('syncPlayManager.playHeld'), 'nothing left held').toBe(false);
+
+  // Back halts again, leaving the state the next case starts from.
+  await stopPlayback();
+  await waitToast(
+    `No longer following ${GROUP_NAME}. Pick Resume with Group in the SyncPlay menu to catch up.`,
+    { label: 'the halted toast after the cast' },
+  );
+});
+
 it('a cast while halted follows the group again, and a cast over its player ends the start it opened', async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(

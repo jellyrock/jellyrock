@@ -142,6 +142,11 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // nothing rewrites it: terminal for as long as the dialog is open, not a pulse.
   // `syncplay-menu.spec.js` waits on it for the plugin-needed alert.
   '#jrDialog.message',
+  // `showConfirmDialog` and its siblings set the dialog's `title` before `presentOverlayDialog`
+  // mounts it, and JRDialog never writes it (`onTitleChanged` only reads it): terminal for as
+  // long as the dialog is open, not a pulse. `syncplay-menu.spec.js` marks one dialog's title
+  // through ODC and waits for the next dialog's own.
+  '#jrDialog.title',
   // `SyncPlayManager.publish` writes `sync.playingItemId` from the membership state, which only
   // a PlayQueue frame (`syncPlayState.applyGroupUpdate`) or leaving the group changes: held until
   // the group's queue moves again. `syncplay-menu.spec.js` waits on it for a cast's answer.

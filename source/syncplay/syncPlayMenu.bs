@@ -114,6 +114,16 @@ namespace syncPlayMenu
     return { shown: shown, disabled: disabled, active: inGroup, badge: shown and not disabled and not inGroup and groupsAvailable }
   end function
 
+  ' What a press on the icon says instead of opening the menu, or "" to open it. With no push
+  ' channel the server would take a join but no frame would reach this Roku. On http the channel
+  ' is the session socket, down while it reconnects; on https it is the companion plugin. A member
+  ' already in a group still gets its menu: Leave is a plain request.
+  function channelMessageKey(channel as string, inGroup as boolean, isHttp as boolean) as string
+    if channel <> serverCapabilities.STATUS_UNAVAILABLE or inGroup then return ""
+    if isHttp then return translationKeys.MessageSyncPlayReconnecting
+    return translationKeys.MessageSyncPlayNeedsPlugin
+  end function
+
   ' Whether a /SyncPlay/List answer holds a group the viewer could join: one with an id.
   function hasGroups(groups as dynamic) as boolean
     if type(groups) <> "roArray" then return false
