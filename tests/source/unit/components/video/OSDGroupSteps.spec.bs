@@ -157,10 +157,24 @@ namespace tests
       m.osd.visible = true
       clock = m.osd.findNode("clock")
       mark = m.osd.findNode("syncPlayMark")
-      clock.textWidth = 99
-      m.assertEqual(mark.translation[0], (1824 - 99 - overhangRow.CLOCK_GAP - overhangRow.ICON_BOX) * 1.0)
-      clock.textWidth = 125
-      m.assertEqual(mark.translation[0], (1824 - 125 - overhangRow.CLOCK_GAP - overhangRow.ICON_BOX) * 1.0)
+      for each width in [99, 125]
+        clock.textWidth = width
+        gap = 1824 - width - (mark.translation[0] + overhangRow.ICON_BOX)
+        m.assertTrue(gap >= overhangRow.CLOCK_GAP and gap < overhangRow.CLOCK_GAP + 3, "gap " + gap.toStr() + " at width " + width.toStr())
+        m.assertEqual(int(mark.translation[0]) mod 3, 0, "on the grid at width " + width.toStr())
+      end for
+      ' Centered on the clock's text box.
+      m.assertEqual(mark.translation[1], (clock.boxY + (clock.boxHeight - overhangRow.ICON_BOX) \ 2) * 1.0)
+    end function
+
+    @it("the mark keeps the provisional clock width until the clock's first tick")
+    function _()
+      m.osd.itemData = m.item()
+      m.osd.visible = true
+      m.osd.findNode("clock").textWidth = 0
+      mark = m.osd.findNode("syncPlayMark")
+      m.assertEqual(mark.translation[0], (overhangRow.leftOfClock(0, true) - overhangRow.ICON_BOX) * 1.0)
+      m.assertTrue(mark.translation[0] < 1824 - overhangRow.CLOCK_PROVISIONAL_WIDTH - overhangRow.ICON_BOX, "clear of the clock's digits")
     end function
 
     @it("outside a group there is no mark")

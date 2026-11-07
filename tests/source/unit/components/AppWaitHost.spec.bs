@@ -479,6 +479,67 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("pause() / resume() — a start that waits on the viewer's answer")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows the screen and the overhang again and drops off the spinner while paused")
+    function _()
+      appWait = m.begin()
+      m.assertTrue(appWaits.pause(appWait))
+      m.assertTrue(m.launcher.opacity = 1)
+      m.assertTrue(m.overhang.opacity = 1)
+      m.assertEqual(m.host.openWaits.count(), 0)
+      m.assertTrue(appWaits.isOpen(appWait))
+    end function
+
+    @it("keeps the remote focus held while paused, and Back still cancels it")
+    function _()
+      appWait = m.begin()
+      appWaits.pause(appWait)
+      m.assertTrue(m.host.hasFocus())
+      m.assertTrue(m.host.callFunc("cancelOnBack"))
+      m.assertEqual(appWait.promiseState, "rejected")
+      m.assertTrue(m.button.hasFocus())
+    end function
+
+    @it("hides the screen and shows on the spinner again when resumed")
+    function _()
+      appWait = m.begin("Movie")
+      appWaits.pause(appWait)
+      m.assertTrue(appWaits.resume(appWait))
+      m.assertTrue(m.launcher.opacity = 0)
+      m.assertTrue(m.overhang.opacity = 0)
+      m.assertEqual(m.host.openWaits.count(), 1)
+    end function
+
+    @it("keeps the screen hidden while another start from it still loads")
+    function _()
+      first = m.begin()
+      m.begin()
+      appWaits.pause(first)
+      m.assertTrue(m.launcher.opacity = 0)
+      m.assertEqual(m.host.openWaits.count(), 1)
+    end function
+
+    @it("ends a paused start as any other: the screen and its focus come back")
+    function _()
+      appWait = m.begin()
+      appWaits.pause(appWait)
+      appWaits.fail(appWait, "the viewer kept the group's playback")
+      m.assertTrue(m.launcher.opacity = 1)
+      m.assertTrue(m.button.hasFocus())
+    end function
+
+    @it("refuses a wait that has ended, and does nothing without one")
+    function _()
+      appWait = m.begin()
+      appWaits.done(appWait)
+      m.assertFalse(appWaits.pause(appWait))
+      m.assertFalse(appWaits.resume(appWait))
+      m.assertFalse(appWaits.pause(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("failLeftBehind() — the viewer left before a player took the start")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

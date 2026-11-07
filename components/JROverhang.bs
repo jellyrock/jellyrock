@@ -11,10 +11,6 @@ import "pkg:/source/utils/translate.bs"
 
 const OVERHANG_LEFT = 96 ' The 5% action-safe left edge: the logo, or the tabs without one
 const TABS_X_WITH_LOGO = 360 ' The tabs' text (or the title) starts here when the logo shows
-const OVERHANG_RIGHT = 1824 ' The 5% action-safe right edge: the clock's right edge
-' The clock's digits until the clock reports their width (Clock.textWidth, at its first tick):
-' "8:48" measured 99 px wide at 1080p on a Stick 4K (2026-10-25), so this covers two hour digits.
-const CLOCK_PROVISIONAL_WIDTH = 126
 const LOGO_Y = 51 ' The wordmark's caps and baseline sit on the tab text's (baseline at design y 81)
 const TITLE_MIN_WIDTH = 120 ' The title keeps at least this, whatever the dropdown's width
 const DROPDOWN_PROVISIONAL_WIDTH = 198 ' Until the trigger reports its width
@@ -353,16 +349,8 @@ sub layout()
 
   titleX = tabsX
 
-  ' The cluster sits CLOCK_GAP left of the clock's digits, whose width the clock reports at
-  ' each tick (a proportional font moves at any minute); the edge snaps down onto the grid, so
-  ' the gap never falls under CLOCK_GAP. The OSD's group mark keeps the same gap.
-  rightEdge = OVERHANG_RIGHT
-  if not m.isClockHidden
-    clockWidth = m.clock.textWidth
-    if clockWidth <= 0 then clockWidth = CLOCK_PROVISIONAL_WIDTH
-    rightEdge = OVERHANG_RIGHT - clockWidth - overhangRow.CLOCK_GAP
-    rightEdge = rightEdge - (rightEdge mod 3)
-  end if
+  ' The cluster sits CLOCK_GAP left of the clock's digits; the OSD's group mark keeps the same gap.
+  rightEdge = overhangRow.leftOfClock(m.clock.textWidth, not m.isClockHidden)
 
   leftOfCluster = rightEdge
   if m.cluster.visible

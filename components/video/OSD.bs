@@ -13,12 +13,6 @@ import "pkg:/source/utils/playbackSettingsMenu.bs"
 import "pkg:/source/utils/queueRepeat.bs"
 import "pkg:/source/utils/translate.bs"
 
-' The SyncPlay mark's row: the action-safe right edge the clock's digits end at, and the top of
-' the icon's box (overhangRow.ICON_BOX tall), centered on the clock's text box (Clock.xml: top
-' 39, 64 tall).
-const SYNCPLAY_MARK_RIGHT = 1824
-const SYNCPLAY_MARK_TOP = 32
-
 sub init()
   m.log = new log.Logger("OSD")
   m.inactivityTimer = m.top.findNode("inactivityTimer")
@@ -780,8 +774,8 @@ end sub
 ' The SyncPlay mark: the overhang's icon in the overhang's states, shown while in a group, active
 ' (colorSecondary) while following and disabled (dim) while halted, read from the manager as
 ' the OSD opens and never cached. It sits CLOCK_GAP left of the clock's digits, whose width the
-' clock reports at each tick (Clock.textWidth, a proportional font), and takes the clock's
-' place when the clock is hidden.
+' clock reports at each tick (overhangRow.leftOfClock), and takes the clock's place when the
+' clock is hidden. Its box centers on the clock's text box (boxY and boxHeight).
 sub applySyncPlayMark()
   manager = m.global.syncPlayManager
   inGroup = isValid(manager) and manager.inGroup = true
@@ -790,9 +784,15 @@ sub applySyncPlayMark()
   following = manager.following = true
   m.syncPlayMark.isActive = following
   m.syncPlayMark.isDisabled = not following
-  right = SYNCPLAY_MARK_RIGHT
-  if isValid(m.clock) and m.clock.visible and m.clock.textWidth > 0 then right = right - m.clock.textWidth - overhangRow.CLOCK_GAP
-  m.syncPlayMark.translation = [right - overhangRow.ICON_BOX, SYNCPLAY_MARK_TOP]
+  if not isValid(m.clock)
+    m.syncPlayMark.translation = [overhangRow.RIGHT_EDGE - overhangRow.ICON_BOX, 0]
+    return
+  end if
+  ' The uiDesignHideClock setting leaves the clock's digits empty rather than hiding it.
+  clockShown = m.clock.visible and m.global.user.settings.uiDesignHideClock <> true
+  right = overhangRow.leftOfClock(m.clock.textWidth, clockShown)
+  top = m.clock.boxY + (m.clock.boxHeight - overhangRow.ICON_BOX) \ 2
+  m.syncPlayMark.translation = [right - overhangRow.ICON_BOX, top]
 end sub
 
 sub onVisibleChanged()

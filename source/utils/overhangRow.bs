@@ -17,6 +17,10 @@ namespace overhangRow
   ' textMetrics.spec.bs fails if the two disagree.
   const TEXT_DROP = 3
   const BADGE_SIZE = 18 ' A dot on a glyph's top-right for something waiting there (SyncPlay's groups to join)
+  const RIGHT_EDGE = 1824 ' The 5% action-safe right edge: the clock's digits end here
+  ' The clock's digits until the clock reports their width (Clock.textWidth, at its first tick):
+  ' "8:48" measured 99 px wide at 1080p on a Stick 4K (2026-10-25), so this covers two hour digits.
+  const CLOCK_PROVISIONAL_WIDTH = 126
 
   ' Derived
   const ROW_TOP = ROW_BOTTOM - ROW_HEIGHT ' Every box in the row shares this top edge
@@ -27,6 +31,18 @@ namespace overhangRow
   ' The badge in its icon's box: a third of it past the glyph's right and top edges
   const BADGE_X = ICON_PADDING + GLYPH_SIZE - BADGE_SIZE * 2 \ 3
   const BADGE_Y = ICON_PADDING - BADGE_SIZE \ 3
+
+  ' The right edge of whatever sits left of the clock: CLOCK_GAP left of its digits, snapped down
+  ' onto the grid so the gap never falls under CLOCK_GAP. The digits' width comes from the clock
+  ' at each tick (a proportional font moves at any minute), CLOCK_PROVISIONAL_WIDTH until the
+  ' first one. With the clock hidden it is the safe edge itself. The overhang's cluster and the
+  ' OSD's SyncPlay mark both end here.
+  function leftOfClock(clockWidth as integer, clockShown as boolean) as integer
+    if not clockShown then return RIGHT_EDGE
+    if clockWidth <= 0 then clockWidth = CLOCK_PROVISIONAL_WIDTH
+    edge = RIGHT_EDGE - clockWidth - CLOCK_GAP
+    return edge - (edge mod 3)
+  end function
 
   ' Where Left or Right from the row element `from` ("tabs", "dropdown" or "cluster") takes
   ' focus: the next element `shown` ({ tabs, dropdown, cluster } as booleans) along the row,

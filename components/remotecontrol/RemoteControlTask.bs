@@ -39,7 +39,7 @@ end sub
 
 ' Publish whether this server has a push channel to the Roku (server.remoteChannelStatus, which
 ' SyncPlay reads). Written only on a change: this is a Task thread writing m.global, a rendezvous
-' with the render thread, and the status settles once per run.
+' with the render thread, and the status changes only when the channel comes or goes.
 sub setChannelStatus(status as string)
   if m.global.server.remoteChannelStatus = status then return
   m.global.server.remoteChannelStatus = status

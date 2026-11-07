@@ -369,6 +369,9 @@ function claimPlay(start = invalid as dynamic) as boolean
     ' this node. Never unobserved: the start is short-lived, and an unobserve can drop the
     ' observers QueueManager and AppWaitHost keep on it (#898).
     if isValid(start) then start.observeField("promiseState", "onHeldStartEnded")
+    ' Nothing loads while the viewer reads the question: the screen shows behind the dialog and
+    ' the spinner waits for the answer (confirmPlay resumes it). Back still cancels the start.
+    appWaits.pause(start)
     publish()
     notify("confirmPlay", m.state.groupName, "")
     return true
@@ -385,6 +388,13 @@ function confirmPlay() as boolean
   held = m.heldClaim
   if not isValid(held) then return false
   m.heldClaim = invalid
+  ' The start may have ended before onHeldStartEnded read it: a play with nothing to start goes
+  ' nowhere.
+  if isValid(held.start) and not appWaits.isOpen(held.start)
+    publish()
+    return false
+  end if
+  appWaits.resume(held.start)
   m.claimedStart = held.start
   followAgain()
   m.claimRefollowed = true

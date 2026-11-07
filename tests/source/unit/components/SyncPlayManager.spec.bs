@@ -545,6 +545,21 @@ namespace tests
       m.assertEqual(posts.getChildCount(), 0, "nothing was posted")
     end function
 
+    @it("a confirm for a held play whose start already ended posts nothing")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i9", type: "Movie" }])
+      ' A start that ended with no change for the hold's observer to see.
+      start = promises.create()
+      promises.reject({ message: "time limit" }, start)
+      m.manager.callFunc("claimPlay", start)
+      m.assertFalse(m.manager.callFunc("confirmPlay"))
+      m.assertFalse(m.manager.following, "a play with nothing to start does not follow again")
+      m.assertFalse(m.manager.playHeld)
+      m.assertEqual(posts.getChildCount(), 0, "nothing was posted")
+    end function
+
     @it("a newer halted play replaces the held one and ends its start")
     function _()
       posts = m.capturePosts()

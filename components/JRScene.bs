@@ -5,6 +5,7 @@ import "pkg:/source/enums/LoadingKind.bs"
 import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/remotecontrol/remoteProtocol.bs"
 import "pkg:/source/syncplay/syncPlayMenu.bs"
+import "pkg:/source/syncplay/syncPlayQueue.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/appWaits.bs"
 import "pkg:/source/utils/backdrop.bs"
@@ -463,8 +464,8 @@ sub initRouter()
     m.global.syncPlayManager.observeField("inGroup", "applySyncPlayIcon")
     m.global.syncPlayManager.observeField("notice", "onSyncPlayNotice")
     m.global.syncPlayManager.observeField("playHeld", "onSyncPlayHeldChanged")
-    ' Whether the server has a push channel to this Roku (RemoteControlTask writes it, once per
-    ' run): the icon stays hidden until it is known, and is disabled without one. The server node
+    ' Whether the server has a push channel to this Roku (RemoteControlTask writes it as the
+    ' channel comes and goes): the icon stays hidden until it is known, and is disabled without one. The server node
     ' is reset in place on a server switch, so this observer outlives it.
     m.global.server.observeField("remoteChannelStatus", "applySyncPlayIcon")
     m.isObservingSyncPlay = true
@@ -821,6 +822,13 @@ sub onDeepLinkResolved()
   itemRoute = routeForItem(item)
   if not args.isPlayback and isValid(itemRoute) and itemRoute.name = "library"
     navigateThenFocus(itemRoute, { item: item })
+    return
+  end if
+
+  ' A cast over the player while following a SyncPlay group: the group takes the play, as this
+  ' viewer's own press, and its answer reloads the player in place (syncPlayQueue.castGoesToGroup).
+  if args.replacePlayer and syncPlayQueue.castGoesToGroup(args.action, item, m.global.syncPlayManager.following = true)
+    m.global.queueManager.callFunc("launchItem", item)
     return
   end if
 
@@ -1338,8 +1346,9 @@ sub onSyncPlayGroupNameEntered()
   dialog = m.syncPlayNameDialog
   m.syncPlayNameDialog = invalid
   if not isValid(dialog) or not isValid(dialog.result) or dialog.result.confirmed <> true then return
+  ' A name cleared to nothing keeps the default the keyboard opened with, so OK always creates.
   groupName = dialog.result.value.trim()
-  if groupName = "" then return
+  if groupName = "" then groupName = translate(translationKeys.LabelSyncPlayDefaultGroupName, [m.global.user.name])
   m.global.syncPlayManager.callFunc("newGroup", groupName)
 end sub
 

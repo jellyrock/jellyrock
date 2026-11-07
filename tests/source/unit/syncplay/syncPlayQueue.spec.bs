@@ -358,6 +358,30 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("castGoesToGroup() — a cast over the player of a following member")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("hands a following member's cast of a video to the group")
+    function _()
+      m.assertTrue(syncPlayQueue.castGoesToGroup("play", { id: "i-1", type: "Movie" }, true))
+      m.assertTrue(syncPlayQueue.castGoesToGroup("play", { id: "i-2", type: "Episode" }, true))
+    end function
+
+    @it("leaves a halted member's cast to the springboard, which asks before it replaces the group's")
+    function _()
+      m.assertFalse(syncPlayQueue.castGoesToGroup("play", { id: "i-1", type: "Movie" }, false))
+    end function
+
+    @it("leaves shuffle, trailers, an instant mix and an item the group cannot follow to the springboard")
+    function _()
+      m.assertFalse(syncPlayQueue.castGoesToGroup("shuffle", { id: "i-1", type: "Series" }, true))
+      m.assertFalse(syncPlayQueue.castGoesToGroup("trailer", { id: "i-1", type: "Movie" }, true))
+      m.assertFalse(syncPlayQueue.castGoesToGroup("instantmix", { id: "i-1", type: "Audio" }, true))
+      m.assertFalse(syncPlayQueue.castGoesToGroup("play", { id: "i-1", type: "Audio" }, true))
+      m.assertFalse(syncPlayQueue.castGoesToGroup("play", invalid, true))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("owedLoadAfter()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
