@@ -1,6 +1,7 @@
 import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/roku_modules/promises/promises.brs"
 import "pkg:/source/utils/appWaits.bs"
+import "pkg:/source/utils/dialogClose.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/loadingStages.bs"
 import "pkg:/source/utils/misc.bs"
@@ -68,8 +69,10 @@ end function
 ' keys (releaseFocus). A press from the scene's overhang, outside the screen, is held the same
 ' way, remembering the overhang's node. A wait pressed from a dialog finds the dialog still
 ' holding the focus, and closing it would hand the focus back into the held screen, so the
-' dialog hands it here instead. A screen outside the focus chain for any other reason is left
-' alone.
+' dialog hands it here instead. So does a dialog opened over a screen the viewer has since left:
+' it keeps the focus while the new screen opens under it, and closing it would hand the focus to
+' that screen (closeRedirectsToActiveView), the one this wait holds. A screen outside the focus
+' chain for any other reason is left alone.
 sub holdFocus(screen as object)
   if screen.isInFocusChain()
     screen.callFunc("saveLastFocus")
@@ -91,8 +94,14 @@ sub holdFocus(screen as object)
   dialog = openOverlayDialog()
   if not isValid(dialog) or not dialog.hasField("returnFocusTo") then return
   target = dialog.returnFocusTo
-  if not isInside(target, screen) then return
-  screen.lastFocus = target
+  if isInside(target, screen)
+    screen.lastFocus = target
+  else if closeRedirectsToActiveView(target, screen)
+    ' Given back if the wait ends first, so the close still lands on the screen's own focus.
+    m.heldDialogReturn = target
+  else
+    return
+  end if
   dialog.returnFocusTo = m.top
 end sub
 
@@ -115,10 +124,13 @@ sub releaseFocus()
   view = m.global.activeRoutedView
   heldFocus = m.heldFocus
   m.heldFocus = invalid
+  heldDialogReturn = m.heldDialogReturn
+  m.heldDialogReturn = invalid
   if not m.top.hasFocus()
     dialog = openOverlayDialog()
     if isValid(dialog) and dialog.hasField("returnFocusTo") and isValid(dialog.returnFocusTo) and dialog.returnFocusTo.isSameNode(m.top)
       target = heldFocus
+      if not isValid(target) then target = heldDialogReturn
       if not isValid(target) and isValid(view)
         target = view.lastFocus
         if not isValid(target) then target = view

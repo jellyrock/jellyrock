@@ -14,8 +14,9 @@
 import { beforeAll, it, expect } from 'vitest';
 import { RTA_CONFIG } from '../config.js';
 import { authenticate, getHero, getLibraries, libraryIdFor, firstItemId } from '../lib/jellyfin.js';
-import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
-import { hardRelaunch, ecp } from '../lib/driver.js';
+import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.js';
+import { navSeriesDetails, focusDetailButton } from '../lib/nav.js';
+import { hardRelaunch, ecp, odc } from '../lib/driver.js';
 import {
   press,
   waitFor,
@@ -27,6 +28,9 @@ import {
   waitMediaPlaying,
   stopPlayback,
   waitToast,
+  waitFocusInside,
+  waitDialogClosed,
+  focusIsInside,
   PLAYING_STATES,
 } from '../lib/steps.js';
 
@@ -153,3 +157,49 @@ it('action=shuffle on a movie says it cannot be shuffled and plays nothing', asy
   const player = await ecp.getMediaPlayer().catch(() => null);
   expect(PLAYING_STATES.includes(player?.state), 'nothing playing').toBe(false);
 }, 90000);
+
+// A cast that lands while an overlay dialog is open must not take the remote from it. The routed
+// screen opened under the dialog used to take the focus in onScreenShown, so the dialog stayed on
+// screen and ignored every key. Back must then close it and hand the focus to the screen the
+// viewer is on (the cast's), not the one the dialog was opened over.
+it('a cast landing under an open dialog leaves it focused, and Back focuses the new screen', async () => {
+  const libraries = await getLibraries(session);
+  const expectedServer = await seedHome(session, LOCALE);
+  const landing = await seedLibraryLanding(session, libraryIdFor(libraries, 'tvshows'), 'Shows');
+  await hardRelaunch(); // never plain relaunch: only hardRelaunch confirms the cold start
+  await assertSeedTookEffect(expectedServer, 'cast under a dialog', { landing });
+  await navSeriesDetails({ libraries });
+
+  // The Series watched button opens a confirm dialog (see dialogs.spec.js).
+  await focusDetailButton('watchedButton');
+  await press(ecp.Key.Ok);
+  await waitFocusInside('#jrDialog', { label: 'confirm dialog focused', timeout: 10000 });
+
+  // The cast opens the movie's details under the dialog. Gate on the new screen being the active
+  // view before reading focus: until then the old screen is still the one that could hold it.
+  await ecp.sendInput({ params: { contentId: heroId } });
+  await waitFor('itemId', (id) => id === heroId, {
+    read: getActiveVal,
+    label: 'cast under a dialog -> ItemDetails(heroId)',
+    timeout: 25000,
+  });
+  // The router claims focus once the navigation settles, which is after the details' buttons exist.
+  await waitFor('#buttons.getChildCount()', hasChildren, {
+    read: getActiveVal,
+    label: 'the cast details screen built its buttons',
+    timeout: 15000,
+  });
+  const focused = await odc.getFocusedNode({ includeNode: true });
+  expect(
+    focusIsInside(focused?.keyPath, 'jrDialog'),
+    `the dialog still holds the remote (focus is on ${focused?.keyPath})`,
+  ).toBe(true);
+
+  await press(ecp.Key.Back);
+  await waitDialogClosed('dialog dismissed over the new screen', { timeout: 10000 });
+  await waitFocusInside('#buttons', {
+    label: 'focus on the new screen after dismiss',
+    timeout: 8000,
+  });
+  expect(await getActiveVal('itemId'), 'still on the cast movie').toBe(heroId);
+}, 150000);
