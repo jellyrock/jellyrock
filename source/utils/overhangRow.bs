@@ -11,6 +11,7 @@ namespace overhangRow
   const BOX_PADDING = 9 ' Inside a box at its sides: a tab, the dropdown, a glyph's slot
   const TAB_GAP = 9 ' Between tabs: text has no air of its own
   const ELEMENT_GAP = 6 ' On the right (before the dropdown, before and inside the cluster): a glyph's canvas pads it
+  const CLOCK_GAP = 24 ' Between an icon's box and the clock's digits (Clock.textWidth): the cluster's last icon, the OSD's group mark
   ' A label's caps sit above its box's middle (capsAboveCenter in textMetrics.bs: 3 px at the
   ' Large font, on the grid), so a text label takes the row's box dropped this far.
   ' textMetrics.spec.bs fails if the two disagree.

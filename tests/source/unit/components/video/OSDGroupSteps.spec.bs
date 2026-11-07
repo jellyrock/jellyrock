@@ -1,3 +1,4 @@
+import "pkg:/source/utils/overhangRow.bs"
 namespace tests
 
   ' The OSD's previous and next while following a SyncPlay group: their enabled state reads the
@@ -62,14 +63,6 @@ namespace tests
 
     private function button(id as string) as object
       return m.osd.findNode(id)
-    end function
-
-    ' A color read back from a node is an RGBA integer; the theme constants are strings.
-    ' Round-trip the expected one through a Poster so both sides read the same way.
-    private function asBlend(color as dynamic) as dynamic
-      p = CreateObject("roSGNode", "Poster")
-      p.blendColor = color
-      return p.blendColor
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -137,23 +130,37 @@ namespace tests
     @describe("The SyncPlay mark reads the membership as the OSD opens")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("following: the mark shows in the text color")
+    @it("following: the mark is the overhang icon in its active state")
     function _()
       m.osd.itemData = m.item()
       m.osd.visible = true
       mark = m.osd.findNode("syncPlayMark")
       m.assertTrue(mark.visible)
-      m.assertEqual(mark.blendColor, m.asBlend(m.global.constants.colorTextPrimary))
+      m.assertTrue(mark.isActive)
+      m.assertFalse(mark.isDisabled)
     end function
 
-    @it("halted: the mark shows dim")
+    @it("halted: the mark is disabled")
     function _()
       m.global.syncPlayManager.following = false
       m.osd.itemData = m.item()
       m.osd.visible = true
       mark = m.osd.findNode("syncPlayMark")
       m.assertTrue(mark.visible)
-      m.assertEqual(mark.blendColor, m.asBlend(m.global.constants.colorTextDisabled))
+      m.assertFalse(mark.isActive)
+      m.assertTrue(mark.isDisabled)
+    end function
+
+    @it("the mark sits CLOCK_GAP left of the clock's digits and follows their width")
+    function _()
+      m.osd.itemData = m.item()
+      m.osd.visible = true
+      clock = m.osd.findNode("clock")
+      mark = m.osd.findNode("syncPlayMark")
+      clock.textWidth = 99
+      m.assertEqual(mark.translation[0], (1824 - 99 - overhangRow.CLOCK_GAP - overhangRow.ICON_BOX) * 1.0)
+      clock.textWidth = 125
+      m.assertEqual(mark.translation[0], (1824 - 125 - overhangRow.CLOCK_GAP - overhangRow.ICON_BOX) * 1.0)
     end function
 
     @it("outside a group there is no mark")

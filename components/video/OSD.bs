@@ -7,18 +7,17 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/overhangRow.bs"
 import "pkg:/source/utils/playbackCaps.bs"
 import "pkg:/source/utils/playbackSettingsMenu.bs"
 import "pkg:/source/utils/queueRepeat.bs"
 import "pkg:/source/utils/translate.bs"
 
-' The SyncPlay mark's glyph (images/icons/groups_fhd.png, 63 px), its gap to the clock's digits,
-' the action-safe right edge it takes when the clock is hidden, and its top: centered on the
-' clock's 64 px text box at y 39 (Clock.xml).
-const SYNCPLAY_MARK_SIZE = 63
-const SYNCPLAY_MARK_GAP = 24
+' The SyncPlay mark's row: the action-safe right edge the clock's digits end at, and the top of
+' the icon's box (overhangRow.ICON_BOX tall), centered on the clock's text box (Clock.xml: top
+' 39, 64 tall).
 const SYNCPLAY_MARK_RIGHT = 1824
-const SYNCPLAY_MARK_TOP = 40
+const SYNCPLAY_MARK_TOP = 32
 
 sub init()
   m.log = new log.Logger("OSD")
@@ -45,6 +44,8 @@ sub init()
 
   if isValid(m.clock)
     m.clock.observeField("minutes", "setEndsAtText")
+    ' The digits' width moves at any minute: the mark follows it.
+    m.clock.observeField("textWidth", "applySyncPlayMark")
   end if
   m.top.observeField("itemData", "onItemDataChanged")
   m.top.observeField("visible", "onVisibleChanged")
@@ -776,28 +777,22 @@ sub refreshFromQueue()
   applySyncPlayMark()
 end sub
 
-' The SyncPlay mark: shown while in a group, in the text color while following and dim while
-' halted (the overhang icon's disabled look), read from the manager as the OSD opens and never
-' cached. It sits left of the clock's digits, whose width the time decides, and takes the
-' clock's place when the clock is hidden.
+' The SyncPlay mark: the overhang's icon in the overhang's states, shown while in a group, active
+' (colorSecondary) while following and disabled (dim) while halted, read from the manager as
+' the OSD opens and never cached. It sits CLOCK_GAP left of the clock's digits, whose width the
+' clock reports at each tick (Clock.textWidth, a proportional font), and takes the clock's
+' place when the clock is hidden.
 sub applySyncPlayMark()
   manager = m.global.syncPlayManager
   inGroup = isValid(manager) and manager.inGroup = true
   m.syncPlayMark.visible = inGroup
   if not inGroup then return
-  constants = m.global.constants
-  if manager.following = true
-    m.syncPlayMark.blendColor = constants.colorTextPrimary
-  else
-    m.syncPlayMark.blendColor = constants.colorTextDisabled
-  end if
+  following = manager.following = true
+  m.syncPlayMark.isActive = following
+  m.syncPlayMark.isDisabled = not following
   right = SYNCPLAY_MARK_RIGHT
-  clockGroup = m.top.findNode("clockGroup")
-  if isValid(clockGroup) and clockGroup.visible
-    rect = clockGroup.boundingRect()
-    if rect.width > 0 then right = rect.x - SYNCPLAY_MARK_GAP
-  end if
-  m.syncPlayMark.translation = [right - SYNCPLAY_MARK_SIZE, SYNCPLAY_MARK_TOP]
+  if isValid(m.clock) and m.clock.visible and m.clock.textWidth > 0 then right = right - m.clock.textWidth - overhangRow.CLOCK_GAP
+  m.syncPlayMark.translation = [right - overhangRow.ICON_BOX, SYNCPLAY_MARK_TOP]
 end sub
 
 sub onVisibleChanged()
@@ -1268,6 +1263,7 @@ sub onDestroy()
   m.syncPlayMark = invalid
   if isValid(m.clock)
     m.clock.unobserveField("minutes")
+    m.clock.unobserveField("textWidth")
     m.clock = invalid
   end if
 
