@@ -30,7 +30,7 @@ While you're in a group, the **SyncPlay** icon is highlighted.
 
 - **Play something as you usually would.** While you're in a group, it plays for the whole group.
 - **A group mark in the player.** Press **Up** during playback: the **SyncPlay** icon shows next to the clock, lit as it is at the top of the screen while you watch with the group, and dim while you have stepped out of the group's video.
-- **Use the remote as usual.** Play, pause, seeking, skipping and next or previous all go to the group, so everyone moves together.
+- **Use the remote as usual.** Play, pause, seeking, skipping and next or previous all go to the group, so everyone moves together. Saying "fast-forward" or "rewind" to your Roku jumps the group ahead or back by your [Instant Replay Duration](../app-settings.md#playbackInstantReplaySeconds) instead of scanning, so nobody drifts out of step.
 - **People coming and going.** A message tells you when someone joins or leaves the group.
 - **Staying in step.** JellyRock keeps your Roku on the group's clock by itself. If a resume leaves it noticeably ahead or behind, it corrects itself: the picture holds for a moment and starts again in step with the group. If the sound from your TV still lags the other people's devices, raise **SyncPlay Time Offset** until they line up, up to 500 milliseconds.
 - **Repeat and shuffle for the whole group.** Press **Up** during playback and open the gear. **Repeat** and **Shuffle** set the group's own modes, so they change what plays next for everyone, and a change someone else makes shows up in the same rows. Under **Repeat one** the video starts again for the whole group when it ends, or when anyone presses next or previous.

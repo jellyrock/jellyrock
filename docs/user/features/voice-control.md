@@ -32,6 +32,8 @@ While a video plays, you can ask your Roku to:
 
 While music plays, the same commands work, and you can also **shuffle** or **repeat**.
 
+While you watch with a [SyncPlay](syncplay.md) group, **fast-forward** and **rewind** jump the whole group by your Instant Replay Duration instead of scanning.
+
 If a command doesn't apply, for example pausing something already paused, Roku tells you so.
 
 ## Settings
