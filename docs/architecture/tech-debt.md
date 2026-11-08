@@ -317,7 +317,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 #### `rta-restore-helper-wait-needs-reaping`
 
-- **area**: [`scripts/rta-run.js`](../../scripts/rta-run.js) (the wait on the restore helper, `isProcessAlive(helperPid)`), [`scripts/lib/process-group.js`](../../scripts/lib/process-group.js) (`spawnOutsideTree`), [`scripts/rta-restore.js`](../../scripts/rta-restore.js)
+- **area**: [`scripts/rta-run.js`](../../scripts/rta-run.js) (the wait on the restore helper, `isProcessAlive(helperPid)`), [`scripts/lib/process-group.js`](../../scripts/lib/process-group.js) (`spawnOutsideTree`), [`scripts/rta-restore.js`](../../scripts/rta-restore.js), [`scripts/lib/restore-takeover.js`](../../scripts/lib/restore-takeover.js) (`runTakeover`)
 - **issue**: After a restore the runner polls `isProcessAlive(helperPid)` until the helper is gone. The double fork orphans the helper, so whatever adopts it must reap it for the poll to end. That holds on the dev machine but is unverified elsewhere (a container whose first process does not reap, a terminal multiplexer, macOS). Where nothing reaps it, the helper stays a zombie that `isProcessAlive` reports as alive, and the poll does not end after a restore that worked.
 - **direction**: Wait on a signal the helper controls, such as a result file it writes before exiting, instead of its process id. Check the platforms the dev tooling supports ([`dev-tooling-platforms-unverified`](#dev-tooling-platforms-unverified)).
 
