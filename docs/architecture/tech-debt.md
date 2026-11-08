@@ -668,12 +668,6 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 - **issue**: `JRScene.navigateThenFocus` retries a navigation the router refused as "already in progress" (decision `refused-navigation-retried-on-message`). The overhang cluster's search and settings actions on every screen use it through `routerNavigate` (`JRScene.onOverhangIconAction`), as do Home's options-panel actions. The remaining direct `sgrouter.navigateTo` calls, the item-open and link calls, do not, so a press that lands before the previous navigation ends can still be lost, and most of those calls do not log the rejection either.
 - **direction**: Route the remaining item-open and link calls (`ItemDetails`, `BaseGridView`, `SearchScreen`, Home's voice search) through `routerNavigate`, or give them a shared wrapper. Check first whether any of those screens can be pressed in the window after Back: only the overhang has been seen to hit it.
 
-#### `focused-leaf-walk-duplicated`
-
-- **area**: `components/JRScreen.bs` (`isFocusHeldElsewhere`, `saveLastFocus`, `showScreenKeepingDialogFocus`), `components/AppWaitHost.bs` (the overhang branch of `holdFocus`)
-- **issue**: `getDeepestFocusedNode(root)` in `source/utils/misc.bs` is the shared walk down `focusedChild`, and only `JRScreen.onScreensaverExited` calls it. Four older copies of the same loop keep their own start node and stop condition: the three `JRScreen` sites in the area line and the overhang branch of `AppWaitHost.holdFocus`. A stop-condition fix (a stale chain, a focused node with no focused child) made in the helper does not reach them. All five behave the same today.
-- **direction**: Replace the four loops with calls to `getDeepestFocusedNode`, and give it one spec covering the stop conditions, so the next fix lands once. Check first that each site's start node and stop condition fit the helper.
-
 ## Recently removed: don't go searching for these
 
 - **`scenemanager-stack-unbounded`**, **`printregistry-on-startup`**, **`selecteditem-bubbling-implicit`**, **`changelog-syncer-mixes-validate-mutate`**, **`make-npm-overlap`** and **`trickplay-prefetch-hardcoded`**: retired 2026-10-11 because their premises no longer held.
