@@ -283,14 +283,14 @@ namespace tests
     function _()
       confirm = syncPlayMenu.confirmFor({ kind: "confirmPlay", groupName: "Movie night", title: "Heat", moreCount: 0 })
       m.assertEqual(confirm.key, translationKeys.MessageSyncPlayConfirmPlayTitledZero)
-      m.assertEqual(confirm.params, ["Heat", "Movie night"])
+      m.assertEqual(confirm.params, ["Heat", "Movie night", "0"])
     end function
 
     @it("a queue of several videos says how many more follow")
     function _()
       confirm = syncPlayMenu.confirmFor({ kind: "confirmPlay", groupName: "Movie night", title: "Heat", moreCount: 1 })
       m.assertEqual(confirm.key, translationKeys.MessageSyncPlayConfirmPlayTitledOne)
-      m.assertEqual(confirm.params, ["Heat", "Movie night"])
+      m.assertEqual(confirm.params, ["Heat", "Movie night", "1"])
       confirm = syncPlayMenu.confirmFor({ kind: "confirmPlay", groupName: "Movie night", title: "Heat", moreCount: 4 })
       m.assertEqual(confirm.key, translationKeys.MessageSyncPlayConfirmPlayTitledMany)
       m.assertEqual(confirm.params, ["Heat", "Movie night", "4"])

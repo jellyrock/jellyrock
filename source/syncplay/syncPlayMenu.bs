@@ -1,6 +1,7 @@
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/serverCapabilities.bs"
+import "pkg:/source/utils/translate.bs"
 ' The SyncPlay menu's decisions, pure: no node, no m.global. JRScene asks here what the cluster's
 ' SyncPlay icon shows and what the group menu offers, so a Rooibos spec covers every access value
 ' and every membership state without a scene.
@@ -172,8 +173,8 @@ namespace syncPlayMenu
 
   ' The question a halted member's play asks (a confirmPlay notice): the translation key and its
   ' placeholders, {0} the title, {1} the group and, for several videos, {2} how many more follow.
-  ' The Zero, One and Many keys are chosen by moreCount, as translatePlural does. A notice with no
-  ' usable title falls back to the question that names only the group ({0}).
+  ' The Zero, One and Many keys are chosen by moreCount (pluralKey, translatePlural's rule). A
+  ' notice with no usable title falls back to the question that names only the group ({0}).
   function confirmFor(notice as dynamic) as dynamic
     groupName = ""
     title = ""
@@ -184,9 +185,7 @@ namespace syncPlayMenu
       if isValid(notice.moreCount) then moreCount = cint(notice.moreCount)
     end if
     if title = "" then return { key: translationKeys.MessageSyncPlayConfirmPlay, params: [groupName] }
-    if moreCount <= 0 then return { key: translationKeys.MessageSyncPlayConfirmPlayTitledZero, params: [title, groupName] }
-    if moreCount = 1 then return { key: translationKeys.MessageSyncPlayConfirmPlayTitledOne, params: [title, groupName] }
-    return { key: translationKeys.MessageSyncPlayConfirmPlayTitledMany, params: [title, groupName, moreCount.toStr()] }
+    return { key: pluralKey(translationKeys.MessageSyncPlayConfirmPlayTitled, moreCount), params: [title, groupName, moreCount.toStr()] }
   end function
 
   function isAccess(access as dynamic, value as string) as boolean
