@@ -522,6 +522,17 @@ namespace tests
       m.assertEqual(m.manager.notice.moreCount, 2)
     end function
 
+    @it("the confirm counts only the videos after the one played, not the ones before it")
+    function _()
+      m.haltWithServer()
+      m.manager.notice = invalid
+      m.global.queueManager.callFunc("set", [{ id: "e1", type: "Episode" }, { id: "e2", type: "Episode" }, { id: "e3", type: "Episode" }, { id: "e4", type: "Episode" }, { id: "e5", type: "Episode" }])
+      m.global.queueManager.callFunc("setPosition", 2)
+      m.assertTrue(m.manager.callFunc("claimPlay"))
+      m.assertEqual(m.manager.notice.kind, "confirmPlay")
+      m.assertEqual(m.manager.notice.moreCount, 2)
+    end function
+
     @it("a halted member's play of the video the group is watching catches up: nothing asks, and nothing starts it over")
     function _()
       posts = m.capturePosts()

@@ -378,7 +378,7 @@ function claimPlay(start = invalid as dynamic) as boolean
     releaseHeldPlay("replaced by a newer play")
     title = voiceTransport.formatNowPlayingTitle(queueItems[position])
     moreCount = 0
-    if handoff.action = "setNewQueue" then moreCount = handoff.itemIds.count() - 1
+    if handoff.action = "setNewQueue" then moreCount = handoff.itemIds.count() - 1 - handoff.position
     m.heldClaim = { request: req, action: handoff.action, start: start, title: title, moreCount: moreCount }
     ' A field observer, not promises.onFinally: that runs on a later timer, through state kept on
     ' this node. Never unobserved: the start is short-lived, and an unobserve can drop the
