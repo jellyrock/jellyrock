@@ -7,7 +7,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { signalGroup } from '../../../scripts/lib/process-group.js';
+import { signalGroup, interruptGate } from '../../../scripts/lib/process-group.js';
 
 const HELPER = pathToFileURL(
   fileURLToPath(new URL('../../../scripts/lib/process-group.js', import.meta.url)),
@@ -151,6 +151,36 @@ describe('signalGroup', () => {
 
   it('returns false before there is a child', () => {
     expect(signalGroup(null, 'SIGTERM')).toBe(false);
+  });
+});
+
+describe('interruptGate', () => {
+  const gateAt = (times) => {
+    const queue = [...times];
+    return interruptGate({ windowMs: 500, now: () => queue.shift() });
+  };
+
+  it('stops on the first signal', () => {
+    expect(gateAt([1000])()).toBe('stop');
+  });
+
+  it('reads a second signal inside the window as the same stop delivered twice', () => {
+    const gate = gateAt([1000, 1001]);
+    gate();
+    expect(gate()).toBe('repeat');
+  });
+
+  it('abandons on a second signal once the window has passed', () => {
+    const gate = gateAt([1000, 1500]);
+    gate();
+    expect(gate()).toBe('abandon');
+  });
+
+  it('measures the window from the first signal, not the last repeat', () => {
+    const gate = gateAt([1000, 1300, 1600]);
+    gate();
+    expect(gate()).toBe('repeat');
+    expect(gate()).toBe('abandon');
   });
 });
 

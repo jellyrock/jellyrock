@@ -53,7 +53,12 @@ import {
 } from './run-record.js';
 import { acquireDeviceLock } from './device-lock.js';
 import { startConsoleCapture } from './lib/console-capture.js';
-import { relayJobControl, signalGroup, spawnOutsideTree } from './lib/process-group.js';
+import {
+  interruptGate,
+  relayJobControl,
+  signalGroup,
+  spawnOutsideTree,
+} from './lib/process-group.js';
 import { isProcessAlive } from './lib/process-liveness.cjs';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -212,9 +217,14 @@ function handOff() {
 
 let interrupting = false;
 let abandoned = false;
+const classifySignal = interruptGate();
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.on(signal, async () => {
-    if (interrupting) {
+    const verdict = classifySignal();
+    // The same stop delivered twice (see `interruptGate`): abandoning here would kill the
+    // restore the first copy has started.
+    if (verdict === 'repeat') return;
+    if (verdict === 'abandon') {
       // Never trap someone in an un-killable process. The snapshot is on disk,
       // so abandoning here is recoverable rather than destructive. Kill the child
       // outright on the way out: a Vitest that outlives its parent keeps driving

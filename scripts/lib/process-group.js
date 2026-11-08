@@ -20,6 +20,27 @@ export function signalGroup(child, signal) {
 }
 
 /**
+ * Classifies each stop signal for a runner that restores on the first and abandons on the
+ * second. Returns a function that answers `'stop'`, `'repeat'` or `'abandon'` per signal.
+ *
+ * A signal within `windowMs` of the first is the same stop delivered twice, not an
+ * operator asking to abandon. npm forwards SIGINT and SIGTERM to its script, and when
+ * `/bin/sh` is bash the script runs in place of the shell, so it receives both the
+ * terminal's or the tool's signal and npm's copy of it.
+ */
+export function interruptGate({ windowMs = 500, now = Date.now } = {}) {
+  let first = null;
+  return () => {
+    const t = now();
+    if (first === null) {
+      first = t;
+      return 'stop';
+    }
+    return t - first < windowMs ? 'repeat' : 'abandon';
+  };
+}
+
+/**
  * Makes Ctrl-Z pause a detached child's group along with this process, and `fg` resume it.
  *
  * A detached child is in a group with no parent in its session, and the kernel discards
