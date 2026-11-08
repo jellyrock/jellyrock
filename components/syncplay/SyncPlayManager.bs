@@ -93,11 +93,12 @@ sub ensureReady()
   ' nothing to clear here.
   m.claimedStart = invalid
   ' A halted member's play, built and held until the viewer confirms it (confirmPlay) or not
-  ' (cancelPlay): { request, action, start, title, moreCount }, the title the dialog names and the
-  ' videos that follow it in the queue. It replaces what the whole group is watching, and a
-  ' remote makes an accidental play easy. Not a claim until confirmed: the group's frames meanwhile
-  ' are read as for any halted member. Any other end (its start ending, a newer press, the group's
-  ' new playlist, a leave, a refusal) fails its start and clears playHeld, which closes the dialog.
+  ' (cancelPlay): { request, action, start, title, moreCount, item }, the title the dialog names,
+  ' the videos that follow it in the queue and the pressed queue item. It replaces what the whole
+  ' group is watching, and a remote makes an accidental play easy. Not a claim until confirmed:
+  ' the group's frames meanwhile are read as for any halted member. Any other end (its start
+  ' ending, a newer press, the group's new playlist, a leave, a refusal) fails its start and
+  ' clears playHeld, which closes the dialog.
   m.heldClaim = invalid
   ' A halted member's claim followed the group again at the press, so the group would wait on
   ' it. That follow holds only until the group's load answers it (endUnansweredRefollow).
@@ -377,7 +378,7 @@ function claimPlay(start = invalid as dynamic) as boolean
     title = voiceTransport.formatNowPlayingTitle(queueItems[position])
     moreCount = 0
     if handoff.action = "setNewQueue" then moreCount = handoff.itemIds.count() - 1 - handoff.position
-    m.heldClaim = { request: req, action: handoff.action, start: start, title: title, moreCount: moreCount }
+    m.heldClaim = { request: req, action: handoff.action, start: start, title: title, moreCount: moreCount, item: queueItems[position] }
     ' A field observer, not promises.onFinally: that runs on a later timer, through state kept on
     ' this node. Never unobserved: the start is short-lived, and an unobserve can drop the
     ' observers QueueManager and AppWaitHost keep on it (#898).
@@ -396,7 +397,8 @@ end function
 
 ' The held play reaches the group: the viewer confirmed it. From here it is a claim like a
 ' following member's, on the start the press opened. The member follows again first, so the
-' group waits on it. True when a play was held.
+' group waits on it. If the group has moved to the held video meanwhile, the play catches up
+' instead (catchUp), as at the press. True when a play was held.
 function confirmPlay() as boolean
   held = m.heldClaim
   if not isValid(held) then return false
@@ -408,6 +410,10 @@ function confirmPlay() as boolean
     return false
   end if
   appWaits.resume(held.start)
+  if syncPlayQueue.isGroupsPlayingItem(held.item, m.state, m.lastCommand)
+    catchUp(held.start)
+    return true
+  end if
   m.claimedStart = held.start
   followAgain()
   m.claimRefollowed = true

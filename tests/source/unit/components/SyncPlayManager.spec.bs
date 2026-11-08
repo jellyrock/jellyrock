@@ -805,6 +805,28 @@ namespace tests
       end for
     end function
 
+    @it("a held play of a video the group has since moved to catches up on confirm: nothing starts it over")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      m.manager.notice = invalid
+      m.pressPlay([{ id: "i2", type: "Movie" }])
+      start = promises.create()
+      m.manager.callFunc("claimPlay", start)
+      m.assertTrue(m.manager.playHeld, "the play of a video the group is not on is held")
+      ' Not a new playlist, so the hold stays: the group is now on the held video.
+      m.manager.frame = m.update("PlayQueue", { Reason: "SetCurrentItem", LastUpdate: "2026-10-23T20:47:30.000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }, { ItemId: "i2", PlaylistItemId: "p2" }], PlayingItemIndex: 1, StartPositionTicks: 0 })
+      m.assertTrue(m.manager.playHeld, "the hold survives a move within the playlist")
+      m.assertTrue(m.manager.callFunc("confirmPlay"))
+      for i = 0 to posts.getChildCount() - 1
+        m.assertFalse(posts.getChild(i).request.url.instr("/SyncPlay/SetPlaylistItem") >= 0, "nothing restarted the playing video")
+      end for
+      m.assertTrue(m.manager.following, "the member follows again")
+      m.assertEqual(m.manager.notice.kind, "followingAgain")
+      m.assertTrue(appWaits.isOpen(start), "the start waits for the group's item to load")
+      m.assertFalse(m.manager.playHeld)
+    end function
+
     @it("leaving the group ends a held play and its start")
     function _()
       m.haltWithServer()
