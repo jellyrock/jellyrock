@@ -2674,7 +2674,7 @@ The 1080p cap check (`capH264Resolution()`) judges the first variant of the serv
 
 **date**: 2026-11-07
 **status**: accepted
-**related-files**: `scripts/rta-run.js`, `scripts/rta-restore.js`, `scripts/lib/process-group.js`, `tests/rta/lib/registry.js`
+**related-files**: `scripts/rta-run.js`, `scripts/rta-restore.js`, `scripts/lib/process-group.js`, `scripts/lib/restore-takeover.js`, `tests/rta/lib/registry.js`, `tests/rta/setup/global-setup.js`
 
 `rta-run.js` hands every registry restore to `rta-restore.js --takeover`, started through `spawnOutsideTree()`. That launcher exits at once, so the helper leaves the runner's process tree. Claude Code's task stop signals every descendant of a task, detached ones included, then kills them about 1.4 s later (measured 2026-11-07). A restore takes far longer, so one running in the runner or any child of it was always cut off. The helper adopts the snapshot's `ownerPid`, so `device:status` and the next run see the run as in progress. It waits for Vitest's group to exit, restores, relaunches the channel, and releases the lock if the runner is gone. A second signal abandons the restore and kills the helper, unless it arrives within 500 ms of the first: then it is the same stop delivered twice (npm forwards `SIGINT` and `SIGTERM` to a script that bash runs in place of the shell), and `interruptGate()` ignores it.
 

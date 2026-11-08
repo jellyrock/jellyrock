@@ -33,6 +33,18 @@ const POLL_MS = 100;
  *   `now()`, `log(line)`, `error(line)`.
  */
 export async function runTakeover({ owner, waitGroup, releaseLock, snapshot, deps }) {
+  // A missing or low id turns the group signals into something else: `kill(-0)` reaches
+  // this helper's own group, and `kill(-1)` every process the user owns.
+  for (const [name, pid] of [
+    ['--owner', owner],
+    ['--wait-group', waitGroup],
+  ]) {
+    if (!Number.isInteger(pid) || pid <= 1) {
+      deps.error(`[rta-restore] ${name} must be a process id above 1, not ${pid}.`);
+      return 1;
+    }
+  }
+
   try {
     deps.adopt(owner, snapshot.file);
   } catch (e) {

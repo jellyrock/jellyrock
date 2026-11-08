@@ -67,6 +67,20 @@ describe('runTakeover', () => {
     expect(f.lines.error.join('\n')).toMatch(/\[rta-restore\].*owner is pid 1/);
   });
 
+  it.each([
+    ['owner', 0],
+    ['owner', Number.NaN],
+    ['waitGroup', 0],
+    ['waitGroup', 1],
+    ['waitGroup', Number.NaN],
+  ])('refuses %s %s, touching nothing', async (field, value) => {
+    const f = fakes();
+    const args = { owner: OWNER, waitGroup: GROUP, releaseLock: true, snapshot: SNAPSHOT };
+    expect(await runTakeover({ ...args, [field]: value, deps: f.deps })).toBe(1);
+    expect(f.names()).toEqual([]);
+    expect(f.lines.error.join('\n')).toMatch(/\[rta-restore\].*process id above 1/);
+  });
+
   it('adopts the snapshot by the runner pid and file before anything else', async () => {
     const f = fakes();
     await run(f.deps);
