@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-08: chore(rta): Keep the device safe however the RTA runner is stopped
 - 2026-11-07: fix(video): Follow repeat mode on voice and remote Next and Previous
 - 2026-11-06: update(logging): Mask secrets in logs, keep names and search text out
 - 2026-11-06: fix(playback): Start 4K Dolby Vision on a display without HDR
@@ -66,8 +67,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-25: chore(skills): Reject argument placeholders in skills
 - 2026-10-25: fix(navigation): Retry a refused navigation once the router is idle
 - 2026-10-25: docs: Use the org contributing guide and security policy
-- 2026-10-24: feat(syncplay): Follow a group, fix Play on buffering, speed up casts
-- 2026-10-24: test(rta): Pin the `home-failure` spec to the built-in Home layout
 
 ## Open followups
 
