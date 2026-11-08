@@ -117,12 +117,7 @@ end sub
 sub showScreenKeepingDialogFocus()
   held = invalid
   dialog = openOverlayDialog()
-  if isValid(dialog) and dialog.isInFocusChain()
-    held = dialog
-    while isValid(held) and held.hasFocus() = false
-      held = held.focusedChild
-    end while
-  end if
+  if isValid(dialog) and dialog.isInFocusChain() then held = getDeepestFocusedNode(dialog)
   onScreenShown()
   if not isValid(held) then return
   stillOpen = openOverlayDialog()
@@ -249,24 +244,14 @@ end function
 ' means focus is stranded.
 function isFocusHeldElsewhere() as boolean
   scene = m.top.getScene()
-  focused = scene
-  while isValid(focused) and focused.hasFocus() = false
-    focused = focused.focusedChild
-  end while
+  focused = getDeepestFocusedNode(scene)
   return isValid(focused) and not focused.isSameNode(scene)
 end function
 
-' Walk the focus chain to the deepest focused descendant and remember it in
-' m.top.lastFocus. Lifted from SceneManager.pushScene's focus-save loop.
+' Remember the node holding the focus inside this screen in m.top.lastFocus. Nothing is saved
+' when the focus is outside it.
 sub saveLastFocus()
-  if isValid(m.top.focusedChild)
-    focused = m.top.focusedChild
-    while isValid(focused) and focused.hasFocus() = false
-      focused = focused.focusedChild
-    end while
-    if isValid(focused)
-      m.top.lastFocus = focused
-    end if
-  end if
+  focused = getDeepestFocusedNode(m.top)
+  if isValid(focused) then m.top.lastFocus = focused
 end sub
 

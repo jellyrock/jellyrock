@@ -387,7 +387,7 @@ function presentOverlayDialog(dialog as object, onResult as string, returnFocusT
     incumbent.callFunc("cancelDialog")
   end if
 
-  ' AFTER the supersede, never before. lastFocusedChild walks focusedChild down
+  ' AFTER the supersede, never before. getDeepestFocusedNode walks focusedChild down
   ' to the deepest focused node, which with an incumbent still mounted resolves
   ' INSIDE the incumbent, so returnFocusTo would point at a node that is about
   ' to be detached, and closing this dialog would restore focus to a corpse.
@@ -402,7 +402,9 @@ function presentOverlayDialog(dialog as object, onResult as string, returnFocusT
   else if isValid(handedFocusTo)
     dialog.returnFocusTo = handedFocusTo
   else
-    dialog.returnFocusTo = lastFocusedChild(scene)
+    dialog.returnFocusTo = getDeepestFocusedNode(scene)
+    ' Nothing holds the focus: the scene, so the close still has somewhere to put it.
+    if not isValid(dialog.returnFocusTo) then dialog.returnFocusTo = scene
   end if
   if onResult <> "" then dialog.observeFieldScoped("result", onResult)
   ' A dialog cannot place anything until it has measured its own content, so it

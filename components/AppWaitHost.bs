@@ -81,13 +81,7 @@ sub holdFocus(screen as object)
   end if
   overhang = findOverhang()
   if isValid(overhang) and overhang.isInFocusChain()
-    node = overhang
-    child = node.focusedChild
-    while isValid(child) and not child.isSameNode(node)
-      node = child
-      child = node.focusedChild
-    end while
-    m.heldFocus = node
+    m.heldFocus = getDeepestFocusedNode(overhang)
     m.top.setFocus(true)
     return
   end if
