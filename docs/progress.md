@@ -959,6 +959,10 @@ To rebuild a clip: `ffmpeg -f lavfi -i testsrc2=size=1920x1080:rate=24 -t 20 -vf
 
 Closes after a measurement on the real path: a capture or an ODC read of the overhang right after a width-changing tick (the device clock set to 9:59 in 12-hour format), comparing `textWidth` with the drawn digits. If they differ, measure from the labels instead (their widths plus `itemSpacings`) with a spec that fails first; if not, close as not reproduced.
 
+#### The subtitle panel's in-flight delete pulls the focus into a covered details screen `[fid: subtitle-delete-focus-under-cover]` `[captured 2026-11-08]`
+
+`SubtitlePanel`'s delete response focuses the panel whenever `m.top.isOpen` is true (the `panelOpen` check before `applyFocus()` in the delete's result path). If a cast, a deep link or a remote `GoToSearch` covers `ItemDetails` after the viewer confirmed a delete but before its response arrives, the panel is still open on the hidden screen, so `applyFocus()` pulls the focus into it and the visible screen stops answering the remote. No dialog is involved, so ADR 0055's cover cancel does not reach it. Found by reading the code in the PR #1336 review (2026-11-08); not reproduced. Not fixed there because it needs a reproduction and a choice: close the panel on cover in `ItemDetails.onScreenHidden`, or gate the panel's async focus on the host screen being shown (`m.isShown`, as `navigation.md` advises for timers and observers). Close it with a unit case that covers the screen while a delete is in flight.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`

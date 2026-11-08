@@ -671,8 +671,8 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 #### `focused-leaf-walk-duplicated`
 
 - **area**: `components/JRScreen.bs` (`isFocusHeldElsewhere`, `saveLastFocus`, `showScreenKeepingDialogFocus`), `components/AppWaitHost.bs` (the overhang branch of `holdFocus`)
-- **issue**: Four copies of the loop that follows `focusedChild` down to the node that has the focus. Each has its own start node and stop condition, so a fix to one (a stale chain, a focused node with no focused child) does not reach the others. All four behave the same today.
-- **direction**: One helper in `source/utils/` (for example `getDeepestFocusedNode(root)`) called from all four sites, with one spec, so the next stop-condition fix lands once.
+- **issue**: `getDeepestFocusedNode(root)` in `source/utils/misc.bs` is the shared walk down `focusedChild`, and only `JRScreen.onScreensaverExited` calls it. Four older copies of the same loop keep their own start node and stop condition: the three `JRScreen` sites in the area line and the overhang branch of `AppWaitHost.holdFocus`. A stop-condition fix (a stale chain, a focused node with no focused child) made in the helper does not reach them. All five behave the same today.
+- **direction**: Replace the four loops with calls to `getDeepestFocusedNode`, and give it one spec covering the stop conditions, so the next fix lands once. Check first that each site's start node and stop condition fit the helper.
 
 ## Recently removed: don't go searching for these
 
