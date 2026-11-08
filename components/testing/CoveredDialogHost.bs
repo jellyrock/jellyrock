@@ -13,11 +13,22 @@ sub openConfirm()
   m.top.dialog = showConfirmDialog("Reset", "Reset this setting?", "onConfirmResult")
 end sub
 
+' An alert nobody keeps a reference to, as Settings' invalid-value alerts are, so this screen's
+' onDestroy cannot abandon it.
+sub openUnkeptAlert()
+  m.top.opener.setFocus(true)
+  showAlertDialog("Invalid value", "Enter exactly 6 characters.")
+end sub
+
 ' Runs inside the dialog's `result` write, before it closes.
 sub onConfirmResult()
   dialog = m.top.dialog
   if isValid(dialog) then m.top.answer = dialog.result
   if m.top.focusOpenerOnAnswer then m.top.opener.setFocus(true)
+  if m.top.closeOnAnswer
+    m.top.dialog = invalid
+    beforeViewClose({})
+  end if
 end sub
 
 sub onScreenShown()

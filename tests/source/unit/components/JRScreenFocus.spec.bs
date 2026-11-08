@@ -290,6 +290,54 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a dialog a screen opened ends when the screen closes for good")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Settings' invalid-value alerts: nothing holds them, so no onDestroy abandons them.
+    @it("abandons a dialog the screen opened and kept no reference to, delivering nothing")
+    function _()
+      host = m.mountHost(m.mountedIn)
+      host.callFunc("openUnkeptAlert")
+      dialog = openOverlayDialog()
+      m.assertTrue(isValid(dialog) and dialog.isInFocusChain(), "precondition: the alert holds the focus")
+
+      host.callFunc("beforeViewClose", {})
+
+      m.assertInvalid(openOverlayDialog(), "the alert is gone")
+      m.assertInvalid(dialog.result, "nothing was delivered")
+    end function
+
+    @it("leaves a dialog opened outside the screen")
+    function _()
+      outside = m.mountHost(m.mountedIn)
+      outside.callFunc("openConfirm")
+
+      m.screen.callFunc("beforeViewClose", {})
+
+      m.assertTrue(isValid(openOverlayDialog()), "the confirm stays")
+      m.assertTrue(openOverlayDialog().isSameNode(outside.dialog))
+    end function
+
+    ' ItemDetails' Delete: the handler goes back, and the router closes the screen inside the
+    ' dialog's answer. The dialog then closes itself and hands the focus back as usual; abandoning
+    ' it mid-answer would detach it while focused, and the close would hand the focus to nothing.
+    @it("leaves a dialog that is answering, so it closes and hands the focus back itself")
+    function _()
+      host = m.mountHost(m.mountedIn)
+      m.global.activeRoutedView = host
+      host.closeOnAnswer = true
+      host.callFunc("openConfirm")
+      dialog = host.dialog
+      m.assertTrue(dialog.isInFocusChain(), "precondition: the confirm holds the focus")
+
+      dialog.callFunc("cancelDialog")
+
+      m.assertTrue(isValid(host.answer), "the handler ran")
+      m.assertInvalid(openOverlayDialog(), "the confirm closed")
+      m.assertTrue(host.opener.hasFocus(), "the close handed the focus back to the opener")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("the screensaver ends over a screen (onScreensaverExited)")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

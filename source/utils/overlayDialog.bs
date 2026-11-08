@@ -30,6 +30,14 @@ function openOverlayDialog() as dynamic
   return scene.findNode(OVERLAY_DIALOG_ID)
 end function
 
+' Has this overlay dialog delivered its result? Then its owner's result handler is
+' running and the dialog closes when it returns. `result` stays unset until
+' resolveDialog writes it, once. OverviewDialog has no `result`, and it detaches
+' before it signals `closed`, so it is never found open in that state.
+function dialogHasAnswered(dialog as object) as boolean
+  return dialog.hasField("result") and isValid(dialog.result)
+end function
+
 ' Abandon a dialog this screen opened, delivering no result. Call it from onDestroy for any
 ' dialog node you still hold.
 '

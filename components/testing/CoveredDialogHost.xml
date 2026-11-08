@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   CoveredDialogHost: a screen that opens a dialog from its own scope, for the "a screen's
-  dialogs end when it is covered" and "the screensaver ends" cases in tests/source/unit/components/JRScreenFocus.spec.bs.
+  dialogs end when it is covered", "when it closes for good" and "the screensaver ends" cases in
+  tests/source/unit/components/JRScreenFocus.spec.bs.
 
   Its result handler can move the focus back inside the screen when the dialog is cancelled,
   the way Settings' reset confirms do, so a test can check that the incoming screen still ends
-  up with the focus.
+  up with the focus. It can also close its own screen from the handler, the way ItemDetails'
+  Delete confirm does.
 -->
 <component name="CoveredDialogHost" extends="JRScreen">
   <interface>
@@ -16,8 +18,12 @@
     <field id="answer" type="assocarray" />
     <!-- When true, the handler focuses the opener on any answer, as Settings does. -->
     <field id="focusOpenerOnAnswer" type="boolean" value="false" />
+    <!-- When true, the handler drops its reference and closes this screen, as ItemDetails' Delete
+         does: the router runs beforeViewClose inside the dialog's answer. -->
+    <field id="closeOnAnswer" type="boolean" value="false" />
     <!-- How many times onScreenShown ran, so a test can see a refresh happened. -->
     <field id="shownCount" type="integer" value="0" />
     <function name="openConfirm" />
+    <function name="openUnkeptAlert" />
   </interface>
 </component>

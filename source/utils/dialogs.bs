@@ -315,14 +315,6 @@ end sub
 
 ' ---- internals ----
 
-' Has this overlay dialog delivered its result? Then its owner's result handler is
-' running and the dialog closes when it returns. `result` stays unset until
-' resolveDialog writes it, once. OverviewDialog has no `result`, and it detaches
-' before it signals `closed`, so it is never found open in that state.
-function dialogHasAnswered(dialog as object) as boolean
-  return dialog.hasField("result") and isValid(dialog.result)
-end function
-
 ' Append an overlay dialog to the scene, capture focus, wire the caller's
 ' result observer. onResult is resolved in the CALLER's scope because these
 ' helpers execute inside the importing component's script scope.

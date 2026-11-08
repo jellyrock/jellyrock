@@ -105,10 +105,21 @@ end sub
 ' acts must decline it. This runs inside the swap, before the incoming screen's onScreenShown,
 ' so a handler that focuses this screen on any answer loses the focus to the incoming one.
 sub endOwnedDialog()
-  dialog = openOverlayDialog()
-  if not isValid(dialog) or not dialog.hasField("owner") then return
-  if isInside(dialog.owner, m.top) then dialog.callFunc("cancelDialog")
+  dialog = ownedOpenDialog()
+  if isValid(dialog) then dialog.callFunc("cancelDialog")
 end sub
+
+' The open overlay dialog when this screen or a component inside it opened it (presentOverlayDialog
+' records the opener as `owner`), else invalid. A dialog that has answered is left to close
+' itself: its owner's handler is running, and it may be what is closing this screen (ItemDetails'
+' Delete goes back, and the router runs beforeViewClose inside the answer). Abandoning it there
+' would detach it while focused, so its close would hand the focus to nothing.
+function ownedOpenDialog() as dynamic
+  dialog = openOverlayDialog()
+  if not isValid(dialog) or not dialog.hasField("owner") then return invalid
+  if not isInside(dialog.owner, m.top) or dialogHasAnswered(dialog) then return invalid
+  return dialog
+end function
 
 ' Run onScreenShown without letting it take the focus from an open overlay dialog. Every screen's
 ' onScreenShown takes focus unconditionally, and it runs before the router's handleFocus (which
@@ -136,10 +147,13 @@ sub onScreensaverExited()
   if m.top.isInFocusChain() then held.setFocus(true)
 end sub
 
-' Router: this view is about to be permanently destroyed.
+' Router: this view is about to be permanently destroyed. A dialog it opened goes with it,
+' delivering nothing, since the scope that would read the answer is gone. Its onDestroy may have
+' abandoned it already; this catches one it kept no reference to.
 function beforeViewClose(_params = {} as object) as dynamic
   onScreenHidden()
   onDestroy()
+  abandonDialog(ownedOpenDialog())
   return promises.resolve(invalid)
 end function
 
