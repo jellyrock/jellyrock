@@ -993,6 +993,8 @@ sub fetchQueue(reason as string, lastUpdateMs as longinteger, isRetry as boolean
     end if
     applyQueue(ctx.reason, syncPlayQueue.queueItemsFor([ctx.entry], items), ctx.lastUpdateMs, ctx.isRetry, ctx.tag)
   end sub).catch(sub(err as object, ctx as object)
+    ' As on an answer: a catch-up the viewer backed out of halts quietly here, and is not retried.
+    endUnansweredRefollow()
     ' err whole: a timeout rejects with the pool's result, which has no `reason`.
     m.log.warn("the group's items could not be fetched", err)
     onQueueLoadFailed(ctx.reason, ctx.lastUpdateMs, ctx.isRetry, ctx.tag, "request")

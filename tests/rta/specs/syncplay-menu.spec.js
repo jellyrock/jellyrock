@@ -659,6 +659,38 @@ it("a halted member's Play on the group's own video catches up at the group's po
   expect(await getActiveVal('subtype()'), 'nothing played after Back').toBe('ItemDetails');
 });
 
+it('Back during a catch-up whose item fetch then fails halts quietly, with no retry and no failure toast', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  expect(await getGlobalVal('syncPlayManager.following'), 'halted by its Back').toBe(false);
+  await backOutToHome();
+  await waitHome();
+  // Both the fetch and its retry would fail: held open long enough for Back to land first.
+  await failRequests([{ prefix: 'syncplay-queue-', kind: 'timeout', ms: 8000, times: 2 }]);
+  await startPlayback(ctx);
+  await waitToast(`Following ${GROUP_NAME} again.`, { label: 'the catch-up began' });
+  await press(ecp.Key.Back);
+  // The halt and any toast it carries are written in one call (haltFollowing), so the toast read
+  // right after it is the one that halt left.
+  await waitFor('syncPlayManager.following', (v) => v === false, {
+    read: getGlobalVal,
+    timeout: 30000,
+    label: 'halted again once the failed fetch answered',
+  });
+  expect(await getVal('#toast.message'), 'no "Couldn\'t resume" toast after Back').toBe(
+    `Following ${GROUP_NAME} again.`,
+  );
+  await failRequests([]);
+  await waitFor('#appWaitHost.openWaits', (v) => v && Object.keys(v).length === 0, {
+    read: getVal,
+    timeout: 10000,
+    label: 'no start left open after Back',
+  });
+  expect(await getActiveVal('subtype()'), 'nothing played after Back').toBe('ItemDetails');
+});
+
 it("a halted member's Play on the video of a group that stopped starts the group again: the player stays open", async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(
