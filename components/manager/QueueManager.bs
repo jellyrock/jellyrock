@@ -90,6 +90,10 @@ sub onPlaybackStartEnded(start as object)
   if start.promiseState = "rejected"
     cancelActiveQuickPlayTask()
     cancelActiveShuffleTask()
+    ' A deep link's title is for the player its start mounts (PlayerHostView toasts it). A start
+    ' that ended with no player, a SyncPlay play the viewer cancelled for one, has nothing to
+    ' announce, and the next player must not announce it.
+    m.global.deepLinkOpeningTitle = ""
   end if
 end sub
 

@@ -17,6 +17,11 @@
     <!-- appWaits.commit: the wait has only local work left, so Back no longer cancels it;
          false when it had already ended. -->
     <function name="commit" />
+    <!-- appWaits.pause / appWaits.resume: a start waiting on the viewer's answer shows its
+         screen and leaves the spinner, then hides it again with its time limit and its age started
+         over; false when it had already ended. -->
+    <function name="pause" />
+    <function name="resume" />
   </interface>
   <children>
     <!-- Ends a wait that nobody ended, at its kind's time limit. Armed for the nearest limit of

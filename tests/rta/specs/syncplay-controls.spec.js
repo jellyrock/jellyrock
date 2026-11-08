@@ -194,6 +194,11 @@ it("another member's Pause pauses this Roku with the OSD up, and its Unpause pla
     timeout: 10000,
     label: "the node paused on the group's pause",
   });
+  // The OSD's SyncPlay mark, left of the clock while following (OSD.applySyncPlayMark).
+  expect(await player()('#osd.#syncPlayMark.visible'), 'the group mark shows in the OSD').toBe(
+    true,
+  );
+  if (CAPTURE) await captureRawUI('syncPlayOsdMark');
   await syncPlay(member, 'Unpause');
   await waitFor('state', (s) => s === 'playing', {
     read: playerState,
@@ -386,6 +391,43 @@ it("the remote's Replay key seeks the whole group back, not this Roku alone", as
   );
   // Seek and Unpause both carry the group's position: behind where the replay started.
   expect(answer.positionticks / 10_000_000, "the group's position after the replay").toBeLessThan(
+    before,
+  );
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 15000,
+    label: "playing again after the group's Seek and Unpause",
+  });
+  expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+});
+
+it('a voice fast-forward while following seeks the whole group ahead, not this Roku alone', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const before = await playerPosition();
+  const lastEmitted = await getGlobalVal('syncPlayManager.sync.lastCommand.emittedAtMs');
+  // The voice "forward" command, as Roku's transport dispatcher delivers it. Outside a group it
+  // puts the node in fast-forward; following, it is a seek the group takes, the replay step ahead.
+  const answer = await playerCall(heroId, 'forward');
+  expect(answer.value?.status, 'the command was taken').toBe('success');
+  // As for Replay: the group's Seek, or the Unpause after it, carries a position past where the
+  // command was given; a poll that missed the Seek still sees the Unpause.
+  const command = await waitFor(
+    'syncPlayManager.sync.lastCommand',
+    (c) =>
+      Boolean(c) &&
+      c.emittedatms !== lastEmitted &&
+      (c.command === 'Seek' || c.command === 'Unpause') &&
+      c.positionticks / 10_000_000 > before,
+    {
+      read: getGlobalVal,
+      timeout: 10000,
+      label: 'a group Seek (or the Unpause after it) answering the fast-forward',
+    },
+  );
+  expect(command.positionticks / 10_000_000, "the group's position after the seek").toBeGreaterThan(
     before,
   );
   await waitFor('state', (s) => s === 'playing', {

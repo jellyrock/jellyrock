@@ -299,7 +299,7 @@ In watch mode (`test:rta:tdd`) the window spans the whole session, so both the r
 
 ## The device console of a run
 
-Every RTA run copies the device's debug console (port 8085) to `console.log` in the run's record folder, `.device-runs/rta/runs/<device key>/`, from before the deploy until the process exits. A failed run prints the path. The next run on the same device overwrites the file, so copy it if you need it. If the connection is refused or drops, the run logs one line and goes on, and a drop is retried for a short while.
+Every RTA run copies the device's debug console (port 8085) to `console.log` in the run's record folder, `.device-runs/rta/runs/<device key>/`, from before the deploy until the process exits. A failed run prints the path. The next run on the same device overwrites that file, but a failed run also keeps its console as `console-failed-<time>.log` beside it (the time is UTC), and the newest five survive. The failed run prints the path of the kept copy. If the connection is refused or drops, the run logs one line and goes on, and a drop is retried for a short while.
 
 The file holds auth tokens the app printed. It lives in the gitignored `.device-runs/`. Never paste it into an issue, a PR or any public place; cut out the lines you need and check them first.
 

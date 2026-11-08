@@ -27,6 +27,18 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("pluralKey() — the key translatePlural reads")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("appends Zero, One or Many by count, and Many for a negative count")
+    function _()
+      m.assertEqual(pluralKey("LabelEpisodeCount", 0), "LabelEpisodeCountZero")
+      m.assertEqual(pluralKey("LabelEpisodeCount", 1), "LabelEpisodeCountOne")
+      m.assertEqual(pluralKey("LabelEpisodeCount", 2), "LabelEpisodeCountMany")
+      m.assertEqual(pluralKey("LabelEpisodeCount", -1), "LabelEpisodeCountMany")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Plural form selection")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

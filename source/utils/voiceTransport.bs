@@ -14,6 +14,14 @@ namespace voiceTransport
     return 10
   end function
 
+  ' The seek a voice fast-forward or rewind makes while following a SyncPlay group, in signed
+  ' seconds: the instant replay step, forward or back. A trick play on the node alone would move
+  ' this member away from the group, so the command becomes a relative seek the group takes.
+  function groupTrickSeekDelta(command as string, replaySeconds as integer) as integer
+    if LCase(command) = "rewind" then return -replaySeconds
+    return replaySeconds
+  end function
+
   ' Parse the `seek` voice command's payload into a signed delta in seconds.
   ' Roku delivers `direction` ("forward" or "backward") and `duration` (string seconds)
   ' alongside `command = "seek"`. Returns:

@@ -142,6 +142,11 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // nothing rewrites it: terminal for as long as the dialog is open, not a pulse.
   // `syncplay-menu.spec.js` waits on it for the plugin-needed alert.
   '#jrDialog.message',
+  // `showConfirmDialog` and its siblings set the dialog's `title` before `presentOverlayDialog`
+  // mounts it, and JRDialog never writes it (`onTitleChanged` only reads it): terminal for as
+  // long as the dialog is open, not a pulse. `syncplay-menu.spec.js` marks one dialog's title
+  // through ODC and waits for the next dialog's own.
+  '#jrDialog.title',
   // `SyncPlayManager.publish` writes `sync.playingItemId` from the membership state, which only
   // a PlayQueue frame (`syncPlayState.applyGroupUpdate`) or leaving the group changes: held until
   // the group's queue moves again. `syncplay-menu.spec.js` waits on it for a cast's answer.
@@ -195,6 +200,10 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // or a GroupLeft/NotInGroup frame moves: false holds until the next join. `syncplay-controls.spec.js`
   // waits on it after Leave Group in the gear.
   'syncPlayManager.inGroup',
+  // `SyncPlayManager.publish` writes `following` from the membership state, which only a follow
+  // (`followAgain`, a join) or a halt (`haltFollowing`, a leave) moves: false holds until the next
+  // follow. `syncplay-menu.spec.js` waits on it after Back during a catch-up's load.
+  'syncPlayManager.following',
   // `SyncPlayManager.checkSettle` publishes the drift from the group on every position
   // notification while an Unpause is in force (every 0.5 s, in RTA builds only: `#if ENABLE_RTA`), and a group command or a Buffering
   // report clears it. Past its thresholds the manager corrects it, and it then holds inside them,

@@ -41,6 +41,37 @@ export function interruptGate({ windowMs = 500, now = Date.now } = {}) {
 }
 
 /**
+ * Runs `onSignal` once for the first of `signals` this process receives, and returns a
+ * function that removes exactly the listeners it added.
+ *
+ * For the stretch before a runner has anything to restore: a stop there only has to
+ * release what the runner holds. Only the first signal runs `onSignal`. A repeat inside
+ * `windowMs` is the same stop delivered twice (see `interruptGate`) and is ignored. A signal
+ * after the window is an operator who is tired of waiting: it runs `onAbandon`, so a stalled
+ * `onSignal` never leaves the process un-killable.
+ */
+export function onStopOnce(
+  signals,
+  onSignal,
+  { windowMs = 500, now = Date.now, onAbandon = () => {} } = {},
+) {
+  const classify = interruptGate({ windowMs, now });
+  const listeners = signals.map((signal) => {
+    const listener = () => {
+      const verdict = classify();
+      if (verdict === 'stop') onSignal(signal);
+      // A repeat is ignored, and so is any signal past the window if `onAbandon` is not set.
+      else if (verdict === 'abandon') onAbandon(signal);
+    };
+    process.on(signal, listener);
+    return [signal, listener];
+  });
+  return () => {
+    for (const [signal, listener] of listeners) process.off(signal, listener);
+  };
+}
+
+/**
  * Makes Ctrl-Z pause a detached child's group along with this process, and `fg` resume it.
  *
  * A detached child is in a group with no parent in its session, and the kernel discards

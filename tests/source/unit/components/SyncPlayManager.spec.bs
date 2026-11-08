@@ -1,5 +1,7 @@
 import "pkg:/source/remotecontrol/remoteCommand.bs"
+import "pkg:/source/syncplay/syncPlayQueue.bs"
 import "pkg:/source/utils/appWaits.bs"
+import "pkg:/source/utils/queueRepeat.bs"
 
 namespace tests
 
@@ -493,9 +495,410 @@ namespace tests
       m.assertFalse(m.manager.following)
       m.manager.notice = invalid
       m.pressPlay([{ id: "i9", type: "Movie" }])
+      ' The play is held for the viewer's confirmation: nothing follows or posts until then.
       m.assertTrue(m.manager.callFunc("claimPlay"))
+      m.assertFalse(m.manager.following)
+      m.assertEqual(m.manager.notice.kind, "confirmPlay")
+      m.assertEqual(m.manager.notice.groupName, "Movie night")
+      m.assertTrue(m.manager.callFunc("confirmPlay"))
       m.assertTrue(m.manager.following)
       m.assertEqual(m.manager.notice.kind, "playedToGroup")
+      m.assertFalse(m.manager.callFunc("confirmPlay"), "nothing is held any more")
+    end function
+
+    @it("the confirm notice carries the formatted title of the current item and how many more follow")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.enableServer()
+      m.manager.notice = invalid
+      m.global.queueManager.callFunc("set", [{ id: "e1", type: "Episode", name: "Pilot", seriesName: "Show" }, { id: "e2", type: "Episode", name: "Two", seriesName: "Show" }, { id: "e3", type: "Episode", name: "Three", seriesName: "Show" }])
+      m.global.queueManager.callFunc("setPosition", 0)
+      m.assertTrue(m.manager.callFunc("claimPlay"))
+      m.assertEqual(m.manager.notice.kind, "confirmPlay")
+      m.assertEqual(m.manager.notice.title, "Show - Pilot")
+      m.assertEqual(m.manager.notice.moreCount, 2)
+    end function
+
+    @it("the confirm counts only the videos after the one played, not the ones before it")
+    function _()
+      m.haltWithServer()
+      m.manager.notice = invalid
+      m.global.queueManager.callFunc("set", [{ id: "e1", type: "Episode" }, { id: "e2", type: "Episode" }, { id: "e3", type: "Episode" }, { id: "e4", type: "Episode" }, { id: "e5", type: "Episode" }])
+      m.global.queueManager.callFunc("setPosition", 2)
+      m.assertTrue(m.manager.callFunc("claimPlay"))
+      m.assertEqual(m.manager.notice.kind, "confirmPlay")
+      m.assertEqual(m.manager.notice.moreCount, 2)
+    end function
+
+    @it("a halted member's play of the video the group is watching catches up: nothing asks, and nothing starts it over")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      m.manager.notice = invalid
+      m.pressPlay([{ id: "i1", type: "Movie" }])
+      start = promises.create()
+      m.assertTrue(m.manager.callFunc("claimPlay", start), "no local player starts")
+      m.assertFalse(m.manager.playHeld, "nothing is asked")
+      m.assertTrue(m.manager.following, "following again, as Resume with Group does")
+      m.assertEqual(m.manager.notice.kind, "followingAgain")
+      m.assertTrue(appWaits.isOpen(start), "the press's start waits for the group's item to load")
+      ' SetPlaylistItem for the playing entry would start the video over for every member.
+      m.assertEqual(posts.getChildCount(), 1, "only the wait is posted")
+      m.assertTrue(posts.getChild(0).request.url.instr("/SyncPlay/SetIgnoreWait") >= 0)
+    end function
+
+    @it("a halted member's Play All whose current item is the group's video catches up and adds the rest up next")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      ' i2 is in the group's playlist already, so only i7 is added.
+      m.pressPlay([{ id: "i1", type: "Episode" }, { id: "i7", type: "Episode" }, { id: "i2", type: "Episode" }])
+      m.assertTrue(m.manager.callFunc("claimPlay", promises.create()))
+      m.assertFalse(m.manager.playHeld)
+      m.assertTrue(m.manager.following)
+      m.assertEqual(posts.getChildCount(), 2, "the wait, then the videos added up next")
+      if posts.getChildCount() = 2
+        m.assertTrue(posts.getChild(0).request.url.instr("/SyncPlay/SetIgnoreWait") >= 0)
+        added = posts.getChild(1).request
+        m.assertTrue(added.url.instr("/SyncPlay/Queue") >= 0, "added, not a new queue: nothing restarts")
+        m.assertTrue(added.body.instr(chr(34) + "i7" + chr(34)) >= 0)
+        m.assertFalse(added.body.instr(chr(34) + "i2" + chr(34)) >= 0, "the group's playlist holds i2 already")
+        m.assertTrue(added.body.instr("QueueNext") >= 0, "right after the group's video")
+      end if
+    end function
+
+    @it("a held play the group has since moved to catches up on confirm and adds the rest up next")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i2", type: "Movie" }, { id: "i8", type: "Movie" }])
+      m.manager.callFunc("claimPlay", promises.create())
+      m.assertTrue(m.manager.playHeld)
+      m.manager.frame = m.update("PlayQueue", { Reason: "SetCurrentItem", LastUpdate: "2026-10-23T20:47:30.000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }, { ItemId: "i2", PlaylistItemId: "p2" }], PlayingItemIndex: 1, StartPositionTicks: 0 })
+      m.assertTrue(m.manager.callFunc("confirmPlay"))
+      last = m.lastPost(posts)
+      m.assertTrue(last.url.instr("/SyncPlay/Queue") >= 0, "the rest of the held queue is added")
+      m.assertTrue(last.body.instr(chr(34) + "i8" + chr(34)) >= 0)
+    end function
+
+    @it("a halted member's play of another video in the group's playlist still asks: the group would jump to it")
+    function _()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i2", type: "Movie" }])
+      m.assertTrue(m.manager.callFunc("claimPlay", promises.create()))
+      m.assertTrue(m.manager.playHeld)
+      m.assertEqual(m.manager.notice.kind, "confirmPlay")
+      m.assertFalse(m.manager.following)
+    end function
+
+    ' A player host on the play route, as the router would mount it. Its init builds no player.
+    private sub mountHost()
+      m.global.activeRoutedView = CreateObject("roSGNode", "PlayerHostView")
+    end sub
+
+    @it("a following member's play of the video the group is watching loads it when no player is mounted, and posts nothing")
+    function _()
+      posts = m.capturePosts()
+      m.joinGroup()
+      m.playGroupItem()
+      m.enableServer()
+      m.assertTrue(m.manager.following)
+      m.manager.notice = invalid
+      ' Unstamped: a cast or a press, not the manager's own load.
+      m.pressPlay([{ id: "i1", type: "Movie" }])
+      start = promises.create()
+      m.assertTrue(m.manager.callFunc("claimPlay", start))
+      m.assertEqual(posts.getChildCount(), 0, "nothing reaches the group, so nobody starts over")
+      m.assertTrue(m.manager.following)
+      m.assertInvalid(m.manager.notice, "nothing changed for the group to tell")
+      m.assertTrue(appWaits.isOpen(start), "the start waits for the group's item to load")
+    end function
+
+    ' The member watches the group's item i1 on a mounted player, with a quality cap and the group's repeat mode in the queue.
+    private sub watchWithCap()
+      m.joinGroup()
+      m.playGroupItem()
+      m.mountHost()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.global.queueManager.callFunc("setPlaybackCaps", { maxBitrate: 4000000 })
+      m.global.queueManager.callFunc("setRepeatMode", queueRepeat.ALL, queueRepeat.BY_GROUP)
+      m.manager.notice = invalid
+    end sub
+
+    @it("castToGroup: a cast of the video the player is on is told and changes nothing else")
+    function _()
+      posts = m.capturePosts()
+      m.watchWithCap()
+      m.enableServer()
+      kept = m.manager.callFunc("castToGroup", { id: "i1", type: "Movie" })
+      m.assertTrue(kept)
+      notice = m.manager.notice
+      kind = ""
+      if isValid(notice) and isValid(notice.kind) then kind = notice.kind
+      m.assertEqual(kind, "alreadyWatching")
+      queueManager = m.global.queueManager
+      m.assertTrue(isValid(queueManager.callFunc("getPlaybackCaps")), "the viewer's quality cap is still in force")
+      m.assertEqual(queueManager.callFunc("getRepeatMode"), queueRepeat.ALL)
+      m.assertTrue(syncPlayQueue.isGroupItem(queueManager.callFunc("getCurrentItem"), "p1"), "the queue still holds the group's stamped item")
+      m.assertEqual(posts.getChildCount(), 0)
+      m.assertEqual(m.manager.sync.loadCount, 0)
+    end function
+
+    @it("castToGroup: a halted member's cast of the group's video catches up rather than tell")
+    function _()
+      m.haltWithServer()
+      m.mountHost()
+      m.manager.notice = invalid
+      m.assertTrue(m.manager.callFunc("castToGroup", { id: "i1", type: "Movie" }))
+      m.assertTrue(m.manager.following, "following again")
+      m.assertEqual(m.manager.notice.kind, "followingAgain")
+    end function
+
+    @it("castToGroup: with no player host mounted, a cast of the group's video loads it and posts nothing")
+    function _()
+      posts = m.capturePosts()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.enableServer()
+      m.manager.notice = invalid
+      m.assertTrue(m.manager.callFunc("castToGroup", { id: "i1", type: "Movie" }))
+      m.assertInvalid(m.manager.notice, "not told it is already playing: there is no player")
+      m.assertEqual(posts.getChildCount(), 0)
+    end function
+
+    @it("castToGroup: a cast of another video goes to the group and leaves the queue as it was")
+    function _()
+      posts = m.capturePosts()
+      m.watchWithCap()
+      m.enableServer()
+      m.assertTrue(m.manager.callFunc("castToGroup", { id: "i9", type: "Movie" }))
+      m.assertEqual(posts.getChildCount(), 1)
+      if posts.getChildCount() = 1
+        m.assertTrue(posts.getChild(0).request.url.instr("/SyncPlay/SetNewQueue") >= 0)
+        m.assertTrue(posts.getChild(0).request.body.instr(chr(34) + "i9" + chr(34)) >= 0)
+      end if
+      m.assertEqual(m.manager.notice.kind, "playedToGroup")
+      ' The queue changes only when the group answers.
+      queueManager = m.global.queueManager
+      m.assertTrue(isValid(queueManager.callFunc("getPlaybackCaps")), "the viewer's quality cap is still in force")
+      m.assertEqual(queueManager.callFunc("getRepeatMode"), queueRepeat.ALL)
+      m.assertTrue(syncPlayQueue.isGroupItem(queueManager.callFunc("getCurrentItem"), "p1"), "the queue still holds the group's stamped item")
+    end function
+
+    @it("castToGroup: a cast the group refuses leaves the queue as it was")
+    function _()
+      m.capturePosts()
+      m.watchWithCap()
+      m.enableServer()
+      m.manager.callFunc("castToGroup", { id: "i9", type: "Movie" })
+      m.manager.frame = m.update("LibraryAccessDenied", invalid)
+      m.assertEqual(m.manager.notice.kind, "LibraryAccessDenied")
+      queueManager = m.global.queueManager
+      m.assertTrue(isValid(queueManager.callFunc("getPlaybackCaps")), "the viewer's quality cap survives the refusal")
+      m.assertEqual(queueManager.callFunc("getRepeatMode"), queueRepeat.ALL)
+      m.assertTrue(syncPlayQueue.isGroupItem(queueManager.callFunc("getCurrentItem"), "p1"))
+      m.assertTrue(m.manager.following, "a following member's refused play leaves it following")
+    end function
+
+    @it("castToGroup: with no server nothing is taken, and the queue is left alone")
+    function _()
+      m.watchWithCap()
+      m.assertFalse(m.manager.callFunc("castToGroup", { id: "i9", type: "Movie" }))
+      m.assertTrue(isValid(m.global.queueManager.callFunc("getPlaybackCaps")))
+      m.assertInvalid(m.manager.notice)
+    end function
+
+    @it("a following member's player that is not on the group's item still loads it")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      ' A host the member joined over: no mount was reported for the group's item.
+      m.mountHost()
+      m.enableServer()
+      m.manager.notice = invalid
+      m.pressPlay([{ id: "i1", type: "Movie" }])
+      start = promises.create()
+      m.assertTrue(m.manager.callFunc("claimPlay", start))
+      m.assertInvalid(m.manager.notice)
+      m.assertTrue(appWaits.isOpen(start), "the start waits for the group's item to load")
+    end function
+
+    @it("a halted member's player still loads the group's item and says it follows again")
+    function _()
+      m.haltWithServer()
+      m.mountHost()
+      m.manager.notice = invalid
+      m.pressPlay([{ id: "i1", type: "Movie" }])
+      start = promises.create()
+      m.assertTrue(m.manager.callFunc("claimPlay", start))
+      m.assertTrue(m.manager.following)
+      m.assertEqual(m.manager.notice.kind, "followingAgain")
+      m.assertTrue(appWaits.isOpen(start))
+    end function
+
+    @it("a halted member's play of the video a stopped group was watching is held: the group's answer starts it")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      ' The server keeps the queue on a Stop and sends no state update, only the command.
+      m.manager.frame = m.command("Stop")
+      m.assertEqual(m.manager.sync.lastCommand.command, "Stop")
+      m.manager.notice = invalid
+      m.pressPlay([{ id: "i1", type: "Movie" }])
+      m.assertTrue(m.manager.callFunc("claimPlay", promises.create()))
+      m.assertTrue(m.manager.playHeld, "asked like any play that replaces what the group is doing")
+      m.assertEqual(m.manager.notice.kind, "confirmPlay")
+      m.assertFalse(m.manager.following)
+      m.assertEqual(posts.getChildCount(), 0, "nothing is posted before the viewer answers")
+    end function
+
+    @it("a following member's play of the video a stopped group was watching posts SetPlaylistItem and fetches nothing")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      m.manager.frame = m.command("Stop")
+      ' Following again with the Stop still the last command: the viewer confirms a play of another
+      ' video, which follows again and posts it.
+      m.pressPlay([{ id: "i2", type: "Movie" }])
+      m.assertTrue(m.manager.callFunc("claimPlay", promises.create()))
+      m.assertTrue(m.manager.callFunc("confirmPlay"))
+      m.assertTrue(m.manager.following)
+      m.assertEqual(m.manager.sync.lastCommand.command, "Stop")
+      m.manager.notice = invalid
+      postsBefore = posts.getChildCount()
+      m.pressPlay([{ id: "i1", type: "Movie" }])
+      m.assertTrue(m.manager.callFunc("claimPlay", promises.create()))
+      m.assertFalse(m.manager.playHeld)
+      m.assertEqual(posts.getChildCount(), postsBefore + 1, "the play is posted to the group")
+      m.assertTrue(m.lastPost(posts).url.instr("/SyncPlay/SetPlaylistItem") >= 0)
+      m.assertEqual(m.manager.notice.kind, "playedToGroup", "told as a play handed over, not as a catch-up")
+    end function
+
+    @it("a halted member's play the viewer cancels goes nowhere and ends the start the press opened")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i9", type: "Movie" }])
+      start = promises.create()
+      m.assertTrue(m.manager.callFunc("claimPlay", start))
+      m.assertTrue(appWaits.isOpen(start), "the start stays open under the dialog")
+      m.assertTrue(m.manager.callFunc("cancelPlay"))
+      m.assertEqual(posts.getChildCount(), 0, "nothing was posted")
+      m.assertFalse(m.manager.following)
+      m.assertEqual(start.promiseState, "rejected")
+      m.assertFalse(m.manager.callFunc("cancelPlay"), "nothing is held any more")
+      m.assertFalse(m.manager.callFunc("confirmPlay"), "nothing is held any more")
+    end function
+
+    @it("a held play is published while it waits, and the viewer's answer clears it")
+    function _()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i9", type: "Movie" }])
+      m.assertFalse(m.manager.playHeld)
+      m.manager.callFunc("claimPlay", promises.create())
+      m.assertTrue(m.manager.playHeld, "the scene asks while this is true")
+      m.manager.callFunc("cancelPlay")
+      m.assertFalse(m.manager.playHeld)
+    end function
+
+    @it("a held play ends with its start, and nothing is left to confirm")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i9", type: "Movie" }])
+      start = promises.create()
+      m.manager.callFunc("claimPlay", start)
+      ' The start's time limit, or a newer press replacing it.
+      promises.reject({ message: "cancelled" }, start)
+      m.assertFalse(m.manager.playHeld, "the dialog closes with the start")
+      m.assertFalse(m.manager.callFunc("confirmPlay"), "nothing is held any more")
+      m.assertEqual(posts.getChildCount(), 0, "nothing was posted")
+    end function
+
+    @it("a confirm for a held play whose start already ended posts nothing")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i9", type: "Movie" }])
+      ' A start that ended with no change for the hold's observer to see.
+      start = promises.create()
+      promises.reject({ message: "time limit" }, start)
+      m.manager.callFunc("claimPlay", start)
+      m.assertFalse(m.manager.callFunc("confirmPlay"))
+      m.assertFalse(m.manager.following, "a play with nothing to start does not follow again")
+      m.assertFalse(m.manager.playHeld)
+      m.assertEqual(posts.getChildCount(), 0, "nothing was posted")
+    end function
+
+    @it("a newer halted play replaces the held one and ends its start")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i9", type: "Movie" }])
+      first = promises.create()
+      m.manager.callFunc("claimPlay", first)
+      m.pressPlay([{ id: "i8", type: "Movie" }])
+      second = promises.create()
+      m.manager.callFunc("claimPlay", second)
+      m.assertEqual(first.promiseState, "rejected", "the first press's start ends")
+      m.assertTrue(appWaits.isOpen(second), "the second waits under its own dialog")
+      m.assertTrue(m.manager.callFunc("confirmPlay"))
+      m.assertTrue(m.lastPost(posts).body.instr("i8") >= 0, "the newest press is the one posted")
+    end function
+
+    @it("a new playlist from the group ends a held play: the group's pick stands")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i9", type: "Movie" }])
+      start = promises.create()
+      m.manager.callFunc("claimPlay", start)
+      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:30.000Z", Playlist: [{ ItemId: "i5", PlaylistItemId: "p5" }], PlayingItemIndex: 0, StartPositionTicks: 0 })
+      m.assertTrue(m.manager.following, "another member's new playlist brings this member back")
+      m.assertFalse(m.manager.playHeld, "the dialog asking about the held play closes")
+      m.assertEqual(start.promiseState, "rejected", "the held press's start ends")
+      m.assertFalse(m.manager.callFunc("confirmPlay"), "a late confirm cannot replace the group's pick")
+      for i = 0 to posts.getChildCount() - 1
+        m.assertFalse(posts.getChild(i).request.url.instr("/SyncPlay/SetNewQueue") >= 0, "nothing replaced the group's pick")
+      end for
+    end function
+
+    @it("a held play of a video the group has since moved to catches up on confirm: nothing starts it over")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      m.manager.notice = invalid
+      m.pressPlay([{ id: "i2", type: "Movie" }])
+      start = promises.create()
+      m.manager.callFunc("claimPlay", start)
+      m.assertTrue(m.manager.playHeld, "the play of a video the group is not on is held")
+      ' Not a new playlist, so the hold stays: the group is now on the held video.
+      m.manager.frame = m.update("PlayQueue", { Reason: "SetCurrentItem", LastUpdate: "2026-10-23T20:47:30.000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }, { ItemId: "i2", PlaylistItemId: "p2" }], PlayingItemIndex: 1, StartPositionTicks: 0 })
+      m.assertTrue(m.manager.playHeld, "the hold survives a move within the playlist")
+      m.assertTrue(m.manager.callFunc("confirmPlay"))
+      for i = 0 to posts.getChildCount() - 1
+        m.assertFalse(posts.getChild(i).request.url.instr("/SyncPlay/SetPlaylistItem") >= 0, "nothing restarted the playing video")
+      end for
+      m.assertTrue(m.manager.following, "the member follows again")
+      m.assertEqual(m.manager.notice.kind, "followingAgain")
+      m.assertTrue(appWaits.isOpen(start), "the start waits for the group's item to load")
+      m.assertFalse(m.manager.playHeld)
+    end function
+
+    @it("leaving the group ends a held play and its start")
+    function _()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i9", type: "Movie" }])
+      start = promises.create()
+      m.manager.callFunc("claimPlay", start)
+      m.manager.frame = m.update("GroupLeft", invalid)
+      m.assertFalse(m.manager.playHeld)
+      m.assertEqual(start.promiseState, "rejected")
+      m.assertFalse(m.manager.callFunc("confirmPlay"), "nothing is held any more")
     end function
 
     @it("a halted member is waited on again before its play reaches the group")
@@ -507,6 +910,8 @@ namespace tests
       m.haltWithServer()
       m.pressPlay([{ id: "i9", type: "Movie" }])
       m.manager.callFunc("claimPlay", promises.create())
+      m.assertEqual(posts.getChildCount(), 0, "nothing posts before the viewer confirms")
+      m.manager.callFunc("confirmPlay")
       count = posts.getChildCount()
       m.assertEqual(count, 2)
       m.assertTrue(posts.getChild(0).request.url.instr("/SyncPlay/SetIgnoreWait") >= 0, "first: SetIgnoreWait")
@@ -566,7 +971,8 @@ namespace tests
       m.haltWithServer()
       m.pressPlay([{ id: "i9", type: "Movie" }])
       m.manager.callFunc("claimPlay", promises.create())
-      m.assertTrue(m.manager.following, "the press follows again, so the group waits on it")
+      m.manager.callFunc("confirmPlay")
+      m.assertTrue(m.manager.following, "the confirmed press follows again, so the group waits on it")
       m.manager.frame = m.update("LibraryAccessDenied", invalid)
       m.assertFalse(m.manager.following)
       m.assertEqual(m.manager.notice.kind, "LibraryAccessDenied", "the refusal is what the viewer is told")
@@ -581,6 +987,7 @@ namespace tests
       m.pressPlay([{ id: "i9", type: "Movie" }])
       start = promises.create()
       m.manager.callFunc("claimPlay", start)
+      m.manager.callFunc("confirmPlay")
       ' Back, or the start's time limit: the manager is not told, and nothing is owed yet.
       promises.reject({ message: "cancelled" }, start)
       m.assertTrue(m.manager.following)
@@ -612,6 +1019,8 @@ namespace tests
       m.pressPlay([{ id: "i8", type: "Movie" }])
       second = promises.create()
       m.manager.callFunc("claimPlay", second)
+      ' The dialog still up confirms the newest press: the second play is the one held.
+      m.manager.callFunc("confirmPlay")
       promises.reject({ message: "replaced by a newer start" }, first)
       m.manager.frame = m.update("StateUpdate", { State: "Waiting", Reason: "Seek" })
       m.assertTrue(m.manager.following, "the second play's answer is still due")

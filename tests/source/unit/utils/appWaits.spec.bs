@@ -110,6 +110,16 @@ namespace tests
       m.assertTrue(timeouts.PLAYBACK_START_LIMIT_MS > timeouts.LIVE_OPEN_MS + timeouts.API_WAIT_MS)
     end function
 
+    @it("never times out a paused wait: the viewer is answering, not the app loading")
+    function _()
+      entries = {
+        w1: { deadlineMs: 100, paused: true },
+        w2: { deadlineMs: 500 }
+      }
+      m.assertEqual(appWaits.overdue(entries, 1000), ["w2"])
+      m.assertEqual(appWaits.msUntilNextDeadline({ w1: { deadlineMs: 100, paused: true } }, 50), -1)
+    end function
+
     @it("finds only the waits past their limit")
     function _()
       entries = { w1: m.start(0, invalid), w2: m.start(100000, invalid) }

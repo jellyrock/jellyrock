@@ -52,9 +52,10 @@ import {
   wasBlocked,
 } from './run-record.js';
 import { acquireDeviceLock } from './device-lock.js';
-import { startConsoleCapture } from './lib/console-capture.js';
+import { startConsoleCapture, keepFailedConsole } from './lib/console-capture.js';
 import {
   interruptGate,
+  onStopOnce,
   relayJobControl,
   signalGroup,
   spawnOutsideTree,
@@ -101,6 +102,25 @@ let child = null;
 // The restore helper's pid once `handOff()` has started it. Declared here for the same
 // reason as `child`: the crash handler below reads it.
 let helperPid = null;
+// Until the spawn below there is no child and no restore to run, so a stop only has to free
+// the lock. Without this the default signal action exits and leaves the device claimed by a
+// dead pid until the lease expires.
+const stopBeforeSpawn = onStopOnce(
+  ['SIGINT', 'SIGTERM', 'SIGHUP'],
+  async (signal) => {
+    console.log(`\n[rta] ${signal} before the suite started: releasing the device lock.`);
+    await lock.release();
+    process.exit(130);
+  },
+  {
+    onAbandon: () => {
+      console.log(
+        '[rta] second interrupt: leaving without releasing the lock; it frees when its lease expires.',
+      );
+      process.exit(130);
+    },
+  },
+);
 for (const event of ['uncaughtException', 'unhandledRejection']) {
   process.on(event, async (err) => {
     console.error(`\n[rta] ${event}: stopping the run.\n${err?.stack || err?.message || err}`);
@@ -209,6 +229,7 @@ child = spawn(
     env: { ...process.env, RTA_RUNNER: '1', ...run.env },
   },
 );
+stopBeforeSpawn();
 relayJobControl(child);
 
 // Starts the restore helper once, outside this process's tree. It adopts the snapshot,
@@ -310,8 +331,14 @@ run.close(
   interrupting ? RUN_OUTCOMES.INTERRUPTED : exitCode === 0 ? RUN_OUTCOMES.PASSED : redOutcome,
 );
 
-if (exitCode !== 0)
-  console.log(`[rta] device console: ${consoleFile} (holds auth tokens, keep it private)`);
+if (exitCode !== 0) {
+  // The next run on this device overwrites console.log, so keep a copy of a red run's.
+  // rta-servers.js sets RTA_CONSOLE_LOG and already keeps one file per server.
+  const keptConsole = process.env.RTA_CONSOLE_LOG ? null : keepFailedConsole(consoleFile);
+  console.log(
+    `[rta] device console: ${keptConsole ?? consoleFile} (holds auth tokens, keep it private)`,
+  );
+}
 
 handOff();
 while (!abandoned && isProcessAlive(helperPid)) await new Promise((r) => setTimeout(r, 250));

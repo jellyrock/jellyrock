@@ -16,6 +16,7 @@ related-files:
   - components/OverviewDialog.bs
   - components/OverviewDialog.xml
   - source/utils/dialogs.bs
+  - source/utils/overlayDialog.bs
   - source/utils/dialogLayout.bs
   - source/utils/dialogClose.bs
   - source/utils/dialogKeys.bs
@@ -23,7 +24,7 @@ related-files:
   - source/utils/dialogNarration.bs
   - source/utils/buttonOverflow.bs
   - scripts/bsc-plugins/no-hand-rolled-dialog.cjs
-last-reviewed: 2026-10-23
+last-reviewed: 2026-11-07
 ---
 
 # The dialog family
@@ -190,6 +191,8 @@ If you do build a bespoke one, **test the resemblance**. `QuickConnectDialog`'s 
 ## Presenting and tearing down
 
 The helpers and the result contract are in [`navigation.md`](./navigation.md#the-standard-dialog-system-sourceutilsdialogsbs).
+
+Code that only asks whether an overlay dialog is open imports `source/utils/overlayDialog.bs`, which holds `openOverlayDialog`, `isOverlayDialogOpen` and the shared overlay id, not `dialogs.bs`. `JRScreen` is the base of every screen, so importing the helpers there would put them and their layout code in every screen's scope.
 
 `showOverflowMenu` looks like a new surface and is not. It presents the same `JRListDialog` (same chrome, key model, result contract and specs) with three presentation fields set: `anchor`, `sizeToContent` and `titleVisible = false`. Use it for a menu hanging off a button (**More**, or the playback-settings gear on the player), and `showListDialog` for everything else. Its optional `defaultIndex` is `JRListDialog`'s own field, for a menu reopened on the row the user left it from. If you need a fourth difference, add a field to `JRListDialog`, not a second component.
 

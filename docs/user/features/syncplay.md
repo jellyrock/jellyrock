@@ -21,7 +21,7 @@ SyncPlay plays videos: movies, episodes and other videos. If you play music or L
 ## Join or start a group
 
 1. Select the **SyncPlay** icon at the top of the screen.
-2. Pick a group to join it, or pick **New group** to start one. A new group is named after you.
+2. Pick a group to join it, or pick **New group** to start one. Keep the suggested name or type your own, then select **OK**.
 3. JellyRock tells you it joined. If the group is playing, your Roku plays the same video from the same point.
 
 While you're in a group, the **SyncPlay** icon is highlighted.
@@ -29,7 +29,8 @@ While you're in a group, the **SyncPlay** icon is highlighted.
 ## Watch together
 
 - **Play something as you usually would.** While you're in a group, it plays for the whole group.
-- **Use the remote as usual.** Play, pause, seeking, skipping and next or previous all go to the group, so everyone moves together.
+- **A group mark in the player.** Press **Up** during playback: the **SyncPlay** icon shows next to the clock, lit as it is at the top of the screen while you watch with the group, and dim while you have stepped out of the group's video.
+- **Use the remote as usual.** Play, pause, seeking, skipping and next or previous all go to the group, so everyone moves together. Saying "fast-forward" or "rewind" to your Roku jumps the group ahead or back by your [Instant Replay Duration](../app-settings.md#playbackInstantReplaySeconds) instead of scanning, so nobody drifts out of step.
 - **People coming and going.** A message tells you when someone joins or leaves the group.
 - **Staying in step.** JellyRock keeps your Roku on the group's clock by itself. If a resume leaves it noticeably ahead or behind, it corrects itself: the picture holds for a moment and starts again in step with the group. If the sound from your TV still lags the other people's devices, raise **SyncPlay Time Offset** until they line up, up to 500 milliseconds.
 - **Repeat and shuffle for the whole group.** Press **Up** during playback and open the gear. **Repeat** and **Shuffle** set the group's own modes, so they change what plays next for everyone, and a change someone else makes shows up in the same rows. Under **Repeat one** the video starts again for the whole group when it ends, or when anyone presses next or previous.
@@ -40,7 +41,7 @@ So that one person's settings don't move everyone, a few things wait while you'r
 
 Press **Back** to leave the video. You stay in the group, but you stop following it, and the group plays on without you. If the group was repeating, your Roku stops repeating with it.
 
-To catch up, select the **SyncPlay** icon and pick **Resume with Group**. Your Roku plays the group's video from where the group is now. You also follow again when you play a video, which then plays for the whole group, or when someone in the group starts something new.
+To catch up, select the **SyncPlay** icon and pick **Resume with Group**. Your Roku plays the group's video from where the group is now. Playing the video the group is watching does the same, however you start it, and nobody else's video restarts. If you play a season, a playlist or a collection from the video the group is watching, the videos after it are added up next for the whole group, and a toast says how many. If your Roku is already playing that video with the group, it keeps playing and a toast says you are already watching it with the group, so nothing pauses for anyone. You also follow again when someone in the group starts something new, or when you play a different video yourself: JellyRock asks first, naming the video, and **Play for Everyone** plays it for the whole group in place of what the group is watching, while **Cancel** leaves the group's video alone. A video someone casts to your Roku while you watch with the group plays for the whole group, as if you had picked it.
 
 ## Leave a group
 
@@ -64,6 +65,7 @@ While you follow a group, the gear in the player's controls has three more rows 
 
 - **There is no SyncPlay icon.** Your account has no SyncPlay access. Ask your server's admin to turn it on.
 - **"SyncPlay on an HTTPS server needs the JellyRock plugin installed on that server."** Install the JellyRock Companion plugin on your server, as [Jellyfin server plugins](../jellyfin-server-plugins.md) describes.
+- **The SyncPlay icon is dim, and selecting it says "SyncPlay is waiting for the server to reconnect."** Your Roku lost its connection to the server and is getting it back. Wait a moment and select the icon again. If you're already in a group, the icon still opens its menu, so you can leave.
 - **"Permission required to create a group."** Your account can join groups but not start them. Join one, or ask your admin for permission to create groups.
 - **"That group no longer exists."** The group ended before you joined. Open the **SyncPlay** icon again to see the groups there are now.
 - **Your Roku sounds a little behind everyone else, every time.** Your TV or sound system may be adding a delay. Raise **SyncPlay Time Offset** in **Settings → Playback** in small steps (try 100) until the sound lines up.

@@ -7,7 +7,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { signalGroup, interruptGate } from '../../../scripts/lib/process-group.js';
+import { signalGroup, interruptGate, onStopOnce } from '../../../scripts/lib/process-group.js';
 
 const HELPER = pathToFileURL(
   fileURLToPath(new URL('../../../scripts/lib/process-group.js', import.meta.url)),
@@ -181,6 +181,67 @@ describe('interruptGate', () => {
     gate();
     expect(gate()).toBe('repeat');
     expect(gate()).toBe('abandon');
+  });
+});
+
+describe('onStopOnce', () => {
+  // A private signal name per case would be ideal, but only real signals exist. SIGUSR2 has
+  // no default handler in Vitest's worker, and each case removes what it adds.
+  const SIG = 'SIGUSR2';
+  const before = () => process.listenerCount(SIG);
+
+  it('runs the callback with the signal that arrived', async () => {
+    const seen = [];
+    const dispose = onStopOnce([SIG], async (s) => seen.push(s));
+    process.emit(SIG, SIG);
+    dispose();
+    expect(seen).toEqual([SIG]);
+  });
+
+  it('ignores a repeat inside the window', () => {
+    const seen = [];
+    const dispose = onStopOnce([SIG], async (s) => seen.push(s), { now: () => 1000 });
+    process.emit(SIG, SIG);
+    process.emit(SIG, SIG);
+    dispose();
+    expect(seen).toHaveLength(1);
+  });
+
+  it('runs onAbandon, not onSignal again, for a signal after the window', () => {
+    const times = [1000, 1600];
+    const seen = [];
+    const abandoned = [];
+    const dispose = onStopOnce([SIG], async (s) => seen.push(s), {
+      now: () => times.shift(),
+      onAbandon: (s) => abandoned.push(s),
+    });
+    process.emit(SIG, SIG);
+    process.emit(SIG, SIG);
+    dispose();
+    expect(seen).toHaveLength(1);
+    expect(abandoned).toEqual([SIG]);
+  });
+
+  it('removes only the listeners it added', () => {
+    const own = () => {};
+    process.on(SIG, own);
+    const count = before();
+    const dispose = onStopOnce([SIG, 'SIGUSR1'], async () => {});
+    expect(before()).toBe(count + 1);
+    dispose();
+    expect(before()).toBe(count);
+    expect(process.listeners(SIG)).toContain(own);
+    process.off(SIG, own);
+  });
+
+  it('does not run after it is disposed', () => {
+    const seen = [];
+    const dispose = onStopOnce([SIG], async (s) => seen.push(s));
+    dispose();
+    process.on(SIG, () => {});
+    process.emit(SIG, SIG);
+    process.removeAllListeners(SIG);
+    expect(seen).toEqual([]);
   });
 });
 

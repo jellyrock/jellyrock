@@ -365,6 +365,12 @@ The `Detect test-relevant changes` pattern in `device-unit-tests.yml` leaves out
 
 Not done there because it is a separate fix for separate entry points, and a store capture is a long device run to retest. To close: give the helper a mode that waits for the entry point's own process to exit instead of a Vitest group (`runTakeover()` in `scripts/lib/restore-takeover.js` takes its process calls as `deps`), make both entry points hand off to it on a signal, and check a task stop on a device leaves no snapshot and a free lock.
 
+#### An RTA run stopped before the suite starts is recorded as crashed, not interrupted `[fid: rta-early-stop-folds-crashed]` `[captured 2026-11-08]`
+
+The fix "Free the device when a run is stopped before the suite starts" added a handler in `scripts/rta-run.js` for a stop before the Vitest spawn (`onStopOnce`, released right after the spawn). It frees the lock and exits 130, but it never calls `run.close(RUN_OUTCOMES.INTERRUPTED)`, so `run-record.js`'s exit net labels a deliberate operator stop `crashed` (seen 2026-11-08 on the Stick 4K). The ledger then drops it as a non-sample for the wrong reason. The abandon path after the spawn shows the intended fold: it closes `interrupted` before it exits.
+
+Not fixed now: the handler is installed before `const run = beginRun(...)`, so reading `run` from it throws while that `const` is in its temporal dead zone. A fix needs a `let` declared earlier, or a close that is installed once `beginRun` has run, plus a test that a stop at each stage folds `interrupted`. Close it when a stop before the spawn folds as `interrupted`.
+
 ### components
 
 #### The `cell-load` counters are silently zeroed whenever a screen replaces its content root, so any measurement of a session that does so under-reports. `[fid: cell-load-counters-zeroed-by-root-swap]` `[captured 2026-08-22]`
@@ -812,19 +818,11 @@ The overhang cluster is hidden on playback screens (`JRScene.registerOverhangDat
 
 What closes it: a now-playing control outside the player that returns to it; a rule for starting other media while a player is suspended under another screen (untested: two `AudioPlayerView`s observing the shared `m.global.audioPlayer`); then the cluster on playback screens again. Not now: it needs its own design.
 
-#### A halted SyncPlay member's play replaces the group's with no prompt; phase F decides whether it asks first `[fid: syncplay-halted-play-asks-first]` `[captured 2026-10-27]`
+#### The SyncPlay icon's socket-down state has not run on a device `[fid: remote-channel-status-not-live]` `[captured 2026-10-28]`
 
-A halted SyncPlay member's play goes to the whole group (decision `syncplay-play-handed-to-group`), so a member who pressed Back and then plays something else, a trailer included, replaces what every member is watching, with only the "Playing this for {group}." toast as warning. Raised in the PR #1270 review on 2026-10-27.
+`RemoteControlTask.runWsReceiver` now marks `server.remoteChannelStatus` unavailable when the session socket stays down past one quick reconnect (`remoteProtocol.socketDownMarksUnavailable`), so the SyncPlay icon disables and a press says the server is reconnecting; `on_open` makes it available again. The rule has a unit spec; the path has not run on a device.
 
-The candidate: while halted, a play asks **Play for everyone** or **Only for me** first; Only for me leaves the group's playback alone and plays locally. It changes decision B for every play by a halted member, so it is designed with phase F's in-group controls (the in-player state glyph, Leave, resume), not on its own.
-
-Closes when phase F's plan decides it: built with its strings and specs, or recorded as declined in that decision.
-
-#### The remote channel status stays available after the session socket dies, so the SyncPlay icon can stay enabled `[fid: remote-channel-status-not-live]` `[captured 2026-10-28]`
-
-`RemoteControlTask` publishes `server.remoteChannelStatus` (PR #1270), and the SyncPlay icon follows it: hidden while unknown, disabled while unavailable. The HTTPS path keeps probing the companion plugin, so its status follows the plugin. The HTTP path does not: once the session socket has opened, the status stays `available` while `runWsReceiver` reconnects with backoff. A socket that never comes back leaves the icon enabled, and a join would strand the Roku in a group it cannot follow. Read from the code, not measured.
-
-Closes when the socket path drops the status on a close that does not recover (for example, unknown after the socket has been down longer than its reconnect backoff cap), with a spec and without hiding the icon on a brief blip, or when a device check shows a dead socket does not happen in practice.
+Closes after a device check on an HTTP server: stop the server mid-group and see the icon disable once the reconnect fails, and the press show **SyncPlay is waiting for the server to reconnect**; start the server again and see the icon come back. A member still in the group must still get its menu, to leave.
 
 #### A group Pause during a SyncPlay member's first-frame start hold leaves it paused with no OSD `[fid: syncplay-pause-during-start-hold-no-osd]` `[captured 2026-10-28]`
 
@@ -839,14 +837,6 @@ Closes after a manual check: pause from another member (jellyfin-web) within a s
 `JellyfinServer.isSplashscreenEnabled` (`components/data/jellyfin/JellyfinServer.xml`) is commented "invalid = not loaded yet", but it is `type="boolean"` with no value, so an unset field reads `false`. `UserSelect.loadSplashscreen()` therefore always takes its `isValid()` "already cached" branch and applies "splash disabled" (clearing the backdrop) before the branding fetch delivers the real value. Found while fixing the screenshot capture, whose `settleBackdrop()` reads the server's `/Branding/Configuration` for this reason; the app log shows `Splashscreen disabled - using default background` before every `Branding config cached successfully`.
 
 Not checked: whether the flash of the default background is visible on a device. Check that first; fix by tracking "fetched" separately (an `isSplashscreenLoaded` field) or declaring the field so it starts invalid. Not done now: it needs a device check and an app change outside the screenshot work.
-
-#### The SyncPlay halt toast after Back promises 'What plays now is your own', but the next video play re-follows the group `[fid: syncplay-halt-toast-promises-local]` `[captured 2026-10-29]`
-
-`MessageSyncPlayStoppedFollowing` ("No longer following {0}. What plays now is your own.") is the toast for every `halted` notice `SyncPlayManager.haltFollowing` sends, but it is true for only one of the five halts that send it: "a player mounted for an item the group is not playing" (music or Live TV played locally). After the other four (Back, "the group's queue could not be loaded", "the group is playing an item this player cannot follow", "the player would not stay paused"), `SyncPlayManager.claimPlay` hands the member's next video play to the group and follows again, as decision `syncplay-play-handed-to-group` intends. All three arrived together in 08759649 (#1270); only `en_US.json` has the key, and it ships in 3.3.0. Found while writing `docs/user/features/syncplay.md`.
-
-Options: `reword` (recommended): make the one string true after every halt, for example "No longer following {0}. Pick Resume with Group in the SyncPlay menu to catch up." (`en_US.json` only). `split`: keep "What plays now is your own" for the local-play halt and give the other four a new message (a new key, `haltFollowing` passes which kind, `syncPlayMenu.toastFor`, both specs). Not offered: making a halted member's play local, which reverses the accepted decision.
-
-Not checked: how the toast looks on a device; whether jellyfin-web words this case differently.
 
 #### Recently Added in a library with no collection type follows the episode image setting `[fid: recently-added-follows-episode-image-setting]` `[captured 2026-10-31]`
 
@@ -961,6 +951,12 @@ Not checked:
 - whether Jellyfin can add a silent audio track.
 
 To rebuild a clip: `ffmpeg -f lavfi -i testsrc2=size=1920x1080:rate=24 -t 20 -vf format=yuv420p10le -c:v hevc_nvenc -profile:v main10 -color_primaries bt2020 -color_trc arib-std-b67 -colorspace bt2020nc out.mkv` (add an AAC input for the control).
+
+#### Whether Clock.textWidth's same-pass read of its layout group can be one minute stale is unsettled `[fid: clock-textwidth-same-pass-read]` `[captured 2026-11-07]`
+
+`Clock.updateTime` measures `Clock.textWidth` as the `localBoundingRect()` of the `clockGroup` layout group on the same pass that sets the labels' text, and the overhang's cluster and the SyncPlay mark in the OSD lay out `overhangRow.CLOCK_GAP` left of it. Whether that read can hold the previous minute's layout is unsettled. A throwaway Rooibos probe on the Stick 4K (2026-11-06) set the clock's labels several times in one function and read the group's width each time: it disagreed with the labels' own widths plus spacing at every step (at 10:00, 111 against 139). A `Clock.spec.bs` case through `resetTime`, including a wider text set between two ticks, matched every time, and at 8:48 the probe's group width (99) agreed with the RTA ink measurement the overhang was laid out against while the label sum (101) did not. If the read is stale in production, the cluster loses about one digit of gap for the minute after a 12-hour rollover from 9 to 10 (and 12 to 1 gains it), so it would touch the clock's first digit.
+
+Closes after a measurement on the real path: a capture or an ODC read of the overhang right after a width-changing tick (the device clock set to 9:59 in 12-hour format), comparing `textWidth` with the drawn digits. If they differ, measure from the labels instead (their widths plus `itemSpacings`) with a spec that fails first; if not, close as not reproduced.
 
 ### source
 
@@ -1141,19 +1137,13 @@ Investigate before planning:
 
 The app-side half (one name helper used by the auth header and `buildPairPayload`, plus its unit spec) waits on the /pair field this plugin settles. When the contract is decided, send a message back to jellyrock/jellyrock naming the field and its rules.
 
-#### Remove the SyncPlay on-off switch once phase F ships `[fid: syncplay-remove-enabled-switch]` `[captured 2026-10-28]`
-
-`syncPlayMenu.IS_ENABLED` is a switch added in PR #1270 so a release could ship with SyncPlay hidden if phases E and F were not ready: set to `false`, `canJoin` refuses every user, so the cluster icon (the one way into a group), its menu and the badge's group-list reads all go away. It ships `true`. It is a temporary carve-out, not a setting.
-
-Closes when the in-player SyncPlay surface (phase F of epic #1251) ships: delete the constant, fold `joinAllowed` back into `canJoin`, and drop the two `syncPlayMenu.spec.bs` cases that drive the switch.
-
 #### SyncPlay in a group offers no queue edits from the Roku, and voice fast-forward and rewind are unchecked `[fid: syncplay-queue-edits-shuffle-voice-scrub]` `[captured 2026-10-29]`
 
-Phase E (#1276) chose honor-only for the group's playlist: the server owns it, so the Roku offers no queue editing while following (add, remove or move an item in the group's playlist). The group's repeat and shuffle now ship in the OSD gear (decision `syncplay-group-repeat-rides-queue`), so queue edits are the part left to design, in the SyncPlay project's hardening phase.
+Phase E (#1276) chose honor-only for the group's playlist: the server owns it, so the Roku offers no queue editing while following (add, remove or move an item in the group's playlist). The group's repeat and shuffle ship in the OSD gear (decision `syncplay-group-repeat-rides-queue`), so queue edits are the part left to design, in the SyncPlay project's hardening phase.
 
-Also unchecked: voice fast-forward and rewind still write the node (`control` set to `fastforward` or `rewind` in `VideoPlayerView.handleTransport`) instead of going to the group. The remote's OK on the trick-play bar posts the group seek, but nobody has checked on a device whether a voice scrub can land with no OK, which would move this member alone.
+Voice fast-forward and rewind while following are now a relative group seek (`voiceTransport.groupTrickSeekDelta`, `VideoPlayerView.handleTransport`), with a unit case and an RTA case in `syncplay-controls.spec.js` that passed on the Stick 4K against the local 12.4 server (2026-11-06). Left unchecked: whether a remote fast-forward or rewind key held with the OSD closed can move this member alone before any OK; the scrub bar's own confirm already posts the group seek.
 
-Closes when the queue-edit design ships or is declined in a decision note, and a device check shows a voice scrub in a group either reaches the group or cannot land without an OK.
+Closes when the queue-edit design ships or is declined in a decision note, and a device check shows the held remote key cannot land a scrub without an OK.
 
 #### A halt landing just after a SyncPlay correction's pause write can leave the node paused `[fid: syncplay-correction-pause-in-flight]` `[captured 2026-11-01]`
 
@@ -1746,6 +1736,18 @@ Cause not confirmed. A playback error dialog is only a guess, because the record
 
 **Document the BrightScript simulator (`brs-node`, `brs-cli`) as a no-device check.** Tried 2026-11-05 with `brs-node` 2.6.2: a dev build boots to pre-login and prints log lines in the device format, then the engine faults (`e.registerCallback is not a function`) when the first Task (`ServerDiscoveryTask`) starts. A single-spec TDD build runs cleanly (the logger spec, 6 of 6). The whole unit suite ran 90 suites (697 pass, 67 fail) before the process ran out of memory with an 8 GB heap; failures cluster in focus and visual suites, Task-relaunch platform suites and codec answers, and none was checked against a device. So it suits one spec at a time and boot checks, never as a replacement for `test:all` on a device. Add a short how-to to `docs/dev/unit-tests-tdd.md` (zip `build/`, `npx brs-cli <zip> -c 0`). The maintainer does not want upstream bug reports filed.
 
+#### A `SyncPlayManager` spec cannot send a queue frame after a catch-up: the Rooibos run crashes on a stripped state `[fid: rooibos-frame-after-catchup-crash]` `[captured 2026-11-08]`
+
+A Rooibos spec in `SyncPlayManager.spec.bs` that sends a queue frame after a halted member's catch-up crashes the run (seen 2026-11-08 on the Stick 4K, while building the catch-up's `QueueNext` addition). The manager's membership state reaches `syncPlayQueue.isStaleQueueUpdate()` with its `LongInteger` and `invalid` fields gone (`lastupdatems`, `joinedatms`, `playbackqueueatms`, `startpositionticks`, `isplaying`), and the comparison raises a type mismatch. The console also logs "promises_Promise is inaccessible from render thread" right after the catch-up, from the `start` promise the spec creates on its own thread. The app does not crash on the same sequence: the `syncplay-menu` RTA case for the addition runs a catch-up followed by a `QueueNext` frame on the device.
+
+So the confirmation check became a pure function (`syncPlayQueue.queuedNextCount()`), and no manager spec sends a frame after a catch-up. Not checked: which thread copies the state, and whether creating `start` on the render thread (a helper node) avoids it. Close it when a manager spec can send a frame after a catch-up, or when docs/dev/unit-tests.md says why it cannot.
+
+#### ctx.heroId is empty in the `syncplay-menu` RTA spec on a server without the configured hero title `[fid: rta-hero-id-empty-on-local-server]` `[captured 2026-11-08]`
+
+In `tests/rta/specs/syncplay-menu.spec.js`, `ctx.heroId` comes from `getHero()`, which finds `RTA_CONFIG.heroMovie` by title. On a server without that title (the local Jellyfin 12.4.0 server, 2026-11-08) it is empty, while `startPlayback(ctx)` still reaches the hero by its index. So `moviesOtherThanHero()` filters nothing and returns the group's own video first. One case already works around it (its comment says the first result is the group's video), and the catch-up addition case reads the group's video id off the details screen instead. A new case that trusts `ctx.heroId` passes a queue with an empty id.
+
+Fix shape: fill `ctx.heroId` from the movie `startPlayback` actually opens (the same index the nav uses), or fail fast in `beforeAll` when it is empty. Close it when `ctx.heroId` is never empty on a server the suite runs against.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`
@@ -1800,3 +1802,15 @@ Five commits on #1299's branch had `noreply@anthropic.com` as author and committ
 **Recommended:** `gate`, because it holds wherever a commit was made.
 
 **Not checked:** where cloud sessions get this identity; whether the environment can override it; whether GitHub adds the line on every squash, since #1073 is the only example found.
+
+### Components
+
+#### A SyncPlay previous step right after a transcoding item's Ready can leave the old stream playing `[fid: syncplay-previous-reload-never-swaps]` `[captured 2026-11-08]`
+
+`syncplay-controls`' case "next and previous from the remote step the whole group" failed once at `2d6dac7b` (2026-11-07, Stick 4K, local Jellyfin 12.4.0 server), waiting 90 s for "the first movie playing again on this Roku". It is 1 failure in 25 full runs at committed heads (10 of 11 passed at `2d6dac7b`, 14 of 14 at `7e5f8a5d`), on a path that branch does not change (`PlayerHostView` untouched; the only `SyncPlayManager` change on it is the no-op `endUnansweredRefollow()` at the top of each queue fetch).
+
+The server log: the Roku sent `PreviousItem` 1.2 s after its Ready on the second movie, whose stream was transcoding; it reported Buffering and posted `PlaybackInfo` for the first movie, but never started that stream, and its progress reports for the second movie's play session went on for 35 s until the server's 30 s wait for Ready gave up. So the reload in place (`PlayerHostView.skipToCurrentQueueItem`, `destroyPlayer` then `mountPlayer`) apparently never swapped the stream.
+
+Not checked: the Roku console for the failed run (the next run overwrote it); why the reload did not swap; whether `main` can fail the same way (5 passing runs there, too few to rule out a 1-in-25 failure).
+
+Next time it fails: read the kept `console-failed-<time>.log` beside the run's `console.log` (`.device-runs/rta/runs/<device key>/`) around the `PreviousItem` frame, and the server log for the same minute, then run /snag on what they show.
