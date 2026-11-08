@@ -55,6 +55,7 @@ import { acquireDeviceLock } from './device-lock.js';
 import { startConsoleCapture, keepFailedConsole } from './lib/console-capture.js';
 import {
   interruptGate,
+  onStopOnce,
   relayJobControl,
   signalGroup,
   spawnOutsideTree,
@@ -101,6 +102,25 @@ let child = null;
 // The restore helper's pid once `handOff()` has started it. Declared here for the same
 // reason as `child`: the crash handler below reads it.
 let helperPid = null;
+// Until the spawn below there is no child and no restore to run, so a stop only has to free
+// the lock. Without this the default signal action exits and leaves the device claimed by a
+// dead pid until the lease expires.
+const stopBeforeSpawn = onStopOnce(
+  ['SIGINT', 'SIGTERM', 'SIGHUP'],
+  async (signal) => {
+    console.log(`\n[rta] ${signal} before the suite started: releasing the device lock.`);
+    await lock.release();
+    process.exit(130);
+  },
+  {
+    onAbandon: () => {
+      console.log(
+        '[rta] second interrupt: leaving without releasing the lock; it frees when its lease expires.',
+      );
+      process.exit(130);
+    },
+  },
+);
 for (const event of ['uncaughtException', 'unhandledRejection']) {
   process.on(event, async (err) => {
     console.error(`\n[rta] ${event}: stopping the run.\n${err?.stack || err?.message || err}`);
@@ -209,6 +229,7 @@ child = spawn(
     env: { ...process.env, RTA_RUNNER: '1', ...run.env },
   },
 );
+stopBeforeSpawn();
 relayJobControl(child);
 
 // Starts the restore helper once, outside this process's tree. It adopts the snapshot,

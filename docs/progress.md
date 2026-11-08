@@ -365,6 +365,12 @@ The `Detect test-relevant changes` pattern in `device-unit-tests.yml` leaves out
 
 Not done there because it is a separate fix for separate entry points, and a store capture is a long device run to retest. To close: give the helper a mode that waits for the entry point's own process to exit instead of a Vitest group (`runTakeover()` in `scripts/lib/restore-takeover.js` takes its process calls as `deps`), make both entry points hand off to it on a signal, and check a task stop on a device leaves no snapshot and a free lock.
 
+#### An RTA run stopped before the suite starts is recorded as crashed, not interrupted `[fid: rta-early-stop-folds-crashed]` `[captured 2026-11-08]`
+
+The fix "Free the device when a run is stopped before the suite starts" added a handler in `scripts/rta-run.js` for a stop before the Vitest spawn (`onStopOnce`, released right after the spawn). It frees the lock and exits 130, but it never calls `run.close(RUN_OUTCOMES.INTERRUPTED)`, so `run-record.js`'s exit net labels a deliberate operator stop `crashed` (seen 2026-11-08 on the Stick 4K). The ledger then drops it as a non-sample for the wrong reason. The abandon path after the spawn shows the intended fold: it closes `interrupted` before it exits.
+
+Not fixed now: the handler is installed before `const run = beginRun(...)`, so reading `run` from it throws while that `const` is in its temporal dead zone. A fix needs a `let` declared earlier, or a close that is installed once `beginRun` has run, plus a test that a stop at each stage folds `interrupted`. Close it when a stop before the spawn folds as `interrupted`.
+
 ### components
 
 #### The `cell-load` counters are silently zeroed whenever a screen replaces its content root, so any measurement of a session that does so under-reports. `[fid: cell-load-counters-zeroed-by-root-swap]` `[captured 2026-08-22]`
