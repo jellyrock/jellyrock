@@ -30,12 +30,31 @@
  *
  * ...restores even though the snapshot's owning process is still alive. See the
  * refusal below for why that is normally the wrong thing to do.
+ *
+ *   node scripts/rta-restore.js --takeover --owner=<pid> --wait-group=<pgid> [--release-lock]
+ *
+ * ...is how `rta-run.js` restores: it starts this as a helper outside its own process
+ * tree, so a stop that kills the runner cannot cut the restore short. The helper adopts
+ * the snapshot, waits for Vitest's group to exit, restores, and releases the device lock.
  */
 import { setupRtaEnv, ecp, device } from '../tests/rta/lib/driver.js';
-import { readSnapshotFile, restoreRegistry } from '../tests/rta/lib/registry.js';
+import { readSnapshotFile, restoreRegistry, adoptSnapshotFile } from '../tests/rta/lib/registry.js';
 import { sleep } from '../tests/rta/lib/steps.js';
 import { RTA_CONFIG } from '../tests/rta/config.js';
 import { isProcessAlive } from './lib/process-liveness.cjs';
+import { runTakeover } from './lib/restore-takeover.js';
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=')[1];
+const takeover = process.argv.includes('--takeover');
+
+if (takeover) {
+  // A closed terminal must not crash the helper mid-restore.
+  process.stdout.on('error', () => {});
+  process.stderr.on('error', () => {});
+}
 
 setupRtaEnv();
 const host = device.getCurrentDeviceConfig().host;
@@ -45,6 +64,50 @@ if (!snapshot) {
   console.log(`Nothing to restore: no saved registry snapshot for ${host}.`);
   console.log('(A snapshot only survives a run that failed to restore — this is the good case.)');
   process.exit(0);
+}
+
+if (takeover) {
+  const deviceLockScript = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    'device-lock.js',
+  );
+  const code = await runTakeover({
+    owner: Number(arg('owner')),
+    waitGroup: Number(arg('wait-group')),
+    releaseLock: process.argv.includes('--release-lock'),
+    snapshot,
+    deps: {
+      adopt: adoptSnapshotFile,
+      groupGone: (pgid) => {
+        try {
+          process.kill(-pgid, 0);
+          return false;
+        } catch (e) {
+          return e.code === 'ESRCH';
+        }
+      },
+      killGroup: (pgid) => {
+        try {
+          process.kill(-pgid, 'SIGKILL');
+        } catch {
+          /* gone meanwhile */
+        }
+      },
+      restore: (values) => restoreRegistry(values),
+      relaunch: () => ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false }),
+      ownerAlive: isProcessAlive,
+      release: async () =>
+        execFileSync(process.execPath, [deviceLockScript, 'release'], {
+          env: process.env,
+          stdio: 'inherit',
+        }),
+      sleep,
+      now: Date.now,
+      log: (line) => console.log(line),
+      error: (line) => console.error(line),
+    },
+  });
+  process.exit(code);
 }
 
 // The premise of this whole script ("a file still sitting there means the run did

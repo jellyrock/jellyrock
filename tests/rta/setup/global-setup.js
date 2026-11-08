@@ -13,9 +13,16 @@
  * device with no snapshot taken and no restore to come, and the failure is
  * silent: you find out when you next open the app and it is signed into the
  * demo server. Better a loud refusal than a stranded device.
+ *
+ * Under the runner, it also arms a watchdog: if the runner dies without signaling
+ * Vitest (a SIGKILL), Vitest and its worker stop within a second instead of driving
+ * the device unattended. The runner spawns Vitest in its own process group, so a kill
+ * aimed at the runner's group no longer reaches it.
  */
+import { exitWithParent } from '../../../scripts/lib/process-group.js';
+
 export async function setup() {
-  if (process.env.RTA_RUNNER === '1') return;
+  if (process.env.RTA_RUNNER === '1') return exitWithParent();
 
   throw new Error(
     'RTA specs must be run through `npm run test:rta` (or :fast / :capture / :tdd).\n' +
