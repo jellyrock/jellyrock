@@ -98,6 +98,9 @@ const lock = await acquireDeviceLock({ what: runName });
 // tests rather than an absence, and so `prefer-const` reads the spawn as the
 // reassignment it is.)
 let child = null;
+// The restore helper's pid once `handOff()` has started it. Declared here for the same
+// reason as `child`: the crash handler below reads it.
+let helperPid = null;
 for (const event of ['uncaughtException', 'unhandledRejection']) {
   process.on(event, async (err) => {
     console.error(`\n[rta] ${event} — releasing the device.\n${err?.stack || err?.message || err}`);
@@ -118,9 +121,14 @@ for (const event of ['uncaughtException', 'unhandledRejection']) {
       // the exit, and the record's net gets to label the run for what it was.
       child.removeAllListeners('exit');
       signalGroup(child, 'SIGKILL');
-      // Same trade the second-interrupt path makes: the registry is left as the
-      // suite had it, and the snapshot on disk is the repair.
-      console.log('[rta] the device is left dirty. Recover: npm run rta:restore');
+      // A helper already started keeps restoring outside this process. Without one, it is
+      // the trade the second-interrupt path makes: the registry is left as the suite had
+      // it, and the snapshot on disk is the repair.
+      console.log(
+        isProcessAlive(helperPid)
+          ? `[rta] the restore helper (pid ${helperPid}) is still restoring the device.`
+          : '[rta] the device is left dirty. Recover: npm run rta:restore',
+      );
     }
     await lock.release().catch(() => {});
     process.exit(1);
@@ -202,7 +210,6 @@ relayJobControl(child);
 
 // Starts the restore helper once, outside this process's tree. It adopts the snapshot,
 // waits for Vitest's group to exit, restores, and releases the lock if this process is gone.
-let helperPid = null;
 function handOff() {
   if (helperPid) return helperPid;
   helperPid = spawnOutsideTree([
