@@ -756,5 +756,69 @@ namespace tests
       m.assertFalse(syncPlayQueue.playerIsOnGroupItem(true, true, false, "idle"), "no mount reported for the group's item")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("queueNextIds() — what a catch-up adds after the group's video")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the videos after the played one, in order, are added")
+    function _()
+      state = { playlist: [{ itemId: "e3", playlistItemId: "p-3" }] }
+      queue = [{ id: "e3", type: "Episode" }, { id: "e4", type: "Episode" }, { id: "e5", type: "Episode" }]
+      m.assertEqual(syncPlayQueue.queueNextIds(queue, 0, state), ["e4", "e5"])
+    end function
+
+    @it("the videos before the played one are not added")
+    function _()
+      state = { playlist: [{ itemId: "e3", playlistItemId: "p-3" }] }
+      queue = [{ id: "e1", type: "Episode" }, { id: "e2", type: "Episode" }, { id: "e3", type: "Episode" }, { id: "e4", type: "Episode" }]
+      m.assertEqual(syncPlayQueue.queueNextIds(queue, 2, state), ["e4"])
+    end function
+
+    @it("a video the group's playlist already holds is not added again, nor one the queue repeats")
+    function _()
+      state = { playlist: [{ itemId: "e3", playlistItemId: "p-3" }, { itemId: "e4", playlistItemId: "p-4" }] }
+      queue = [{ id: "e3", type: "Episode" }, { id: "e4", type: "Episode" }, { id: "e5", type: "Episode" }, { id: "e5", type: "Episode" }]
+      m.assertEqual(syncPlayQueue.queueNextIds(queue, 0, state), ["e5"])
+    end function
+
+    @it("an item the player cannot follow is left out")
+    function _()
+      state = { playlist: [{ itemId: "e3", playlistItemId: "p-3" }] }
+      queue = [{ id: "e3", type: "Episode" }, { id: "a1", type: "Audio" }, { id: "e4", type: "Episode" }]
+      m.assertEqual(syncPlayQueue.queueNextIds(queue, 0, state), ["e4"])
+    end function
+
+    @it("nothing after the played one adds nothing")
+    function _()
+      state = { playlist: [{ itemId: "e3", playlistItemId: "p-3" }] }
+      m.assertEqual(syncPlayQueue.queueNextIds([{ id: "e3", type: "Episode" }], 0, state), [])
+      m.assertEqual(syncPlayQueue.queueNextIds(invalid, 0, state), [])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("queuedNextCount() — whether a queue update is the group taking what was added")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    private added = [{ itemId: "e3", playlistItemId: "p-3" }, { itemId: "e4", playlistItemId: "p-4" }, { itemId: "e5", playlistItemId: "p-5" }]
+
+    @it("a QueueNext update holding every id added is told with their count")
+    function _()
+      m.assertEqual(syncPlayQueue.queuedNextCount(["e4", "e5"], "QueueNext", m.added), 2)
+    end function
+
+    @it("an update missing one of them is someone else's: the server refuses an addition silently")
+    function _()
+      m.assertEqual(syncPlayQueue.queuedNextCount(["e4", "e6"], "QueueNext", m.added), 0)
+    end function
+
+    @it("any other update, or nothing added, tells nothing")
+    function _()
+      m.assertEqual(syncPlayQueue.queuedNextCount(["e4"], "NewPlaylist", m.added), 0)
+      m.assertEqual(syncPlayQueue.queuedNextCount(["e4"], "Queue", m.added), 0)
+      m.assertEqual(syncPlayQueue.queuedNextCount([], "QueueNext", m.added), 0)
+      m.assertEqual(syncPlayQueue.queuedNextCount(invalid, "QueueNext", m.added), 0)
+      m.assertEqual(syncPlayQueue.queuedNextCount(["e4"], "QueueNext", invalid), 0)
+    end function
+
   end class
 end namespace

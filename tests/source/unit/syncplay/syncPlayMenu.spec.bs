@@ -164,6 +164,19 @@ namespace tests
       m.assertEqual(arg, "Movie night")
     end function
 
+    @it("videos the group took up next are an info toast with the group and the count, by translatePlural's rule")
+    function _()
+      one = syncPlayMenu.toastFor({ kind: "queuedNext", groupName: "Movie night", count: 1 })
+      many = syncPlayMenu.toastFor({ kind: "queuedNext", groupName: "Movie night", count: 4 })
+      m.assertTrue(isValid(one) and isValid(many), "a toast is shown")
+      if isValid(one) and isValid(many)
+        m.assertEqual(one.key, translationKeys.MessageSyncPlayQueuedNextOne)
+        m.assertEqual(many.key, translationKeys.MessageSyncPlayQueuedNextMany)
+        m.assertEqual(many.toastType, "info")
+        m.assertEqual(many.params, ["Movie night", "4"])
+      end if
+    end function
+
     @it("a time offset pick's correction is an info toast that the member is syncing")
     function _()
       toast = syncPlayMenu.toastFor({ kind: "syncing" })

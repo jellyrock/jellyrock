@@ -550,15 +550,38 @@ namespace tests
       m.assertTrue(posts.getChild(0).request.url.instr("/SyncPlay/SetIgnoreWait") >= 0)
     end function
 
-    @it("a halted member's Play All whose current item is the group's video catches up too")
+    @it("a halted member's Play All whose current item is the group's video catches up and adds the rest up next")
     function _()
       posts = m.capturePosts()
       m.haltWithServer()
-      m.pressPlay([{ id: "i1", type: "Episode" }, { id: "i7", type: "Episode" }])
+      ' i2 is in the group's playlist already, so only i7 is added.
+      m.pressPlay([{ id: "i1", type: "Episode" }, { id: "i7", type: "Episode" }, { id: "i2", type: "Episode" }])
       m.assertTrue(m.manager.callFunc("claimPlay", promises.create()))
       m.assertFalse(m.manager.playHeld)
       m.assertTrue(m.manager.following)
-      m.assertEqual(posts.getChildCount(), 1, "only the wait is posted")
+      m.assertEqual(posts.getChildCount(), 2, "the wait, then the videos added up next")
+      if posts.getChildCount() = 2
+        m.assertTrue(posts.getChild(0).request.url.instr("/SyncPlay/SetIgnoreWait") >= 0)
+        added = posts.getChild(1).request
+        m.assertTrue(added.url.instr("/SyncPlay/Queue") >= 0, "added, not a new queue: nothing restarts")
+        m.assertTrue(added.body.instr(chr(34) + "i7" + chr(34)) >= 0)
+        m.assertFalse(added.body.instr(chr(34) + "i2" + chr(34)) >= 0, "the group's playlist holds i2 already")
+        m.assertTrue(added.body.instr("QueueNext") >= 0, "right after the group's video")
+      end if
+    end function
+
+    @it("a held play the group has since moved to catches up on confirm and adds the rest up next")
+    function _()
+      posts = m.capturePosts()
+      m.haltWithServer()
+      m.pressPlay([{ id: "i2", type: "Movie" }, { id: "i8", type: "Movie" }])
+      m.manager.callFunc("claimPlay", promises.create())
+      m.assertTrue(m.manager.playHeld)
+      m.manager.frame = m.update("PlayQueue", { Reason: "SetCurrentItem", LastUpdate: "2026-10-23T20:47:30.000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }, { ItemId: "i2", PlaylistItemId: "p2" }], PlayingItemIndex: 1, StartPositionTicks: 0 })
+      m.assertTrue(m.manager.callFunc("confirmPlay"))
+      last = m.lastPost(posts)
+      m.assertTrue(last.url.instr("/SyncPlay/Queue") >= 0, "the rest of the held queue is added")
+      m.assertTrue(last.body.instr(chr(34) + "i8" + chr(34)) >= 0)
     end function
 
     @it("a halted member's play of another video in the group's playlist still asks: the group would jump to it")

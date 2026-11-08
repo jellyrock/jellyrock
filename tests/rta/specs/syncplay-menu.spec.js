@@ -659,6 +659,63 @@ it("a halted member's Play on the group's own video catches up at the group's po
   expect(await getActiveVal('subtype()'), 'nothing played after Back').toBe('ItemDetails');
 });
 
+it("a halted member's play led by the group's video catches up and adds the rest right after it", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  // The case above leaves the Roku halted in the group, the group still on the hero alone.
+  expect(await getGlobalVal('syncPlayManager.following'), 'halted by its Back').toBe(false);
+  expect(await getGlobalVal('syncPlayManager.sync.playlistCount'), 'the hero alone').toBe(1);
+  // The group's video, read off the details screen the case above left open: ctx.heroId is
+  // empty on a server without the configured hero title, which the suite reaches by its index.
+  expect(await getActiveVal('subtype()'), "on the details screen of the group's video").toBe(
+    'ItemDetails',
+  );
+  const groupVideo = await getActiveVal('itemContent.id');
+  expect(groupVideo, "the group's video id was read").toBeTruthy();
+  const other = (await moviesOtherThanHero(2)).find((id) => id !== groupVideo);
+  // A Play All whose first video is the group's: the demo library has no collection that starts
+  // with the hero, so the queue a launcher would build is set as one would, and started the way
+  // every launcher ends (QueueManager.playQueue).
+  const queueCall = (funcName, funcParams = []) =>
+    odc.callFunc(
+      { base: 'global', keyPath: 'queueManager', funcName, funcParams },
+      { timeout: 10000 },
+    );
+  await queueCall('clear');
+  await queueCall('set', [
+    [
+      { id: groupVideo, type: 'Movie' },
+      { id: other, type: 'Movie' },
+    ],
+  ]);
+  await queueCall('setPosition', [0]);
+  await queueCall('beginPlaybackStart', ['']);
+  await queueCall('playQueue');
+  // The catch-up toast comes first and this one replaces it, so only this one is waited for:
+  // it shows once the server's QueueNext update holds the added video.
+  await waitToast(`Added 1 more video up next for ${GROUP_NAME}.`, {
+    timeout: 30000,
+    label: 'the added video, told once the group took it',
+  });
+  expect(await getGlobalVal('syncPlayManager.sync.playlistCount'), 'the other movie added').toBe(2);
+  await waitFor('subtype()', (v) => v === 'PlayerHostView', {
+    read: getActiveVal,
+    timeout: 30000,
+    interval: 250,
+    label: 'the player mounted from the catch-up',
+  });
+  await waitMediaPlaying("the group's item, caught up", 60000);
+  expect(await getGlobalVal('syncPlayManager.following')).toBe(true);
+  // Back halts again, leaving the state the next cases start from.
+  await stopPlayback();
+  await waitToast(
+    `No longer following ${GROUP_NAME}. Pick Resume with Group in the SyncPlay menu to catch up.`,
+    { label: 'the halted toast after the catch-up with additions' },
+  );
+});
+
 it('Back during a catch-up whose item fetch then fails halts quietly, with no retry and no failure toast', async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(

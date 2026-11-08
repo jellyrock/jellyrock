@@ -142,7 +142,8 @@ namespace syncPlayMenu
   end function
 
   ' The toast for a manager notice ({ kind, groupName, userName }): the translation key, the
-  ' toast type and the one placeholder, or invalid for a kind that shows nothing. The types
+  ' toast type and the one placeholder (arg), or every placeholder in order (params) for a kind
+  ' with more than one, or invalid for a kind that shows nothing. The types
   ' follow the settled table: success for the viewer's own join, info for membership and the
   ' group start, warning for a halt, error for a refusal.
   function toastFor(notice as dynamic) as dynamic
@@ -160,6 +161,12 @@ namespace syncPlayMenu
     if kind = "groupStarted" then return { key: translationKeys.MessageSyncPlayGroupStarted, toastType: "info", arg: groupName }
     if kind = "playedToGroup" then return { key: translationKeys.MessageSyncPlayPlayedToGroup, toastType: "info", arg: groupName }
     if kind = "alreadyWatching" then return { key: translationKeys.MessageSyncPlayAlreadyWatching, toastType: "info", arg: groupName }
+    if kind = "queuedNext"
+      ' Two placeholders, {0} the group and {1} the count, so it carries params in place of arg.
+      count = 0
+      if isValid(notice.count) then count = cint(notice.count)
+      return { key: pluralKey(translationKeys.MessageSyncPlayQueuedNext, count), toastType: "info", arg: groupName, params: [groupName, count.toStr()] }
+    end if
     if kind = "followingAgain" then return { key: translationKeys.MessageSyncPlayFollowingAgain, toastType: "info", arg: groupName }
     if kind = "resumeFailed" then return { key: translationKeys.MessageSyncPlayResumeFailed, toastType: "warning", arg: groupName }
     if kind = "syncing" then return { key: translationKeys.MessageSyncPlaySyncingWithGroup, toastType: "info", arg: "" }

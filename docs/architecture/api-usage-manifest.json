@@ -776,6 +776,18 @@
       ]
     },
     {
+      "path": "/SyncPlay/Queue",
+      "normalized": "/syncplay/queue",
+      "methods": [
+        "POST"
+      ],
+      "minApiVersion": 1,
+      "maxApiVersion": null,
+      "sourceFiles": [
+        "source/api/ApiClient.bs"
+      ]
+    },
+    {
       "path": "/SyncPlay/Ready",
       "normalized": "/syncplay/ready",
       "methods": [
@@ -1397,6 +1409,12 @@
       "name": "IsRequired",
       "sourceFiles": [
         "source/api/items.bs"
+      ]
+    },
+    {
+      "name": "ItemIds",
+      "sourceFiles": [
+        "source/syncplay/syncPlayRequests.bs"
       ]
     },
     {
@@ -3655,8 +3673,8 @@
       }
     },
     "counts": {
-      "endpoints": 100,
-      "requestFields": 64,
+      "endpoints": 101,
+      "requestFields": 65,
       "responseFields": 223,
       "unresolvedEndpointSinks": 3
     },

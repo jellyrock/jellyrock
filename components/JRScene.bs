@@ -1371,7 +1371,9 @@ sub onSyncPlayNotice(event as object)
   end if
   toast = syncPlayMenu.toastFor(notice)
   if not isValid(toast) then return
-  showToast(translate(toast.key, [toast.arg]), toast.toastType)
+  params = [toast.arg]
+  if isValid(toast.params) then params = toast.params
+  showToast(translate(toast.key, params), toast.toastType)
 end sub
 
 ' Cancel, Back and a dialog closed from outside all keep the group's playback. Only the dialog

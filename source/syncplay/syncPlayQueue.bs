@@ -146,6 +146,46 @@ namespace syncPlayQueue
     return true
   end function
 
+  ' What a catch-up adds right after the group's video (SyncPlayManager.catchUp): the item ids after
+  ' `position` that the player can follow and the group's playlist does not hold, each once, in
+  ' order. A Play All whose current item is the group's video keeps the rest of its queue this way,
+  ' with nothing restarted or replaced: POST /SyncPlay/Queue only adds, in any group state.
+  ' @param state - syncPlayState, whose playlist says what the group holds already
+  function queueNextIds(queueItems as dynamic, position as integer, state as object) as object
+    ids = []
+    if type(queueItems) <> "roArray" then return ids
+    held = {}
+    if type(state.playlist) = "roArray"
+      for each entry in state.playlist
+        if syncPlayTime.isText(entry.itemId) then held[entry.itemId] = true
+      end for
+    end if
+    for i = position + 1 to queueItems.count() - 1
+      queueItem = queueItems[i]
+      if followsItem(queueItem) and syncPlayTime.isText(queueItem.id) and queueItem.id <> "" and not held.doesExist(queueItem.id)
+        ids.push(queueItem.id)
+        held[queueItem.id] = true
+      end if
+    end for
+    return ids
+  end function
+
+  ' How many videos a queue update shows the group took from this member's addition (queueNextIds),
+  ' or 0 when it is not that answer: a QueueNext update whose playlist holds every id added. The
+  ' server refuses an addition without a word (it only logs it), so success is read from its own
+  ' update, never assumed at the post, and another member's QueueNext without these ids is theirs.
+  function queuedNextCount(pendingIds as dynamic, reason as string, playlist as dynamic) as integer
+    if reason <> "QueueNext" or type(pendingIds) <> "roArray" or pendingIds.count() = 0 or type(playlist) <> "roArray" then return 0
+    held = {}
+    for each entry in playlist
+      if syncPlayTime.isText(entry.itemId) then held[entry.itemId] = true
+    end for
+    for each itemId in pendingIds
+      if not held.doesExist(itemId) then return 0
+    end for
+    return pendingIds.count()
+  end function
+
   ' Whether a QueueManager item is the one the group is playing: queueItemsFor stamps the
   ' playlist id, and nothing else in the app sets it.
   function isGroupItem(queueItem as dynamic, playingItemId as string) as boolean
