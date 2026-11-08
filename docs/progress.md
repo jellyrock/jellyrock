@@ -1241,6 +1241,10 @@ An H.264 source caps the H.264 codec profile at `1920x1080` in `buildPlaybackInf
 
 `mediaNumber` in `source/utils/misc.bs` reads a long integer through a float, so a large value loses its low digits (94848001 reads as 94848000, found 2026-11-04). It is harmless for the values it serves today, but wrong for bitrate and byte values; `reencodeCheck.bitsPerSecond` was added to avoid it. Decide whether `mediaNumber` should keep integers whole, and check its callers.
 
+#### The screensaver's exit can take the focus from an open dialog or a running start `[fid: screensaver-exit-steals-dialog-focus]` `[captured 2026-11-08]`
+
+When `exitedScreensaver` fires, `main.bs` calls `group.callFunc("onScreenShown")` on the active view directly, skipping `JRScreen.showScreenKeepingDialogFocus()`. Every `onScreenShown` takes the focus (`Home.onScreenShown` calls `restoreHomeFocus()`), so a dialog left open through the screensaver, or a playback start holding the keys in `AppWaitHost`, can lose them: the dialog stays on screen and ignores every key. Found by reading the code in the PR #1336 review; not reproduced. Not fixed now because it needs reproducing on a device first. Close it by reproducing on a device, then routing the screensaver path through the same keep-the-dialog's-focus guard (and checking a held start), with a unit case.
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`

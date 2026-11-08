@@ -668,6 +668,12 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 - **issue**: `JRScene.navigateThenFocus` retries a navigation the router refused as "already in progress" (decision `refused-navigation-retried-on-message`). The overhang cluster's search and settings actions on every screen use it through `routerNavigate` (`JRScene.onOverhangIconAction`), as do Home's options-panel actions. The remaining direct `sgrouter.navigateTo` calls, the item-open and link calls, do not, so a press that lands before the previous navigation ends can still be lost, and most of those calls do not log the rejection either.
 - **direction**: Route the remaining item-open and link calls (`ItemDetails`, `BaseGridView`, `SearchScreen`, Home's voice search) through `routerNavigate`, or give them a shared wrapper. Check first whether any of those screens can be pressed in the window after Back: only the overhang has been seen to hit it.
 
+#### `focused-leaf-walk-duplicated`
+
+- **area**: `components/JRScreen.bs` (`isFocusHeldElsewhere`, `saveLastFocus`, `showScreenKeepingDialogFocus`), `components/AppWaitHost.bs` (the overhang branch of `holdFocus`)
+- **issue**: Four copies of the loop that follows `focusedChild` down to the node that has the focus. Each has its own start node and stop condition, so a fix to one (a stale chain, a focused node with no focused child) does not reach the others. All four behave the same today.
+- **direction**: One helper in `source/utils/` (for example `getDeepestFocusedNode(root)`) called from all four sites, with one spec, so the next stop-condition fix lands once.
+
 ## Recently removed: don't go searching for these
 
 - **`scenemanager-stack-unbounded`**, **`printregistry-on-startup`**, **`selecteditem-bubbling-implicit`**, **`changelog-syncer-mixes-validate-mutate`**, **`make-npm-overlap`** and **`trickplay-prefetch-hardcoded`**: retired 2026-10-11 because their premises no longer held.
