@@ -93,7 +93,7 @@ sgRouter drives its views through `onViewOpen`, `onViewResume`, `onViewSuspend` 
 | `onViewResume` (back on top after being covered) | The same |
 | `onViewSuspend` (covered by a new view) | `saveLastFocus()` stores the deepest focused node in `lastFocus`, then marks the view covered. The view is still visible, so `onScreenHidden()` waits for `hideCovered()` |
 | `hideCovered()` (called by `JRScene`, not the router) | Hides the view. If it was covered, ends the open dialog the view or a component inside it opened ([dialogs.md](dialogs.md#presenting-and-tearing-down)), then runs `onScreenHidden()` ([the screen swap](#the-screen-swap)) |
-| `beforeViewClose` (closed for good) | `onScreenHidden()`, then `onDestroy()` |
+| `beforeViewClose` (closed for good) | `onScreenHidden()`, then `onDestroy()`, then abandons an open dialog the view or a component inside it opened, unless it has answered ([dialogs.md](dialogs.md#presenting-and-tearing-down)) |
 | `handleFocus` | `restoreScreenFocus()`, unless the call is only a notice ([focus management](#focus-management)) |
 
 `activeRoutedView` is set before `onScreenShown()` runs, because the overhang controller, the playback code and the options key all find the screen on show through it. `getActiveView()` in `source/utils/misc.bs` returns it.
@@ -360,7 +360,7 @@ Each helper creates a dialog, presents it and returns it. The answer arrives on 
 
 From a component, pass `onResult` (a function name in your scope) and the helper wires a scoped observer. From main-thread code, leave it out and observe the dialog on your message port. The result has the same shape either way: `{ cancelled, confirmed, buttonIndex, buttonText, optionIndex, value, externallyCancelled }`. `externallyCancelled` is true when code closed the dialog (`cancelOpenDialog`, or a newer overlay replacing it) and false when the viewer did, Back included. Only a handler that acts on its result needs it ([dialogs.md](dialogs.md#presenting-and-tearing-down)).
 
-**Overlays are appended to the scene, not to the screen that opened them**, so one outlives a routed view destroyed under it. A screen that opens a dialog tears it down itself:
+**Overlays are appended to the scene, not to the screen that opened them**, so one outlives a routed view destroyed under it. A screen that opens a dialog tears it down itself, and `JRScreen.beforeViewClose` abandons one it missed:
 
 | Verb | Delivers | Use when |
 |---|---|---|
