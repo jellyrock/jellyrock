@@ -22,6 +22,7 @@ import {
   snapshotDir,
   buildAcceptedRecord,
   writeSnapshotFile,
+  adoptSnapshotFile,
   snapshotRegistry,
 } from './registry.js';
 import { runsLedgerPath } from '../../../scripts/run-record.js';
@@ -382,6 +383,25 @@ describe('a snapshot says which process owns it', () => {
     const parsed = JSON.parse(fs.readFileSync(writeInto(), 'utf8'));
     expect(parsed.ownerPid).toBe(process.pid);
     expect(parsed.host).toBe(HOST);
+  });
+
+  it('adopts a snapshot whose owner matches, keeping its values', () => {
+    const file = path.join(dir, `registry-${HOST}.json`);
+    writeSnapshotFile({ JellyRock: { a: '1' } }, file);
+    const before = JSON.parse(fs.readFileSync(file, 'utf8'));
+    fs.writeFileSync(file, JSON.stringify({ ...before, ownerPid: 999999 }));
+    adoptSnapshotFile(999999, file);
+    const after = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(after.ownerPid).toBe(process.pid);
+    expect(after.values).toEqual({ JellyRock: { a: '1' } });
+    expect(after.takenAt).toBe(before.takenAt);
+  });
+
+  it('refuses to adopt a snapshot another process owns, leaving the file unchanged', () => {
+    const file = writeInto();
+    const before = fs.readFileSync(file, 'utf8');
+    expect(() => adoptSnapshotFile(process.pid + 1, file)).toThrow(/owner/i);
+    expect(fs.readFileSync(file, 'utf8')).toBe(before);
   });
 
   it('is read as a live run by device:status, which then withholds the restore', () => {

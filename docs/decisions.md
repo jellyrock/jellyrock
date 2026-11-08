@@ -2682,6 +2682,16 @@ A halted SyncPlay member's video play, a cast included, replaces what the whole 
 
 Ruled out: an "Only for me" button that plays on this Roku while staying halted (operator, 2026-11-06). The confirm already stops the accidental takeover it was meant for, nobody has asked to watch alone while in a group, and another member's new playlist would replace the private video partway through, since `onQueueUpdate` brings a halted member back. Reconsider when a viewer asks to watch something alone while staying in a group. Also ruled out: telling a cast apart from a press (a marker threaded from the deep-link seam through the queue, and the person casting is usually in the room), and "Leave and play" (it waits on the server's `GroupLeft` and needs a timeout path).
 
+## decision-id: rta-restore-outside-tree
+
+**date**: 2026-11-07
+**status**: accepted
+**related-files**: `scripts/rta-run.js`, `scripts/rta-restore.js`, `scripts/lib/process-group.js`, `scripts/lib/restore-takeover.js`, `tests/rta/lib/registry.js`, `tests/rta/setup/global-setup.js`
+
+`rta-run.js` hands every registry restore to `rta-restore.js --takeover`, started through `spawnOutsideTree()`. That launcher exits at once, so the helper leaves the runner's process tree. Claude Code's task stop signals every descendant of a task, detached ones included, then kills them about 1.4 s later (measured 2026-11-07). A restore takes far longer, so one running in the runner or any child of it was always cut off. The helper adopts the snapshot's `ownerPid`, so `device:status` and the next run see the run as in progress. It waits for Vitest's group to exit, restores, relaunches the channel, and releases the lock if the runner is gone. A second signal abandons the restore and kills the helper, unless it arrives within 500 ms of the first: then it is the same stop delivered twice (npm forwards `SIGINT` and `SIGTERM` to a script that bash runs in place of the shell), and `interruptGate()` ignores it.
+
+Rejected: a rule to stop runs with `kill -INT` (it relies on every agent remembering it), a plain detached child as in `measure-devices.js` (the task stop kills it too), and, for the repeated signal, letting only `SIGINT` abandon (a Ctrl-C under bash still arrives twice). Check this again if a tool starts killing by session or control group instead of by process tree: the double fork would no longer escape.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

@@ -315,6 +315,18 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 - **issue**: The entry points' first ODC call is bounded since 2026-09-06: `snapshotRegistry()` and `applyRestore()` go through `readRegistryBounded` in [`registry.js`](../../tests/rta/lib/registry.js). The decision note `rta-odc-gated-before-bounded` has the failure modes and the alternatives ruled out, and followup `rta-odc-connect-hang` in [`progress.md`](../progress.md) tracks the two upstream defects. What remains is a Vitest worker, a separate process: its own first ODC call (`seedHome` opens with `odc.writeRegistry`) is ungated. By the time a spec runs, the parent has deployed and taken its snapshot, so only an app that dies mid-suite reaches it, and that already fails the specs. The cost is a lost run record, not a hang.
 - **direction**: If taken, call `ensureOdcReachable()` at the top of `seedHome`. Do not gate every read: the probe answers false the moment a port is refused, which would fail a device that is only relaunching.
 
+#### `rta-restore-helper-wait-needs-reaping`
+
+- **area**: [`scripts/rta-run.js`](../../scripts/rta-run.js) (the wait on the restore helper, `isProcessAlive(helperPid)`), [`scripts/lib/process-group.js`](../../scripts/lib/process-group.js) (`spawnOutsideTree`), [`scripts/rta-restore.js`](../../scripts/rta-restore.js), [`scripts/lib/restore-takeover.js`](../../scripts/lib/restore-takeover.js) (`runTakeover`)
+- **issue**: After a restore the runner polls `isProcessAlive(helperPid)` until the helper is gone. The double fork orphans the helper, so whatever adopts it must reap it for the poll to end. That holds on the dev machine but is unverified elsewhere (a container whose first process does not reap, a terminal multiplexer, macOS). Where nothing reaps it, the helper stays a zombie that `isProcessAlive` reports as alive, and the poll does not end after a restore that worked.
+- **direction**: Wait on a signal the helper controls, such as a result file it writes before exiting, instead of its process id. Check the platforms the dev tooling supports ([`dev-tooling-platforms-unverified`](#dev-tooling-platforms-unverified)).
+
+#### `rta-run-sigkill-leaves-record-unfolded`
+
+- **area**: [`scripts/rta-run.js`](../../scripts/rta-run.js), [`scripts/run-record.js`](../../scripts/run-record.js) (`armCloseOnExit`)
+- **issue**: A runner killed with `SIGKILL` before any other signal runs no handler, so its run record is never folded into `run-meta.json` and the runs ledger. This predates the restore helper. The registry is repaired by the next run, which restores from the stranded snapshot first; the record is not.
+- **direction**: Fold any record left open at the start of the next run, or in `device:status`, when the recorded owner process is dead. Only if a run killed with `SIGKILL` shows up in practice, since an ordinary stop signal is now handled.
+
 #### `onstate-error-branch-not-reentrant`
 
 - **area**: [`components/video/VideoPlayerView.bs`](../../components/video/VideoPlayerView.bs) (`onState`, the `error` branch)

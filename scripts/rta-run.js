@@ -25,9 +25,14 @@
  *    handler inside the Vitest process is racing an exit it cannot win.
  *
  * A parent that owns Vitest as a child has neither problem: the interrupt stops
- * the CHILD, and the parent (which nothing else is trying to exit) runs the
- * restore to completion before exiting itself. Verified on `.178` 2026-08-10:
+ * the CHILD, and the parent (which nothing else is trying to exit) waits for the
+ * restore to finish before exiting itself. Verified on `.178` 2026-08-10:
  * SIGINT mid-suite restored the full registry to 0 differences.
+ *
+ * The restore itself runs in a helper (`scripts/rta-restore.js --takeover`) started
+ * outside this process's tree. A tool that stops a task signals every descendant, then
+ * kills them about a second later, which is far shorter than a restore, so a restore
+ * running in this process or in a child of it is cut off.
  *
  * `globalSetup` still runs, but only to refuse a bare `vitest` invocation that
  * would bypass this file and leave a device stranded.
@@ -35,8 +40,8 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { setupRtaEnv, deployRtaBuild, relaunch, ecp } from '../tests/rta/lib/driver.js';
-import { snapshotRegistry, restoreRegistry } from '../tests/rta/lib/registry.js';
+import { setupRtaEnv, deployRtaBuild, relaunch } from '../tests/rta/lib/driver.js';
+import { snapshotRegistry, readSnapshotFile } from '../tests/rta/lib/registry.js';
 import { probeFixture } from './lib/fixture-probe.js';
 import { RTA_CONFIG } from '../tests/rta/config.js';
 import {
@@ -48,6 +53,13 @@ import {
 } from './run-record.js';
 import { acquireDeviceLock } from './device-lock.js';
 import { startConsoleCapture, keepFailedConsole } from './lib/console-capture.js';
+import {
+  interruptGate,
+  relayJobControl,
+  signalGroup,
+  spawnOutsideTree,
+} from './lib/process-group.js';
+import { isProcessAlive } from './lib/process-liveness.cjs';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const watch = process.argv.includes('--watch');
@@ -86,9 +98,12 @@ const lock = await acquireDeviceLock({ what: runName });
 // tests rather than an absence, and so `prefer-const` reads the spawn as the
 // reassignment it is.)
 let child = null;
+// The restore helper's pid once `handOff()` has started it. Declared here for the same
+// reason as `child`: the crash handler below reads it.
+let helperPid = null;
 for (const event of ['uncaughtException', 'unhandledRejection']) {
   process.on(event, async (err) => {
-    console.error(`\n[rta] ${event} — releasing the device.\n${err?.stack || err?.message || err}`);
+    console.error(`\n[rta] ${event}: stopping the run.\n${err?.stack || err?.message || err}`);
     // Kill the child FIRST, then release. Releasing admits the next contender, and a
     // Vitest that outlives its parent keeps driving the device. Measured 2026-08-10:
     // an orphan re-seeded the demo server underneath three restore attempts. Handing
@@ -105,12 +120,20 @@ for (const event of ['uncaughtException', 'unhandledRejection']) {
       // permanently unsettled, which is exactly right: on this path the handler owns
       // the exit, and the record's net gets to label the run for what it was.
       child.removeAllListeners('exit');
-      child.kill('SIGKILL');
-      // Same trade the second-interrupt path makes: the registry is left as the
-      // suite had it, and the snapshot on disk is the repair.
-      console.log('[rta] the device is left dirty. Recover: npm run rta:restore');
+      signalGroup(child, 'SIGKILL');
+      // A helper already started keeps restoring outside this process. Without one, it is
+      // the trade the second-interrupt path makes: the registry is left as the suite had
+      // it, and the snapshot on disk is the repair.
+      console.log(
+        isProcessAlive(helperPid)
+          ? `[rta] the restore helper (pid ${helperPid}) is still restoring the device, and frees it when done.`
+          : '[rta] the device is left dirty. Recover: npm run rta:restore',
+      );
     }
-    await lock.release().catch(() => {});
+    // A live helper frees the lock itself once this process is gone (`runTakeover`).
+    // Freeing it here too would admit the next run mid-restore, and the helper's later
+    // release, which does not check who holds the lock, would delete that run's lock.
+    if (!isProcessAlive(helperPid)) await lock.release().catch(() => {});
     process.exit(1);
   });
 }
@@ -159,7 +182,7 @@ if (process.env.RTA_NO_DEPLOY === '1') {
   await deployRtaBuild();
 }
 
-const saved = await snapshotRegistry();
+await snapshotRegistry();
 
 child = spawn(
   process.execPath,
@@ -172,13 +195,46 @@ child = spawn(
   ],
   // `run.env` carries RTA_RUN_DIR: the child is a separate process, so it cannot
   // inherit which directory this run's records belong in any other way.
-  { cwd: repoRoot, stdio: 'inherit', env: { ...process.env, RTA_RUNNER: '1', ...run.env } },
+  //
+  // `detached` makes Vitest lead its own process group, so every signal below reaches
+  // its forked workers too (`signalGroup`). A terminal Ctrl-C therefore reaches only this
+  // process, which forwards it; without the group, a `kill <pid>` of this runner left the
+  // worker running after the restore. Two things the terminal no longer does for Vitest
+  // are done elsewhere: Ctrl-Z is relayed below, and a runner killed outright (SIGKILL,
+  // nothing forwarded) is caught by the watchdog in `tests/rta/setup/global-setup.js`.
+  {
+    cwd: repoRoot,
+    stdio: 'inherit',
+    detached: true,
+    env: { ...process.env, RTA_RUNNER: '1', ...run.env },
+  },
 );
+relayJobControl(child);
+
+// Starts the restore helper once, outside this process's tree. It adopts the snapshot,
+// waits for Vitest's group to exit, restores, and releases the lock if this process is gone.
+function handOff() {
+  if (helperPid) return helperPid;
+  helperPid = spawnOutsideTree([
+    path.join(repoRoot, 'scripts', 'rta-restore.js'),
+    '--takeover',
+    `--owner=${process.pid}`,
+    `--wait-group=${child.pid}`,
+    ...(lock.held ? ['--release-lock'] : []),
+  ]);
+  return helperPid;
+}
 
 let interrupting = false;
+let abandoned = false;
+const classifySignal = interruptGate();
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.on(signal, async () => {
-    if (interrupting) {
+    const verdict = classifySignal();
+    // The same stop delivered twice (see `interruptGate`): abandoning here would kill the
+    // restore the first copy has started.
+    if (verdict === 'repeat') return;
+    if (verdict === 'abandon') {
       // Never trap someone in an un-killable process. The snapshot is on disk,
       // so abandoning here is recoverable rather than destructive. Kill the child
       // outright on the way out: a Vitest that outlives its parent keeps driving
@@ -186,7 +242,16 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
       // server underneath three restore attempts), which is far worse than a
       // device left dirty, because it silently fights the recovery.
       console.log('\n[rta] second interrupt — abandoning restore. Recover: npm run rta:restore');
-      child.kill('SIGKILL');
+      // The kills below wake the main flow, which would judge the abandoned restore.
+      abandoned = true;
+      signalGroup(child, 'SIGKILL');
+      if (helperPid) {
+        try {
+          process.kill(-helperPid, 'SIGKILL');
+        } catch {
+          /* already gone */
+        }
+      }
       // Fold before the exit rather than leaving it to the net, which would label
       // an operator's deliberate abandon `crashed`. The device is left dirty here;
       // the RECORD does not have to be wrong as well.
@@ -202,7 +267,10 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
       `\n[rta] ${signal} — stopping the suite, then restoring the device (~30s).` +
         ' Ctrl-C again to abandon.',
     );
-    child.kill('SIGTERM'); // a terminal Ctrl-C already reached it; this covers the rest
+    // Forward the signal we got, to the whole group: Vitest's worker is a grandchild.
+    // SIGINT stays SIGINT so Vitest's own graceful handling still runs.
+    signalGroup(child, signal);
+    handOff();
   });
 }
 
@@ -251,16 +319,19 @@ if (exitCode !== 0) {
   );
 }
 
-try {
-  await restoreRegistry(saved);
+handOff();
+while (!abandoned && isProcessAlive(helperPid)) await new Promise((r) => setTimeout(r, 250));
+// An abandon owns the exit; park so this flow neither reports nor releases a second time.
+if (abandoned) await new Promise(() => {});
+// The helper removes the snapshot only after a verified restore.
+if (readSnapshotFile() === null) {
   console.log('[rta] device registry restored — left as found.');
-} catch (e) {
-  console.error(`\n[rta] ${e.message}`);
+} else {
+  console.error('\n[rta] the device registry restore failed. Recover: npm run rta:restore');
   await lock.release();
   process.exit(1);
 }
 
-await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false }).catch(() => {});
 // Release only after the restore: the device is not actually free for the next
 // contender until it has been put back the way we found it.
 await lock.release();
