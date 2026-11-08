@@ -1,0 +1,105 @@
+namespace tests
+
+  ' ItemDetails' item confirms (Delete, Series Watched) end when another screen covers the
+  ' details. A dialog keeps the focus when a screen opens under it (JRScreen
+  ' showScreenKeepingDialogFocus), so a confirm left open would sit over the new screen and act
+  ' on an item the viewer no longer sees.
+  @suite("ItemDetails - a confirm ends when the screen is covered")
+  class ItemDetailsCoveredConfirmTests extends tests.BaseTestSuite
+
+    private itemDetails as object
+
+    ' Press a button the way the remote does: the group publishes the pressed index, which is
+    ' what onDetailNavButton observes.
+    private sub pressButton(buttonId as string)
+      buttonGrp = m.itemDetails.findNode("buttons")
+      index = -1
+      for i = 0 to buttonGrp.getChildCount() - 1
+        if buttonGrp.getChild(i).id = buttonId then index = i
+      end for
+      m.assertTrue(index >= 0, "precondition: the row has " + buttonId)
+      buttonGrp.buttonSelected = index
+    end sub
+
+    private function deletableMovie() as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "covered-movie"
+      item.type = "Movie"
+      item.name = "Covered"
+      item.canDelete = true
+      return item
+    end function
+
+    ' The router's suspend, then JRScene's swap once the covering screen has opened.
+    private sub cover()
+      m.itemDetails.callFunc("onViewSuspend", {})
+      m.itemDetails.callFunc("hideCovered")
+    end sub
+
+    protected override function beforeEach()
+      super.beforeEach()
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+      m.itemDetails = CreateObject("roSGNode", "ItemDetails")
+      m.top.getScene().appendChild(m.itemDetails)
+    end function
+
+    protected override function afterEach()
+      abandonDialog(openOverlayDialog())
+      m.top.getScene().removeChild(m.itemDetails)
+      m.itemDetails = invalid
+      super.afterEach()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("covered while a confirm is open")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("cancels the Delete confirm, as a close the viewer did not make")
+    function _()
+      m.itemDetails.itemContent = m.deletableMovie()
+      m.pressButton("deleteButton")
+      dialog = openOverlayDialog()
+      m.assertTrue(isValid(dialog), "precondition: Delete opened its confirm")
+
+      m.cover()
+
+      m.assertInvalid(openOverlayDialog(), "the confirm is gone")
+      m.assertTrue(isValid(dialog.result), "the confirm answered")
+      m.assertFalse(dialog.result.confirmed)
+      m.assertTrue(dialog.result.externallyCancelled)
+    end function
+
+    @it("cancels the Series Watched confirm")
+    function _()
+      series = CreateObject("roSGNode", "JellyfinBaseItem")
+      series.id = "covered-series"
+      series.type = "Series"
+      series.name = "Covered"
+      m.itemDetails.itemContent = series
+      m.pressButton("watchedButton")
+      dialog = openOverlayDialog()
+      m.assertTrue(isValid(dialog), "precondition: Watched opened its confirm")
+
+      m.cover()
+
+      m.assertInvalid(openOverlayDialog(), "the confirm is gone")
+      m.assertTrue(dialog.result.externallyCancelled)
+    end function
+
+    @it("leaves a dialog the screen did not open")
+    function _()
+      m.itemDetails.itemContent = m.deletableMovie()
+      dialog = showConfirmDialog("Title", "Message")
+
+      m.cover()
+
+      m.assertTrue(isValid(openOverlayDialog()), "another owner's dialog stays")
+      m.assertTrue(openOverlayDialog().isSameNode(dialog))
+    end function
+
+  end class
+
+end namespace

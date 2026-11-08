@@ -375,6 +375,11 @@ end sub
 
 sub onScreenHidden()
   m.log.info("onScreenHidden")
+  ' A confirm about this item ends when the viewer stops seeing it. Left open, it keeps the
+  ' focus over the screen that covers this one (a cast, a search), and Delete would delete this
+  ' item and then go back from the viewer's screen.
+  cancelOwnDialog(m.watchedConfirmDialog)
+  cancelOwnDialog(m.deleteConfirmDialog)
   hideTextureManager(m.extrasGrid.content)
 end sub
 
