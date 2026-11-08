@@ -1,8 +1,9 @@
 import "pkg:/source/utils/misc.bs"
 
-' Finding the open overlay dialog, apart from the helpers that show one (dialogs.bs). Code that
-' only asks whether a dialog is open imports this file, so it does not pull the dialog helpers
-' and their layout code into its scope: JRScreen is the base of every screen.
+' Finding and removing the open overlay dialog, apart from the helpers that show one (dialogs.bs).
+' Code that only asks whether a dialog is open, or tears one down, imports this file, so it does
+' not pull the dialog helpers and their layout code into its scope: JRScreen is the base of every
+' screen.
 
 ' The id every overlay dialog is stamped with. One definition, because three
 ' things depend on being able to FIND the open dialog by it: openOverlayDialog
@@ -28,3 +29,41 @@ function openOverlayDialog() as dynamic
   if not isValid(scene) then return invalid
   return scene.findNode(OVERLAY_DIALOG_ID)
 end function
+
+' Abandon a dialog this screen opened, delivering no result. Call it from onDestroy for any
+' dialog node you still hold.
+'
+' Overlay dialogs are appended to the scene, not to the screen that opened them, so they outlive
+' their opener. A routed view destroyed while one is open (a deep link, session expiry, a server
+' switch: anything that navigates without the viewer pressing Back) would leave it stranded over
+' the incoming screen, its scoped observer pointing at a torn-down scope and its returnFocusTo at
+' a dead node. Safe to call with invalid or an already-closed dialog.
+sub abandonDialog(dialog as object)
+  if not isValid(dialog) then return
+
+  ' unobserveField, not unobserveFieldScoped: the scoped form removes only the calling
+  ' component's connection, so it misses a main-thread dialog observed with
+  ' `observeField("result", m.port)`. The unscoped form drops every observer on the field, scoped
+  ' and port alike, which is what abandoning means. That widens the call, and it is safe only
+  ' because a dialog has exactly one owner: don't reuse abandonDialog() on a node several scopes
+  ' observe.
+  dialog.unobserveField("result")
+
+  if dialog.isSubtype("StandardKeyboardDialog")
+    ' Roku modal channel: the OS owns presentation, and writing `close` dismisses it.
+    dialog.close = true
+    return
+  end if
+
+  detachOverlayDialog(dialog)
+end sub
+
+' Take an overlay dialog off the scene. Closing (closeOverlayDialog) and abandoning
+' (abandonDialog) both detach through here, so neither keeps the opener alive: `owner` points at
+' the component that opened the dialog, and a screen still holding a dialog that points back at
+' it is a pair of nodes Roku never frees.
+sub detachOverlayDialog(dialog as object)
+  parent = dialog.getParent()
+  if isValid(parent) then parent.removeChild(dialog)
+  if dialog.hasField("owner") then dialog.owner = invalid
+end sub

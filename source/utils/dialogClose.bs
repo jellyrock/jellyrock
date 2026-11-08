@@ -1,3 +1,5 @@
+import "pkg:/source/utils/overlayDialog.bs"
+
 ' The ONE definition of how an overlay dialog closes: JRDialog, JRListDialog,
 ' OverviewDialog and QuickConnectDialog all close through it.
 '
@@ -22,7 +24,8 @@
 ' invalid active view.
 '
 ' Callers keep their own bookkeeping (the once-only flag, the `closed` signal);
-' this holds only the detach and the focus decision.
+' this holds only the focus decision. The detach itself is detachOverlayDialog in
+' overlayDialog.bs, which abandonDialog shares.
 
 ' Take the dialog off its parent and hand focus back to returnFocusTo, but only
 ' if the dialog still held focus.
@@ -32,10 +35,7 @@ sub closeOverlayDialog(dialog as object)
   returnFocusTo = dialog.returnFocusTo
   wasFocused = dialog.isInFocusChain()
 
-  parent = dialog.getParent()
-  if isValid(parent) then parent.removeChild(dialog)
-  ' A closed dialog must not keep the screen that opened it alive.
-  dialog.owner = invalid
+  detachOverlayDialog(dialog)
 
   if not wasFocused or not isValid(returnFocusTo) then return
 

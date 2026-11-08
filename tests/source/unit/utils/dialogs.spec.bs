@@ -175,6 +175,33 @@ namespace tests
       m.assertInvalid(presented.result)
     end function
 
+    ' The dialog's owner points at the component that opened it. A screen that still holds the
+    ' dialog after it leaves the scene would make a pair of nodes Roku never frees, so both ways
+    ' off the scene drop it.
+    @it("abandonDialog lets go of the component that opened the dialog")
+    function _()
+      dialog = CreateObject("roSGNode", "JRDialog")
+      dialog.buttons = ["OK"]
+      presented = presentOverlayDialog(dialog, "")
+      m.assertNotInvalid(presented.owner, "precondition: presentOverlayDialog recorded the opener")
+
+      abandonDialog(presented)
+
+      m.assertInvalid(presented.owner)
+    end function
+
+    @it("a close lets go of the component that opened the dialog")
+    function _()
+      dialog = CreateObject("roSGNode", "JRDialog")
+      dialog.buttons = ["OK"]
+      presented = presentOverlayDialog(dialog, "")
+      m.assertNotInvalid(presented.owner, "precondition: presentOverlayDialog recorded the opener")
+
+      cancelOpenDialog()
+
+      m.assertInvalid(presented.owner)
+    end function
+
     @it("cancelOpenDialog is safe with nothing open")
     function _()
       m.assertFalse(isOverlayDialogOpen())
