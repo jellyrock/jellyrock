@@ -254,6 +254,15 @@ sub restoreFocus(view as object)
   end if
 end sub
 
+' Whether `node` is `root` or one of its descendants.
+function isInside(node as dynamic, root as object) as boolean
+  while isValid(node)
+    if node.isSameNode(root) then return true
+    node = node.getParent()
+  end while
+  return false
+end function
+
 ' Maps a selected content item to its route: a named-route arg { name, params } for
 ' sgRouter.navigateTo. Pure (no router call) so it can live here in commonly-imported misc.bs;
 ' the routed view that owns the selection calls navigateTo itself (passing the rich node as

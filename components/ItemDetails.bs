@@ -375,14 +375,6 @@ end sub
 
 sub onScreenHidden()
   m.log.info("onScreenHidden")
-  ' A dialog about this item ends when the viewer stops seeing it. Left open, it keeps the
-  ' focus over the screen that covers this one (a cast, a search), and Delete would delete this
-  ' item and then go back from the viewer's screen. The More menu runs the same row actions, and
-  ' the subtitle panel's confirm would move the focus back into this screen once its delete lands.
-  cancelOwnDialog(m.watchedConfirmDialog)
-  cancelOwnDialog(m.deleteConfirmDialog)
-  cancelOwnDialog(m.moreMenuDialog)
-  m.subtitlePanel.callFunc("cancelDeleteConfirm")
   hideTextureManager(m.extrasGrid.content)
 end sub
 

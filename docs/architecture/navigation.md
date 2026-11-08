@@ -92,7 +92,7 @@ sgRouter drives its views through `onViewOpen`, `onViewResume`, `onViewSuspend` 
 | `onViewOpen` (first time on top) | Sets `m.global.activeRoutedView` to itself, then `onScreenShown()` |
 | `onViewResume` (back on top after being covered) | The same |
 | `onViewSuspend` (covered by a new view) | `saveLastFocus()` stores the deepest focused node in `lastFocus`, then marks the view covered. The view is still visible, so `onScreenHidden()` waits for `hideCovered()` |
-| `hideCovered()` (called by `JRScene`, not the router) | Hides the view, and runs `onScreenHidden()` if it was covered ([the screen swap](#the-screen-swap)) |
+| `hideCovered()` (called by `JRScene`, not the router) | Hides the view. If it was covered, ends the open dialog the view or a component inside it opened ([dialogs.md](dialogs.md#presenting-and-tearing-down)), then runs `onScreenHidden()` ([the screen swap](#the-screen-swap)) |
 | `beforeViewClose` (closed for good) | `onScreenHidden()`, then `onDestroy()` |
 | `handleFocus` | `restoreScreenFocus()`, unless the call is only a notice ([focus management](#focus-management)) |
 

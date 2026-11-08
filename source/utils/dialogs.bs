@@ -319,20 +319,6 @@ sub abandonDialog(dialog as object)
   if isValid(parent) then parent.removeChild(dialog)
 end sub
 
-' Cancel a dialog this screen opened and still holds, delivering a cancelled result with
-' externallyCancelled set. Use it when the dialog's subject leaves the screen while its owner
-' lives on: ItemDetails, covered by a cast or a search, ends its confirms about the item the
-' viewer no longer sees. Unlike cancelOpenDialog(), it never closes another owner's dialog.
-' Safe to call with invalid / an already-closed dialog.
-sub cancelOwnDialog(dialog as object)
-  if not isValid(dialog) then return
-  if dialog.isSubtype("StandardKeyboardDialog")
-    dialog.close = true
-  else
-    dialog.callFunc("cancelDialog")
-  end if
-end sub
-
 ' Close whatever dialog is open, delivering a CANCELLED result to whoever opened
 ' it. The counterpart to abandonDialog(): use this when a THIRD PARTY needs the
 ' screen clear while the dialog's owner is still alive and waiting on a result.
@@ -438,6 +424,9 @@ function presentOverlayDialog(dialog as object, onResult as string, returnFocusT
   ' A hand-off has no supersede to wait for, so it reuses the incumbent's target.
   ' A caller that KNOWS its opener passes it instead and skips the derivation.
   dialog.id = OVERLAY_DIALOG_ID
+  ' Who opened it, so a screen covered by another ends the dialogs it or its children opened
+  ' (JRScreen.endOwnedDialog). Main-thread callers have no m.top, so their dialogs have no owner.
+  if isValid(m.top) then dialog.owner = m.top
   if isValid(returnFocusTo)
     dialog.returnFocusTo = returnFocusTo
   else if isValid(handedFocusTo)

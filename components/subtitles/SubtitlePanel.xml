@@ -201,8 +201,5 @@
     <!-- Host calls this from its own onDestroy so in-flight pool responses
          can't fire into a torn-down node. -->
     <function name="teardown" />
-    <!-- Host calls this when its screen is covered: a delete confirm left open
-         would keep the focus over the next screen. -->
-    <function name="cancelDeleteConfirm" />
   </interface>
 </component>

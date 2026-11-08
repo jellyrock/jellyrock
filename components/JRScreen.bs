@@ -94,7 +94,20 @@ sub hideCovered()
   m.top.visible = false
   if m.isCoverPending <> true then return
   m.isCoverPending = false
+  endOwnedDialog()
   onScreenHidden()
+end sub
+
+' A dialog this screen or a component inside it opened ends when another screen covers it. Its
+' question is about something the viewer no longer sees, and left open it would keep the focus
+' over the new screen. A dialog opened elsewhere (JRScene's exit and SyncPlay confirms) stays.
+' The owner's handler gets a cancelled result with externallyCancelled set, so a handler that
+' acts must decline it. This runs inside the swap, before the incoming screen's onScreenShown,
+' so a handler that focuses this screen on any answer loses the focus to the incoming one.
+sub endOwnedDialog()
+  dialog = openOverlayDialog()
+  if not isValid(dialog) or not dialog.hasField("owner") then return
+  if isInside(dialog.owner, m.top) then dialog.callFunc("cancelDialog")
 end sub
 
 ' Run onScreenShown without letting it take the focus from an open overlay dialog. Every screen's

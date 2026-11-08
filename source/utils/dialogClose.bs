@@ -34,6 +34,8 @@ sub closeOverlayDialog(dialog as object)
 
   parent = dialog.getParent()
   if isValid(parent) then parent.removeChild(dialog)
+  ' A closed dialog must not keep the screen that opened it alive.
+  dialog.owner = invalid
 
   if not wasFocused or not isValid(returnFocusTo) then return
 

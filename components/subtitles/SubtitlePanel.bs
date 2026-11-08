@@ -417,16 +417,6 @@ sub onDestroy()
   abandonDeleteConfirm()
 end sub
 
-' cancelDeleteConfirm: The host's screen was covered, so end the confirmation.
-'
-' CANCEL, not abandon. The confirmation holds the focus over the screen that
-' covers the host, and only a close hands it on (closeOverlayDialog gives it to
-' that screen); abandoning detaches it and leaves the focus nowhere. The cancel
-' reaches onDeleteConfirmResponse, which hands back the claim like any decline.
-sub cancelDeleteConfirm()
-  cancelOwnDialog(m.deleteConfirmDialog)
-end sub
-
 ' abandonDeleteConfirm: Drop an open confirmation without resolving it.
 '
 ' ABANDON, not cancel. A cancelled result looks like the user pressing Back to

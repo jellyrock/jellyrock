@@ -105,15 +105,6 @@ sub holdFocus(screen as object)
   dialog.returnFocusTo = m.top
 end sub
 
-' Whether `node` is `screen` or one of its descendants.
-function isInside(node as dynamic, screen as object) as boolean
-  while isValid(node)
-    if node.isSameNode(screen) then return true
-    node = node.getParent()
-  end while
-  return false
-end function
-
 ' No wait holds a screen's keys any more. If the focus is still held here, it goes back to the
 ' overhang's node it was taken from (holdFocus), else the active screen takes it back and
 ' restores its own (the router's handleFocus, which restores lastFocus). A player that mounted,

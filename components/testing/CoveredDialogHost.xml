@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  CoveredDialogHost: a screen that opens a dialog from its own scope, for the "a screen's
+  dialogs end when it is covered" cases in tests/source/unit/components/JRScreenFocus.spec.bs.
+
+  Its result handler can move the focus back inside the screen when the dialog is cancelled,
+  the way Settings' reset confirms do, so a test can check that the incoming screen still ends
+  up with the focus.
+-->
+<component name="CoveredDialogHost" extends="JRScreen">
+  <interface>
+    <!-- The focused node the dialog opens from. -->
+    <field id="opener" type="node" />
+    <field id="dialog" type="node" />
+    <!-- The result the handler saw, or invalid before it ran. -->
+    <field id="answer" type="assocarray" />
+    <!-- When true, the handler focuses the opener on any answer, as Settings does. -->
+    <field id="focusOpenerOnAnswer" type="boolean" value="false" />
+    <function name="openConfirm" />
+  </interface>
+</component>

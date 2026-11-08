@@ -1,0 +1,26 @@
+import "pkg:/source/utils/dialogs.bs"
+
+sub init()
+  opener = CreateObject("roSGNode", "Button")
+  opener.text = "opener"
+  m.top.appendChild(opener)
+  m.top.opener = opener
+end sub
+
+' Focus the opener and open a confirm from it, the way a button press does.
+sub openConfirm()
+  m.top.opener.setFocus(true)
+  m.top.dialog = showConfirmDialog("Reset", "Reset this setting?", "onConfirmResult")
+end sub
+
+' Runs inside the dialog's `result` write, before it closes.
+sub onConfirmResult()
+  dialog = m.top.dialog
+  if isValid(dialog) then m.top.answer = dialog.result
+  if m.top.focusOpenerOnAnswer then m.top.opener.setFocus(true)
+end sub
+
+sub onDestroy()
+  abandonDialog(m.top.dialog)
+  m.top.dialog = invalid
+end sub
