@@ -16,6 +16,8 @@
     <function name="onDestroy" />
     <!-- JRScene's screen swap: hide this view in the step the view covering it opens. -->
     <function name="hideCovered" />
+    <!-- main.bs: the screensaver ended over this screen. Refresh it, keeping the focus. -->
+    <function name="onScreensaverExited" />
     <!-- Down left the overhang row: take focus back (restoreScreenFocus). -->
     <function name="returnFocusFromOverhang" />
     <!-- A cluster icon was pressed while this screen is active: return true to handle it here

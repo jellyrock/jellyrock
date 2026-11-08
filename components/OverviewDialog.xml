@@ -58,6 +58,9 @@
     <!-- Node to restore remote focus to when this overlay closes (the opener, or else the
          scene's last focused child). Set by presentOverlayDialog before appendChild. -->
     <field id="returnFocusTo" type="node" />
+    <!-- The component that opened it (presentOverlayDialog). A screen that another one covers ends
+         the dialogs it or a component inside it opened (JRScreen.endOwnedDialog). -->
+    <field id="owner" type="node" />
     <!-- Set true when this dialog closes, by EITHER route (the user pressing
          OK/back, or cancelDialog superseding it from outside).
          A caller that keeps a reference to this dialog (the playback report polls

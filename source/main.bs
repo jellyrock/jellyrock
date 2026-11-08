@@ -156,9 +156,9 @@ sub Main (args as dynamic) as void
         m.global.sceneManager.callFunc("resetTime")
         group = getActiveView()
         if isValid(group)
-          ' refresh the current view
+          ' Refresh the current view, keeping the focus where the viewer left it.
           if group.isSubType("JRScreen")
-            group.callFunc("onScreenShown")
+            group.callFunc("onScreensaverExited")
           end if
         end if
       else if isValid(event.audioGuideEnabled)

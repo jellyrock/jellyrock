@@ -959,6 +959,10 @@ To rebuild a clip: `ffmpeg -f lavfi -i testsrc2=size=1920x1080:rate=24 -t 20 -vf
 
 Closes after a measurement on the real path: a capture or an ODC read of the overhang right after a width-changing tick (the device clock set to 9:59 in 12-hour format), comparing `textWidth` with the drawn digits. If they differ, measure from the labels instead (their widths plus `itemSpacings`) with a spec that fails first; if not, close as not reproduced.
 
+#### The subtitle panel's in-flight delete pulls the focus into a covered details screen `[fid: subtitle-delete-focus-under-cover]` `[captured 2026-11-08]`
+
+`SubtitlePanel`'s delete response focuses the panel whenever `m.top.isOpen` is true (the `panelOpen` check before `applyFocus()` in the delete's result path). If a cast, a deep link or a remote `GoToSearch` covers `ItemDetails` after the viewer confirmed a delete but before its response arrives, the panel is still open on the hidden screen, so `applyFocus()` pulls the focus into it and the visible screen stops answering the remote. No dialog is involved, so ADR 0055's cover cancel does not reach it. Found by reading the code in the PR #1336 review (2026-11-08); not reproduced. Not fixed there because it needs a reproduction and a choice: close the panel on cover in `ItemDetails.onScreenHidden`, or gate the panel's async focus on the host screen being shown (`m.isShown`, as `navigation.md` advises for timers and observers). Close it with a unit case that covers the screen while a delete is in flight.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -1060,16 +1064,6 @@ Found 2026-10-10 by the `translations.md` fact-check (docs-voice project, sessio
 #### `TRANSCODE_CAUSE_STEREO_CAPPED_CODECS` hand-copies `getStereoOutputCodecs()`, and nothing checks the two agree `[fid: transcode-cause-stereo-codecs-hand-copy]` `[captured 2026-10-12]`
 
 `TRANSCODE_CAUSE_STEREO_CAPPED_CODECS` in `source/utils/transcodeCause.bs` is a hand-written string of the codec list `getStereoOutputCodecs()` returns in `source/utils/deviceCapabilities.bs`. The two hold the same eight codecs on 2026-10-12, but nothing checks that they stay equal, so a codec added to one list silently drifts from the other and the explanation `transcodeCause.bs` gives stops matching what the device profile caps. Found in the docs-voice comment pass (batch 5, recorded at batch 6's PR). Not fixed now: closing it is a code change with a test (derive the constant from `getStereoOutputCodecs()`, or a unit test asserting the two agree), outside a comment-only PR. Closes when one list is derived from the other or a test holds them equal.
-
-#### `lastFocusedChild()` caps its focus walk at the root's child count `[fid: last-focused-child-depth-bound]` `[captured 2026-10-13]`
-
-`lastFocusedChild()` in `source/utils/misc.bs` loops `for i = 0 to obj.getChildCount()` and tests `obj.focusedChild` (the root) on every pass, where it means the node it has reached. So it walks at most the root's child count plus one levels down the focus chain, whatever the chain's real depth. Its one app caller, `presentOverlayDialog` in `source/utils/dialogs.bs`, passes the scene to derive `returnFocusTo`; `JRScene.xml` declares 12 children, so that call walks up to 13 levels. The loop dates from the 2025-06-28 fork and is unchanged since. Found by the docs-voice batch 11 comment pass (2026-10-12), triaged with `/snag`.
-
-Not reproduced: it needs a device spec with a focus chain deeper than its root's child count. Not checked: how deep real focus chains get (if none passes 13, the flaw is latent in production), and what `focusedChild` returns on the focused node itself (the walk relies on it returning the node, not `invalid`; Roku's `node.md` does not say).
-
-Options: `walk` (recommended): descend while `child.focusedChild` is valid and not `child` itself, with a fixed safety cap, and add a spec with a deep chain under a one-child root (`misc.bs` plus one spec; low risk, the cap and the self-check end the loop whatever the leaf returns). `bound`: test `child.focusedChild` but bound the loop by a constant (a guess to keep). `note`: document the limit only (the flaw stays).
-
-Why not now: the fix needs a device test run, and the batch that found it changed only comments. Closes when `lastFocusedChild()` walks the real focus chain and a spec pins it on a device.
 
 #### A tile's `JellyfinBaseItem` costs about 1.5 ms to build on a Task, so large rows are slow and search caps each read at 50 `[fid: lean-tile-node-cost]` `[captured 2026-10-17]`
 

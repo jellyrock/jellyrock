@@ -1,0 +1,151 @@
+namespace tests
+
+  ' ItemDetails' item dialogs (the Delete and Series Watched confirms, the More menu, the
+  ' subtitle panel's Delete confirm) end when another screen covers the details. A dialog keeps
+  ' the focus when a screen opens under it (JRScreen showScreenKeepingDialogFocus), so one left
+  ' open would sit over the new screen and act on an item the viewer no longer sees.
+  @suite("ItemDetails - a confirm ends when the screen is covered")
+  class ItemDetailsCoveredConfirmTests extends tests.BaseTestSuite
+
+    private itemDetails as object
+    private previousServerUrl as string
+
+    ' Press a button the way the remote does: the group publishes the pressed index, which is
+    ' what onDetailNavButton observes.
+    private sub pressButton(buttonId as string)
+      buttonGrp = m.itemDetails.findNode("buttons")
+      index = -1
+      for i = 0 to buttonGrp.getChildCount() - 1
+        if buttonGrp.getChild(i).id = buttonId then index = i
+      end for
+      m.assertTrue(index >= 0, "precondition: the row has " + buttonId)
+      buttonGrp.buttonSelected = index
+    end sub
+
+    private function deletableMovie() as object
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "covered-movie"
+      item.type = "Movie"
+      item.name = "Covered"
+      item.canDelete = true
+      return item
+    end function
+
+    ' The router's suspend, then JRScene's swap once the covering screen has opened.
+    private sub cover()
+      m.itemDetails.callFunc("onViewSuspend", {})
+      m.itemDetails.callFunc("hideCovered")
+    end sub
+
+    protected override function beforeEach()
+      super.beforeEach()
+      if not m.global.doesExist("sceneManager")
+        m.global.addField("sceneManager", "node", false)
+        m.global.sceneManager = CreateObject("roSGNode", "ContentNode")
+      end if
+      ' The subtitle panel builds its delete request before it asks, and a request needs a server.
+      m.previousServerUrl = m.global.server.serverUrl
+      m.global.server.serverUrl = "http://jellyfin.test:8096"
+      m.itemDetails = CreateObject("roSGNode", "ItemDetails")
+      m.top.getScene().appendChild(m.itemDetails)
+    end function
+
+    protected override function afterEach()
+      m.global.server.serverUrl = m.previousServerUrl
+      abandonDialog(openOverlayDialog())
+      m.top.getScene().removeChild(m.itemDetails)
+      m.itemDetails = invalid
+      super.afterEach()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("covered while a confirm is open")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("cancels the Delete confirm, as a close the viewer did not make")
+    function _()
+      m.itemDetails.itemContent = m.deletableMovie()
+      m.pressButton("deleteButton")
+      dialog = openOverlayDialog()
+      m.assertTrue(isValid(dialog), "precondition: Delete opened its confirm")
+
+      m.cover()
+
+      m.assertInvalid(openOverlayDialog(), "the confirm is gone")
+      m.assertTrue(isValid(dialog.result), "the confirm answered")
+      m.assertFalse(dialog.result.confirmed)
+      m.assertTrue(dialog.result.externallyCancelled)
+    end function
+
+    @it("cancels the Series Watched confirm")
+    function _()
+      series = CreateObject("roSGNode", "JellyfinBaseItem")
+      series.id = "covered-series"
+      series.type = "Series"
+      series.name = "Covered"
+      m.itemDetails.itemContent = series
+      m.pressButton("watchedButton")
+      dialog = openOverlayDialog()
+      m.assertTrue(isValid(dialog), "precondition: Watched opened its confirm")
+
+      m.cover()
+
+      m.assertInvalid(openOverlayDialog(), "the confirm is gone")
+      m.assertTrue(dialog.result.externallyCancelled)
+    end function
+
+    ' Its rows run the row's own actions (Delete among them), so it is an item dialog too.
+    @it("cancels the More menu")
+    function _()
+      ' Nine buttons overflow the row, as an Episode with every button does. The trailer round
+      ' trip runs the row's overflow bracket (ItemDetailsButtonOverflow.spec.bs does the same).
+      buttonGrp = m.itemDetails.findNode("buttons")
+      for i = 0 to 8
+        button = CreateObject("roSGNode", "IconButton")
+        button.id = "btn" + i.toStr()
+        buttonGrp.appendChild(button)
+      end for
+      m.itemDetails.trailerAvailable = true
+      m.itemDetails.trailerAvailable = false
+      moreIndex = buttonGrp.getChildCount() - 1
+      m.assertEqual(buttonGrp.getChild(moreIndex).id, "moreButton", "precondition: the row overflowed")
+      buttonGrp.buttonSelected = moreIndex
+      dialog = openOverlayDialog()
+      m.assertTrue(isValid(dialog), "precondition: More opened its menu")
+
+      m.cover()
+
+      m.assertInvalid(openOverlayDialog(), "the menu is gone")
+      m.assertTrue(dialog.result.externallyCancelled)
+    end function
+
+    @it("cancels the subtitle panel's Delete confirm")
+    function _()
+      panel = m.itemDetails.findNode("subtitlePanel")
+      panel.canDelete = true
+      panel.itemId = "covered-movie"
+      panel.existingStreams = [{ Type: "Subtitle", Index: 3, IsExternal: true, Path: "/m/covered.en.srt" }]
+      panel.findNode("downloadedList").itemSelected = 0
+      dialog = openOverlayDialog()
+      m.assertTrue(isValid(dialog), "precondition: the panel opened its Delete confirm")
+
+      m.cover()
+
+      m.assertInvalid(openOverlayDialog(), "the confirm is gone")
+      m.assertTrue(dialog.result.externallyCancelled)
+    end function
+
+    @it("leaves a dialog the screen did not open")
+    function _()
+      m.itemDetails.itemContent = m.deletableMovie()
+      dialog = showConfirmDialog("Title", "Message")
+
+      m.cover()
+
+      m.assertTrue(isValid(openOverlayDialog()), "another owner's dialog stays")
+      m.assertTrue(openOverlayDialog().isSameNode(dialog))
+    end function
+
+  end class
+
+end namespace
