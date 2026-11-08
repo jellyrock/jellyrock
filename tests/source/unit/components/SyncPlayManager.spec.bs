@@ -594,34 +594,6 @@ namespace tests
       m.assertTrue(appWaits.isOpen(start), "the start waits for the group's item to load")
     end function
 
-    @it("a following member whose player is on the group's item keeps playing: nothing posts, nothing reloads, and the viewer is told")
-    function _()
-      posts = m.capturePosts()
-      m.joinGroup()
-      m.playGroupItem()
-      m.mountHost()
-      m.manager.callFunc("playerEvent", { kind: "mounted" })
-      m.enableServer()
-      m.manager.notice = invalid
-      m.pressPlay([{ id: "i1", type: "Movie" }])
-      start = promises.create()
-      m.assertTrue(m.manager.callFunc("claimPlay", start))
-      m.assertEqual(posts.getChildCount(), 0, "nothing reaches the group")
-      m.assertEqual(m.manager.sync.loadCount, 0, "the player is not reloaded")
-      m.assertEqual(m.manager.sync.trackerPhase, "loading", "the player's tracking is left as it was")
-      m.assertTrue(m.manager.following)
-      notice = m.manager.notice
-      kind = ""
-      groupName = ""
-      if isValid(notice) and isValid(notice.kind)
-        kind = notice.kind
-        groupName = notice.groupName
-      end if
-      m.assertEqual(kind, "alreadyWatching")
-      m.assertEqual(groupName, "Movie night")
-      m.assertEqual(start.promiseState, "resolved", "no spinner stays over the video")
-    end function
-
     ' The member watches the group's item i1 on a mounted player, with a quality cap and the group's repeat mode in the queue.
     private sub watchWithCap()
       m.joinGroup()

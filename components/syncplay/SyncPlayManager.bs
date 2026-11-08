@@ -23,8 +23,6 @@ import "pkg:/source/utils/voiceTransport.bs"
 ' next burst runs is syncPlayOffset.nextBurstSeconds.
 const FIRST_SYNC_ROUNDS = 8
 const SYNC_ROUNDS = 3
-' The tag of a queue fetch that puts the group's item back under a player that keeps playing (keepPlaying).
-const KEEP_TAG = "-keep"
 ' The user-scoped registry key that remembers a membership across a launch: "groupId|groupName".
 ' A Home exit ends the app without a Leave, and on HTTPS the session outlives it
 ' (decision `syncplay-stale-membership-at-launch`).
@@ -489,14 +487,11 @@ end function
 ' the group's item at the group's position, as Resume with Group does, and nothing reaches the
 ' group. A halted member follows again first and is told so here, as a claim is; Back before
 ' the load halts it again, quietly (endUnansweredRefollow). The press's start is the claim's:
-' the load's own start replaces it, or a player reloading in place takes it.
+' the load's own start replaces it, or a player reloading in place takes it. A player already on
+' the video in step never gets here: the one launcher that runs over it asks keepsPlayingFor first.
 sub catchUp(start as dynamic)
   releaseHeldPlay("replaced by a newer play")
   refreshExtraOffset()
-  if playerIsOnGroupItem()
-    keepPlaying(start)
-    return
-  end if
   m.claimedStart = start
   if not isFollowing()
     followAgain()
@@ -508,38 +503,21 @@ sub catchUp(start as dynamic)
   loadGroupItem("-catchup")
 end sub
 
-' A play of the group's own video while this member's player is already on it: the player keeps
-' playing, since a reload makes this Roku rebuffer and its Buffering report pauses every member
-' until it is Ready. The launcher replaced the local queue with the pressed item (and clear()
-' forgot the group's repeat mode), so the group's item goes back into it through the load's own
-' fetch and queue write, performing no load (applyQueue, KEEP_TAG). The press's start ends at
-' once: no player will take it.
-sub keepPlaying(start as dynamic)
-  m.log.info("play of the group's own item keeps the player on it", "groupId", m.state.groupId)
-  appWaits.done(start)
-  notify("alreadyWatching", m.state.groupName, "")
-  fetchQueue("Resume", m.state.lastUpdateMs, false, KEEP_TAG)
-end sub
-
-' A cast of this video (JRScene.onDeepLinkResolved) over a player that is already on the group's
-' playing item changes nothing but the toast: the caller then launches no queue, so the viewer's
-' quality cap and version pick stay in force (QueueManager.launchItem would clear them). Any other
-' play reaches claimPlay, whose catchUp keeps the player and puts the queue back. The same rule
-' decides both (playerIsOnGroupItem), here for the item the cast resolved.
-' @param item - the cast's resolved item
-' @return whether the cast is absorbed
+' A play of the group's own video while this member's player is already on it in step changes
+' nothing but a toast: a reload would make this Roku rebuffer, and its Buffering report pauses
+' every member until it is Ready. Asked before anything is launched, so the queue, the viewer's
+' quality cap and version pick stay in force (QueueManager.launchItem would clear them). A cast
+' (JRScene.onDeepLinkResolved) is the one launcher that runs over the player; any other that
+' could must ask here first, since claimPlay runs after the launcher has replaced the queue.
+' @param item - the item the play would launch
+' @return whether the play is absorbed
 function keepsPlayingFor(item as dynamic) as boolean
   ensureReady()
   if not isFollowing() then return false
   if not syncPlayQueue.isGroupsPlayingItem(item, m.state, m.lastCommand) then return false
-  if not playerIsOnGroupItem() then return false
+  if not syncPlayQueue.playerIsOnGroupItem(true, isValid(playerHost()), m.expectingRemount, m.tracker.phase) then return false
   notify("alreadyWatching", m.state.groupName, "")
   return true
-end function
-
-' Whether the mounted player is on the group's playing item (syncPlayQueue.playerIsOnGroupItem).
-function playerIsOnGroupItem() as boolean
-  return syncPlayQueue.playerIsOnGroupItem(isFollowing(), isValid(playerHost()), m.expectingRemount, m.tracker.phase)
 end function
 
 ' Loads the item the group plays as a new queue at the position the state keeps for it
@@ -1024,11 +1002,6 @@ sub onQueueLoadFailed(reason as string, lastUpdateMs as longinteger, isRetry as 
     fetchQueue(reason, lastUpdateMs, true, tag)
     return
   end if
-  ' The player is playing the group's item: a queue that cannot be put back is no reason to stop following.
-  if tag = KEEP_TAG
-    m.log.warn("the group's queue could not be put back under the player", "failure", failure, "groupId", m.state.groupId)
-    return
-  end if
   haltFollowing("the group's queue could not be loaded (" + failure + ")")
 end sub
 
@@ -1047,17 +1020,18 @@ sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteg
     return
   end if
   queueManager = m.global.queueManager
-  ' A catch-up that kept the player (catchUp): the queue only goes back to the group's item, and
-  ' the record of a load owed to a frame is not this fetch's to clear.
-  if tag = KEEP_TAG
-    syncPlayQueue.writeQueue(queueManager, queueItems, index, m.state.repeatMode, true)
-    return
-  end if
   newPlaylist = isValid(m.owedLoad) and m.owedLoad.newPlaylist = true
   ' A new playlist is a new queue: the viewer's version pick and gear caps from the queue before
   ' do not carry into it (set() alone keeps them, for a reorder). Within the group's playlist
   ' they carry, as in any queue.
-  syncPlayQueue.writeQueue(queueManager, queueItems, index, m.state.repeatMode, newPlaylist)
+  if newPlaylist then queueManager.callFunc("clear")
+  queueManager.callFunc("set", queueItems)
+  queueManager.callFunc("setPosition", index)
+  ' The group's repeat mode rides on its queue (syncGroupModes): a clear() above forgot it.
+  queueManager.callFunc("setRepeatMode", m.state.repeatMode, queueRepeat.BY_GROUP)
+  ' Cinema Mode: no intro in front of the group's item. set() went through clear(), which
+  ' re-reads the setting, so this comes after it.
+  queueManager.callFunc("setPrerollStatus", false)
   host = playerHost()
   action = syncPlayQueue.loadAction(m.owedLoad, isValid(host))
   if action = "" then return
