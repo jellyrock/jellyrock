@@ -103,7 +103,7 @@ let child = null;
 let helperPid = null;
 for (const event of ['uncaughtException', 'unhandledRejection']) {
   process.on(event, async (err) => {
-    console.error(`\n[rta] ${event} — releasing the device.\n${err?.stack || err?.message || err}`);
+    console.error(`\n[rta] ${event}: stopping the run.\n${err?.stack || err?.message || err}`);
     // Kill the child FIRST, then release. Releasing admits the next contender, and a
     // Vitest that outlives its parent keeps driving the device. Measured 2026-08-10:
     // an orphan re-seeded the demo server underneath three restore attempts. Handing
@@ -126,11 +126,14 @@ for (const event of ['uncaughtException', 'unhandledRejection']) {
       // it, and the snapshot on disk is the repair.
       console.log(
         isProcessAlive(helperPid)
-          ? `[rta] the restore helper (pid ${helperPid}) is still restoring the device.`
+          ? `[rta] the restore helper (pid ${helperPid}) is still restoring the device, and frees it when done.`
           : '[rta] the device is left dirty. Recover: npm run rta:restore',
       );
     }
-    await lock.release().catch(() => {});
+    // A live helper frees the lock itself once this process is gone (`runTakeover`).
+    // Freeing it here too would admit the next run mid-restore, and the helper's later
+    // release, which does not check who holds the lock, would delete that run's lock.
+    if (!isProcessAlive(helperPid)) await lock.release().catch(() => {});
     process.exit(1);
   });
 }

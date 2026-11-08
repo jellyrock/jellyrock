@@ -321,12 +321,6 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 - **issue**: After a restore the runner polls `isProcessAlive(helperPid)` until the helper is gone. The double fork orphans the helper, so whatever adopts it must reap it for the poll to end. That holds on the dev machine but is unverified elsewhere (a container whose first process does not reap, a terminal multiplexer, macOS). Where nothing reaps it, the helper stays a zombie that `isProcessAlive` reports as alive, and the poll does not end after a restore that worked.
 - **direction**: Wait on a signal the helper controls, such as a result file it writes before exiting, instead of its process id. Check the platforms the dev tooling supports ([`dev-tooling-platforms-unverified`](#dev-tooling-platforms-unverified)).
 
-#### `rta-run-crash-handler-releases-lock-early`
-
-- **area**: [`scripts/rta-run.js`](../../scripts/rta-run.js) (the `uncaughtException` and `unhandledRejection` handler)
-- **issue**: The handler releases the device lock at once, although a restore helper may still be running. What keeps a new run off the device in that window is the snapshot's `ownerPid` check, not the lock, so an entry point that skips that check would start against a half-restored registry.
-- **direction**: Hold the lock until the helper finishes, as the normal exit path does, or let the helper release it. Add a test that starts a run while a helper is mid-restore.
-
 #### `rta-run-sigkill-leaves-record-unfolded`
 
 - **area**: [`scripts/rta-run.js`](../../scripts/rta-run.js), [`scripts/run-record.js`](../../scripts/run-record.js) (`armCloseOnExit`)
