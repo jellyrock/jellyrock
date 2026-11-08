@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-07
+last-updated: 2026-11-08
 ---
 
 # Progress
@@ -359,6 +359,12 @@ With no `RTA_SERVER_*` set, `npm run test:rta` targets the public demo, which ha
 The `Detect test-relevant changes` pattern in `device-unit-tests.yml` leaves out `scripts/`, so a change to the runner skips the device suite. #1301 changed `scripts/run-roku-tests.js` and its device job reported success in 13 s without running a test.
 
 **Fix shape:** add `scripts/run-roku-tests.js`, `scripts/lib/rooibos-summary.cjs` and the patches the run applies to the pattern.
+
+#### `screenshots:capture` and `demo` lose their registry restore when an agent stops the task `[fid: capture-demo-restore-cut-by-task-stop]` `[captured 2026-11-08]`
+
+`scripts/capture-screenshots.js` and `tests/rta/demos/run.mjs` restore the registry inside their own process (`armRestoreOnInterrupt()` in `tests/rta/lib/registry.js`). An agent's task stop kills the whole process tree about a second after its first stop signal, so that restore is cut short and the device stays dirty until the next run repairs it from the snapshot. `scripts/rta-run.js` stopped having this problem in PR #1337 by handing its restore to `scripts/rta-restore.js --takeover`, started outside its tree by `spawnOutsideTree()`.
+
+Not done there because it is a separate fix for separate entry points, and a store capture is a long device run to retest. To close: give the helper a mode that waits for the entry point's own process to exit instead of a Vitest group (`runTakeover()` in `scripts/lib/restore-takeover.js` takes its process calls as `deps`), make both entry points hand off to it on a signal, and check a task stop on a device leaves no snapshot and a free lock.
 
 ### components
 
