@@ -25,8 +25,8 @@ While a video plays, you can ask your Roku to:
 - **fast-forward** or **rewind**, or **skip forward or back** a number of seconds or minutes;
 - **start over** from the beginning;
 - **replay** the last few seconds; how far is set by [Instant Replay Duration](../app-settings.md#playbackInstantReplaySeconds);
-- **skip**: skips the intro, recap or other marked part playing now (see [Media segments](media-segments.md)), or goes to the next item when nothing is marked;
-- go to the **next** item;
+- **skip**: skips the intro, recap or other marked part playing now (see [Media segments](media-segments.md)), or goes to the next item when nothing is marked, following [Repeat](player-controls.md#repeat) when it's on;
+- go to the **next** item, following [Repeat](player-controls.md#repeat) when it's on;
 - say **what's playing**;
 - **like** it, which marks it as a favorite, or **dislike** it, which takes it off your favorites.
 

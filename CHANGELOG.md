@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (video) Follow repeat mode on voice and remote Next and Previous ([#1333](https://github.com/jellyrock/jellyrock/pull/1333))
 - (playback) Show `.strm` audio and subtitle buttons on first play ([#1332](https://github.com/jellyrock/jellyrock/pull/1332))
 - (playback) Start 4K Dolby Vision on a display without HDR ([#1331](https://github.com/jellyrock/jellyrock/pull/1331))
 - (playback) Play more Dolby Vision files, end a wasted retry ([#1325](https://github.com/jellyrock/jellyrock/pull/1325))
@@ -40,6 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update vitest from v5.0.5 to v5.1.0 ([#1311](https://github.com/jellyrock/jellyrock/pull/1311))
 - Update rimraf from v6.1.3 to v6.1.4 ([#1319](https://github.com/jellyrock/jellyrock/pull/1319))
 - Update eslint from v10.13.0 to v10.14.0 ([#1287](https://github.com/jellyrock/jellyrock/pull/1287))
 - Rename the Rooibos patch for the installed alpha.56 ([eda2baf](https://github.com/jellyrock/jellyrock/commit/eda2bafa))
