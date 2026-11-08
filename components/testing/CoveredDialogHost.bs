@@ -20,6 +20,11 @@ sub onConfirmResult()
   if m.top.focusOpenerOnAnswer then m.top.opener.setFocus(true)
 end sub
 
+sub onScreenShown()
+  m.top.shownCount = m.top.shownCount + 1
+  restoreFocus(m.top)
+end sub
+
 sub onDestroy()
   abandonDialog(m.top.dialog)
   m.top.dialog = invalid

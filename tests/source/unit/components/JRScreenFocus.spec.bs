@@ -290,6 +290,49 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the screensaver ends over a screen (onScreensaverExited)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("refreshes the screen and leaves the focus on an open dialog")
+    function _()
+      host = m.mountHost(m.mountedIn)
+      host.opener.setFocus(true)
+      dialog = showConfirmDialog("Title", "Message")
+      m.assertTrue(dialog.isInFocusChain(), "precondition: the confirm holds the focus")
+
+      host.callFunc("onScreensaverExited")
+
+      m.assertEqual(host.shownCount, 1, "the screen refreshed")
+      m.assertTrue(dialog.isInFocusChain(), "the confirm still holds the focus")
+    end function
+
+    ' The overhang row and AppWaitHost both sit outside the screen.
+    @it("leaves the focus on a node outside the screen")
+    function _()
+      host = m.mountHost(m.mountedIn)
+      m.overlay.setFocus(true)
+
+      host.callFunc("onScreensaverExited")
+
+      m.assertEqual(host.shownCount, 1, "the screen refreshed")
+      m.assertTrue(m.overlay.hasFocus())
+    end function
+
+    @it("leaves the focus on the node inside the screen the viewer was on")
+    function _()
+      host = m.mountHost(m.mountedIn)
+      other = host.createChild("Group")
+      other.focusable = true
+      host.lastFocus = host.opener
+      other.setFocus(true)
+
+      host.callFunc("onScreensaverExited")
+
+      m.assertEqual(host.shownCount, 1, "the screen refreshed")
+      m.assertTrue(other.hasFocus(), "not moved to the saved lastFocus")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("handleFocus — the overhang row holds focus")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

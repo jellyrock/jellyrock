@@ -129,6 +129,18 @@ sub showScreenKeepingDialogFocus()
   if isValid(stillOpen) and stillOpen.isSameNode(dialog) then held.setFocus(true)
 end sub
 
+' Roku OS ended the screensaver over this screen (main.bs). Refresh it as showing it does, but
+' leave the focus where the viewer left it: on an open dialog, the overhang row or AppWaitHost
+' holding the keys for a start. The screensaver does not move the focus; onScreenShown would.
+' When onScreenShown leaves the focus outside this screen (it opened a dialog), that stands.
+sub onScreensaverExited()
+  scene = m.top.getScene()
+  held = getDeepestFocusedNode(scene)
+  onScreenShown()
+  if not isValid(held) or held.isSameNode(scene) or not isInside(held, scene) then return
+  if m.top.isInFocusChain() then held.setFocus(true)
+end sub
+
 ' Router: this view is about to be permanently destroyed.
 function beforeViewClose(_params = {} as object) as dynamic
   onScreenHidden()

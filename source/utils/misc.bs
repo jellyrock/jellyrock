@@ -254,6 +254,16 @@ sub restoreFocus(view as object)
   end if
 end sub
 
+' The node that has the focus, found by following focusedChild down from `root`, or invalid when
+' nothing under `root` has it.
+function getDeepestFocusedNode(root as object) as dynamic
+  node = root
+  while isValid(node) and node.hasFocus() = false
+    node = node.focusedChild
+  end while
+  return node
+end function
+
 ' Whether `node` is `root` or one of its descendants.
 function isInside(node as dynamic, root as object) as boolean
   while isValid(node)
