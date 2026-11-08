@@ -23,6 +23,7 @@ related-files:
   - scripts/bsc-plugins/no-task-fanout.cjs
   - scripts/bsc-plugins/no-same-node-relaunch.cjs
   - scripts/bsc-plugins/no-hand-rolled-dialog.cjs
+  - scripts/bsc-plugins/screen-lifecycle-entry.cjs
   - scripts/bsc-plugins/callfunc-interface.cjs
   - scripts/bsc-plugins/button-row-bracket.cjs
   - scripts/bsc-plugins/field-observer-wiring.cjs
@@ -100,7 +101,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-11-06
+last-reviewed: 2026-11-08
 ---
 
 # Build and tooling
@@ -239,6 +240,7 @@ These turn conventions from `components/CLAUDE.md` and `source/CLAUDE.md` into e
 | `no-task-fanout` | error | A `launchTask()` inside a loop body, directly or one same-file helper call away, unless its argument is a stable `m.` path the loop does not rebind | [ADR 0031](../adr/0031-task-thread-ceiling.md), decisions [`task-fanout-keys-on-argument`](../decisions.md#decision-id-task-fanout-keys-on-argument) and [`task-fanout-follows-helpers`](../decisions.md#decision-id-task-fanout-follows-helpers) |
 | `no-same-node-relaunch` | error | Relaunching a Task node the same function stopped; launching `m.x` with no new node assigned first; a `replaceTask()` handler that does not open with `isCurrentTaskEvent()` | [ADR 0037](../adr/0037-task-run-replacement.md), decisions [`same-node-relaunch-gate`](../decisions.md#decision-id-same-node-relaunch-gate) and [`relaunch-gate-no-stop-shapes`](../decisions.md#decision-id-relaunch-gate-no-stop-shapes) |
 | `no-hand-rolled-dialog` | error | A dialog built outside the `JRDialog` family: a full-screen translucent `Rectangle`, or an `appendChild` or `insertChild` onto the scene | [dialogs.md](dialogs.md), decision [`one-overlay-dialog-supersedes`](../decisions.md#decision-id-one-overlay-dialog-supersedes) |
+| `screen-lifecycle-entry` | error | A `callFunc` of a screen's `onScreenShown`, `onScreenHidden` or `hideCovered` outside `JRScreen.bs`, which skips its focus and dialog guards. `JRScene`'s swap may call `hideCovered`, and a screen may forward a hook to a nested screen from its own hook of the same name | [navigation.md](navigation.md#focus-management), the plugin file |
 | `callfunc-interface` | error | A `callFunc("x")` where `x` is defined in one of our codebehinds but declared in no component `<interface>`, a call that does nothing. `m.top.callFunc` is checked against its own component | The plugin file |
 | `button-row-bracket` | error | A function that mutates an overflow-managed button row without calling both `unsplitButtons()` and `applyOverflow()` | Tech debt [`button-row-model`](tech-debt.md#button-row-model), which deletes it |
 | `field-observer-wiring` | error | Five ways an interface field's wiring goes wrong: wired by both XML `onChange` and `m.top.observeField()`; an unobserve that detaches nothing; an `onChange` in a component that has `onDestroy`; an `m.top` unobserve outside `onDestroy()`; an `m.top` observe outside `init()` | [ADR 0034](../adr/0034-component-observers-init-to-ondestroy.md) |
@@ -263,7 +265,7 @@ Write a new convention plugin through one of the two factories in [`scripts/lib/
 
 Both handle the clear, the suppression markers and the never-crash guard, so the rule body holds only the rule. The module also exports shared AST helpers (`functionsIn`, `isLaunchTaskCall`, `bareCallName`).
 
-A rule whose every finding comes from and lands in one file can hook `afterValidateFile` directly, since BSC already clears it. `no-raw-run`, `no-task-fanout`, `no-same-node-relaunch` and `no-hand-rolled-dialog` do. They also need to, because the factories honor `bsc-disable-file`, which an error-level Task or dialog gate must not. Once a rule reads a second file, it needs a factory, or the cross-file part must run in `afterValidateProgram` under a tag it clears first. A file hook must never anchor a diagnostic in another file, because BSC never clears it.
+A rule whose every finding comes from and lands in one file can hook `afterValidateFile` directly, since BSC already clears it. `no-raw-run`, `no-task-fanout`, `no-same-node-relaunch`, `no-hand-rolled-dialog` and `screen-lifecycle-entry` do. They also need to, because the factories honor `bsc-disable-file`, which an error-level Task or dialog gate must not. Once a rule reads a second file, it needs a factory, or the cross-file part must run in `afterValidateProgram` under a tag it clears first. A file hook must never anchor a diagnostic in another file, because BSC never clears it.
 
 The bug shows only across validations, so its tests use `runPluginOnEdits`; `runPluginOnSource` validates once ([scripts-development.md](../dev/scripts-development.md#the-three-harnesses)).
 
