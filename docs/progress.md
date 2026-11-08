@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-07
+last-updated: 2026-11-08
 ---
 
 # Progress
@@ -1776,3 +1776,15 @@ Five commits on #1299's branch had `noreply@anthropic.com` as author and committ
 **Recommended:** `gate`, because it holds wherever a commit was made.
 
 **Not checked:** where cloud sessions get this identity; whether the environment can override it; whether GitHub adds the line on every squash, since #1073 is the only example found.
+
+### Components
+
+#### A SyncPlay previous step right after a transcoding item's Ready can leave the old stream playing `[fid: syncplay-previous-reload-never-swaps]` `[captured 2026-11-08]`
+
+`syncplay-controls`' case "next and previous from the remote step the whole group" failed once at `2d6dac7b` (2026-11-07, Stick 4K, local Jellyfin 12.4.0 server), waiting 90 s for "the first movie playing again on this Roku". It is 1 failure in 25 full runs at committed heads (10 of 11 passed at `2d6dac7b`, 14 of 14 at `7e5f8a5d`), on a path that branch does not change (`PlayerHostView` untouched; the only `SyncPlayManager` change on it is the no-op `endUnansweredRefollow()` at the top of each queue fetch).
+
+The server log: the Roku sent `PreviousItem` 1.2 s after its Ready on the second movie, whose stream was transcoding; it reported Buffering and posted `PlaybackInfo` for the first movie, but never started that stream, and its progress reports for the second movie's play session went on for 35 s until the server's 30 s wait for Ready gave up. So the reload in place (`PlayerHostView.skipToCurrentQueueItem`, `destroyPlayer` then `mountPlayer`) apparently never swapped the stream.
+
+Not checked: the Roku console for the failed run (the next run overwrote it); why the reload did not swap; whether `main` can fail the same way (5 passing runs there, too few to rule out a 1-in-25 failure).
+
+Next time it fails: read the kept `console-failed-<time>.log` beside the run's `console.log` (`.device-runs/rta/runs/<device key>/`) around the `PreviousItem` frame, and the server log for the same minute, then run /snag on what they show.

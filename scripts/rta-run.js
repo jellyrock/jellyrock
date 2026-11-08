@@ -47,7 +47,7 @@ import {
   wasBlocked,
 } from './run-record.js';
 import { acquireDeviceLock } from './device-lock.js';
-import { startConsoleCapture } from './lib/console-capture.js';
+import { startConsoleCapture, keepFailedConsole } from './lib/console-capture.js';
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const watch = process.argv.includes('--watch');
@@ -242,8 +242,14 @@ run.close(
   interrupting ? RUN_OUTCOMES.INTERRUPTED : exitCode === 0 ? RUN_OUTCOMES.PASSED : redOutcome,
 );
 
-if (exitCode !== 0)
-  console.log(`[rta] device console: ${consoleFile} (holds auth tokens, keep it private)`);
+if (exitCode !== 0) {
+  // The next run on this device overwrites console.log, so keep a copy of a red run's.
+  // rta-servers.js sets RTA_CONSOLE_LOG and already keeps one file per server.
+  const keptConsole = process.env.RTA_CONSOLE_LOG ? null : keepFailedConsole(consoleFile);
+  console.log(
+    `[rta] device console: ${keptConsole ?? consoleFile} (holds auth tokens, keep it private)`,
+  );
+}
 
 try {
   await restoreRegistry(saved);
