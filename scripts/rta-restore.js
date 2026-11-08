@@ -42,6 +42,7 @@ import { readSnapshotFile, restoreRegistry, adoptSnapshotFile } from '../tests/r
 import { sleep } from '../tests/rta/lib/steps.js';
 import { RTA_CONFIG } from '../tests/rta/config.js';
 import { isProcessAlive } from './lib/process-liveness.cjs';
+import { runTakeover } from './lib/restore-takeover.js';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -66,60 +67,47 @@ if (!snapshot) {
 }
 
 if (takeover) {
-  const owner = Number(arg('owner'));
-  const waitGroup = Number(arg('wait-group'));
-  if (snapshot.ownerPid !== owner) {
-    console.error(
-      `[rta-restore] refusing to take over ${host}: the snapshot belongs to pid ` +
-        `${snapshot.ownerPid}, not ${owner}.`,
-    );
-    process.exit(1);
-  }
-  adoptSnapshotFile(owner, snapshot.file);
-
-  const groupGone = () => {
-    try {
-      process.kill(-waitGroup, 0);
-      return false;
-    } catch (e) {
-      return e.code === 'ESRCH';
-    }
-  };
-  const waitFor = async (ms) => {
-    const end = Date.now() + ms;
-    while (!groupGone() && Date.now() < end) await sleep(100);
-  };
-  await waitFor(15_000);
-  if (!groupGone()) {
-    try {
-      process.kill(-waitGroup, 'SIGKILL');
-    } catch {
-      /* gone meanwhile */
-    }
-    await waitFor(3_000);
-  }
-
-  let ok = false;
-  try {
-    await restoreRegistry(snapshot.values);
-    ok = true;
-    console.log('VERIFIED CLEAN — device left as found.');
-  } catch (e) {
-    console.error(`[rta-restore] ${e.message}`);
-  }
-  await ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false }).catch(() => {});
-  if (process.argv.includes('--release-lock') && !isProcessAlive(owner)) {
-    try {
-      execFileSync(
-        process.execPath,
-        [path.join(path.dirname(fileURLToPath(import.meta.url)), 'device-lock.js'), 'release'],
-        { env: process.env, stdio: 'inherit' },
-      );
-    } catch (e) {
-      console.error(`[rta-restore] could not release the device lock: ${e.message}`);
-    }
-  }
-  process.exit(ok ? 0 : 1);
+  const deviceLockScript = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    'device-lock.js',
+  );
+  const code = await runTakeover({
+    owner: Number(arg('owner')),
+    waitGroup: Number(arg('wait-group')),
+    releaseLock: process.argv.includes('--release-lock'),
+    snapshot,
+    deps: {
+      adopt: adoptSnapshotFile,
+      groupGone: (pgid) => {
+        try {
+          process.kill(-pgid, 0);
+          return false;
+        } catch (e) {
+          return e.code === 'ESRCH';
+        }
+      },
+      killGroup: (pgid) => {
+        try {
+          process.kill(-pgid, 'SIGKILL');
+        } catch {
+          /* gone meanwhile */
+        }
+      },
+      restore: (values) => restoreRegistry(values),
+      relaunch: () => ecp.sendLaunchChannel({ channelId: 'dev', verifyLaunch: false }),
+      ownerAlive: isProcessAlive,
+      release: async () =>
+        execFileSync(process.execPath, [deviceLockScript, 'release'], {
+          env: process.env,
+          stdio: 'inherit',
+        }),
+      sleep,
+      now: Date.now,
+      log: (line) => console.log(line),
+      error: (line) => console.error(line),
+    },
+  });
+  process.exit(code);
 }
 
 // The premise of this whole script ("a file still sitting there means the run did
