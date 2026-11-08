@@ -360,6 +360,15 @@ function claimPlay(start = invalid as dynamic) as boolean
   position = queueManager.callFunc("getPosition")
   if type(queueItems) <> "roArray" or position < 0 or position >= queueItems.count() then return false
   if syncPlayQueue.isGroupItem(queueItems[position], m.state.playingItemId) then return false
+  return claimItems(queueItems, position, start)
+end function
+
+' claimPlay's decision for a queue given directly, so castToGroup can hand the group a cast without
+' replacing the local queue first. True when the group takes the play (posted, held for a
+' confirm, or caught up to), false when it plays locally or nothing could be posted.
+' @param start - the playback start the play opened, or invalid
+function claimItems(queueItems as object, position as integer, start as dynamic) as boolean
+  if not m.state.inGroup then return false
   handoff = syncPlayQueue.handoff(queueItems, position, m.state)
   if not isValid(handoff) then return false
   if handoff.action = "setPlaylistItem"
@@ -524,16 +533,37 @@ sub catchUp(start as dynamic, appendIds = [] as object)
   end if
 end sub
 
+' A cast over this member's player while it follows the group (JRScene.onDeepLinkResolved, after
+' syncPlayQueue.castGoesToGroup). The group takes it as this viewer's own press, through the same
+' decision (claimItems), but the local queue is left alone: the group's answer builds the queue
+' (applyQueue), so a refusal leaves the queue, its quality cap, version pick and repeat mode as
+' they were. The video the player is already on in step only tells the viewer (keepsPlayingFor).
+' @param item - the cast's item
+' @return false when the group cannot take it: its start is ended, and the caller routes the cast
+'   as any other
+function castToGroup(item as dynamic) as boolean
+  ensureReady()
+  if keepsPlayingFor(item) then return true
+  if not isValid(item) then return false
+  ' The fields the group request reads: the id, the type and the resume start, set as
+  ' quickplay.video sets them.
+  queueItem = nodeHelpers.createQueueItem(item)
+  if not isValid(queueItem) then return false
+  nodeHelpers.setResumeStart(queueItem, item.playbackPositionTicks)
+  start = m.global.queueManager.callFunc("beginPlaybackStart", "")
+  if claimItems([queueItem], 0, start) then return true
+  appWaits.fail(start, "the group could not take the cast")
+  return false
+end function
+
 ' A play of the group's own video while this member's player is already on it in step changes
 ' nothing but a toast: a reload would make this Roku rebuffer, and its Buffering report pauses
-' every member until it is Ready. Asked before anything is launched, so the queue, the viewer's
-' quality cap and version pick stay in force (QueueManager.launchItem would clear them). A cast
-' (JRScene.onDeepLinkResolved) is the one launcher that runs over the player; any other that
-' could must ask here first, since claimPlay runs after the launcher has replaced the queue.
+' every member until it is Ready. A cast (castToGroup) is the one launcher that runs over the
+' player; any other that could must ask here first, since claimPlay runs after the launcher has
+' replaced the queue.
 ' @param item - the item the play would launch
 ' @return whether the play is absorbed
 function keepsPlayingFor(item as dynamic) as boolean
-  ensureReady()
   if not isFollowing() then return false
   if not syncPlayQueue.isGroupsPlayingItem(item, m.state, m.lastCommand) then return false
   if not syncPlayQueue.playerIsOnGroupItem(true, isValid(playerHost()), m.expectingRemount, m.tracker.phase) then return false

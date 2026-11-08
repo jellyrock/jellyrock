@@ -628,12 +628,12 @@ namespace tests
       m.manager.notice = invalid
     end sub
 
-    @it("keepsPlayingFor: a cast of the video the player is on is told and changes nothing else")
+    @it("castToGroup: a cast of the video the player is on is told and changes nothing else")
     function _()
       posts = m.capturePosts()
       m.watchWithCap()
       m.enableServer()
-      kept = m.manager.callFunc("keepsPlayingFor", { id: "i1", type: "Movie" })
+      kept = m.manager.callFunc("castToGroup", { id: "i1", type: "Movie" })
       m.assertTrue(kept)
       notice = m.manager.notice
       kind = ""
@@ -647,29 +647,68 @@ namespace tests
       m.assertEqual(m.manager.sync.loadCount, 0)
     end function
 
-    @it("keepsPlayingFor: a halted member's cast goes on to the group's play")
+    @it("castToGroup: a halted member's cast of the group's video catches up rather than tell")
     function _()
       m.haltWithServer()
       m.mountHost()
       m.manager.notice = invalid
-      m.assertFalse(m.manager.callFunc("keepsPlayingFor", { id: "i1", type: "Movie" }))
-      m.assertInvalid(m.manager.notice)
+      m.assertTrue(m.manager.callFunc("castToGroup", { id: "i1", type: "Movie" }))
+      m.assertTrue(m.manager.following, "following again")
+      m.assertEqual(m.manager.notice.kind, "followingAgain")
     end function
 
-    @it("keepsPlayingFor: with no player host mounted the cast goes on")
+    @it("castToGroup: with no player host mounted, a cast of the group's video loads it and posts nothing")
     function _()
+      posts = m.capturePosts()
       m.joinGroup()
       m.playGroupItem()
       m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.enableServer()
       m.manager.notice = invalid
-      m.assertFalse(m.manager.callFunc("keepsPlayingFor", { id: "i1", type: "Movie" }))
-      m.assertInvalid(m.manager.notice)
+      m.assertTrue(m.manager.callFunc("castToGroup", { id: "i1", type: "Movie" }))
+      m.assertInvalid(m.manager.notice, "not told it is already playing: there is no player")
+      m.assertEqual(posts.getChildCount(), 0)
     end function
 
-    @it("keepsPlayingFor: a cast of another video goes on")
+    @it("castToGroup: a cast of another video goes to the group and leaves the queue as it was")
+    function _()
+      posts = m.capturePosts()
+      m.watchWithCap()
+      m.enableServer()
+      m.assertTrue(m.manager.callFunc("castToGroup", { id: "i9", type: "Movie" }))
+      m.assertEqual(posts.getChildCount(), 1)
+      if posts.getChildCount() = 1
+        m.assertTrue(posts.getChild(0).request.url.instr("/SyncPlay/SetNewQueue") >= 0)
+        m.assertTrue(posts.getChild(0).request.body.instr(chr(34) + "i9" + chr(34)) >= 0)
+      end if
+      m.assertEqual(m.manager.notice.kind, "playedToGroup")
+      ' The queue changes only when the group answers.
+      queueManager = m.global.queueManager
+      m.assertTrue(isValid(queueManager.callFunc("getPlaybackCaps")), "the viewer's quality cap is still in force")
+      m.assertEqual(queueManager.callFunc("getRepeatMode"), queueRepeat.ALL)
+      m.assertTrue(syncPlayQueue.isGroupItem(queueManager.callFunc("getCurrentItem"), "p1"), "the queue still holds the group's stamped item")
+    end function
+
+    @it("castToGroup: a cast the group refuses leaves the queue as it was")
+    function _()
+      m.capturePosts()
+      m.watchWithCap()
+      m.enableServer()
+      m.manager.callFunc("castToGroup", { id: "i9", type: "Movie" })
+      m.manager.frame = m.update("LibraryAccessDenied", invalid)
+      m.assertEqual(m.manager.notice.kind, "LibraryAccessDenied")
+      queueManager = m.global.queueManager
+      m.assertTrue(isValid(queueManager.callFunc("getPlaybackCaps")), "the viewer's quality cap survives the refusal")
+      m.assertEqual(queueManager.callFunc("getRepeatMode"), queueRepeat.ALL)
+      m.assertTrue(syncPlayQueue.isGroupItem(queueManager.callFunc("getCurrentItem"), "p1"))
+      m.assertTrue(m.manager.following, "a following member's refused play leaves it following")
+    end function
+
+    @it("castToGroup: with no server nothing is taken, and the queue is left alone")
     function _()
       m.watchWithCap()
-      m.assertFalse(m.manager.callFunc("keepsPlayingFor", { id: "i2", type: "Movie" }))
+      m.assertFalse(m.manager.callFunc("castToGroup", { id: "i9", type: "Movie" }))
+      m.assertTrue(isValid(m.global.queueManager.callFunc("getPlaybackCaps")))
       m.assertInvalid(m.manager.notice)
     end function
 

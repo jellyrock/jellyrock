@@ -827,12 +827,10 @@ sub onDeepLinkResolved()
 
   ' A cast over the player while following a SyncPlay group: the group takes the play, as this
   ' viewer's own press, and its answer reloads the player in place (syncPlayQueue.castGoesToGroup).
+  ' The local queue is left alone until that answer (SyncPlayManager.castToGroup). A cast the
+  ' group cannot take goes the springboard route below.
   if args.replacePlayer and syncPlayQueue.castGoesToGroup(args.action, item, m.global.syncPlayManager.following = true)
-    ' The video the player is already on in step with the group: launchItem would clear the
-    ' viewer's quality cap and version pick for nothing, so the manager only tells the viewer.
-    if m.global.syncPlayManager.callFunc("keepsPlayingFor", item) then return
-    m.global.queueManager.callFunc("launchItem", item)
-    return
+    if m.global.syncPlayManager.callFunc("castToGroup", item) = true then return
   end if
 
   ' Valid. Navigate to the details route (ItemDetails loads + dispatches the action on mount).

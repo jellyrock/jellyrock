@@ -1736,6 +1736,18 @@ Cause not confirmed. A playback error dialog is only a guess, because the record
 
 **Document the BrightScript simulator (`brs-node`, `brs-cli`) as a no-device check.** Tried 2026-11-05 with `brs-node` 2.6.2: a dev build boots to pre-login and prints log lines in the device format, then the engine faults (`e.registerCallback is not a function`) when the first Task (`ServerDiscoveryTask`) starts. A single-spec TDD build runs cleanly (the logger spec, 6 of 6). The whole unit suite ran 90 suites (697 pass, 67 fail) before the process ran out of memory with an 8 GB heap; failures cluster in focus and visual suites, Task-relaunch platform suites and codec answers, and none was checked against a device. So it suits one spec at a time and boot checks, never as a replacement for `test:all` on a device. Add a short how-to to `docs/dev/unit-tests-tdd.md` (zip `build/`, `npx brs-cli <zip> -c 0`). The maintainer does not want upstream bug reports filed.
 
+#### A `SyncPlayManager` spec cannot send a queue frame after a catch-up: the Rooibos run crashes on a stripped state `[fid: rooibos-frame-after-catchup-crash]` `[captured 2026-11-08]`
+
+A Rooibos spec in `SyncPlayManager.spec.bs` that sends a queue frame after a halted member's catch-up crashes the run (seen 2026-11-08 on the Stick 4K, while building the catch-up's `QueueNext` addition). The manager's membership state reaches `syncPlayQueue.isStaleQueueUpdate()` with its `LongInteger` and `invalid` fields gone (`lastupdatems`, `joinedatms`, `playbackqueueatms`, `startpositionticks`, `isplaying`), and the comparison raises a type mismatch. The console also logs "promises_Promise is inaccessible from render thread" right after the catch-up, from the `start` promise the spec creates on its own thread. The app does not crash on the same sequence: the `syncplay-menu` RTA case for the addition runs a catch-up followed by a `QueueNext` frame on the device.
+
+So the confirmation check became a pure function (`syncPlayQueue.queuedNextCount()`), and no manager spec sends a frame after a catch-up. Not checked: which thread copies the state, and whether creating `start` on the render thread (a helper node) avoids it. Close it when a manager spec can send a frame after a catch-up, or when docs/dev/unit-tests.md says why it cannot.
+
+#### ctx.heroId is empty in the `syncplay-menu` RTA spec on a server without the configured hero title `[fid: rta-hero-id-empty-on-local-server]` `[captured 2026-11-08]`
+
+In `tests/rta/specs/syncplay-menu.spec.js`, `ctx.heroId` comes from `getHero()`, which finds `RTA_CONFIG.heroMovie` by title. On a server without that title (the local Jellyfin 12.4.0 server, 2026-11-08) it is empty, while `startPlayback(ctx)` still reaches the hero by its index. So `moviesOtherThanHero()` filters nothing and returns the group's own video first. One case already works around it (its comment says the first result is the group's video), and the catch-up addition case reads the group's video id off the details screen instead. A new case that trusts `ctx.heroId` passes a queue with an empty id.
+
+Fix shape: fill `ctx.heroId` from the movie `startPlayback` actually opens (the same index the nav uses), or fail fast in `beforeAll` when it is empty. Close it when `ctx.heroId` is never empty on a server the suite runs against.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`

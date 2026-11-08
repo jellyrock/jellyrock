@@ -54,11 +54,13 @@
          right after the group's (QueueNext). A halted member's other plays are
          held with a confirmPlay notice until one of the two below, or until playHeld clears. -->
     <function name="claimPlay" />
-    <!-- keepsPlayingFor(item): whether a cast of this video (JRScene.onDeepLinkResolved) changes nothing
-         because this member follows the group and its player is already on the group's playing
-         item. True also tells the viewer (an alreadyWatching notice); the caller then launches
-         nothing, so the queue, its quality caps and its version pick stay as they are. -->
-    <function name="keepsPlayingFor" />
+    <!-- castToGroup(item): a cast over this member's player while it follows the group
+         (JRScene.onDeepLinkResolved). The group takes it as this viewer's own play, without the
+         local queue being replaced first, so a refusal leaves the queue and its picks as they
+         were. A cast of the video the player is already on in step only tells the viewer (an
+         alreadyWatching notice). False when the group cannot take it: its start is ended, and
+         the cast goes the usual way. -->
+    <function name="castToGroup" />
     <!-- confirmPlay(): the viewer confirmed the held play; it follows the group again and posts.
          cancelPlay(): the viewer kept the group's playback; the start the press opened ends.
          Both answer false when nothing is held any more. -->
