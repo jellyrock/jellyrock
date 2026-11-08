@@ -34,6 +34,17 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("groupTrickSeekDelta() — fast-forward and rewind as a group seek")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("forward is the replay step ahead, rewind the same step back")
+    function _()
+      m.assertEqual(voiceTransport.groupTrickSeekDelta("forward", 10), 10)
+      m.assertEqual(voiceTransport.groupTrickSeekDelta("rewind", 10), -10)
+      m.assertEqual(voiceTransport.groupTrickSeekDelta("Rewind", 25), -25)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("parseSeekDelta() — voice seek payload parsing")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

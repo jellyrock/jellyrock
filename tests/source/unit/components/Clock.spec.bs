@@ -1,0 +1,48 @@
+namespace tests
+
+  ' Clock.textWidth is what the overhang's cluster and the OSD's SyncPlay mark lay out against:
+  ' the width of the digits the tick shows, or 0 while the clock is hidden.
+  @suite("Clock - the digits' width")
+  class ClockTests extends tests.BaseTestSuite
+
+    private clock as object
+
+    protected override function beforeEach()
+      super.beforeEach()
+      ' Clock.init() returns early (no timer, no nodes) when the clock is hidden
+      m.global.user.settings.uiDesignHideClock = false
+      m.clock = CreateObject("roSGNode", "Clock")
+    end function
+
+    protected override function afterEach()
+      m.clock = invalid
+      super.afterEach()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("textWidth")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is the labels' widths and the gaps between them after a tick")
+    function _()
+      m.clock.callFunc("resetTime")
+      expected = 0
+      for each id in ["hours", "timeSeperator", "minutes"]
+        expected += m.clock.findNode(id).localBoundingRect().width
+      end for
+      ' Two gaps of the group's itemSpacings (one value, so every gap takes it).
+      expected += 2 * m.clock.findNode("clockGroup").itemSpacings[0]
+      m.assertTrue(m.clock.textWidth > 0, "a tick measures the digits")
+      m.assertEqual(m.clock.textWidth, -int(-expected))
+    end function
+
+    @it("stays 0 while the clock is hidden")
+    function _()
+      m.global.user.settings.uiDesignHideClock = true
+      hidden = CreateObject("roSGNode", "Clock")
+      hidden.callFunc("resetTime")
+      m.assertEqual(hidden.textWidth, 0)
+    end function
+  end class
+
+end namespace

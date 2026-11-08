@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- (syncplay) Add a group mark, names, a play confirm and catch-up ([#1335](https://github.com/jellyrock/jellyrock/pull/1335))
 - (syncplay) Repeat, shuffle, time offset and leave in the gear ([#1315](https://github.com/jellyrock/jellyrock/pull/1315))
 - (player) Repeat a video or the queue from the OSD gear ([#1308](https://github.com/jellyrock/jellyrock/pull/1308))
 - (syncplay) Stay in step, stop seek freezes, add a time offset ([#1296](https://github.com/jellyrock/jellyrock/pull/1296))
@@ -21,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (ui) Fix dialogs left deaf by navigation or the screensaver ([#1336](https://github.com/jellyrock/jellyrock/pull/1336))
 - (video) Follow repeat mode on voice and remote Next and Previous ([#1333](https://github.com/jellyrock/jellyrock/pull/1333))
 - (playback) Show `.strm` audio and subtitle buttons on first play ([#1332](https://github.com/jellyrock/jellyrock/pull/1332))
 - (playback) Start 4K Dolby Vision on a display without HDR ([#1331](https://github.com/jellyrock/jellyrock/pull/1331))

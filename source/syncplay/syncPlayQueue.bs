@@ -109,6 +109,83 @@ namespace syncPlayQueue
     return playKind.of(queueItem.type) = playKind.VIDEO
   end function
 
+  ' Whether the mounted player is already playing the group's item (SyncPlayManager.keepsPlayingFor): the
+  ' member follows, a player host is mounted and none is owed a reload, and the ready tracker has
+  ' left "idle". Only a mount of the group's item moves the tracker (a mount of anything else
+  ' halts), and an unmount returns it to idle, so a host the member joined over, or one between
+  ' two mounts, is not counted.
+  ' @param trackerPhase - the ready tracker's phase (syncPlayPlayback.newReadyTracker)
+  function playerIsOnGroupItem(following as boolean, hasPlayer as boolean, expectingRemount as boolean, trackerPhase as string) as boolean
+    return following and hasPlayer and not expectingRemount and trackerPhase <> "idle"
+  end function
+
+  ' Whether a cast's play over this Roku's player goes straight to the group (JRScene.
+  ' onDeepLinkResolved): a plain play of an item the group can follow, while following. The group
+  ' takes it as this viewer's own press, and its answer reloads the player in place. Tearing the
+  ' player down for the springboard first would halt the member, and the play would then ask as a
+  ' halted member's does. Any other cast keeps the springboard route.
+  function castGoesToGroup(action as string, item as dynamic, following as boolean) as boolean
+    return following and action = "play" and followsItem(item)
+  end function
+
+  ' Whether a play's current item is the video the group is playing now, whichever launcher
+  ' queued it (SyncPlayManager.claimPlay). The group never takes such a play: the server answers
+  ' SetPlaylistItem by starting the item over for every member (Group.SetPlayingItem), so the
+  ' member loads the group's item at the group's position instead. Read from the playing entry,
+  ' so an item the playlist holds twice counts only where it plays now. A group that stopped
+  ' keeps its queue and sends no state update, so it is not playing it: a catch-up to it gets
+  ' the player stopped, and the play goes to the group, which starts it. With the queue's update
+  ' time unknown the group counts as playing: a wrong "stopped" would restart it for everyone.
+  ' @param state - syncPlayState
+  ' @param lastCommand - the last group command applied, scheduled or recorded, or invalid
+  function isGroupsPlayingItem(queueItem as dynamic, state as object, lastCommand = invalid as dynamic) as boolean
+    if not isValid(queueItem) then return false
+    entry = playingEntry(state)
+    if not isValid(entry) or entry.itemId <> queueItem.id then return false
+    if isValid(lastCommand) and lastCommand.command = "Stop" and syncPlayTime.isWholeNumber(lastCommand.emittedAtMs) and syncPlayTime.isWholeNumber(state.lastUpdateMs) and syncPlayTime.asLong(lastCommand.emittedAtMs) >= state.lastUpdateMs then return false
+    return true
+  end function
+
+  ' What a catch-up adds right after the group's video (SyncPlayManager.catchUp): the item ids after
+  ' `position` that the player can follow and the group's playlist does not hold, each once, in
+  ' order. A Play All whose current item is the group's video keeps the rest of its queue this way,
+  ' with nothing restarted or replaced: POST /SyncPlay/Queue only adds, in any group state.
+  ' @param state - syncPlayState, whose playlist says what the group holds already
+  function queueNextIds(queueItems as dynamic, position as integer, state as object) as object
+    ids = []
+    if type(queueItems) <> "roArray" then return ids
+    held = {}
+    if type(state.playlist) = "roArray"
+      for each entry in state.playlist
+        if syncPlayTime.isText(entry.itemId) then held[entry.itemId] = true
+      end for
+    end if
+    for i = position + 1 to queueItems.count() - 1
+      queueItem = queueItems[i]
+      if followsItem(queueItem) and syncPlayTime.isText(queueItem.id) and queueItem.id <> "" and not held.doesExist(queueItem.id)
+        ids.push(queueItem.id)
+        held[queueItem.id] = true
+      end if
+    end for
+    return ids
+  end function
+
+  ' How many videos a queue update shows the group took from this member's addition (queueNextIds),
+  ' or 0 when it is not that answer: a QueueNext update whose playlist holds every id added. The
+  ' server refuses an addition without a word (it only logs it), so success is read from its own
+  ' update, never assumed at the post, and another member's QueueNext without these ids is theirs.
+  function queuedNextCount(pendingIds as dynamic, reason as string, playlist as dynamic) as integer
+    if reason <> "QueueNext" or type(pendingIds) <> "roArray" or pendingIds.count() = 0 or type(playlist) <> "roArray" then return 0
+    held = {}
+    for each entry in playlist
+      if syncPlayTime.isText(entry.itemId) then held[entry.itemId] = true
+    end for
+    for each itemId in pendingIds
+      if not held.doesExist(itemId) then return 0
+    end for
+    return pendingIds.count()
+  end function
+
   ' Whether a QueueManager item is the one the group is playing: queueItemsFor stamps the
   ' playlist id, and nothing else in the app sets it.
   function isGroupItem(queueItem as dynamic, playingItemId as string) as boolean

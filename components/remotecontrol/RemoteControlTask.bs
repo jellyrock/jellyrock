@@ -39,7 +39,7 @@ end sub
 
 ' Publish whether this server has a push channel to the Roku (server.remoteChannelStatus, which
 ' SyncPlay reads). Written only on a change: this is a Task thread writing m.global, a rendezvous
-' with the render thread, and the status settles once per run.
+' with the render thread, and the status changes only when the channel comes or goes.
 sub setChannelStatus(status as string)
   if m.global.server.remoteChannelStatus = status then return
   m.global.server.remoteChannelStatus = status
@@ -58,6 +58,8 @@ sub runWsReceiver(serverUrl as string)
   ' Snapshot the token so a reconnect can detect a server-side rotation and stop cleanly.
   m.openedWithToken = m.global.user.authToken
   m.port = CreateObject("roMessagePort")
+  ' Set at the first on_open: until then a close says nothing about a channel this run has had.
+  m.socketHasOpened = false
 
   attempt = 0
   while true
@@ -79,6 +81,11 @@ sub runWsReceiver(serverUrl as string)
     ' That path never resets, so it can't hot-loop. increment AFTER the sleep so the 0th tier (1s) is
     ' actually used rather than skipped straight to 2s.
     if wasStable then attempt = 0
+    ' Nothing the server pushes reaches this Roku until the socket is back: SyncPlay reads the
+    ' status, and its icon disables rather than offer a group no command would reach. A blip
+    ' after a stable session reconnects first (remoteProtocol.socketDownMarksUnavailable), and
+    ' on_open publishes available again.
+    if remoteProtocol.socketDownMarksUnavailable(m.socketHasOpened, wasStable) then setChannelStatus(serverCapabilities.STATUS_UNAVAILABLE)
     backoffMs = backoff.nextDelayMs(attempt)
     m.log.info("socket closed; reconnecting", "inMs", backoffMs)
     sleep(backoffMs)
@@ -140,6 +147,7 @@ function connectAndPump(url as string) as boolean
         handleFrame(msg.getData())
       else if field = "on_open"
         m.log.info("socket open")
+        m.socketHasOpened = true
         setChannelStatus(serverCapabilities.STATUS_AVAILABLE)
         sessionTimer = CreateObject("roTimespan")
       else if isTerminalSocketEvent(field, msg, isValid(sessionTimer))

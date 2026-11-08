@@ -1,3 +1,5 @@
+import "pkg:/source/utils/overlayDialog.bs"
+
 ' The ONE definition of how an overlay dialog closes: JRDialog, JRListDialog,
 ' OverviewDialog and QuickConnectDialog all close through it.
 '
@@ -15,8 +17,15 @@
 ' destroys the answer (the same trap applyButtonOverflow documents in
 ' buttonOverflow.bs).
 '
+' THE REDIRECT. returnFocusTo can sit in a screen the viewer has left: the dialog opened over
+' screen A, a navigation then made screen B the active routed view. Focus then goes to the active
+' view's own handleFocus, so B restores its focus instead of A's hidden node. A returnFocusTo
+' outside every screen (the overhang, AppWaitHost) keeps the plain setFocus, and so does an
+' invalid active view.
+'
 ' Callers keep their own bookkeeping (the once-only flag, the `closed` signal);
-' this holds only the detach and the focus decision.
+' this holds only the focus decision. The detach itself is detachOverlayDialog in
+' overlayDialog.bs, which abandonDialog shares.
 
 ' Take the dialog off its parent and hand focus back to returnFocusTo, but only
 ' if the dialog still held focus.
@@ -26,8 +35,34 @@ sub closeOverlayDialog(dialog as object)
   returnFocusTo = dialog.returnFocusTo
   wasFocused = dialog.isInFocusChain()
 
-  parent = dialog.getParent()
-  if isValid(parent) then parent.removeChild(dialog)
+  detachOverlayDialog(dialog)
 
-  if wasFocused and isValid(returnFocusTo) then returnFocusTo.setFocus(true)
+  if not wasFocused or not isValid(returnFocusTo) then return
+
+  activeView = m.global.activeRoutedView
+  if closeRedirectsToActiveView(returnFocusTo, activeView)
+    activeView.callFunc("handleFocus", {})
+  else
+    returnFocusTo.setFocus(true)
+  end if
 end sub
+
+' Whether closing a dialog that would give the focus back to returnFocusTo gives it to
+' activeView instead (THE REDIRECT). AppWaitHost asks it too: a start that hides activeView takes
+' that focus itself.
+function closeRedirectsToActiveView(returnFocusTo as dynamic, activeView as dynamic) as boolean
+  return isValid(returnFocusTo) and isValid(activeView) and isInOtherScreen(returnFocusTo, activeView)
+end function
+
+' True when node sits inside a screen that is not activeView and never passes through activeView.
+' A screen nested in the active view (the OSD in the player) is part of it, so it returns false.
+function isInOtherScreen(node as object, activeView as object) as boolean
+  inScreen = false
+  walker = node
+  while isValid(walker)
+    if walker.isSameNode(activeView) then return false
+    if walker.isSubtype("JRScreen") then inScreen = true
+    walker = walker.getParent()
+  end while
+  return inScreen
+end function

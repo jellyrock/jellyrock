@@ -5616,7 +5616,7 @@ sub onDestroy()
   end if
 
   ' Drop any confirmation still on screen. It is a scene child, so it would
-  ' otherwise outlive this view (see abandonDialog in source/utils/dialogs.bs)
+  ' otherwise outlive this view (see abandonDialog in source/utils/overlayDialog.bs)
   abandonDialog(m.watchedConfirmDialog)
   abandonDialog(m.deleteConfirmDialog)
   ' The More menu's result handler ACTS (navigates, deletes, starts playback), so it

@@ -7,6 +7,7 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/overhangRow.bs"
 import "pkg:/source/utils/playbackCaps.bs"
 import "pkg:/source/utils/playbackSettingsMenu.bs"
 import "pkg:/source/utils/queueRepeat.bs"
@@ -33,9 +34,12 @@ sub init()
   m.progressBar = m.top.findNode("progressBar")
   m.progressBarBackground = m.top.findNode("progressBarBackground")
   m.clock = m.top.findNode("clock")
+  m.syncPlayMark = m.top.findNode("syncPlayMark")
 
   if isValid(m.clock)
     m.clock.observeField("minutes", "setEndsAtText")
+    ' The digits' width moves at any minute: the mark follows it.
+    m.clock.observeField("textWidth", "applySyncPlayMark")
   end if
   m.top.observeField("itemData", "onItemDataChanged")
   m.top.observeField("visible", "onVisibleChanged")
@@ -764,6 +768,31 @@ end sub
 sub refreshFromQueue()
   applyStepButtons()
   applyGearState()
+  applySyncPlayMark()
+end sub
+
+' The SyncPlay mark: the overhang's icon in the overhang's states, shown while in a group, active
+' (colorSecondary) while following and disabled (dim) while halted, read from the manager as
+' the OSD opens and never cached. It sits CLOCK_GAP left of the clock's digits, whose width the
+' clock reports at each tick (overhangRow.leftOfClock), and takes the clock's place when the
+' clock is hidden. Its box centers on the clock's text box (boxY and boxHeight).
+sub applySyncPlayMark()
+  manager = m.global.syncPlayManager
+  inGroup = isValid(manager) and manager.inGroup = true
+  m.syncPlayMark.visible = inGroup
+  if not inGroup then return
+  following = manager.following = true
+  m.syncPlayMark.isActive = following
+  m.syncPlayMark.isDisabled = not following
+  if not isValid(m.clock)
+    m.syncPlayMark.translation = [overhangRow.RIGHT_EDGE - overhangRow.ICON_BOX, 0]
+    return
+  end if
+  ' The uiDesignHideClock setting leaves the clock's digits empty rather than hiding it.
+  clockShown = m.clock.visible and m.global.user.settings.uiDesignHideClock <> true
+  right = overhangRow.leftOfClock(m.clock.textWidth, clockShown)
+  top = m.clock.boxY + (m.clock.boxHeight - overhangRow.ICON_BOX) \ 2
+  m.syncPlayMark.translation = [right - overhangRow.ICON_BOX, top]
 end sub
 
 sub onVisibleChanged()
@@ -788,6 +817,8 @@ end sub
 
 ' 1s timer: auto-hide on inactivity AND drive the behind-live countdown while paused
 sub inactiveCheck()
+  ' The OSD stays up while paused, through a halt or a leave: the mark follows each second.
+  applySyncPlayMark()
   if m.global.sceneManager.callFunc("isDialogOpen")
     return
   end if
@@ -1233,6 +1264,7 @@ sub onDestroy()
   ' Unobserve clock (guarded: may be invalid if clock node not found in init)
   if isValid(m.clock)
     m.clock.unobserveField("minutes")
+    m.clock.unobserveField("textWidth")
     m.clock = invalid
   end if
 
@@ -1240,6 +1272,8 @@ sub onDestroy()
   m.inactivityTimer.unobserveField("fire")
   m.inactivityTimer.control = "stop"
   m.inactivityTimer = invalid
+  ' After the clock's and the timer's observers: both run applySyncPlayMark.
+  m.syncPlayMark = invalid
 
   ' Clear node references
   m.endsAtTime = invalid

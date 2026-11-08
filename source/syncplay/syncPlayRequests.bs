@@ -66,6 +66,14 @@ namespace syncPlayRequests
     return { "PlaylistItemId": playlistItemId }
   end function
 
+  ' POST /SyncPlay/Queue: add these item ids to the group's playlist, QueueNext right after the
+  ' playing item or Queue at its end. The server changes no group state for it, so nobody restarts
+  ' or waits, and answers every member with a PlayQueue update whose reason is the mode. A refusal
+  ' (a member without access to an item) is only logged: no update comes.
+  function queue(itemIds as object, mode as string) as object
+    return { "ItemIds": itemIds, "Mode": mode }
+  end function
+
   ' POST /SyncPlay/SetRepeatMode: a GroupRepeatMode, the same words as queueRepeat.bs
   ' (RepeatNone, RepeatAll, RepeatOne). The server answers every member with a PlayQueue update
   ' whose reason is RepeatMode, in whatever state the group is.

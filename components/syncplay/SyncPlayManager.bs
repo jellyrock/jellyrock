@@ -17,6 +17,7 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/queueRepeat.bs"
 import "pkg:/source/utils/tasks.bs"
+import "pkg:/source/utils/voiceTransport.bs"
 
 ' Rounds in the burst a join starts (the spike's "best of eight") and in each later one; when the
 ' next burst runs is syncPlayOffset.nextBurstSeconds.
@@ -91,6 +92,18 @@ sub ensureReady()
   ' a refusal, a leave or a halt ends it, and Back, its time limit or a newer press end it with
   ' nothing to clear here.
   m.claimedStart = invalid
+  ' A halted member's play, built and held until the viewer confirms it (confirmPlay) or not
+  ' (cancelPlay): { request, action, start, title, moreCount, queueItems, position }, the title the
+  ' dialog names, the videos that follow it in the queue and the pressed queue. It replaces what
+  ' the whole group is watching, and a remote makes an accidental play easy. Not a claim until
+  ' confirmed: the group's frames meanwhile are read as for any halted member. Any other end (its
+  ' start ending, a newer press, the group's new playlist, a leave, a refusal) fails its start and
+  ' clears playHeld, which closes the dialog.
+  m.heldClaim = invalid
+  ' The item ids a catch-up added right after the group's video (catchUp), until the group's
+  ' QueueNext update shows it took them (syncPlayQueue.queuedNextCount) and the viewer is told.
+  ' A new playlist, a halt or a leave drops them untold.
+  m.queuedNext = invalid
   ' A halted member's claim followed the group again at the press, so the group would wait on
   ' it. That follow holds only until the group's load answers it (endUnansweredRefollow).
   m.claimRefollowed = false
@@ -320,6 +333,7 @@ sub haltFollowing(reason as string, tell = true as boolean)
   resetPlaybackTracking()
   m.tracker = syncPlayPlayback.newReadyTracker()
   dropClaimedPlay("stopped following")
+  m.queuedNext = invalid
   post("SetIgnoreWait", syncPlayRequests.setIgnoreWait(true))
   releaseGroupRepeat()
   publish()
@@ -334,7 +348,8 @@ end sub
 ' follows the group again first: locally, so the answer applies (syncPlayQueue.appliesFetchedQueue),
 ' and on the wire, so the group waits on it (a new queue marks every member buffering, but the
 ' server's wait skips a member still ignoring it). It halts again if the group never loads the
-' play (endUnansweredRefollow).
+' play (endUnansweredRefollow). A play of the video the group is playing goes to no one: it
+' catches this member up instead (catchUp).
 ' @param start - the playback start the press opened (QueueManager.beginPlaybackStart), which
 '   the claim lives as long as; invalid when none is pending
 function claimPlay(start = invalid as dynamic) as boolean
@@ -345,6 +360,15 @@ function claimPlay(start = invalid as dynamic) as boolean
   position = queueManager.callFunc("getPosition")
   if type(queueItems) <> "roArray" or position < 0 or position >= queueItems.count() then return false
   if syncPlayQueue.isGroupItem(queueItems[position], m.state.playingItemId) then return false
+  return claimItems(queueItems, position, start)
+end function
+
+' claimPlay's decision for a queue given directly, so castToGroup can hand the group a cast without
+' replacing the local queue first. True when the group takes the play (posted, held for a
+' confirm, or caught up to), false when it plays locally or nothing could be posted.
+' @param start - the playback start the play opened, or invalid
+function claimItems(queueItems as object, position as integer, start as dynamic) as boolean
+  if not m.state.inGroup then return false
   handoff = syncPlayQueue.handoff(queueItems, position, m.state)
   if not isValid(handoff) then return false
   if handoff.action = "setPlaylistItem"
@@ -353,17 +377,99 @@ function claimPlay(start = invalid as dynamic) as boolean
     req = syncPlayRequest("SetNewQueue", syncPlayRequests.setNewQueue(handoff.itemIds, handoff.position, handoff.startPositionTicks))
   end if
   if not isValid(req) then return false
-  ' Built before anything is sent, so a play that will run locally re-follows nothing.
-  if not isFollowing()
-    followAgain()
-    m.claimRefollowed = true
+  ' Every launcher reaches here, so the rule is the same for a press, a quick play, a deep link
+  ' and a cast. The server answers SetPlaylistItem for the playing entry by starting the video
+  ' over for every member, and nobody asked for that. The rest of the queue is added after it.
+  if syncPlayQueue.isGroupsPlayingItem(queueItems[position], m.state, m.lastCommand)
+    catchUp(start, syncPlayQueue.queueNextIds(queueItems, position, m.state))
+    return true
   end if
-  SubmitSideEffect(req)
-  m.log.info("play handed to the group", "action", handoff.action, "groupId", m.state.groupId)
+  ' Built before anything is sent, so a play that will run locally re-follows nothing. A halted
+  ' member's play is held for the viewer's confirmation first: the start stays open under the
+  ' dialog, and the hold ends with it.
+  if not isFollowing()
+    releaseHeldPlay("replaced by a newer play")
+    title = voiceTransport.formatNowPlayingTitle(queueItems[position])
+    moreCount = 0
+    if handoff.action = "setNewQueue" then moreCount = handoff.itemIds.count() - 1 - handoff.position
+    m.heldClaim = { request: req, action: handoff.action, start: start, title: title, moreCount: moreCount, queueItems: queueItems, position: position }
+    ' A field observer, not promises.onFinally: that runs on a later timer, through state kept on
+    ' this node. Never unobserved: the start is short-lived, and an unobserve can drop the
+    ' observers QueueManager and AppWaitHost keep on it (#898).
+    if isValid(start) then start.observeField("promiseState", "onHeldStartEnded")
+    ' Nothing loads while the viewer reads the question: the screen shows behind the dialog and
+    ' the spinner waits for the answer (confirmPlay resumes it). Back still cancels the start.
+    appWaits.pause(start)
+    publish()
+    m.top.notice = { kind: "confirmPlay", groupName: m.state.groupName, userName: "", title: title, moreCount: moreCount }
+    return true
+  end if
   m.claimedStart = start
-  notify("playedToGroup", m.state.groupName, "")
+  sendClaim(req, handoff.action)
   return true
 end function
+
+' The held play reaches the group: the viewer confirmed it. From here it is a claim like a
+' following member's, on the start the press opened. The member follows again first, so the
+' group waits on it. If the group has moved to the held video meanwhile, the play catches up
+' instead (catchUp), as at the press. True when a play was held.
+function confirmPlay() as boolean
+  held = m.heldClaim
+  if not isValid(held) then return false
+  m.heldClaim = invalid
+  ' The start may have ended before onHeldStartEnded read it: a play with nothing to start goes
+  ' nowhere.
+  if isValid(held.start) and not appWaits.isOpen(held.start)
+    publish()
+    return false
+  end if
+  appWaits.resume(held.start)
+  if syncPlayQueue.isGroupsPlayingItem(held.queueItems[held.position], m.state, m.lastCommand)
+    catchUp(held.start, syncPlayQueue.queueNextIds(held.queueItems, held.position, m.state))
+    return true
+  end if
+  m.claimedStart = held.start
+  followAgain()
+  m.claimRefollowed = true
+  sendClaim(held.request, held.action)
+  return true
+end function
+
+' The held play goes nowhere: the viewer kept the group's playback. The start the press opened
+' ends, as for a refusal; the queue keeps the item and nothing plays. True when a play was held.
+function cancelPlay() as boolean
+  if not isValid(m.heldClaim) then return false
+  releaseHeldPlay("the viewer kept the group's playback")
+  return true
+end function
+
+' The held play ends unanswered: its start fails (nothing plays for it) and playHeld clears, so
+' the scene closes the dialog asking about it.
+sub releaseHeldPlay(reason as string)
+  held = m.heldClaim
+  if not isValid(held) then return
+  ' Cleared first: failing the start runs onHeldStartEnded, which must find nothing held.
+  m.heldClaim = invalid
+  appWaits.fail(held.start, "the group did not play it (" + reason + ")")
+  publish()
+end sub
+
+' The start under a held play ended on its own (its time limit, or a newer press replaced it):
+' nothing is left to confirm. Only that hold: a newer one has a start of its own.
+sub onHeldStartEnded(event as object)
+  start = event.getRoSGNode()
+  if appWaits.isOpen(start) then return
+  held = m.heldClaim
+  if not isValid(held) or not isValid(held.start) or not held.start.isSameNode(start) then return
+  m.heldClaim = invalid
+  publish()
+end sub
+
+sub sendClaim(req as object, action as string)
+  SubmitSideEffect(req)
+  m.log.info("play handed to the group", "action", action, "groupId", m.state.groupId)
+  notify("playedToGroup", m.state.groupName, "")
+end sub
 
 ' A halted member follows the group again: its own play, or another member's new playlist
 ' (as jellyfin-web does), brings it back. The server is told to wait on it again. The caller
@@ -391,12 +497,87 @@ function resumeFollowing() as boolean
     notify("followingAgain", m.state.groupName, "")
     return true
   end if
-  m.owedLoad = { newPlaylist: true }
   m.loadNotice = "followingAgain"
   m.resumeAsked = true
-  fetchQueue("Resume", m.state.lastUpdateMs, false, "-resume")
+  loadGroupItem("-resume")
   return true
 end function
+
+' A play of the video the group is playing (claimPlay), from any launcher: this member loads
+' the group's item at the group's position, as Resume with Group does, and nothing reaches the
+' group. A halted member follows again first and is told so here, as a claim is; Back before
+' the load halts it again, quietly (endUnansweredRefollow). The press's start is the claim's:
+' the load's own start replaces it, or a player reloading in place takes it. A player already on
+' the video in step never gets here: the one launcher that runs over it asks keepsPlayingFor first.
+' The videos the play queued after the group's (syncPlayQueue.queueNextIds) are added right after
+' it with QueueNext, which restarts and replaces nothing. Posted with the load rather than after it:
+' an update that only adds keeps the load owed (syncPlayQueue.owedLoadAfter), so whichever update
+' lands last still loads the group's item.
+' @param appendIds - item ids to add after the group's video, empty for none
+sub catchUp(start as dynamic, appendIds = [] as object)
+  releaseHeldPlay("replaced by a newer play")
+  refreshExtraOffset()
+  m.claimedStart = start
+  if not isFollowing()
+    followAgain()
+    m.claimRefollowed = true
+    m.resumeAsked = true
+    notify("followingAgain", m.state.groupName, "")
+  end if
+  m.log.info("play of the group's own item loads it at the group position", "groupId", m.state.groupId)
+  loadGroupItem("-catchup")
+  m.queuedNext = invalid
+  if appendIds.count() > 0 and post("Queue", syncPlayRequests.queue(appendIds, "QueueNext"))
+    m.log.info("the rest of the play added after the group's item", "count", appendIds.count(), "groupId", m.state.groupId)
+    m.queuedNext = appendIds
+  end if
+end sub
+
+' A cast over this member's player while it follows the group (JRScene.onDeepLinkResolved, after
+' syncPlayQueue.castGoesToGroup). The group takes it as this viewer's own press, through the same
+' decision (claimItems), but the local queue is left alone: the group's answer builds the queue
+' (applyQueue), so a refusal leaves the queue, its quality cap, version pick and repeat mode as
+' they were. The video the player is already on in step only tells the viewer (keepsPlayingFor).
+' @param item - the cast's item
+' @return false when the group cannot take it: its start is ended, and the caller routes the cast
+'   as any other
+function castToGroup(item as dynamic) as boolean
+  ensureReady()
+  if keepsPlayingFor(item) then return true
+  if not isValid(item) then return false
+  ' The fields the group request reads: the id, the type and the resume start, set as
+  ' quickplay.video sets them.
+  queueItem = nodeHelpers.createQueueItem(item)
+  if not isValid(queueItem) then return false
+  nodeHelpers.setResumeStart(queueItem, item.playbackPositionTicks)
+  start = m.global.queueManager.callFunc("beginPlaybackStart", "")
+  if claimItems([queueItem], 0, start) then return true
+  appWaits.fail(start, "the group could not take the cast")
+  return false
+end function
+
+' A play of the group's own video while this member's player is already on it in step changes
+' nothing but a toast: a reload would make this Roku rebuffer, and its Buffering report pauses
+' every member until it is Ready. A cast (castToGroup) is the one launcher that runs over the
+' player; any other that could must ask here first, since claimPlay runs after the launcher has
+' replaced the queue.
+' @param item - the item the play would launch
+' @return whether the play is absorbed
+function keepsPlayingFor(item as dynamic) as boolean
+  if not isFollowing() then return false
+  if not syncPlayQueue.isGroupsPlayingItem(item, m.state, m.lastCommand) then return false
+  if not syncPlayQueue.playerIsOnGroupItem(true, isValid(playerHost()), m.expectingRemount, m.tracker.phase) then return false
+  notify("alreadyWatching", m.state.groupName, "")
+  return true
+end function
+
+' Loads the item the group plays as a new queue at the position the state keeps for it
+' (applyQueue; syncPlayPlayback.startPositionTicks estimates it).
+' @param tag - tells this fetch's request id from the update's own (fetchQueue)
+sub loadGroupItem(tag as string)
+  m.owedLoad = { newPlaylist: true }
+  fetchQueue("Resume", m.state.lastUpdateMs, false, tag)
+end sub
 
 ' Whether a play this viewer handed to the group still waits on the group's answer: the start
 ' its press opened is still open. Back, the start's time limit or a newer press ended it.
@@ -410,6 +591,7 @@ end function
 sub dropClaimedPlay(reason as string)
   appWaits.fail(m.claimedStart, "the group did not play it (" + reason + ")")
   m.claimedStart = invalid
+  releaseHeldPlay(reason)
 end sub
 
 ' A claim that re-followed and ended with no load from the group (a refusal, Back, the start's
@@ -809,8 +991,19 @@ sub onQueueUpdate(update as object)
   refollowed = false
   if not m.state.following
     if update.reason <> "NewPlaylist" then return
+    ' Another member's pick stands: a play this viewer had not confirmed yet would replace it.
+    releaseHeldPlay("the group started something new")
     followAgain()
     refollowed = true
+  end if
+  ' The group took the videos a catch-up added: told once, with how many. Another playlist ends
+  ' the wait for that answer.
+  queuedCount = syncPlayQueue.queuedNextCount(m.queuedNext, update.reason, m.state.playlist)
+  if queuedCount > 0
+    m.queuedNext = invalid
+    m.top.notice = { kind: "queuedNext", groupName: m.state.groupName, userName: "", count: queuedCount }
+  else if update.reason = "NewPlaylist"
+    m.queuedNext = invalid
   end if
   answersJoin = m.joinAwaitsQueue
   m.joinAwaitsQueue = false
@@ -839,6 +1032,9 @@ sub fetchQueue(reason as string, lastUpdateMs as longinteger, isRetry as boolean
   requestId = "syncplay-queue-" + lastUpdateMs.toStr() + tag
   if isRetry then requestId = requestId + "-retry"
   promises.chain(fetchAsync(req, requestId), { reason: reason, lastUpdateMs: lastUpdateMs, isRetry: isRetry, tag: tag, entry: entry }).then(sub(res as object, ctx as object)
+    ' A catch-up the viewer backed out of while its item was in flight halts here, and loads
+    ' nothing: no frame need arrive first.
+    endUnansweredRefollow()
     ' A newer update arrived while this one's item was in flight: it will apply its own.
     ' A member that stopped following while the item was in flight applies nothing, as onCommand
     ' does for a halted member.
@@ -851,6 +1047,8 @@ sub fetchQueue(reason as string, lastUpdateMs as longinteger, isRetry as boolean
     end if
     applyQueue(ctx.reason, syncPlayQueue.queueItemsFor([ctx.entry], items), ctx.lastUpdateMs, ctx.isRetry, ctx.tag)
   end sub).catch(sub(err as object, ctx as object)
+    ' As on an answer: a catch-up the viewer backed out of halts quietly here, and is not retried.
+    endUnansweredRefollow()
     ' err whole: a timeout rejects with the pool's result, which has no `reason`.
     m.log.warn("the group's items could not be fetched", err)
     onQueueLoadFailed(ctx.reason, ctx.lastUpdateMs, ctx.isRetry, ctx.tag, "request")
@@ -1156,6 +1354,8 @@ sub leaveLocally()
   m.expectingRemount = false
   m.loadAwaitsReady = false
   m.claimedStart = invalid
+  releaseHeldPlay("left the group")
+  m.queuedNext = invalid
   m.claimRefollowed = false
   m.joinAwaitsQueue = false
   m.loadNotice = invalid
@@ -1185,6 +1385,7 @@ sub publish()
   m.top.setFields({
     inGroup: m.state.inGroup,
     following: isFollowing(),
+    playHeld: isValid(m.heldClaim),
     groupId: m.state.groupId,
     groupName: m.state.groupName,
     groupState: m.state.groupState,

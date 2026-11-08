@@ -159,6 +159,25 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("socketDownMarksUnavailable() — when a closed socket disables SyncPlay")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves the status alone before the socket has ever opened: the icon stays hidden")
+    function _()
+      m.assertFalse(remoteProtocol.socketDownMarksUnavailable(false, false))
+    end function
+
+    @it("leaves the status alone when a stable session drops: a blip reconnects first")
+    function _()
+      m.assertFalse(remoteProtocol.socketDownMarksUnavailable(true, true))
+    end function
+
+    @it("marks it unavailable when a reconnect fails or the socket keeps dropping")
+    function _()
+      m.assertTrue(remoteProtocol.socketDownMarksUnavailable(true, false))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("probeOutcome() — what a plugin probe's answer means")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

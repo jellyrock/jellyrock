@@ -14,6 +14,7 @@ import { RTA_CONFIG } from '../config.js';
 import { authenticate, getJson, getLibraries, tokenHeader } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
+import { captureRawUI } from '../capture.js';
 import {
   navLibraryGrid,
   navMovieDetails,
@@ -35,6 +36,7 @@ import {
   walkFocusUntil,
 } from '../lib/steps.js';
 
+const CAPTURE = process.env.RTA_CAPTURE === '1';
 const LOCALE = RTA_CONFIG.languages[0];
 const atSyncPlayIcon = (f) => f?.node?.id === 'syncplayIcon';
 const atSearchIcon = (f) => f?.node?.id === 'searchIcon';
@@ -91,6 +93,8 @@ it('a library screen: Up enters the row, the gear round-trips, Down returns to t
   expect(await getVal('#overhang.#cluster.visible'), 'the cluster shows').toBe(true);
 
   await enterRow('the grid');
+  // The row with the cluster against the clock's measured digits (JROverhang.layout).
+  if (CAPTURE) await captureRawUI('overhangCluster');
   await roundTripThroughSettings('the library');
 
   await press(ecp.Key.Down);

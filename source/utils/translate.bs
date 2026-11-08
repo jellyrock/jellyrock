@@ -75,15 +75,18 @@ end function
 ' @param {object} params - Optional placeholder params
 ' @return {string} Translated plural string
 function translatePlural(baseKey as string, count as integer, params = invalid as object) as string
-  if count = 0
-    suffix = "Zero"
-  else if count = 1
-    suffix = "One"
-  else
-    suffix = "Many"
-  end if
+  return translate(pluralKey(baseKey, count), params)
+end function
 
-  return translate(baseKey + suffix, params)
+' The plural key translatePlural reads: baseKey with Zero, One or Many for count. Pure, for code
+' that hands a key to a caller rather than translating it (syncPlayMenu.confirmFor).
+' @param {string} baseKey - Base key without suffix (for example "LabelEpisodeCount")
+' @param {integer} count - The count to determine plural form
+' @return {string} baseKey with its Zero, One or Many suffix
+function pluralKey(baseKey as string, count as integer) as string
+  if count = 0 then return baseKey + "Zero"
+  if count = 1 then return baseKey + "One"
+  return baseKey + "Many"
 end function
 
 ' Load translation files for a given locale into m.global.

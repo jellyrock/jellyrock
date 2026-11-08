@@ -3186,6 +3186,12 @@ function handleTransport(evt as object) as object
     return { status: "success" }
   end if
 
+  ' While following a SyncPlay group a trick play on the node alone would move this member away
+  ' from the group: the command is a relative seek the group takes, the way Replay is.
+  if (cmd = "forward" or cmd = "rewind") and syncPlayHooks.following()
+    return seekRelativeWithBounds(voiceTransport.groupTrickSeekDelta(cmd, getInstantReplaySeconds()))
+  end if
+
   if cmd = "forward"
     m.top.control = "fastforward"
     return { status: "success" }

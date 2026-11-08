@@ -1,5 +1,6 @@
 import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/overlayDialog.bs"
 
 ' JRScreen has no init() on purpose. The roku-log manager is owned by JRScene.init():
 ' see docs/architecture/logging.md. A duplicate call here was a no-op in the app
@@ -59,7 +60,7 @@ end sub
 function onViewOpen(_params = {} as object) as dynamic
   m.global.activeRoutedView = m.top
   m.isShowFocusPending = true
-  onScreenShown()
+  showScreenKeepingDialogFocus()
   return promises.resolve(invalid)
 end function
 
@@ -69,7 +70,7 @@ function onViewResume(_params = {} as object) as dynamic
   m.isCoverPending = false
   m.global.activeRoutedView = m.top
   m.isShowFocusPending = true
-  onScreenShown()
+  showScreenKeepingDialogFocus()
   return promises.resolve(invalid)
 end function
 
@@ -93,26 +94,83 @@ sub hideCovered()
   m.top.visible = false
   if m.isCoverPending <> true then return
   m.isCoverPending = false
+  endOwnedDialog()
   onScreenHidden()
 end sub
 
-' Router: this view is about to be permanently destroyed.
+' A dialog this screen or a component inside it opened ends when another screen covers it. Its
+' question is about something the viewer no longer sees, and left open it would keep the focus
+' over the new screen. A dialog opened elsewhere (JRScene's exit and SyncPlay confirms) stays.
+' The owner's handler gets a cancelled result with externallyCancelled set, so a handler that
+' acts must decline it. This runs inside the swap, before the incoming screen's onScreenShown,
+' so a handler that focuses this screen on any answer loses the focus to the incoming one.
+sub endOwnedDialog()
+  dialog = ownedOpenDialog()
+  if isValid(dialog) then dialog.callFunc("cancelDialog")
+end sub
+
+' The open overlay dialog when this screen or a component inside it opened it (presentOverlayDialog
+' records the opener as `owner`), else invalid. A dialog that has answered is left to close
+' itself: its owner's handler is running, and it may be what is closing this screen (ItemDetails'
+' Delete goes back, and the router runs beforeViewClose inside the answer). Abandoning it there
+' would detach it while focused, so its close would hand the focus to nothing.
+function ownedOpenDialog() as dynamic
+  dialog = openOverlayDialog()
+  if not isValid(dialog) or not dialog.hasField("owner") then return invalid
+  if not isInside(dialog.owner, m.top) or dialogHasAnswered(dialog) then return invalid
+  return dialog
+end function
+
+' Run onScreenShown without letting it take the focus from an open overlay dialog. Every screen's
+' onScreenShown takes focus unconditionally, and it runs before the router's handleFocus (which
+' already leaves a dialog alone), so a screen opening under a dialog would leave it on screen
+' and deaf to every key.
+sub showScreenKeepingDialogFocus()
+  held = invalid
+  dialog = openOverlayDialog()
+  if isValid(dialog) and dialog.isInFocusChain() then held = getDeepestFocusedNode(dialog)
+  onScreenShown()
+  if not isValid(held) then return
+  stillOpen = openOverlayDialog()
+  if isValid(stillOpen) and stillOpen.isSameNode(dialog) then held.setFocus(true)
+end sub
+
+' Roku OS ended the screensaver over this screen (main.bs). Refresh it as showing it does, but
+' leave the focus where the viewer left it: on an open dialog, the overhang row or AppWaitHost
+' holding the keys for a start. The screensaver does not move the focus; onScreenShown would.
+' When onScreenShown leaves the focus outside this screen (it opened a dialog), that stands.
+sub onScreensaverExited()
+  scene = m.top.getScene()
+  held = getDeepestFocusedNode(scene)
+  onScreenShown()
+  if not isValid(held) or held.isSameNode(scene) or not isInside(held, scene) then return
+  if m.top.isInFocusChain() then held.setFocus(true)
+end sub
+
+' Router: this view is about to be permanently destroyed. A dialog it opened goes with it,
+' delivering nothing, since the scope that would read the answer is gone. Its onDestroy may have
+' abandoned it already; this catches one it kept no reference to.
 function beforeViewClose(_params = {} as object) as dynamic
   onScreenHidden()
   onDestroy()
+  abandonDialog(ownedOpenDialog())
   return promises.resolve(invalid)
 end function
 
 ' Router: take remote focus. The router also calls this with routerFocused = false when focus
 ' LEFT its outlet (to the overhang, a dialog or AppWaitHost). Taking focus then would steal it
 ' back, so that notice is ignored while another node holds focus. The call right after the view
-' is shown always takes focus, and a stranded focus (on the bare scene) is still recovered.
+' is shown takes focus, and a stranded focus (on the bare scene) is still recovered. An open
+' overlay dialog beats both: while one holds focus this returns false whatever routerFocused says.
 ' Any later call leaves focus on the overhang row when it holds it: the router claims focus once a
 ' navigation settles, and a viewer who pressed Up meanwhile would be pulled back into the screen.
 ' Screens override restoreScreenFocus, not this.
 function handleFocus(data = {} as object) as boolean
   wasShowPending = m.isShowFocusPending = true
   m.isShowFocusPending = false
+  ' A navigation settling under a dialog (a cast's details screen loading behind the dialog its
+  ' play raised) must not pull the remote off it. The dialog returns focus itself when it closes.
+  if isOverlayDialogFocused() then return false
   if not wasShowPending and isValid(data) and data.routerFocused = false and isFocusHeldElsewhere()
     return false
   end if
@@ -190,28 +248,24 @@ function isOverhangRowFocused() as boolean
   return isValid(overhang) and overhang.isInFocusChain()
 end function
 
+' True when an overlay dialog is open and holds focus.
+function isOverlayDialogFocused() as boolean
+  dialog = openOverlayDialog()
+  return isValid(dialog) and dialog.isInFocusChain()
+end function
+
 ' True when a node outside the bare scene holds focus. The scene itself holding it (or nothing)
 ' means focus is stranded.
 function isFocusHeldElsewhere() as boolean
   scene = m.top.getScene()
-  focused = scene
-  while isValid(focused) and focused.hasFocus() = false
-    focused = focused.focusedChild
-  end while
+  focused = getDeepestFocusedNode(scene)
   return isValid(focused) and not focused.isSameNode(scene)
 end function
 
-' Walk the focus chain to the deepest focused descendant and remember it in
-' m.top.lastFocus. Lifted from SceneManager.pushScene's focus-save loop.
+' Remember the node holding the focus inside this screen in m.top.lastFocus. Nothing is saved
+' when the focus is outside it.
 sub saveLastFocus()
-  if isValid(m.top.focusedChild)
-    focused = m.top.focusedChild
-    while isValid(focused) and focused.hasFocus() = false
-      focused = focused.focusedChild
-    end while
-    if isValid(focused)
-      m.top.lastFocus = focused
-    end if
-  end if
+  focused = getDeepestFocusedNode(m.top)
+  if isValid(focused) then m.top.lastFocus = focused
 end sub
 

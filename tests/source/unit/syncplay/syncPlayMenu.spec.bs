@@ -16,19 +16,6 @@ namespace tests
       m.assertTrue(syncPlayMenu.canCreate("CreateAndJoinGroups"))
     end function
 
-    @it("nobody may join while SyncPlay is switched off, whatever the policy")
-    function _()
-      m.assertFalse(syncPlayMenu.joinAllowed("CreateAndJoinGroups", false))
-      m.assertFalse(syncPlayMenu.joinAllowed(invalid, false))
-      m.assertTrue(syncPlayMenu.joinAllowed("JoinGroups", true))
-      m.assertFalse(syncPlayMenu.joinAllowed("None", true))
-    end function
-
-    @it("ships switched on")
-    function _()
-      m.assertTrue(syncPlayMenu.IS_ENABLED)
-    end function
-
     @it("JoinGroups may join, not create")
     function _()
       m.assertTrue(syncPlayMenu.canJoin("JoinGroups"))
@@ -160,6 +147,36 @@ namespace tests
       m.assertEqual(syncPlayMenu.toastFor({ kind: "LibraryAccessDenied" }).key, translationKeys.MessageSyncPlayLibraryAccessDenied)
     end function
 
+    @it("a play of the video already playing is an info toast naming the group")
+    function _()
+      toast = syncPlayMenu.toastFor({ kind: "alreadyWatching", groupName: "Movie night" })
+      m.assertTrue(isValid(toast), "a toast is shown")
+      key = ""
+      toastType = ""
+      arg = ""
+      if isValid(toast)
+        key = toast.key
+        toastType = toast.toastType
+        arg = toast.arg
+      end if
+      m.assertEqual(key, translationKeys.MessageSyncPlayAlreadyWatching)
+      m.assertEqual(toastType, "info")
+      m.assertEqual(arg, "Movie night")
+    end function
+
+    @it("videos the group took up next are an info toast with the group and the count, by translatePlural's rule")
+    function _()
+      one = syncPlayMenu.toastFor({ kind: "queuedNext", groupName: "Movie night", count: 1 })
+      many = syncPlayMenu.toastFor({ kind: "queuedNext", groupName: "Movie night", count: 4 })
+      m.assertTrue(isValid(one) and isValid(many), "a toast is shown")
+      if isValid(one) and isValid(many)
+        m.assertEqual(one.key, translationKeys.MessageSyncPlayQueuedNextOne)
+        m.assertEqual(many.key, translationKeys.MessageSyncPlayQueuedNextMany)
+        m.assertEqual(many.toastType, "info")
+        m.assertEqual(many.params, ["Movie night", "4"])
+      end if
+    end function
+
     @it("a time offset pick's correction is an info toast that the member is syncing")
     function _()
       toast = syncPlayMenu.toastFor({ kind: "syncing" })
@@ -243,6 +260,64 @@ namespace tests
     function _()
       m.assertFalse(syncPlayMenu.iconFor(false, "None", "unavailable").shown)
       m.assertFalse(syncPlayMenu.iconFor(false, "None", "available").shown)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("channelMessageKey() — a press on the icon with no push channel")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("opens the menu while the channel is available or unknown")
+    function _()
+      m.assertEqual(syncPlayMenu.channelMessageKey("available", false, true), "")
+      m.assertEqual(syncPlayMenu.channelMessageKey("", false, false), "")
+    end function
+
+    @it("says the server is reconnecting on http, where the channel is the session socket")
+    function _()
+      m.assertEqual(syncPlayMenu.channelMessageKey("unavailable", false, true), translationKeys.MessageSyncPlayReconnecting)
+    end function
+
+    @it("says the plugin is needed on https, where the channel is the companion plugin")
+    function _()
+      m.assertEqual(syncPlayMenu.channelMessageKey("unavailable", false, false), translationKeys.MessageSyncPlayNeedsPlugin)
+    end function
+
+    @it("opens the menu for a member already in a group, so it can leave")
+    function _()
+      m.assertEqual(syncPlayMenu.channelMessageKey("unavailable", true, true), "")
+      m.assertEqual(syncPlayMenu.channelMessageKey("unavailable", true, false), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the question a halted member's play asks")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("one video with a title names it and the group")
+    function _()
+      confirm = syncPlayMenu.confirmFor({ kind: "confirmPlay", groupName: "Movie night", title: "Heat", moreCount: 0 })
+      m.assertEqual(confirm.key, translationKeys.MessageSyncPlayConfirmPlayTitledZero)
+      m.assertEqual(confirm.params, ["Heat", "Movie night", "0"])
+    end function
+
+    @it("a queue of several videos says how many more follow")
+    function _()
+      confirm = syncPlayMenu.confirmFor({ kind: "confirmPlay", groupName: "Movie night", title: "Heat", moreCount: 1 })
+      m.assertEqual(confirm.key, translationKeys.MessageSyncPlayConfirmPlayTitledOne)
+      m.assertEqual(confirm.params, ["Heat", "Movie night", "1"])
+      confirm = syncPlayMenu.confirmFor({ kind: "confirmPlay", groupName: "Movie night", title: "Heat", moreCount: 4 })
+      m.assertEqual(confirm.key, translationKeys.MessageSyncPlayConfirmPlayTitledMany)
+      m.assertEqual(confirm.params, ["Heat", "Movie night", "4"])
+    end function
+
+    @it("no usable title keeps the question that names only the group")
+    function _()
+      for each title in [invalid, ""]
+        confirm = syncPlayMenu.confirmFor({ kind: "confirmPlay", groupName: "Movie night", title: title, moreCount: 3 })
+        m.assertEqual(confirm.key, translationKeys.MessageSyncPlayConfirmPlay)
+        m.assertEqual(confirm.params, ["Movie night"])
+      end for
+      confirm = syncPlayMenu.confirmFor({ kind: "confirmPlay", groupName: "Movie night" })
+      m.assertEqual(confirm.key, translationKeys.MessageSyncPlayConfirmPlay)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

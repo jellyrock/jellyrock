@@ -12,6 +12,10 @@
   <interface>
     <field id="hours" type="integer" value="" />
     <field id="minutes" type="integer" value="" />
+    <!-- The digits' width in design pixels, measured after each tick: a proportional font, so
+         it moves at any minute. The overhang and the OSD lay out against it (0 until the first
+         tick, and always 0 while the clock is hidden). -->
+    <field id="textWidth" type="integer" value="0" />
     <!-- The box the digits center in: its top and its height, in design pixels. The defaults
          suit the video OSD; the overhang sets its row's text box (overhangRow.TEXT_TOP). -->
     <field id="boxY" type="integer" value="39" onChange="onBoxChanged" />
