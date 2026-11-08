@@ -142,6 +142,8 @@ namespace tests
       m.manager.frame = m.update("PlayQueue", inner)
       m.assertTrue(m.manager.inGroup)
       m.assertEqual(m.manager.groupName, "Movie night")
+      m.assertEqual(m.manager.sync.playingItemId, "", "no item is playing")
+      m.assertEqual(m.manager.sync.playlistCount, 0, "no queue was taken")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

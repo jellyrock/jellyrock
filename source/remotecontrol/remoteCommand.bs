@@ -49,12 +49,26 @@ namespace remoteCommand
 
   ' The message type to log for a frame that parsed to "ignore", or "" when nothing is worth a line.
   ' Only a SyncPlay frame counts: a KeepAlive echo, Sessions or volume frame is routine, while a
-  ' SyncPlay frame that degraded to "ignore" was malformed and would otherwise vanish.
+  ' SyncPlay frame that degraded to "ignore" was malformed or of a kind this app does not know,
+  ' and would otherwise vanish.
   function droppedSyncPlayType(command as object) as string
     if not isValid(command) or command.kind <> "ignore" then return ""
     messageType = command.messageType
     if not isValidAndNotEmpty(messageType) or left(messageType, 8) <> "SyncPlay" then return ""
     return messageType
+  end function
+
+  ' The SyncPlay frame's own kind, read from its raw Data: a group update's Type (PlayQueue,
+  ' GroupJoined…) or a command's Command (Pause, Seek…). Many kinds share one message type, so
+  ' this names which one was dropped. Never the inner Data, which carries a user name for
+  ' UserJoined. "" when the frame has none as text, or is not a SyncPlay frame.
+  function syncPlaySubtype(command as object) as string
+    if not isValid(command) or type(command.raw) <> "roAssociativeArray" then return ""
+    subtype = invalid
+    if command.messageType = "SyncPlayGroupUpdate" then subtype = command.raw.Type
+    if command.messageType = "SyncPlayCommand" then subtype = command.raw.Command
+    if not syncPlayTime.isText(subtype) then return ""
+    return subtype
   end function
 
   ' Play message -> a "play" command. Jellyfin sends an ItemIds array (a whole series or album can be
