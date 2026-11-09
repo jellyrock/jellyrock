@@ -1636,7 +1636,6 @@ Introduces SyncPlay, so you can watch together with people on other Jellyfin app
 
 ### Changed
 
-- Prepare for v1.0.1 release ([#62](https://github.com/cewert/jellyrock/pull/62)) by [@jellyrock-bot](https://github.com/jellyrock-bot)
 - changelog with new parsing logic ([4cf5052](https://github.com/cewert/jellyrock/commit/4cf5052)) by [@cewert](https://github.com/cewert)
 - changelog commit parser logic and release draft body ([03b3e7b](https://github.com/cewert/jellyrock/commit/03b3e7b)) by [@cewert](https://github.com/cewert)
 - release prep pr body ([5ab8cdb](https://github.com/cewert/jellyrock/commit/5ab8cdb)) by [@cewert](https://github.com/cewert)
