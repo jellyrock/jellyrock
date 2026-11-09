@@ -2003,7 +2003,8 @@ end sub
 '
 ' @param {PlaybackErrorRetry} retry - the retry to take: DOVI_DIRECT_PLAY skips the DoVi container
 '                                    profile, TRANSCODE disables direct play, REENCODE_VIDEO asks
-'                                    the server not to copy the video
+'                                    the server not to copy the video, RESTART_STREAM asks again
+'                                    the same way and adds no flag
 sub retryPlayback(retry as PlaybackErrorRetry)
   ' Only a stream that has played has a position worth saving. A retry before the first
   ' frame (direct play failing over to transcode) has none of its own, and saving what the

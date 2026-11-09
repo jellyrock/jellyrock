@@ -25,18 +25,21 @@ function chooseErrorRetry(isBufferLoopError as boolean, doviFallbackAvailable as
   return PlaybackErrorRetry.NONE
 end function
 
-' Seconds a restarted stream must play before a later server failure gets a restart of its own.
-' A server that fails again sooner is still failing, so that failure ends in the dialog.
+' Seconds after a restarted stream first reaches playing before a server failure gets a restart of
+' its own. Clock time, so a pause counts.
 const STREAM_RESTART_REARM_SECONDS = 60
 
 ' streamRestartArmed: Whether a server failure may restart the stream.
 '
-' One restart per failure: unused, it is armed; used, it is armed again only once the restarted
-' stream has played for STREAM_RESTART_REARM_SECONDS, so separate failures far apart each get one
-' and a server that keeps failing ends in the dialog after one try.
+' Unused, the restart is armed. Used, it is armed again STREAM_RESTART_REARM_SECONDS after the
+' restarted stream first reaches playing. So a restart that fails before its first frame ends in
+' the dialog. Roku reports a failure some time after the server's last failed answer, which can be
+' past this window, so a later failure can get a restart too: a server that fails now and then
+' costs a short wait to buffer each time, never a fast loop, since each restart has to play a frame first
+' (decision restart-once-on-server-segment-failure).
 '
 ' @param {boolean} restartUsed - a restart was taken in this playback
-' @param {float} playingSinceSeconds - when the restarted stream reached playing (UpTime), or -1
+' @param {float} playingSinceSeconds - when the restarted stream first reached playing (UpTime), or -1
 ' @param {float} nowSeconds - now (UpTime)
 ' @return {boolean} the restart is armed
 function streamRestartArmed(restartUsed as boolean, playingSinceSeconds as float, nowSeconds as float) as boolean

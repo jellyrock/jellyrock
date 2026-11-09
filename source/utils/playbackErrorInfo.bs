@@ -51,8 +51,8 @@ const PLAYBACK_ERR_EMPTY_LIST = -4
 const PLAYBACK_ERR_MEDIA = -5
 const PLAYBACK_ERR_DRM = -6
 
-' isServerSegmentFailure: True when the player gave up because the server answered its segment
-' requests with an HTTP error, not because it could not play the stream.
+' isServerSegmentFailure: True when the player gave up because the server kept failing its segment
+' requests, not because it could not play the stream.
 '
 ' Roku reports this as errorCode -5 ("no valid bitrates") with errorInfo.source
 ' "buffer:loop:demux" and a dbgmsg holding "Errors seen on all bitrates" and "last_err:<status>".
@@ -67,9 +67,9 @@ function isServerSegmentFailure(errorInfo as dynamic) as boolean
 end function
 
 ' segmentFailureCode: The code Roku put in last_err for a server segment failure (see
-' isServerSegmentFailure), or "" for any other error. It is the HTTP status when the server
-' answered (isHttpStatus), and a code of Roku's own when it did not: 961 for a connection closed
-' with no answer, seen on Roku OS 15.3 and not documented.
+' isServerSegmentFailure), or "" for any other error. It is either an HTTP status
+' (isHttpStatus) or a code of Roku's own, such as 961 or 950. Roku documents none of its own codes,
+' and 950 has followed a server that did answer with a status, so nothing may read a cause into one.
 '
 ' @param {dynamic} errorInfo - Video node errorInfo AA (may be invalid)
 ' @return {string} for example "404"
@@ -78,7 +78,8 @@ function segmentFailureCode(errorInfo as dynamic) as string
   if textOrEmpty(errorInfo.source) <> "buffer:loop:demux" then return ""
   dbgmsg = textOrEmpty(errorInfo.dbgmsg)
   if Instr(1, dbgmsg, "Errors seen on all bitrates") = 0 then return ""
-  match = CreateObject("roRegex", "last_err:(\d{3})", "").match(dbgmsg)
+  ' The whole number: a longer code cut to three digits would pass for a status.
+  match = CreateObject("roRegex", "last_err:(\d+)", "").match(dbgmsg)
   if match.count() < 2 then return ""
   return match[1]
 end function
@@ -117,7 +118,7 @@ function playbackErrorCause(errorCode as integer, serverMessage = "" as string, 
 
   failureCode = segmentFailureCode(errorInfo)
   if isHttpStatus(failureCode) then return translate(translationKeys.ErrorPlaybackCauseServerStopped, [failureCode])
-  if failureCode <> "" then return translate(translationKeys.ErrorPlaybackCauseServerConnectionLost)
+  if failureCode <> "" then return translate(translationKeys.ErrorPlaybackCauseServerStoppedNoStatus)
 
   if errorCode = PLAYBACK_ERR_NETWORK then return translate(translationKeys.ErrorPlaybackCauseNetwork)
   if errorCode = PLAYBACK_ERR_TIMEOUT then return translate(translationKeys.ErrorPlaybackCauseTimeout)

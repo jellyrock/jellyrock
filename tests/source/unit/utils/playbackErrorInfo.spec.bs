@@ -63,12 +63,16 @@ namespace tests
       m.assertTrue(Instr(1, cause, "404") > 0, "the cause names the HTTP status: " + cause)
     end function
 
-    @it("says the connection dropped, with no HTTP status, when the server never answered")
+    @it("names the server, with no status and no guess at the cause, for a code of Roku's own")
+    ' Roku's own codes are undocumented: 950 came after the server had answered 500, so
+    ' the sentence must not say what went wrong, only who stopped.
     function _()
       cause = playbackErrorCause(-5, "", "", m.segmentFailureInfo("961"))
       m.assertNotEqual(cause, playbackErrorCause(-5))
       m.assertNotEqual(cause, playbackErrorCause(-5, "", "", m.segmentFailureInfo("404")))
       m.assertTrue(Instr(1, cause, "961") = 0, "a code of Roku's own is not shown as a status: " + cause)
+      m.assertEqual(playbackErrorCause(-5, "", "", m.segmentFailureInfo("950")), cause)
+      m.assertEqual(cause, translate(translationKeys.ErrorPlaybackCauseServerStoppedNoStatus))
     end function
 
     @it("still lets a server message win over a segment failure")
@@ -108,6 +112,13 @@ namespace tests
       m.assertTrue(isHttpStatus("404"))
       m.assertTrue(isHttpStatus("500"))
       m.assertFalse(isHttpStatus(""))
+    end function
+
+    @it("reads a code of any length whole, so a longer code is not taken for a status")
+    function _()
+      m.assertEqual(segmentFailureCode(m.segmentFailureInfo("1001")), "1001")
+      m.assertFalse(isHttpStatus(segmentFailureCode(m.segmentFailureInfo("1001"))))
+      m.assertEqual(segmentFailureCode(m.segmentFailureInfo("950")), "950")
     end function
 
     @it("does not match a buffer overflow or other media errors")
