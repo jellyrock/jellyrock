@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-08
+last-updated: 2026-11-09
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-09: fix(syncplay): Skip a queue update with no readable time, not crash
 - 2026-11-08: fix(ui): Fix dialogs left deaf by navigation or the screensaver
 - 2026-11-08: feat(syncplay): Add a group mark, names, a play confirm and catch-up
 - 2026-11-08: chore(rta): Keep the device safe however the RTA runner is stopped
@@ -64,11 +65,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-28: feat(syncplay): See, join and play with groups from the SyncPlay icon
 - 2026-10-28: chore(skills): Name the projects folder in project skill descriptions
 - 2026-10-27: feat(ui): Search and settings icons on every screen, and safer themes
-- 2026-10-25: chore(telemetry): Stop reading the old ~/.claude telemetry log
-- 2026-10-25: feat(ui): One aligned overhang row, and icons on the 3 pixel grid
-- 2026-10-25: chore(skills): Reject argument placeholders in skills
-- 2026-10-25: fix(navigation): Retry a refused navigation once the router is idle
-- 2026-10-25: docs: Use the org contributing guide and security policy
 
 ## Open followups
 
