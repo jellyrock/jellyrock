@@ -2712,6 +2712,16 @@ When Roku gives up on a stream because the server keeps failing its segment requ
 
 Ruled out: the official Roku client's approach of restarting from the current position on any mid-play error, up to 3 times, which hides a server that keeps failing; showing the dialog at once, which gives up with video buffered when the server could recover; and a cap on restarts per playback, which would show a dialog where a restart would have worked. Re-evaluate if Roku documents this error or its own `last_err` codes, or changes how long it waits before giving up.
 
+## decision-id: changelog-credits-pr-author
+
+**date**: 2026-11-09
+**status**: accepted
+**related-files**: scripts/changelog-syncer.js
+
+A changelog line credits the account GitHub's API names as the PR's author, for every PR, with no rule for any one agent. A PR an app opened, an AI agent's included, credits that app, linked to its app page. Ruled out: the "by @person with @Copilot" form GitHub's generated notes use for its own agent, which needs code for one agent while nothing shows how others open PRs. Also ruled out: crediting a human assignee of an app PR, since assignment is not authorship and a self-assigned Renovate PR would credit its reviewer.
+
+Checked 2026-11-09 against GitHub's notes for all 83 tag ranges: every PR credit matched except three Copilot PRs (#142, #143, #144). Re-evaluate if an agent's PR lines read wrong to users.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
