@@ -9,48 +9,52 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
-- (syncplay) Add a group mark, names, a play confirm and catch-up ([#1335](https://github.com/jellyrock/jellyrock/pull/1335))
-- (syncplay) Repeat, shuffle, time offset and leave in the gear ([#1315](https://github.com/jellyrock/jellyrock/pull/1315))
-- (player) Repeat a video or the queue from the OSD gear ([#1308](https://github.com/jellyrock/jellyrock/pull/1308))
-- (syncplay) Stay in step, stop seek freezes, add a time offset ([#1296](https://github.com/jellyrock/jellyrock/pull/1296))
+- (syncplay) Add a group mark, names, a play confirm and catch-up ([#1335](https://github.com/jellyrock/jellyrock/pull/1335)) by [@cewert](https://github.com/cewert)
+- (syncplay) Repeat, shuffle, time offset and leave in the gear ([#1315](https://github.com/jellyrock/jellyrock/pull/1315)) by [@cewert](https://github.com/cewert)
+- (player) Repeat a video or the queue from the OSD gear ([#1308](https://github.com/jellyrock/jellyrock/pull/1308)) by [@cewert](https://github.com/cewert)
+- (syncplay) Stay in step, stop seek freezes, add a time offset ([#1296](https://github.com/jellyrock/jellyrock/pull/1296)) by [@cewert](https://github.com/cewert)
 
 ### Changed
 
-- (logging) Mask secrets in logs, keep names and search text out ([#1329](https://github.com/jellyrock/jellyrock/pull/1329))
-- (logging) adopt `roku-log` as owned code, drop its hook ([#1328](https://github.com/jellyrock/jellyrock/pull/1328))
-- (home) Show vertical posters in TV Recently Added rows ([#1295](https://github.com/jellyrock/jellyrock/pull/1295))
+- (logging) Mask secrets in logs, keep names and search text out ([#1329](https://github.com/jellyrock/jellyrock/pull/1329)) by [@cewert](https://github.com/cewert)
+- (logging) adopt `roku-log` as owned code, drop its hook ([#1328](https://github.com/jellyrock/jellyrock/pull/1328)) by [@cewert](https://github.com/cewert)
+- (home) Show vertical posters in TV Recently Added rows ([#1295](https://github.com/jellyrock/jellyrock/pull/1295)) by [@cewert](https://github.com/cewert)
 
 ### Fixed
 
-- (playback) Restart a stream the server stops sending, and say why ([#1339](https://github.com/jellyrock/jellyrock/pull/1339))
-- (playback) Keep a paused video transcoding on the server ([#1338](https://github.com/jellyrock/jellyrock/pull/1338))
-- (syncplay) Skip a queue update with no readable time, not crash ([#1340](https://github.com/jellyrock/jellyrock/pull/1340))
-- (ui) Fix dialogs left deaf by navigation or the screensaver ([#1336](https://github.com/jellyrock/jellyrock/pull/1336))
-- (video) Follow repeat mode on voice and remote Next and Previous ([#1333](https://github.com/jellyrock/jellyrock/pull/1333))
-- (playback) Show `.strm` audio and subtitle buttons on first play ([#1332](https://github.com/jellyrock/jellyrock/pull/1332))
-- (playback) Start 4K Dolby Vision on a display without HDR ([#1331](https://github.com/jellyrock/jellyrock/pull/1331))
-- (playback) Play more Dolby Vision files, end a wasted retry ([#1325](https://github.com/jellyrock/jellyrock/pull/1325))
-- (playback) Handle long films, big re-encodes and frozen playback ([#1324](https://github.com/jellyrock/jellyrock/pull/1324))
-- (playback) Make 4K transcodes play, in HEVC on hardware servers ([#1323](https://github.com/jellyrock/jellyrock/pull/1323))
-- (playback) Recover when a 4K remux overflows the video buffer ([#1318](https://github.com/jellyrock/jellyrock/pull/1318))
-- (playback) Copy AC3 audio in a remux on 7.1 systems ([#1327](https://github.com/jellyrock/jellyrock/pull/1327))
-- (playback) Pick a playable audio track, not audio description ([#1320](https://github.com/jellyrock/jellyrock/pull/1320))
-- (playback) Stop transcoded videos playing with no sound ([#1317](https://github.com/jellyrock/jellyrock/pull/1317))
-- (login) Offer Quick Connect when a server lists no users ([#1314](https://github.com/jellyrock/jellyrock/pull/1314))
-- (playback) Play the episode once when Repeat is picked during a Cinema Mode intro ([#1313](https://github.com/jellyrock/jellyrock/pull/1313))
-- (playback) Play Cinema Mode intros, drop the stale queue slot ([#1312](https://github.com/jellyrock/jellyrock/pull/1312))
-- (syncplay) Ask the group to wait after a seek that cannot land ([#1306](https://github.com/jellyrock/jellyrock/pull/1306))
-- Register Roku's memory monitor and ship only runtime files ([#1299](https://github.com/jellyrock/jellyrock/pull/1299))
-- (home) Show episode images in Favorites tab ([#1290](https://github.com/jellyrock/jellyrock/pull/1290))
-- Correct the canceled-recording toast ([#1288](https://github.com/jellyrock/jellyrock/pull/1288))
+- (playback) Restart a stream the server stops sending, and say why ([#1339](https://github.com/jellyrock/jellyrock/pull/1339)) by [@cewert](https://github.com/cewert)
+- (playback) Keep a paused video transcoding on the server ([#1338](https://github.com/jellyrock/jellyrock/pull/1338)) by [@cewert](https://github.com/cewert)
+- (syncplay) Skip a queue update with no readable time, not crash ([#1340](https://github.com/jellyrock/jellyrock/pull/1340)) by [@cewert](https://github.com/cewert)
+- (ui) Fix dialogs left deaf by navigation or the screensaver ([#1336](https://github.com/jellyrock/jellyrock/pull/1336)) by [@cewert](https://github.com/cewert)
+- (video) Follow repeat mode on voice and remote Next and Previous ([#1333](https://github.com/jellyrock/jellyrock/pull/1333)) by [@cewert](https://github.com/cewert)
+- (playback) Show `.strm` audio and subtitle buttons on first play ([#1332](https://github.com/jellyrock/jellyrock/pull/1332)) by [@gatolocoses](https://github.com/gatolocoses)
+- (playback) Start 4K Dolby Vision on a display without HDR ([#1331](https://github.com/jellyrock/jellyrock/pull/1331)) by [@cewert](https://github.com/cewert)
+- (playback) Play more Dolby Vision files, end a wasted retry ([#1325](https://github.com/jellyrock/jellyrock/pull/1325)) by [@cewert](https://github.com/cewert)
+- (playback) Handle long films, big re-encodes and frozen playback ([#1324](https://github.com/jellyrock/jellyrock/pull/1324)) by [@cewert](https://github.com/cewert)
+- (playback) Make 4K transcodes play, in HEVC on hardware servers ([#1323](https://github.com/jellyrock/jellyrock/pull/1323)) by [@cewert](https://github.com/cewert)
+- (playback) Recover when a 4K remux overflows the video buffer ([#1318](https://github.com/jellyrock/jellyrock/pull/1318)) by [@cewert](https://github.com/cewert)
+- (playback) Copy AC3 audio in a remux on 7.1 systems ([#1327](https://github.com/jellyrock/jellyrock/pull/1327)) by [@cewert](https://github.com/cewert)
+- (playback) Pick a playable audio track, not audio description ([#1320](https://github.com/jellyrock/jellyrock/pull/1320)) by [@cewert](https://github.com/cewert)
+- (playback) Stop transcoded videos playing with no sound ([#1317](https://github.com/jellyrock/jellyrock/pull/1317)) by [@cewert](https://github.com/cewert)
+- (login) Offer Quick Connect when a server lists no users ([#1314](https://github.com/jellyrock/jellyrock/pull/1314)) by [@cewert](https://github.com/cewert)
+- (playback) Play the episode once when Repeat is picked during a Cinema Mode intro ([#1313](https://github.com/jellyrock/jellyrock/pull/1313)) by [@cewert](https://github.com/cewert)
+- (playback) Play Cinema Mode intros, drop the stale queue slot ([#1312](https://github.com/jellyrock/jellyrock/pull/1312)) by [@cewert](https://github.com/cewert)
+- (syncplay) Ask the group to wait after a seek that cannot land ([#1306](https://github.com/jellyrock/jellyrock/pull/1306)) by [@cewert](https://github.com/cewert)
+- Register Roku's memory monitor and ship only runtime files ([#1299](https://github.com/jellyrock/jellyrock/pull/1299)) by [@cewert](https://github.com/cewert)
+- (home) Show episode images in Favorites tab ([#1290](https://github.com/jellyrock/jellyrock/pull/1290)) by [@cewert](https://github.com/cewert)
+- Correct the canceled-recording toast ([#1288](https://github.com/jellyrock/jellyrock/pull/1288)) by [@cewert](https://github.com/cewert)
 
 ### Dependencies
 
-- Update vitest from v5.0.5 to v5.1.0 ([#1311](https://github.com/jellyrock/jellyrock/pull/1311))
-- Update rimraf from v6.1.3 to v6.1.4 ([#1319](https://github.com/jellyrock/jellyrock/pull/1319))
-- Update eslint from v10.13.0 to v10.14.0 ([#1287](https://github.com/jellyrock/jellyrock/pull/1287))
-- Rename the Rooibos patch for the installed alpha.56 ([eda2baf](https://github.com/jellyrock/jellyrock/commit/eda2bafa))
-- Lock file maintenance ([#1300](https://github.com/jellyrock/jellyrock/pull/1300))
+- Update vitest from v5.0.5 to v5.1.0 ([#1311](https://github.com/jellyrock/jellyrock/pull/1311)) by [@renovate[bot]](https://github.com/apps/renovate)
+- Update rimraf from v6.1.3 to v6.1.4 ([#1319](https://github.com/jellyrock/jellyrock/pull/1319)) by [@renovate[bot]](https://github.com/apps/renovate)
+- Update eslint from v10.13.0 to v10.14.0 ([#1287](https://github.com/jellyrock/jellyrock/pull/1287)) by [@renovate[bot]](https://github.com/apps/renovate)
+- Rename the Rooibos patch for the installed alpha.56 ([eda2baf](https://github.com/jellyrock/jellyrock/commit/eda2bafab6d1221735e4a07484c4fe1671c1c842)) by [@cewert](https://github.com/cewert)
+- Lock file maintenance ([#1300](https://github.com/jellyrock/jellyrock/pull/1300)) by [@renovate[bot]](https://github.com/apps/renovate)
+
+### New Contributors
+
+- [@gatolocoses](https://github.com/gatolocoses) made their first contribution in [#1332](https://github.com/jellyrock/jellyrock/pull/1332)
 
 ## [3.3.1](https://github.com/jellyrock/jellyrock/compare/v3.3.0...v3.3.1) - 2026-10-30
 
