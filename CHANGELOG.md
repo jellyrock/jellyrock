@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (playback) Reload where the stream was and keep a group in sync ([#1344](https://github.com/jellyrock/jellyrock/pull/1344)) by [@cewert](https://github.com/cewert)
 - (playback) Restart a stream the server stops sending, and say why ([#1339](https://github.com/jellyrock/jellyrock/pull/1339)) by [@cewert](https://github.com/cewert)
 - (playback) Keep a paused video transcoding on the server ([#1338](https://github.com/jellyrock/jellyrock/pull/1338)) by [@cewert](https://github.com/cewert)
 - (syncplay) Skip a queue update with no readable time, not crash ([#1340](https://github.com/jellyrock/jellyrock/pull/1340)) by [@cewert](https://github.com/cewert)
