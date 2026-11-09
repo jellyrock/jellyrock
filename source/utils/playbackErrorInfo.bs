@@ -51,6 +51,49 @@ const PLAYBACK_ERR_EMPTY_LIST = -4
 const PLAYBACK_ERR_MEDIA = -5
 const PLAYBACK_ERR_DRM = -6
 
+' isServerSegmentFailure: True when the player gave up because the server kept failing its segment
+' requests, not because it could not play the stream.
+'
+' Roku reports this as errorCode -5 ("no valid bitrates") with errorInfo.source
+' "buffer:loop:demux" and a dbgmsg holding "Errors seen on all bitrates" and "last_err:<status>".
+' It rides out an occasional failed request (it asks again) and gives up once they keep failing,
+' which on Jellyfin means ffmpeg exited or would not start. Read from Roku OS 15.3
+' with a proxy failing a Jellyfin 12.4 stream's segments; Roku does not document it.
+'
+' @param {dynamic} errorInfo - Video node errorInfo AA (may be invalid)
+' @return {boolean}
+function isServerSegmentFailure(errorInfo as dynamic) as boolean
+  return segmentFailureCode(errorInfo) <> ""
+end function
+
+' segmentFailureCode: The code Roku put in last_err for a server segment failure (see
+' isServerSegmentFailure), or "" for any other error. It is either an HTTP status
+' (isHttpStatus) or a code of Roku's own, such as 961 or 950. Roku documents none of its own codes,
+' and 950 has followed a server that did answer with a status, so nothing may read a cause into one.
+'
+' @param {dynamic} errorInfo - Video node errorInfo AA (may be invalid)
+' @return {string} for example "404"
+function segmentFailureCode(errorInfo as dynamic) as string
+  if type(errorInfo) <> "roAssociativeArray" then return ""
+  if textOrEmpty(errorInfo.source) <> "buffer:loop:demux" then return ""
+  dbgmsg = textOrEmpty(errorInfo.dbgmsg)
+  if Instr(1, dbgmsg, "Errors seen on all bitrates") = 0 then return ""
+  ' The whole number: a longer code cut to three digits would pass for a status.
+  match = CreateObject("roRegex", "last_err:(\d+)", "").match(dbgmsg)
+  if match.count() < 2 then return ""
+  return match[1]
+end function
+
+' isHttpStatus: True for a code in the HTTP status range, 100 to 599.
+'
+' @param {string} code - a segmentFailureCode
+' @return {boolean}
+function isHttpStatus(code as string) as boolean
+  if code = "" then return false
+  number = code.toInt()
+  return number >= 100 and number <= 599
+end function
+
 ' The one plain-language sentence shown in the dialog body.
 '
 ' `serverMessage` wins when present: a message the SERVER produced (Jellyfin's
@@ -58,7 +101,11 @@ const PLAYBACK_ERR_DRM = -6
 ' is more specific than anything a device-side code can say, and it is already
 ' translated. The code mapping is the fallback for a device-side failure, where
 ' the server said nothing because it was never asked.
-function playbackErrorCause(errorCode as integer, serverMessage = "" as string, title = "" as string) as string
+'
+' A server segment failure (isServerSegmentFailure) comes before the code mapping: Roku
+' reports it as -5, whose mapping says the device can't play the format, when the
+' format played and the server stopped sending it.
+function playbackErrorCause(errorCode as integer, serverMessage = "" as string, title = "" as string, errorInfo = invalid as dynamic) as string
   ' A message identical to the dialog's own title is not a message: it is a call
   ' site that had nothing to say and reached for the nearest string. Rendering it
   ' produces a dialog that states its heading twice and tells the user nothing,
@@ -68,6 +115,10 @@ function playbackErrorCause(errorCode as integer, serverMessage = "" as string, 
   if isValidAndNotEmpty(title) and serverMessage = title then serverMessage = ""
 
   if isValidAndNotEmpty(serverMessage) then return serverMessage
+
+  failureCode = segmentFailureCode(errorInfo)
+  if isHttpStatus(failureCode) then return translate(translationKeys.ErrorPlaybackCauseServerStopped, [failureCode])
+  if failureCode <> "" then return translate(translationKeys.ErrorPlaybackCauseServerStoppedNoStatus)
 
   if errorCode = PLAYBACK_ERR_NETWORK then return translate(translationKeys.ErrorPlaybackCauseNetwork)
   if errorCode = PLAYBACK_ERR_TIMEOUT then return translate(translationKeys.ErrorPlaybackCauseTimeout)

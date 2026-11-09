@@ -2702,6 +2702,16 @@ Both players report playback every `playbackCheckIn.REPORT_SECONDS` (10 s) while
 
 Ruled out: a separate `POST /Sessions/Playing/Ping` every 30 s while paused, which adds a second mechanism beside the reports and picks an interval with no evidence behind it, where the reference client's 10 s has years of use. Re-evaluate if Jellyfin changes the transcode kill timer or stops its auto-progress copies.
 
+## decision-id: restart-once-on-server-segment-failure
+
+**date**: 2026-11-07
+**status**: accepted
+**related-files**: `source/utils/playbackRetry.bs`, `source/utils/playbackErrorInfo.bs`, `components/video/VideoPlayerView.bs`
+
+When Roku gives up on a stream because the server keeps failing its segment requests (`-5`, `no valid bitrates`, `errorInfo.source` `buffer:loop:demux`, `dbgmsg` with `Errors seen on all bitrates` and `last_err:<code>`), a stream that has played is restarted from its position (`PlaybackErrorRetry.RESTART_STREAM`). The restart re-arms 60 s of clock time after the restarted stream first reaches playing. So a restart that fails before its first frame ends in the dialog. A later failure can get another restart, because Roku reports a failure some time after the server's last failed answer: a server that fails now and then costs a short wait to buffer each time, never a fast loop. The dialog names the server instead of the `-5` mapping, which said the device can't play the format: it gives the HTTP status, or, for a code of Roku's own (961, 950, none documented), only that the server stopped sending the video. Jellyfin starts a new ffmpeg on the next segment request once the old one has exited (`GetCurrentTranscodingIndex` returns null for an exited job), but Roku can stop asking after one failed answer, so the client's restart is what recovers the stream. Measured 2026-11-07 on a Streaming Stick 4K against Jellyfin 12.4 through a proxy failing segments: four 404 answers recovered with one restart and no dialog; 404 answers that never stopped ended in the dialog after one restart. Measured 2026-11-08 on a Streaming Stick 4K (Roku OS 15.3.4) against Jellyfin 12.4, by killing the server's ffmpeg and deleting its segments until the player reacted: twice the server answered one segment request with 500 (`FFmpeg exited with code 255`), Roku sent no further segment request, and 120 s later gave up with `last_err:950`. Both restarts played on from the same position (198 s, then 382 s); the second followed a failure that began 64 s after the restarted stream reached playing. A Live TV channel whose ffmpeg was killed ended as `finished` and took the existing Live TV restart, so it never reaches this path.
+
+Ruled out: the official Roku client's approach of restarting from the current position on any mid-play error, up to 3 times, which hides a server that keeps failing; showing the dialog at once, which gives up with video buffered when the server could recover; and a cap on restarts per playback, which would show a dialog where a restart would have worked. Re-evaluate if Roku documents this error or its own `last_err` codes, or changes how long it waits before giving up.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
