@@ -175,6 +175,33 @@ namespace tests
       m.assertInvalid(presented.result)
     end function
 
+    ' The dialog's owner points at the component that opened it. A screen that still holds the
+    ' dialog after it leaves the scene would make a pair of nodes Roku never frees, so both ways
+    ' off the scene drop it.
+    @it("abandonDialog lets go of the component that opened the dialog")
+    function _()
+      dialog = CreateObject("roSGNode", "JRDialog")
+      dialog.buttons = ["OK"]
+      presented = presentOverlayDialog(dialog, "")
+      m.assertNotInvalid(presented.owner, "precondition: presentOverlayDialog recorded the opener")
+
+      abandonDialog(presented)
+
+      m.assertInvalid(presented.owner)
+    end function
+
+    @it("a close lets go of the component that opened the dialog")
+    function _()
+      dialog = CreateObject("roSGNode", "JRDialog")
+      dialog.buttons = ["OK"]
+      presented = presentOverlayDialog(dialog, "")
+      m.assertNotInvalid(presented.owner, "precondition: presentOverlayDialog recorded the opener")
+
+      cancelOpenDialog()
+
+      m.assertInvalid(presented.owner)
+    end function
+
     @it("cancelOpenDialog is safe with nothing open")
     function _()
       m.assertFalse(isOverlayDialogOpen())
@@ -249,13 +276,13 @@ namespace tests
       abandonDialog(second)
     end function
 
-    ' THE ORDERING GATE. lastFocusedChild walks focusedChild down to the deepest
+    ' THE ORDERING GATE. getDeepestFocusedNode walks focusedChild down to the deepest
     ' focused node, so computing returnFocusTo while the incumbent is still
     ' mounted resolves INSIDE the incumbent, and closing the newcomer would then
     ' restore focus to a detached node. Cancel first, measure second.
     '
     ' Asserted as REACHABILITY FROM THE SCENE, not as "not the superseded dialog".
-    ' That proxy was tried first and is vacuous: lastFocusedChild descends to a
+    ' That proxy was tried first and is vacuous: getDeepestFocusedNode descends to a
     ' BUTTON inside the dialog, so isSameNode(first) is false either way and the
     ' test passed against an ordering reverted on purpose. Walking up to the
     ' scene is the property that actually distinguishes them, because a node
@@ -375,7 +402,7 @@ namespace tests
       opener.text = "opener"
       scene.appendChild(opener)
       opener.setFocus(true)
-      m.assertTrue(lastFocusedChild(scene).isSameNode(opener), "precondition failed: the opener never took focus, so this test would measure nothing")
+      m.assertTrue(getDeepestFocusedNode(scene).isSameNode(opener), "precondition failed: the opener never took focus, so this test would measure nothing")
 
       dialog = CreateObject("roSGNode", "JRDialog")
       dialog.buttons = ["Cancel"]
@@ -383,8 +410,8 @@ namespace tests
       abandonDialog(presented)
 
       ' 1. The focus the dialog held is not handed back.
-      orphaned = lastFocusedChild(scene)
-      m.assertTrue(orphaned.isSameNode(scene), "expected focus to fall back to the scene root; got " + orphaned.subtype())
+      orphaned = getDeepestFocusedNode(scene)
+      m.assertTrue(not isValid(orphaned) or orphaned.isSameNode(scene), "expected no node under the scene to hold the focus")
 
       ' 2. The consequence a live screen actually feels: the NEXT dialog derives
       '    the scene root, so dismissing it restores focus to nothing.

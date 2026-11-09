@@ -10,6 +10,40 @@ namespace tests
   class RemoteCommandTests extends tests.BaseTestSuite
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("droppedSyncPlayType()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("names a SyncPlay frame that degraded to ignore, and nothing routine")
+    function _()
+      dropped = remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g1", Type: "PlayQueue", Data: { Reason: "Queue", Playlist: [] } } })
+      m.assertEqual(dropped.kind, "ignore")
+      m.assertEqual(remoteCommand.droppedSyncPlayType(dropped), "SyncPlayGroupUpdate")
+      badCommand = remoteCommand.parseMessage({ MessageType: "SyncPlayCommand", Data: { Command: "Pause" } })
+      m.assertEqual(remoteCommand.droppedSyncPlayType(badCommand), "SyncPlayCommand")
+      m.assertEqual(remoteCommand.droppedSyncPlayType(remoteCommand.parseMessage({ MessageType: "KeepAlive" })), "")
+      m.assertEqual(remoteCommand.droppedSyncPlayType(remoteCommand.parseMessage({ MessageType: "Sessions", Data: [] })), "")
+      m.assertEqual(remoteCommand.droppedSyncPlayType(remoteCommand.parseMessage({ MessageType: "GeneralCommand", Data: { Name: "SetVolume" } })), "")
+      okFrame = remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g1", Type: "GroupLeft" } })
+      m.assertEqual(remoteCommand.droppedSyncPlayType(okFrame), "", "an accepted SyncPlay frame is not dropped")
+      m.assertEqual(remoteCommand.droppedSyncPlayType(remoteCommand.parseMessage(invalid)), "")
+    end function
+
+    @it("syncPlaySubtype() names which kind of SyncPlay frame was dropped, and nothing else")
+    function _()
+      noTime = remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g1", Type: "PlayQueue", Data: { Reason: "Queue", Playlist: [] } } })
+      m.assertEqual(remoteCommand.syncPlaySubtype(noTime), "PlayQueue")
+      noWhen = remoteCommand.parseMessage({ MessageType: "SyncPlayCommand", Data: { Command: "Pause" } })
+      m.assertEqual(remoteCommand.syncPlaySubtype(noWhen), "Pause")
+      unknown = remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g1", Type: "SomethingNew" } })
+      m.assertEqual(unknown.kind, "ignore")
+      m.assertEqual(remoteCommand.syncPlaySubtype(unknown), "SomethingNew", "a kind this app does not know is named, so it can be added")
+      m.assertEqual(remoteCommand.syncPlaySubtype(remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { Type: 5 } })), "", "a kind that is not text")
+      m.assertEqual(remoteCommand.syncPlaySubtype(remoteCommand.parseMessage({ MessageType: "SyncPlayCommand" })), "", "no Data")
+      m.assertEqual(remoteCommand.syncPlaySubtype(remoteCommand.parseMessage({ MessageType: "GeneralCommand", Data: { Name: "SetVolume" } })), "", "not a SyncPlay frame")
+      m.assertEqual(remoteCommand.syncPlaySubtype(invalid), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("parseMessage() — Play")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

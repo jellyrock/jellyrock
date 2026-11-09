@@ -218,23 +218,6 @@ function addOrdinalSuffix(day as integer) as string
   end if
 end function
 
-' Walk to the deepest focused descendant. Dialog helpers capture this before
-' presenting, so closing can restore focus exactly where the user left it
-' (source/utils/dialogs.bs presentOverlayDialog -> returnFocusTo).
-function lastFocusedChild(obj as object) as object
-  if isValid(obj)
-    child = obj
-    for i = 0 to obj.getChildCount()
-      if isValid(obj.focusedChild)
-        child = child.focusedChild
-      end if
-    end for
-    return child
-  else
-    return invalid
-  end if
-end function
-
 ' Returns the full-screen view currently on top: the router-mounted view tracked on
 ' m.global.activeRoutedView. The whole app is routed: pre-login, content, and playback are all
 ' router views in JRScene's outlet. Callers use it to resolve "what's on screen".
@@ -253,6 +236,26 @@ sub restoreFocus(view as object)
     view.setFocus(true)
   end if
 end sub
+
+' The node that has the focus, found by following focusedChild down from `root`, or invalid when
+' nothing under `root` has it. The one walk down the focus chain: it stops on hasFocus(), so it
+' never relies on what focusedChild reads on the focused node itself, which Roku leaves undocumented.
+function getDeepestFocusedNode(root as object) as dynamic
+  node = root
+  while isValid(node) and node.hasFocus() = false
+    node = node.focusedChild
+  end while
+  return node
+end function
+
+' Whether `node` is `root` or one of its descendants.
+function isInside(node as dynamic, root as object) as boolean
+  while isValid(node)
+    if node.isSameNode(root) then return true
+    node = node.getParent()
+  end while
+  return false
+end function
 
 ' Maps a selected content item to its route: a named-route arg { name, params } for
 ' sgRouter.navigateTo. Pure (no router call) so it can live here in commonly-imported misc.bs;

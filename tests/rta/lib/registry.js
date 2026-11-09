@@ -393,6 +393,10 @@ function writeAcceptedRecord(diffs, label) {
  * that runs unattended at the start of every run, so it is the one a wrong answer
  * costs the most. Adding a fourth means deciding which of those three it is.
  *
+ * The restore helper (`scripts/rta-restore.js --takeover`) adopts the snapshot with
+ * `adoptSnapshotFile`, so while it restores, the owner is the helper and the run still
+ * reads as in progress.
+ *
  * `file` is a test seam. The reader in `device-lock.js` lives in another module, so
  * what has to be pinned is that the two agree on the field, and a test can only do
  * that by producing a real snapshot somewhere other than the real `.device-runs/`.
@@ -407,6 +411,25 @@ export function writeSnapshotFile(values, file = snapshotPath()) {
       2,
     ),
   );
+  return file;
+}
+
+/**
+ * Makes this process the snapshot's owner, but only if `expectedOwnerPid` owns it now.
+ * Writes a temp file and renames it, so a reader never sees a half-written snapshot.
+ * Throws, leaving the file unchanged, when the owner differs. `file` is a test seam.
+ */
+export function adoptSnapshotFile(expectedOwnerPid, file = readSnapshotFile()?.file) {
+  if (!file || !fs.existsSync(file)) throw new Error('No snapshot to adopt.');
+  const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  if (parsed.ownerPid !== expectedOwnerPid) {
+    throw new Error(
+      `Refusing to adopt ${file}: its owner is pid ${parsed.ownerPid}, not ${expectedOwnerPid}.`,
+    );
+  }
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify({ ...parsed, ownerPid: process.pid }, null, 2));
+  fs.renameSync(tmp, file);
   return file;
 }
 

@@ -12,6 +12,7 @@ namespace tests
     private overlay as object
     private overhang as object
     private previousView as object
+    private hosts as object
 
     ' beforeEach, not setup: every test moves focus (tests/CLAUDE.md).
     protected override sub beforeEach()
@@ -26,9 +27,16 @@ namespace tests
       m.overlay = CreateObject("roSGNode", "Group")
       m.overlay.focusable = true
       m.mountedIn.appendChildren([m.screen, m.overlay])
+      m.hosts = []
     end sub
 
     protected override sub afterEach()
+      abandonDialog(openOverlayDialog())
+      for each host in m.hosts
+        parent = host.getParent()
+        if isValid(parent) then parent.removeChild(host)
+      end for
+      m.hosts = invalid
       m.mountedIn.removeChildren([m.screen, m.overlay])
       if isValid(m.overhang) then m.mountedIn.removeChild(m.overhang)
       m.overhang = invalid
@@ -105,6 +113,274 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("handleFocus — an overlay dialog holds focus")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves the focus on the dialog when the router claims focus after a navigation settles")
+    function _()
+      dialog = showConfirmDialog("Title", "Message")
+      m.assertTrue(dialog.isInFocusChain())
+
+      taken = m.screen.callFunc("handleFocus", { routerFocused: true })
+
+      m.assertFalse(taken)
+      m.assertTrue(dialog.isInFocusChain())
+      m.assertFalse(m.screen.isInFocusChain())
+      abandonDialog(dialog)
+    end function
+
+    @it("leaves the focus on the dialog on the first call after the view is shown")
+    function _()
+      m.screen.callFunc("onViewOpen", {})
+      dialog = showConfirmDialog("Title", "Message")
+      m.assertTrue(dialog.isInFocusChain())
+
+      taken = m.screen.callFunc("handleFocus", { routerFocused: true })
+
+      m.assertFalse(taken)
+      m.assertTrue(dialog.isInFocusChain())
+      m.assertFalse(m.screen.isInFocusChain())
+      abandonDialog(dialog)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a screen that opens under an open dialog")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps the dialog focused through onViewOpen, then focuses the new screen when it closes")
+    function _()
+      m.child.setFocus(true)
+      dialog = showConfirmDialog("Title", "Message")
+      m.assertTrue(dialog.isInFocusChain())
+      arrived = m.arriveUnderDialog("onViewOpen")
+
+      m.assertTrue(dialog.isInFocusChain())
+      m.assertFalse(arrived.callFunc("handleFocus", { routerFocused: true }))
+
+      m.screen.callFunc("hideCovered")
+      dialog.callFunc("cancelDialog")
+
+      m.assertTrue(arrived.isInFocusChain())
+      m.assertFalse(m.child.hasFocus())
+      m.mountedIn.removeChild(arrived)
+    end function
+
+    @it("keeps the dialog focused through onViewResume, then focuses the resumed screen when it closes")
+    function _()
+      m.child.setFocus(true)
+      dialog = showConfirmDialog("Title", "Message")
+      m.assertTrue(dialog.isInFocusChain())
+      arrived = m.arriveUnderDialog("onViewResume")
+
+      m.assertTrue(dialog.isInFocusChain())
+      m.assertFalse(arrived.callFunc("handleFocus", { routerFocused: true }))
+
+      m.screen.callFunc("hideCovered")
+      dialog.callFunc("cancelDialog")
+
+      m.assertTrue(arrived.isInFocusChain())
+      m.assertFalse(m.child.hasFocus())
+      m.mountedIn.removeChild(arrived)
+    end function
+
+    @it("gives the focus back to the opener when no navigation happened")
+    function _()
+      m.child.setFocus(true)
+      dialog = showConfirmDialog("Title", "Message")
+      m.assertTrue(dialog.isInFocusChain())
+
+      dialog.callFunc("cancelDialog")
+
+      m.assertTrue(m.child.hasFocus())
+    end function
+
+    @it("gives the focus back inside a screen nested in the active view (the OSD in the player)")
+    function _()
+      inner = m.screen.createChild("JRScreen")
+      innerChild = inner.createChild("Group")
+      innerChild.focusable = true
+      m.global.activeRoutedView = m.screen
+      innerChild.setFocus(true)
+      dialog = showConfirmDialog("Title", "Message")
+      m.assertTrue(dialog.isInFocusChain())
+
+      dialog.callFunc("cancelDialog")
+
+      m.assertTrue(innerChild.hasFocus())
+    end function
+
+    @it("gives the focus back to a node outside every screen")
+    function _()
+      m.overlay.setFocus(true)
+      dialog = showConfirmDialog("Title", "Message")
+      m.assertTrue(dialog.isInFocusChain())
+
+      dialog.callFunc("cancelDialog")
+
+      m.assertTrue(m.overlay.hasFocus())
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a dialog a screen opened ends when another screen covers it")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("cancels a dialog the screen opened, as a close the viewer did not make")
+    function _()
+      host = m.mountHost(m.mountedIn)
+      host.callFunc("openConfirm")
+      m.assertTrue(host.dialog.isInFocusChain(), "precondition: the confirm holds the focus")
+
+      m.cover(host)
+
+      m.assertInvalid(openOverlayDialog(), "the confirm is gone")
+      m.assertTrue(isValid(host.answer), "the owner's handler ran")
+      m.assertFalse(host.answer.confirmed)
+      m.assertTrue(host.answer.externallyCancelled)
+    end function
+
+    ' The subtitle panel inside ItemDetails, the OSD inside the player.
+    @it("cancels a dialog a component inside the screen opened")
+    function _()
+      inner = m.mountHost(m.screen)
+      inner.callFunc("openConfirm")
+      m.assertTrue(inner.dialog.isInFocusChain(), "precondition: the confirm holds the focus")
+
+      m.cover(m.screen)
+
+      m.assertInvalid(openOverlayDialog(), "the confirm is gone")
+      m.assertTrue(inner.answer.externallyCancelled)
+    end function
+
+    ' JRScene's exit and SyncPlay confirms: covering a screen must not end them.
+    @it("leaves a dialog opened outside the screen")
+    function _()
+      outside = m.mountHost(m.mountedIn)
+      outside.callFunc("openConfirm")
+
+      m.cover(m.screen)
+
+      m.assertTrue(isValid(openOverlayDialog()), "the confirm stays")
+      m.assertTrue(openOverlayDialog().isSameNode(outside.dialog))
+      m.assertInvalid(outside.answer, "nothing answered it")
+    end function
+
+    ' Settings' reset confirms focus their own screen on any answer. The cancel runs inside the
+    ' swap, before the incoming screen's onScreenShown, which must still end up with the focus.
+    @it("leaves the focus on the incoming screen when the cancelled dialog's handler focuses the covered one")
+    function _()
+      host = m.mountHost(m.mountedIn)
+      host.focusOpenerOnAnswer = true
+      host.callFunc("openConfirm")
+      host.callFunc("onViewSuspend", {})
+      arrived = CreateObject("roSGNode", "JRScreen")
+      arrivedChild = arrived.createChild("Group")
+      arrivedChild.focusable = true
+      m.mountedIn.appendChild(arrived)
+
+      ' The router's order: the incoming view is published, JRScene's swap hides the covered
+      ' one, then the incoming view's onScreenShown runs (onViewOpen publishes it again).
+      m.global.activeRoutedView = arrived
+      host.callFunc("hideCovered")
+      arrived.callFunc("onViewOpen", {})
+
+      m.assertInvalid(openOverlayDialog(), "the confirm is gone")
+      m.assertTrue(arrived.isInFocusChain(), "the incoming screen has the focus")
+      m.assertFalse(host.opener.hasFocus())
+      m.mountedIn.removeChild(arrived)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a dialog a screen opened ends when the screen closes for good")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Settings' invalid-value alerts: nothing holds them, so no onDestroy abandons them.
+    @it("abandons a dialog the screen opened and kept no reference to, delivering nothing")
+    function _()
+      host = m.mountHost(m.mountedIn)
+      host.callFunc("openUnkeptAlert")
+      dialog = openOverlayDialog()
+      m.assertTrue(isValid(dialog) and dialog.isInFocusChain(), "precondition: the alert holds the focus")
+
+      host.callFunc("beforeViewClose", {})
+
+      m.assertInvalid(openOverlayDialog(), "the alert is gone")
+      m.assertInvalid(dialog.result, "nothing was delivered")
+    end function
+
+    @it("leaves a dialog opened outside the screen")
+    function _()
+      outside = m.mountHost(m.mountedIn)
+      outside.callFunc("openConfirm")
+
+      m.screen.callFunc("beforeViewClose", {})
+
+      m.assertTrue(isValid(openOverlayDialog()), "the confirm stays")
+      m.assertTrue(openOverlayDialog().isSameNode(outside.dialog))
+    end function
+
+    ' ItemDetails' Delete: the handler goes back, and the router closes the screen inside the
+    ' dialog's answer. The dialog then closes itself and hands the focus back as usual; abandoning
+    ' it mid-answer would detach it while focused, and the close would hand the focus to nothing.
+    @it("leaves a dialog that is answering, so it closes and hands the focus back itself")
+    function _()
+      host = m.mountHost(m.mountedIn)
+      m.global.activeRoutedView = host
+      host.closeOnAnswer = true
+      host.callFunc("openConfirm")
+      dialog = host.dialog
+      m.assertTrue(dialog.isInFocusChain(), "precondition: the confirm holds the focus")
+
+      dialog.callFunc("cancelDialog")
+
+      m.assertTrue(isValid(host.answer), "the handler ran")
+      m.assertInvalid(openOverlayDialog(), "the confirm closed")
+      m.assertTrue(host.opener.hasFocus(), "the close handed the focus back to the opener")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the screensaver ends over a screen (onScreensaverExited)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("refreshes the screen and leaves the focus on an open dialog")
+    function _()
+      host = m.mountHost(m.mountedIn)
+      host.opener.setFocus(true)
+      dialog = showConfirmDialog("Title", "Message")
+      m.assertTrue(dialog.isInFocusChain(), "precondition: the confirm holds the focus")
+
+      host.callFunc("onScreensaverExited")
+
+      m.assertEqual(host.shownCount, 1, "the screen refreshed")
+      m.assertTrue(dialog.isInFocusChain(), "the confirm still holds the focus")
+    end function
+
+    ' The overhang row and AppWaitHost both sit outside the screen.
+    @it("leaves the focus on a node outside the screen")
+    function _()
+      host = m.mountHost(m.mountedIn)
+      m.overlay.setFocus(true)
+
+      host.callFunc("onScreensaverExited")
+
+      m.assertEqual(host.shownCount, 1, "the screen refreshed")
+      m.assertTrue(m.overlay.hasFocus())
+    end function
+
+    @it("leaves the focus on the node inside the screen the viewer was on")
+    function _()
+      host = m.mountHost(m.mountedIn)
+      other = host.createChild("Group")
+      other.focusable = true
+      host.lastFocus = host.opener
+      other.setFocus(true)
+
+      host.callFunc("onScreensaverExited")
+
+      m.assertEqual(host.shownCount, 1, "the screen refreshed")
+      m.assertTrue(other.hasFocus(), "not moved to the saved lastFocus")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("handleFocus — the overhang row holds focus")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -123,6 +399,30 @@ namespace tests
       m.assertTrue(m.overhang.hasFocus())
       m.assertFalse(m.screen.isInFocusChain())
       m.assertEqual(m.screen.overhangReturnIcon, "")
+    end function
+
+    ' A screen that opens a confirm from its own scope (components/testing/CoveredDialogHost),
+    ' mounted in `parent` and removed after the test.
+    private function mountHost(parent as object) as object
+      host = parent.createChild("CoveredDialogHost")
+      m.hosts.push(host)
+      return host
+    end function
+
+    ' The router's suspend, then JRScene's swap once the covering screen has opened.
+    private sub cover(screen as object)
+      screen.callFunc("onViewSuspend", {})
+      screen.callFunc("hideCovered")
+    end sub
+
+    ' Mount a second screen, make it the active routed view and run the router hook on it.
+    private function arriveUnderDialog(hook as string) as object
+      arrived = CreateObject("roSGNode", "JRScreen")
+      arrivedChild = arrived.createChild("Group")
+      arrivedChild.focusable = true
+      m.mountedIn.appendChild(arrived)
+      arrived.callFunc(hook, {})
+      return arrived
     end function
 
   end class

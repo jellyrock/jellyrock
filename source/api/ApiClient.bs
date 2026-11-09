@@ -555,6 +555,7 @@ class ApiClient
     if action = "NextItem" then path = "/SyncPlay/NextItem"
     if action = "PreviousItem" then path = "/SyncPlay/PreviousItem"
     if action = "SetPlaylistItem" then path = "/SyncPlay/SetPlaylistItem"
+    if action = "Queue" then path = "/SyncPlay/Queue"
     if action = "SetRepeatMode" then path = "/SyncPlay/SetRepeatMode"
     if action = "SetShuffleMode" then path = "/SyncPlay/SetShuffleMode"
     if path = "" then return invalid

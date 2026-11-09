@@ -236,6 +236,16 @@ namespace tests
       m.assertEqual(remoteCommand.parseMessage(m.updateFrame("PlayQueue", { Reason: "Queue" })).kind, "ignore")
     end function
 
+    @it("ignores a PlayQueue whose LastUpdate is missing or unreadable: it is the update's identity")
+    @params(invalid)
+    @params("2026-10-23T20:47:25+00:00")
+    @params("not a time")
+    function _(lastUpdate)
+      inner = { Reason: "Queue", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }], PlayingItemIndex: 0 }
+      if lastUpdate <> invalid then inner.LastUpdate = lastUpdate
+      m.assertEqual(remoteCommand.parseMessage(m.updateFrame("PlayQueue", inner)).kind, "ignore")
+    end function
+
     @it("parses the toast-only types, 10.7's two included, with nothing more")
     @params("GroupLeft")
     @params("NotInGroup")

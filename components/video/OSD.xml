@@ -14,6 +14,9 @@
 
     <!-- HEADER RIGHT -->
     <Clock />
+    <!-- The SyncPlay mark while in a group, left of the clock: the overhang's own icon, never
+         focused, active while following and disabled while halted (applySyncPlayMark). -->
+    <JROverhangIcon id="syncPlayMark" icon="pkg:/images/icons/groups_$$RES$$.png" visible="false" />
 
     <!-- MAIN -->
     <!-- Video information - title, season/episode number etc. -->

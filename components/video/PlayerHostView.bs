@@ -213,7 +213,7 @@ sub onDestroy()
   ' The picker / info overlays are appended to the SCENE, so they outlive this
   ' view. Anything that navigates without the user closing the dialog first
   ' (deep link, session expiry, voice "stop") would strand one over the incoming
-  ' screen. See abandonDialog in source/utils/dialogs.bs.
+  ' screen. See abandonDialog in source/utils/overlayDialog.bs.
   abandonPlaybackDialogs()
   destroyPlayer()
 end sub

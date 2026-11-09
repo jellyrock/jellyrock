@@ -20,7 +20,7 @@ related-files:
   - scripts/lint/socket-thread-release-check.js
   - scripts/lint/socket-auth-binding-check.js
   - docs/architecture/remote-control-longpoll-contract.md
-last-reviewed: 2026-10-27
+last-reviewed: 2026-11-08
 ---
 
 # Remote control: cast to JellyRock
@@ -41,7 +41,7 @@ So JellyRock has two transports that feed one normalized command stream:
 - **`http://`:** the `ws://` socket, with no probe.
 - **`https://`:** probe the plugin with `GET /JellyRock/RemoteControl/info`. A `200` whose body carries the expected `CONTRACT_VERSION` starts the long-poll loop. A "no plugin" answer leaves JellyRock dark until a later probe succeeds: no cast target is advertised meanwhile. `buildSocketUrl` returns nothing for a non-HTTP server, so an `https://` session's token never goes out over cleartext `ws://`.
 
-The receiver also publishes whether it has a push channel, as `m.global.server.remoteChannelStatus` (`serverCapabilities.STATUS_*`), because SyncPlay needs one. It is unknown at the start of each run, `available` once the socket opens or the plugin probe answers with the expected version, and `unavailable` when the probe answers an HTTP error or a version it does not implement. A transport failure with no HTTP status leaves it as it was. The HTTPS path keeps probing: with backoff after a transport failure or a server error, slowly (`remoteProtocol.PLUGIN_RECHECK_MS`) after a "no plugin" answer so a plugin installed later is found, and straight back to probing when the plugin goes away mid-session. It is written only on a change, since a Task thread writing `m.global` costs a rendezvous.
+The receiver also publishes whether it has a push channel, as `m.global.server.remoteChannelStatus` (`serverCapabilities.STATUS_*`), because SyncPlay needs one. It is unknown at the start of each run, `available` once the socket opens or the plugin probe answers with the expected version, and `unavailable` when the probe answers an HTTP error or a version it does not implement, and when the session socket is down past one quick reconnect (`remoteProtocol.socketDownMarksUnavailable`), so the SyncPlay icon disables until it is back. A socket that never opened in this run leaves the status unknown, and a stable session that drops gets one reconnect first, so a blip does not flicker the icon. Pressing the disabled icon explains which channel is missing: the plugin on an HTTPS server, a reconnecting socket on an HTTP one; a member already in a group still gets its menu. A plugin transport failure with no HTTP status leaves it as it was. The HTTPS path keeps probing: with backoff after a transport failure or a server error, slowly (`remoteProtocol.PLUGIN_RECHECK_MS`) after a "no plugin" answer so a plugin installed later is found, and straight back to probing when the plugin goes away mid-session. It is written only on a change, since a Task thread writing `m.global` costs a rendezvous.
 
 On HTTPS the plugin owns the capability. JellyRock advertises `SupportsMediaControl` as `false` there (`deviceCapabilities.bs` checks the scheme), and the plugin forces it `true` while a poll is live and revokes it when polling stops. That revocation follows the plugin's poll freshness, not `LastActivityDate`, and it is what drops a closed JellyRock from the cast list. The `ws://` path gets the same from the socket disconnect. Verified on a device: with the app closed, `SupportsRemoteControl` turned false within the grace window, though other traffic kept `LastActivityDate` recent.
 
@@ -154,6 +154,8 @@ The advertised commands are the navigation and messaging ones JellyRock acts on:
 | `SyncPlayCommand{Unpause, Pause, Stop, Seek}` | `syncplaycommand` | Parsed by `syncPlayMessage.parseCommand` (`source/syncplay/`): the command name, `When` and `EmittedAt` in ms, the position in ticks, the playlist item and group. `remoteDispatch.dispatchSyncPlay` writes it to the SyncPlay manager node's `frame` field, or drops it with a console line while no manager exists. |
 | `SyncPlayGroupUpdate{GroupJoined, GroupLeft, UserJoined, UserLeft, StateUpdate, PlayQueue, NotInGroup, GroupDoesNotExist, LibraryAccessDenied, CreateGroupDenied, JoinGroupDenied}` | `syncplayupdate` | Parsed by `syncPlayMessage.parseGroupUpdate` into the group info, the queue or the state; the same hand-off as the command. One parser covers every server line from 10.7.0: the shapes are unchanged and enums travel as names on every line. |
 | `GeneralCommand{volume, directional, SendKey, …}`, `KeepAlive`, `Sessions`, `RefreshProgress`, `UserDataChanged`, anything unknown | `ignore` | Dropped, never an error, so a hostile, future or unknown frame cannot break the receiver |
+
+A SyncPlay frame JellyRock can't use becomes `ignore` too: a missing field, an unreadable time, or a command or update type it doesn't know. The receiver logs a warning naming the frame's message type and kind, because otherwise the member falls out of step with nothing in the log.
 
 `Seek` carries an absolute `SeekPositionTicks` and becomes `seekto`, unlike voice's relative `seek`. Both players (`VideoPlayerView`, `AudioPlayerView`, reached through `PlayerHostView`) handle `previous`, `seekto` and `playpause` for the cast verbs.
 

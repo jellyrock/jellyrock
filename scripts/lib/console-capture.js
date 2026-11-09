@@ -16,6 +16,8 @@ export const CONSOLE_PORT = 8085;
 const RECONNECT_DELAY_MS = 1000;
 export const MAX_RECONNECTS = 20;
 export const KEEP_SERVER_CONSOLES = 12;
+// A chosen limit, not a measurement: enough failed runs to compare, few enough to stay small.
+export const KEEP_FAILED_CONSOLES = 5;
 
 /**
  * @param {number} attempt - 1 for the first reconnect
@@ -39,17 +41,48 @@ export function consolesToPrune(entries, keep = KEEP_SERVER_CONSOLES) {
     .map((e) => e.name);
 }
 
-/** Delete the oldest `console-*.log` files in `dir`, keeping the newest `keep`. Never throws. */
-export function pruneConsoles(dir, keep = KEEP_SERVER_CONSOLES) {
+/**
+ * Delete the oldest files in `dir` whose names match `pattern` (default `console-*.log`),
+ * keeping the newest `keep`. Never throws.
+ */
+export function pruneConsoles(dir, keep = KEEP_SERVER_CONSOLES, pattern = /^console-.*\.log$/) {
   try {
     const entries = fs
       .readdirSync(dir)
-      .filter((n) => /^console-.*\.log$/.test(n))
+      .filter((n) => pattern.test(n))
       .map((name) => ({ name, mtimeMs: fs.statSync(path.join(dir, name)).mtimeMs }));
     for (const name of consolesToPrune(entries, keep))
       fs.rmSync(path.join(dir, name), { force: true });
   } catch {
     // Housekeeping only.
+  }
+}
+
+/**
+ * Copy a failed run's console to `console-failed-<UTC time>.log` beside it, so the next
+ * run's overwrite of `file` does not lose it, then keep only the newest `keep` copies.
+ * Never throws.
+ *
+ * @param {string} file - the run's console file
+ * @param {object} [opts]
+ * @param {Date} [opts.now]
+ * @param {number} [opts.keep]
+ * @returns {string|null} the kept path, or null when there was nothing to copy
+ */
+export function keepFailedConsole(file, { now = new Date(), keep = KEEP_FAILED_CONSOLES } = {}) {
+  try {
+    const stamp = now
+      .toISOString()
+      .replace(/\.\d+Z$/, 'Z')
+      .replace(/:/g, '-');
+    const dir = path.dirname(file);
+    const kept = path.join(dir, `console-failed-${stamp}.log`);
+    fs.copyFileSync(file, kept);
+    fs.chmodSync(kept, 0o600);
+    pruneConsoles(dir, keep, /^console-failed-.*\.log$/);
+    return kept;
+  } catch {
+    return null;
   }
 }
 

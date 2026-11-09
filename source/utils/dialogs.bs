@@ -29,6 +29,7 @@ import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/dialogReveal.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/overlayDialog.bs"
 import "pkg:/source/utils/translate.bs"
 
 ' Simple message + OK button, plus an OPTIONAL secondary action beside it.
@@ -288,55 +289,6 @@ function showKeyboardDialog(title as string, onResult = "" as string, defaultTex
   return dialog
 end function
 
-' Is a scene-appended overlay dialog currently on screen?
-'
-' The JRDialog family does not use Roku's modal channel (m.scene.dialog), so
-' anything asking "is a dialog open?" via that channel alone has been answering
-' false for every dialog in the app since the family moved to scene overlays.
-' SceneManager.isDialogOpen() folds this in; prefer that if you have it, because
-' it covers the keyboard dialogs on the modal channel too.
-function isOverlayDialogOpen() as boolean
-  return isValid(openOverlayDialog())
-end function
-
-' The open overlay dialog, or invalid. AppWaitHost reads its `returnFocusTo`: a wait pressed
-' from a dialog takes the focus the dialog would hand back to the screen it hides.
-function openOverlayDialog() as dynamic
-  scene = appScene()
-  if not isValid(scene) then return invalid
-  return scene.findNode(OVERLAY_DIALOG_ID)
-end function
-
-' Abandon a dialog this screen opened, delivering no result. Call from onDestroy
-' for any dialog node you are still holding.
-'
-' Overlay dialogs are appended to the SCENE, not to the screen that opened them,
-' so they outlive their opener: a routed view destroyed while one is open (deep
-' link, session expiry, server switch: anything that navigates without the user
-' pressing back) would leave a modal stranded over the incoming screen, with a
-' scoped observer pointing at a torn-down scope and returnFocusTo pointing at a
-' dead node. Safe to call with invalid / an already-closed dialog.
-sub abandonDialog(dialog as object)
-  if not isValid(dialog) then return
-
-  ' unobserveField, not unobserveFieldScoped: the scoped form removes only the
-  ' CALLING component's connection, so it misses a main-thread dialog observed
-  ' with `observeField("result", m.port)`. The unscoped form drops every
-  ' observer on the field, scoped and port alike, which is what "abandon"
-  ' means. That is a WIDENING, and it is safe only because a dialog has exactly
-  ' one owner. Don't reuse abandonDialog() on a node several scopes observe.
-  dialog.unobserveField("result")
-
-  if dialog.isSubtype("StandardKeyboardDialog")
-    ' Roku modal channel: the OS owns presentation; writing `close` dismisses it
-    dialog.close = true
-    return
-  end if
-
-  parent = dialog.getParent()
-  if isValid(parent) then parent.removeChild(dialog)
-end sub
-
 ' Close whatever dialog is open, delivering a CANCELLED result to whoever opened
 ' it. The counterpart to abandonDialog(): use this when a THIRD PARTY needs the
 ' screen clear while the dialog's owner is still alive and waiting on a result.
@@ -362,21 +314,6 @@ sub cancelOpenDialog()
 end sub
 
 ' ---- internals ----
-
-' The id every overlay dialog is stamped with. One definition, because three
-' things depend on being able to FIND the open dialog by it: openOverlayDialog
-' (and isOverlayDialogOpen through it), cancelOpenDialog, and presentOverlayDialog's
-' supersede below. It identifies
-' exactly one node because presentOverlayDialog keeps it that way.
-const OVERLAY_DIALOG_ID = "jrDialog"
-
-' Has this overlay dialog delivered its result? Then its owner's result handler is
-' running and the dialog closes when it returns. `result` stays unset until
-' resolveDialog writes it, once. OverviewDialog has no `result`, and it detaches
-' before it signals `closed`, so it is never found open in that state.
-function dialogHasAnswered(dialog as object) as boolean
-  return dialog.hasField("result") and isValid(dialog.result)
-end function
 
 ' Append an overlay dialog to the scene, capture focus, wire the caller's
 ' result observer. onResult is resolved in the CALLER's scope because these
@@ -442,19 +379,24 @@ function presentOverlayDialog(dialog as object, onResult as string, returnFocusT
     incumbent.callFunc("cancelDialog")
   end if
 
-  ' AFTER the supersede, never before. lastFocusedChild walks focusedChild down
+  ' AFTER the supersede, never before. getDeepestFocusedNode walks focusedChild down
   ' to the deepest focused node, which with an incumbent still mounted resolves
   ' INSIDE the incumbent, so returnFocusTo would point at a node that is about
   ' to be detached, and closing this dialog would restore focus to a corpse.
   ' A hand-off has no supersede to wait for, so it reuses the incumbent's target.
   ' A caller that KNOWS its opener passes it instead and skips the derivation.
   dialog.id = OVERLAY_DIALOG_ID
+  ' Who opened it, so a screen covered by another ends the dialogs it or its children opened
+  ' (JRScreen.endOwnedDialog). Main-thread callers have no m.top, so their dialogs have no owner.
+  if isValid(m.top) then dialog.owner = m.top
   if isValid(returnFocusTo)
     dialog.returnFocusTo = returnFocusTo
   else if isValid(handedFocusTo)
     dialog.returnFocusTo = handedFocusTo
   else
-    dialog.returnFocusTo = lastFocusedChild(scene)
+    dialog.returnFocusTo = getDeepestFocusedNode(scene)
+    ' Nothing holds the focus: the scene, so the close still has somewhere to put it.
+    if not isValid(dialog.returnFocusTo) then dialog.returnFocusTo = scene
   end if
   if onResult <> "" then dialog.observeFieldScoped("result", onResult)
   ' A dialog cannot place anything until it has measured its own content, so it

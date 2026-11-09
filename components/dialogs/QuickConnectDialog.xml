@@ -64,6 +64,9 @@
     <field id="result" type="assocarray" alwaysNotify="true" />
     <!-- Node to restore remote focus to on close. Set by the dialogs.bs helper. -->
     <field id="returnFocusTo" type="node" />
+    <!-- The component that opened it (presentOverlayDialog). A screen that another one covers ends
+         the dialogs it or a component inside it opened (JRScreen.endOwnedDialog). -->
+    <field id="owner" type="node" />
     <!-- Cancel this dialog from OUTSIDE (source/utils/dialogs.bs cancelOpenDialog,
          and presentOverlayDialog's supersede). Routes through the same resolve
          path as Back so a third party clearing the screen is indistinguishable
