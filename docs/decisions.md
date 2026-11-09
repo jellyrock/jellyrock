@@ -2718,6 +2718,7 @@ Ruled out: the official Roku client's approach of restarting from the current po
 **date**: 2026-11-08
 **status**: accepted
 **partially-supersedes**: `reencode-bitrate-checked-from-session` (its SyncPlay group skip)
+**partially-superseded-by**: `syncplay-reload-starts-where-group-is` (the node loading at its own position)
 **related-files**: `source/syncplay/syncPlayPlayback.bs`, `components/syncplay/SyncPlayManager.bs`, `components/video/VideoPlayerView.bs`, `source/utils/reencodeCheck.bs`
 
 While following a SyncPlay group, a reload in place (an audio, subtitle or quality change, a version switch, a retry, the stream restart, the re-encode check's restart) tells `SyncPlayManager`, once the stream has played, before the player writes `stop` (`VideoPlayerView.reloadInPlace()`, event `reloaded`), and the tracker treats it as a load: `Buffering` at once, the first frame paused, one `Ready`. That `Ready` carries the group's own position (`syncPlayPlayback.groupPositionTicks()` over `clockReference()`), which is where the server paused the group for the `Buffering`, whenever the node reads more than 500 ms below it, as at a late join, which a node still reading 0 at its first frame always does; with no clock reference (this member reported `Buffering`) it carries the player's reading, where the group waits. The group's paused state stays, unlike at a mount, and a correction or held seek on the old stream is dropped. The re-encode check runs in groups again. Measured 2026-11-08 on a Streaming Stick 4K (Roku OS 15.3.4) against Jellyfin 12.4 with a REST second member: before the fix a quick reload (a gear pick) reported nothing and fell behind the group in silence, a slow one (the stream restart, about 3 s of buffering) sent `Ready` at 0 and drew a corrective `Seek`, and a reload under a paused group never sent a `Ready`, leaving the group `Waiting`. The player's last reading lagged the group's clock by 0.28 to 0.55 s, and the 0.555 s case drew a `Seek` past the server's 500 ms `MaxPlaybackOffset`; the group's position was accepted with no `Seek` in both RTA cases.
@@ -2743,6 +2744,37 @@ Ruled out: patching each path (the three copies had already drifted apart); clea
 A changelog line credits the account GitHub's API names as the PR's author, for every PR, with no rule for any one agent. A PR an app opened, an AI agent's included, credits that app, linked to its app page. Ruled out: the "by @person with @Copilot" form GitHub's generated notes use for its own agent, which needs code for one agent while nothing shows how others open PRs. Also ruled out: crediting a human assignee of an app PR, since assignment is not authorship and a self-assigned Renovate PR would credit its reviewer.
 
 Checked 2026-11-09 against GitHub's notes for all 83 tag ranges: every PR credit matched except three Copilot PRs (#142, #143, #144). Re-evaluate if an agent's PR lines read wrong to users.
+
+## decision-id: syncplay-reload-starts-where-group-is
+
+**date**: 2026-11-09
+**status**: accepted
+**partially-supersedes**: `syncplay-reload-reports-its-start` (the node loading at its own position)
+**related-files**: `source/syncplay/syncPlayHooks.bs`, `components/syncplay/SyncPlayManager.bs`, `components/video/VideoPlayerView.bs`
+
+A reload in place while following a group starts the node where the group is (`syncPlayHooks.reloadStart`, the group's position from `SyncPlayManager.groupPositionNow()`), not where the node was, so the load and its `Ready` name the same place. A member that fell behind (a stall, a stream the server stopped sending) comes back with one load and the keyframe gap the drift correction already closes at a late join, instead of resuming behind the group and being seek-corrected a few seconds later. In sync the two positions agree, so the common case is unchanged. The version switch maps the group's position into the new version, so a shorter version still clamps. When no command names the group's position yet, the reload starts at the player's own and the `Ready` carries the group's position as before, now the fallback.
+
+Ruled out: keeping the node's position as the start (today's behavior, a second visible jump whenever this member was behind); holding the first frame paused until a correction lands (a second wait state in the tracker, and a long hold trips the group-wait timeout on 12.1 and later). Jellyfin Web is no precedent either way: its player reports the browser's exact position on `playing`, which Roku cannot, since it starts at the keyframe before. Operator: `group-start`, 2026-11-09.
+
+## decision-id: syncplay-halted-cast-asks-too
+
+**date**: 2026-11-09
+**status**: accepted
+**related-files**: `components/syncplay/SyncPlayManager.bs`, `components/JRScene.bs`
+
+A cast to this Roku while it is in a group but halted is held and asked about on the TV like any halted member's play (`SyncPlayManager.castToGroup` feeds `claimItems`, whose `confirmPlay` notice opens the dialog). A following member sees the group's video, so its play goes to the group with a toast; a halted member may not know the group still runs, and a phone casting to the TV never does, so both would replace everyone's playback silently. One rule for every halted play, since telling a cast apart would thread a marker from the deep-link seam through the queue, and the person casting is usually in the room; when nobody answers, the start times out and nothing plays. Cancel keeps the group's playback and plays nothing: a member watching their own video while staying in a group is not a use anyone has, so the dialog has no "on this TV only" outcome (operator, 2026-11-09).
+
+Ruled out: a flag on `QueueManager.groupClaimsPlay` to tell casts apart (`queue`); sending a cast to the group with no question (the phone cannot know the TV is in a group). Operator: `manager`, 2026-11-06; shipped in #1335.
+
+## decision-id: overhang-clock-gap-measured
+
+**date**: 2026-11-09
+**status**: accepted
+**related-files**: `source/utils/overhangRow.bs`, `components/Clock.bs`, `components/video/OSD.bs`
+
+The overhang's icon cluster and the SyncPlay mark on the OSD sit a fixed gap (`overhangRow.CLOCK_GAP`) left of the clock's digits as measured (`Clock.textWidth`, reported at each tick, `overhangRow.leftOfClock`), replacing a fixed slot sized for the widest time. The gap is always the same to the eye, and the dead space a fixed slot left most of the day is gone. The icons move when the digits' width changes (an hour digit gained or lost, and whatever a proportional font does per minute); the operator weighed that against the honest gap and kept the measured gap: a few pixels of movement is no big deal (2026-11-09).
+
+Ruled out: a fixed slot in both bars (`slot`), and leaving the overhang's old fixed slot beside a measured OSD mark (`leave`), both for the dead space; measuring the widest string the format can produce once, which would stop the movement but was declined as not worth it. Operator: `measure`, 2026-11-06; shipped in #1335.
 
 ## Migrated to ADRs
 
