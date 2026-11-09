@@ -183,9 +183,51 @@ namespace syncPlayPlayback
   ' member reported ends it too: the group waits for this member, and a server from 12.1 answers
   ' its recovery with an Unpause to the others alone, so the last Unpause would run on through a
   ' wait this member never hears of. The next command it schedules says where the group is again.
-  function clockReference(lastCommand as dynamic, playingItemId as string, reportedBuffering as boolean) as dynamic
+  ' A command older than the queue update that last changed the playing item is the last item's
+  ' too (acceptsCommand drops one on arrival; this covers one already in force when a same-item
+  ' restart lands, which sends no command of its own).
+  ' @param queueChangedAtMs - the LastUpdate of the update that last changed the playing item
+  function clockReference(lastCommand as dynamic, playingItemId as string, reportedBuffering as boolean, queueChangedAtMs as longinteger) as dynamic
     if reportedBuffering or not isValid(lastCommand) or lastCommand.playlistItemId <> playingItemId then return invalid
+    if syncPlayTime.isWholeNumber(lastCommand.emittedAtMs) and syncPlayTime.asLong(lastCommand.emittedAtMs) < queueChangedAtMs then return invalid
     return lastCommand
+  end function
+
+  ' Where the server paused the group for this member's Buffering: the group's clock run forward
+  ' to the moment the server handled the report, taken as the arrival of its Waiting state update
+  ' less half the measured round trip. The server pauses the group at its own clock when it
+  ' handles the report (WaitingGroupState), later than the estimate made when the report was
+  ' decided, by the report's own latency: 0.3 to 0.6 s in the 2026-11-09 runs, enough for a Ready
+  ' at the earlier estimate to draw a corrective Seek. Invalid when no command names the group's
+  ' clock (then the Ready keeps the load's start).
+  ' @param lastCommand - the last group command applied or scheduled, or invalid
+  ' @param playingItemId - the group's playing playlist id
+  ' @param queueChangedAtMs - as clockReference
+  ' @param estimator - the clock estimator (delayMs is the measured round trip)
+  ' @param nowMs - the device clock when the Waiting update arrived
+  ' The Unpause the server sent the other members when this member's own Ready ended the wait
+  ' and it was already playing: the server sends it to every member but this one
+  ' (WaitingGroupState, ReadyGroupRequest, the recovering branch), so without this the clock
+  ' reference stays off until the next command, which can be the rest of the film. The server
+  ' builds that Unpause from numbers this member has: the group's paused position (the anchor)
+  ' and the Ready's own, with When = the Ready's time plus how far behind the group the Ready
+  ' was. A Ready at or past the anchor resumes the group at once. Any real command replaces it.
+  ' @param anchorTicks - where the group paused (groupPauseAnchorTicks)
+  ' @param lastReady - { whenMs, positionTicks, isPlaying } of the Ready this member last sent
+  ' @param playlistItemId - the group's playing playlist id
+  ' @param groupId - the group
+  function reconstructedUnpause(anchorTicks as longinteger, lastReady as object, playlistItemId as string, groupId as string) as object
+    whenMs& = syncPlayTime.asLong(lastReady.whenMs)
+    behindMs& = syncPlayTime.ticksToMs(anchorTicks - syncPlayTime.asLong(lastReady.positionTicks))
+    if behindMs& > 0 then whenMs& = whenMs& + behindMs&
+    return { kind: "syncplaycommand", command: "Unpause", whenMs: whenMs&, emittedAtMs: syncPlayTime.asLong(lastReady.whenMs), positionTicks: anchorTicks, playlistItemId: playlistItemId, groupId: groupId, reconstructed: true }
+  end function
+
+  function groupPauseAnchorTicks(lastCommand as dynamic, playingItemId as string, queueChangedAtMs as longinteger, estimator as object, nowMs as longinteger) as dynamic
+    reference = clockReference(lastCommand, playingItemId, false, queueChangedAtMs)
+    if not isValid(reference) then return invalid
+    handledAtMs& = nowMs - estimator.delayMs \ 2
+    return groupPositionTicks(reference, estimator, handledAtMs&)
   end function
 
   ' How far this member sits from the group, in ms, positive when it is behind: the last
@@ -319,6 +361,28 @@ namespace syncPlayPlayback
     return Abs(playerPositionTicks - targetTicks) <= syncPlayTime.msToTicks(READY_TOLERANCE_MS)
   end function
 
+  ' Whether a load starts at the item's start, as a restart's does: within the Ready tolerance of
+  ' 0 (Roku starts at the keyframe at or before the asked position). A reload in place or a late
+  ' join's mount starts partway in.
+  function loadStartsAtItemStart(loadStartTicks as longinteger) as boolean
+    return Abs(loadStartTicks) <= syncPlayTime.msToTicks(READY_TOLERANCE_MS)
+  end function
+
+  ' Whether the load a same-item restart would be absorbed into starts at the item's start
+  ' (syncPlayQueue.restartAbsorbed's loadFromStart). Three loads can be in flight: the tracker's,
+  ' once a player mounted (a reload in place moves its start partway in); a launch's, between
+  ' playQueue and its player's mount, at the start the manager gave it; and one only owed, not yet
+  ' performed, which starts where the group is, 0 after a restart.
+  ' @param trackerPhase - the ready tracker's phase
+  ' @param trackerLoadStartTicks - where the tracker's load started
+  ' @param loadAwaitsReady - a load was performed and its player has not reported Ready
+  ' @param loadStartTicks - the start the manager gave that load
+  function restartLoadFromStart(trackerPhase as string, trackerLoadStartTicks as longinteger, loadAwaitsReady as boolean, loadStartTicks as longinteger) as boolean
+    if trackerPhase = "loading" then return loadStartsAtItemStart(trackerLoadStartTicks)
+    if loadAwaitsReady then return loadStartsAtItemStart(loadStartTicks)
+    return true
+  end function
+
   ' Move the resume to where the node stopped: a seek lands off its target (up to 36 ms in the logs
   ' of a 2026-10-31 Stick 4K run), and resuming on the target's moment carries that error into the
   ' group. A paused position further off than the landing tolerance is not one to trust, so the
@@ -365,7 +429,7 @@ namespace syncPlayPlayback
 
   ' Feed one player or coordinator event; get back what to send and what to wait for.
   ' @param tracker - from newReadyTracker, mutated in place
-  ' @param evt - { kind: "mounted" | "reloaded" | "seek" | "holdSeek" | "state" | "position" | "timeout" | "unmounted",
+  ' @param evt - { kind: "mounted" | "reloaded" | "seek" | "holdSeek" | "state" | "position" | "timeout" | "groupPaused" | "unmounted",
   '   state (for "state"), positionTicks (for "seek", "state" and "position"), for "mounted" the
   '   `startTicks` the load was asked to start at (absent when it starts at the beginning), for
   '   "reloaded" (the player loading its stream again in place) the `startTicks` it reloads from, and for
@@ -490,6 +554,11 @@ namespace syncPlayPlayback
       tracker.showOsd = false
       tracker.lastState = ""
       result.report = "buffering"
+    else if kind = "groupPaused"
+      ' The server paused the group for this member's Buffering at this position
+      ' (groupPauseAnchorTicks): a load still in flight reports its Ready there, where the server
+      ' expects it, instead of at the estimate made when the load was decided.
+      if tracker.phase = "loading" and syncPlayTime.isWholeNumber(evt.positionTicks) then tracker.loadStartTicks = syncPlayTime.asLong(evt.positionTicks)
     else if kind = "unmounted"
       tracker.phase = "idle"
       tracker.heldSeek = invalid

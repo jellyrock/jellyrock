@@ -179,6 +179,11 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // `publish` writes the count; it only grows, so "above the count read before" cannot revert.
   // `syncplay-controls.spec.js` waits on it after each time offset pick.
   'syncPlayManager.sync.correctionsDone',
+  // `SyncPlayManager.publish` writes whether a drift correction is under way (`m.correction` set
+  // when one starts, dropped when it ends or a command replaces it). The waited-for `false` is
+  // terminal: it holds until the next drift arms a correction, which the step's own seek is what
+  // would cause, so a tick cannot miss it. `syncplay-reload.spec.js` waits on it before that seek.
+  'syncPlayManager.sync.correctionInFlight',
   // `SyncPlayManager.report` counts each Ready this member sends, and `publish` writes the count; it
   // only grows, so "above the count read before" cannot revert. `syncplay-reload.spec.js` waits on it
   // for a reload's Ready, which a group command answering the reload's Buffering can come before.

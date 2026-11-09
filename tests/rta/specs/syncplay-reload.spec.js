@@ -274,6 +274,182 @@ it('a second pick while the first reload loads reloads from where the stream was
   await expectInSync('this member in sync after the two picks');
 });
 
+// A reload starts where the group is, not where this node was (syncPlayHooks.reloadStart), and its
+// Ready names where the server paused the group (syncPlayPlayback.groupPauseAnchorTicks): a member
+// that fell behind comes back with one load, no corrective Seek, and the correction's usual gap.
+// The node is put behind with a seek written on it alone (the group hears nothing). The drift
+// correction is a live actor in that window, so the step establishes both facts the pick needs,
+// the node behind and no correction since the seek, and gives up on the setup after three tries
+// instead of passing by chance (tests/rta/CLAUDE.md, the north star).
+it('a reload on a member that fell behind starts where the group is, not where the node was', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const behindBy = 4;
+  let groupPositionBefore;
+  let established = false;
+  // The node must be settled before the seek: playing, its tracker ready, no correction armed or
+  // in flight (a correction's seek over the step's own leaves the node stuck buffering), in sync.
+  const settled = async (label) => {
+    await waitFor('state', (s) => s === 'playing', {
+      read: player(),
+      timeout: 30000,
+      label: `playing ${label}`,
+    });
+    await waitFor('syncPlayManager.sync.trackerPhase', (v) => v === 'ready', {
+      read: getGlobalVal,
+      timeout: 20000,
+      label: `the tracker ready ${label}`,
+    });
+    await waitFor('syncPlayManager.sync.correctionInFlight', (v) => v === false, {
+      read: getGlobalVal,
+      timeout: 20000,
+      label: `no correction in flight ${label}`,
+    });
+    await expectInSync(`this member in sync ${label}`);
+  };
+  for (let attempt = 1; attempt <= 3 && !established; attempt++) {
+    await settled(`before falling behind (attempt ${attempt})`);
+    // Enough stream behind the node to seek back into: the steps before may leave it near its start.
+    await waitFor('position', (v) => typeof v === 'number' && v > behindBy + 4, {
+      read: player(),
+      timeout: 20000,
+      label: 'the stream far enough in to fall behind',
+    });
+    groupPositionBefore = await player()('position');
+    const correctionsBefore = await getGlobalVal('syncPlayManager.sync.correctionsDone');
+    await odc.setValue({
+      base: 'scene',
+      keyPath: `#${heroId}.seek`,
+      value: groupPositionBefore - behindBy,
+    });
+    await waitFor(
+      'position',
+      (v) => typeof v === 'number' && v < groupPositionBefore - behindBy + 1.5,
+      {
+        read: player(),
+        timeout: 10000,
+        interval: 100,
+        label: 'the node behind the group',
+      },
+    );
+    // Both facts at once: still behind, and the correction has not run since the seek.
+    const position = await player()('position');
+    const corrections = await getGlobalVal('syncPlayManager.sync.correctionsDone');
+    established =
+      position < groupPositionBefore - behindBy + 2 && corrections === correctionsBefore;
+    if (!established) {
+      // The correction won this time: let the node settle and set it behind again.
+      await settled(`after the correction (attempt ${attempt})`);
+    }
+  }
+  expect(
+    established,
+    'setup not established: the node behind the group with no correction since the seek',
+  ).toBe(true);
+  const seeksBefore = await groupSeeks();
+  const readiesBefore = await getGlobalVal('syncPlayManager.sync.readiesSent');
+  await odc.setValue({
+    base: 'scene',
+    keyPath: '#osd.playbackCapsPick',
+    value: { field: 'maxBitrateMbps', value: 120 },
+  });
+  await waitFor('syncPlayManager.sync.readiesSent', (v) => v > readiesBefore, {
+    read: getGlobalVal,
+    timeout: 30000,
+    label: "the reload's Ready sent",
+  });
+  await waitFor('syncPlayManager.groupState', (v) => v === 'Playing', {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: "the group Playing again after the reload's Ready",
+  });
+  // The group played on through the seek and the pick, so at the pick it was past the position
+  // before; the node was `behindBy` less, minus the wait's margin. A start at the node's position
+  // reads under groupPositionBefore - 2; one at the group's reads at or past it.
+  const playStart = await player()('content.PlayStart');
+  expect(
+    playStart,
+    `the reload started at ${playStart} s, behind where the group was (${groupPositionBefore} s at the seek)`,
+  ).toBeGreaterThanOrEqual(groupPositionBefore - 1);
+  expect(await groupSeeks(), "the server accepted the reload's Ready: no corrective Seek").toBe(
+    seeksBefore,
+  );
+  await expectInSync('this member in sync after the reload');
+});
+
+// Under RepeatOne a NextItem on the same item restarts it for the group from its start, and the
+// Roku absorbs a restart it is already loading (syncPlayQueue.restartAbsorbed). A reload in place
+// is a load too, but from partway in: a restart that lands during it must not be absorbed, or this
+// member plays on from where it was while the group starts over, until a corrective Seek drags it
+// back (found reading #1344, 2026-11-09).
+it('a same-item NextItem under RepeatOne during a reload restarts the item from its start', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  await syncPlay(member, 'SetRepeatMode', { Mode: 'RepeatOne' });
+  await waitFor('syncPlayManager.sync.repeatMode', (v) => v === 'RepeatOne', {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: "the group's RepeatOne reached this Roku",
+  });
+  await waitFor('state', (s) => s === 'playing', {
+    read: player(),
+    timeout: 30000,
+    label: 'playing before the reload',
+  });
+  const positionBefore = await player()('position');
+  expect(positionBefore, 'the stream partway in before the reload').toBeGreaterThan(5);
+  const playingItemId = await getGlobalVal('syncPlayManager.sync.playingItemId');
+  const loadsBefore = await getGlobalVal('syncPlayManager.sync.loadCount');
+  const seeksBefore = await groupSeeks();
+  await odc.setValue({
+    base: 'scene',
+    keyPath: '#osd.playbackCapsPick',
+    value: { field: 'maxBitrateMbps', value: 120 },
+  });
+  // The step goes out while the reload's load is in flight: the tracker is loading from the
+  // reload's start, partway in, which is the load the restart must replace.
+  expect(
+    await getGlobalVal('syncPlayManager.sync.trackerPhase'),
+    'the reload loading when the step is sent',
+  ).toBe('loading');
+  await syncPlay(member, 'NextItem', { PlaylistItemId: playingItemId });
+  // Absorbed, the step owes no load and this count stays; the restart's load moves it.
+  await waitFor('syncPlayManager.sync.loadCount', (v) => v > loadsBefore, {
+    read: getGlobalVal,
+    timeout: 30000,
+    interval: 100,
+    label: "the restart's load performed over the reload",
+  });
+  await waitFor('state', (s) => s === 'playing', {
+    read: player(),
+    timeout: 60000,
+    label: 'playing after the restart',
+  });
+  await waitFor('position', (v) => typeof v === 'number' && v < 30 && v < positionBefore - 5, {
+    read: player(),
+    timeout: 30000,
+    label: 'the item playing from its start',
+  });
+  expect(await groupSeeks(), "the restart's Ready was accepted: no corrective Seek").toBe(
+    seeksBefore,
+  );
+  expect(await getGlobalVal('syncPlayManager.sync.playingItemId'), 'the same item').toBe(
+    playingItemId,
+  );
+  expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+  await syncPlay(member, 'SetRepeatMode', { Mode: 'RepeatNone' });
+  await waitFor('syncPlayManager.sync.repeatMode', (v) => v === 'RepeatNone', {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: 'repeat off again for the cases after',
+  });
+  await expectInSync('this member in sync after the restart');
+});
+
 it('a version switch carries the position into the other version, with no correction from the server', async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(

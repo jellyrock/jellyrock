@@ -129,6 +129,15 @@ sub ensureReady()
   ' Whether this member reported Buffering since the group's last command it scheduled
   ' (syncPlayPlayback.clockReference).
   m.reportedBuffering = false
+  ' Where the server paused the group for that Buffering (syncPlayPlayback.groupPauseAnchorTicks),
+  ' from its Waiting state update; invalid until it arrives, and after the next command.
+  m.groupPausedTicks = invalid
+  ' The device clock and the position when that Buffering went out, for the anchor's log line.
+  m.bufferingSentAtMs = 0&
+  m.bufferingReportedTicks = 0&
+  ' The Ready this member last sent: { whenMs, positionTicks, isPlaying }, or invalid. A wait this
+  ' member ends while playing gets no command back (syncPlayPlayback.reconstructedUnpause).
+  m.lastReady = invalid
   ' When the last seek went out and how long the tracker took to end it, for the next
   ' correction's lead (syncPlayPlayback.correctionLeadMs). 0 until one has ended on this player.
   m.seekWrittenAtMs = 0&
@@ -264,8 +273,7 @@ function playerEvent(evt as object) as object
       ' always does; a node already that close reports its own. A gap left between the node and the
       ' group is the drift correction's, after the Unpause, as at a mount. Unlike a mount, the group's
       ' state stays: a group paused when the reload began is still paused.
-      reference = syncPlayPlayback.clockReference(m.lastCommand, m.state.playingItemId, m.reportedBuffering)
-      groupTicks = syncPlayPlayback.groupPositionTicks(reference, m.estimator, syncPlayTime.nowMs())
+      groupTicks = groupPositionNow()
       playerTicks& = syncPlayPlayback.secondsToTicks(evt.startSeconds)
       startTicks& = playerTicks&
       if isValid(groupTicks) then startTicks& = syncPlayTime.asLong(groupTicks)
@@ -648,7 +656,7 @@ end sub
 ' the threshold (syncPlayPlayback.settleCorrectionDue, correctionPlan), against the command that
 ' still says where the group is (syncPlayPlayback.clockReference).
 sub checkSettle()
-  inForce = syncPlayPlayback.clockReference(m.lastCommand, m.state.playingItemId, m.reportedBuffering)
+  inForce = syncPlayPlayback.clockReference(m.lastCommand, m.state.playingItemId, m.reportedBuffering, m.state.playbackQueueAtMs)
   drift = syncPlayPlayback.driftMs(inForce, m.estimator, syncPlayTime.nowMs(), m.playerPositionTicks)
   m.playbackDiffMs = drift
   if syncPlayPlayback.settleCorrectionDue(m.settle, drift, m.playerState, m.tracker.phase, m.groupPaused)
@@ -794,6 +802,9 @@ end sub
 ' replaces the tracker instead, since no playback of the group's is under way yet.
 sub resetPlaybackTracking()
   m.pendingPlan = invalid
+  m.reportedBuffering = false
+  m.groupPausedTicks = invalid
+  m.lastReady = invalid
   m.groupPaused = false
   m.playbackDiffMs = invalid
   m.commandTimer.control = "stop"
@@ -829,6 +840,7 @@ sub onGroupUpdate(update as object)
   end if
   previousPlayingItemId = m.state.playingItemId
   previousQueueChangedAtMs = m.state.playbackQueueAtMs
+  previousGroupState = m.state.groupState
   wasInGroup = m.state.inGroup
   previousGroupName = m.state.groupName
   m.state = syncPlayState.applyGroupUpdate(m.state, update)
@@ -837,7 +849,11 @@ sub onGroupUpdate(update as object)
     absorbed = ""
     if isFollowing() and not hasOpenClaim()
       loadInFlight = isValid(m.owedLoad) or m.loadAwaitsReady
-      absorbed = syncPlayQueue.restartAbsorbed(update.reason, previousPlayingItemId, m.state.playingItemId, loadInFlight, m.tracker.phase, m.playerState, m.lastCommand, previousQueueChangedAtMs)
+      loadFromStart = syncPlayPlayback.restartLoadFromStart(m.tracker.phase, m.tracker.loadStartTicks, m.loadAwaitsReady, m.loadStartTicks)
+      absorbed = syncPlayQueue.restartAbsorbed(update.reason, previousPlayingItemId, m.state.playingItemId, loadInFlight, m.tracker.phase, loadFromStart, m.playerState, m.lastCommand, previousQueueChangedAtMs)
+      if (update.reason = "NextItem" or update.reason = "PreviousItem") and previousPlayingItemId = m.state.playingItemId
+        m.log.info("same-item step", "answer", absorbed, "loadFromStart", loadFromStart, "trackerPhase", m.tracker.phase, "loadAwaitsReady", m.loadAwaitsReady)
+      end if
     end if
     m.owedLoad = syncPlayQueue.owedLoadAfter(m.owedLoad, update.reason, previousPlayingItemId, m.state.playingItemId, absorbed <> "")
     if absorbed <> "" then m.log.info("restart of the item already loaded or loading absorbed", "reason", update.reason, "answer", absorbed)
@@ -846,6 +862,11 @@ sub onGroupUpdate(update as object)
     if hasOpenClaim() then m.owedLoad = syncPlayQueue.owedLoadForClaimedPlay(m.owedLoad, update.reason, m.state.playingItemId)
   end if
   m.log.info("group update", "type", updateType, "groupId", m.state.groupId, "state", m.state.groupState)
+  if updateType = "StateUpdate" and previousGroupState = "Playing" and m.state.groupState = "Waiting" and m.reportedBuffering and not isValid(m.groupPausedTicks)
+    anchorGroupPause()
+  else if updateType = "StateUpdate" and previousGroupState = "Waiting" and m.state.groupState <> "Waiting"
+    endGroupWait()
+  end if
 
   if updateType = "GroupJoined"
     notify("joined", m.state.groupName, "")
@@ -859,6 +880,9 @@ sub onGroupUpdate(update as object)
     m.lastCommand = invalid
     m.playbackDiffMs = invalid
     m.groupPaused = false
+    m.reportedBuffering = false
+    m.groupPausedTicks = invalid
+    m.lastReady = invalid
     m.tracker = syncPlayPlayback.newReadyTracker()
     m.correctionPauseOwed = false
     m.failedBursts = 0
@@ -940,6 +964,12 @@ end sub
 sub scheduleCommand(command as object)
   m.lastCommand = command
   if command.command = "Seek" then m.groupSeeks++
+  ' The Unpause after this member's Ready carries where the group really paused: how far the
+  ' anchor was off is the measure of the anchor itself.
+  if command.command = "Unpause" and isValid(m.groupPausedTicks) and syncPlayTime.isWholeNumber(command.positionTicks)
+    m.log.info("group pause anchor checked", "anchorErrorMs", syncPlayTime.ticksToMs(syncPlayTime.asLong(command.positionTicks) - syncPlayTime.asLong(m.groupPausedTicks)).toStr())
+  end if
+  m.groupPausedTicks = invalid
   m.reportedBuffering = false
   plan = syncPlayPlayback.scheduleCommand(m.estimator, command, syncPlayTime.nowMs())
   m.pendingPlan = plan
@@ -1283,9 +1313,15 @@ sub report(kind as string, isPlaying as boolean, positionTicks = invalid as dyna
   if isValid(positionTicks) then reported& = syncPlayTime.asLong(positionTicks)
   if kind = "ready"
     m.readiesSent++
+    m.lastReady = { whenMs: whenMs&, positionTicks: reported&, isPlaying: isPlaying }
     post("Ready", syncPlayRequests.ready(whenMs&, reported&, isPlaying, m.state.playingItemId))
   else
     m.reportedBuffering = true
+    ' A Buffering into a wait that is already this member's moves nothing on the server, so the
+    ' anchor it set still holds.
+    if m.state.groupState <> "Waiting" then m.groupPausedTicks = invalid
+    m.bufferingSentAtMs = syncPlayTime.nowMs()
+    m.bufferingReportedTicks = reported&
     post("Buffering", syncPlayRequests.buffering(whenMs&, reported&, isPlaying, m.state.playingItemId))
   end if
   m.log.info("reported", "kind", kind, "positionTicks", reported&.toStr(), "isPlaying", isPlaying)
@@ -1447,6 +1483,7 @@ sub publish()
       extraOffsetMs: m.estimator.extraOffsetMs,
       loadCount: m.loadCount,
       correctionsDone: m.correctionsDone,
+      correctionInFlight: isValid(m.correction),
       groupSeeks: m.groupSeeks,
       readiesSent: m.readiesSent,
       repeatMode: m.state.repeatMode,
@@ -1478,6 +1515,65 @@ end function
 function pausedForViewer(nodeState as string) as boolean
   ensureReady()
   return syncPlayPlayback.pausedForViewer(nodeState, isValid(m.correction), m.tracker.showOsd)
+end function
+
+' Where the group is now, in ticks, from the last command in force run forward on the measured
+' clock (syncPlayPlayback.groupPositionTicks); invalid while not following, while this member's
+' own Buffering holds the group, or before any command names the playing item.
+function groupPositionNow() as dynamic
+  if not isFollowing() then return invalid
+  ' While this member's Buffering holds the group, it is paused where the server's Waiting
+  ' update anchored it (anchorGroupPause), or nowhere known yet.
+  if m.reportedBuffering then return m.groupPausedTicks
+  reference = syncPlayPlayback.clockReference(m.lastCommand, m.state.playingItemId, false, m.state.playbackQueueAtMs)
+  return syncPlayPlayback.groupPositionTicks(reference, m.estimator, syncPlayTime.nowMs())
+end function
+
+' The server's Waiting state update answered this member's Buffering: the group is paused where
+' its clock stood when the server handled the report (syncPlayPlayback.groupPauseAnchorTicks).
+' A load still in flight reports its Ready there. The log line is the anchor's own measurement:
+' how far the group ran on past the estimate the report carried, and how long the report took.
+' The group left its wait. The anchor was where it paused, so it ends here whatever comes next. A
+' wait this member ended with a Ready while already playing gets no command back: the server sends
+' its Unpause to the others alone (WaitingGroupState's recovering branch), so the one the others
+' got is rebuilt here and becomes the clock reference, which turns the drift correction back on.
+' A Ready sent paused is answered with an Unpause to every member, which arrives before this update
+' and has cleared the Buffering already; any other case keeps waiting for the next command.
+sub endGroupWait()
+  anchor = m.groupPausedTicks
+  m.groupPausedTicks = invalid
+  if not m.reportedBuffering or m.state.groupState <> "Playing" then return
+  if not isValid(anchor) or not isValid(m.lastReady) or m.lastReady.isPlaying <> true then return
+  command = syncPlayPlayback.reconstructedUnpause(syncPlayTime.asLong(anchor), m.lastReady, m.state.playingItemId, m.state.groupId)
+  m.lastCommand = command
+  m.reportedBuffering = false
+  syncPlayPlayback.armSettleCheck(m.settle)
+  m.log.info("wait ended with no command: the group's Unpause rebuilt", "positionTicks", command.positionTicks.toStr(), "inMs", (command.whenMs - syncPlayOffset.serverNowMs(m.estimator, syncPlayTime.nowMs())).toStr())
+  publish()
+end sub
+
+sub anchorGroupPause()
+  nowMs& = syncPlayTime.nowMs()
+  anchor = syncPlayPlayback.groupPauseAnchorTicks(m.lastCommand, m.state.playingItemId, m.state.playbackQueueAtMs, m.estimator, nowMs&)
+  if not isValid(anchor) then return
+  anchor& = syncPlayTime.asLong(anchor)
+  m.groupPausedTicks = anchor&
+  track({ kind: "groupPaused", positionTicks: anchor& })
+  m.log.info("group paused for this member's buffering", "anchorTicks", anchor&.toStr(), "aheadOfReportMs", syncPlayTime.ticksToMs(anchor& - m.bufferingReportedTicks).toStr(), "reportLatencyMs", (nowMs& - m.bufferingSentAtMs).toStr())
+end sub
+
+' Where a reload in place starts while following: the group's position, so the node loads where
+' the group is and the Ready it sends names the same place, with only the keyframe gap left for
+' the drift correction, as at a late join. A member that fell behind (a stall, a stream the server
+' stopped sending) would otherwise resume behind the group and be seek-corrected a few seconds
+' later. The player's own start when the group's position is not known.
+' @param playerStartTicks - where the player would start on its own: its position, or invalid
+'   for a stream that has not played
+function reloadStart(playerStartTicks as dynamic) as dynamic
+  ensureReady()
+  groupTicks = groupPositionNow()
+  if isValid(groupTicks) then return syncPlayTime.asLong(groupTicks)
+  return playerStartTicks
 end function
 
 ' Whether a seek is in flight, so a pause the viewer presses now can wait for its landing.
