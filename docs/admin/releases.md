@@ -78,6 +78,7 @@ Publishing also starts `release-announcement.yml`, which links an Announcements 
 - **Wrong code or version files:** push fixes to the release branch before you merge its PR.
 - **Wrong release notes, before the release PR merges:** fix the cause (a PR title, see [Changelog](changelog.md)) and sync `main`. Merging the release PR rebuilds the notes from `main`, so a hand edit to the draft before then is lost; only the summary is kept.
 - **Wrong release notes, after the merge:** edit the draft release by hand before you publish it.
+- **Published without a summary:** run `/release-summary X.Y.Z`. It drafts the summary and, since it can't write into a published release, shows it with the two places to paste it: the release's edit box and the top of its section in `CHANGELOG.md`.
 - **Start over:** delete the draft release. Pushing to the release branch again creates a new one.
 
 ## Signed `.pkg` for Roku Channel Store

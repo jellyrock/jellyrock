@@ -399,10 +399,21 @@ describe('release-summary', () => {
       expect(calls).toContain(`notes: ${SCHEDULE}${summary}\n\n${REST}`);
     });
 
-    it('refuses a published release', () => {
+    it('says where to paste the summary for a published release, and writes nothing', () => {
       const calls = stub({ release: { body: SCHEDULE + REST, isDraft: false } });
-      expect(() => writeSummary('1.2.0', file(GOOD), opts())).toThrow(/published/);
+      const printed = writeSummary('1.2.0', file(GOOD), opts());
+      expect(printed).toMatch(/v1\.2\.0 is published, so nothing was written/);
+      expect(printed).toMatch(/edit it and paste under the Release Schedule/);
+      expect(printed).toMatch(/CHANGELOG\.md: the top of the 1\.2\.0 section/);
+      expect(printed.endsWith(`\n\n${summary}`)).toBe(true);
       expect(calls.some((c) => c.startsWith('gh release edit'))).toBe(false);
+    });
+
+    it('says which draft it wrote', () => {
+      stub({ release: { body: SCHEDULE + REST, isDraft: true } });
+      expect(writeSummary('1.2.0', file(GOOD), opts())).toBe(
+        '✅ Summary written to the v1.2.0 draft',
+      );
     });
 
     it('refuses when there is no draft', () => {

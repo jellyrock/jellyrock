@@ -10,8 +10,8 @@
  *
  * With no version, it is the one draft release's; with no draft yet, [Unreleased].
  *
- * A published release is never written: it gets its summary from its CHANGELOG.md
- * section when its page is rebuilt with `release-notes`.
+ * A published release is never written: `write` prints the summary and the two places
+ * to paste it by hand.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -305,7 +305,11 @@ export function checkSummary(file, version, { syncer }) {
   return errors;
 }
 
-/** Put a passing summary into the version's draft release, replacing any summary there. */
+/**
+ * Put a passing summary into the version's draft release, replacing any summary or
+ * reminder there, and return the line to print. A published release is left unchanged:
+ * the return says where to paste the summary by hand instead.
+ */
 export function writeSummary(version, file, { syncer }) {
   const errors = checkSummary(file, version, { syncer });
   if (errors.length) throw new Error(`The summary fails its check:\n${errors.join('\n')}`);
@@ -326,11 +330,18 @@ export function writeSummary(version, file, { syncer }) {
       cause: error,
     });
   }
+  const text = fs.readFileSync(file, 'utf8').trim();
+  // Nothing places a summary on a published release: publishing copied what the draft had.
   if (!release.isDraft) {
-    throw new Error(`${tag} is published: it gets its summary from CHANGELOG.md, not from here`);
+    return [
+      `ℹ️ ${tag} is published, so nothing was written. Paste the summary below in two places:`,
+      `1. The ${tag} release on GitHub: edit it and paste under the Release Schedule.`,
+      `2. CHANGELOG.md: the top of the ${version} section, under its heading.`,
+      '',
+      text,
+    ].join('\n');
   }
 
-  const text = fs.readFileSync(file, 'utf8').trim();
   const summary = text + '\n\n';
   // GitHub's editor saves CRLF; LF keeps the blocks below matching line ends.
   const body = release.body.replace(/\r\n?/g, '\n');
@@ -358,6 +369,7 @@ export function writeSummary(version, file, { syncer }) {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+  return `✅ Summary written to the ${tag} draft`;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -387,8 +399,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       }
       console.log('✅ The summary passes');
     } else {
-      writeSummary(version, file, { syncer });
-      console.log(`✅ Summary written to the v${version} draft`);
+      console.log(writeSummary(version, file, { syncer }));
     }
   } catch (error) {
     console.error(`❌ ${error.message}`);

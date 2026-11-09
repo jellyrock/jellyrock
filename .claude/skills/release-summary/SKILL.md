@@ -17,7 +17,7 @@ effort: high
 
 - A summary shown to the operator for approval: a `### Summary` heading and a prose paragraph under it.
 - On the operator's `ok`, for a draft release: the summary written into the draft, after the Release Schedule, replacing any summary or reminder already there. Nothing else in the draft changes.
-- For a published release: the approved summary in chat, unwritten. A published release's page is rebuilt from its `CHANGELOG.md` section, so the summary reaches it through that section.
+- On the operator's `ok`, for a published release: nothing written, and the approved summary shown with the two places to paste it by hand: the release's edit box on GitHub, and the top of the version's `CHANGELOG.md` section.
 
 **Success criteria.**
 
@@ -44,7 +44,6 @@ effort: high
 **When not to use.**
 
 - Building or rebuilding the draft's whole body: the release workflows do that with `node scripts/changelog-syncer.js release-notes`.
-- Editing a published release's page: those are rebuilt from `CHANGELOG.md`.
 - A version with no section in `CHANGELOG.md` yet.
 
 ## Implementation
@@ -85,4 +84,4 @@ End the turn and wait. After the reply, give one **Recorded:** line.
 
 ### Step 5: Write
 
-On `ok`, run `node .claude/skills/release-summary/summary.js write {{version, if given}} {{file}}`. It checks again, refuses a published release or a missing draft, and changes only the summary block. For a published release, skip the write and say that the summary reaches the page through the version's `CHANGELOG.md` section. Report the one line the script printed.
+On `ok`, run `node .claude/skills/release-summary/summary.js write {{version, if given}} {{file}}`. It checks again, refuses a missing draft, and changes only the summary block. For a published release it writes nothing and prints the summary with the two places to paste it. Report what the script printed, as printed.
