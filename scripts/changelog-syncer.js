@@ -493,12 +493,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     const compareUrl = previousTag
       ? `${this.repositoryUrl}/compare/${previousTag}...${tag}`
       : `${this.repositoryUrl}/commits/${tag}`;
+    const release = this.readRelease(tag);
     // A released section carries its own summary once add-summary has run; printing the
     // draft's as well would show it twice.
-    const summary = /^### Summary[ \t]*$/m.test(section) ? null : this.readDraftSummary(tag);
+    const summary = /^### Summary[ \t]*$/m.test(section) ? null : this.summaryIn(release?.body);
+    // A published release's schedule is what users saw, hand edits included, so a rebuild
+    // keeps it; only a draft, or a release not made yet, gets the next store date.
+    const schedule =
+      release && !release.isDraft
+        ? this.blockIn(release.body, '## Release Schedule')
+        : `## Release Schedule\n\nJellyRock ${tag} is scheduled for release on the [Roku Channel Store](${ROKU_STORE_URL}) ${this.storeReleaseDate(now)} 6:00 PM PT`;
 
     const parts = [
-      `## Release Schedule\n\nJellyRock ${tag} is scheduled for release on the [Roku Channel Store](${ROKU_STORE_URL}) ${this.storeReleaseDate(now)} 6:00 PM PT`,
+      schedule,
       summary ?? (released ? null : summaryReminder(version)),
       this.toMentions(section),
       `**Full Changelog**: ${compareUrl}`,
@@ -583,21 +590,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
    * heading, means no summary; any other failure throws.
    */
   readDraftSummary(tag) {
-    let body;
+    return this.summaryIn(this.readRelease(tag)?.body);
+  }
+
+  /**
+   * The tag's release as `{ body, isDraft }`, its body with LF line ends (GitHub's editor
+   * saves CRLF; what is copied out goes into LF files). No release is null; any other
+   * failure throws.
+   */
+  readRelease(tag) {
+    let release;
     try {
-      body = JSON.parse(
-        this.gh(['release', 'view', tag, '--repo', this.repo, '--json', 'body']),
-      ).body;
+      release = JSON.parse(
+        this.gh(['release', 'view', tag, '--repo', this.repo, '--json', 'body,isDraft']),
+      );
     } catch (error) {
       if (/release not found/.test(String(error.stderr))) return null;
       throw new Error(`Could not read the ${tag} release: ${error.stderr || error.message}`, {
         cause: error,
       });
     }
-    // GitHub's editor saves CRLF; the summary is copied into CHANGELOG.md, which is LF.
-    const match = body
-      .replace(/\r\n?/g, '\n')
-      .match(/^### Summary[ \t]*\n[\s\S]*?(?=^#{1,3} |(?![\s\S]))/m);
+    return { body: (release.body ?? '').replace(/\r\n?/g, '\n'), isDraft: release.isDraft };
+  }
+
+  summaryIn(body) {
+    return body ? this.blockIn(body, '### Summary') : null;
+  }
+
+  /** The first block under `heading`, up to the next heading of level 1 to 3, or null. */
+  blockIn(body, heading) {
+    const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = body.match(
+      new RegExp(`^${escaped}[ \\t]*\\n[\\s\\S]*?(?=^#{1,3} |(?![\\s\\S]))`, 'm'),
+    );
     return match ? match[0].trim() : null;
   }
 

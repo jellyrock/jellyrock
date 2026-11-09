@@ -61,11 +61,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 /**
  * Wire the mocks: `git tag` lists `tags`; `gh release view` answers `draftBody` (null:
- * no release); `gh api` answers `support` (null: the file is missing).
+ * no release), a draft unless `isDraft` is false; `gh api` answers `support` (null: the
+ * file is missing).
  */
 function stub({
   tags = ['v1.1.0', 'v1.0.4', 'v1.0.3'],
   draftBody = null,
+  isDraft = true,
   support = SUPPORT,
   fail,
 } = {}) {
@@ -85,7 +87,7 @@ function stub({
       if (draftBody === null) {
         throw Object.assign(new Error('Command failed'), { stderr: 'release not found\n' });
       }
-      return JSON.stringify({ body: draftBody });
+      return JSON.stringify({ body: draftBody, isDraft });
     }
     if (file === 'gh' && args[0] === 'api' && args.some((a) => a.includes('snippets/support.md'))) {
       if (support === null) {
@@ -167,6 +169,57 @@ ${SUPPORT}`);
     expect(body).not.toContain('\r');
   });
 
+  it("keeps a published release's own Release Schedule word for word, not a new date", () => {
+    const schedule = `## Release Schedule\n\nJellyRock v1.1.0 is scheduled for release on the [Roku Channel Store](${STORE}) Monday, November 3, 2025 ~~5:00 PM PT~~ This release was superseded by v1.1.1`;
+    stub({
+      isDraft: false,
+      draftBody: `${schedule}\n\n### Added\n\n- old line\n\n## Release Schedule\n\na second, hand-written one\n`,
+    });
+    const body = syncer.releaseNotes('1.1.0', NOW);
+    expect(body.startsWith(`${schedule}\n\n### Added\n\n- Add a thing`)).toBe(true);
+    expect(body).not.toContain('November 09, 2026');
+    expect(body).not.toContain('a second, hand-written one');
+    expect(body).not.toContain('old line');
+  });
+
+  it("keeps a published release's schedule the GitHub editor saved with CRLF, as LF", () => {
+    stub({
+      isDraft: false,
+      draftBody: '## Release Schedule\r\n\r\nOld date 6:00 PM PT\r\n\r\n### Added\r\n',
+    });
+    const body = syncer.releaseNotes('1.1.0', NOW);
+    expect(body.startsWith('## Release Schedule\n\nOld date 6:00 PM PT\n\n### Added\n')).toBe(true);
+    expect(body).not.toContain('\r');
+  });
+
+  it('gives a published release with no Release Schedule none, rather than a new date', () => {
+    stub({ isDraft: false, draftBody: '### Added\n\n- old line\n' });
+    const body = syncer.releaseNotes('1.1.0', NOW);
+    expect(body).not.toContain('Release Schedule');
+    expect(body.startsWith('### Added\n\n- Add a thing')).toBe(true);
+  });
+
+  it('keeps the schedule of a published release whose section has its own summary', () => {
+    fs.writeFileSync(
+      syncer.changelogPath,
+      CHANGELOG.replace(
+        '### Added\n\n- Add a thing',
+        '### Summary\n\nA thing.\n\n### Added\n\n- Add a thing',
+      ),
+    );
+    stub({
+      isDraft: false,
+      draftBody: '## Release Schedule\n\nOld date 6:00 PM PT\n\n### Summary\n\nA thing.\n',
+    });
+    const body = syncer.releaseNotes('1.1.0', NOW);
+    expect(
+      body.startsWith(
+        '## Release Schedule\n\nOld date 6:00 PM PT\n\n### Summary\n\nA thing.\n\n### Added',
+      ),
+    ).toBe(true);
+    expect(body.match(/### Summary/g)).toHaveLength(1);
+  });
+
   it('puts no reminder in the notes of a released version, which has no draft to edit', () => {
     stub();
     expect(syncer.releaseNotes('1.1.0', NOW)).not.toContain('No summary yet');
@@ -245,7 +298,9 @@ ${SUPPORT}`);
   it('asks for the draft and the support block by exact names', () => {
     const calls = stub();
     syncer.releaseNotes('1.2.0', NOW);
-    expect(calls).toContain('gh release view v1.2.0 --repo jellyrock/jellyrock --json body');
+    expect(calls).toContain(
+      'gh release view v1.2.0 --repo jellyrock/jellyrock --json body,isDraft',
+    );
     expect(calls).toContain(
       'gh api -H Accept: application/vnd.github.raw+json repos/jellyrock/.github/contents/snippets/support.md',
     );
@@ -287,7 +342,9 @@ describe('changelog-syncer: add-summary', () => {
         `## [1.1.0](${URL}/compare/v1.0.4...v1.1.0) - 2025-01-02\n\n${SUMMARY}\n`,
       ),
     );
-    expect(calls).toContain('gh release view v1.1.0 --repo jellyrock/jellyrock --json body');
+    expect(calls).toContain(
+      'gh release view v1.1.0 --repo jellyrock/jellyrock --json body,isDraft',
+    );
   });
 
   it('changes nothing on a second run', () => {
