@@ -121,8 +121,9 @@ sub ensureReady()
   m.resumeAsked = false
   ' The correction each Unpause arms (syncPlayPlayback.settleCorrectionDue), and the drift last
   ' read from a position notification, for the RTA specs. A halt or a leave leaves the check as
-  ' it is: it fires only with the tracker at `ready`, which only a mount reaches, and the mount
-  ' disarms it first; a group Pause or Seek holds it until the next Unpause arms it again.
+  ' it is: it fires only with the tracker at `ready`, which only a load reaches (a mount or a
+  ' reload), and each disarms it first (startStreamTracking); a group Pause or Seek holds it until
+  ' the next Unpause arms it again.
   m.settle = syncPlayPlayback.newSettleCheck()
   m.playbackDiffMs = invalid
   ' Whether this member reported Buffering since the group's last command it scheduled
@@ -158,6 +159,12 @@ sub ensureReady()
   ' How many drift corrections ran to their resume (onCorrectionTimer), published so a spec can
   ' wait for the one a time offset pick started, not for a drift reading that may predate it.
   m.correctionsDone = 0
+  ' How many Seek commands the group sent while this member followed (scheduleCommand), published so a
+  ' spec can tell a load the server accepted from one it had to correct with a Seek.
+  m.groupSeeks = 0
+  ' How many Ready reports this member sent (report), published so a spec can wait for the server to
+  ' have a load's Ready rather than for a group command that can come before it.
+  m.readiesSent = 0
   publish()
 end sub
 
@@ -232,13 +239,8 @@ function playerEvent(evt as object) as object
     m.expectingRemount = false
     m.playerState = ""
     m.groupPaused = false
-    m.playerDurationSeconds = 0
-    m.lastSeekMs = 0&
-    m.lastSeekGaveUp = false
-    m.playbackDiffMs = invalid
-    m.correctionPauseOwed = false
     m.waitedOnMe = false
-    syncPlayPlayback.disarmSettleCheck(m.settle)
+    startStreamTracking()
     if isFollowing()
       ' Only the group's item answers to the group. Anything else the viewer started plays
       ' as their own, so this member halts rather than report a load the group never asked for.
@@ -250,6 +252,32 @@ function playerEvent(evt as object) as object
       else
         haltFollowing("a player mounted for an item the group is not playing")
       end if
+    end if
+  else if kind = "reloaded"
+    if isFollowing()
+      ' The player loads its stream again in place (a track, quality or version change, a retry). Its
+      ' node reads 0 until the reloaded stream's first frame, and its last reading lags the group's
+      ' clock (by more than the server's half second after a stream that failed), so this member
+      ' reports where the group paused for its Buffering: the group's own position, the reload's start
+      ' when no group clock is in force. The tracker puts it in the Ready when the node reads more than
+      ' half a second below it, as at a late join, which a node still reading 0 at its first frame
+      ' always does; a node already that close reports its own. A gap left between the node and the
+      ' group is the drift correction's, after the Unpause, as at a mount. Unlike a mount, the group's
+      ' state stays: a group paused when the reload began is still paused.
+      reference = syncPlayPlayback.clockReference(m.lastCommand, m.state.playingItemId, m.reportedBuffering)
+      groupTicks = syncPlayPlayback.groupPositionTicks(reference, m.estimator, syncPlayTime.nowMs())
+      playerTicks& = syncPlayPlayback.secondsToTicks(evt.startSeconds)
+      startTicks& = playerTicks&
+      if isValid(groupTicks) then startTicks& = syncPlayTime.asLong(groupTicks)
+      ' Ticks as text: roku-log renders a LongInteger as an empty string.
+      groupText = "none"
+      if isValid(groupTicks) then groupText = syncPlayTime.asLong(groupTicks).toStr()
+      lastCommandKind = ""
+      if isValid(m.lastCommand) then lastCommandKind = m.lastCommand.command
+      m.log.info("reload in place reported to the group", "groupTicks", groupText, "playerTicks", playerTicks&.toStr(), "lastCommand", lastCommandKind, "reportedBuffering", m.reportedBuffering)
+      m.playerPositionTicks = startTicks&
+      startStreamTracking()
+      track({ kind: "reloaded", startTicks: startTicks& })
     end if
   else if kind = "state"
     if isFollowing()
@@ -729,6 +757,20 @@ sub endCorrection(reason as string)
   syncPlayPlayback.retrySettleCheck(m.settle)
 end sub
 
+' A new stream on the player: a mount, or a reload in place. What was learned about the old one does
+' not carry over: how its seeks went (a direct-play seek lands seconds early, an HLS one on a segment
+' start, and a reload can switch one for the other), its drift, its length, and a correction or a
+' settle check on it.
+sub startStreamTracking()
+  m.playerDurationSeconds = 0
+  m.lastSeekMs = 0&
+  m.lastSeekGaveUp = false
+  m.playbackDiffMs = invalid
+  m.correctionPauseOwed = false
+  dropCorrection()
+  syncPlayPlayback.disarmSettleCheck(m.settle)
+end sub
+
 ' A group command or an unmount took over: what it does replaces the correction.
 sub dropCorrection()
   if isValid(m.correction) and m.correction.seek then syncPlayPlayback.abandonSeekPause(m.tracker)
@@ -897,6 +939,7 @@ end sub
 
 sub scheduleCommand(command as object)
   m.lastCommand = command
+  if command.command = "Seek" then m.groupSeeks++
   m.reportedBuffering = false
   plan = syncPlayPlayback.scheduleCommand(m.estimator, command, syncPlayTime.nowMs())
   m.pendingPlan = plan
@@ -1239,6 +1282,7 @@ sub report(kind as string, isPlaying as boolean, positionTicks = invalid as dyna
   reported& = m.playerPositionTicks
   if isValid(positionTicks) then reported& = syncPlayTime.asLong(positionTicks)
   if kind = "ready"
+    m.readiesSent++
     post("Ready", syncPlayRequests.ready(whenMs&, reported&, isPlaying, m.state.playingItemId))
   else
     m.reportedBuffering = true
@@ -1403,6 +1447,8 @@ sub publish()
       extraOffsetMs: m.estimator.extraOffsetMs,
       loadCount: m.loadCount,
       correctionsDone: m.correctionsDone,
+      groupSeeks: m.groupSeeks,
+      readiesSent: m.readiesSent,
       repeatMode: m.state.repeatMode,
       shuffleMode: m.state.shuffleMode
     }

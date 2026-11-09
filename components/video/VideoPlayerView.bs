@@ -197,6 +197,10 @@ sub init()
   m.groupSeekFallbackTimer.observeField("fire", "onGroupSeekOverdue")
   m.bufferPercentage = 0 ' Track whether content is being loaded
   m.isPlayReported = false
+  ' The stream on the node has reached `playing` since its load began, so its position is real
+  ' (reloadStartTicks). Cleared by reloadInPlace itself rather than by the stop's state, which
+  ' arrives later: a pick made in between must not read the old stream as playing.
+  m.hasStreamPlayed = false
   m.isEndReported = false ' this stream's end has been reported (see reportPlaybackEnd)
   ' The source reports name, and the source most recently loaded (see reportPlayback).
   m.reportedMediaSourceId = ""
@@ -817,9 +821,30 @@ end sub
 ' is now. A change the server has to answer again (a subtitle burned in, an audio track a
 ' transcode must carry, a new Maximum Bitrate) goes through here.
 sub reloadAtCurrentPosition()
-  m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&, true)
+  reloadInPlace(reloadStartTicks(m.hasStreamPlayed, m.top.position), m.top.audioIndex, m.top.SelectedSubtitle)
+end sub
+
+' reloadInPlace: Load the playing stream again on this node. Every reload goes through here (a
+' track, quality or version change, a retry), so each keeps its start the same way, tells a
+' SyncPlay group, and keeps its `stop` from reading as the end of playback.
+'
+' @param {dynamic} startTicks - where the reload starts, exact: a played stream's position
+'   (reloadStartTicks), or a version switch's start mapped into the new version. invalid keeps the
+'   start this load was given: a stream that has not played has no position of its own
+' @param {integer} audioIndex - the audio stream the load asks for
+' @param {integer} subtitleIndex - the subtitle the load asks for
+sub reloadInPlace(startTicks as dynamic, audioIndex as integer, subtitleIndex as integer)
+  if isValid(startTicks) then m.global.queueManager.callFunc("setCurrentStartingPoint", startTicks, true)
+  ' A group hears of it before the stop, so its Buffering goes out now and the stop's own states
+  ' reach a tracker that is already loading. Before the first frame the tracker is still loading
+  ' from the start the load began with, and the server holds its Buffering, so there is nothing to
+  ' tell (syncPlayPlayback.trackPlayerEvent).
+  if m.hasStreamPlayed and isValid(startTicks) then syncPlayHooks.notify({ kind: "reloaded", startSeconds: startTicks / 10000000# })
+  m.hasStreamPlayed = false
+  ' A stop can surface as `finished`: PlayerHostView must not advance or exit on it.
+  m.top.isReloading = true
   m.top.control = "stop"
-  startVideoLoad(m.top.audioIndex, m.top.SelectedSubtitle)
+  startVideoLoad(audioIndex, subtitleIndex)
 end sub
 
 ' The playing video stream's bitrate in bit/s, or 0 when it is unknown. Read from the
@@ -925,25 +950,35 @@ sub onVideoSourceChange()
   ' releases of one cut are offset by a constant and can differ in runtime by a minute, so
   ' the current position is not automatically a place the new file reaches, and seeding a
   ' position past its end starts the stream at nothing. switchTicksFor() keeps the exact time
-  ' whenever the new version has it and falls back to the same percentage.
+  ' whenever the new version has it and falls back to the same percentage. A stream that has
+  ' not played yet has no position (reloadStartTicks), so the start the queue holds maps instead,
+  ' from the version still loading (versionResume.unplayedSwitchTicksFor).
   '
-  ' int() before scaling on BOTH values: getEffectiveDuration() is a FLOAT, and a float
+  ' int() on the duration before scaling: getEffectiveDuration() is a FLOAT, and a float
   ' cannot hold a tick count (~1e10) without rounding: the trap that made a 1-tick margin
-  ' difference vanish in versionResume. Whole seconds is the resolution the position already
-  ' uses anyway.
+  ' difference vanish in versionResume.
   newRuntimeTicks = invalid
   if isValid(newSource) then newRuntimeTicks = newSource.RunTimeTicks
-  startTicks = versionResume.switchTicksFor(int(m.top.position) * 10000000&, int(getEffectiveDuration()) * 10000000&, newRuntimeTicks)
+  startTicks = reloadStartTicks(m.hasStreamPlayed, m.top.position)
+  if isValid(startTicks)
+    startTicks = versionResume.switchTicksFor(startTicks, int(getEffectiveDuration()) * 10000000&, newRuntimeTicks)
+  else
+    ' m.videoLoadMediaSourceId is still the version loading: onVideoContentLoaded moves it.
+    loadingSource = mediaSourceForId(m.top.fullVideoSourceData, m.videoLoadMediaSourceId)
+    loadingRuntimeTicks = invalid
+    if isValid(loadingSource) then loadingRuntimeTicks = loadingSource.RunTimeTicks
+    startTicks = versionResume.unplayedSwitchTicksFor(m.currentItem.startingPoint, loadingRuntimeTicks, newRuntimeTicks)
+  end if
   ' Ticks as text: roku-log renders a LongInteger as an empty string.
   newRuntimeText = "unknown"
   if isValid(newRuntimeTicks) then newRuntimeText = newRuntimeTicks.toStr()
-  m.log.info("Version switch carry", "fromPosition", int(m.top.position), "toTicks", startTicks.toStr(), "newRuntimeTicks", newRuntimeText)
-  m.global.queueManager.callFunc("setCurrentStartingPoint", startTicks, true)
+  startText = "the load's own"
+  if isValid(startTicks) then startText = startTicks.toStr()
+  m.log.info("Version switch carry", "fromPosition", int(m.top.position), "toTicks", startText, "newRuntimeTicks", newRuntimeText)
 
   ' No progress report until the new stream plays (the `playing` branch restarts this): a
   ' tick after the new source loads would report the old stream's position against it.
   m.playbackTimer.control = "stop"
-  m.top.control = "stop"
 
   ' Re-determine best audio stream for the new source's MediaStreams
   audioStreamIdx = 0
@@ -958,7 +993,7 @@ sub onVideoSourceChange()
   ' Another file: what a retry learned about the last one does not apply to it.
   m.retryFlags = noRetryFlags()
   ' Subtitles reset to auto-detect for the new source
-  startVideoLoad(audioStreamIdx, SubtitleSelection.NOT_SET)
+  reloadInPlace(startTicks, audioStreamIdx, SubtitleSelection.NOT_SET)
 end sub
 
 ' Fires on any REAL resolution of the error dialog: the user pressing OK, or
@@ -1262,7 +1297,7 @@ sub onVideoContentLoaded(event as object)
   m.LoadMetaDataTask.unobserveField("content")
   m.LoadMetaDataTask.control = "STOP"
 
-  m.top.isRetrying = false
+  m.top.isReloading = false
 
   videoContent = m.LoadMetaDataTask.content
   m.LoadMetaDataTask.content = []
@@ -2006,25 +2041,16 @@ end sub
 '                                    the server not to copy the video, RESTART_STREAM asks again
 '                                    the same way and adds no flag
 sub retryPlayback(retry as PlaybackErrorRetry)
-  ' Only a stream that has played has a position worth saving. A retry before the first
-  ' frame (direct play failing over to transcode) has none of its own, and saving what the
-  ' player reads then would replace the resume point the queue already holds.
-  if m.isPlayReported
-    m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&, true)
-  end if
-  ' Prevents PlayerHostView from advancing/exiting when stop causes Roku to fire "finished".
-  m.top.isRetrying = true
-  m.top.control = "stop"
   m.retryFlags = retryFlagsWith(m.retryFlags, retry)
   m.log.info("Retry flags", "retry", retry, "bypassDovi", m.retryFlags.bypassDovi, "forceTranscode", m.retryFlags.forceTranscode, "disallowVideoCopy", m.retryFlags.disallowVideoCopy)
-  ' Unlike the three reload paths, this one CAN run before the first frame, and when it
-  ' does the retry is still the same load (the user has been waiting since init and has
-  ' seen no frame), so the second fetch is recorded as a second `metadata` fill rather than
-  ' dropped. `contentMs` is a sum over fills, so a playback that fell back from direct play
-  ' to transcode reports both round trips, which is exactly why its first frame took as
-  ' long as it did. `buffer` stays open across the retry (`pending` keeps the first
-  ' declaration), so it spans the whole wait rather than restarting mid-way.
-  startVideoLoad(m.top.audioIndex, m.top.SelectedSubtitle)
+  ' Unlike the other reloads, this one CAN run before the first frame, and when it does the
+  ' retry is still the same load (the user has been waiting since init and has seen no
+  ' frame), so the second fetch is recorded as a second `metadata` fill rather than dropped.
+  ' `contentMs` is a sum over fills, so a playback that fell back from direct play to
+  ' transcode reports both round trips, which is exactly why its first frame took as long as
+  ' it did. `buffer` stays open across the retry (`pending` keeps the first declaration), so
+  ' it spans the whole wait rather than restarting mid-way.
+  reloadInPlace(reloadStartTicks(m.hasStreamPlayed, m.top.position), m.top.audioIndex, m.top.SelectedSubtitle)
 end sub
 
 ' Close the live stream a load opened when no player will ever play it: the load failed, or it is
@@ -2218,6 +2244,7 @@ sub onState()
     end if
   else if m.top.state = "playing"
     stopLoadingSpinner()
+    m.hasStreamPlayed = true
     ' A restarted stream re-arms its restart once it has played long enough (streamRestartArmed).
     if m.streamRestartUsed and m.streamRestartPlayingSince < 0 then m.streamRestartPlayingSince = UpTime(0)
 
@@ -2376,22 +2403,14 @@ end sub
 ' Starts the re-encode check for the stream handed to the player (reencodeCheck.bs): the server
 ' may be re-encoding the video at a bitrate the device's video buffer cannot hold, which a first
 ' request cannot rule out. It runs on a timer from the handoff, not from `playing`: a stream like that
-' never leaves buffering. It stands down for a stream the server does not transcode, Live TV, a load
-' that already asked for a re-encode, and a SyncPlay group.
-'
-' The group is skipped because a restart here is a reload in place, which the group sees only as a
-' stall: the tracker's Ready after it carries the node's own position, which the node reads as 0 at
-' the first frame of a load that starts partway in (syncPlayPlayback.trackPlayerEvent, "mounted"),
-' and no run of a reload under a group has shown the Ready lands where the group is.
+' never leaves buffering. It stands down for a stream the server does not transcode, Live TV, and a
+' load that already asked for a re-encode. In a SyncPlay group its restart is a reload like any other
+' (reloadInPlace).
 '
 ' @param {dynamic} capBps - LoadVideoContentTask's reencodeCapBps for this load: 0 or invalid for none
 sub armReencodeCheck(capBps as dynamic)
   m.reencodeCapBps = reencodeCheck.bitsPerSecond(capBps)
   if not m.top.isTranscoded or isLiveTvPlayback() or m.retryFlags.disallowVideoCopy or m.reencodeCapBps <= 0 then return
-  if syncPlayHooks.following()
-    m.log.info("Re-encode check skipped while following a SyncPlay group", "itemId", m.loadItemId)
-    return
-  end if
   m.reencodeAttempt = 1
   m.reencodeCheckTimer.control = "stop"
   m.reencodeCheckTimer.duration = reencodeCheck.FIRST_CHECK_SECONDS
@@ -2431,7 +2450,6 @@ sub onReencodeSessionRead(res as object, ctx as object)
     attempt: ctx.attempt,
     isLive: isLiveTvPlayback(),
     askedNoCopy: m.retryFlags.disallowVideoCopy,
-    isFollowingGroup: syncPlayHooks.following(),
     hasFailed: m.hasPlaybackFailed or playerState = "error",
     ' A newer load since the read began, another item, or a stream that has ended.
     isStale: ctx.seq <> m.reencodeCheckSeq or LCase(ctx.itemId) <> LCase(m.loadItemId) or playerState = "stopped" or playerState = "finished"
@@ -2455,12 +2473,10 @@ sub onReencodeSessionRead(res as object, ctx as object)
 end sub
 
 ' Restart the stream with the video re-encoded under the buffer cap, from where it is. This is the
-' re-encode retry (PlaybackErrorRetry.REENCODE_VIDEO), and not reloadAtCurrentPosition: that one
-' saves the player's position unconditionally, and a stream that never left buffering reads 0, which
-' would replace the resume point. retryPlayback saves a position only for a stream that played, and
-' sets isRetrying so the stop does not advance the queue. The request it makes applies the cap at any
-' bitrate and lists HEVC first (buildPlaybackInfoPostData). The flag stays for the rest of this
-' version's playback (retryFlagsWith), so no later load of it checks again.
+' re-encode retry (PlaybackErrorRetry.REENCODE_VIDEO), so its request applies the cap at any bitrate
+' and lists HEVC first (buildPlaybackInfoPostData), and the flag stays for the rest of this version's
+' playback (retryFlagsWith), so no later load of it checks again. Like every reload it keeps the
+' start the load was given when the stream never left buffering (reloadInPlace).
 sub restartForBufferCap()
   cancelReencodeCheck()
   isHeldPaused = m.isPlayReported and m.top.state = "paused"

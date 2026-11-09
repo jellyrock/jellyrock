@@ -13,7 +13,7 @@ namespace tests
 
     ' The flags of a load the check applies to, on its first read.
     private function flags(overrides = {} as object) as object
-      base = { attempt: 1, isLive: false, askedNoCopy: false, isFollowingGroup: false, hasFailed: false, isStale: false }
+      base = { attempt: 1, isLive: false, askedNoCopy: false, hasFailed: false, isStale: false }
       base.append(overrides)
       return base
     end function
@@ -128,7 +128,7 @@ namespace tests
     @it("stands down for each reason a load or an answer is not the one to restart")
     function _()
       res = m.answer([m.encoding(139808000, "abc")])
-      for each reason in ["isLive", "askedNoCopy", "isFollowingGroup", "hasFailed", "isStale"]
+      for each reason in ["isLive", "askedNoCopy", "hasFailed", "isStale"]
         overrides = {}
         overrides[reason] = true
         m.assertEqual(m.verdictOf(res, m.capBps(), "abc", m.flags(overrides)), ReencodeVerdict.NONE, reason)
@@ -179,7 +179,7 @@ namespace tests
     @it("names each reason the load is not one to act on")
     function _()
       res = m.answer([m.encoding(139808000, "abc")])
-      expected = { isLive: "liveTv", askedNoCopy: "alreadyCapped", isFollowingGroup: "syncPlayGroup", hasFailed: "playbackFailed", isStale: "stale" }
+      expected = { isLive: "liveTv", askedNoCopy: "alreadyCapped", hasFailed: "playbackFailed", isStale: "stale" }
       for each flag in expected
         overrides = {}
         overrides[flag] = true

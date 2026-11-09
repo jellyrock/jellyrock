@@ -306,8 +306,9 @@ end function
 ' finished (onPlayerStateChange) and a Live TV stream that stalled (onLiveStreamStalled).
 ' Returns false when a guard says to leave the mount alone, before anything is torn down.
 function prepareToLeaveMount() as boolean
-  ' Don't advance mid-retry; the DoVi fallback calls stop which can fire "finished".
-  if isValid(m.view.isRetrying) and m.view.isRetrying then return false
+  ' Don't advance mid-reload: a retry, or a track, quality or version change, calls stop,
+  ' which can fire "finished".
+  if isValid(m.view.isReloading) and m.view.isReloading then return false
 
   ' Don't advance (or tear anything down) while an error dialog owns the exit.
   ' Same class of "finished" as the line above, and the same asymmetry it fixes:
@@ -315,7 +316,7 @@ function prepareToLeaveMount() as boolean
   ' the dialog and stop the stream on the very next line, and before the claim
   ' nothing held the exit. A `stop` usually surfaces as `stopped`, which
   ' onPlayerStateChange's state check already ignores. But it can surface as
-  ' `finished`, which is precisely why isRetrying exists, and on that landing the
+  ' `finished`, which is precisely why isReloading exists, and on that landing the
   ' teardown below would abandon the dialog and the queue logic would advance to
   ' the next episode with the error unread.
   '

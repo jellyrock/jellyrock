@@ -52,15 +52,14 @@ namespace reencodeCheck
   ' @param capBps - bufferCapBps for the load, 0 when it has none
   ' @param itemId - the item this load plays
   ' @param flags - { attempt: 1 or 2, isLive, askedNoCopy (the load already asked for a re-encode,
-  '   which applies the cap), isFollowingGroup, hasFailed (a playback error owns the flow), isStale
+  '   which applies the cap), hasFailed (a playback error owns the flow), isStale
   '   (a newer load, or another item, since the read began) }
   ' @returns { verdict: a ReencodeVerdict, reason: why, for the log: aboveCap, withinCap,
   '   videoCopied, noIsVideoDirect, noTranscodeShown, noSession, unreadable, noCap, liveTv,
-  '   alreadyCapped, syncPlayGroup, playbackFailed or stale }
+  '   alreadyCapped, playbackFailed or stale }
   function reencodeNeedsBufferCap(res as dynamic, capBps as dynamic, itemId as string, flags as object) as object
     if flags.isLive = true then return { verdict: ReencodeVerdict.NONE, reason: "liveTv" }
     if flags.askedNoCopy = true then return { verdict: ReencodeVerdict.NONE, reason: "alreadyCapped" }
-    if flags.isFollowingGroup = true then return { verdict: ReencodeVerdict.NONE, reason: "syncPlayGroup" }
     if flags.hasFailed = true then return { verdict: ReencodeVerdict.NONE, reason: "playbackFailed" }
     if flags.isStale = true then return { verdict: ReencodeVerdict.NONE, reason: "stale" }
     if reencodeCheck.bitsPerSecond(capBps) <= 0 then return { verdict: ReencodeVerdict.NONE, reason: "noCap" }

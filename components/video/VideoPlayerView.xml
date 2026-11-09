@@ -26,18 +26,19 @@
          On a buffer:loop: error the player retries once with shouldDisallowVideoCopy=true, so
          the server re-encodes the video and cuts a segment at least every segment length. -->
     <field id="isReencodeFallbackAvailable" type="boolean" value="false" />
-    <!-- Prevents PlayerHostView from advancing or exiting during a retry (retryPlayback),
-         whose `stop` can surface as state `finished`. -->
-    <field id="isRetrying" type="boolean" value="false" />
+    <!-- Prevents PlayerHostView from advancing or exiting during a reload in place
+         (reloadInPlace: a retry, or a track, quality or version change), whose `stop` can
+         surface as state `finished`. Cleared when the reload's content arrives. -->
+    <field id="isReloading" type="boolean" value="false" />
     <!-- An error dialog is up and IT owns the exit, so PlayerHostView must not
          treat a `finished` as the end of playback. The stall paths show the
          dialog and then stop the stream (bufferCheck, showLiveStreamStalledError);
          a `stop` USUALLY surfaces as `stopped`, which the host ignores, but it
-         can surface as `finished` (that is the whole reason isRetrying above
+         can surface as `finished` (that is the whole reason isReloading above
          exists), and then the host would abandon this dialog and act on the end
          (advance the queue, or restart a Live TV channel) before the user had
          read it. Cleared when the dialog resolves or is abandoned.
-         Same shape and same reason as isRetrying: a `finished` this app caused
+         Same shape and same reason as isReloading: a `finished` this app caused
          is not playback ending. -->
     <field id="errorDialogOwnsExit" type="boolean" value="false" />
     <!-- True while the playing stream was asked for WITHOUT the DoVi container profile

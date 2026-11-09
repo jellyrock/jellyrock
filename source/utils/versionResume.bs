@@ -438,6 +438,26 @@ namespace versionResume
     return newRuntimeTicks * fraction
   end function
 
+  ' unplayedSwitchTicksFor: Where a version switch made before the stream played starts the new
+  ' version, or invalid to keep the start the load was given.
+  '
+  ' The node has no position of its own then, so the start the queue holds is the one to carry:
+  ' a second switch made while the first one loads holds the first one's start, in the timeline of
+  ' the version still loading. It maps like a position (switchTicksFor), so a start the new version
+  ' does not reach is not seeded past its end. Invalid whenever the mapping keeps the start as it
+  ' is, so the common case leaves the queue's start, exact or not, untouched.
+  '
+  ' @param {dynamic} startTicks - the start the queue holds for the item
+  ' @param {dynamic} loadingRuntimeTicks - runtime of the version that start belongs to (the one loading)
+  ' @param {dynamic} newRuntimeTicks - runtime of the version being switched to
+  ' @return {dynamic} ticks the new version starts from, or invalid to keep the queue's start
+  function unplayedSwitchTicksFor(startTicks as dynamic, loadingRuntimeTicks as dynamic, newRuntimeTicks as dynamic) as dynamic
+    if not isValid(startTicks) or startTicks <= 0 then return invalid
+    mapped = versionResume.switchTicksFor(startTicks, loadingRuntimeTicks, newRuntimeTicks)
+    if mapped = startTicks then return invalid
+    return mapped
+  end function
+
   ' resumeStateFor: Where Resume starts for the SELECTED version of a loaded item, and what
   ' the caller still has to fetch before that answer is final.
   '

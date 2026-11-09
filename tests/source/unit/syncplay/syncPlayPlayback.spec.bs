@@ -397,6 +397,29 @@ namespace tests
       m.assertEqual(drift, -100&)
     end function
 
+    @it("groupPositionTicks runs an Unpause forward on the server clock")
+    function _()
+      ' The Unpause put the group at 60 s ten seconds ago.
+      unpause = m.unpauseInForce()
+      m.assertEqual(syncPlayPlayback.groupPositionTicks(unpause, m.estimator(), m.deviceNow), 700000000&)
+    end function
+
+    @it("groupPositionTicks holds a Pause's or a Seek's position, and an Unpause's until its When")
+    function _()
+      pause = m.command("Pause", "2026-10-23T20:47:20.000Z", 600000000)
+      m.assertEqual(syncPlayPlayback.groupPositionTicks(pause, m.estimator(), m.deviceNow), 600000000&)
+      seek = m.command("Seek", "2026-10-23T20:47:20.000Z", 610000000)
+      m.assertEqual(syncPlayPlayback.groupPositionTicks(seek, m.estimator(), m.deviceNow), 610000000&)
+      future = m.command("Unpause", "2026-10-23T20:47:31.000Z", 600000000)
+      m.assertEqual(syncPlayPlayback.groupPositionTicks(future, m.estimator(), m.deviceNow), 600000000&)
+    end function
+
+    @it("groupPositionTicks is invalid with no command, or one that names no position")
+    function _()
+      m.assertInvalid(syncPlayPlayback.groupPositionTicks(invalid, m.estimator(), m.deviceNow))
+      m.assertInvalid(syncPlayPlayback.groupPositionTicks(m.command("Stop", "2026-10-23T20:47:20.000Z", 0), m.estimator(), m.deviceNow))
+    end function
+
     @it("driftMs is invalid with no Unpause in force, or before its When")
     function _()
       m.assertInvalid(syncPlayPlayback.driftMs(invalid, m.estimator(), m.deviceNow, 600000000&))
@@ -738,6 +761,89 @@ namespace tests
       syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 0& })
       m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "paused", positionTicks: 0& }).report, "")
       m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 0& }).report, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("trackPlayerEvent(): a reload in place")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a reload of a playing stream reports buffering at once and loads from its start")
+    function _()
+      tracker = m.readyTracker()
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "reloaded", startTicks: 1245000000& })
+      m.assertEqual(result.report, "buffering")
+      m.assertEqual(result.waitMs, 0)
+      m.assertEqual(tracker.phase, "loading")
+      m.assertEqual(tracker.loadStartTicks, 1245000000&)
+    end function
+
+    @it("the first playing after a reload pauses first and reports ready at the reload's start while the node reads 0")
+    ' The node reads 0 until the reloaded stream's first frame (measured 2026-11-08), and the
+    ' stop the reload writes reaches the tracker as stopped or finished.
+    function _()
+      tracker = m.readyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "reloaded", startTicks: 1245000000& })
+      m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "stopped", positionTicks: 0& }).report, "")
+      m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "finished", positionTicks: 0& }).report, "")
+      m.assertEqual(syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "buffering", positionTicks: 0& }).report, "")
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 0& })
+      m.assertEqual(result.report, "ready")
+      m.assertTrue(result.pauseFirst)
+      m.assertEqual(result.positionTicks, 1245000000&)
+      m.assertEqual(tracker.phase, "ready")
+    end function
+
+    @it("a reload during a stall or a rebuffer loads from its start")
+    function _()
+      stalling = m.readyTracker()
+      syncPlayPlayback.trackPlayerEvent(stalling, { kind: "state", state: "buffering", positionTicks: 1245000000& })
+      m.assertEqual(stalling.phase, "stalling")
+      fromStall = syncPlayPlayback.trackPlayerEvent(stalling, { kind: "reloaded", startTicks: 1250000000& })
+      m.assertEqual(fromStall.report, "buffering")
+      m.assertEqual(stalling.phase, "loading")
+      m.assertEqual(stalling.loadStartTicks, 1250000000&)
+
+      rebuffering = m.readyTracker()
+      syncPlayPlayback.trackPlayerEvent(rebuffering, { kind: "state", state: "buffering", positionTicks: 1245000000& })
+      syncPlayPlayback.trackPlayerEvent(rebuffering, { kind: "timeout" })
+      m.assertEqual(rebuffering.phase, "rebuffering")
+      fromRebuffer = syncPlayPlayback.trackPlayerEvent(rebuffering, { kind: "reloaded", startTicks: 1250000000& })
+      m.assertEqual(fromRebuffer.report, "buffering")
+      m.assertEqual(rebuffering.phase, "loading")
+    end function
+
+    @it("a reload during a seek drops the seek, its pause and any held seek")
+    function _()
+      tracker = m.heldTracker()
+      m.holdSecond(tracker)
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "reloaded", startTicks: 1245000000& })
+      m.assertEqual(result.report, "buffering")
+      m.assertEqual(tracker.phase, "loading")
+      m.assertInvalid(tracker.heldSeek)
+      m.assertFalse(tracker.thenPause)
+      ready = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 0& })
+      m.assertEqual(ready.report, "ready")
+      m.assertEqual(ready.positionTicks, 1245000000&)
+      m.assertInvalid(ready.nextSeek)
+    end function
+
+    @it("a reload before the first frame moves the start and reports no second buffering")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "mounted", startTicks: 3490000000& })
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "reloaded", startTicks: 3500000000& })
+      m.assertEqual(result.report, "")
+      m.assertEqual(tracker.phase, "loading")
+      ready = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 0& })
+      m.assertEqual(ready.positionTicks, 3500000000&)
+    end function
+
+    @it("a reload with no playback tracked does nothing")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "reloaded", startTicks: 1245000000& })
+      m.assertEqual(result.report, "")
+      m.assertEqual(tracker.phase, "idle")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

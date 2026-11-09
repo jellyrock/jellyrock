@@ -28,7 +28,7 @@
     <!-- { offsetMs, delayMs, hasEstimate, lastCommand, trackerPhase, playingItemId, playingItemIndex,
          playlistCount, loadNotice, playbackDiffMs (how far behind the group this member sits, ms, invalid
          until an Unpause is in force; refreshed at each position notification in RTA builds only, otherwise whenever something else publishes), extraOffsetMs (the
-         viewer's time offset setting), loadCount (the loads performed for queue frames, a monotonic count), correctionsDone (the drift corrections that ran to their resume, a monotonic count), repeatMode and shuffleMode (the group's, in the server's words,
+         viewer's time offset setting), loadCount (the loads performed for queue frames, a monotonic count), correctionsDone (the drift corrections that ran to their resume, a monotonic count), groupSeeks (the Seek commands the group sent while this member followed, a monotonic count), readiesSent (the Ready reports this member sent, a monotonic count), repeatMode and shuffleMode (the group's, in the server's words,
          from the last queue update) } -->
     <field id="sync" type="assocarray" />
     <!-- Something the viewer is told: { kind, groupName, userName }; a confirmPlay notice also
@@ -75,8 +75,10 @@
     <!-- resumeFollowing(): a halted member follows the group again from the menu and loads the
          group's item at its estimated position; true when it was halted in a group. -->
     <function name="resumeFollowing" />
-    <!-- { kind: "mounted" | "state" | "position" | "finished" | "unmounted", state, position }
-         from the host and the player, position in the Video node's float seconds. -->
+    <!-- { kind: "mounted" | "reloaded" | "state" | "position" | "finished" | "unmounted", state,
+         position, startSeconds } from the host and the player, position in the Video node's float
+         seconds; "reloaded" (the player loading its stream again in place) carries the
+         startSeconds it reloads from. -->
     <function name="playerEvent" />
     <!-- control({ kind: "pause" | "unpause" | "seek" | "next" | "previous" | "repeat" | "shuffle" |
          "timeOffset", position, mode }): a control the viewer pressed while following, posted to the

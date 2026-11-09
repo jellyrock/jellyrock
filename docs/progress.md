@@ -781,18 +781,6 @@ The playback-settings gear on the OSD has no rows for a Live TV channel, so `set
 
 Closes when a device run shows a mid-playback reload of a channel releases the old stream exactly once (the server's open live streams before and after), and the gear's quality rows then show for a `TvChannel` with an RTA case. Deferred from the PR that added the gear (branch `feat/osd-settings-menu`), because the check needs a Live TV fixture and its own design pass.
 
-#### A second reload started while one is loading may resume from a stale position `[fid: reload-during-reload-stale-position]` `[captured 2026-10-23]`
-
-A temporary RTA probe on `.177` (2026-10-23, stable demo server) moved the hero to 300 s, then made two OSD gear bitrate picks 0.5 s apart. The viewer was at 308.5 s, the player read `stopped` at position 300 nine ms after the first pick, and playback resumed at 300.5 s. Candidate cause, not confirmed: `VideoPlayerView.reloadAtCurrentPosition()` saves `int(m.top.position)` through `setCurrentStartingPoint` before it stops the player, and a second reload started before the first one's content lands reads the stopped node's position (the earlier start point), overwriting the correct start point the first reload saved. The save came in with `5a6a3dce` (an audio-track fix); `43385c79` on `feat/osd-settings-menu` only moved it into the shared function, which the subtitle, audio and gear reloads all call. No unit test reaches it.
-
-Not confirmed because a draft RTA case could not discriminate: on the demo server a seek on the paused hero sits buffering at 300 and never advances, so the stale and true positions match. In five runs playback resumed at 300.04 s whatever the starting position (300 to 302), which fits the stale second save and equally fits "every reload after a seek resumes from the seek point". A variant with the hero playing failed before the picks twice (the OSD auto-hid after 5 s; once playback did not move off 300 within 40 s).
-
-Options considered: `keep` (recommended), a reload-in-flight flag: `reloadAtCurrentPosition()` saves the position only when no reload is loading, and the flag clears in `onVideoContentLoaded()` right after `m.top.isRetrying = false`, so a failed load clears it too, the shape the version-switch path already uses; `by-state`, skip the save while `m.top.state` is `stopped` or `none`, which misses a pick during the new stream's buffering and depends on Roku's state timing; `block`, ignore gear and track picks while a reload loads, which hides the bug and silently drops a viewer's pick.
-
-Not checked: whether 300 is the last seek target or the previous load's start point; whether the audio and subtitle paths show it on a device (inferred from the shared code); whether a pick made after the new stream arrives but before it plays also reads a stale value.
-
-Closes when an RTA case with the viewer playing past the start point (OSD re-shown with Up before the gear) first separates one pick from two, confirming the cause, and then fails before `keep` and passes after it.
-
 #### `handleTransport`'s `playpause` still writes `control = "play"` to a node that is buffering `[fid: playpause-plays-buffering-node]` `[captured 2026-10-24]`
 
 `VideoPlayerView.handleTransport` routes `play` and `resume` through `voiceTransport.playControl()` since commit `4f9c48cd`, which writes nothing to a buffering node. Its `playpause` branch was left as it was: any state that is not playing or paused still gets `control = "play"`. A device probe (Streaming Stick 4K, Roku OS 15.3.4, 2026-10-23) showed that a `control = "play"` written while a seek buffers leaves the node at `buffering` for good, so a remote or voice play/pause pressed during a seek's buffering likely wedges playback the same way. Not checked on a device.
@@ -916,12 +904,6 @@ Not checked:
 - whether the Ultra errors on its own after more than 75 s.
 
 Tracked publicly in [#1330](https://github.com/jellyrock/jellyrock/issues/1330).
-
-#### A SyncPlay reload in place sends Ready at position 0 `[fid: syncplay-reload-ready-position]` `[captured 2026-11-04]`
-
-A reload in place while following a SyncPlay group reaches `syncPlayPlayback.trackPlayerEvent` as a stall followed by more buffering, and its Ready carries the node's own position (`positionTicks = -1`), which reads 0 at the first frame of a load that starts partway in; only the `mounted` path corrects for that with `loadStartTicks`. A Ready at 0 makes the server send a corrective Seek. Because of this the re-encode bitrate check (decision `reencode-bitrate-checked-from-session`) skips groups. Fix by sending the load's start position in that Ready, then let the check run in groups and test it with the REST second member.
-
-The stream restart (`PlaybackErrorRetry.RESTART_STREAM`, decision `restart-once-on-server-segment-failure`) runs in groups on purpose, since skipping it drops the viewer out of the group behind an error dialog, so it takes this extra round too. Measured 2026-11-08 on a Streaming Stick 4K against Jellyfin 12.4, in a group with a REST second member, the server failing until the Roku restarted: Buffer, then a Ready the server logged as "got lost in time, correcting", its Seek to this member only, a second Buffer and Ready, and the group playing again about 2 s after it paused, the Roku within 25 ms of the group a minute later. The fix removes the correction from the restart and from audio, subtitle and quality reloads (`reloadAtCurrentPosition()`), which reload in place in a group the same way.
 
 #### Unconfirmed: a never-played `.strm` item may skip the playlist-size fit and the buffer cap on its first play `[fid: strm-first-play-stale-run-time]` `[captured 2026-11-06]`
 
@@ -1742,6 +1724,14 @@ So the confirmation check became a pure function (`syncPlayQueue.queuedNextCount
 In `tests/rta/specs/syncplay-menu.spec.js`, `ctx.heroId` comes from `getHero()`, which finds `RTA_CONFIG.heroMovie` by title. On a server without that title (the local Jellyfin 12.4.0 server, 2026-11-08) it is empty, while `startPlayback(ctx)` still reaches the hero by its index. So `moviesOtherThanHero()` filters nothing and returns the group's own video first. One case already works around it (its comment says the first result is the group's video), and the catch-up addition case reads the group's video id off the details screen instead. A new case that trusts `ctx.heroId` passes a queue with an empty id.
 
 Fix shape: fill `ctx.heroId` from the movie `startPlayback` actually opens (the same index the nav uses), or fail fast in `beforeAll` when it is empty. Close it when `ctx.heroId` is never empty on a server the suite runs against.
+
+#### Capture a SyncPlay group's stream restart after a real playback error `[fid: syncplay-error-restart-uncaptured]` `[captured 2026-11-09]`
+
+The stream restart after a playback error (`PlaybackErrorRetry.RESTART_STREAM`, from #1339) reports itself to a SyncPlay group through the reload path of decision `syncplay-reload-reports-its-start` (`VideoPlayerView.reloadInPlace()`, then `SyncPlayManager.playerEvent()` with the `reloaded` event), which `tests/rta/specs/syncplay-reload.spec.js` covers for a gear-pick reload. The error-triggered restart itself was never captured inside a group on that build: twice on 2026-11-08 (Streaming Stick 4K, Roku OS 15.3.4, Jellyfin 12.4, the server's ffmpeg killed and its segments deleted until the player reacted) Roku reported a stall instead of the `-5` error, and Roku decides which. Not done now because no way to make a stream error on demand exists yet (tech debt `playback-error-dialog-untestable-on-device`). Close it by capturing one error restart while following a group, checking it sends one Buffering and one Ready at the group's position with no corrective Seek (`syncPlayManager.sync.groupSeeks` unchanged), and adding that step to the spec once the error can be produced.
+
+#### The two-pick reload fix has no device step outside SyncPlay `[fid: two-pick-reload-rta-outside-syncplay]` `[captured 2026-11-09]`
+
+Decision `reload-in-place-one-path` fixed a second gear, track or version pick made while a reload loads restarting the video from 0, for every viewer, not only in a group. Its only RTA step (the two-pick step in `tests/rta/specs/syncplay-reload.spec.js`) runs inside a SyncPlay group, so it skips on any server without a push channel to the Roku, including the public demo server a plain `npm run test:rta` uses; unit tests reach only `reloadStartTicks()`. Not done in #1344 because whether the demo server can drive it is unchecked: the closed followup `reload-during-reload-stale-position` recorded the hero sitting at 300 s after a seek, and the OSD auto-hiding there. Close it with an RTA step that plays an item partway in with no group, makes two gear picks with the second landing while the first reload's node reads 0 and has not played, asserts the second reload's `content.PlayStart` is near the position before the picks, and fails once with `reloadStartTicks()` broken on purpose.
 
 ### docs
 
