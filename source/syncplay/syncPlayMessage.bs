@@ -72,8 +72,12 @@ namespace syncPlayMessage
       ' PlayQueueUpdate: { Reason, LastUpdate, Playlist, PlayingItemIndex, StartPositionTicks,
       ' IsPlaying (10.8+), ShuffleMode, RepeatMode }
       if not isValid(inner) or not isValid(inner.Playlist) then return ignored(result)
+      ' LastUpdate is the update's identity and the manager reads it as a longinteger,
+      ' so a frame without a readable time is no update.
+      lastUpdateMs = syncPlayTime.parseServerTimeMs(inner.LastUpdate)
+      if not isValid(lastUpdateMs) then return ignored(result)
       result.reason = asText(inner.Reason)
-      result.lastUpdateMs = syncPlayTime.parseServerTimeMs(inner.LastUpdate)
+      result.lastUpdateMs = lastUpdateMs
       result.playlist = parsePlaylist(inner.Playlist)
       result.playingItemIndex = asIndex(inner.PlayingItemIndex)
       result.startPositionTicks = asTicks(inner.StartPositionTicks)

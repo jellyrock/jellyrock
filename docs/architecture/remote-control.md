@@ -20,7 +20,7 @@ related-files:
   - scripts/lint/socket-thread-release-check.js
   - scripts/lint/socket-auth-binding-check.js
   - docs/architecture/remote-control-longpoll-contract.md
-last-reviewed: 2026-10-27
+last-reviewed: 2026-11-08
 ---
 
 # Remote control: cast to JellyRock
@@ -154,6 +154,8 @@ The advertised commands are the navigation and messaging ones JellyRock acts on:
 | `SyncPlayCommand{Unpause, Pause, Stop, Seek}` | `syncplaycommand` | Parsed by `syncPlayMessage.parseCommand` (`source/syncplay/`): the command name, `When` and `EmittedAt` in ms, the position in ticks, the playlist item and group. `remoteDispatch.dispatchSyncPlay` writes it to the SyncPlay manager node's `frame` field, or drops it with a console line while no manager exists. |
 | `SyncPlayGroupUpdate{GroupJoined, GroupLeft, UserJoined, UserLeft, StateUpdate, PlayQueue, NotInGroup, GroupDoesNotExist, LibraryAccessDenied, CreateGroupDenied, JoinGroupDenied}` | `syncplayupdate` | Parsed by `syncPlayMessage.parseGroupUpdate` into the group info, the queue or the state; the same hand-off as the command. One parser covers every server line from 10.7.0: the shapes are unchanged and enums travel as names on every line. |
 | `GeneralCommand{volume, directional, SendKey, …}`, `KeepAlive`, `Sessions`, `RefreshProgress`, `UserDataChanged`, anything unknown | `ignore` | Dropped, never an error, so a hostile, future or unknown frame cannot break the receiver |
+
+A SyncPlay frame JellyRock can't use becomes `ignore` too: a missing field, an unreadable time, or a command or update type it doesn't know. The receiver logs a warning naming the frame's message type and kind, because otherwise the member falls out of step with nothing in the log.
 
 `Seek` carries an absolute `SeekPositionTicks` and becomes `seekto`, unlike voice's relative `seek`. Both players (`VideoPlayerView`, `AudioPlayerView`, reached through `PlayerHostView`) handle `previous`, `seekto` and `playpause` for the cast verbs.
 
