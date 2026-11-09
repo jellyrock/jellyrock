@@ -522,6 +522,14 @@ jobs:
           fi
           echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
 
+      # Built before an existing draft is deleted: the command keeps the summary from it.
+      - name: Build release notes
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          npm run changelog:sync-unreleased
+          node scripts/changelog-syncer.js release-notes "${{ needs.validate-and-prepare.outputs.version }}" > out/release-notes.md
+
       - name: Check for existing draft release
         id: check_draft
         env:
@@ -559,77 +567,10 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           TAG_NAME="v${{ needs.validate-and-prepare.outputs.version }}"
-          VERSION="${{ needs.validate-and-prepare.outputs.version }}"
-
-          # Sync changelog to ensure unreleased section is up to date
-          npm run changelog:sync-unreleased
-
-          # Use changelog syncer to format release notes (same logic as tag creation workflow)
-          if [[ -f "CHANGELOG.md" ]]; then
-            # Create temporary changelog to extract formatted release notes
-            cp CHANGELOG.md CHANGELOG.md.backup
-            node scripts/changelog-syncer.js sync-release "$VERSION"
-            
-            # Extract the newly created release section - handle the URL format correctly
-            # The sync-release creates a section like: ## [1.0.1](https://github.com/...) - 2025-08-30
-            # Use a more flexible pattern that matches the version in square brackets regardless of what follows
-            RELEASE_NOTES=$(awk "/^## \[$VERSION\]/{flag=1; next} /^## \[/{if(flag) exit} flag" CHANGELOG.md)
-            
-            # Restore original changelog (don't commit changes in this workflow)
-            mv CHANGELOG.md.backup CHANGELOG.md
-            
-            if [[ -z "$RELEASE_NOTES" || "$RELEASE_NOTES" == "" ]]; then
-              RELEASE_NOTES="### No Changes Documented
-
-              No changes were documented in CHANGELOG.md unreleased section."
-            fi
-          else
-            RELEASE_NOTES="### No Changes Documented
-
-            CHANGELOG.md not found."
-          fi
-
-          # Create release body
-          # Calculate release date based on Roku release cycle (PT timezone)
-          CURRENT_DAY_PT=$(TZ=America/Los_Angeles date +%A)
-
-          # Determine days to add based on Roku release cycle
-          case $CURRENT_DAY_PT in
-            Monday)
-              DAYS_TO_ADD=1  # Tuesday at 06:00 pm PT
-              ;;
-            Tuesday)
-              DAYS_TO_ADD=1  # Wednesday at 06:00 pm PT
-              ;;
-            Wednesday)
-              DAYS_TO_ADD=1  # Thursday at 06:00 pm PT
-              ;;
-            Thursday)
-              DAYS_TO_ADD=1  # Friday at 06:00 pm PT
-              ;;
-            Friday)
-              DAYS_TO_ADD=3  # Monday at 06:00 pm PT
-              ;;
-            Saturday)
-              DAYS_TO_ADD=2  # Monday at 06:00 pm PT
-              ;;
-            Sunday)
-              DAYS_TO_ADD=1  # Monday at 06:00 pm PT
-              ;;
-          esac
-
-          # Calculate release date in PT timezone
-          RELEASE_DATE=$(TZ=America/Los_Angeles date -d "+${DAYS_TO_ADD} days" +"%A, %B %d, %Y")
-
-          RELEASE_BODY="## Release Schedule
-
-          JellyRock $TAG_NAME is scheduled for release on the [Roku Channel Store](https://channelstore.roku.com/details/232f9e82db11ce628e3fe7e01382a330:a85d6e9e520567806e8dae1c0cabadd5/jellyrock) $RELEASE_DATE 6:00 PM PT
-
-          $RELEASE_NOTES"
 
           gh release create "$TAG_NAME" \
             --title "$TAG_NAME" \
-            --notes "$RELEASE_BODY" \
+            --notes-file out/release-notes.md \
             --draft \
             --prerelease=false \
             out/${{ steps.create_zip.outputs.zip_name }}
@@ -638,4 +579,4 @@ jobs:
           gh release edit "$TAG_NAME" --discussion-category "Announcements"
 
           echo "✅ Created draft release: $TAG_NAME"
-          echo "📝 Remember to add your scheduled release date before publishing!"
+          echo "📝 Next: merge the release PR, run /release-summary ${{ needs.validate-and-prepare.outputs.version }}, then publish"

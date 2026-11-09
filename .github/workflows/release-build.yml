@@ -56,6 +56,14 @@ jobs:
           echo "📝 Converting unreleased changes to release ${{ steps.version.outputs.version }}"
           node scripts/changelog-syncer.js sync-release "${{ steps.version.outputs.version }}"
 
+      # The release's ### Summary goes to the top of its new section, where later summaries
+      # read it as an example. A release with none leaves the section as it is.
+      - name: Copy the release summary into the changelog
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: node scripts/changelog-syncer.js add-summary "$VERSION"
+
       - name: Commit changelog and feature-page updates
         env:
           VERSION: ${{ steps.version.outputs.version }}

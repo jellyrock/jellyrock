@@ -9,38 +9,30 @@
  * v2.29.1..v2.32.0 with the old and new syncer, 2026-09-24).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { stubHistory } from './_helpers/changelog-gh-stub.js';
 
-const { execSync } = vi.hoisted(() => ({ execSync: vi.fn() }));
-vi.mock('node:child_process', () => ({ execSync }));
+const { execSync, execFileSync } = vi.hoisted(() => ({
+  execSync: vi.fn(),
+  execFileSync: vi.fn(),
+}));
+vi.mock('node:child_process', () => ({ execSync, execFileSync }));
 
 const { ChangelogSyncer } = await import('../../../scripts/changelog-syncer.js');
 
 const SQUASH = 'aaaaaaa';
 const JOURNAL = 'bbbbbbb';
 
-/** `git log` output in the syncer's own delimiter format, newest first. */
-function gitLog(commits) {
-  return commits
-    .map(([hash, subject]) => `COMMIT_START${hash}\nCOMMIT_MSG_START\n${subject}\n\nCOMMIT_END`)
-    .join('\n');
-}
-
 function stub({ commits, prs }) {
-  execSync.mockImplementation((cmd) => {
-    if (cmd.startsWith('git log')) return gitLog(commits);
-    const pr = cmd.match(/^gh pr view (\d+)/);
-    if (pr) {
-      const info = prs[pr[1]];
-      if (!info) throw new Error(`no pull request #${pr[1]}`);
-      return JSON.stringify(info);
-    }
-    throw new Error(`unexpected command: ${cmd}`);
-  });
+  stubHistory(
+    { execSync, execFileSync },
+    { commits: commits.map(([hash, subject]) => ({ hash, subject })), prs },
+  );
 }
 
 describe('changelog-syncer: PR titles', () => {
   beforeEach(() => {
     execSync.mockReset();
+    execFileSync.mockReset();
   });
 
   it("uses the PR's current title for its own squash commit", () => {
@@ -51,6 +43,7 @@ describe('changelog-syncer: PR titles', () => {
           title: 'fix: Keep the resume point',
           labels: ['bug-fix'],
           mergeCommit: `${SQUASH}0123456789`,
+          author: 'cewert',
         },
       },
     });
@@ -59,7 +52,7 @@ describe('changelog-syncer: PR titles', () => {
 
     const sections = new ChangelogSyncer().categorizeCommits([commit]);
     expect(sections.Fixed).toEqual([
-      '- Keep the resume point ([#1025](https://github.com/jellyrock/jellyrock/pull/1025))',
+      '- Keep the resume point ([#1025](https://github.com/jellyrock/jellyrock/pull/1025)) by [@cewert](https://github.com/cewert)',
     ]);
     expect(sections.Changed).toEqual([]);
   });
@@ -71,7 +64,12 @@ describe('changelog-syncer: PR titles', () => {
         [SQUASH, 'fix: Keep the resume point (#1025)'],
       ],
       prs: {
-        1025: { title: 'fix: Keep the resume point', labels: [], mergeCommit: `${SQUASH}0123` },
+        1025: {
+          title: 'fix: Keep the resume point',
+          labels: [],
+          mergeCommit: `${SQUASH}0123`,
+          author: 'cewert',
+        },
       },
     });
     const syncer = new ChangelogSyncer();
@@ -83,11 +81,8 @@ describe('changelog-syncer: PR titles', () => {
     expect(syncer.categorizeCommits(commits).Fixed).toHaveLength(1);
   });
 
-  it('falls back to the commit subject when the PR cannot be read', () => {
+  it('throws when the PR cannot be read, rather than guessing from the commit', () => {
     stub({ commits: [[SQUASH, 'fix: Keep the resume point (#1025)']], prs: {} });
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const [commit] = new ChangelogSyncer().getCommitsSince('v1.0.0');
-    log.mockRestore();
-    expect(commit.message).toBe('fix: Keep the resume point');
+    expect(() => new ChangelogSyncer().getCommitsSince('v1.0.0')).toThrow(/#1025/);
   });
 });

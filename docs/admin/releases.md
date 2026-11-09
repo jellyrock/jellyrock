@@ -1,6 +1,6 @@
 # Releases
 
-A release takes three actions from you: push a release branch, merge the PR it opens, and publish the draft release. Workflows do the rest. Store submission needs a signed `.pkg`, which you build on your own machine.
+A release takes four actions from you: push a release branch, merge the PR it opens, add the summary, and publish the draft release. Workflows do the rest. Store submission needs a signed `.pkg`, which you build on your own machine.
 
 ## Overview
 
@@ -11,14 +11,17 @@ git push origin release-1.21.3
 
 # 2. CI checks the version, merges translations, bumps the version files,
 #    opens the PR "Prepare for v1.21.3 release" and creates a draft release with a ZIP
+#    and its notes
 
 # 3. Review and merge the PR
-#    CI rebuilds the draft release's ZIP from main
+#    CI rebuilds the draft release's ZIP and notes from main
 
-# 4. Edit the draft release: add the scheduled release date, review the notes, publish
+# 4. Type /release-summary 1.21.3 in Claude Code to add the summary, then review the
+#    draft and publish it
 
-# 5. Publishing creates the tag; CI turns [Unreleased] into the release's changelog section
-#    and stamps the version on feature pages that said `since: unreleased`
+# 5. Publishing creates the tag; CI turns [Unreleased] into the release's changelog section,
+#    copies the summary into it, stamps the version on feature pages that said
+#    `since: unreleased`, and links an Announcements discussion
 ```
 
 ## Step by step
@@ -36,17 +39,28 @@ A branch named `release-X.Y.Z` starts `release-management.yml`, which:
 2. Merges translations from Weblate into the branch, fills gaps from other Jellyfin clients, and sends the result back to Weblate. See [Weblate sync](../architecture/translations.md#weblate-sync) for the steps and the `WEBLATE_TOKEN` it needs.
 3. Updates the version in `package.json`, `package-lock.json` and `manifest`.
 4. Opens the PR "Prepare for v1.21.3 release" as `jellyrock[bot]`, labeled `release-prep`.
-5. Builds the production app and creates a draft GitHub release with the ZIP. An existing draft for the same tag is deleted first. The release notes come from the changelog, under a "Release Schedule" heading with a placeholder date.
+5. Builds the production app and creates a draft GitHub release with the ZIP, in the Announcements discussion category. An existing draft for the same tag is deleted first, and its summary is kept. `node scripts/changelog-syncer.js release-notes <version>` builds the notes:
+   - a Release Schedule with the next Roku Channel Store release day (the next weekday, Monday after a Friday or weekend), worked out when the notes are built
+   - the summary, when the draft has one. Until then, a hidden line where it goes says to run `/release-summary`: you see it in the edit box you publish from, and the release page does not show it.
+   - the version's changelog lines, each crediting its author with an `@mention`, and New Contributors
+   - a **Full Changelog** link
+   - the support block, read from `snippets/support.md` in `jellyrock/.github`. The build fails when that file is missing or does not start with its heading.
 
 ### 2. Merge the release PR
 
-Merging a PR labeled `release-prep` into `main` starts `update-draft-release.yml`. It reads the version from the PR title, builds the production app from `main`, and replaces the draft release's ZIP.
+Merging a PR labeled `release-prep` into `main` starts `update-draft-release.yml`. It reads the version from the PR title, builds the production app from `main`, replaces the draft release's ZIP, and builds its notes again the same way, keeping the summary.
 
-### 3. Publish the release
+### 3. Add the summary
 
-Edit the draft release: set the scheduled release date and review the notes. Then publish it.
+Type `/release-summary X.Y.Z` in Claude Code. It drafts a short paragraph on what users would notice, checks it, and shows it to you. On your `ok` it writes it under the Release Schedule in the draft, as a `### Summary` block, in place of the hidden reminder. Run it again to replace it. See [the skill](../../.claude/skills/release-summary/SKILL.md) for what it reads and the shape it holds to.
 
-Publishing creates the `vX.Y.Z` tag on `main`, which starts `release-build.yml`. It turns `[Unreleased]` in `CHANGELOG.md` into the release's section, changes `since: unreleased` to the version on each feature page that said so in the tagged commit, writes the feature catalog, the features index and the README list again, and commits all of it to `main`. The catalog dates each feature from its release's heading in `CHANGELOG.md`, so the changelog step runs first, and the catalog step fails if the heading is missing. A feature page merged after the tag stays `unreleased` for the next release. How changelog entries are built, and how to fix one, is in [Changelog](changelog.md).
+### 4. Publish the release
+
+Review the draft: check the release date and read the notes. Then publish it.
+
+Publishing creates the `vX.Y.Z` tag on `main`, which starts `release-build.yml`. It turns `[Unreleased]` in `CHANGELOG.md` into the release's section, copies the draft's summary to the top of that section (a release without one gets a warning and no summary), changes `since: unreleased` to the version on each feature page that said so in the tagged commit, writes the feature catalog, the features index and the README list again, and commits all of it to `main`. The catalog dates each feature from its release's heading in `CHANGELOG.md`, so the changelog step runs first, and the catalog step fails if the heading is missing. A feature page merged after the tag stays `unreleased` for the next release. How changelog entries are built, and how to fix one, is in [Changelog](changelog.md).
+
+Publishing also starts `release-announcement.yml`, which links an Announcements discussion to the release when it has none. Run it by hand with a tag to link one to an older release.
 
 ## Files the release changes
 
@@ -54,15 +68,17 @@ Publishing creates the `vX.Y.Z` tag on `main`, which starts `release-build.yml`.
 | --- | --- | --- |
 | `package.json`, `package-lock.json` | The release workflow | `version` |
 | `manifest` | The release workflow | `major_version`, `minor_version`, `build_version` |
-| `CHANGELOG.md` | CI | `[Unreleased]` becomes the release's section at publish |
+| `CHANGELOG.md` | CI | `[Unreleased]` becomes the release's section at publish, with the summary at its top |
 | `docs/user/features/*.md`, `docs/feature-catalog.json`, `docs/user/features/index.md`, `README.md` | CI | `since: unreleased` becomes the version at publish, on pages that were unreleased in the tagged commit |
 | `Makefile` | Nobody | Its `VERSION` stays at 1.0.0 unless you change it by hand |
-| The draft release's notes | You | The scheduled release date |
+| The draft release's notes | You, through `/release-summary` | The summary |
 
 ## Fixing a release in progress
 
 - **Wrong code or version files:** push fixes to the release branch before you merge its PR.
-- **Wrong release notes:** edit the draft release before you publish it.
+- **Wrong release notes, before the release PR merges:** fix the cause (a PR title, see [Changelog](changelog.md)) and sync `main`. Merging the release PR rebuilds the notes from `main`, so a hand edit to the draft before then is lost; only the summary is kept.
+- **Wrong release notes, after the merge:** edit the draft release by hand before you publish it.
+- **Published without a summary:** run `/release-summary X.Y.Z`. It drafts the summary and, since it can't write into a published release, shows it with the two places to paste it: the release's edit box and the top of its section in `CHANGELOG.md`.
 - **Start over:** delete the draft release. Pushing to the release branch again creates a new one.
 
 ## Signed `.pkg` for Roku Channel Store
