@@ -376,9 +376,3 @@ jobs:
       - name: Push changes
         if: env.has_changes == 'true'
         run: git push origin main
-
-      - name: Verify final state
-        run: |
-          echo "✅ Changelog sync completed"
-          echo "📊 Final changelog state:"
-          npm run changelog:status
