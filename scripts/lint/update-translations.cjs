@@ -235,8 +235,9 @@ function extractTranslateKeys(code) {
     });
   }
 
-  // Match translatePlural(translationKeys.BaseKey, ...): compile-time safe plural calls
-  const pluralConstRegex = /\btranslatePlural\(\s*translationKeys\.(\w+)/g;
+  // Match translatePlural(translationKeys.BaseKey, ...) and pluralKey(translationKeys.BaseKey, ...)
+  // (the key translatePlural reads, for code that hands a key on): compile-time safe plural calls
+  const pluralConstRegex = /\b(?:translatePlural|pluralKey)\(\s*translationKeys\.(\w+)/g;
   while ((match = pluralConstRegex.exec(code)) !== null) {
     const baseKey = match[1];
     pluralBaseKeys.add(baseKey);

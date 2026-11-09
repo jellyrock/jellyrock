@@ -1,6 +1,7 @@
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/serverCapabilities.bs"
+import "pkg:/source/utils/translate.bs"
 ' The SyncPlay menu's decisions, pure: no node, no m.global. JRScene asks here what the cluster's
 ' SyncPlay icon shows and what the group menu offers, so a Rooibos spec covers every access value
 ' and every membership state without a scene.
@@ -27,21 +28,10 @@ namespace syncPlayMenu
   ' way to know a group exists. jellyfin-web reads it as often.
   const GROUPS_POLL_MS = 60000
 
-  ' Whether SyncPlay is offered at all. False hides the cluster icon, the one way into a group,
-  ' so a release can ship without it. Remove it once the in-player SyncPlay surface ships
-  ' (followup syncplay-remove-enabled-switch).
-  const IS_ENABLED = true
-
-  ' Whether this user may join a group: SyncPlay is switched on and the policy allows it.
+  ' Whether this user may join a group: the policy allows it. An unknown or missing policy value
+  ' is treated as the server's default (CreateAndJoinGroups), the way SessionDataTransformer
+  ' fills it.
   function canJoin(access as dynamic) as boolean
-    return joinAllowed(access, IS_ENABLED)
-  end function
-
-  ' canJoin with the switch passed in, so a spec can drive both values. An unknown or missing
-  ' policy value is treated as the server's default (CreateAndJoinGroups), the way
-  ' SessionDataTransformer fills it.
-  function joinAllowed(access as dynamic, enabled as boolean) as boolean
-    if not enabled then return false
     return not isAccess(access, ACCESS_NONE)
   end function
 
@@ -125,6 +115,16 @@ namespace syncPlayMenu
     return { shown: shown, disabled: disabled, active: inGroup, badge: shown and not disabled and not inGroup and groupsAvailable }
   end function
 
+  ' What a press on the icon says instead of opening the menu, or "" to open it. With no push
+  ' channel the server would take a join but no frame would reach this Roku. On http the channel
+  ' is the session socket, down while it reconnects; on https it is the companion plugin. A member
+  ' already in a group still gets its menu: Leave is a plain request.
+  function channelMessageKey(channel as string, inGroup as boolean, isHttp as boolean) as string
+    if channel <> serverCapabilities.STATUS_UNAVAILABLE or inGroup then return ""
+    if isHttp then return translationKeys.MessageSyncPlayReconnecting
+    return translationKeys.MessageSyncPlayNeedsPlugin
+  end function
+
   ' Whether a /SyncPlay/List answer holds a group the viewer could join: one with an id.
   function hasGroups(groups as dynamic) as boolean
     if type(groups) <> "roArray" then return false
@@ -142,7 +142,8 @@ namespace syncPlayMenu
   end function
 
   ' The toast for a manager notice ({ kind, groupName, userName }): the translation key, the
-  ' toast type and the one placeholder, or invalid for a kind that shows nothing. The types
+  ' toast type and the one placeholder (arg), or every placeholder in order (params) for a kind
+  ' with more than one, or invalid for a kind that shows nothing. The types
   ' follow the settled table: success for the viewer's own join, info for membership and the
   ' group start, warning for a halt, error for a refusal.
   function toastFor(notice as dynamic) as dynamic
@@ -159,6 +160,13 @@ namespace syncPlayMenu
     if kind = "userLeft" then return { key: translationKeys.MessageSyncPlayUserLeft, toastType: "info", arg: userName }
     if kind = "groupStarted" then return { key: translationKeys.MessageSyncPlayGroupStarted, toastType: "info", arg: groupName }
     if kind = "playedToGroup" then return { key: translationKeys.MessageSyncPlayPlayedToGroup, toastType: "info", arg: groupName }
+    if kind = "alreadyWatching" then return { key: translationKeys.MessageSyncPlayAlreadyWatching, toastType: "info", arg: groupName }
+    if kind = "queuedNext"
+      ' Two placeholders, {0} the group and {1} the count, so it carries params in place of arg.
+      count = 0
+      if isValid(notice.count) then count = cint(notice.count)
+      return { key: pluralKey(translationKeys.MessageSyncPlayQueuedNext, count), toastType: "info", arg: groupName, params: [groupName, count.toStr()] }
+    end if
     if kind = "followingAgain" then return { key: translationKeys.MessageSyncPlayFollowingAgain, toastType: "info", arg: groupName }
     if kind = "resumeFailed" then return { key: translationKeys.MessageSyncPlayResumeFailed, toastType: "warning", arg: groupName }
     if kind = "syncing" then return { key: translationKeys.MessageSyncPlaySyncingWithGroup, toastType: "info", arg: "" }
@@ -168,6 +176,23 @@ namespace syncPlayMenu
     if kind = "CreateGroupDenied" then return { key: translationKeys.MessageSyncPlayCreateGroupDenied, toastType: "error", arg: "" }
     if kind = "JoinGroupDenied" then return { key: translationKeys.MessageSyncPlayJoinGroupDenied, toastType: "error", arg: "" }
     return invalid
+  end function
+
+  ' The question a halted member's play asks (a confirmPlay notice): the translation key and its
+  ' placeholders, {0} the title, {1} the group and, for several videos, {2} how many more follow.
+  ' The Zero, One and Many keys are chosen by moreCount (pluralKey, translatePlural's rule). A
+  ' notice with no usable title falls back to the question that names only the group ({0}).
+  function confirmFor(notice as dynamic) as dynamic
+    groupName = ""
+    title = ""
+    moreCount = 0
+    if type(notice) = "roAssociativeArray"
+      if isValidAndNotEmpty(notice.groupName) then groupName = notice.groupName
+      if isValidAndNotEmpty(notice.title) then title = notice.title
+      if isValid(notice.moreCount) then moreCount = cint(notice.moreCount)
+    end if
+    if title = "" then return { key: translationKeys.MessageSyncPlayConfirmPlay, params: [groupName] }
+    return { key: pluralKey(translationKeys.MessageSyncPlayConfirmPlayTitled, moreCount), params: [title, groupName, moreCount.toStr()] }
   end function
 
   function isAccess(access as dynamic, value as string) as boolean

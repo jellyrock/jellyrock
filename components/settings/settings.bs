@@ -908,7 +908,7 @@ sub onDestroy()
   m.radioSetting.unobserveField("checkedItem")
 
   ' Drop any confirmation still on screen. It is a scene child, so it would
-  ' otherwise outlive this view (see abandonDialog in source/utils/dialogs.bs)
+  ' otherwise outlive this view (see abandonDialog in source/utils/overlayDialog.bs)
   abandonDialog(m.resetConfirmDialog)
   abandonDialog(m.rangeConfirmDialog)
   m.resetConfirmDialog = invalid

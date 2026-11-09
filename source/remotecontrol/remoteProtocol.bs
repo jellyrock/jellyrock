@@ -102,6 +102,17 @@ namespace remoteProtocol
     return 0
   end function
 
+  ' Whether a session socket that closed marks the push channel unavailable, which disables
+  ' the SyncPlay icon. Not before the socket has opened in this run: the status stays unknown and
+  ' the icon hidden, as for a server never reached. Not when a stable session drops: a blip gets
+  ' one quiet reconnect first. Only when that reconnect fails, or the socket keeps dropping.
+  '
+  ' @param hasOpened - the socket opened at least once in this receiver run
+  ' @param wasStable - the connection that closed opened and stayed up (connectAndPump's answer)
+  function socketDownMarksUnavailable(hasOpened as boolean, wasStable as boolean) as boolean
+    return hasOpened and not wasStable
+  end function
+
   ' What to do with a plugin probe's answer (see probeOutcome).
   const PROBE_AVAILABLE = "available"
   const PROBE_UNAVAILABLE = "unavailable"

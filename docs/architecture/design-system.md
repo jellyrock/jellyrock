@@ -24,7 +24,7 @@ related-files:
   - source/utils/textMetrics.bs
   - source/utils/iconBarNav.bs
   - resources/icons/icons.json
-last-reviewed: 2026-10-27
+last-reviewed: 2026-11-07
 ---
 
 # Design system
@@ -85,6 +85,6 @@ Left and Right walk the row as one and wrap at both ends; Down returns to the sc
 
 ## Where the numbers are enforced
 
-The row's shared numbers live in one file, `source/utils/overhangRow.bs`: three chosen (the row's height, the glyph size, the padding inside a box), the two gaps and the text drop, and the rest derived from them. The components read it; what only one component uses stays there (`CLOCK_SLOT` and `LOGO_Y` in `JROverhang.bs`, the avatar, chevron and part gap in `JRDropdown`). Change a number there and this page, not the other way round. Where a label's caps sit in its box is one function, `capsAboveCenter` in `source/utils/textMetrics.bs`, which `TextButton`'s icon and the name in the user dropdown use; `textMetrics.spec.bs` fails if the row's text drop stops matching it.
+The row's shared numbers live in one file, `source/utils/overhangRow.bs`: three chosen (the row's height, the glyph size, the padding inside a box), the three gaps (between tabs, between the right-hand elements, and before the clock's digits, which the group mark in the player's OSD keeps too) and the text drop, and the rest derived from them. The components read it; `leftOfClock()` places whatever ends at the clock, and `CLOCK_PROVISIONAL_WIDTH` stands in for its digits until it reports their width; what only one component uses stays there (`LOGO_Y` in `JROverhang.bs`, the avatar, chevron and part gap in `JRDropdown`). Change a number there and this page, not the other way round. Where a label's caps sit in its box is one function, `capsAboveCenter` in `source/utils/textMetrics.bs`, which `TextButton`'s icon and the name in the user dropdown use; `textMetrics.spec.bs` fails if the row's text drop stops matching it.
 
 Two checks hold it, and one measurement. The Rooibos spec `JROverhangLayout.spec.bs` fails on any box the overhang places off the grid, or off the row's edges. On hardware, `RTA_BENCH=1 npm run test:rta -- overhang-ink` writes where each element's ink sits on Home and on Settings, and each box's position, to `out/rta-captures/*.ink.json` (through `tests/rta/lib/ink.js`); it gates nothing, so judge a layout change by diffing the tables of two runs. The RTA specs `search-navigation`, `overhang-clock` and `home-failure` walk the row.

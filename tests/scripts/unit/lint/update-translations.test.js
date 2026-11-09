@@ -72,6 +72,21 @@ describe('update-translations.cjs', () => {
       expect(stdout).toMatch(/Orphan/);
     });
 
+    it('counts a pluralKey(translationKeys.Base, …) call as a use of the whole plural set', () => {
+      fixture = createLocaleFixture({
+        en_US: { FooMany: '{0} foos', FooOne: '1 foo', FooZero: 'No foos', ...BASELINE_EN_US },
+        sources: {
+          ...BASELINE_SOURCE,
+          'source/plural.bs':
+            'function key(n as integer) as string\n  return pluralKey(translationKeys.Foo, n)\nend function\n',
+        },
+      });
+      const { exitCode, stdout } = spawnScript(SCRIPT, [], { cwd: fixture.dir });
+      expect(stdout).not.toMatch(/orphan key\(s\)/);
+      expect(stdout).not.toMatch(/missing key\(s\)/);
+      expect(exitCode).toBe(0);
+    });
+
     it('exits 1 when code references a key not in en_US.json', () => {
       fixture = createLocaleFixture({
         en_US: BASELINE_EN_US,

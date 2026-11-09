@@ -2279,7 +2279,7 @@ sub onState()
     else
       reportPlayback()
     end if
-    restartPlaybackTimer(playbackCheckIn.PLAYING_REPORT_SECONDS)
+    restartPlaybackTimer(playbackCheckIn.REPORT_SECONDS)
     ' The capped restart of a paused stream: its first frame is where it pauses again.
     if m.holdPausedAfterReload
       m.holdPausedAfterReload = false
@@ -2292,10 +2292,11 @@ sub onState()
     m.bufferCheckTimer.control = "stop"
     m.bufferCheckTimer.unobserveField("fire")
     reportPlayback()
-    ' Paused, the server still ends a session with no report for 5 minutes, and it can lose this
-    ' report to its own "still playing" copies (playbackCheckIn.bs): keep reporting slowly, and
-    ' read the session back to confirm the pause.
-    restartPlaybackTimer(playbackCheckIn.KEEPALIVE_SECONDS)
+    ' Paused, the server still ends a session with no report for 5 minutes, kills a transcode with
+    ' no ping for 60 seconds, and can lose this report to its own "still playing" copies
+    ' (playbackCheckIn.bs): keep reporting at the same pace, and read the session back to confirm
+    ' the pause.
+    restartPlaybackTimer(playbackCheckIn.REPORT_SECONDS)
     m.pauseCheck.paused()
     m.pauseConfirmTimer.control = "stop"
     m.pauseConfirmTimer.control = "start"
@@ -3199,6 +3200,12 @@ function handleTransport(evt as object) as object
     m.osd.hasFocus = true
     m.osd.setFocus(true)
     return { status: "success" }
+  end if
+
+  ' While following a SyncPlay group a trick play on the node alone would move this member away
+  ' from the group: the command is a relative seek the group takes, the way Replay is.
+  if (cmd = "forward" or cmd = "rewind") and syncPlayHooks.following()
+    return seekRelativeWithBounds(voiceTransport.groupTrickSeekDelta(cmd, getInstantReplaySeconds()))
   end if
 
   if cmd = "forward"

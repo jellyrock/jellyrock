@@ -140,19 +140,57 @@ namespace tests
       m.mountedIn.removeChild(dialog)
     end function
 
-    @it("leaves a dialog alone when it gives the focus back somewhere else")
+    @it("leaves a dialog alone when it gives the focus back outside every screen")
     function _()
+      outside = CreateObject("roSGNode", "Group")
       dialog = CreateObject("roSGNode", "Group")
       dialog.id = "jrDialog"
       dialog.focusable = true
       dialog.addField("returnFocusTo", "node", false)
-      dialog.returnFocusTo = m.other
-      m.mountedIn.appendChild(dialog)
+      dialog.returnFocusTo = outside
+      m.mountedIn.appendChildren([outside, dialog])
       dialog.setFocus(true)
 
       m.begin()
-      m.assertTrue(dialog.returnFocusTo.isSameNode(m.other))
-      m.mountedIn.removeChild(dialog)
+      m.assertTrue(dialog.returnFocusTo.isSameNode(outside))
+      m.mountedIn.removeChildren([dialog, outside])
+    end function
+
+    @it("takes the focus a dialog opened over a screen the viewer left would give the hidden screen (a cast under a dialog)")
+    function _()
+      ' The dialog opened over m.other; a navigation then made m.launcher the active view, and
+      ' closing the dialog hands the focus to it (closeOverlayDialog), the screen this start hides.
+      covered = m.other.createChild("Group")
+      covered.focusable = true
+      covered.setFocus(true)
+      dialog = showConfirmDialog("Title", "Message")
+      m.assertTrue(dialog.isInFocusChain())
+
+      appWait = m.begin()
+      m.assertTrue(m.launcher.opacity = 0)
+
+      dialog.callFunc("cancelDialog")
+      m.assertTrue(m.host.hasFocus(), "the hidden screen takes no keys while the start runs")
+
+      appWaits.done(appWait)
+      m.assertTrue(m.launcher.isInFocusChain(), "the screen the viewer is on takes the focus back")
+      m.assertFalse(covered.hasFocus())
+    end function
+
+    @it("gives a dialog opened over a screen the viewer left its own target back when the wait ends first")
+    function _()
+      covered = m.other.createChild("Group")
+      covered.focusable = true
+      covered.setFocus(true)
+      dialog = showConfirmDialog("Title", "Message")
+
+      appWait = m.begin()
+      appWaits.done(appWait)
+      m.assertTrue(dialog.returnFocusTo.isSameNode(covered))
+
+      dialog.callFunc("cancelDialog")
+      m.assertTrue(m.launcher.isInFocusChain(), "the close hands the focus to the screen the viewer is on")
+      m.assertFalse(covered.hasFocus())
     end function
 
     @it("is what appWaits.begin opens")
@@ -476,6 +514,81 @@ namespace tests
       m.host.callFunc("begin", LoadingKind.OVERLAY, "")
       m.assertTrue(m.player.hasFocus())
       m.assertFalse(m.host.callFunc("cancelOnBack"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("pause() / resume() — a start that waits on the viewer's answer")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows the screen and the overhang again and drops off the spinner while paused")
+    function _()
+      appWait = m.begin()
+      m.assertTrue(appWaits.pause(appWait))
+      m.assertTrue(m.launcher.opacity = 1)
+      m.assertTrue(m.overhang.opacity = 1)
+      m.assertEqual(m.host.openWaits.count(), 0)
+      m.assertTrue(appWaits.isOpen(appWait))
+    end function
+
+    @it("keeps the remote focus held while paused, and Back still cancels it")
+    function _()
+      appWait = m.begin()
+      appWaits.pause(appWait)
+      m.assertTrue(m.host.hasFocus())
+      m.assertTrue(m.host.callFunc("cancelOnBack"))
+      m.assertEqual(appWait.promiseState, "rejected")
+      m.assertTrue(m.button.hasFocus())
+    end function
+
+    @it("hides the screen and shows on the spinner again when resumed")
+    function _()
+      appWait = m.begin("Movie")
+      appWaits.pause(appWait)
+      m.assertTrue(appWaits.resume(appWait))
+      m.assertTrue(m.launcher.opacity = 0)
+      m.assertTrue(m.overhang.opacity = 0)
+      m.assertEqual(m.host.openWaits.count(), 1)
+    end function
+
+    @it("starts the spinner's clock over when resumed, so the viewer's reading time is not loading time")
+    function _()
+      appWait = m.begin("Movie")
+      startedAtBegin = m.host.openWaits.items()[0].value.startedMs
+      appWaits.pause(appWait)
+      ' Let the clock tick past a millisecond, as a viewer reading a question does.
+      clock = CreateObject("roTimespan")
+      while clock.TotalMilliseconds() < 5
+      end while
+      m.assertTrue(appWaits.resume(appWait))
+      startedAfterResume = m.host.openWaits.items()[0].value.startedMs
+      m.assertTrue(startedAfterResume > startedAtBegin, "the wait's age counts from the resume")
+    end function
+
+    @it("keeps the screen hidden while another start from it still loads")
+    function _()
+      first = m.begin()
+      m.begin()
+      appWaits.pause(first)
+      m.assertTrue(m.launcher.opacity = 0)
+      m.assertEqual(m.host.openWaits.count(), 1)
+    end function
+
+    @it("ends a paused start as any other: the screen and its focus come back")
+    function _()
+      appWait = m.begin()
+      appWaits.pause(appWait)
+      appWaits.fail(appWait, "the viewer kept the group's playback")
+      m.assertTrue(m.launcher.opacity = 1)
+      m.assertTrue(m.button.hasFocus())
+    end function
+
+    @it("refuses a wait that has ended, and does nothing without one")
+    function _()
+      appWait = m.begin()
+      appWaits.done(appWait)
+      m.assertFalse(appWaits.pause(appWait))
+      m.assertFalse(appWaits.resume(appWait))
+      m.assertFalse(appWaits.pause(invalid))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

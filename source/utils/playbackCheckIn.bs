@@ -2,25 +2,26 @@ import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/enums/PauseReadBack.bs"
 import "pkg:/source/utils/misc.bs"
 
-' How a player keeps the server's view of its playback true. Two server rules shape it (read in
+' How a player keeps the server's view of its playback true. Three server rules shape it (read in
 ' Jellyfin 12.4; the same in 10.11 and 12.2):
 '   - After each report the server sends itself a "still playing" copy of it every second
 '     (SessionInfo.StartAutomaticProgress). A copy that lands while a pause report is being handled
 '     sets IsPaused back to false, and nothing corrects it until the next report.
 '   - It ends a playing session that sent no report of its own for more than 5 minutes, paused or
 '     not (SessionManager.CheckForIdlePlayback). Its copies do not count.
+'   - It kills an HLS transcode that gets no ping for 60 seconds and deletes its segments
+'     (TranscodeManager.OnTranscodeKillTimerStopped). A report pings it, and so do the copies, but
+'     the copies stop once a pause is held and a paused Roku with a full buffer requests no segments.
 ' So a player reads its session back after a pause report and sends the pause again when it was
-' lost, and keeps reporting while a stream is open: every PLAYING_REPORT_SECONDS while it plays,
-' every KEEPALIVE_SECONDS while it is paused.
+' lost, and reports every REPORT_SECONDS while a stream is open, paused or playing, as Jellyfin Web
+' does.
 namespace playbackCheckIn
 
-  ' Seconds between reports while playing. The server saves the resume point only from a report of
-  ' the player's own (SessionManager.OnPlaybackProgress), so this is the most position a crash or a
-  ' lost connection can lose.
-  const PLAYING_REPORT_SECONDS = 10
-  ' Seconds between reports while paused: well inside the server's 5-minute limit, and the longest a
-  ' pause the read-back could not confirm stays lost.
-  const KEEPALIVE_SECONDS = 60
+  ' Seconds between reports, paused or playing. The server saves the resume point only from a report
+  ' of the player's own (SessionManager.OnPlaybackProgress), so this is the most position a crash or
+  ' a lost connection can lose. While paused, it must stay well under the 60-second transcode kill
+  ' timer, or a pause longer than that loses the transcode and resuming has to start ffmpeg again.
+  const REPORT_SECONDS = 10
   ' Seconds from a pause report to the read-back. The server's copies stop once it holds a paused
   ' report, so a read this late sees the state that stays.
   const CONFIRM_DELAY_SECONDS = 2
@@ -93,7 +94,7 @@ namespace playbackCheckIn
     function nextReadBack() as dynamic
       req = sessionRequest()
       if not isValid(req)
-        m.log.warn("no request to read the session back; the keepalive reports the pause again")
+        m.log.warn("no request to read the session back; the next report sends the pause again")
         return invalid
       end if
       m.seq++
@@ -115,9 +116,9 @@ namespace playbackCheckIn
         return true
       end if
       if action = PauseReadBack.GIVE_UP
-        m.log.warn("the server still shows playing; the keepalive will report the pause again", "reportsSent", m.reportsSent)
+        m.log.warn("the server still shows playing; the next report sends the pause again", "reportsSent", m.reportsSent)
       else if action = PauseReadBack.UNREADABLE
-        m.log.warn("pause read-back could not judge the session; the keepalive reports the pause again", "cause", unreadableCause(res))
+        m.log.warn("pause read-back could not judge the session; the next report sends the pause again", "cause", unreadableCause(res))
       else
         m.log.debug("the server shows the pause", "reportsSent", m.reportsSent)
       end if
@@ -127,7 +128,7 @@ namespace playbackCheckIn
     ' The read-back never answered (transport, timeout, no pool).
     ' @param err - the rejection: a timeout rejects with the pool's result, which has no `reason`
     sub readBackFailed(err as dynamic)
-      m.log.warn("pause read-back failed; the keepalive reports the pause again", err)
+      m.log.warn("pause read-back failed; the next report sends the pause again", err)
     end sub
 
   end class

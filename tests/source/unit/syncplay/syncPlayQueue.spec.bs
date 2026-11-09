@@ -358,6 +358,87 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("castGoesToGroup() — a cast over the player of a following member")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("hands a following member's cast of a video to the group")
+    function _()
+      m.assertTrue(syncPlayQueue.castGoesToGroup("play", { id: "i-1", type: "Movie" }, true))
+      m.assertTrue(syncPlayQueue.castGoesToGroup("play", { id: "i-2", type: "Episode" }, true))
+    end function
+
+    @it("leaves a halted member's cast to the springboard, which asks before it replaces the group's")
+    function _()
+      m.assertFalse(syncPlayQueue.castGoesToGroup("play", { id: "i-1", type: "Movie" }, false))
+    end function
+
+    @it("leaves shuffle, trailers, an instant mix and an item the group cannot follow to the springboard")
+    function _()
+      m.assertFalse(syncPlayQueue.castGoesToGroup("shuffle", { id: "i-1", type: "Series" }, true))
+      m.assertFalse(syncPlayQueue.castGoesToGroup("trailer", { id: "i-1", type: "Movie" }, true))
+      m.assertFalse(syncPlayQueue.castGoesToGroup("instantmix", { id: "i-1", type: "Audio" }, true))
+      m.assertFalse(syncPlayQueue.castGoesToGroup("play", { id: "i-1", type: "Audio" }, true))
+      m.assertFalse(syncPlayQueue.castGoesToGroup("play", invalid, true))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isGroupsPlayingItem() — a play of the video the group is watching")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for the item the group plays, whichever launcher queued it")
+    function _()
+      state = { playlist: m.playlist, playingItemId: "p-2" }
+      m.assertTrue(syncPlayQueue.isGroupsPlayingItem({ id: "i-2", type: "Movie" }, state))
+    end function
+
+    @it("is false for another item of the group's playlist, which the group would jump to")
+    function _()
+      state = { playlist: m.playlist, playingItemId: "p-2" }
+      m.assertFalse(syncPlayQueue.isGroupsPlayingItem({ id: "i-1", type: "Movie" }, state))
+      m.assertFalse(syncPlayQueue.isGroupsPlayingItem({ id: "i-9", type: "Movie" }, state))
+    end function
+
+    @it("reads the entry playing now when the playlist holds the item twice")
+    function _()
+      playlist = [{ itemId: "i-1", playlistItemId: "p-1" }, { itemId: "i-2", playlistItemId: "p-2" }, { itemId: "i-1", playlistItemId: "p-3" }]
+      m.assertTrue(syncPlayQueue.isGroupsPlayingItem({ id: "i-1" }, { playlist: playlist, playingItemId: "p-3" }))
+      m.assertFalse(syncPlayQueue.isGroupsPlayingItem({ id: "i-1" }, { playlist: playlist, playingItemId: "p-2" }))
+    end function
+
+    @it("is false for a group that stopped: a Stop at or after the last queue update keeps the queue but plays nothing")
+    function _()
+      state = { playlist: m.playlist, playingItemId: "p-2", lastUpdateMs: 1000& }
+      m.assertFalse(syncPlayQueue.isGroupsPlayingItem({ id: "i-2", type: "Movie" }, state, { command: "Stop", emittedAtMs: 1000& }))
+      m.assertFalse(syncPlayQueue.isGroupsPlayingItem({ id: "i-2", type: "Movie" }, state, { command: "Stop", emittedAtMs: 2500& }))
+    end function
+
+    @it("is still true when the Stop predates the last queue update: a newer queue is playing")
+    function _()
+      state = { playlist: m.playlist, playingItemId: "p-2", lastUpdateMs: 1000& }
+      m.assertTrue(syncPlayQueue.isGroupsPlayingItem({ id: "i-2", type: "Movie" }, state, { command: "Stop", emittedAtMs: 999& }))
+    end function
+
+    @it("is still true after any command but a Stop, or with no command")
+    function _()
+      state = { playlist: m.playlist, playingItemId: "p-2", lastUpdateMs: 1000& }
+      m.assertTrue(syncPlayQueue.isGroupsPlayingItem({ id: "i-2", type: "Movie" }, state, { command: "Unpause", emittedAtMs: 2500& }))
+      m.assertTrue(syncPlayQueue.isGroupsPlayingItem({ id: "i-2", type: "Movie" }, state, invalid))
+    end function
+
+    @it("is still true when the queue's last update time is unknown: a Stop cannot be placed against it, and no crash")
+    function _()
+      state = { playlist: m.playlist, playingItemId: "p-2", lastUpdateMs: invalid }
+      m.assertTrue(syncPlayQueue.isGroupsPlayingItem({ id: "i-2", type: "Movie" }, state, { command: "Stop", emittedAtMs: 2500& }))
+    end function
+
+    @it("is false while the group plays nothing, and for no item")
+    function _()
+      m.assertFalse(syncPlayQueue.isGroupsPlayingItem({ id: "i-1" }, { playlist: m.playlist, playingItemId: "" }))
+      m.assertFalse(syncPlayQueue.isGroupsPlayingItem({ id: "i-1" }, { playlist: [], playingItemId: "p-1" }))
+      m.assertFalse(syncPlayQueue.isGroupsPlayingItem(invalid, { playlist: m.playlist, playingItemId: "p-1" }))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("owedLoadAfter()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -659,6 +740,84 @@ namespace tests
     @it("a load no frame decided is the group starting something")
     function _()
       m.assertEqual(syncPlayQueue.noticeAtLoad(invalid, "launch", false), "groupStarted")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("playerIsOnGroupItem()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a player is on the group's item only when it is following, mounted, not remounting and tracked")
+    function _()
+      m.assertTrue(syncPlayQueue.playerIsOnGroupItem(true, true, false, "ready"))
+      m.assertTrue(syncPlayQueue.playerIsOnGroupItem(true, true, false, "loading"))
+      m.assertFalse(syncPlayQueue.playerIsOnGroupItem(false, true, false, "ready"), "halted")
+      m.assertFalse(syncPlayQueue.playerIsOnGroupItem(true, false, false, "ready"), "no player")
+      m.assertFalse(syncPlayQueue.playerIsOnGroupItem(true, true, true, "ready"), "remounting")
+      m.assertFalse(syncPlayQueue.playerIsOnGroupItem(true, true, false, "idle"), "no mount reported for the group's item")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("queueNextIds() — what a catch-up adds after the group's video")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the videos after the played one, in order, are added")
+    function _()
+      state = { playlist: [{ itemId: "e3", playlistItemId: "p-3" }] }
+      queue = [{ id: "e3", type: "Episode" }, { id: "e4", type: "Episode" }, { id: "e5", type: "Episode" }]
+      m.assertEqual(syncPlayQueue.queueNextIds(queue, 0, state), ["e4", "e5"])
+    end function
+
+    @it("the videos before the played one are not added")
+    function _()
+      state = { playlist: [{ itemId: "e3", playlistItemId: "p-3" }] }
+      queue = [{ id: "e1", type: "Episode" }, { id: "e2", type: "Episode" }, { id: "e3", type: "Episode" }, { id: "e4", type: "Episode" }]
+      m.assertEqual(syncPlayQueue.queueNextIds(queue, 2, state), ["e4"])
+    end function
+
+    @it("a video the group's playlist already holds is not added again, nor one the queue repeats")
+    function _()
+      state = { playlist: [{ itemId: "e3", playlistItemId: "p-3" }, { itemId: "e4", playlistItemId: "p-4" }] }
+      queue = [{ id: "e3", type: "Episode" }, { id: "e4", type: "Episode" }, { id: "e5", type: "Episode" }, { id: "e5", type: "Episode" }]
+      m.assertEqual(syncPlayQueue.queueNextIds(queue, 0, state), ["e5"])
+    end function
+
+    @it("an item the player cannot follow is left out")
+    function _()
+      state = { playlist: [{ itemId: "e3", playlistItemId: "p-3" }] }
+      queue = [{ id: "e3", type: "Episode" }, { id: "a1", type: "Audio" }, { id: "e4", type: "Episode" }]
+      m.assertEqual(syncPlayQueue.queueNextIds(queue, 0, state), ["e4"])
+    end function
+
+    @it("nothing after the played one adds nothing")
+    function _()
+      state = { playlist: [{ itemId: "e3", playlistItemId: "p-3" }] }
+      m.assertEqual(syncPlayQueue.queueNextIds([{ id: "e3", type: "Episode" }], 0, state), [])
+      m.assertEqual(syncPlayQueue.queueNextIds(invalid, 0, state), [])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("queuedNextCount() — whether a queue update is the group taking what was added")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    private added = [{ itemId: "e3", playlistItemId: "p-3" }, { itemId: "e4", playlistItemId: "p-4" }, { itemId: "e5", playlistItemId: "p-5" }]
+
+    @it("a QueueNext update holding every id added is told with their count")
+    function _()
+      m.assertEqual(syncPlayQueue.queuedNextCount(["e4", "e5"], "QueueNext", m.added), 2)
+    end function
+
+    @it("an update missing one of them is someone else's: the server refuses an addition silently")
+    function _()
+      m.assertEqual(syncPlayQueue.queuedNextCount(["e4", "e6"], "QueueNext", m.added), 0)
+    end function
+
+    @it("any other update, or nothing added, tells nothing")
+    function _()
+      m.assertEqual(syncPlayQueue.queuedNextCount(["e4"], "NewPlaylist", m.added), 0)
+      m.assertEqual(syncPlayQueue.queuedNextCount(["e4"], "Queue", m.added), 0)
+      m.assertEqual(syncPlayQueue.queuedNextCount([], "QueueNext", m.added), 0)
+      m.assertEqual(syncPlayQueue.queuedNextCount(invalid, "QueueNext", m.added), 0)
+      m.assertEqual(syncPlayQueue.queuedNextCount(["e4"], "QueueNext", invalid), 0)
     end function
 
   end class

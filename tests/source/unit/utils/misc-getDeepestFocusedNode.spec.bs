@@ -1,0 +1,62 @@
+namespace tests
+
+  ' getDeepestFocusedNode is the one walk down the focus chain: dialogs derive returnFocusTo
+  ' with it, JRScreen saves and checks focus with it, AppWaitHost holds the overhang's node with it.
+  @suite("misc.bs - getDeepestFocusedNode")
+  class GetDeepestFocusedNodeTests extends tests.BaseTestSuite
+
+    private root as object
+    private other as object
+
+    ' beforeEach, not setup: every test moves focus (tests/CLAUDE.md).
+    protected override sub beforeEach()
+      super.beforeEach()
+      m.root = CreateObject("roSGNode", "Group")
+      m.root.focusable = true
+      m.other = CreateObject("roSGNode", "Group")
+      m.other.focusable = true
+      m.top.getScene().appendChildren([m.root, m.other])
+    end sub
+
+    protected override sub afterEach()
+      m.top.getScene().removeChildren([m.root, m.other])
+      m.root = invalid
+      m.other = invalid
+      super.afterEach()
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getDeepestFocusedNode")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns invalid when nothing under the root has the focus")
+    function _()
+      m.other.setFocus(true)
+      m.assertInvalid(getDeepestFocusedNode(m.root))
+    end function
+
+    @it("returns the root when the root itself has the focus")
+    function _()
+      m.root.setFocus(true)
+      m.assertTrue(getDeepestFocusedNode(m.root).isSameNode(m.root))
+    end function
+
+    ' The root has one child and the focus is three levels down. The walk this replaced,
+    ' lastFocusedChild, took one step per child of the root and stopped short here.
+    @it("follows a chain deeper than the root has children")
+    function _()
+      leaf = m.root.createChild("Group").createChild("Group").createChild("Group")
+      leaf.focusable = true
+      leaf.setFocus(true)
+
+      m.assertTrue(getDeepestFocusedNode(m.root).isSameNode(leaf))
+    end function
+
+    @it("returns invalid for an invalid root")
+    function _()
+      m.assertInvalid(getDeepestFocusedNode(invalid))
+    end function
+
+  end class
+
+end namespace
