@@ -1,7 +1,7 @@
 name: Link Release Announcement
 
-# Every published release gets an Announcements discussion. The draft workflows also set
-# the category before publishing; this catches a release published without it.
+# Every published release gets an Announcements discussion, and this workflow is what links
+# it: GitHub drops a discussion category set on a draft, so the draft workflows set none.
 # Editing a release is not a "published" event, so this never triggers itself.
 
 on:

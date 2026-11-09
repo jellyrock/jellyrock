@@ -103,7 +103,7 @@ jobs:
           gh release upload "$TAG_NAME" "out/${{ steps.create_zip.outputs.zip_name }}" --clobber
 
           # Update release body
-          gh release edit "$TAG_NAME" --notes-file out/release-notes.md --discussion-category "Announcements"
+          gh release edit "$TAG_NAME" --notes-file out/release-notes.md
 
           echo "✅ Updated draft release $TAG_NAME with new ZIP"
           echo "📝 Next: run /release-summary $VERSION, then review the draft and publish it"

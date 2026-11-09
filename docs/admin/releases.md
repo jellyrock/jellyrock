@@ -39,7 +39,7 @@ A branch named `release-X.Y.Z` starts `release-management.yml`, which:
 2. Merges translations from Weblate into the branch, fills gaps from other Jellyfin clients, and sends the result back to Weblate. See [Weblate sync](../architecture/translations.md#weblate-sync) for the steps and the `WEBLATE_TOKEN` it needs.
 3. Updates the version in `package.json`, `package-lock.json` and `manifest`.
 4. Opens the PR "Prepare for v1.21.3 release" as `jellyrock[bot]`, labeled `release-prep`.
-5. Builds the production app and creates a draft GitHub release with the ZIP, in the Announcements discussion category. An existing draft for the same tag is deleted first, and its summary is kept. `node scripts/changelog-syncer.js release-notes <version>` builds the notes:
+5. Builds the production app and creates a draft GitHub release with the ZIP. An existing draft for the same tag is deleted first, and its summary is kept. `node scripts/changelog-syncer.js release-notes <version>` builds the notes:
    - a Release Schedule with the next Roku Channel Store release day (the next weekday, Monday after a Friday or weekend), worked out when the notes are built. Run on a release already published, the command keeps that page's own schedule, hand edits included.
    - the summary, when the draft has one. Until then, a hidden line where it goes says to run `/release-summary`: you see it in the edit box you publish from, and the release page does not show it.
    - the version's changelog lines, each crediting its author with an `@mention`, and New Contributors
@@ -56,7 +56,7 @@ Type `/release-summary X.Y.Z` in Claude Code. It drafts a short paragraph on wha
 
 ### 4. Publish the release
 
-Review the draft: check the release date and read the notes. Then publish it.
+Review the draft: check the release date and read the notes. Then publish it. You don't need to set a discussion category: `release-announcement.yml` links an Announcements discussion after you publish.
 
 Publishing creates the `vX.Y.Z` tag on `main`, which starts `release-build.yml`. It turns `[Unreleased]` in `CHANGELOG.md` into the release's section, copies the draft's summary to the top of that section (a release without one gets a warning and no summary), changes `since: unreleased` to the version on each feature page that said so in the tagged commit, writes the feature catalog, the features index and the README list again, and commits all of it to `main`. The catalog dates each feature from its release's heading in `CHANGELOG.md`, so the changelog step runs first, and the catalog step fails if the heading is missing. A feature page merged after the tag stays `unreleased` for the next release. How changelog entries are built, and how to fix one, is in [Changelog](changelog.md).
 

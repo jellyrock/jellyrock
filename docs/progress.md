@@ -1798,14 +1798,6 @@ Five commits on #1299's branch had `noreply@anthropic.com` as author and committ
 
 **Not checked:** where cloud sessions get this identity; whether the environment can override it; whether GitHub adds the line on every squash, since #1073 is the only example found.
 
-#### The Announcements backstop has never linked a discussion, so releases still need the box ticked by hand `[fid: announcements-backstop-unproven]` `[captured 2026-11-09]`
-
-`release-announcement.yml` (from #1343) is meant to link an Announcements discussion to a published release that has none, so the operator no longer has to tick the category box by hand before publishing. Its linking path has never run: every published release so far got its discussion from the box ticked by hand, so the workflow only ever finds one and does nothing. Whether `gh release edit --discussion-category` creates a discussion on an already-published release rests on GitHub's API docs alone, and the operator keeps ticking the box until it is proven.
-
-The draft workflows also pass `--discussion-category "Announcements"` (`release-management.yml`, `update-draft-release.yml`), but the operator reports the box is not ticked on a draft, so that flag looks like it does nothing.
-
-Why not now: proving it means publishing a release without the box ticked, which this repo cannot do as a test (published releases are public). Close it by testing in a throwaway private repo with Discussions on: publish a release without the category, run the workflow by hand with that tag, and confirm `discussion_url` is set; then delete the repo. If it works, the next real release goes out without the box ticked, and the draft-time flags are removed if they still do nothing.
-
 ### Components
 
 #### A SyncPlay previous step right after a transcoding item's Ready can leave the old stream playing `[fid: syncplay-previous-reload-never-swaps]` `[captured 2026-11-08]`
