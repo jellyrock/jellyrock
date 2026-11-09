@@ -5,7 +5,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [3.4.0](https://github.com/jellyrock/jellyrock/compare/v3.3.1...v3.4.0) - 2026-11-09
+
+### Summary
+
+Adds Repeat to the video player's gear. SyncPlay groups get repeat and shuffle too, a group icon in the player, and a confirm dialog before you replace what everyone is watching. Recently Added rows for TV now show posters, like movies. Makes playback more reliable: transcoded videos no longer play silently, 4K files and long films that failed to start now play, and Cinema Mode intros work again. The list below has 16 more fixes.
 
 ### Added
 
