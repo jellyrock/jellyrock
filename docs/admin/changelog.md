@@ -11,6 +11,7 @@ The repo squash-merges, so every PR becomes one commit on `main` whose first lin
 - **A PR labeled as a dependency update** (Renovate's `dependencies`) goes to Dependencies, where updates to the same package become one line.
 - **A title with no known type** goes to Changed. Its words are not used to guess a section.
 - **The credit** after "by" is the PR's author, never the commit's: a merge commit names whoever merged it, and a squash commit can carry an email linked to no account. A commit with no PR is credited to the GitHub account its email is linked to, or to its git name, unlinked, when there is none. A bot links to its app page, since `github.com/<bot>` can be an unrelated account. A combined dependency line credits each author once.
+- **A PR an app opened**, an AI agent's included, credits that app, the same rule for every agent. GitHub's own notes differ for its Copilot agent: they credit the person who started it, "with @Copilot".
 
 The sections, in order: Added, Changed, Fixed, Removed, Dependencies. **New Contributors** follows them: everyone whose first merged PR or commit on `main` is in that release, oldest first. Bots are never listed.
 
@@ -31,14 +32,16 @@ A PR cannot merge without a known type. `pr-body-check.js` fails the title in CI
 ## Fixing a wrong entry
 
 - **Not released yet:** edit the merged PR's title on GitHub (its type or its wording), then sync again: push anything to `main`, or run the JellyRock Bot workflow by hand. Editing `[Unreleased]` in `CHANGELOG.md` does not work, because the next sync overwrites it.
-- **Already released:** edit that version's section in `CHANGELOG.md` by hand. Released sections are never regenerated. Publishing copies the release's `### Summary` to the top of its section, where later `/release-summary` runs read it as an example.
+- **Already released:** edit that version's section in `CHANGELOG.md` by hand. Released sections are never regenerated. The sections up to 3.3.1 got their credits in one pass afterwards, by the same rules. That pass credited a commit ported from the upstream fork with no account to the author of the upstream PR it came in. Publishing copies the release's `### Summary` to the top of its section, where later `/release-summary` runs read it as an example.
 - **A direct-push commit** has no PR title to edit. Fix it by hand once it is released.
 
 ## Commands
 
+Each reads PRs from GitHub, so `gh` must be signed in (in CI, the step needs `GH_TOKEN`). `sync-release` reads none while an `[Unreleased]` section exists.
+
 ```bash
 npm run changelog:status           # latest tag, commits since it
-npm run changelog:sync-unreleased  # rebuild [Unreleased] (needs `gh` auth for PR titles/labels)
+npm run changelog:sync-unreleased  # rebuild [Unreleased]
 npm run changelog:sync-release 1.21.3
 npm run changelog:validate
 ```
