@@ -837,7 +837,15 @@ sub onGroupUpdate(update as object)
     absorbed = ""
     if isFollowing() and not hasOpenClaim()
       loadInFlight = isValid(m.owedLoad) or m.loadAwaitsReady
-      absorbed = syncPlayQueue.restartAbsorbed(update.reason, previousPlayingItemId, m.state.playingItemId, loadInFlight, m.tracker.phase, m.playerState, m.lastCommand, previousQueueChangedAtMs)
+      ' Where the load in flight starts: the tracker's once it mounted (a reload in place moves it),
+      ' the one this manager asked for before that, and where the group is while it is only owed.
+      loadFromStart = true
+      if m.tracker.phase = "loading"
+        loadFromStart = syncPlayPlayback.loadStartsAtItemStart(m.tracker.loadStartTicks)
+      else if m.loadAwaitsReady
+        loadFromStart = syncPlayPlayback.loadStartsAtItemStart(m.loadStartTicks)
+      end if
+      absorbed = syncPlayQueue.restartAbsorbed(update.reason, previousPlayingItemId, m.state.playingItemId, loadInFlight, m.tracker.phase, loadFromStart, m.playerState, m.lastCommand, previousQueueChangedAtMs)
     end if
     m.owedLoad = syncPlayQueue.owedLoadAfter(m.owedLoad, update.reason, previousPlayingItemId, m.state.playingItemId, absorbed <> "")
     if absorbed <> "" then m.log.info("restart of the item already loaded or loading absorbed", "reason", update.reason, "answer", absorbed)

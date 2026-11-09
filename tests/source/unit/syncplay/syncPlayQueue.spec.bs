@@ -505,37 +505,46 @@ namespace tests
 
     @it("a same-item step that finds the restart still loading is answered by the Ready at the load's end")
     function _()
-      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", false, "loading", "", invalid, 4000&), "loading")
-      m.assertEqual(syncPlayQueue.restartAbsorbed("PreviousItem", "p-1", "p-1", false, "loading", "", invalid, 4000&), "loading")
-      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", true, "ready", "playing", m.unpauseAt(5000&), 4000&), "loading", "a reload asked for and not yet mounted: the tracker still shows the old player")
+      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", false, "loading", true, "", invalid, 4000&), "loading")
+      m.assertEqual(syncPlayQueue.restartAbsorbed("PreviousItem", "p-1", "p-1", false, "loading", true, "", invalid, 4000&), "loading")
+      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", true, "ready", true, "playing", m.unpauseAt(5000&), 4000&), "loading", "a reload asked for and not yet mounted: the tracker still shows the old player")
+    end function
+
+    @it("a same-item step that finds a load running from partway in is a restart: the load from the start replaces it")
+    function _()
+      ' A reload in place (a track or quality pick) or a late join's mount loads from where the group was.
+      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", false, "loading", false, "", invalid, 4000&), "")
+      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", true, "ready", false, "playing", m.unpauseAt(5000&), 4000&), "", "a reload asked for partway in and not yet mounted")
+      ' A load from the start (the manager reads the tolerance) is the restart's own.
+      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", false, "loading", true, "", invalid, 4000&), "loading")
     end function
 
     @it("a same-item step after this member's Ready, before the group's Unpause, asks for the Ready again")
     function _()
-      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", false, "ready", "paused", m.unpauseAt(3000&), 4000&), "ready")
-      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", false, "ready", "paused", invalid, 4000&), "ready", "no command at all yet")
+      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", false, "ready", true, "paused", m.unpauseAt(3000&), 4000&), "ready")
+      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", false, "ready", true, "paused", invalid, 4000&), "ready", "no command at all yet")
     end function
 
     @it("a same-item step after the group's Unpause is a new restart that reloads")
     function _()
-      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", false, "ready", "playing", m.unpauseAt(5000&), 4000&), "")
-      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", false, "ready", "paused", m.unpauseAt(5000&), 4000&), "", "a group Pause after the restart holds the node paused")
-      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", false, "ready", "paused", m.unpauseAt(4000&), 4000&), "", "a command at the update's own moment came after it")
+      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", false, "ready", true, "playing", m.unpauseAt(5000&), 4000&), "")
+      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", false, "ready", true, "paused", m.unpauseAt(5000&), 4000&), "", "a group Pause after the restart holds the node paused")
+      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", false, "ready", true, "paused", m.unpauseAt(4000&), 4000&), "", "a command at the update's own moment came after it")
     end function
 
     @it("only a step to the same item is absorbed: another item, or any other reason, loads as before")
     function _()
-      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-2", false, "loading", "", invalid, 4000&), "")
-      m.assertEqual(syncPlayQueue.restartAbsorbed("SetCurrentItem", "p-1", "p-1", false, "loading", "", invalid, 4000&), "")
-      m.assertEqual(syncPlayQueue.restartAbsorbed("NewPlaylist", "p-1", "p-1", false, "loading", "", invalid, 4000&), "")
-      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "", false, "loading", "", invalid, 4000&), "")
+      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-2", false, "loading", true, "", invalid, 4000&), "")
+      m.assertEqual(syncPlayQueue.restartAbsorbed("SetCurrentItem", "p-1", "p-1", false, "loading", true, "", invalid, 4000&), "")
+      m.assertEqual(syncPlayQueue.restartAbsorbed("NewPlaylist", "p-1", "p-1", false, "loading", true, "", invalid, 4000&), "")
+      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "", false, "loading", true, "", invalid, 4000&), "")
     end function
 
     @it("a load already owed is left to its own record, and an idle or stalled tracker absorbs nothing")
     function _()
-      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", true, "loading", "", invalid, 4000&), "loading", "owed and not yet mounted: still one load")
-      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", false, "idle", "", invalid, 4000&), "")
-      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", false, "seeking", "buffering", invalid, 4000&), "")
+      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", true, "loading", true, "", invalid, 4000&), "loading", "owed and not yet mounted: still one load")
+      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", false, "idle", true, "", invalid, 4000&), "")
+      m.assertEqual(syncPlayQueue.restartAbsorbed("NextItem", "p-1", "p-1", false, "seeking", true, "buffering", invalid, 4000&), "")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

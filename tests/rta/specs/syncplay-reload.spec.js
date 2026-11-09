@@ -274,6 +274,77 @@ it('a second pick while the first reload loads reloads from where the stream was
   await expectInSync('this member in sync after the two picks');
 });
 
+// Under RepeatOne a NextItem on the same item restarts it for the group from its start, and the
+// Roku absorbs a restart it is already loading (syncPlayQueue.restartAbsorbed). A reload in place
+// is a load too, but from partway in: a restart that lands during it must not be absorbed, or this
+// member plays on from where it was while the group starts over, until a corrective Seek drags it
+// back (found reading #1344, 2026-11-09).
+it('a same-item NextItem under RepeatOne during a reload restarts the item from its start', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  await syncPlay(member, 'SetRepeatMode', { Mode: 'RepeatOne' });
+  await waitFor('syncPlayManager.sync.repeatMode', (v) => v === 'RepeatOne', {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: "the group's RepeatOne reached this Roku",
+  });
+  await waitFor('state', (s) => s === 'playing', {
+    read: player(),
+    timeout: 30000,
+    label: 'playing before the reload',
+  });
+  const positionBefore = await player()('position');
+  expect(positionBefore, 'the stream partway in before the reload').toBeGreaterThan(5);
+  const playingItemId = await getGlobalVal('syncPlayManager.sync.playingItemId');
+  const loadsBefore = await getGlobalVal('syncPlayManager.sync.loadCount');
+  const seeksBefore = await groupSeeks();
+  await odc.setValue({
+    base: 'scene',
+    keyPath: '#osd.playbackCapsPick',
+    value: { field: 'maxBitrateMbps', value: 120 },
+  });
+  // The step goes out while the reload's load is in flight: the tracker is loading from the
+  // reload's start, partway in, which is the load the restart must replace.
+  expect(
+    await getGlobalVal('syncPlayManager.sync.trackerPhase'),
+    'the reload loading when the step is sent',
+  ).toBe('loading');
+  await syncPlay(member, 'NextItem', { PlaylistItemId: playingItemId });
+  // Absorbed, the step owes no load and this count stays; the restart's load moves it.
+  await waitFor('syncPlayManager.sync.loadCount', (v) => v > loadsBefore, {
+    read: getGlobalVal,
+    timeout: 30000,
+    interval: 100,
+    label: "the restart's load performed over the reload",
+  });
+  await waitFor('state', (s) => s === 'playing', {
+    read: player(),
+    timeout: 60000,
+    label: 'playing after the restart',
+  });
+  await waitFor('position', (v) => typeof v === 'number' && v < 30 && v < positionBefore - 5, {
+    read: player(),
+    timeout: 30000,
+    label: 'the item playing from its start',
+  });
+  expect(await groupSeeks(), "the restart's Ready was accepted: no corrective Seek").toBe(
+    seeksBefore,
+  );
+  expect(await getGlobalVal('syncPlayManager.sync.playingItemId'), 'the same item').toBe(
+    playingItemId,
+  );
+  expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+  await syncPlay(member, 'SetRepeatMode', { Mode: 'RepeatNone' });
+  await waitFor('syncPlayManager.sync.repeatMode', (v) => v === 'RepeatNone', {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: 'repeat off again for the cases after',
+  });
+  await expectInSync('this member in sync after the restart');
+});
+
 it('a version switch carries the position into the other version, with no correction from the server', async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(

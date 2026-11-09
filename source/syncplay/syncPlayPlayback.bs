@@ -319,6 +319,13 @@ namespace syncPlayPlayback
     return Abs(playerPositionTicks - targetTicks) <= syncPlayTime.msToTicks(READY_TOLERANCE_MS)
   end function
 
+  ' Whether a load starts at the item's start, as a restart's does: within the Ready tolerance of
+  ' 0 (Roku starts at the keyframe at or before the asked position). A reload in place or a late
+  ' join's mount starts partway in.
+  function loadStartsAtItemStart(loadStartTicks as longinteger) as boolean
+    return Abs(loadStartTicks) <= syncPlayTime.msToTicks(READY_TOLERANCE_MS)
+  end function
+
   ' Move the resume to where the node stopped: a seek lands off its target (up to 36 ms in the logs
   ' of a 2026-10-31 Stick 4K run), and resuming on the target's moment carries that error into the
   ' group. A paused position further off than the landing tolerance is not one to trust, so the

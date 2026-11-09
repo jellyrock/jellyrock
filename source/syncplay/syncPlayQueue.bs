@@ -267,21 +267,29 @@ namespace syncPlayQueue
   ' restart the group twice; each restart resets the server's waiting set and waits on every
   ' member's Ready again, and a reload for the second would make the group wait a third time
   ' (WaitingGroupState and PlayQueueManager, read 2026-11-03).
-  '   - "loading": the restart's load is owed, or running, or its player has not mounted yet. The
-  '     Ready at its end names the same playlist id and answers both.
+  '   - "loading": the restart's load is owed, or running from the item's start, or its player has
+  '     not mounted yet. The Ready at its end names the same playlist id and answers both. A load
+  '     running from partway in (a reload in place, a late join's mount) is not the restart's: the
+  '     restart owes a load from the start, and that load replaces this one.
   '   - "ready": the player holds the start, paused, and no command came since the item last changed
   '     (the group's Unpause would have). The Ready it sent was for the wait the server reset, so
   '     it goes out again.
   '   - "": a different item, another reason, or a restart that has begun to play: a load.
   ' @param loadInFlight - a load is owed, or a reload was asked for and the player has not mounted
   ' @param trackerPhase - the ready tracker's phase
+  ' @param loadFromStart - the load in flight starts at the item's start (within the Ready
+  '   tolerance of it), or has no start yet (owed, not performed: it starts where the group is,
+  '   which for a restart is the start)
   ' @param playerState - the Video node's state
   ' @param lastCommand - the last group command applied or scheduled, or invalid
   ' @param queueChangedAtMs - the LastUpdate of the update that last changed the playing item
-  function restartAbsorbed(reason as string, previousPlaylistItemId as string, playlistItemId as string, loadInFlight as boolean, trackerPhase as string, playerState as string, lastCommand as dynamic, queueChangedAtMs as longinteger) as string
+  function restartAbsorbed(reason as string, previousPlaylistItemId as string, playlistItemId as string, loadInFlight as boolean, trackerPhase as string, loadFromStart as boolean, playerState as string, lastCommand as dynamic, queueChangedAtMs as longinteger) as string
     if reason <> "NextItem" and reason <> "PreviousItem" then return ""
     if playlistItemId = "" or playlistItemId <> previousPlaylistItemId then return ""
-    if loadInFlight or trackerPhase = "loading" then return "loading"
+    if loadInFlight or trackerPhase = "loading"
+      if not loadFromStart then return ""
+      return "loading"
+    end if
     if trackerPhase <> "ready" or playerState <> "paused" then return ""
     if isValid(lastCommand) and syncPlayTime.isWholeNumber(lastCommand.emittedAtMs) and syncPlayTime.asLong(lastCommand.emittedAtMs) >= queueChangedAtMs then return ""
     return "ready"

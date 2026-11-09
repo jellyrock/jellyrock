@@ -620,6 +620,14 @@ namespace tests
       m.assertFalse(syncPlayPlayback.seekIsWhereWeAre(600000000&, 602000000&, "playing", "loading"))
     end function
 
+    @it("loadStartsAtItemStart: a load within the ready tolerance of 0 is a restart's, one partway in is not")
+    function _()
+      m.assertTrue(syncPlayPlayback.loadStartsAtItemStart(0&))
+      m.assertTrue(syncPlayPlayback.loadStartsAtItemStart(4000000&), "400 ms: the keyframe before the start")
+      m.assertFalse(syncPlayPlayback.loadStartsAtItemStart(6000000&))
+      m.assertFalse(syncPlayPlayback.loadStartsAtItemStart(585000000&), "a reload in place at 58.5 s")
+    end function
+
     @it("a longer lead seeks further and resumes that much later")
     function _()
       plan = syncPlayPlayback.correctionPlan(500&, 695000000&, m.unpauseInForce(), m.estimator(), 3100&)
