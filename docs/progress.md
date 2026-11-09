@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-09: fix(playback): Restart a stream the server stops sending, and say why
 - 2026-11-09: fix(playback): Keep a paused video transcoding on the server
 - 2026-11-09: fix(syncplay): Skip a queue update with no readable time, not crash
 - 2026-11-08: fix(ui): Fix dialogs left deaf by navigation or the screensaver
