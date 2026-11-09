@@ -205,6 +205,24 @@ namespace syncPlayPlayback
   ' @param queueChangedAtMs - as clockReference
   ' @param estimator - the clock estimator (delayMs is the measured round trip)
   ' @param nowMs - the device clock when the Waiting update arrived
+  ' The Unpause the server sent the other members when this member's own Ready ended the wait
+  ' and it was already playing: the server sends it to every member but this one
+  ' (WaitingGroupState, ReadyGroupRequest, the recovering branch), so without this the clock
+  ' reference stays off until the next command, which can be the rest of the film. The server
+  ' builds that Unpause from numbers this member has: the group's paused position (the anchor)
+  ' and the Ready's own, with When = the Ready's time plus how far behind the group the Ready
+  ' was. A Ready at or past the anchor resumes the group at once. Any real command replaces it.
+  ' @param anchorTicks - where the group paused (groupPauseAnchorTicks)
+  ' @param lastReady - { whenMs, positionTicks, isPlaying } of the Ready this member last sent
+  ' @param playlistItemId - the group's playing playlist id
+  ' @param groupId - the group
+  function reconstructedUnpause(anchorTicks as longinteger, lastReady as object, playlistItemId as string, groupId as string) as object
+    whenMs& = syncPlayTime.asLong(lastReady.whenMs)
+    behindMs& = syncPlayTime.ticksToMs(anchorTicks - syncPlayTime.asLong(lastReady.positionTicks))
+    if behindMs& > 0 then whenMs& = whenMs& + behindMs&
+    return { kind: "syncplaycommand", command: "Unpause", whenMs: whenMs&, emittedAtMs: syncPlayTime.asLong(lastReady.whenMs), positionTicks: anchorTicks, playlistItemId: playlistItemId, groupId: groupId, reconstructed: true }
+  end function
+
   function groupPauseAnchorTicks(lastCommand as dynamic, playingItemId as string, queueChangedAtMs as longinteger, estimator as object, nowMs as longinteger) as dynamic
     reference = clockReference(lastCommand, playingItemId, false, queueChangedAtMs)
     if not isValid(reference) then return invalid

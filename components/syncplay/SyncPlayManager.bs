@@ -135,6 +135,9 @@ sub ensureReady()
   ' The device clock and the position when that Buffering went out, for the anchor's log line.
   m.bufferingSentAtMs = 0&
   m.bufferingReportedTicks = 0&
+  ' The Ready this member last sent: { whenMs, positionTicks, isPlaying }, or invalid. A wait this
+  ' member ends while playing gets no command back (syncPlayPlayback.reconstructedUnpause).
+  m.lastReady = invalid
   ' When the last seek went out and how long the tracker took to end it, for the next
   ' correction's lead (syncPlayPlayback.correctionLeadMs). 0 until one has ended on this player.
   m.seekWrittenAtMs = 0&
@@ -799,6 +802,9 @@ end sub
 ' replaces the tracker instead, since no playback of the group's is under way yet.
 sub resetPlaybackTracking()
   m.pendingPlan = invalid
+  m.reportedBuffering = false
+  m.groupPausedTicks = invalid
+  m.lastReady = invalid
   m.groupPaused = false
   m.playbackDiffMs = invalid
   m.commandTimer.control = "stop"
@@ -858,6 +864,8 @@ sub onGroupUpdate(update as object)
   m.log.info("group update", "type", updateType, "groupId", m.state.groupId, "state", m.state.groupState)
   if updateType = "StateUpdate" and previousGroupState = "Playing" and m.state.groupState = "Waiting" and m.reportedBuffering and not isValid(m.groupPausedTicks)
     anchorGroupPause()
+  else if updateType = "StateUpdate" and previousGroupState = "Waiting" and m.state.groupState <> "Waiting"
+    endGroupWait()
   end if
 
   if updateType = "GroupJoined"
@@ -872,6 +880,9 @@ sub onGroupUpdate(update as object)
     m.lastCommand = invalid
     m.playbackDiffMs = invalid
     m.groupPaused = false
+    m.reportedBuffering = false
+    m.groupPausedTicks = invalid
+    m.lastReady = invalid
     m.tracker = syncPlayPlayback.newReadyTracker()
     m.correctionPauseOwed = false
     m.failedBursts = 0
@@ -1302,10 +1313,13 @@ sub report(kind as string, isPlaying as boolean, positionTicks = invalid as dyna
   if isValid(positionTicks) then reported& = syncPlayTime.asLong(positionTicks)
   if kind = "ready"
     m.readiesSent++
+    m.lastReady = { whenMs: whenMs&, positionTicks: reported&, isPlaying: isPlaying }
     post("Ready", syncPlayRequests.ready(whenMs&, reported&, isPlaying, m.state.playingItemId))
   else
     m.reportedBuffering = true
-    m.groupPausedTicks = invalid
+    ' A Buffering into a wait that is already this member's moves nothing on the server, so the
+    ' anchor it set still holds.
+    if m.state.groupState <> "Waiting" then m.groupPausedTicks = invalid
     m.bufferingSentAtMs = syncPlayTime.nowMs()
     m.bufferingReportedTicks = reported&
     post("Buffering", syncPlayRequests.buffering(whenMs&, reported&, isPlaying, m.state.playingItemId))
@@ -1469,6 +1483,7 @@ sub publish()
       extraOffsetMs: m.estimator.extraOffsetMs,
       loadCount: m.loadCount,
       correctionsDone: m.correctionsDone,
+      correctionInFlight: isValid(m.correction),
       groupSeeks: m.groupSeeks,
       readiesSent: m.readiesSent,
       repeatMode: m.state.repeatMode,
@@ -1518,6 +1533,25 @@ end function
 ' its clock stood when the server handled the report (syncPlayPlayback.groupPauseAnchorTicks).
 ' A load still in flight reports its Ready there. The log line is the anchor's own measurement:
 ' how far the group ran on past the estimate the report carried, and how long the report took.
+' The group left its wait. The anchor was where it paused, so it ends here whatever comes next. A
+' wait this member ended with a Ready while already playing gets no command back: the server sends
+' its Unpause to the others alone (WaitingGroupState's recovering branch), so the one the others
+' got is rebuilt here and becomes the clock reference, which turns the drift correction back on.
+' A Ready sent paused is answered with an Unpause to every member, which arrives before this update
+' and has cleared the Buffering already; any other case keeps waiting for the next command.
+sub endGroupWait()
+  anchor = m.groupPausedTicks
+  m.groupPausedTicks = invalid
+  if not m.reportedBuffering or m.state.groupState <> "Playing" then return
+  if not isValid(anchor) or not isValid(m.lastReady) or m.lastReady.isPlaying <> true then return
+  command = syncPlayPlayback.reconstructedUnpause(syncPlayTime.asLong(anchor), m.lastReady, m.state.playingItemId, m.state.groupId)
+  m.lastCommand = command
+  m.reportedBuffering = false
+  syncPlayPlayback.armSettleCheck(m.settle)
+  m.log.info("wait ended with no command: the group's Unpause rebuilt", "positionTicks", command.positionTicks.toStr(), "inMs", (command.whenMs - syncPlayOffset.serverNowMs(m.estimator, syncPlayTime.nowMs())).toStr())
+  publish()
+end sub
+
 sub anchorGroupPause()
   nowMs& = syncPlayTime.nowMs()
   anchor = syncPlayPlayback.groupPauseAnchorTicks(m.lastCommand, m.state.playingItemId, m.state.playbackQueueAtMs, m.estimator, nowMs&)

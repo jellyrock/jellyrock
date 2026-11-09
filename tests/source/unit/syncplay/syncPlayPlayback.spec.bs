@@ -342,6 +342,27 @@ namespace tests
       m.assertInvalid(syncPlayPlayback.groupPauseAnchorTicks(unpause, unpause.playlistItemId, unpause.emittedAtMs + 1000&, est, nowMs&), "the command predates the item")
     end function
 
+    @it("reconstructedUnpause is the Unpause the others got: the anchor, resuming when the Ready's position reaches it")
+    function _()
+      est = m.estimator()
+      ' The Ready went out at server time 5000 ms, playing at 10.0 s; the group had paused at 11.2 s.
+      ready = { whenMs: 5000&, positionTicks: 100000000&, isPlaying: true }
+      command = syncPlayPlayback.reconstructedUnpause(112000000&, ready, "p-1", "g-1")
+      m.assertEqual(command.command, "Unpause")
+      m.assertEqual(command.positionTicks, 112000000&)
+      m.assertEqual(command.whenMs, 6200&, "1.2 s behind: the group resumes when this member gets there")
+      m.assertEqual(command.emittedAtMs, 5000&)
+      m.assertEqual(command.playlistItemId, "p-1")
+      m.assertTrue(command.reconstructed)
+      m.assertEqual(syncPlayPlayback.clockReference(command, "p-1", false, 0&).command, "Unpause", "it serves as the clock reference")
+      ' Already at or past the anchor: the group resumed at once.
+      ahead = syncPlayPlayback.reconstructedUnpause(112000000&, { whenMs: 5000&, positionTicks: 115000000&, isPlaying: true }, "p-1", "g-1")
+      m.assertEqual(ahead.whenMs, 5000&)
+      ' Run forward like any Unpause: 3 s after its When the group is 3 s past the anchor.
+      nowMs& = 6200& - 1000& + 3000&
+      m.assertEqual(syncPlayPlayback.groupPositionTicks(command, est, nowMs&), 142000000&)
+    end function
+
     @it("clockReference has nothing once this member reported Buffering: the group waited for it")
     function _()
       unpause = m.unpauseInForce()

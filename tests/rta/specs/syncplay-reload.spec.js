@@ -289,13 +289,28 @@ it('a reload on a member that fell behind starts where the group is, not where t
   const behindBy = 4;
   let groupPositionBefore;
   let established = false;
-  for (let attempt = 1; attempt <= 3 && !established; attempt++) {
+  // The node must be settled before the seek: playing, its tracker ready, no correction armed or
+  // in flight (a correction's seek over the step's own leaves the node stuck buffering), in sync.
+  const settled = async (label) => {
     await waitFor('state', (s) => s === 'playing', {
       read: player(),
       timeout: 30000,
-      label: `playing before falling behind (attempt ${attempt})`,
+      label: `playing ${label}`,
     });
-    await expectInSync(`this member in sync before falling behind (attempt ${attempt})`);
+    await waitFor('syncPlayManager.sync.trackerPhase', (v) => v === 'ready', {
+      read: getGlobalVal,
+      timeout: 20000,
+      label: `the tracker ready ${label}`,
+    });
+    await waitFor('syncPlayManager.sync.correctionInFlight', (v) => v === false, {
+      read: getGlobalVal,
+      timeout: 20000,
+      label: `no correction in flight ${label}`,
+    });
+    await expectInSync(`this member in sync ${label}`);
+  };
+  for (let attempt = 1; attempt <= 3 && !established; attempt++) {
+    await settled(`before falling behind (attempt ${attempt})`);
     // Enough stream behind the node to seek back into: the steps before may leave it near its start.
     await waitFor('position', (v) => typeof v === 'number' && v > behindBy + 4, {
       read: player(),
@@ -325,11 +340,14 @@ it('a reload on a member that fell behind starts where the group is, not where t
     established =
       position < groupPositionBefore - behindBy + 2 && corrections === correctionsBefore;
     if (!established) {
-      // The correction won this time: let it settle and set the node behind again.
-      await expectInSync(`back in sync after the correction (attempt ${attempt})`);
+      // The correction won this time: let the node settle and set it behind again.
+      await settled(`after the correction (attempt ${attempt})`);
     }
   }
-  expect(established, 'the node behind the group with no correction since the seek').toBe(true);
+  expect(
+    established,
+    'setup not established: the node behind the group with no correction since the seek',
+  ).toBe(true);
   const seeksBefore = await groupSeeks();
   const readiesBefore = await getGlobalVal('syncPlayManager.sync.readiesSent');
   await odc.setValue({
