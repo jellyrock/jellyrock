@@ -76,7 +76,7 @@ namespace syncPlayHooks
   end function
 
   ' Where a reload in place starts: the group's position while following and known, so the node
-  ' loads where the group is (decision syncplay-reload-reports-its-start); else the player's own
+  ' loads where the group is (decision syncplay-reload-starts-where-group-is); else the player's own
   ' start, unchanged (its position, or invalid for a stream that has not played).
   function reloadStart(playerStartTicks as dynamic) as dynamic
     manager = m.global.syncPlayManager

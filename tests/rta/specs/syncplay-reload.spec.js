@@ -274,42 +274,64 @@ it('a second pick while the first reload loads reloads from where the stream was
   await expectInSync('this member in sync after the two picks');
 });
 
-// A reload starts where the group is, not where this node was (syncPlayHooks.reloadStart): a
-// member that fell behind (a stall, a stream the server stopped sending) comes back with one load
-// and the keyframe gap, instead of resuming behind and being seek-corrected a few seconds later.
-// Here the node is put behind with a seek written on it alone (the group hears nothing), and the
-// pick follows at once, before the drift correction's lead passes.
+// A reload starts where the group is, not where this node was (syncPlayHooks.reloadStart), and its
+// Ready names where the server paused the group (syncPlayPlayback.groupPauseAnchorTicks): a member
+// that fell behind comes back with one load, no corrective Seek, and the correction's usual gap.
+// The node is put behind with a seek written on it alone (the group hears nothing). The drift
+// correction is a live actor in that window, so the step establishes both facts the pick needs,
+// the node behind and no correction since the seek, and gives up on the setup after three tries
+// instead of passing by chance (tests/rta/CLAUDE.md, the north star).
 it('a reload on a member that fell behind starts where the group is, not where the node was', async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(
       'the server has no command channel to this Roku (https without the companion plugin)',
     );
-  await waitFor('state', (s) => s === 'playing', {
-    read: player(),
-    timeout: 30000,
-    label: 'playing before falling behind',
-  });
-  await expectInSync('this member in sync before falling behind');
-  const groupPositionBefore = await player()('position');
-  expect(groupPositionBefore, 'the stream partway in').toBeGreaterThan(8);
+  const behindBy = 4;
+  let groupPositionBefore;
+  let established = false;
+  for (let attempt = 1; attempt <= 3 && !established; attempt++) {
+    await waitFor('state', (s) => s === 'playing', {
+      read: player(),
+      timeout: 30000,
+      label: `playing before falling behind (attempt ${attempt})`,
+    });
+    await expectInSync(`this member in sync before falling behind (attempt ${attempt})`);
+    // Enough stream behind the node to seek back into: the steps before may leave it near its start.
+    await waitFor('position', (v) => typeof v === 'number' && v > behindBy + 4, {
+      read: player(),
+      timeout: 20000,
+      label: 'the stream far enough in to fall behind',
+    });
+    groupPositionBefore = await player()('position');
+    const correctionsBefore = await getGlobalVal('syncPlayManager.sync.correctionsDone');
+    await odc.setValue({
+      base: 'scene',
+      keyPath: `#${heroId}.seek`,
+      value: groupPositionBefore - behindBy,
+    });
+    await waitFor(
+      'position',
+      (v) => typeof v === 'number' && v < groupPositionBefore - behindBy + 1.5,
+      {
+        read: player(),
+        timeout: 10000,
+        interval: 100,
+        label: 'the node behind the group',
+      },
+    );
+    // Both facts at once: still behind, and the correction has not run since the seek.
+    const position = await player()('position');
+    const corrections = await getGlobalVal('syncPlayManager.sync.correctionsDone');
+    established =
+      position < groupPositionBefore - behindBy + 2 && corrections === correctionsBefore;
+    if (!established) {
+      // The correction won this time: let it settle and set the node behind again.
+      await expectInSync(`back in sync after the correction (attempt ${attempt})`);
+    }
+  }
+  expect(established, 'the node behind the group with no correction since the seek').toBe(true);
   const seeksBefore = await groupSeeks();
   const readiesBefore = await getGlobalVal('syncPlayManager.sync.readiesSent');
-  const behindBy = 4;
-  await odc.setValue({
-    base: 'scene',
-    keyPath: `#${heroId}.seek`,
-    value: groupPositionBefore - behindBy,
-  });
-  await waitFor(
-    'position',
-    (v) => typeof v === 'number' && v < groupPositionBefore - behindBy + 1.5,
-    {
-      read: player(),
-      timeout: 10000,
-      interval: 100,
-      label: 'the node behind the group',
-    },
-  );
   await odc.setValue({
     base: 'scene',
     keyPath: '#osd.playbackCapsPick',
@@ -327,7 +349,7 @@ it('a reload on a member that fell behind starts where the group is, not where t
   });
   // The group played on through the seek and the pick, so at the pick it was past the position
   // before; the node was `behindBy` less, minus the wait's margin. A start at the node's position
-  // reads under groupPositionBefore - 2.5; one at the group's reads at or past it.
+  // reads under groupPositionBefore - 2; one at the group's reads at or past it.
   const playStart = await player()('content.PlayStart');
   expect(
     playStart,

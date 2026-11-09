@@ -313,15 +313,39 @@ namespace tests
     @it("clockReference is the last command for the playing item")
     function _()
       unpause = m.unpauseInForce()
-      m.assertEqual(syncPlayPlayback.clockReference(unpause, unpause.playlistItemId, false).command, "Unpause")
-      m.assertInvalid(syncPlayPlayback.clockReference(unpause, "another-item", false), "another item's")
-      m.assertInvalid(syncPlayPlayback.clockReference(invalid, unpause.playlistItemId, false), "no command yet")
+      m.assertEqual(syncPlayPlayback.clockReference(unpause, unpause.playlistItemId, false, 0&).command, "Unpause")
+      m.assertInvalid(syncPlayPlayback.clockReference(unpause, "another-item", false, 0&), "another item's")
+      m.assertInvalid(syncPlayPlayback.clockReference(invalid, unpause.playlistItemId, false, 0&), "no command yet")
+    end function
+
+    @it("clockReference has nothing from a command older than the update that last changed the item")
+    function _()
+      ' Emitted at 20:47:29; the queue changed the playing item one second later (a same-item
+      ' restart sends no command of its own, so the old Unpause would otherwise run on).
+      unpause = m.unpauseInForce()
+      m.assertInvalid(syncPlayPlayback.clockReference(unpause, unpause.playlistItemId, false, unpause.emittedAtMs + 1000&))
+      m.assertEqual(syncPlayPlayback.clockReference(unpause, unpause.playlistItemId, false, unpause.emittedAtMs).command, "Unpause", "an update at the command's own moment came before it")
+    end function
+
+    @it("groupPauseAnchorTicks is the group's clock run forward to when the server handled the Buffering, half a round trip before the update arrived")
+    function _()
+      est = m.estimator()
+      unpause = m.unpauseInForce()
+      ' Ten seconds after the Unpause's When, on the device clock (the estimator's server runs 1000 ms ahead).
+      nowMs& = syncPlayTime.asLong(unpause.whenMs) - 1000& + 10000&
+      expected = syncPlayPlayback.groupPositionTicks(unpause, est, nowMs& - est.delayMs \ 2)
+      m.assertEqual(syncPlayPlayback.groupPauseAnchorTicks(unpause, unpause.playlistItemId, 0&, est, nowMs&), expected)
+      m.assertTrue(syncPlayPlayback.groupPauseAnchorTicks(unpause, unpause.playlistItemId, 0&, est, nowMs&) < syncPlayPlayback.groupPositionTicks(unpause, est, nowMs&), "earlier than the arrival itself")
+      pause = m.command("Pause", "2026-10-23T20:47:20.000Z", 600000000)
+      m.assertEqual(syncPlayPlayback.groupPauseAnchorTicks(pause, pause.playlistItemId, 0&, est, nowMs&), 600000000&, "a paused group is where its Pause says")
+      m.assertInvalid(syncPlayPlayback.groupPauseAnchorTicks(invalid, pause.playlistItemId, 0&, est, nowMs&), "no command names the clock")
+      m.assertInvalid(syncPlayPlayback.groupPauseAnchorTicks(unpause, unpause.playlistItemId, unpause.emittedAtMs + 1000&, est, nowMs&), "the command predates the item")
     end function
 
     @it("clockReference has nothing once this member reported Buffering: the group waited for it")
     function _()
       unpause = m.unpauseInForce()
-      m.assertInvalid(syncPlayPlayback.clockReference(unpause, unpause.playlistItemId, true))
+      m.assertInvalid(syncPlayPlayback.clockReference(unpause, unpause.playlistItemId, true, 0&))
     end function
 
     @it("a check armed for a time offset pick reports its notice once, and an ordinary arming never does")
@@ -774,6 +798,22 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("trackPlayerEvent(): a reload in place")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a group pause anchored during a load moves the Ready to where the server paused; a ready tracker ignores it")
+    function _()
+      tracker = syncPlayPlayback.newReadyTracker()
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "mounted", startTicks: 0& })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 100000000& })
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "reloaded", startTicks: 1038700000& })
+      m.assertEqual(tracker.phase, "loading")
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "groupPaused", positionTicks: 1099700000& })
+      m.assertEqual(tracker.loadStartTicks, 1099700000&)
+      result = syncPlayPlayback.trackPlayerEvent(tracker, { kind: "state", state: "playing", positionTicks: 0& })
+      m.assertEqual(result.report, "ready")
+      m.assertEqual(result.positionTicks, 1099700000&, "the Ready names where the server paused the group")
+      syncPlayPlayback.trackPlayerEvent(tracker, { kind: "groupPaused", positionTicks: 5& })
+      m.assertEqual(tracker.loadStartTicks, 1099700000&, "nothing to move once ready")
+    end function
 
     @it("a reload of a playing stream reports buffering at once and loads from its start")
     function _()
