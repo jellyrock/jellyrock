@@ -818,6 +818,7 @@ end sub
 ' transcode must carry, a new Maximum Bitrate) goes through here.
 sub reloadAtCurrentPosition()
   m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&, true)
+  tellGroupOfReload(m.top.position)
   m.top.control = "stop"
   startVideoLoad(m.top.audioIndex, m.top.SelectedSubtitle)
 end sub
@@ -939,6 +940,11 @@ sub onVideoSourceChange()
   if isValid(newRuntimeTicks) then newRuntimeText = newRuntimeTicks.toStr()
   m.log.info("Version switch carry", "fromPosition", int(m.top.position), "toTicks", startTicks.toStr(), "newRuntimeTicks", newRuntimeText)
   m.global.queueManager.callFunc("setCurrentStartingPoint", startTicks, true)
+  ' A SyncPlay group gets the same carry from the exact position: whole seconds can put this
+  ' member's Ready past the half second the server accepts. Milliseconds as an integer first, for
+  ' the reason above.
+  groupStartTicks = versionResume.switchTicksFor(Int(m.top.position * 1000) * 10000&, int(getEffectiveDuration()) * 10000000&, newRuntimeTicks)
+  tellGroupOfReload(groupStartTicks / 10000000#)
 
   ' No progress report until the new stream plays (the `playing` branch restarts this): a
   ' tick after the new source loads would report the old stream's position against it.
@@ -2012,6 +2018,7 @@ sub retryPlayback(retry as PlaybackErrorRetry)
   if m.isPlayReported
     m.global.queueManager.callFunc("setCurrentStartingPoint", int(m.top.position) * 10000000&, true)
   end if
+  tellGroupOfReload(m.top.position)
   ' Prevents PlayerHostView from advancing/exiting when stop causes Roku to fire "finished".
   m.top.isRetrying = true
   m.top.control = "stop"
@@ -2025,6 +2032,18 @@ sub retryPlayback(retry as PlaybackErrorRetry)
   ' long as it did. `buffer` stays open across the retry (`pending` keeps the first
   ' declaration), so it spans the whole wait rather than restarting mid-way.
   startVideoLoad(m.top.audioIndex, m.top.SelectedSubtitle)
+end sub
+
+' tellGroupOfReload: Tell a SyncPlay group this player is loading its stream again in place, from
+' startSeconds, so this member's Buffering goes out now and its Ready says where it is: the node
+' reads 0 until the reloaded stream's first frame. Called before the reload writes `stop`, so the
+' stop's own states reach a tracker that is already loading. Only a stream that has played: before
+' the first frame, the start the load began with still holds (syncPlayPlayback.trackPlayerEvent).
+'
+' @param {dynamic} startSeconds - where the reload starts, in the node's seconds, exact
+sub tellGroupOfReload(startSeconds as dynamic)
+  if not m.isPlayReported then return
+  syncPlayHooks.notify({ kind: "reloaded", startSeconds: startSeconds })
 end sub
 
 ' Close the live stream a load opened when no player will ever play it: the load failed, or it is
@@ -2376,22 +2395,14 @@ end sub
 ' Starts the re-encode check for the stream handed to the player (reencodeCheck.bs): the server
 ' may be re-encoding the video at a bitrate the device's video buffer cannot hold, which a first
 ' request cannot rule out. It runs on a timer from the handoff, not from `playing`: a stream like that
-' never leaves buffering. It stands down for a stream the server does not transcode, Live TV, a load
-' that already asked for a re-encode, and a SyncPlay group.
-'
-' The group is skipped because a restart here is a reload in place, which the group sees only as a
-' stall: the tracker's Ready after it carries the node's own position, which the node reads as 0 at
-' the first frame of a load that starts partway in (syncPlayPlayback.trackPlayerEvent, "mounted"),
-' and no run of a reload under a group has shown the Ready lands where the group is.
+' never leaves buffering. It stands down for a stream the server does not transcode, Live TV, and a
+' load that already asked for a re-encode. In a SyncPlay group its restart is a reload like any other
+' (tellGroupOfReload).
 '
 ' @param {dynamic} capBps - LoadVideoContentTask's reencodeCapBps for this load: 0 or invalid for none
 sub armReencodeCheck(capBps as dynamic)
   m.reencodeCapBps = reencodeCheck.bitsPerSecond(capBps)
   if not m.top.isTranscoded or isLiveTvPlayback() or m.retryFlags.disallowVideoCopy or m.reencodeCapBps <= 0 then return
-  if syncPlayHooks.following()
-    m.log.info("Re-encode check skipped while following a SyncPlay group", "itemId", m.loadItemId)
-    return
-  end if
   m.reencodeAttempt = 1
   m.reencodeCheckTimer.control = "stop"
   m.reencodeCheckTimer.duration = reencodeCheck.FIRST_CHECK_SECONDS
@@ -2431,7 +2442,6 @@ sub onReencodeSessionRead(res as object, ctx as object)
     attempt: ctx.attempt,
     isLive: isLiveTvPlayback(),
     askedNoCopy: m.retryFlags.disallowVideoCopy,
-    isFollowingGroup: syncPlayHooks.following(),
     hasFailed: m.hasPlaybackFailed or playerState = "error",
     ' A newer load since the read began, another item, or a stream that has ended.
     isStale: ctx.seq <> m.reencodeCheckSeq or LCase(ctx.itemId) <> LCase(m.loadItemId) or playerState = "stopped" or playerState = "finished"

@@ -179,6 +179,10 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // `publish` writes the count; it only grows, so "above the count read before" cannot revert.
   // `syncplay-controls.spec.js` waits on it after each time offset pick.
   'syncPlayManager.sync.correctionsDone',
+  // `SyncPlayManager.report` counts each Ready this member sends, and `publish` writes the count; it
+  // only grows, so "above the count read before" cannot revert. `syncplay-reload.spec.js` waits on it
+  // for a reload's Ready, which a group command answering the reload's Buffering can come before.
+  'syncPlayManager.sync.readiesSent',
   // The same record's emission time (ODC lowercases the key): it only grows, since each command
   // that replaces `lastCommand` was emitted later (`syncPlayState.acceptsCommand` drops a command
   // from before the playing item changed), so "newer than the one read before" cannot revert.

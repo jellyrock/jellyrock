@@ -75,8 +75,10 @@
     <!-- resumeFollowing(): a halted member follows the group again from the menu and loads the
          group's item at its estimated position; true when it was halted in a group. -->
     <function name="resumeFollowing" />
-    <!-- { kind: "mounted" | "state" | "position" | "finished" | "unmounted", state, position }
-         from the host and the player, position in the Video node's float seconds. -->
+    <!-- { kind: "mounted" | "reloaded" | "state" | "position" | "finished" | "unmounted", state,
+         position, startSeconds } from the host and the player, position in the Video node's float
+         seconds; "reloaded" (the player loading its stream again in place) carries the
+         startSeconds it reloads from. -->
     <function name="playerEvent" />
     <!-- control({ kind: "pause" | "unpause" | "seek" | "next" | "previous" | "repeat" | "shuffle" |
          "timeOffset", position, mode }): a control the viewer pressed while following, posted to the

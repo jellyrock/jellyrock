@@ -158,6 +158,12 @@ sub ensureReady()
   ' How many drift corrections ran to their resume (onCorrectionTimer), published so a spec can
   ' wait for the one a time offset pick started, not for a drift reading that may predate it.
   m.correctionsDone = 0
+  ' How many Seek commands the group sent while this member followed (scheduleCommand), published so a
+  ' spec can tell a load the server accepted from one it had to correct with a Seek.
+  m.groupSeeks = 0
+  ' How many Ready reports this member sent (report), published so a spec can wait for the server to
+  ' have a load's Ready rather than for a group command that can come before it.
+  m.readiesSent = 0
   publish()
 end sub
 
@@ -250,6 +256,33 @@ function playerEvent(evt as object) as object
       else
         haltFollowing("a player mounted for an item the group is not playing")
       end if
+    end if
+  else if kind = "reloaded"
+    if isFollowing()
+      ' The player loads its stream again in place (a track, quality or version change, a retry). Its
+      ' node reads 0 until the reloaded stream's first frame, and its last reading lags the group's
+      ' clock (by more than the server's half second after a stream that failed), so this member
+      ' reports where the group paused for its Buffering: the group's own position, the reload's start
+      ' when no group clock is in force. A gap left between the node and the group is the drift
+      ' correction's, after the Unpause, as at a mount. Unlike a mount, the group's state stays: a
+      ' group paused when the reload began is still paused. A correction or a seek in flight targeted
+      ' the old stream.
+      reference = syncPlayPlayback.clockReference(m.lastCommand, m.state.playingItemId, m.reportedBuffering)
+      groupTicks = syncPlayPlayback.groupPositionTicks(reference, m.estimator, syncPlayTime.nowMs())
+      playerTicks& = syncPlayPlayback.secondsToTicks(evt.startSeconds)
+      startTicks& = playerTicks&
+      if isValid(groupTicks) then startTicks& = syncPlayTime.asLong(groupTicks)
+      ' Ticks as text: roku-log renders a LongInteger as an empty string.
+      groupText = "none"
+      if isValid(groupTicks) then groupText = syncPlayTime.asLong(groupTicks).toStr()
+      lastCommandKind = ""
+      if isValid(m.lastCommand) then lastCommandKind = m.lastCommand.command
+      m.log.info("reload in place reported to the group", "groupTicks", groupText, "playerTicks", playerTicks&.toStr(), "lastCommand", lastCommandKind, "reportedBuffering", m.reportedBuffering)
+      m.playerPositionTicks = startTicks&
+      dropCorrection()
+      m.correctionPauseOwed = false
+      syncPlayPlayback.disarmSettleCheck(m.settle)
+      track({ kind: "reloaded", startTicks: startTicks& })
     end if
   else if kind = "state"
     if isFollowing()
@@ -897,6 +930,7 @@ end sub
 
 sub scheduleCommand(command as object)
   m.lastCommand = command
+  if command.command = "Seek" then m.groupSeeks++
   m.reportedBuffering = false
   plan = syncPlayPlayback.scheduleCommand(m.estimator, command, syncPlayTime.nowMs())
   m.pendingPlan = plan
@@ -1239,6 +1273,7 @@ sub report(kind as string, isPlaying as boolean, positionTicks = invalid as dyna
   reported& = m.playerPositionTicks
   if isValid(positionTicks) then reported& = syncPlayTime.asLong(positionTicks)
   if kind = "ready"
+    m.readiesSent++
     post("Ready", syncPlayRequests.ready(whenMs&, reported&, isPlaying, m.state.playingItemId))
   else
     m.reportedBuffering = true
@@ -1403,6 +1438,8 @@ sub publish()
       extraOffsetMs: m.estimator.extraOffsetMs,
       loadCount: m.loadCount,
       correctionsDone: m.correctionsDone,
+      groupSeeks: m.groupSeeks,
+      readiesSent: m.readiesSent,
       repeatMode: m.state.repeatMode,
       shuffleMode: m.state.shuffleMode
     }

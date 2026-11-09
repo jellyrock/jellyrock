@@ -193,11 +193,34 @@ namespace syncPlayPlayback
   ' playbackDiffMillis). Invalid while no Unpause is in force or its When has not come.
   function driftMs(lastCommand as dynamic, estimator as object, nowMs as longinteger, playerPositionTicks as longinteger) as dynamic
     if not isValid(lastCommand) or lastCommand.command <> "Unpause" then return invalid
+    estimated = unpauseRunForwardMs(lastCommand, estimator, nowMs)
+    if not isValid(estimated) then return invalid
+    return estimated - syncPlayTime.ticksToMs(playerPositionTicks)
+  end function
+
+  ' Where the group is now, in ticks, for a member that has to say so without a position of its own
+  ' it can trust (a reload in place, whose node reads 0 and whose last reading lags): a Pause or a
+  ' Seek holds its position, and an Unpause runs its position forward on the measured server clock
+  ' from its When. invalid with no command, or one that names no position.
+  ' @param reference - the command that says where the group is (clockReference), or invalid
+  function groupPositionTicks(reference as dynamic, estimator as object, nowMs as longinteger) as dynamic
+    if not isValid(reference) then return invalid
+    lastCommand = reference
+    positionTicks& = syncPlayTime.asLong(lastCommand.positionTicks)
+    if lastCommand.command = "Pause" or lastCommand.command = "Seek" then return positionTicks&
+    if lastCommand.command <> "Unpause" then return invalid
+    estimated = unpauseRunForwardMs(lastCommand, estimator, nowMs)
+    if not isValid(estimated) then return positionTicks&
+    return syncPlayTime.msToTicks(estimated)
+  end function
+
+  ' An Unpause's position run forward on the measured server clock to now, in ms, or invalid before
+  ' its When (web's playbackDiffMillis).
+  function unpauseRunForwardMs(lastCommand as object, estimator as object, nowMs as longinteger) as dynamic
     serverNow& = syncPlayOffset.serverNowMs(estimator, nowMs)
     whenMs& = syncPlayTime.asLong(lastCommand.whenMs)
     if serverNow& < whenMs& then return invalid
-    estimated& = syncPlayTime.ticksToMs(syncPlayTime.asLong(lastCommand.positionTicks)) + (serverNow& - whenMs&)
-    return estimated& - syncPlayTime.ticksToMs(playerPositionTicks)
+    return syncPlayTime.ticksToMs(syncPlayTime.asLong(lastCommand.positionTicks)) + (serverNow& - whenMs&)
   end function
 
   ' The check an Unpause arms: once the node plays and SETTLE_POSITIONS notifications have come,
@@ -342,9 +365,10 @@ namespace syncPlayPlayback
 
   ' Feed one player or coordinator event; get back what to send and what to wait for.
   ' @param tracker - from newReadyTracker, mutated in place
-  ' @param evt - { kind: "mounted" | "seek" | "holdSeek" | "state" | "position" | "timeout" | "unmounted",
+  ' @param evt - { kind: "mounted" | "reloaded" | "seek" | "holdSeek" | "state" | "position" | "timeout" | "unmounted",
   '   state (for "state"), positionTicks (for "seek", "state" and "position"), for "mounted" the
-  '   `startTicks` the load was asked to start at (absent when it starts at the beginning), and for
+  '   `startTicks` the load was asked to start at (absent when it starts at the beginning), for
+  '   "reloaded" (the player loading its stream again in place) the `startTicks` it reloads from, and for
   '   "seek" the plan step's `report` and `thenPause` }. A silent seek (report false) still enters
   '   the seeking phase, so the buffering and playing it causes are not taken for a stall.
   '   "holdSeek" carries `targetTicks` (not `positionTicks`, which every event copies into the
@@ -445,6 +469,27 @@ namespace syncPlayPlayback
         tracker.phase = "rebuffering"
         result.report = "buffering"
       end if
+    else if kind = "reloaded"
+      if tracker.phase = "idle" then return result
+      startTicks = 0&
+      if syncPlayTime.isWholeNumber(evt.startTicks) then startTicks = syncPlayTime.asLong(evt.startTicks)
+      if tracker.phase = "loading"
+        ' A retry before the first frame: the load starts over from here, and the server has its
+        ' Buffering already.
+        tracker.loadStartTicks = startTicks
+        return result
+      end if
+      ' The stream the tracker followed is gone, a seek in flight on it included. The reload is a
+      ' load: Buffering now, so the group waits from the start of it, and the first frame pauses
+      ' and reports Ready at the reload's start.
+      tracker.phase = "loading"
+      tracker.loadStartTicks = startTicks
+      tracker.heldSeek = invalid
+      tracker.reportSeek = false
+      tracker.thenPause = false
+      tracker.showOsd = false
+      tracker.lastState = ""
+      result.report = "buffering"
     else if kind = "unmounted"
       tracker.phase = "idle"
       tracker.heldSeek = invalid
