@@ -350,6 +350,21 @@ namespace syncPlayPlayback
     return Abs(loadStartTicks) <= syncPlayTime.msToTicks(READY_TOLERANCE_MS)
   end function
 
+  ' Whether the load a same-item restart would be absorbed into starts at the item's start
+  ' (syncPlayQueue.restartAbsorbed's loadFromStart). Three loads can be in flight: the tracker's,
+  ' once a player mounted (a reload in place moves its start partway in); a launch's, between
+  ' playQueue and its player's mount, at the start the manager gave it; and one only owed, not yet
+  ' performed, which starts where the group is, 0 after a restart.
+  ' @param trackerPhase - the ready tracker's phase
+  ' @param trackerLoadStartTicks - where the tracker's load started
+  ' @param loadAwaitsReady - a load was performed and its player has not reported Ready
+  ' @param loadStartTicks - the start the manager gave that load
+  function restartLoadFromStart(trackerPhase as string, trackerLoadStartTicks as longinteger, loadAwaitsReady as boolean, loadStartTicks as longinteger) as boolean
+    if trackerPhase = "loading" then return loadStartsAtItemStart(trackerLoadStartTicks)
+    if loadAwaitsReady then return loadStartsAtItemStart(loadStartTicks)
+    return true
+  end function
+
   ' Move the resume to where the node stopped: a seek lands off its target (up to 36 ms in the logs
   ' of a 2026-10-31 Stick 4K run), and resuming on the target's moment carries that error into the
   ' group. A paused position further off than the landing tolerance is not one to trust, so the

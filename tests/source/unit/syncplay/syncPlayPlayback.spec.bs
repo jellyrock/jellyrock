@@ -652,6 +652,19 @@ namespace tests
       m.assertFalse(syncPlayPlayback.loadStartsAtItemStart(585000000&), "a reload in place at 58.5 s")
     end function
 
+    @it("restartLoadFromStart: the tracker's load once mounted, the launch's before that, and an owed load from the start")
+    function _()
+      ' A reload in place or a late join's mount: the tracker loads from partway in.
+      m.assertFalse(syncPlayPlayback.restartLoadFromStart("loading", 585000000&, true, 0&))
+      m.assertTrue(syncPlayPlayback.restartLoadFromStart("loading", 0&, true, 585000000&), "the tracker's start wins once mounted")
+      ' A launch between playQueue and its mount: the start the manager gave it.
+      m.assertFalse(syncPlayPlayback.restartLoadFromStart("idle", 0&, true, 585000000&))
+      m.assertTrue(syncPlayPlayback.restartLoadFromStart("idle", 0&, true, 4000000&), "a launch from the start")
+      ' Only owed: it will start where the group is, 0 after a restart.
+      m.assertTrue(syncPlayPlayback.restartLoadFromStart("idle", 0&, false, 585000000&))
+      m.assertTrue(syncPlayPlayback.restartLoadFromStart("ready", 585000000&, false, 585000000&), "a ready tracker is not a load")
+    end function
+
     @it("a longer lead seeks further and resumes that much later")
     function _()
       plan = syncPlayPlayback.correctionPlan(500&, 695000000&, m.unpauseInForce(), m.estimator(), 3100&)
