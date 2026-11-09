@@ -2,7 +2,9 @@ name: Link Release Announcement
 
 # Every published release gets an Announcements discussion, and this workflow is what links
 # it: GitHub drops a discussion category set on a draft, so the draft workflows set none.
-# Editing a release is not a "published" event, so this never triggers itself.
+# It edits the release as the jellyrock GitHub App, so the discussion is posted by
+# jellyrock[bot]; the App needs Discussions write. Editing a release is not a "published"
+# event, so this never triggers itself.
 
 on:
   release:
@@ -16,17 +18,23 @@ on:
         type: string
 
 permissions:
-  contents: write
-  discussions: write
+  contents: read
 
 jobs:
   link-announcement:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Link an Announcements discussion when the release has none
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
