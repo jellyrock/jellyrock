@@ -2264,7 +2264,7 @@ sub onState()
     else
       reportPlayback()
     end if
-    restartPlaybackTimer(playbackCheckIn.PLAYING_REPORT_SECONDS)
+    restartPlaybackTimer(playbackCheckIn.REPORT_SECONDS)
     ' The capped restart of a paused stream: its first frame is where it pauses again.
     if m.holdPausedAfterReload
       m.holdPausedAfterReload = false
@@ -2277,10 +2277,11 @@ sub onState()
     m.bufferCheckTimer.control = "stop"
     m.bufferCheckTimer.unobserveField("fire")
     reportPlayback()
-    ' Paused, the server still ends a session with no report for 5 minutes, and it can lose this
-    ' report to its own "still playing" copies (playbackCheckIn.bs): keep reporting slowly, and
-    ' read the session back to confirm the pause.
-    restartPlaybackTimer(playbackCheckIn.KEEPALIVE_SECONDS)
+    ' Paused, the server still ends a session with no report for 5 minutes, kills a transcode with
+    ' no ping for 60 seconds, and can lose this report to its own "still playing" copies
+    ' (playbackCheckIn.bs): keep reporting at the same pace, and read the session back to confirm
+    ' the pause.
+    restartPlaybackTimer(playbackCheckIn.REPORT_SECONDS)
     m.pauseCheck.paused()
     m.pauseConfirmTimer.control = "stop"
     m.pauseConfirmTimer.control = "start"

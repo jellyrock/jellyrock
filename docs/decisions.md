@@ -2692,6 +2692,16 @@ Ruled out: an "Only for me" button that plays on this Roku while staying halted 
 
 Rejected: a rule to stop runs with `kill -INT` (it relies on every agent remembering it), a plain detached child as in `measure-devices.js` (the task stop kills it too), and, for the repeated signal, letting only `SIGINT` abandon (a Ctrl-C under bash still arrives twice). Check this again if a tool starts killing by session or control group instead of by process tree: the double fork would no longer escape.
 
+## decision-id: report-every-10s-while-paused
+
+**date**: 2026-11-07
+**status**: accepted
+**related-files**: `source/utils/playbackCheckIn.bs`, `components/video/VideoPlayerView.bs`, `components/mediaPlayers/AudioPlayer.bs`
+
+Both players report playback every `playbackCheckIn.REPORT_SECONDS` (10 s) while a stream is open, paused or playing, as Jellyfin Web does (its `playbackmanager.js` stops its 10 s progress timer only on stop or a change of item). This replaces the 60 s paused interval #1282 chose against the 5-minute idle-session limit. That choice missed a second server rule: Jellyfin kills an HLS transcode that gets no ping for 60 s and deletes its segments (`TranscodeManager.OnTranscodeKillTimerStopped`). Reports ping it, and so do the server's own every-second copies, but the copies stop once a pause is held, and a paused Roku with a full buffer requests no segments. Measured 2026-11-07 on Jellyfin 12.4 (Streaming Stick 4K): with the 60 s interval the transcode was killed 60.001 s after a pause and resuming needed two ffmpeg restarts; with 10 s, a 3-minute pause kept it and resumed with none.
+
+Ruled out: a separate `POST /Sessions/Playing/Ping` every 30 s while paused, which adds a second mechanism beside the reports and picks an interval with no evidence behind it, where the reference client's 10 s has years of use. Re-evaluate if Jellyfin changes the transcode kill timer or stops its auto-progress copies.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

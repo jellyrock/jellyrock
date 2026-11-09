@@ -138,11 +138,11 @@ namespace tests
     @describe("intervals")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("keeps the keepalive inside the server's 5-minute idle limit")
+    @it("reports well inside the server's 60-second transcode kill timer")
     function _()
-      m.assertTrue(playbackCheckIn.KEEPALIVE_SECONDS < 300)
-      m.assertTrue(playbackCheckIn.CONFIRM_DELAY_SECONDS < playbackCheckIn.KEEPALIVE_SECONDS)
-      m.assertTrue(playbackCheckIn.PLAYING_REPORT_SECONDS < playbackCheckIn.KEEPALIVE_SECONDS)
+      ' Half the timer at most, so one late or lost report does not cost the transcode.
+      m.assertTrue(playbackCheckIn.REPORT_SECONDS <= 30)
+      m.assertTrue(playbackCheckIn.CONFIRM_DELAY_SECONDS < playbackCheckIn.REPORT_SECONDS)
     end function
 
   end class
