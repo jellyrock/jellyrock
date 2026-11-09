@@ -28,7 +28,7 @@
     <!-- { offsetMs, delayMs, hasEstimate, lastCommand, trackerPhase, playingItemId, playingItemIndex,
          playlistCount, loadNotice, playbackDiffMs (how far behind the group this member sits, ms, invalid
          until an Unpause is in force; refreshed at each position notification in RTA builds only, otherwise whenever something else publishes), extraOffsetMs (the
-         viewer's time offset setting), loadCount (the loads performed for queue frames, a monotonic count), correctionsDone (the drift corrections that ran to their resume, a monotonic count), repeatMode and shuffleMode (the group's, in the server's words,
+         viewer's time offset setting), loadCount (the loads performed for queue frames, a monotonic count), correctionsDone (the drift corrections that ran to their resume, a monotonic count), groupSeeks (the Seek commands the group sent while this member followed, a monotonic count), readiesSent (the Ready reports this member sent, a monotonic count), repeatMode and shuffleMode (the group's, in the server's words,
          from the last queue update) } -->
     <field id="sync" type="assocarray" />
     <!-- Something the viewer is told: { kind, groupName, userName }; a confirmPlay notice also
