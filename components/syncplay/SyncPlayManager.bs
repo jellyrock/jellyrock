@@ -259,9 +259,11 @@ function playerEvent(evt as object) as object
       ' node reads 0 until the reloaded stream's first frame, and its last reading lags the group's
       ' clock (by more than the server's half second after a stream that failed), so this member
       ' reports where the group paused for its Buffering: the group's own position, the reload's start
-      ' when no group clock is in force. A gap left between the node and the group is the drift
-      ' correction's, after the Unpause, as at a mount. Unlike a mount, the group's state stays: a
-      ' group paused when the reload began is still paused.
+      ' when no group clock is in force. The tracker puts it in the Ready when the node reads more than
+      ' half a second below it, as at a late join, which a node still reading 0 at its first frame
+      ' always does; a node already that close reports its own. A gap left between the node and the
+      ' group is the drift correction's, after the Unpause, as at a mount. Unlike a mount, the group's
+      ' state stays: a group paused when the reload began is still paused.
       reference = syncPlayPlayback.clockReference(m.lastCommand, m.state.playingItemId, m.reportedBuffering)
       groupTicks = syncPlayPlayback.groupPositionTicks(reference, m.estimator, syncPlayTime.nowMs())
       playerTicks& = syncPlayPlayback.secondsToTicks(evt.startSeconds)

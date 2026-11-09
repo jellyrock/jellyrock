@@ -828,18 +828,18 @@ end sub
 ' track, quality or version change, a retry), so each keeps its start the same way, tells a
 ' SyncPlay group, and keeps its `stop` from reading as the end of playback.
 '
-' @param {dynamic} startTicks - where the reload starts, exact (reloadStartTicks), or invalid to
-'   keep the start this load was given: a stream that has not played has no position of its own
+' @param {dynamic} startTicks - where the reload starts, exact: a played stream's position
+'   (reloadStartTicks), or a version switch's start mapped into the new version. invalid keeps the
+'   start this load was given: a stream that has not played has no position of its own
 ' @param {integer} audioIndex - the audio stream the load asks for
 ' @param {integer} subtitleIndex - the subtitle the load asks for
 sub reloadInPlace(startTicks as dynamic, audioIndex as integer, subtitleIndex as integer)
-  if isValid(startTicks)
-    m.global.queueManager.callFunc("setCurrentStartingPoint", startTicks, true)
-    ' A group hears of it before the stop, so its Buffering goes out now and the stop's own states
-    ' reach a tracker that is already loading. Before the first frame the start the load began
-    ' with still holds there too (syncPlayPlayback.trackPlayerEvent).
-    syncPlayHooks.notify({ kind: "reloaded", startSeconds: startTicks / 10000000# })
-  end if
+  if isValid(startTicks) then m.global.queueManager.callFunc("setCurrentStartingPoint", startTicks, true)
+  ' A group hears of it before the stop, so its Buffering goes out now and the stop's own states
+  ' reach a tracker that is already loading. Before the first frame the tracker is still loading
+  ' from the start the load began with, and the server holds its Buffering, so there is nothing to
+  ' tell (syncPlayPlayback.trackPlayerEvent).
+  if m.hasStreamPlayed and isValid(startTicks) then syncPlayHooks.notify({ kind: "reloaded", startSeconds: startTicks / 10000000# })
   m.hasStreamPlayed = false
   ' A stop can surface as `finished`: PlayerHostView must not advance or exit on it.
   m.top.isReloading = true
@@ -951,7 +951,8 @@ sub onVideoSourceChange()
   ' the current position is not automatically a place the new file reaches, and seeding a
   ' position past its end starts the stream at nothing. switchTicksFor() keeps the exact time
   ' whenever the new version has it and falls back to the same percentage. A stream that has
-  ' not played yet keeps the start its load was given (reloadStartTicks).
+  ' not played yet has no position (reloadStartTicks), so the start the queue holds maps instead,
+  ' from the version still loading (versionResume.unplayedSwitchTicksFor).
   '
   ' int() on the duration before scaling: getEffectiveDuration() is a FLOAT, and a float
   ' cannot hold a tick count (~1e10) without rounding: the trap that made a 1-tick margin
@@ -959,7 +960,15 @@ sub onVideoSourceChange()
   newRuntimeTicks = invalid
   if isValid(newSource) then newRuntimeTicks = newSource.RunTimeTicks
   startTicks = reloadStartTicks(m.hasStreamPlayed, m.top.position)
-  if isValid(startTicks) then startTicks = versionResume.switchTicksFor(startTicks, int(getEffectiveDuration()) * 10000000&, newRuntimeTicks)
+  if isValid(startTicks)
+    startTicks = versionResume.switchTicksFor(startTicks, int(getEffectiveDuration()) * 10000000&, newRuntimeTicks)
+  else
+    ' m.videoLoadMediaSourceId is still the version loading: onVideoContentLoaded moves it.
+    loadingSource = mediaSourceForId(m.top.fullVideoSourceData, m.videoLoadMediaSourceId)
+    loadingRuntimeTicks = invalid
+    if isValid(loadingSource) then loadingRuntimeTicks = loadingSource.RunTimeTicks
+    startTicks = versionResume.unplayedSwitchTicksFor(m.currentItem.startingPoint, loadingRuntimeTicks, newRuntimeTicks)
+  end if
   ' Ticks as text: roku-log renders a LongInteger as an empty string.
   newRuntimeText = "unknown"
   if isValid(newRuntimeTicks) then newRuntimeText = newRuntimeTicks.toStr()

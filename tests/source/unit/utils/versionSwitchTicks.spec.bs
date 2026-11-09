@@ -118,6 +118,34 @@ namespace tests
       m.assertEqual(versionResume.switchTicksFor(-1&, m.longRuntime(), m.shortRuntime()), 0&)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("unplayedSwitchTicksFor() - a switch before the stream played")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps the queue's start when the new version reaches it")
+    function _()
+      ' A second switch while the first one loads: its start, 5:19, is inside the 720p file.
+      m.assertInvalid(versionResume.unplayedSwitchTicksFor(m.secs(319), m.longRuntime(), m.shortRuntime()))
+    end function
+
+    @it("maps a start past the new version's end by percentage instead of seeding it there")
+    function _()
+      ' 30:20 of the 1080p file (30:43) does not exist in the 720p one (29:55): 98.75% of it is 29:32.
+      mapped = versionResume.unplayedSwitchTicksFor(m.secs(1820), m.longRuntime(), m.shortRuntime())
+      m.assertTrue(isValid(mapped) and mapped >= m.secs(1772) and mapped < m.secs(1773), "29:32, not the queue's start")
+    end function
+
+    @it("starts from the beginning when a start past the new end has no runtime to map from")
+    function _()
+      m.assertEqual(versionResume.unplayedSwitchTicksFor(m.secs(1820), invalid, m.shortRuntime()), 0&)
+    end function
+
+    @it("keeps the queue's start when there is none to carry")
+    function _()
+      m.assertInvalid(versionResume.unplayedSwitchTicksFor(invalid, m.longRuntime(), m.shortRuntime()))
+      m.assertInvalid(versionResume.unplayedSwitchTicksFor(0&, m.longRuntime(), m.shortRuntime()))
+    end function
+
   end class
 
 end namespace
