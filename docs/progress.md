@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-09: ci(release): Credit released changelog sections, keep old schedules
 - 2026-11-09: ci(bot): Drop the changelog job's status step that has no token
 - 2026-11-09: ci(release): Credit authors and add a summary to release notes
 - 2026-11-09: fix(playback): Restart a stream the server stops sending, and say why
