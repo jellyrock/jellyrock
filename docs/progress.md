@@ -1738,6 +1738,10 @@ In `tests/rta/specs/syncplay-menu.spec.js`, `ctx.heroId` comes from `getHero()`,
 
 Fix shape: fill `ctx.heroId` from the movie `startPlayback` actually opens (the same index the nav uses), or fail fast in `beforeAll` when it is empty. Close it when `ctx.heroId` is never empty on a server the suite runs against.
 
+#### Capture a SyncPlay group's stream restart after a real playback error `[fid: syncplay-error-restart-uncaptured]` `[captured 2026-11-09]`
+
+The stream restart after a playback error (`PlaybackErrorRetry.RESTART_STREAM`, from #1339) reports itself to a SyncPlay group through the reload path of decision `syncplay-reload-reports-its-start` (`VideoPlayerView.tellGroupOfReload()`, then `SyncPlayManager.playerEvent()` with the `reloaded` event), which `tests/rta/specs/syncplay-reload.spec.js` covers for a gear-pick reload. The error-triggered restart itself was never captured inside a group on that build: twice on 2026-11-08 (Streaming Stick 4K, Roku OS 15.3.4, Jellyfin 12.4, the server's ffmpeg killed and its segments deleted until the player reacted) Roku reported a stall instead of the `-5` error, and Roku decides which. Not done now because no way to make a stream error on demand exists yet (tech debt `playback-error-dialog-untestable-on-device`). Close it by capturing one error restart while following a group, checking it sends one Buffering and one Ready at the group's position with no corrective Seek (`syncPlayManager.sync.groupSeeks` unchanged), and adding that step to the spec once the error can be produced.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`
