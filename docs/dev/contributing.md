@@ -34,5 +34,5 @@ You're welcome to work by hand too. The skills are a convenience, not a requirem
 ## Open a pull request
 
 - Run `npm run lint` and `npm run test:scripts` before you ask for review. The GitHub Actions build and lint checks must pass.
-- Title the PR `type: Summary`, for example `fix: Keep the resume point when a video fails to start`. The title becomes the commit on `main`. Its type decides whether and where the change appears in [CHANGELOG.md](../../CHANGELOG.md), which is generated, so don't edit it. CI checks the title and lists the types if it fails. The types are defined in [`scripts/lib/pr-title.js`](../../scripts/lib/pr-title.js).
+- Title the PR `type: Summary`, for example `fix: Keep the resume point when a video fails to start`. The title becomes the commit on `main`. Its type decides whether and where the change appears in [CHANGELOG.md](../../CHANGELOG.md), which is generated, so don't edit it. CI checks the title and lists the types if it fails. The types are defined in [`scripts/lib/pr-title.js`](../../scripts/lib/pr-title.js). The line credits you as the PR's author, and your first merged PR lists you under New Contributors in that release.
 - Make new on-screen text translatable. See [Translations](translations.md).

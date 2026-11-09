@@ -10,8 +10,13 @@ The repo squash-merges, so every PR becomes one commit on `main` whose first lin
 - **The section** comes from the title's type. Every type and its section are defined once, in [`scripts/lib/pr-title.js`](../../scripts/lib/pr-title.js) (`TITLE_TYPES`). Some types stay out of the changelog entirely (tooling, CI, tests, docs).
 - **A PR labeled as a dependency update** (Renovate's `dependencies`) goes to Dependencies, where updates to the same package become one line.
 - **A title with no known type** goes to Changed. Its words are not used to guess a section.
+- **The credit** after "by" is the PR's author, never the commit's: a merge commit names whoever merged it, and a squash commit can carry an email linked to no account. A commit with no PR is credited to the GitHub account its email is linked to, or to its git name, unlinked, when there is none. A bot links to its app page, since `github.com/<bot>` can be an unrelated account. A combined dependency line credits each author once.
 
-The sections, in order: Added, Changed, Fixed, Removed, Dependencies.
+The sections, in order: Added, Changed, Fixed, Removed, Dependencies. **New Contributors** follows them: everyone whose first merged PR or commit on `main` is in that release, oldest first. Bots are never listed.
+
+A login is written as a link (`[@login](https://github.com/login)`), because in a repo file `@login` is plain text. The release notes turn each person's link back into `@login`, which GitHub shows as a mention.
+
+If GitHub cannot answer a lookup (a PR, a commit's account, an earlier contribution), the sync fails and writes nothing, rather than drop a credit.
 
 A PR cannot merge without a known type. `pr-body-check.js` fails the title in CI (the `precheck` job of `Journal Sync Precheck (PR-time)`) and lists the types. So an untyped line reaches `main` only through a direct push or an admin bypassing the check.
 
@@ -21,12 +26,12 @@ A PR cannot merge without a known type. `pr-body-check.js` fails the title in CI
 | --- | --- | --- |
 | Any push to `main` | `sync-changelog` job in [`jellyrock-bot.yml`](../../.github/workflows/jellyrock-bot.yml) | `[Unreleased]` rebuilt from the commits since the latest tag |
 | A manual run of that workflow | Same | Same. Use it to sync again without a new push. |
-| A release tag | `jellyrock-bot.yml` and [`release-build.yml`](../../.github/workflows/release-build.yml) | `[Unreleased]` renamed to the version. From then on, that section stays fixed. |
+| A release tag | `jellyrock-bot.yml` and [`release-build.yml`](../../.github/workflows/release-build.yml) | `[Unreleased]` renamed to the version, with the release's summary copied to its top. From then on, that section stays fixed. |
 
 ## Fixing a wrong entry
 
 - **Not released yet:** edit the merged PR's title on GitHub (its type or its wording), then sync again: push anything to `main`, or run the JellyRock Bot workflow by hand. Editing `[Unreleased]` in `CHANGELOG.md` does not work, because the next sync overwrites it.
-- **Already released:** edit that version's section in `CHANGELOG.md` by hand. Released sections are never regenerated.
+- **Already released:** edit that version's section in `CHANGELOG.md` by hand. Released sections are never regenerated. A section's `### Summary` is the one its release published; later `/release-summary` runs read it as an example.
 - **A direct-push commit** has no PR title to edit. Fix it by hand once it is released.
 
 ## Commands

@@ -53,12 +53,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [3.3.1](https://github.com/jellyrock/jellyrock/compare/v3.3.0...v3.3.1) - 2026-10-30
 
+### Summary
+
+Fixes subtitles that still showed after picking None, and a paused Roku that other Jellyfin apps and SyncPlay groups kept showing as playing.
+
 ### Fixed
 
 - (playback) Turn subtitles off when None is picked ([#1283](https://github.com/jellyrock/jellyrock/pull/1283))
 - (playback) Confirm pauses and keep paused and long plays reported ([#1282](https://github.com/jellyrock/jellyrock/pull/1282))
 
 ## [3.3.0](https://github.com/jellyrock/jellyrock/compare/v3.2.0...v3.3.0) - 2026-10-29
+
+### Summary
+
+Introduces SyncPlay, so you can watch together with people on other Jellyfin apps. Adds a settings button to the video player that sets the maximum bitrate and resolution for the current playback without changing your defaults, and puts the Search and Settings icons on every screen. Also fixes 7 bugs.
 
 ### Added
 
@@ -1940,8 +1948,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
-- update stefanzweifel/git-auto-commit-action action to v6 ([#42](https://github.com/cewert/jellyrock/pull/42))
-- update dependency ropm to v0.11.0 ([#40](https://github.com/cewert/jellyrock/pull/40))
 - update actions/checkout action to v5 ([#36](https://github.com/cewert/jellyrock/pull/36))
 - update softprops/action-gh-release action to v2 ([#37](https://github.com/cewert/jellyrock/pull/37))
 - update actions/setup-java action to v5 ([#34](https://github.com/cewert/jellyrock/pull/34))

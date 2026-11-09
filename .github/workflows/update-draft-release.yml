@@ -20,9 +20,11 @@ jobs:
 
       - name: Extract version from PR title
         id: extract_version
+        # The title reaches bash as data through the environment, never pasted into the script
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           # Extract version from PR title like "Prepare for v1.21.3 release"
-          PR_TITLE="${{ github.event.pull_request.title }}"
           VERSION=$(echo "$PR_TITLE" | sed -n 's/.*v\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p')
 
           if [[ -z "$VERSION" ]]; then
@@ -75,9 +77,6 @@ jobs:
           TAG_NAME="${{ steps.extract_version.outputs.tag_name }}"
           VERSION="${{ steps.extract_version.outputs.version }}"
 
-          # Sync changelog to ensure unreleased section is up to date
-          npm run changelog:sync-unreleased
-
           # Check if draft release exists
           RELEASE_INFO=$(gh release view "$TAG_NAME" --json isDraft,id 2>/dev/null || echo "")
 
@@ -94,72 +93,14 @@ jobs:
             exit 0
           fi
 
-          # Use changelog syncer to format release notes (same logic as tag creation workflow)
-          if [[ -f "CHANGELOG.md" ]]; then
-            # Create temporary changelog to extract formatted release notes
-            cp CHANGELOG.md CHANGELOG.md.backup
-            node scripts/changelog-syncer.js sync-release "$VERSION"
-            
-            # Extract the newly created release section - handle the URL format correctly
-            RELEASE_NOTES=$(sed -n "/## \[$VERSION\]/,/^## \[/p" CHANGELOG.md | sed '$d' | tail -n +2)
-            
-            # Restore original changelog (don't commit changes in this workflow)
-            mv CHANGELOG.md.backup CHANGELOG.md
-            
-            if [[ -z "$RELEASE_NOTES" || "$RELEASE_NOTES" == "" ]]; then
-              RELEASE_NOTES="### No Changes Documented
-
-              No changes were documented in CHANGELOG.md unreleased section."
-            fi
-          else
-            RELEASE_NOTES="### No Changes Documented
-
-            CHANGELOG.md not found."
-          fi
-
-          # Update the draft release with new ZIP and updated body
-          # Calculate release date based on Roku release cycle (PT timezone)
-          CURRENT_DAY_PT=$(TZ=America/Los_Angeles date +%A)
-
-          # Determine days to add based on Roku release cycle
-          case $CURRENT_DAY_PT in
-            Monday)
-              DAYS_TO_ADD=1  # Tuesday at 06:00 pm PT
-              ;;
-            Tuesday)
-              DAYS_TO_ADD=1  # Wednesday at 06:00 pm PT
-              ;;
-            Wednesday)
-              DAYS_TO_ADD=1  # Thursday at 06:00 pm PT
-              ;;
-            Thursday)
-              DAYS_TO_ADD=1  # Friday at 06:00 pm PT
-              ;;
-            Friday)
-              DAYS_TO_ADD=3  # Monday at 06:00 pm PT
-              ;;
-            Saturday)
-              DAYS_TO_ADD=2  # Monday at 06:00 pm PT
-              ;;
-            Sunday)
-              DAYS_TO_ADD=1  # Monday at 06:00 pm PT
-              ;;
-          esac
-
-          # Calculate release date in PT timezone
-          RELEASE_DATE=$(TZ=America/Los_Angeles date -d "+${DAYS_TO_ADD} days" +"%A, %B %d, %Y")
-
-          UPDATED_BODY="## Release Schedule
-
-          JellyRock $TAG_NAME is scheduled for release on the [Roku Channel Store](https://channelstore.roku.com/details/232f9e82db11ce628e3fe7e01382a330:a85d6e9e520567806e8dae1c0cabadd5/jellyrock) $RELEASE_DATE 6:00 PM PT
-
-          $RELEASE_NOTES"
+          npm run changelog:sync-unreleased
+          node scripts/changelog-syncer.js release-notes "$VERSION" > out/release-notes.md
 
           # Upload the new ZIP to the existing draft release
           gh release upload "$TAG_NAME" "out/${{ steps.create_zip.outputs.zip_name }}" --clobber
 
           # Update release body
-          gh release edit "$TAG_NAME" --notes "$UPDATED_BODY" --discussion-category "Announcements"
+          gh release edit "$TAG_NAME" --notes-file out/release-notes.md --discussion-category "Announcements"
 
           echo "✅ Updated draft release $TAG_NAME with new ZIP"
           echo "📝 The release is ready for you to add the scheduled date and publish!"
