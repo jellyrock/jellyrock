@@ -8,9 +8,14 @@
 // Fixture rule: no merge commits and no `(#N)` PR-suffix subjects, because
 // changelog-syncer shells out to `gh pr view` for both. createGitFixture
 // rejects merge subjects; we keep regular commit subjects PR-number-free here.
+//
+// The syncer also asks GitHub who wrote each commit and whether they contributed
+// before. Every run gets a fake `gh` on PATH (fakeGh) that answers from the
+// fixture's own history, so nothing reaches live GitHub;
+// changelog-syncer-credits.test.js covers those answers case by case.
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { spawnScript } from './_helpers/spawn-script.js';
@@ -32,6 +37,30 @@ function writeChangelog(dir, contents) {
   writeFileSync(join(dir, 'CHANGELOG.md'), contents);
 }
 
+/**
+ * A fake `gh` in the fixture's .git folder (never part of its history), as an env for
+ * spawnScript. It credits every commit to `tester`, who has no earlier PR or commit.
+ * With `fail`, every call fails, as gh does when GitHub cannot answer.
+ */
+function fakeGh(dir, { fail = false } = {}) {
+  const bin = join(dir, '.git', 'fake-gh-bin');
+  mkdirSync(bin, { recursive: true });
+  const body = fail
+    ? 'echo "gh: HTTP 502" >&2\nexit 1\n'
+    : 'case "$*" in\n' +
+      '  *compare/*|*"commits?sha="*) git log --all --format="%H%x09tester" ;;\n' +
+      '  *search/issues*|*"commits?author="*) echo 0 ;;\n' +
+      '  *) echo "unexpected gh call: $*" >&2; exit 1 ;;\n' +
+      'esac\n';
+  writeFileSync(join(bin, 'gh'), `#!/bin/sh\n${body}`, { mode: 0o755 });
+  return { PATH: `${bin}:${process.env.PATH}` };
+}
+
+/** Run the syncer in a fixture with the fake `gh`. */
+function sync(dir, args, ghOptions) {
+  return spawnScript(SCRIPT, args, { cwd: dir, env: fakeGh(dir, ghOptions) });
+}
+
 describe('changelog-syncer.js', () => {
   let fixture;
 
@@ -49,7 +78,7 @@ describe('changelog-syncer.js', () => {
       fixture = createGitFixture();
       writeChangelog(fixture.dir, VALID_HEADER);
 
-      const { exitCode, stdout } = spawnScript(SCRIPT, ['status'], { cwd: fixture.dir });
+      const { exitCode, stdout } = sync(fixture.dir, ['status']);
       expect(exitCode).toBe(0);
       expect(stdout).toMatch(/Latest tag: none/);
       expect(stdout).toMatch(/Unreleased commits: 0/);
@@ -66,7 +95,7 @@ describe('changelog-syncer.js', () => {
       fixture.commit('feat: c');
       writeChangelog(fixture.dir, VALID_HEADER);
 
-      const { exitCode, stdout } = spawnScript(SCRIPT, ['status'], { cwd: fixture.dir });
+      const { exitCode, stdout } = sync(fixture.dir, ['status']);
       expect(exitCode).toBe(0);
       expect(stdout).toMatch(/Latest tag: v1\.0\.0/);
       expect(stdout).toMatch(/Unreleased commits: 3/);
@@ -80,7 +109,7 @@ describe('changelog-syncer.js', () => {
   describe('validate', () => {
     it('exits 1 when CHANGELOG.md is missing', () => {
       fixture = createGitFixture();
-      const { exitCode, stdout } = spawnScript(SCRIPT, ['validate'], { cwd: fixture.dir });
+      const { exitCode, stdout } = sync(fixture.dir, ['validate']);
       expect(exitCode).toBe(1);
       expect(stdout).toMatch(/CHANGELOG\.md file missing/);
     });
@@ -92,7 +121,7 @@ describe('changelog-syncer.js', () => {
         fixture.dir,
         'Some other heading\n\n[Keep a Changelog](https://keepachangelog.com/en/1.0.0/)\n',
       );
-      const { exitCode, stdout } = spawnScript(SCRIPT, ['validate'], { cwd: fixture.dir });
+      const { exitCode, stdout } = sync(fixture.dir, ['validate']);
       expect(exitCode).toBe(1);
       expect(stdout).toMatch(/Missing changelog header/);
     });
@@ -100,7 +129,7 @@ describe('changelog-syncer.js', () => {
     it('exits 1 when CHANGELOG.md is missing the Keep a Changelog reference', () => {
       fixture = createGitFixture();
       writeChangelog(fixture.dir, '# Changelog\n\nNo reference here.\n');
-      const { exitCode, stdout } = spawnScript(SCRIPT, ['validate'], { cwd: fixture.dir });
+      const { exitCode, stdout } = sync(fixture.dir, ['validate']);
       expect(exitCode).toBe(1);
       expect(stdout).toMatch(/Missing Keep a Changelog reference/);
     });
@@ -112,7 +141,7 @@ describe('changelog-syncer.js', () => {
       fixture.commit('feat: a');
       writeChangelog(fixture.dir, VALID_HEADER);
 
-      const { exitCode, stdout } = spawnScript(SCRIPT, ['validate'], { cwd: fixture.dir });
+      const { exitCode, stdout } = sync(fixture.dir, ['validate']);
       expect(exitCode).toBe(1);
       expect(stdout).toMatch(/unreleased commits but no \[Unreleased\] section/);
     });
@@ -121,7 +150,7 @@ describe('changelog-syncer.js', () => {
       fixture = createGitFixture();
       // No commits, so no unreleased-commit consistency error.
       writeChangelog(fixture.dir, VALID_HEADER);
-      const { exitCode, stdout } = spawnScript(SCRIPT, ['validate'], { cwd: fixture.dir });
+      const { exitCode, stdout } = sync(fixture.dir, ['validate']);
       expect(exitCode).toBe(0);
       expect(stdout).toMatch(/Changelog validation passed/);
     });
@@ -140,7 +169,7 @@ describe('changelog-syncer.js', () => {
       fixture.commit('fix: broken thumbnail loader');
       writeChangelog(fixture.dir, VALID_HEADER);
 
-      const { exitCode } = spawnScript(SCRIPT, ['sync-unreleased'], { cwd: fixture.dir });
+      const { exitCode } = sync(fixture.dir, ['sync-unreleased']);
       expect(exitCode).toBe(0);
 
       const changelog = readChangelog(fixture.dir);
@@ -158,7 +187,7 @@ describe('changelog-syncer.js', () => {
       writeChangelog(fixture.dir, VALID_HEADER);
 
       const before = readChangelog(fixture.dir);
-      const { exitCode, stdout } = spawnScript(SCRIPT, ['sync-unreleased'], { cwd: fixture.dir });
+      const { exitCode, stdout } = sync(fixture.dir, ['sync-unreleased']);
       expect(exitCode).toBe(0);
       expect(stdout).toMatch(/No unreleased changes/);
       expect(readChangelog(fixture.dir)).toBe(before);
@@ -171,7 +200,7 @@ describe('changelog-syncer.js', () => {
       fixture.commit('feat: bootstrap');
 
       expect(existsSync(join(fixture.dir, 'CHANGELOG.md'))).toBe(false);
-      const { exitCode } = spawnScript(SCRIPT, ['sync-unreleased'], { cwd: fixture.dir });
+      const { exitCode } = sync(fixture.dir, ['sync-unreleased']);
       expect(exitCode).toBe(0);
 
       const changelog = readChangelog(fixture.dir);
@@ -191,7 +220,7 @@ describe('changelog-syncer.js', () => {
         VALID_HEADER + '## [1.0.0] - 2025-01-01\n\n### Added\n\n- something\n',
       );
 
-      const { exitCode } = spawnScript(SCRIPT, ['sync-unreleased'], { cwd: fixture.dir });
+      const { exitCode } = sync(fixture.dir, ['sync-unreleased']);
       expect(exitCode).toBe(0);
 
       const changelog = readChangelog(fixture.dir);
@@ -210,11 +239,11 @@ describe('changelog-syncer.js', () => {
       fixture.commit('fix: b');
       writeChangelog(fixture.dir, VALID_HEADER);
 
-      const first = spawnScript(SCRIPT, ['sync-unreleased'], { cwd: fixture.dir });
+      const first = sync(fixture.dir, ['sync-unreleased']);
       expect(first.exitCode).toBe(0);
       const afterFirst = readChangelog(fixture.dir);
 
-      const second = spawnScript(SCRIPT, ['sync-unreleased'], { cwd: fixture.dir });
+      const second = sync(fixture.dir, ['sync-unreleased']);
       expect(second.exitCode).toBe(0);
       expect(readChangelog(fixture.dir)).toBe(afterFirst);
     });
@@ -229,7 +258,7 @@ describe('changelog-syncer.js', () => {
       fixture.commit('fix: patch security vulnerability in cookies');
       writeChangelog(fixture.dir, VALID_HEADER);
 
-      const { exitCode } = spawnScript(SCRIPT, ['sync-unreleased'], { cwd: fixture.dir });
+      const { exitCode } = sync(fixture.dir, ['sync-unreleased']);
       expect(exitCode).toBe(0);
       const changelog = readChangelog(fixture.dir);
 
@@ -240,6 +269,73 @@ describe('changelog-syncer.js', () => {
       expect(changelog).not.toMatch(/### Security/);
       // Chore commits are filtered out entirely.
       expect(changelog).not.toMatch(/bump unrelated tooling/);
+    });
+  });
+
+  describe('credits', () => {
+    it('credits each line and lists New Contributors after the sections', () => {
+      fixture = createGitFixture();
+      fixture.commit('chore: initial');
+      fixture.tag('v1.0.0');
+      fixture.commit('feat: add login screen');
+      writeChangelog(fixture.dir, VALID_HEADER);
+
+      expect(sync(fixture.dir, ['sync-unreleased']).exitCode).toBe(0);
+      const changelog = readChangelog(fixture.dir);
+      expect(changelog).toMatch(
+        /- add login screen \(\[[0-9a-f]{7}\]\(.*\)\) by \[@tester\]\(https:\/\/github\.com\/tester\)/,
+      );
+      expect(changelog).toMatch(
+        /### Added[\s\S]*### New Contributors\n\n- \[@tester\]\(https:\/\/github\.com\/tester\) made their first contribution in \[[0-9a-f]{7}\]/,
+      );
+    });
+
+    it('exits 1 and leaves CHANGELOG.md as it was when GitHub cannot answer', () => {
+      fixture = createGitFixture();
+      fixture.commit('chore: initial');
+      fixture.tag('v1.0.0');
+      fixture.commit('feat: add login screen');
+      writeChangelog(fixture.dir, VALID_HEADER);
+
+      const { exitCode, stderr } = sync(fixture.dir, ['sync-unreleased'], { fail: true });
+      expect(exitCode).toBe(1);
+      expect(stderr).toMatch(/HTTP 502/);
+      expect(readChangelog(fixture.dir)).toBe(VALID_HEADER);
+    });
+
+    it('exits 1, writing nothing, when the checkout lacks the tags its released sections need', () => {
+      fixture = createGitFixture();
+      fixture.commit('chore: initial');
+      fixture.commit('feat: add login screen');
+      const released = VALID_HEADER + '## [1.0.0] - 2025-01-01\n\n### Added\n\n- something\n';
+      writeChangelog(fixture.dir, released);
+
+      const { exitCode, stderr } = sync(fixture.dir, ['sync-unreleased']);
+      expect(exitCode).toBe(1);
+      expect(stderr).toMatch(/\[1\.0\.0\].*fetch the tags/);
+      expect(readChangelog(fixture.dir)).toBe(released);
+    });
+
+    it('syncs from the start of history before the first release', () => {
+      fixture = createGitFixture();
+      fixture.commit('feat: add login screen');
+      writeChangelog(fixture.dir, VALID_HEADER);
+
+      expect(sync(fixture.dir, ['sync-unreleased']).exitCode).toBe(0);
+      expect(readChangelog(fixture.dir)).toMatch(/add login screen/);
+    });
+
+    it('renames [Unreleased] at release without asking GitHub', () => {
+      fixture = createGitFixture();
+      fixture.commit('chore: initial');
+      fixture.tag('v1.2.2');
+      // A PR subject: reading this commit would ask GitHub, which fails here.
+      fixture.commit('feat: thing (#5)');
+      fixture.tag('v1.2.3');
+      writeChangelog(fixture.dir, VALID_HEADER + '## [Unreleased]\n\n### Added\n\n- thing\n');
+
+      expect(sync(fixture.dir, ['sync-release', '1.2.3'], { fail: true }).exitCode).toBe(0);
+      expect(readChangelog(fixture.dir)).toMatch(/## \[1\.2\.3\]/);
     });
   });
 
@@ -256,7 +352,7 @@ describe('changelog-syncer.js', () => {
       fixture.tag('v1.2.3');
       writeChangelog(fixture.dir, VALID_HEADER + '## [Unreleased]\n\n### Added\n\n- thing\n');
 
-      const { exitCode } = spawnScript(SCRIPT, ['sync-release', '1.2.3'], { cwd: fixture.dir });
+      const { exitCode } = sync(fixture.dir, ['sync-release', '1.2.3']);
       expect(exitCode).toBe(0);
 
       const changelog = readChangelog(fixture.dir);
@@ -274,7 +370,7 @@ describe('changelog-syncer.js', () => {
       fixture.tag('v1.0.0');
       writeChangelog(fixture.dir, VALID_HEADER + '## [Unreleased]\n\n### Added\n\n- bootstrap\n');
 
-      const { exitCode } = spawnScript(SCRIPT, ['sync-release', '1.0.0'], { cwd: fixture.dir });
+      const { exitCode } = sync(fixture.dir, ['sync-release', '1.0.0']);
       expect(exitCode).toBe(0);
 
       const changelog = readChangelog(fixture.dir);
@@ -293,9 +389,7 @@ describe('changelog-syncer.js', () => {
         fixture.commit('feat: thing');
         fixture.tag('v1.2.3');
         writeChangelog(fixture.dir, VALID_HEADER + body);
-        expect(spawnScript(SCRIPT, ['sync-release', '1.2.3'], { cwd: fixture.dir }).exitCode).toBe(
-          0,
-        );
+        expect(sync(fixture.dir, ['sync-release', '1.2.3']).exitCode).toBe(0);
         expect(releaseDates(fixture.dir).get('1.2.3')).toBe(today);
         fixture.cleanup();
         fixture = null;
@@ -304,9 +398,7 @@ describe('changelog-syncer.js', () => {
 
     it('exits 1 with a format error on an invalid version string', () => {
       fixture = createGitFixture();
-      const { exitCode, stderr } = spawnScript(SCRIPT, ['sync-release', '1.2'], {
-        cwd: fixture.dir,
-      });
+      const { exitCode, stderr } = sync(fixture.dir, ['sync-release', '1.2']);
       expect(exitCode).toBe(1);
       expect(stderr).toMatch(/Invalid version format/);
     });

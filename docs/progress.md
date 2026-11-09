@@ -26,6 +26,9 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-09: ci(release): Credit released changelog sections, keep old schedules
+- 2026-11-09: ci(bot): Drop the changelog job's status step that has no token
+- 2026-11-09: ci(release): Credit authors and add a summary to release notes
 - 2026-11-09: fix(playback): Restart a stream the server stops sending, and say why
 - 2026-11-09: fix(playback): Keep a paused video transcoding on the server
 - 2026-11-09: fix(syncplay): Skip a queue update with no readable time, not crash
@@ -211,10 +214,6 @@ The registry's `requires` gates are honored by the functional suite and the scre
 #### `callfunc-interface` could never have caught the `captionTask` teardown bug, and still can't — and no BSC guard plugin sees spec files at all. `[fid: callfunc-interface-misses-caption-teardown]` `[captured 2026-09-23]`
 
 [`scripts/bsc-plugins/callfunc-interface.cjs`](../scripts/bsc-plugins/callfunc-interface.cjs) exists for exactly the "wrote the method, forgot the interface line" defect, but its rule is PROGRAM-WIDE: if any component declares `<function name="X" />`, no `callFunc("X")` is flagged. 11 components declare `onDestroy`, so `m.captionTask.callFunc("onDestroy")` against an interface-less `captionTask.xml` passed clean while the 100 ms caption timer survived every player exit. `onDestroy` is the most-declared name in the repo, which makes it the plugin's worst blind spot on the one call class whose failure is silent by construction. **Two halves, and neither works alone.** (1) *Receiver-awareness* — when the receiver's subtype is statically known, check THAT component's resolved interface rather than the program-wide set. Tractable: all 11 current production `callFunc("onDestroy")` receivers resolve, from either `CreateObject("roSGNode", "<literal>")` or `m.top.findNode("<id>")` against the same component's `<children>`, and [`field-observer-wiring`](../scripts/bsc-plugins/field-observer-wiring.cjs) already does union-find aliasing in-repo. It MUST walk the `extends` chain and accept an inherited declaration — measured 2026-09-23 on a Roku Ultra (OS 15.3.4) that `OSD.callFunc("onDestroy")` reaches the override on `OSD` itself through `JRScreen`'s declaration, pinned by [`callfunc-interface-inheritance.spec.bs`](../tests/source/unit/components/callfunc-interface-inheritance.spec.bs). (2) *Run it over the test bsconfigs* — `bsconfig.json` excludes `tests/**` and the `bsconfig-tests*.json` files load only rooibos, bslint and translation-keys, so no JellyRock guard reaches a spec; the old `captionTask.spec.bs` called `callFunc("updateCaption")` where `updateCaption` was declared by zero components repo-wide, which (2) would have caught. Doing (2) alone still passes on `onDestroy`; doing (1) alone leaves specs unguarded.
-
-#### `.github/release.yml` still sorts GitHub's generated release notes by category label, but nothing uses them. `[fid: release-yml-sorts-unused-notes]` `[captured 2026-09-25]`
-
-`release-management.yml` builds release notes from CHANGELOG.md (placed by title type) and `_build-app.yml` sets `generate_release_notes: false`, so it only applies if someone clicks Generate release notes in the GitHub UI. Delete it, or reduce it to the one exclusion that still matters, so it stops suggesting labels place changes in the release notes. Found 2026-09-25 while revising `/pr`'s label rule.
 
 #### `npm run measure` finds no Home first-paint sample when a launch drops two Home rows (found with #1043). `[fid: measure-home-sample-missing-dropped-rows]` `[captured 2026-09-25]`
 
@@ -1788,6 +1787,14 @@ Five commits on #1299's branch had `noreply@anthropic.com` as author and committ
 **Recommended:** `gate`, because it holds wherever a commit was made.
 
 **Not checked:** where cloud sessions get this identity; whether the environment can override it; whether GitHub adds the line on every squash, since #1073 is the only example found.
+
+#### The Announcements backstop has never linked a discussion, so releases still need the box ticked by hand `[fid: announcements-backstop-unproven]` `[captured 2026-11-09]`
+
+`release-announcement.yml` (from #1343) is meant to link an Announcements discussion to a published release that has none, so the operator no longer has to tick the category box by hand before publishing. Its linking path has never run: every published release so far got its discussion from the box ticked by hand, so the workflow only ever finds one and does nothing. Whether `gh release edit --discussion-category` creates a discussion on an already-published release rests on GitHub's API docs alone, and the operator keeps ticking the box until it is proven.
+
+The draft workflows also pass `--discussion-category "Announcements"` (`release-management.yml`, `update-draft-release.yml`), but the operator reports the box is not ticked on a draft, so that flag looks like it does nothing.
+
+Why not now: proving it means publishing a release without the box ticked, which this repo cannot do as a test (published releases are public). Close it by testing in a throwaway private repo with Discussions on: publish a release without the category, run the workflow by hand with that tag, and confirm `discussion_url` is set; then delete the repo. If it works, the next real release goes out without the box ticked, and the draft-time flags are removed if they still do nothing.
 
 ### Components
 

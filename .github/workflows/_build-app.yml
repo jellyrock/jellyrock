@@ -9,16 +9,6 @@ on:
         required: false
         type: string
         default: "dev"
-      upload_zip:
-        description: "Upload release zip artifact?"
-        required: false
-        type: boolean
-        default: false
-      create_github_release:
-        description: "Bump version and create draft GitHub release"
-        required: false
-        type: boolean
-        default: false
     outputs:
       version:
         description: "Extracted version from manifest"
@@ -26,9 +16,6 @@ on:
       artifact_name:
         description: "Name of the uploaded artifact"
         value: ${{ jobs.build.outputs.artifact_name }}
-      zip_name:
-        description: "Name of the created zip file"
-        value: ${{ jobs.build.outputs.zip_name }}
       branch_name:
         description: "Current branch name"
         value: ${{ jobs.build.outputs.branch_name }}
@@ -43,7 +30,6 @@ jobs:
     outputs:
       version: ${{ steps.context.outputs.version }}
       artifact_name: ${{ steps.context.outputs.artifact_name }}
-      zip_name: ${{ steps.context.outputs.zip_name }}
       branch_name: ${{ steps.context.outputs.branch_name }}
       build_context: ${{ steps.context.outputs.build_context }}
     steps:
@@ -86,36 +72,17 @@ jobs:
           BUILD_VERSION=$(sed -n 's/^build_version=//p' manifest)
           VERSION="${MAJOR}.${MINOR}.${BUILD_VERSION}"
 
-          # Determine artifact naming based on context and whether this is a release build
-          if [[ "${{ inputs.create_github_release }}" == "true" ]]; then
-            # Release builds use version-based naming
-            if [[ $RAW_BRANCH_NAME =~ ^release-[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              BUILD_CONTEXT="version_branch"
-              VERSION_TAG="v${RAW_BRANCH_NAME#release-}"  # Convert release-1.0.1 to v1.0.1
-              ARTIFACT_NAME="JellyRock-${VERSION_TAG}-${{ github.sha }}"
-              ZIP_NAME="JellyRock-${VERSION_TAG}.zip"
-            elif [[ $RAW_BRANCH_NAME == "main" ]]; then
-              BUILD_CONTEXT="main_branch"
-              VERSION_TAG="v${VERSION}"  # Use manifest version for main branch
-              TAG_NAME="v${VERSION}"
-              ARTIFACT_NAME="JellyRock-${VERSION_TAG}-${{ github.sha }}"
-              ZIP_NAME="JellyRock-${VERSION_TAG}.zip"
-            fi
-          else
-            # Regular dev/prod builds use build_type-branch naming
-            # Use the cleaned branch name for artifact naming
-            SAFE_BRANCH=$(echo $BRANCH_NAME | sed 's/[^a-zA-Z0-9-]/-/g' | cut -c1-50)
-            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
-            ARTIFACT_NAME="JellyRock-${{ inputs.build_type }}-${SAFE_BRANCH}-${SHORT_SHA}"
-            ZIP_NAME="JellyRock-${{ inputs.build_type }}-${SAFE_BRANCH}-${SHORT_SHA}.zip"
-            
-            if [[ $RAW_BRANCH_NAME =~ ^release-[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              BUILD_CONTEXT="version_branch"
-            elif [[ $RAW_BRANCH_NAME == "main" ]]; then
-              BUILD_CONTEXT="main_branch"
-            else 
-              BUILD_CONTEXT="feature_branch"
-            fi
+          # Artifacts are named for the build type, the cleaned branch name and the commit
+          SAFE_BRANCH=$(echo $BRANCH_NAME | sed 's/[^a-zA-Z0-9-]/-/g' | cut -c1-50)
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
+          ARTIFACT_NAME="JellyRock-${{ inputs.build_type }}-${SAFE_BRANCH}-${SHORT_SHA}"
+          
+          if [[ $RAW_BRANCH_NAME =~ ^release-[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            BUILD_CONTEXT="version_branch"
+          elif [[ $RAW_BRANCH_NAME == "main" ]]; then
+            BUILD_CONTEXT="main_branch"
+          else 
+            BUILD_CONTEXT="feature_branch"
           fi
 
           echo "🔍 Build Context Information:"
@@ -124,27 +91,14 @@ jobs:
           echo "  Version: $VERSION" 
           echo "  Build Context: $BUILD_CONTEXT"
           echo "  Artifact Name: $ARTIFACT_NAME"
-          echo "  ZIP Name: $ZIP_NAME"
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "build_context=$BUILD_CONTEXT" >> $GITHUB_OUTPUT
           echo "artifact_name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
-          echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
           echo "major=$MAJOR" >> $GITHUB_OUTPUT
           echo "minor=$MINOR" >> $GITHUB_OUTPUT
           echo "build_version=$BUILD_VERSION" >> $GITHUB_OUTPUT
-
-          # Set tag name for releases
-          if [[ "${{ inputs.create_github_release }}" == "true" ]]; then
-            if [[ $BUILD_CONTEXT == "version_branch" ]]; then
-              TAG_NAME="v${RAW_BRANCH_NAME#release-}"  # Convert release-1.0.1 to v1.0.1
-            elif [[ $BUILD_CONTEXT == "main_branch" ]]; then
-              TAG_NAME="v${VERSION}"  # Use manifest version for main branch releases
-            fi
-            echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
-            echo "  Tag Name: $TAG_NAME"
-          fi
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -179,124 +133,3 @@ jobs:
           name: ${{ steps.context.outputs.artifact_name }}
           path: ${{ github.workspace }}/build
           if-no-files-found: error
-
-      - name: Create and prepare ZIP for release
-        if: ${{ inputs.upload_zip == 'true' || steps.context.outputs.build_context == 'version_branch' || (steps.context.outputs.build_context == 'main_branch' && inputs.create_github_release == true) }}
-        run: |
-          echo "📦 Creating ZIP package using roku-deploy..."
-          npm run package
-          if [[ -f "${{ github.workspace }}/out/jellyrock.zip" ]]; then
-            cp "${{ github.workspace }}/out/jellyrock.zip" "${{ github.workspace }}/out/${{ steps.context.outputs.zip_name }}"
-            echo "✅ ZIP renamed to: ${{ steps.context.outputs.zip_name }}"
-          else
-            echo "❌ Expected ZIP file not found at ./out/jellyrock.zip"
-            ls -la ${{ github.workspace }}/out/ || echo "out directory not found"
-            exit 1
-          fi
-
-      - name: Upload ZIP artifact
-        if: ${{ inputs.upload_zip == 'true' || steps.context.outputs.build_context == 'version_branch' || (steps.context.outputs.build_context == 'main_branch' && inputs.create_github_release == true) }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ${{ steps.context.outputs.zip_name }}
-          path: ${{ github.workspace }}/out/${{ steps.context.outputs.zip_name }}
-          if-no-files-found: error
-
-      - name: Debug Release Condition
-        run: |
-          echo "🔧 Debug Release Condition:"
-          echo "  inputs.create_github_release: '${{ inputs.create_github_release }}'"
-          echo "  steps.context.outputs.build_context: '${{ steps.context.outputs.build_context }}'"
-          echo "  inputs.create_github_release == true: ${{ inputs.create_github_release == true }}"
-          echo "  steps.context.outputs.build_context == 'version_branch': ${{ steps.context.outputs.build_context == 'version_branch' }}"
-          echo "  steps.context.outputs.build_context == 'main_branch': ${{ steps.context.outputs.build_context == 'main_branch' }}"
-          echo "  Version branch condition: ${{ inputs.create_github_release == true && steps.context.outputs.build_context == 'version_branch' }}"
-          echo "  Main branch condition: ${{ inputs.create_github_release == true && steps.context.outputs.build_context == 'main_branch' }}"
-          echo "  Overall condition: ${{ inputs.create_github_release == true && (steps.context.outputs.build_context == 'version_branch' || steps.context.outputs.build_context == 'main_branch') }}"
-
-      - name: Check and Delete Existing Release
-        if: ${{ inputs.create_github_release == true && (steps.context.outputs.build_context == 'version_branch' || steps.context.outputs.build_context == 'main_branch') }}
-        run: |
-          TAG_NAME="${{ steps.context.outputs.tag_name }}"
-          echo "🔍 Checking for existing release: $TAG_NAME"
-
-          # Check if release exists
-          RELEASE_ID=$(gh release view "$TAG_NAME" --json id --jq '.id' 2>/dev/null || echo "")
-
-          if [[ -n "$RELEASE_ID" ]]; then
-            echo "🗑️ Deleting existing release: $TAG_NAME (ID: $RELEASE_ID)"
-            gh release delete "$TAG_NAME" --yes
-            echo "✅ Existing release deleted"
-          else
-            echo "ℹ️ No existing release found for tag: $TAG_NAME"
-          fi
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
-
-      - name: Generate Changelog Entry
-        if: ${{ inputs.create_github_release == true && (steps.context.outputs.build_context == 'version_branch' || steps.context.outputs.build_context == 'main_branch') }}
-        run: |
-          echo "📝 Generating changelog for release ${{ steps.context.outputs.tag_name }}"
-
-          # Get the latest tag to compare against
-          LATEST_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || echo "")
-
-          if [[ -n "$LATEST_TAG" ]]; then
-            echo "📊 Converting unreleased changes to release ${{ steps.context.outputs.version }}"
-            node scripts/changelog-syncer.js sync-release "${{ steps.context.outputs.version }}"
-          else
-            echo "📊 Creating initial release changelog entry"
-            node scripts/changelog-syncer.js sync-release "${{ steps.context.outputs.version }}"
-          fi
-
-      - name: Extract Release Notes from Changelog
-        if: ${{ inputs.create_github_release == true && (steps.context.outputs.build_context == 'version_branch' || steps.context.outputs.build_context == 'main_branch') }}
-        id: release_notes
-        run: |
-          echo "📖 Extracting release notes for ${{ steps.context.outputs.version }}"
-
-          # Extract the section for this version from CHANGELOG.md
-          VERSION_PATTERN="## \[${{ steps.context.outputs.version }}\]"
-
-          if grep -q "$VERSION_PATTERN" CHANGELOG.md; then
-            # Get content between this version and the next version/end of file
-            # Use more flexible pattern to handle URL-based headers like [1.0.1](https://...)
-            RELEASE_NOTES=$(awk "/^## \[${{ steps.context.outputs.version }}\]/{flag=1; next} /^## \[.*\]/{if(flag) exit} flag" CHANGELOG.md)
-          else
-            # Fallback to a simple release note
-            RELEASE_NOTES="JellyRock ${{ steps.context.outputs.tag_name }} release.
-
-          See [CHANGELOG.md](https://github.com/jellyrock/jellyrock/blob/main/CHANGELOG.md) for details."
-          fi
-
-          # Save to file for multi-line output
-          echo "$RELEASE_NOTES" > /tmp/release_notes.md
-
-          echo "📋 Release notes preview:"
-          cat /tmp/release_notes.md
-
-          # Set output for use in release creation
-          {
-            echo "notes<<EOF"
-            cat /tmp/release_notes.md
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Create GitHub Release
-        if: ${{ inputs.create_github_release == true && (steps.context.outputs.build_context == 'version_branch' || steps.context.outputs.build_context == 'main_branch') }}
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          tag_name: ${{ steps.context.outputs.tag_name }}
-          name: ${{ steps.context.outputs.tag_name }}
-          body: |
-            ## Release Schedule
-
-            JellyRock ${{ steps.context.outputs.tag_name }} is scheduled for release on the Roku App Store **DATE_TIME**.
-
-            ${{ steps.release_notes.outputs.notes }}
-          draft: true
-          prerelease: false
-          generate_release_notes: false
-          discussion_category_name: Announcements
-          token: ${{ steps.app-token.outputs.token || github.token }}
-          files: ${{ github.workspace }}/out/${{ steps.context.outputs.zip_name }}

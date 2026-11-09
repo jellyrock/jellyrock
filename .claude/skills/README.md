@@ -11,6 +11,7 @@ This file is the index. Each skill's own `description` is the full summary; a ro
 | Skill | Model | What | When |
 |---|---|---|---|
 | [`/pr`](pr/SKILL.md) | sonnet | Create or update a PR: a typed title, labels, a body that reads as the squash commit, a review-notes comment, and the journal passes (tech debt, decision shape, followups) | Every PR, in place of `gh pr create` |
+| [`/release-summary`](release-summary/SKILL.md) `[version]` | sonnet | Draft the summary at the top of a release's notes: a short paragraph naming what a user would notice, with the other fixes counted, checked by a script and written into the draft on your ok | When the release's draft is ready, before you publish it |
 | [`/catchup`](catchup/SKILL.md) | sonnet | State briefing: git, the journal and projects, plus the `scripts/catchup-state.js` aggregator (GitHub, signals, decisions, tech debt) | The start of a new session |
 | [`/focus`](focus/SKILL.md) `[--area=<name>]` | opus | Picks one next move from the same state as `/catchup`, with alternatives and the command to take it | When several things look actionable |
 | [`/ramp`](ramp/SKILL.md) `<area>` | sonnet | A briefing on one area: its rules, docs, tech debt and recent commits | Coming back to an area after more than two weeks |

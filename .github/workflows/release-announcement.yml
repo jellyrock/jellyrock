@@ -1,0 +1,44 @@
+name: Link Release Announcement
+
+# Every published release gets an Announcements discussion. The draft workflows also set
+# the category before publishing; this catches a release published without it.
+# Editing a release is not a "published" event, so this never triggers itself.
+
+on:
+  release:
+    types: [published]
+  # Manual run: link a discussion to an older release, or test this workflow
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, for example v3.3.1"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  discussions: write
+
+jobs:
+  link-announcement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Link an Announcements discussion when the release has none
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          url=$(gh api "repos/$REPO/releases/tags/$TAG" --jq '.discussion_url // ""')
+          if [ -n "$url" ]; then
+            echo "ℹ️ $TAG already links $url"
+            exit 0
+          fi
+          gh release edit "$TAG" --repo "$REPO" --discussion-category "Announcements"
+          url=$(gh api "repos/$REPO/releases/tags/$TAG" --jq '.discussion_url // ""')
+          if [ -z "$url" ]; then
+            echo "❌ $TAG still has no discussion after setting the category"
+            exit 1
+          fi
+          echo "✅ $TAG now links $url"

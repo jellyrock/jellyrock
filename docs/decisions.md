@@ -2734,6 +2734,16 @@ Every reload in place (a track, quality or version change, a retry) goes through
 
 Ruled out: patching each path (the three copies had already drifted apart); clearing the flag when the reload's content arrives (it misses a pick after the stream arrives but before it plays); skipping the save by `Video` state (it depends on Roku's state timing); and ignoring picks while a reload loads (it drops the viewer's pick).
 
+## decision-id: changelog-credits-pr-author
+
+**date**: 2026-11-09
+**status**: accepted
+**related-files**: scripts/changelog-syncer.js
+
+A changelog line credits the account GitHub's API names as the PR's author, for every PR, with no rule for any one agent. A PR an app opened, an AI agent's included, credits that app, linked to its app page. Ruled out: the "by @person with @Copilot" form GitHub's generated notes use for its own agent, which needs code for one agent while nothing shows how others open PRs. Also ruled out: crediting a human assignee of an app PR, since assignment is not authorship and a self-assigned Renovate PR would credit its reviewer.
+
+Checked 2026-11-09 against GitHub's notes for all 83 tag ranges: every PR credit matched except three Copilot PRs (#142, #143, #144). Re-evaluate if an agent's PR lines read wrong to users.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
