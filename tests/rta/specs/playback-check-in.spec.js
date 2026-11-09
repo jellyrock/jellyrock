@@ -35,7 +35,6 @@ const SONG = 'Thunderdays';
 // report to land, and well under the server's 60-second transcode kill timer, so a player that
 // reports more slowly while paused fails it.
 const CHECK_IN_WAIT_MS = 25000;
-const PLAYING_CHECK_IN_WAIT_MS = CHECK_IN_WAIT_MS;
 
 let session;
 let deviceId;
@@ -147,7 +146,7 @@ it('a song checks in on the video pace while playing, keeps checking in while pa
     const playingSince = Date.parse(await readSession('session.LastPlaybackCheckIn'));
     await waitFor('session.LastPlaybackCheckIn', (v) => Date.parse(v) > playingSince, {
       read: readSession,
-      timeout: PLAYING_CHECK_IN_WAIT_MS,
+      timeout: CHECK_IN_WAIT_MS,
       interval: 1000,
       label: `a newer check-in from the playing song`,
     });

@@ -116,7 +116,7 @@ namespace playbackCheckIn
         return true
       end if
       if action = PauseReadBack.GIVE_UP
-        m.log.warn("the server still shows playing; the keepalive will report the pause again", "reportsSent", m.reportsSent)
+        m.log.warn("the server still shows playing; the next report sends the pause again", "reportsSent", m.reportsSent)
       else if action = PauseReadBack.UNREADABLE
         m.log.warn("pause read-back could not judge the session; the next report sends the pause again", "cause", unreadableCause(res))
       else

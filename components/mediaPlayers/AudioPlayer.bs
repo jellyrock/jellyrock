@@ -27,7 +27,7 @@ sub init()
 
   ' Reports while a stream is open, as the video player's timer does: the server keeps the resume
   ' point only from reports, and ends a session that sends none for 5 minutes (playbackCheckIn.bs).
-  ' Each state change's report restarts it at that state's interval.
+  ' Each state change's report restarts it, so the next report is a full interval later.
   m.reportTimer = CreateObject("roSGNode", "Timer")
   m.reportTimer.repeat = true
   m.reportTimer.observeField("fire", "onReportDue")
