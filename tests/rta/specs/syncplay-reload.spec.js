@@ -274,6 +274,71 @@ it('a second pick while the first reload loads reloads from where the stream was
   await expectInSync('this member in sync after the two picks');
 });
 
+// A reload starts where the group is, not where this node was (syncPlayHooks.reloadStart): a
+// member that fell behind (a stall, a stream the server stopped sending) comes back with one load
+// and the keyframe gap, instead of resuming behind and being seek-corrected a few seconds later.
+// Here the node is put behind with a seek written on it alone (the group hears nothing), and the
+// pick follows at once, before the drift correction's lead passes.
+it('a reload on a member that fell behind starts where the group is, not where the node was', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  await waitFor('state', (s) => s === 'playing', {
+    read: player(),
+    timeout: 30000,
+    label: 'playing before falling behind',
+  });
+  await expectInSync('this member in sync before falling behind');
+  const groupPositionBefore = await player()('position');
+  expect(groupPositionBefore, 'the stream partway in').toBeGreaterThan(8);
+  const seeksBefore = await groupSeeks();
+  const readiesBefore = await getGlobalVal('syncPlayManager.sync.readiesSent');
+  const behindBy = 4;
+  await odc.setValue({
+    base: 'scene',
+    keyPath: `#${heroId}.seek`,
+    value: groupPositionBefore - behindBy,
+  });
+  await waitFor(
+    'position',
+    (v) => typeof v === 'number' && v < groupPositionBefore - behindBy + 1.5,
+    {
+      read: player(),
+      timeout: 10000,
+      interval: 100,
+      label: 'the node behind the group',
+    },
+  );
+  await odc.setValue({
+    base: 'scene',
+    keyPath: '#osd.playbackCapsPick',
+    value: { field: 'maxBitrateMbps', value: 120 },
+  });
+  await waitFor('syncPlayManager.sync.readiesSent', (v) => v > readiesBefore, {
+    read: getGlobalVal,
+    timeout: 30000,
+    label: "the reload's Ready sent",
+  });
+  await waitFor('syncPlayManager.groupState', (v) => v === 'Playing', {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: "the group Playing again after the reload's Ready",
+  });
+  // The group played on through the seek and the pick, so at the pick it was past the position
+  // before; the node was `behindBy` less, minus the wait's margin. A start at the node's position
+  // reads under groupPositionBefore - 2.5; one at the group's reads at or past it.
+  const playStart = await player()('content.PlayStart');
+  expect(
+    playStart,
+    `the reload started at ${playStart} s, behind where the group was (${groupPositionBefore} s at the seek)`,
+  ).toBeGreaterThanOrEqual(groupPositionBefore - 1);
+  expect(await groupSeeks(), "the server accepted the reload's Ready: no corrective Seek").toBe(
+    seeksBefore,
+  );
+  await expectInSync('this member in sync after the reload');
+});
+
 // Under RepeatOne a NextItem on the same item restarts it for the group from its start, and the
 // Roku absorbs a restart it is already loading (syncPlayQueue.restartAbsorbed). A reload in place
 // is a load too, but from partway in: a restart that lands during it must not be absorbed, or this

@@ -75,6 +75,9 @@
     <!-- resumeFollowing(): a halted member follows the group again from the menu and loads the
          group's item at its estimated position; true when it was halted in a group. -->
     <function name="resumeFollowing" />
+    <!-- reloadStart(playerStartTicks): where a reload in place starts while following: the group's
+         position when the manager knows it, else the player's own (syncPlayHooks.reloadStart). -->
+    <function name="reloadStart" />
     <!-- { kind: "mounted" | "reloaded" | "state" | "position" | "finished" | "unmounted", state,
          position, startSeconds } from the host and the player, position in the Video node's float
          seconds; "reloaded" (the player loading its stream again in place) carries the

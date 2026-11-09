@@ -75,6 +75,15 @@ namespace syncPlayHooks
     return manager.callFunc("pausedForViewer", nodeState) = true
   end function
 
+  ' Where a reload in place starts: the group's position while following and known, so the node
+  ' loads where the group is (decision syncplay-reload-reports-its-start); else the player's own
+  ' start, unchanged (its position, or invalid for a stream that has not played).
+  function reloadStart(playerStartTicks as dynamic) as dynamic
+    manager = m.global.syncPlayManager
+    if not isValid(manager) or manager.following <> true then return playerStartTicks
+    return manager.callFunc("reloadStart", playerStartTicks)
+  end function
+
   ' Whether a seek for the group is in flight, so a pause pressed now can wait for its landing.
   function seekInFlight() as boolean
     manager = m.global.syncPlayManager

@@ -400,6 +400,18 @@ namespace tests
       m.assertTrue(m.reportsPosition(ready, 585000000&), ready.body)
     end function
 
+    @it("reloadStart: with no group clock a reload starts where the player would, and so does a halted member's")
+    function _()
+      ' The spec has no clock estimate, so the group's position is never known here: the branch that
+      ' returns it (groupPositionNow) runs on the device, in syncplay-reload.spec.js.
+      m.memberPastFirstFrame()
+      m.assertEqual(m.manager.callFunc("reloadStart", 585000000&), 585000000&, "no command names the group's position: the player's own start")
+      m.assertInvalid(m.manager.callFunc("reloadStart", invalid), "a stream that has not played keeps its load's start")
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.assertFalse(m.manager.following)
+      m.assertEqual(m.manager.callFunc("reloadStart", 585000000&), 585000000&, "halted: the player's own start")
+    end function
+
     @it("a reload while halted reports nothing")
     function _()
       m.haltWithServer()

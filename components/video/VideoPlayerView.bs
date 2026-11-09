@@ -821,7 +821,7 @@ end sub
 ' is now. A change the server has to answer again (a subtitle burned in, an audio track a
 ' transcode must carry, a new Maximum Bitrate) goes through here.
 sub reloadAtCurrentPosition()
-  reloadInPlace(reloadStartTicks(m.hasStreamPlayed, m.top.position), m.top.audioIndex, m.top.SelectedSubtitle)
+  reloadInPlace(syncPlayHooks.reloadStart(reloadStartTicks(m.hasStreamPlayed, m.top.position)), m.top.audioIndex, m.top.SelectedSubtitle)
 end sub
 
 ' reloadInPlace: Load the playing stream again on this node. Every reload goes through here (a
@@ -950,7 +950,8 @@ sub onVideoSourceChange()
   ' releases of one cut are offset by a constant and can differ in runtime by a minute, so
   ' the current position is not automatically a place the new file reaches, and seeding a
   ' position past its end starts the stream at nothing. switchTicksFor() keeps the exact time
-  ' whenever the new version has it and falls back to the same percentage. A stream that has
+  ' whenever the new version has it and falls back to the same percentage. While following a
+  ' group the position mapped is the group's (syncPlayHooks.reloadStart). A stream that has
   ' not played yet has no position (reloadStartTicks), so the start the queue holds maps instead,
   ' from the version still loading (versionResume.unplayedSwitchTicksFor).
   '
@@ -959,7 +960,7 @@ sub onVideoSourceChange()
   ' difference vanish in versionResume.
   newRuntimeTicks = invalid
   if isValid(newSource) then newRuntimeTicks = newSource.RunTimeTicks
-  startTicks = reloadStartTicks(m.hasStreamPlayed, m.top.position)
+  startTicks = syncPlayHooks.reloadStart(reloadStartTicks(m.hasStreamPlayed, m.top.position))
   if isValid(startTicks)
     startTicks = versionResume.switchTicksFor(startTicks, int(getEffectiveDuration()) * 10000000&, newRuntimeTicks)
   else
@@ -2050,7 +2051,7 @@ sub retryPlayback(retry as PlaybackErrorRetry)
   ' transcode reports both round trips, which is exactly why its first frame took as long as
   ' it did. `buffer` stays open across the retry (`pending` keeps the first declaration), so
   ' it spans the whole wait rather than restarting mid-way.
-  reloadInPlace(reloadStartTicks(m.hasStreamPlayed, m.top.position), m.top.audioIndex, m.top.SelectedSubtitle)
+  reloadInPlace(syncPlayHooks.reloadStart(reloadStartTicks(m.hasStreamPlayed, m.top.position)), m.top.audioIndex, m.top.SelectedSubtitle)
 end sub
 
 ' Close the live stream a load opened when no player will ever play it: the load failed, or it is

@@ -264,8 +264,7 @@ function playerEvent(evt as object) as object
       ' always does; a node already that close reports its own. A gap left between the node and the
       ' group is the drift correction's, after the Unpause, as at a mount. Unlike a mount, the group's
       ' state stays: a group paused when the reload began is still paused.
-      reference = syncPlayPlayback.clockReference(m.lastCommand, m.state.playingItemId, m.reportedBuffering)
-      groupTicks = syncPlayPlayback.groupPositionTicks(reference, m.estimator, syncPlayTime.nowMs())
+      groupTicks = groupPositionNow()
       playerTicks& = syncPlayPlayback.secondsToTicks(evt.startSeconds)
       startTicks& = playerTicks&
       if isValid(groupTicks) then startTicks& = syncPlayTime.asLong(groupTicks)
@@ -1486,6 +1485,29 @@ end function
 function pausedForViewer(nodeState as string) as boolean
   ensureReady()
   return syncPlayPlayback.pausedForViewer(nodeState, isValid(m.correction), m.tracker.showOsd)
+end function
+
+' Where the group is now, in ticks, from the last command in force run forward on the measured
+' clock (syncPlayPlayback.groupPositionTicks); invalid while not following, while this member's
+' own Buffering holds the group, or before any command names the playing item.
+function groupPositionNow() as dynamic
+  if not isFollowing() then return invalid
+  reference = syncPlayPlayback.clockReference(m.lastCommand, m.state.playingItemId, m.reportedBuffering)
+  return syncPlayPlayback.groupPositionTicks(reference, m.estimator, syncPlayTime.nowMs())
+end function
+
+' Where a reload in place starts while following: the group's position, so the node loads where
+' the group is and the Ready it sends names the same place, with only the keyframe gap left for
+' the drift correction, as at a late join. A member that fell behind (a stall, a stream the server
+' stopped sending) would otherwise resume behind the group and be seek-corrected a few seconds
+' later. The player's own start when the group's position is not known.
+' @param playerStartTicks - where the player would start on its own: its position, or invalid
+'   for a stream that has not played
+function reloadStart(playerStartTicks as dynamic) as dynamic
+  ensureReady()
+  groupTicks = groupPositionNow()
+  if isValid(groupTicks) then return syncPlayTime.asLong(groupTicks)
+  return playerStartTicks
 end function
 
 ' Whether a seek is in flight, so a pause the viewer presses now can wait for its landing.
