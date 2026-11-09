@@ -18,7 +18,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { ChangelogSyncer } from '../../../scripts/changelog-syncer.js';
+import { ChangelogSyncer, SUMMARY_REMINDER } from '../../../scripts/changelog-syncer.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '../../..');
@@ -330,11 +330,16 @@ export function writeSummary(version, file, { syncer }) {
     throw new Error(`${tag} is published: it gets its summary from CHANGELOG.md, not from here`);
   }
 
-  const summary = fs.readFileSync(file, 'utf8').trim() + '\n\n';
-  const body = release.body;
+  const text = fs.readFileSync(file, 'utf8').trim();
+  const summary = text + '\n\n';
+  // GitHub's editor saves CRLF; LF keeps the blocks below matching line ends.
+  const body = release.body.replace(/\r\n?/g, '\n');
   let next;
+  // A function replacement, so a `$` in the summary is never read as a pattern.
   if (SUMMARY_BLOCK.test(body)) {
-    next = body.replace(SUMMARY_BLOCK, summary);
+    next = body.replace(SUMMARY_BLOCK, () => summary);
+  } else if (SUMMARY_REMINDER.test(body)) {
+    next = body.replace(SUMMARY_REMINDER, () => text);
   } else {
     const schedule = body.match(/^## Release Schedule[^\n]*\n[\s\S]*?(?=^#{1,3} |(?![\s\S]))/m);
     const at = schedule ? schedule.index + schedule[0].length : 0;

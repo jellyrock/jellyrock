@@ -41,7 +41,7 @@ A branch named `release-X.Y.Z` starts `release-management.yml`, which:
 4. Opens the PR "Prepare for v1.21.3 release" as `jellyrock[bot]`, labeled `release-prep`.
 5. Builds the production app and creates a draft GitHub release with the ZIP, in the Announcements discussion category. An existing draft for the same tag is deleted first, and its summary is kept. `node scripts/changelog-syncer.js release-notes <version>` builds the notes:
    - a Release Schedule with the next Roku Channel Store release day (the next weekday, Monday after a Friday or weekend), worked out when the notes are built
-   - the summary, when the draft has one
+   - the summary, when the draft has one. Until then, a hidden line where it goes says to run `/release-summary`: you see it in the edit box you publish from, and the release page does not show it.
    - the version's changelog lines, each crediting its author with an `@mention`, and New Contributors
    - a **Full Changelog** link
    - the support block, read from `snippets/support.md` in `jellyrock/.github`. The build fails when that file is missing or does not start with its heading.
@@ -52,7 +52,7 @@ Merging a PR labeled `release-prep` into `main` starts `update-draft-release.yml
 
 ### 3. Add the summary
 
-Type `/release-summary X.Y.Z` in Claude Code. It drafts a short paragraph on what users would notice, checks it, and shows it to you. On your `ok` it writes it under the Release Schedule in the draft, as a `### Summary` block. Run it again to replace it. See [the skill](../../.claude/skills/release-summary/SKILL.md) for what it reads and the shape it holds to.
+Type `/release-summary X.Y.Z` in Claude Code. It drafts a short paragraph on what users would notice, checks it, and shows it to you. On your `ok` it writes it under the Release Schedule in the draft, as a `### Summary` block, in place of the hidden reminder. Run it again to replace it. See [the skill](../../.claude/skills/release-summary/SKILL.md) for what it reads and the shape it holds to.
 
 ### 4. Publish the release
 

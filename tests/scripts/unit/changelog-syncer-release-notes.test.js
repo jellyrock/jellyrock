@@ -124,6 +124,8 @@ describe('changelog-syncer: release-notes', () => {
 
 JellyRock v1.2.0 is scheduled for release on the [Roku Channel Store](${STORE}) Monday, November 09, 2026 6:00 PM PT
 
+<!-- No summary yet: run /release-summary 1.2.0 before you publish -->
+
 ### Fixed
 
 - (playback) Show buttons ([#913](${URL}/pull/913)) by @new-dev
@@ -152,6 +154,22 @@ ${SUPPORT}`);
     );
     expect(body).not.toContain('stale line');
     expect(body).not.toContain('old date');
+    expect(body).not.toContain('No summary yet');
+  });
+
+  it('keeps a summary the GitHub editor saved with CRLF line ends, as LF', () => {
+    stub({
+      draftBody:
+        '## Release Schedule\r\n\r\nold date\r\n\r\n### Summary\r\n\r\nOne.\r\nTwo.\r\n\r\n### Fixed\r\n',
+    });
+    const body = syncer.releaseNotes('1.2.0', NOW);
+    expect(body).toContain('6:00 PM PT\n\n### Summary\n\nOne.\nTwo.\n\n### Fixed\n');
+    expect(body).not.toContain('\r');
+  });
+
+  it('puts no reminder in the notes of a released version, which has no draft to edit', () => {
+    stub();
+    expect(syncer.releaseNotes('1.1.0', NOW)).not.toContain('No summary yet');
   });
 
   it('builds a released version from its own section and links the compare range', () => {
@@ -168,6 +186,19 @@ ${SUPPORT}`);
     stub({ tags: ['v1.2.0', 'v1.1.0', 'v1.0.4'] });
     expect(syncer.releaseNotes('1.1.1', NOW)).toContain(
       `**Full Changelog**: ${URL}/compare/v1.1.0...v1.1.1\n`,
+    );
+  });
+
+  it('fails when the checkout has no tag below a released section, instead of linking all history', () => {
+    stub({ tags: [] });
+    expect(() => syncer.releaseNotes('1.2.0', NOW)).toThrow(/\[1\.1\.0\].*fetch the tags/);
+  });
+
+  it('links all history for the first release, which has no earlier section', () => {
+    fs.writeFileSync(syncer.changelogPath, CHANGELOG.slice(0, CHANGELOG.indexOf('## [1.1.0]')));
+    stub({ tags: [] });
+    expect(syncer.releaseNotes('1.2.0', NOW)).toContain(
+      `**Full Changelog**: ${URL}/commits/v1.2.0\n`,
     );
   });
 
@@ -263,6 +294,16 @@ describe('changelog-syncer: add-summary', () => {
     stub({ draftBody: PUBLISHED });
     syncer.addSummary('1.1.0');
     const once = read();
+    expect(syncer.addSummary('1.1.0')).toBe(false);
+    expect(read()).toBe(once);
+  });
+
+  it('writes LF from a release the GitHub editor saved with CRLF, once', () => {
+    stub({ draftBody: PUBLISHED.replace(/\n/g, '\r\n') });
+    expect(syncer.addSummary('1.1.0')).toBe(true);
+    const once = read();
+    expect(once).not.toContain('\r');
+    expect(once).toContain(`2025-01-02\n\n${SUMMARY}\n`);
     expect(syncer.addSummary('1.1.0')).toBe(false);
     expect(read()).toBe(once);
   });

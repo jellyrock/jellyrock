@@ -579,4 +579,4 @@ jobs:
           gh release edit "$TAG_NAME" --discussion-category "Announcements"
 
           echo "✅ Created draft release: $TAG_NAME"
-          echo "📝 Remember to add your scheduled release date before publishing!"
+          echo "📝 Next: merge the release PR, run /release-summary ${{ needs.validate-and-prepare.outputs.version }}, then publish"

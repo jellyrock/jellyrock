@@ -41,6 +41,9 @@ jobs:
         with:
           ref: main
           token: ${{ steps.app-token.outputs.token }}
+          # The notes need the history since the last release and the tags that mark it
+          fetch-tags: true
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -103,4 +106,4 @@ jobs:
           gh release edit "$TAG_NAME" --notes-file out/release-notes.md --discussion-category "Announcements"
 
           echo "✅ Updated draft release $TAG_NAME with new ZIP"
-          echo "📝 The release is ready for you to add the scheduled date and publish!"
+          echo "📝 Next: run /release-summary $VERSION, then review the draft and publish it"

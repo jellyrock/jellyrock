@@ -122,6 +122,13 @@ describe('changelog-syncer: line credits', () => {
     expect(commits.map((c) => c.author)).toEqual(['jellyrock[bot]', 'new-dev']);
   });
 
+  it('fails naming the PR when GitHub gives it no author login', () => {
+    const a = squash('a', 913, 'fix: Show buttons', null);
+    expect(() => load({ commits: [a.commit], prs: a.pr, logins: {} })).toThrow(
+      /PR #913 has no author login/,
+    );
+  });
+
   it('credits each distinct author once on a combined dependency line', () => {
     const deps = { labels: ['dependencies'] };
     const a = squash(
@@ -221,6 +228,17 @@ describe('changelog-syncer: New Contributors', () => {
     });
     expect(syncer.findNewContributors(commits, 'v1.0.0')).toEqual([
       `- New Person made their first contribution in [aaaaaaa](${URL}/commit/${sha('a')})`,
+    ]);
+  });
+
+  it('lists a git name that is only part of an earlier one, which is someone else', () => {
+    const { syncer, commits } = load({
+      commits: [{ hash: sha('a'), subject: 'fix: One', name: 'Pat' }],
+      logins: { [sha('a')]: null },
+      earlierNames: ['Patrick'],
+    });
+    expect(syncer.findNewContributors(commits, 'v1.0.0')).toEqual([
+      `- Pat made their first contribution in [aaaaaaa](${URL}/commit/${sha('a')})`,
     ]);
   });
 

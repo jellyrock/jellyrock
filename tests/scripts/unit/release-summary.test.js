@@ -384,6 +384,21 @@ describe('release-summary', () => {
       expect(calls).toContain(`notes: ${SCHEDULE}${summary}\n\n${REST}`);
     });
 
+    it('puts the summary where the reminder was, and removes the reminder', () => {
+      const reminder = '<!-- No summary yet: run /release-summary 1.2.0 before you publish -->\n\n';
+      const calls = stub({ release: { body: SCHEDULE + reminder + REST, isDraft: true } });
+      writeSummary('1.2.0', file(GOOD), opts());
+      expect(calls).toContain(`notes: ${SCHEDULE}${summary}\n\n${REST}`);
+    });
+
+    it('replaces a summary in a draft the GitHub editor saved with CRLF, writing LF', () => {
+      const old = '### Summary\n\nOld.\n\n';
+      const crlf = (SCHEDULE + old + REST).replace(/\n/g, '\r\n');
+      const calls = stub({ release: { body: crlf, isDraft: true } });
+      writeSummary('1.2.0', file(GOOD), opts());
+      expect(calls).toContain(`notes: ${SCHEDULE}${summary}\n\n${REST}`);
+    });
+
     it('refuses a published release', () => {
       const calls = stub({ release: { body: SCHEDULE + REST, isDraft: false } });
       expect(() => writeSummary('1.2.0', file(GOOD), opts())).toThrow(/published/);

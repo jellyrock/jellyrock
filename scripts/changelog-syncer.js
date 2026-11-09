@@ -24,6 +24,12 @@ const SUPPORT_SOURCE = {
   heading: '## Support JellyRock',
 };
 
+// Where a draft's summary goes until /release-summary writes one there. GitHub hides an
+// HTML comment on the release page but shows it in the edit box a draft is published from.
+const summaryReminder = (version) =>
+  `<!-- No summary yet: run /release-summary ${version} before you publish -->`;
+const SUMMARY_REMINDER = /^<!-- No summary yet: [^\n]*-->[ \t]*$/m;
+
 class ChangelogSyncer {
   constructor() {
     this.changelogPath = 'CHANGELOG.md';
@@ -38,6 +44,7 @@ class ChangelogSyncer {
     console.log('🔄 Syncing unreleased changes...');
 
     const latestTag = this.getLatestTag();
+    if (!latestTag) this.assertTagsFetched();
     const commits = this.getCommitsSince(latestTag);
 
     if (commits.length === 0) {
@@ -330,7 +337,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   }
 
   /** `gh` reports a bot PR author as `app/renovate`; commits name it `renovate[bot]`. */
-  normalizeLogin(login) {
+  normalizeLogin(login, prNumber) {
+    if (!login) throw new Error(`PR #${prNumber} has no author login to credit`);
     const app = login.match(/^app\/(.+)$/);
     return app ? `${app[1]}[bot]` : login;
   }
@@ -439,28 +447,49 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     return Number(earlierCommits) === 0;
   }
 
+  /** Exact names: `git log --author` matches part of one, so "Pat" would find "Patrick". */
   isNewName(name, fromTag) {
-    const earlier = execFileSync(
-      'git',
-      ['log', '-F', `--author=${name}`, '-1', '--format=%H', fromTag],
-      { encoding: 'utf8' },
-    );
-    return earlier.trim() === '';
+    return !execFileSync('git', ['log', '--format=%an', fromTag], { encoding: 'utf8' })
+      .split('\n')
+      .includes(name);
   }
 
-  /** Run `gh` and return its output; throws on any failure, which fails the sync. */
+  /**
+   * Throws when the checkout has no release tag below `below` (any tag, when null) while
+   * CHANGELOG.md has a released section there. A clone made without tags (actions/checkout's
+   * default) would otherwise build from the start of history, and nothing would say so.
+   */
+  assertTagsFetched(below = null) {
+    if (!fs.existsSync(this.changelogPath)) return;
+    const released = [
+      ...fs.readFileSync(this.changelogPath, 'utf8').matchAll(/^## \[(\d+\.\d+\.\d+)\]/gm),
+    ]
+      .map(([, version]) => version)
+      .find((version) => below === null || this.compareVersions(version, below) < 0);
+    if (released) {
+      throw new Error(
+        `CHANGELOG.md has a [${released}] section but this checkout has no tag for it; ` +
+          'fetch the tags (actions/checkout: fetch-depth: 0 and fetch-tags: true)',
+      );
+    }
+  }
+
   /**
    * The body of a version's GitHub release: the Release Schedule, the summary already in
-   * the draft, the version's changelog section (`[Unreleased]` until it is released),
-   * the Full Changelog link and the support block. Both draft workflows print it.
+   * the draft (or, in a draft with none, a reminder where it goes), the version's changelog
+   * section (`[Unreleased]` until it is released), the Full Changelog link and the support
+   * block. Both draft workflows print it.
    */
   releaseNotes(version, now = new Date()) {
     if (!/^\d+\.\d+\.\d+$/.test(version)) {
       throw new Error(`Invalid version format: ${version}. Expected: x.y.z`);
     }
     const tag = `v${version}`;
-    const section = this.readSection(fs.readFileSync(this.changelogPath, 'utf8'), version);
+    const changelog = fs.readFileSync(this.changelogPath, 'utf8');
+    const section = this.readSection(changelog, version);
+    const released = new RegExp(`^## \\[${version.replace(/\./g, '\\.')}\\]`, 'm').test(changelog);
     const previousTag = this.getTagBefore(version);
+    if (!previousTag) this.assertTagsFetched(version);
     const compareUrl = previousTag
       ? `${this.repositoryUrl}/compare/${previousTag}...${tag}`
       : `${this.repositoryUrl}/commits/${tag}`;
@@ -470,7 +499,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
     const parts = [
       `## Release Schedule\n\nJellyRock ${tag} is scheduled for release on the [Roku Channel Store](${ROKU_STORE_URL}) ${this.storeReleaseDate(now)} 6:00 PM PT`,
-      summary,
+      summary ?? (released ? null : summaryReminder(version)),
       this.toMentions(section),
       `**Full Changelog**: ${compareUrl}`,
       this.readSupportBlock(),
@@ -565,7 +594,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
         cause: error,
       });
     }
-    const match = body.match(/^### Summary[ \t]*\r?\n[\s\S]*?(?=^#{1,3} |(?![\s\S]))/m);
+    // GitHub's editor saves CRLF; the summary is copied into CHANGELOG.md, which is LF.
+    const match = body
+      .replace(/\r\n?/g, '\n')
+      .match(/^### Summary[ \t]*\n[\s\S]*?(?=^#{1,3} |(?![\s\S]))/m);
     return match ? match[0].trim() : null;
   }
 
@@ -625,6 +657,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     }).format(date);
   }
 
+  /** Run `gh` and return its output; throws on any failure, which fails the sync. */
   gh(args) {
     return execFileSync('gh', args, { encoding: 'utf8', stdio: 'pipe' }).trim();
   }
@@ -994,7 +1027,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
             hash: mergeMatch[1],
             message: parsed.title || `Merged PR #${mergeMatch[2]}`,
             prNumber: mergeMatch[2],
-            author: this.normalizeLogin(parsed.author),
+            author: this.normalizeLogin(parsed.author, mergeMatch[2]),
             authorName,
             authorEmail,
             isDependency: isDependency,
@@ -1025,7 +1058,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
           // The same test credits the PR's author: only its own commit is its work.
           if (parsed.mergeCommit?.startsWith(commitHash)) {
             if (parsed.title) message = parsed.title;
-            author = this.normalizeLogin(parsed.author);
+            author = this.normalizeLogin(parsed.author, prNumber);
           }
           isDependency =
             parsed.labels &&
@@ -1157,4 +1190,4 @@ Commands:
   }
 }
 
-export { ChangelogSyncer };
+export { ChangelogSyncer, SUMMARY_REMINDER };

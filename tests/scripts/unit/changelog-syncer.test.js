@@ -303,6 +303,28 @@ describe('changelog-syncer.js', () => {
       expect(readChangelog(fixture.dir)).toBe(VALID_HEADER);
     });
 
+    it('exits 1, writing nothing, when the checkout lacks the tags its released sections need', () => {
+      fixture = createGitFixture();
+      fixture.commit('chore: initial');
+      fixture.commit('feat: add login screen');
+      const released = VALID_HEADER + '## [1.0.0] - 2025-01-01\n\n### Added\n\n- something\n';
+      writeChangelog(fixture.dir, released);
+
+      const { exitCode, stderr } = sync(fixture.dir, ['sync-unreleased']);
+      expect(exitCode).toBe(1);
+      expect(stderr).toMatch(/\[1\.0\.0\].*fetch the tags/);
+      expect(readChangelog(fixture.dir)).toBe(released);
+    });
+
+    it('syncs from the start of history before the first release', () => {
+      fixture = createGitFixture();
+      fixture.commit('feat: add login screen');
+      writeChangelog(fixture.dir, VALID_HEADER);
+
+      expect(sync(fixture.dir, ['sync-unreleased']).exitCode).toBe(0);
+      expect(readChangelog(fixture.dir)).toMatch(/add login screen/);
+    });
+
     it('renames [Unreleased] at release without asking GitHub', () => {
       fixture = createGitFixture();
       fixture.commit('chore: initial');

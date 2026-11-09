@@ -31,7 +31,7 @@ A PR cannot merge without a known type. `pr-body-check.js` fails the title in CI
 ## Fixing a wrong entry
 
 - **Not released yet:** edit the merged PR's title on GitHub (its type or its wording), then sync again: push anything to `main`, or run the JellyRock Bot workflow by hand. Editing `[Unreleased]` in `CHANGELOG.md` does not work, because the next sync overwrites it.
-- **Already released:** edit that version's section in `CHANGELOG.md` by hand. Released sections are never regenerated. A section's `### Summary` is the one its release published; later `/release-summary` runs read it as an example.
+- **Already released:** edit that version's section in `CHANGELOG.md` by hand. Released sections are never regenerated. Publishing copies the release's `### Summary` to the top of its section, where later `/release-summary` runs read it as an example.
 - **A direct-push commit** has no PR title to edit. Fix it by hand once it is released.
 
 ## Commands

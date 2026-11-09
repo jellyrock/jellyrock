@@ -16,7 +16,7 @@ effort: high
 **Outputs.**
 
 - A summary shown to the operator for approval: a `### Summary` heading and a prose paragraph under it.
-- On the operator's `ok`, for a draft release: the summary written into the draft, after the Release Schedule, replacing any summary already there. Nothing else in the draft changes.
+- On the operator's `ok`, for a draft release: the summary written into the draft, after the Release Schedule, replacing any summary or reminder already there. Nothing else in the draft changes.
 - For a published release: the approved summary in chat, unwritten. A published release's page is rebuilt from its `CHANGELOG.md` section, so the summary reaches it through that section.
 
 **Success criteria.**
