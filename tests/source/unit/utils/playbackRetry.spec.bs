@@ -131,6 +131,26 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("reloadStartTicks")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("starts a reload of a stream that has played from its exact position")
+    function _()
+      m.assertEqual(reloadStartTicks(true, 120.5), 1205000000&)
+    end function
+
+    @it("keeps the start a load was given while its stream has not played, since the node reads 0")
+    function _()
+      m.assertInvalid(reloadStartTicks(false, 0))
+      m.assertInvalid(reloadStartTicks(false, 120.5))
+    end function
+
+    @it("keeps the start when the node has no position to read")
+    function _()
+      m.assertInvalid(reloadStartTicks(true, invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("streamRestartArmed")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

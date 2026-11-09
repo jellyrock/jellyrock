@@ -368,6 +368,46 @@ namespace tests
       m.assertFalse(m.manager.following)
     end function
 
+    ' A member past the first frame of the group's item, with a server so its reports post.
+    private function memberPastFirstFrame() as object
+      m.joinGroup()
+      m.playGroupItem()
+      m.enableServer()
+      posts = m.capturePosts()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "state", state: "playing", position: 0.5 })
+      return posts
+    end function
+
+    private function reportsPosition(req as object, positionTicks as longinteger) as boolean
+      return req.body.instr(chr(34) + "PositionTicks" + chr(34) + ":" + positionTicks.toStr()) >= 0
+    end function
+
+    @it("a reload with no group clock reports Buffering at once and Ready at its start, though the node reads 0")
+    function _()
+      posts = m.memberPastFirstFrame()
+      ' No command since the mount: nothing says where the group is, so the reload's start does.
+      m.manager.callFunc("playerEvent", { kind: "reloaded", startSeconds: 58.5 })
+      buffering = m.lastPost(posts)
+      m.assertTrue(buffering.url.instr("/SyncPlay/Buffering") >= 0, "Buffering goes out at the reload")
+      m.assertTrue(m.reportsPosition(buffering, 585000000&), buffering.body)
+      m.assertEqual(m.manager.sync.trackerPhase, "loading")
+      m.manager.callFunc("playerEvent", { kind: "state", state: "stopped", position: 0 })
+      m.manager.callFunc("playerEvent", { kind: "state", state: "buffering", position: 0 })
+      m.manager.callFunc("playerEvent", { kind: "state", state: "playing", position: 0 })
+      ready = m.lastPost(posts)
+      m.assertTrue(ready.url.instr("/SyncPlay/Ready") >= 0, "Ready goes out at the reloaded stream's first frame")
+      m.assertTrue(m.reportsPosition(ready, 585000000&), ready.body)
+    end function
+
+    @it("a reload while halted reports nothing")
+    function _()
+      m.haltWithServer()
+      posts = m.capturePosts()
+      m.manager.callFunc("playerEvent", { kind: "reloaded", startSeconds: 58.5 })
+      m.assertEqual(posts.getChildCount(), 0)
+    end function
+
     @it("an unmount nobody asked for halts: the member stays in the group but stops following")
     function _()
       m.joinGroup()

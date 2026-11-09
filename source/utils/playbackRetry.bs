@@ -83,6 +83,21 @@ function retryFlagsWith(flags as dynamic, retry as PlaybackErrorRetry) as object
   return result
 end function
 
+' reloadStartTicks: Where a reload in place starts (a track, quality or version change, a retry).
+'
+' A stream that has played starts from the node's exact position. One that has not keeps the start
+' its load was given: its node reads 0 until the first frame, so a second pick during a reload once
+' saved 0 and restarted the video from the beginning.
+'
+' @param {boolean} hasPlayed - the stream on the node has reached `playing` since its load began
+' @param {dynamic} positionSeconds - the node's position
+' @return {dynamic} exact ticks, or invalid to keep the start the load was given
+function reloadStartTicks(hasPlayed as boolean, positionSeconds as dynamic) as dynamic
+  if not hasPlayed or not isValid(positionSeconds) then return invalid
+  ' Milliseconds as an integer before scaling: a float cannot hold a tick count.
+  return Int(positionSeconds * 1000) * 10000&
+end function
+
 ' hevcFirstCodecList: A comma-separated video codec list with the HEVC entries (h265, hevc) first.
 '
 ' A transcode of a source H.264 cannot carry (prefersHevcTranscode) on a server that encodes HEVC in

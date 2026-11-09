@@ -121,8 +121,9 @@ sub ensureReady()
   m.resumeAsked = false
   ' The correction each Unpause arms (syncPlayPlayback.settleCorrectionDue), and the drift last
   ' read from a position notification, for the RTA specs. A halt or a leave leaves the check as
-  ' it is: it fires only with the tracker at `ready`, which only a mount reaches, and the mount
-  ' disarms it first; a group Pause or Seek holds it until the next Unpause arms it again.
+  ' it is: it fires only with the tracker at `ready`, which only a load reaches (a mount or a
+  ' reload), and each disarms it first (startStreamTracking); a group Pause or Seek holds it until
+  ' the next Unpause arms it again.
   m.settle = syncPlayPlayback.newSettleCheck()
   m.playbackDiffMs = invalid
   ' Whether this member reported Buffering since the group's last command it scheduled
@@ -238,13 +239,8 @@ function playerEvent(evt as object) as object
     m.expectingRemount = false
     m.playerState = ""
     m.groupPaused = false
-    m.playerDurationSeconds = 0
-    m.lastSeekMs = 0&
-    m.lastSeekGaveUp = false
-    m.playbackDiffMs = invalid
-    m.correctionPauseOwed = false
     m.waitedOnMe = false
-    syncPlayPlayback.disarmSettleCheck(m.settle)
+    startStreamTracking()
     if isFollowing()
       ' Only the group's item answers to the group. Anything else the viewer started plays
       ' as their own, so this member halts rather than report a load the group never asked for.
@@ -265,8 +261,7 @@ function playerEvent(evt as object) as object
       ' reports where the group paused for its Buffering: the group's own position, the reload's start
       ' when no group clock is in force. A gap left between the node and the group is the drift
       ' correction's, after the Unpause, as at a mount. Unlike a mount, the group's state stays: a
-      ' group paused when the reload began is still paused. A correction or a seek in flight targeted
-      ' the old stream.
+      ' group paused when the reload began is still paused.
       reference = syncPlayPlayback.clockReference(m.lastCommand, m.state.playingItemId, m.reportedBuffering)
       groupTicks = syncPlayPlayback.groupPositionTicks(reference, m.estimator, syncPlayTime.nowMs())
       playerTicks& = syncPlayPlayback.secondsToTicks(evt.startSeconds)
@@ -279,9 +274,7 @@ function playerEvent(evt as object) as object
       if isValid(m.lastCommand) then lastCommandKind = m.lastCommand.command
       m.log.info("reload in place reported to the group", "groupTicks", groupText, "playerTicks", playerTicks&.toStr(), "lastCommand", lastCommandKind, "reportedBuffering", m.reportedBuffering)
       m.playerPositionTicks = startTicks&
-      dropCorrection()
-      m.correctionPauseOwed = false
-      syncPlayPlayback.disarmSettleCheck(m.settle)
+      startStreamTracking()
       track({ kind: "reloaded", startTicks: startTicks& })
     end if
   else if kind = "state"
@@ -760,6 +753,20 @@ sub endCorrection(reason as string)
   m.log.warn("drift correction dropped", "reason", reason, "state", m.playerState)
   dropCorrection()
   syncPlayPlayback.retrySettleCheck(m.settle)
+end sub
+
+' A new stream on the player: a mount, or a reload in place. What was learned about the old one does
+' not carry over: how its seeks went (a direct-play seek lands seconds early, an HLS one on a segment
+' start, and a reload can switch one for the other), its drift, its length, and a correction or a
+' settle check on it.
+sub startStreamTracking()
+  m.playerDurationSeconds = 0
+  m.lastSeekMs = 0&
+  m.lastSeekGaveUp = false
+  m.playbackDiffMs = invalid
+  m.correctionPauseOwed = false
+  dropCorrection()
+  syncPlayPlayback.disarmSettleCheck(m.settle)
 end sub
 
 ' A group command or an unmount took over: what it does replaces the correction.

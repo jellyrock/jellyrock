@@ -1,20 +1,21 @@
 /**
- * A reload in place while following a SyncPlay group (a gear pick here; an audio, subtitle or
- * version change and a retry take the same path) rejoins the group where it was, with no
- * correction from the server:
+ * A reload in place while following a SyncPlay group (a gear pick or a version switch here; an
+ * audio or subtitle change and a retry take the same path, `VideoPlayerView.reloadInPlace()`)
+ * rejoins the group where it was, with no correction from the server (decision
+ * `syncplay-reload-reports-its-start`):
  * - while the group plays, the server accepts this member's Ready, so it sends no Seek, and the
  *   group plays on with this member inside the drift thresholds;
  * - while the group is paused, the reload keeps the group's pause: the node ends paused, and the
- *   group's Unpause plays it on in sync.
- * Before the fix the group heard of a reload only as a stall (followup
- * `syncplay-reload-ready-position`): a reload that buffered under the stall wait reported nothing
- * and fell behind the group in silence; a longer one sent a Ready with the node's position, which
- * reads 0 until the reloaded stream's first frame, and drew a corrective Seek; and under a paused
- * group the node never reached `playing`, so no Ready went out and the group waited on it.
+ *   group's Unpause plays it on in sync;
+ * - a second pick while the first reload loads keeps the first one's start: the node reads 0 until
+ *   the reloaded stream's first frame, which no reload may save as its start;
+ * - a version switch carries the position into the other version.
  * `syncPlayManager.sync.groupSeeks` counts the group's Seek commands, so a correction shows as a
  * count that moved, which no poll can miss.
  * A second member of the same account, over REST, creates the group and ignores the wait; the
  * group needs the server's push channel to the Roku, so the suite skips on a server without one.
+ * The version switch needs an episode with two versions (the `Version Episodes` fixture on a local
+ * 12.0 or later server) and skips without one.
  */
 import { afterAll, beforeAll, it, expect } from 'vitest';
 import { odc } from 'roku-test-automation';
@@ -67,6 +68,20 @@ async function longMovieId(who) {
   });
   const data = await getJson(`${who.serverUrl}/Items?${query}`, tokenHeader(who.token));
   return (data?.Items ?? []).find((i) => (i.RunTimeTicks ?? 0) >= 10 * 60 * 10_000_000)?.Id;
+}
+
+/** The first episode with two versions or more, and its versions' ids: a version to switch to. */
+async function multiVersionEpisode(who) {
+  const query = new URLSearchParams({
+    UserId: who.userId,
+    IncludeItemTypes: 'Episode',
+    Recursive: 'true',
+    Fields: 'MediaSources',
+    Limit: '200',
+  });
+  const data = await getJson(`${who.serverUrl}/Items?${query}`, tokenHeader(who.token));
+  const episode = (data?.Items ?? []).find((i) => (i.MediaSources ?? []).length > 1);
+  return episode ? { id: episode.Id, sourceIds: episode.MediaSources.map((s) => s.Id) } : undefined;
 }
 
 /**
@@ -206,4 +221,117 @@ it("a reload while the group is paused keeps the pause, and the group's Unpause 
     label: "the node playing on the group's unpause",
   });
   await expectInSync('this member in sync after the unpause');
+});
+
+it('a second pick while the first reload loads reloads from where the stream was, not from 0', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const positionBefore = await player()('position');
+  expect(positionBefore, 'the stream partway in before the picks').toBeGreaterThan(5);
+  const seeksBefore = await groupSeeks();
+  const readiesBefore = await getGlobalVal('syncPlayManager.sync.readiesSent');
+  const pick = () =>
+    odc.setValue({
+      base: 'scene',
+      keyPath: '#osd.playbackCapsPick',
+      value: { field: 'maxBitrateMbps', value: 120 },
+    });
+  await pick();
+  // The second pick has to land while the first reload's node reads 0 and has not played:
+  // that is the moment a pick used to save 0 as the start.
+  await waitFor('position', (v) => typeof v === 'number' && v < 1, {
+    read: player(),
+    timeout: 15000,
+    interval: 100,
+    label: "the first reload's node reading 0 before its first frame",
+  });
+  const stateAtSecondPick = await player()('state');
+  expect(
+    ['playing', 'paused'],
+    'the first reload had not played when the second pick landed',
+  ).not.toContain(stateAtSecondPick);
+  await pick();
+  await waitFor('syncPlayManager.sync.readiesSent', (v) => v > readiesBefore, {
+    read: getGlobalVal,
+    timeout: 30000,
+    label: "the reloads' Ready sent",
+  });
+  await waitFor('syncPlayManager.groupState', (v) => v === 'Playing', {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: "the group Playing again after the reloads' Ready",
+  });
+  const playStart = await player()('content.PlayStart');
+  expect(
+    Math.abs(playStart - positionBefore),
+    `the second reload started at ${playStart} s, not near ${positionBefore} s`,
+  ).toBeLessThanOrEqual(5);
+  expect(await groupSeeks(), "the server accepted the reloads' Ready: no corrective Seek").toBe(
+    seeksBefore,
+  );
+  await expectInSync('this member in sync after the two picks');
+});
+
+it('a version switch carries the position into the other version, with no correction from the server', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const episode = await multiVersionEpisode(session);
+  if (!episode) testCtx.skip('the server has no episode with two versions');
+  const episodePlayer = readPlayer(episode.id);
+  await syncPlay(member, 'SetNewQueue', {
+    PlayingQueue: [episode.id],
+    PlayingItemPosition: 0,
+    StartPositionTicks: 0,
+  });
+  await waitFor('state', (s) => s === 'playing', {
+    read: episodePlayer,
+    timeout: 60000,
+    label: "the group's episode playing after the group Unpause",
+  });
+  await waitFor('position', (v) => typeof v === 'number' && v > 8, {
+    read: episodePlayer,
+    timeout: 30000,
+    label: 'the episode partway in',
+  });
+  const sourceBefore = String(await episodePlayer('mediaSourceId')).toLowerCase();
+  const target = episode.sourceIds.find((id) => id.toLowerCase() !== sourceBefore);
+  expect(target, 'a version other than the one playing').toBeTruthy();
+  const positionBefore = await episodePlayer('position');
+  const sessionBefore = await episodePlayer('PlaySessionId');
+  const seeksBefore = await groupSeeks();
+  const readiesBefore = await getGlobalVal('syncPlayManager.sync.readiesSent');
+  await odc.setValue({ base: 'scene', keyPath: `#${episode.id}.mediaSourceId`, value: target });
+  await waitFor('PlaySessionId', (v) => Boolean(v) && v !== sessionBefore, {
+    read: episodePlayer,
+    timeout: 30000,
+    interval: 500,
+    label: 'the other version loaded',
+  });
+  await waitFor('syncPlayManager.sync.readiesSent', (v) => v > readiesBefore, {
+    read: getGlobalVal,
+    timeout: 30000,
+    label: "the switch's Ready sent",
+  });
+  await waitFor('syncPlayManager.groupState', (v) => v === 'Playing', {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: "the group Playing again after the switch's Ready",
+  });
+  expect(
+    String(await episodePlayer('mediaSourceId')).toLowerCase(),
+    'the other version plays',
+  ).toBe(target.toLowerCase());
+  const playStart = await episodePlayer('content.PlayStart');
+  expect(
+    Math.abs(playStart - positionBefore),
+    `the switch started at ${playStart} s, not near ${positionBefore} s`,
+  ).toBeLessThanOrEqual(5);
+  expect(await groupSeeks(), "the server accepted the switch's Ready: no corrective Seek").toBe(
+    seeksBefore,
+  );
+  await expectInSync('this member in sync after the version switch');
 });
