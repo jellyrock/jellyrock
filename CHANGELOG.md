@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- (syncplay) Reload where the group is; load a mid-reload restart ([#1354](https://github.com/jellyrock/jellyrock/pull/1354)) by [@cewert](https://github.com/cewert)
+
 ## [3.4.0](https://github.com/jellyrock/jellyrock/compare/v3.3.1...v3.4.0) - 2026-11-09
 
 ### Summary
