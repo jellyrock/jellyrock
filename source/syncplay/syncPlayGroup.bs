@@ -176,6 +176,7 @@ namespace syncPlayGroup
   end sub
 
   ' The request failed: no answer in time, or an error.
+  ' bsc-disable-next-line dead-code keep: planned: #1251 the manager reads request results once it decides through the comparison
   sub requestFailed(group as object, slot as string, what as string)
     request = group[slot]
     if request.what <> what or request.state <> "flight" then return
