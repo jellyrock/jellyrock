@@ -1,0 +1,106 @@
+import "pkg:/source/syncplay/syncPlayPlayer.bs"
+import "pkg:/source/syncplay/syncPlayTime.bs"
+
+namespace tests
+
+  ' The player model fed two traces a device recorded (tests.syncPlayTraces): what the node was
+  ' told, each state it reported and each position notification, in the order and at the times
+  ' they happened. At every notification that finds the model sure of the node's position, the
+  ' model's position is compared with what the node then read.
+  @suite("syncPlayPlayer: replay of recorded device traces")
+  class SyncPlayPlayerReplayTests extends tests.BaseTestSuite
+
+    ' The most a model position may be off a real reading. The traces' worst is 34 ms (measured
+    ' off the device with the same rules, 2026-11-10).
+    private toleranceMs = 100
+
+    ' @returns { measured, reckoned, worstMs, landingsOffMs }: how many notifications the model
+    '   predicted from a measured clock and from one reckoned at a resume, the worst error, and
+    '   for each seek whose landing was read, how far it landed from its target
+    private function replay(trace as string) as object
+      stats = { measured: 0, reckoned: 0, worstMs: 0&, landingsOffMs: [] }
+      player = syncPlayPlayer.newPlayer()
+      syncPlayPlayer.mounted(player, invalid, 0&)
+      syncPlayPlayer.nodeState(player, "playing", 0&)
+      for each record in trace.split(";")
+        parts = record.split(",")
+        atMs& = parts[0].toInt()
+        kind = parts[1].toInt()
+        ticks& = syncPlayTime.msToTicks(parts[2].toInt())
+        syncPlayPlayer.advance(player, atMs&)
+        if kind = 1
+          syncPlayPlayer.told(player, "seek", "group", ticks&, atMs&)
+        else if kind = 2
+          syncPlayPlayer.told(player, "pause", "group", invalid, atMs&)
+        else if kind = 3
+          syncPlayPlayer.told(player, "resume", "group", invalid, atMs&)
+        else if kind = 4
+          syncPlayPlayer.nodeState(player, "playing", atMs&)
+        else if kind = 5
+          syncPlayPlayer.nodeState(player, "paused", atMs&)
+        else if kind = 6
+          syncPlayPlayer.nodeState(player, "buffering", atMs&)
+        else if kind = 7
+          predicted = invalid
+          if player.activity = "playing" then predicted = syncPlayPlayer.positionAt(player, atMs&)
+          if isValid(predicted)
+            offMs& = Abs(syncPlayTime.ticksToMs(ticks& - syncPlayTime.asLong(predicted)))
+            if offMs& > stats.worstMs then stats.worstMs = offMs&
+            if player.clock.measured then stats.measured++ else stats.reckoned++
+          end if
+          landing = player.activity = "arrived" and player.arrivedFrom = "seek"
+          if landing then stats.landingsOffMs.push(syncPlayTime.ticksToMs(ticks& - syncPlayTime.asLong(player.seekTargetTicks)))
+          syncPlayPlayer.reading(player, ticks&, atMs&)
+        else
+          syncPlayPlayer.unmounted(player, atMs&)
+        end if
+      end for
+      return stats
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the clock against what the node read")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("direct play: every position the model was sure of is within the tolerance of the node's")
+    function _()
+      stats = m.replay(tests.syncPlayTraces.directPlay())
+      m.assertTrue(stats.measured >= 250, "too few predictions from a measured clock")
+      m.assertTrue(stats.reckoned >= 5, "too few predictions from a clock reckoned at a resume")
+      m.assertTrue(stats.worstMs <= m.toleranceMs, "the model was off the node by more than the tolerance")
+    end function
+
+    @it("transcode: every position the model was sure of is within the tolerance of the node's")
+    function _()
+      stats = m.replay(tests.syncPlayTraces.transcode())
+      m.assertTrue(stats.measured >= 150, "too few predictions from a measured clock")
+      m.assertTrue(stats.reckoned >= 3, "too few predictions from a clock reckoned at a resume")
+      m.assertTrue(stats.worstMs <= m.toleranceMs, "the model was off the node by more than the tolerance")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("where a seek landed")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("direct play: the landings the model read are the node's own, near their targets")
+    function _()
+      stats = m.replay(tests.syncPlayTraces.directPlay())
+      m.assertTrue(stats.landingsOffMs.count() >= 3, "too few landings read")
+      for each offMs in stats.landingsOffMs
+        m.assertTrue(Abs(offMs) <= m.toleranceMs, "a direct-play landing read far from its target")
+      end for
+    end function
+
+    @it("transcode: the model reads the landing 948 ms before its target, never the target")
+    function _()
+      stats = m.replay(tests.syncPlayTraces.transcode())
+      earliest = 0&
+      for each offMs in stats.landingsOffMs
+        if offMs < earliest then earliest = offMs
+      end for
+      m.assertEqual(earliest, -948&)
+    end function
+
+  end class
+
+end namespace
