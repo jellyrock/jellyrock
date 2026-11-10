@@ -1,7 +1,8 @@
 ' The SyncPlay coordinator's decisions, pure: no node, no Timer, no HTTP. SyncPlayManager holds
 ' the clocks and the player, asks these functions what to do, and does it.
 '
-' Four concerns live here:
+' Five concerns live here:
+'   - the pause position: where a pause stopped the node, which the node itself cannot say.
 '   - scheduleCommand: when (on the device clock) a server command applies, and at what position.
 '   - applyPlan: the transport verbs that carry a command out on the player, in order.
 '   - the settle correction: how far this member sits from the group, and how it corrects that.
@@ -67,7 +68,15 @@ namespace syncPlayPlayback
   ' What a lead keeps over the last seek's time, for a seek a little slower than the one before.
   const CORRECTION_LEAD_MARGIN_MS = 500
 
-  ' --- scheduling ---
+  ' --- where a pause stopped the node ---
+  '
+  ' The Video node's position moves only on a position notification, every half second, and reads
+  ' stale while paused, so the manager reckons it. The state below holds one anchor (a position
+  ' the node was at, at a device-clock time, in its current unbroken run of playing) and the
+  ' estimate of where the last pause stopped the node. A notification gives a measured anchor. A
+  ' resume from a known pause gives a reckoned one, which predicted the next notification to within
+  ' 26 ms in 9 resumes (Stick 4K, 2026-11-10), so a pause that comes before that notification is
+  ' still estimated. Any other state change ends the run and the anchor with it.
 
   ' Where a pause stopped the node, in ticks, whether the group's Pause wrote it or the viewer's
   ' own did: the anchor run forward by the time from it to the pause write. 7 rounds on a Stick 4K
@@ -82,16 +91,6 @@ namespace syncPlayPlayback
     if ageMs& < 0 or ageMs& > PAUSE_ESTIMATE_MAX_AGE_MS then return invalid
     return syncPlayTime.asLong(notifiedTicks) + syncPlayTime.msToTicks(ageMs&)
   end function
-
-  ' --- where a pause stopped the node ---
-  '
-  ' The Video node's position moves only on a position notification, every half second, and reads
-  ' stale while paused, so the manager reckons it. The state below holds one anchor (a position
-  ' the node was at, at a device-clock time, in its current unbroken run of playing) and the
-  ' estimate of where the last pause stopped the node. A notification gives a measured anchor. A
-  ' resume from a known pause gives a reckoned one, which predicted the next notification to within
-  ' 26 ms in 9 resumes (Stick 4K, 2026-11-10), so a pause that comes before that notification is
-  ' still estimated. Any other state change ends the run and the anchor with it.
 
   ' @returns the state the functions below share: anchorTicks and anchorAtMs, estimate
   '   ({ ticks, writtenAtMs, landed } or invalid) and resumeTicks (the position a resume in flight
@@ -111,6 +110,9 @@ namespace syncPlayPlayback
   ' lands (notePauseState).
   ' @param canEstimate - the node plays in a settled tracker with no correction under way
   sub notePauseWritten(pp as object, canEstimate as boolean, nowMs as longinteger)
+    ' A second write before the first has landed (the group's Pause coming back while the viewer's
+    ' own pause is still landing) changes nothing: the first write is the one that stopped the node.
+    if isValid(pp.estimate) and pp.estimate.landed <> true then return
     pp.estimate = invalid
     pp.resumeTicks = invalid
     if not canEstimate then return
@@ -176,11 +178,13 @@ namespace syncPlayPlayback
     return invalid
   end function
 
+  ' --- scheduling ---
+
   ' How many ms an Unpause's resume shifts for the lead the pause left, positive when the member
   ' stopped ahead of the Unpause's position (resume later by the lead), negative when behind
   ' (resume earlier). A seek on a paused node resumes it, so nothing else takes the lead back.
   ' Zero with no estimate, and past SKIP_TO_SYNC_MIN_MS, where the Unpause seeks (applyPlan).
-  ' @param pausedTicks - pausedPositionTicks, or invalid
+  ' @param pausedTicks - landedPauseTicks, or invalid
   ' @param planPositionTicks - the Unpause plan's position
   function resumeShiftMs(pausedTicks as dynamic, planPositionTicks as dynamic) as longinteger
     if not syncPlayTime.isWholeNumber(pausedTicks) or not syncPlayTime.isWholeNumber(planPositionTicks) then return 0&
@@ -196,7 +200,7 @@ namespace syncPlayPlayback
   ' @param shiftMs - resumeShiftMs: moves a future Unpause's delay, never below 0. The position stays
   '   the server's, since the drift reading runs it forward from its When.
   ' @returns an AA with action, delayMs, positionTicks, shiftMs (the shift applied, less than asked
-  '   when the delay stops at 0) and applyAtMs (the command's own time on the device clock, with
+  '   when the delay stops at 0), askedShiftMs (the shift asked for) and applyAtMs (the command's own time on the device clock, with
   '   no shift): delayMs is 0 when `When` has passed. An Unpause
   '   whose When has passed carries the position the group is at now, estimated forward from the
   '   command's own position (web's estimateCurrentTicks); every other command keeps its ticks.
@@ -216,16 +220,27 @@ namespace syncPlayPlayback
       appliedShiftMs& = shifted& - delay&
       delay& = shifted&
     end if
-    return { action: command.command, delayMs: delay&, positionTicks: positionTicks&, shiftMs: appliedShiftMs&, applyAtMs: applyAtMs& }
+    return { action: command.command, delayMs: delay&, positionTicks: positionTicks&, shiftMs: appliedShiftMs&, askedShiftMs: shiftMs, applyAtMs: applyAtMs& }
   end function
 
-  ' Withdraws a plan's shift: its delay goes back to the command's own time, counted from nowMs
-  ' and never below 0. The manager does this when the estimate behind the shift is dropped.
-  sub unshiftPlan(plan as object, nowMs as longinteger)
+  ' Gives a waiting plan a new shift, counted from the command's own time: the manager does this
+  ' whenever the pause's estimate lands or is dropped while an Unpause waits, so the resume time
+  ' always rests on the estimate the seek check will read. A plan whose own time has passed takes
+  ' no shift.
+  ' @param shiftMs - resumeShiftMs for the estimate now, 0 with none
+  sub reshiftPlan(plan as object, shiftMs as longinteger, nowMs as longinteger)
     delay& = syncPlayTime.asLong(plan.applyAtMs) - nowMs
     if delay& < 0 then delay& = 0&
+    appliedShiftMs& = 0&
+    if delay& > 0 and shiftMs <> 0
+      shifted& = delay& + shiftMs
+      if shifted& < 0 then shifted& = 0&
+      appliedShiftMs& = shifted& - delay&
+      delay& = shifted&
+    end if
     plan.delayMs = delay&
-    plan.shiftMs = 0&
+    plan.shiftMs = appliedShiftMs&
+    plan.askedShiftMs = shiftMs
   end sub
 
   ' The transport verbs (PlayerHostView.handleTransport's evt shapes) that carry a plan out, in
@@ -254,8 +269,8 @@ namespace syncPlayPlayback
   ' @param trackerPhase - the ready tracker's phase, to tell a load from a stall
   ' @param heldForCorrection - the node is paused for a drift correction, so a group Pause is news
   '   to the viewer though it needs no pause of its own
-  ' @param pausedEstimateTicks - where the group Pause stopped the node (pausedPositionTicks), or
-  '   invalid. An Unpause's seek check reads it in place of the last notified position, which lags
+  ' @param pausedEstimateTicks - where the last pause stopped the node (landedPauseTicks), or
+  '   invalid. An Unpause's seek check reads it in place of the node's last position, which lags
   '   a pause by up to a notification interval.
   function applyPlan(plan as object, playerState as string, playerPositionTicks as longinteger, trackerPhase = "" as string, heldForCorrection = false as boolean, pausedEstimateTicks = invalid as dynamic) as object
     steps = []

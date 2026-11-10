@@ -52,6 +52,13 @@ const BEHIND_OFFSET_MS = 1000;
 // Past the Unpause's own lead by more than `SKIP_TO_SYNC_MIN_MS`, so every resume seeks. The lead
 // can reach most of a second, which is why `BEHIND_OFFSET_MS` does not always do it.
 const RESUME_SEEKS_OFFSET_MS = 2000;
+// Pause and unpause rounds in a row. Before the pause position was reckoned, each round left this
+// member 50 to 115 ms further ahead, so a hold correction ran by the second or third (Stick 4K,
+// 2026-11-10).
+const PAUSE_ROUNDS = 5;
+// Where the drift must sit after those rounds: inside the hold's bar with room to spare. Twelve
+// such rounds settled within 13 ms on a remote member's pause (same device and date).
+const PAUSE_ROUND_DRIFT_MS = 100;
 
 let session;
 let member;
@@ -274,6 +281,85 @@ it('a member behind the group lands in step', async (testCtx) => {
   await forceCorrectionSeek();
   await expectBackInStep();
   await setOffset(0);
+});
+
+/**
+ * One group pause and unpause, then the member settled: played on long enough for the check's two
+ * readings, any correction they started run to its end, and the tracker back at rest. Without the
+ * gate the next Pause lands inside a correction's seek, whose jump also satisfies a wait on the
+ * position alone, and the rounds then measure the corrections they caused.
+ */
+async function pauseRound() {
+  await syncPlay(member, 'Pause');
+  await waitPaused();
+  await syncPlay(member, 'Unpause');
+  await waitLastCommand('Unpause');
+  await waitPlaying();
+  const from = await playerPosition();
+  await waitFor('position', (p) => p > from + 1.5, {
+    read: playerPosition,
+    timeout: 10000,
+    label: 'the node playing on after the round',
+  });
+  await waitFor('syncPlayManager.sync.correctionInFlight', (v) => v === false, {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: 'no correction under way after the round',
+  });
+  await waitFor('syncPlayManager.sync.trackerPhase', (v) => v === 'ready', {
+    read: getGlobalVal,
+    timeout: 10000,
+    label: 'the tracker at rest after the round',
+  });
+  await waitPlaying();
+  await waitDriftInside();
+}
+
+it('pause rounds leave this member in step, with no correction', async (testCtx) => {
+  skipWithoutPush(testCtx);
+  await setOffset(0);
+  // The round before the count: whatever the last case left (an offset just taken back) is put
+  // right by this Unpause, its seek or its correction.
+  await pauseRound();
+  const before = await getGlobalVal('syncPlayManager.sync.correctionsDone');
+  expect(typeof before, 'the corrections count is published').toBe('number');
+  for (let round = 0; round < PAUSE_ROUNDS; round++) await pauseRound();
+  const drift = await getGlobalVal('syncPlayManager.sync.playbackDiffMs');
+  expect(await getGlobalVal('syncPlayManager.sync.correctionsDone'), 'no correction ran').toBe(
+    before,
+  );
+  expect(typeof drift, 'the drift is read').toBe('number');
+  expect(Math.abs(drift), 'the drift after the rounds').toBeLessThan(PAUSE_ROUND_DRIFT_MS);
+});
+
+it("a waiting Unpause gives up its shift when the pause's position is dropped", async (testCtx) => {
+  skipWithoutPush(testCtx);
+  const changes = () => getGlobalVal('syncPlayManager.sync.resumeShiftChanges');
+  // The drop has to land while the Unpause waits for its time, about a second, and a pause that
+  // left no lead has no shift to give up: another round rather than a failure on either.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await syncPlay(member, 'Pause');
+    await waitPaused();
+    const before = await changes();
+    expect(typeof before, 'the shift changes count is published').toBe('number');
+    await syncPlay(member, 'Unpause');
+    const t0 = Date.now();
+    while (Date.now() - t0 < 3000) {
+      if ((await getGlobalVal('syncPlayManager.sync.lastCommand.command')) === 'Unpause') break;
+    }
+    // A pause written to a node already paused has no position to estimate, so it drops the one
+    // the group's Pause left.
+    await managerCall('playerEvent', { kind: 'pauseWritten' });
+    await waitPlaying();
+    if ((await changes()) > before) {
+      expect(
+        await getGlobalVal('syncPlayManager.sync.resumeShiftMs'),
+        'the Unpause applied unshifted',
+      ).toBe(0);
+      return;
+    }
+  }
+  throw new Error('no waiting Unpause had a shift to give up in five rounds');
 });
 
 it("a member's own stall recovery keeps its place, with the drift unknown until the group's next command", async (testCtx) => {

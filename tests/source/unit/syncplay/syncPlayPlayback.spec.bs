@@ -237,14 +237,44 @@ namespace tests
       m.assertInvalid(syncPlayPlayback.landedPauseTicks(resumed))
     end function
 
-    @it("a plan whose shift is withdrawn goes back to the command's own time")
+    @it("a second pause write before the first has landed keeps the first write's estimate")
+    function _()
+      pp = syncPlayPlayback.newPausePosition()
+      syncPlayPlayback.notePausePosition(pp, 600000000&, 1000&)
+      syncPlayPlayback.notePauseWritten(pp, true, 1300&)
+      syncPlayPlayback.notePauseWritten(pp, true, 1320&)
+      syncPlayPlayback.notePauseState(pp, "paused", 1330&)
+      m.assertEqual(syncPlayPlayback.landedPauseTicks(pp), 603000000&)
+    end function
+
+    @it("a pause write after the estimate has landed replaces it")
+    function _()
+      pp = m.landedPause()
+      syncPlayPlayback.notePauseWritten(pp, false, 2000&)
+      m.assertInvalid(syncPlayPlayback.landedPauseTicks(pp))
+    end function
+
+    @it("a waiting plan takes a new shift from the command's own time, and remembers the shift asked for")
     function _()
       plan = syncPlayPlayback.scheduleCommand(m.estimator(), m.command("Unpause", "2026-10-23T20:47:31.000Z", 600000000&), m.deviceNow, 300&)
-      syncPlayPlayback.unshiftPlan(plan, m.deviceNow + 400&)
+      m.assertEqual(plan.askedShiftMs, 300&)
+      syncPlayPlayback.reshiftPlan(plan, 0&, m.deviceNow + 400&)
       m.assertEqual(plan.delayMs, 600&)
       m.assertEqual(plan.shiftMs, 0&)
+      m.assertEqual(plan.askedShiftMs, 0&)
+      syncPlayPlayback.reshiftPlan(plan, -200&, m.deviceNow + 500&)
+      m.assertEqual(plan.delayMs, 300&)
+      m.assertEqual(plan.shiftMs, -200&)
+      syncPlayPlayback.reshiftPlan(plan, -900&, m.deviceNow + 500&)
+      m.assertEqual(plan.delayMs, 0&)
+      m.assertEqual(plan.shiftMs, -500&)
+      m.assertEqual(plan.askedShiftMs, -900&)
+    end function
+
+    @it("a plan whose own time has passed takes no shift")
+    function _()
       late = syncPlayPlayback.scheduleCommand(m.estimator(), m.command("Unpause", "2026-10-23T20:47:31.000Z", 600000000&), m.deviceNow, 300&)
-      syncPlayPlayback.unshiftPlan(late, m.deviceNow + 1200&)
+      syncPlayPlayback.reshiftPlan(late, 300&, m.deviceNow + 1200&)
       m.assertEqual(late.delayMs, 0&)
       m.assertEqual(late.shiftMs, 0&)
     end function
