@@ -24,7 +24,7 @@ namespace tests
       reg.write("uiThemeColorPrimary", "FF5733")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateThemePreset(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertTrue(reg.exists("uiTheme"))
@@ -40,7 +40,7 @@ namespace tests
       reg.write("LastRunVersion", "2.3.0")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateThemePreset(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertFalse(reg.exists("uiTheme"))
@@ -57,7 +57,7 @@ namespace tests
       reg.write("uiThemeColorPrimary", "FF5733")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateThemePreset(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read("uiTheme"), "jellyrock-black")
@@ -89,7 +89,7 @@ namespace tests
       reg.write("uiThemeColorBackgroundPrimary", "000000")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateThemePreset(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertTrue(reg.exists("uiTheme"))
@@ -114,7 +114,8 @@ namespace tests
       reg2.write("LastRunVersion", "2.3.0")
       reg2.flush()
 
-      runRegistryUserMigrations([user1, user2])
+      migrateThemePreset(CreateObject("roRegistrySection", user1), user1)
+      migrateThemePreset(CreateObject("roRegistrySection", user2), user2)
 
       reg1 = CreateObject("roRegistrySection", user1)
       m.assertTrue(reg1.exists("uiTheme"))

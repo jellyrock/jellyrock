@@ -212,7 +212,7 @@ it('a cast landing under the exit confirm leaves it focused, and Back focuses th
 it('a cast landing over an item confirm ends the confirm and focuses the new screen', async () => {
   const libraries = await getLibraries(session);
   const expectedServer = await seedHome(session, LOCALE);
-  const landing = await seedLibraryLanding(session, libraryIdFor(libraries, 'tvshows'), 'Shows');
+  const landing = await seedLibraryLanding(session, libraryIdFor(libraries, 'tvshows'), 'shows');
   await hardRelaunch(); // never plain relaunch: only hardRelaunch confirms the cold start
   await assertSeedTookEffect(expectedServer, 'cast over an item confirm', { landing });
   await navSeriesDetails({ libraries });

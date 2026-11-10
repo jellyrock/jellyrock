@@ -1873,16 +1873,6 @@ LabelMaximumResolution:
   from:
     jellyfin-roku: { key: "Maximum Resolution", en: "Maximum Resolution" }
 
-LabelRandomOff:
-  en: "Random Off"
-  from:
-    jellyfin-roku: { key: "Random Off", en: "Random Off" }
-
-LabelRandomOn:
-  en: "Random On"
-  from:
-    jellyfin-roku: { key: "Random On", en: "Random On" }
-
 MessageRememberMe:
   en: "Remember Me?"
   from:
@@ -2405,16 +2395,6 @@ ErrorItemDataFailed:
   en: "There was an error retrieving the data for this item from the server."
   from:
     jellyfin-roku: { key: "There was an error retrieving the data for this item from the server.", en: "There was an error retrieving the data for this item from the server." }
-
-LabelSlideshowOff:
-  en: "Slideshow Off"
-  from:
-    jellyfin-roku: { key: "Slideshow Off", en: "Slideshow Off" }
-
-LabelSlideshowOn:
-  en: "Slideshow On"
-  from:
-    jellyfin-roku: { key: "Slideshow On", en: "Slideshow On" }
 
 LabelSlideshowPaused:
   en: "Slideshow Paused"
