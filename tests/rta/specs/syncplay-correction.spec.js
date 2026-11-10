@@ -169,6 +169,10 @@ async function expectCorrected(isOff, label) {
     timeout: 10000,
     label,
   });
+  await expectBackInStep();
+}
+/** After a correction: the drift inside the thresholds, and the node moving and still playing. */
+async function expectBackInStep() {
   await waitDriftInside();
   await waitPlaying();
   const before = await playerPosition();
@@ -264,13 +268,11 @@ it('a group pause leaves the drift unknown, and a member ahead of the group land
 
 it('a member behind the group lands in step', async (testCtx) => {
   skipWithoutPush(testCtx);
-  await syncPlay(member, 'Pause');
-  await waitPaused();
-  await syncPlay(member, 'Unpause');
-  await waitLastCommand('Unpause');
-  await waitPlaying();
-  await setOffset(BEHIND_OFFSET_MS);
-  await expectCorrected((v) => v > BEHIND_THRESHOLD_MS, 'this member reading behind the group');
+  // The drift past the threshold shows only until the seek is written, when the offset lands after
+  // the resume's first reading. The seek's own phase lasts, and the helper resumes again when the
+  // two readings were spent first.
+  await forceCorrectionSeek();
+  await expectBackInStep();
   await setOffset(0);
 });
 
