@@ -163,6 +163,6 @@ Also add your old keys to `"migrates all user settings from old to new names"` i
 The `migration` tag keeps these suites out of `test:all` and `test:integration`. Run them one of two ways:
 
 - **Your spec alone:** list it in your TDD config and run `npm run test:tdd` ([`unit-tests-tdd.md`](unit-tests-tdd.md)).
-- **Every suite, migrations included:** `npm run test:complete`. It records code coverage, so it takes much longer.
+- **Every suite but the timing ones, migrations included:** `npm run test:complete`. It leaves out the `measurement` suites and records code coverage, so it takes much longer.
 
 Then try it on a device with real data. Sideload a build from before your change (`git switch --detach <last-release-tag>`), sign in and change the setting so the old key is stored. Then sideload your build over it and watch the console (`telnet <roku-ip> 8085`): it prints your migration's lines, then the registry.
