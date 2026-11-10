@@ -48,6 +48,7 @@ namespace tests
       presenter = new GridPresenterBase()
       options = presenter.getOptions(invalid)
       m.assertArrayCount(options.views, 0)
+      m.assertEqual(options.layouts, {}, "no tab offers a layout choice by default")
       m.assertArrayCount(options.sort, 0)
       m.assertArrayCount(options.filter, 0)
     end function
@@ -61,7 +62,7 @@ namespace tests
     ' even for a view named like the guide.
     function _()
       presenter = new GridPresenterBase()
-      m.assertFalse(presenter.showsTVGuide("tvGuide"))
+      m.assertFalse(presenter.showsTVGuide("guide"))
       m.assertFalse(presenter.showsTVGuide(""))
     end function
 

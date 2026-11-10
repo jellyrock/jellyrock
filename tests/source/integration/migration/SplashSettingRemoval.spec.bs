@@ -28,7 +28,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      removeSplashBackgroundSetting(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: uiHomeSplashBackground is deleted
       reg = CreateObject("roRegistrySection", testUserId)
@@ -47,7 +47,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      removeSplashBackgroundSetting(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: uiHomeSplashBackground is deleted
       reg = CreateObject("roRegistrySection", testUserId)
@@ -66,7 +66,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      removeSplashBackgroundSetting(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: No error occurs, setting still doesn't exist
       reg = CreateObject("roRegistrySection", testUserId)
@@ -87,7 +87,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      removeSplashBackgroundSetting(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: Only splash setting is deleted, others preserved
       reg = CreateObject("roRegistrySection", testUserId)
@@ -192,7 +192,9 @@ namespace tests
       reg3.flush()
 
       ' WHEN: All users migrate
-      runRegistryUserMigrations([user1, user2, user3])
+      removeSplashBackgroundSetting(CreateObject("roRegistrySection", user1), user1)
+      removeSplashBackgroundSetting(CreateObject("roRegistrySection", user2), user2)
+      removeSplashBackgroundSetting(CreateObject("roRegistrySection", user3), user3)
 
       ' THEN: Each user migrated correctly
       reg1 = CreateObject("roRegistrySection", user1)

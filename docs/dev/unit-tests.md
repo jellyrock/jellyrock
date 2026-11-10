@@ -223,7 +223,7 @@ end class
 | --- | --- | --- |
 | `registry` | A suite that reads and writes real registry sections | `test:complete`, or `test:tdd` with the spec listed |
 | `migration` | A suite that runs a registry migration end to end | The same |
-| `measurement` | A suite that records a platform rate and cannot fail on the number | The same |
+| `measurement` | A suite that records a platform rate and cannot fail on the number | `test:tdd` with the spec listed. `test:complete` leaves it out |
 
 The other builds leave these out, `test:all` and `test:integration` included. Before you tag a suite, check which build will run it ([`tests/CLAUDE.md`](../../tests/CLAUDE.md#running-tests)).
 
