@@ -11,34 +11,48 @@
 # refusal the files stay as written in the clone, and nothing is committed there.
 #
 # Usage: bash .claude/skills/start-project/projects-write.sh --subject <subject> -- <path>...
+#   projects-write.sh --realign: bring a clone that lags the remote level with it, with no paths
+#   and no subject. It fetches, then refuses (exit 3, nothing changed) at the first failed guard:
+#   a commit of its own that is not upstream (those are unpushed work: push them through a write,
+#   never drop them), or a file the remote changed that is edited or staged here (merge it by
+#   hand). Else each file the remote changed since HEAD takes the remote's copy when it is
+#   unedited here, and keeps its text when this clone holds an untracked copy of it. Only those
+#   files' index entries move, so another session's staged or edited files stay as they were.
 #   Run from inside the clone; each path (a file or a folder, relative or absolute) is in it.
 #   PROJECTS_WRITE_TIMEOUT: seconds to keep trying (default 120).
-# Exit: 0 pushed, or nothing to write · 2 usage or setup · 3 refused (the change overlaps what is
-#       on the remote, or a hook refused the commit): nothing pushed, files kept · 4 not pushed
-#       (the remote cannot be reached, or the time limit passed): files kept
+# Exit: 0 pushed, or nothing to write (--realign: realigned, or already level) · 2 usage or
+#       setup · 3 refused (the change overlaps what is on the remote, the clone lags the remote
+#       so its HEAD lacks a file pushed since, or a hook refused the commit): nothing pushed,
+#       files kept, and running it again repeats the refusal until the cause is dealt with ·
+#       4 not pushed (the remote cannot be reached, or the time limit passed): files kept
 
 set -uo pipefail
 
 die()      { printf 'projects-write: %s\n' "$*" >&2; exit 2; }
 refuse()   { printf 'projects-write: refused: %s\n' "$*" >&2; exit 3; }
 unpushed() { printf 'projects-write: not pushed: %s\n' "$*" >&2; exit 4; }
-usage="usage: projects-write.sh --subject <subject> -- <path>..."
+usage="usage: projects-write.sh --subject <subject> -- <path>...   or   projects-write.sh --realign"
 
-subject=""; paths=()
+subject=""; paths=(); realign=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --subject) [ $# -ge 2 ] || die "$usage"; subject="$2"; shift ;;
+    --realign) realign=1 ;;
     --) shift; paths=("$@"); break ;;
     *) die "$usage" ;;
   esac
   shift
 done
-[ -n "$subject" ] && [ "${#paths[@]}" -gt 0 ] || die "$usage"
+if [ "$realign" = 1 ]; then
+  [ -z "$subject" ] && [ "${#paths[@]}" -eq 0 ] || die "$usage"
+else
+  [ -n "$subject" ] && [ "${#paths[@]}" -gt 0 ] || die "$usage"
+fi
 
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git repository"
 root="$(realpath -- "$root")"
 rel=()
-for p in "${paths[@]}"; do
+for p in ${paths[@]+"${paths[@]}"}; do
   a="$(realpath -m -- "$p")"
   case "$a/" in "$root"/?*) rel+=("${a#"$root"/}") ;; *) die "$p is not inside $root" ;; esac
 done
@@ -52,6 +66,54 @@ tmp="$(mktemp -d)"; wt=""
 cleanup() { [ -z "$wt" ] || git -C "$root" worktree remove --force "$wt" >/dev/null 2>&1; rm -rf "$tmp"; }
 trap cleanup EXIT
 pause() { sleep "0.$((RANDOM % 9 + 1))"; }
+
+if [ "$realign" = 1 ]; then
+  while ! git -C "$root" fetch -q "$remote" "$branch" 2>"$tmp/err"; do
+    grep -qi 'lock' "$tmp/err" && [ "$SECONDS" -lt "$end" ] && { pause; continue; }
+    unpushed "cannot fetch from $remote: $(head -1 "$tmp/err"). Nothing was changed; run this again once it is reachable."
+  done
+  tip="$(git -C "$root" rev-parse "refs/remotes/$remote/$branch")" || die "no $remote/$branch after fetching"
+  head="$(git -C "$root" rev-parse HEAD)" || die "$root has no commit yet"
+  if [ "$head" = "$tip" ]; then echo "level with $remote/$branch: nothing to realign"; exit 0; fi
+  unpushed_own="$(git -C "$root" cherry "$tip" HEAD | sed -n 's/^+ //p')"
+  if [ -n "$unpushed_own" ]; then
+    list="$(while read -r c; do git -C "$root" log -1 --format='%h %s' "$c"; done <<<"$unpushed_own" | paste -sd';' - | sed 's/;/; /g')"
+    refuse "this clone has commits that are not on $remote/$branch: $list. They are unpushed work, so nothing was changed. Push them through a write, then run this again."
+  fi
+  # decide every path first, so a refusal leaves the clone untouched
+  take=(); keep=(); clash=(); info="$tmp/info"; undo="$tmp/undo"; : >"$info"; : >"$undo"
+  while IFS= read -r -d '' f; do
+    h="$(git -C "$root" rev-parse -q --verify "HEAD:$f" 2>/dev/null)"; t="$(git -C "$root" rev-parse -q --verify "$tip:$f" 2>/dev/null)"
+    if [ -e "$root/$f" ] || [ -L "$root/$f" ]; then w="$(git -C "$root" hash-object -- "$f")"; else w=""; fi
+    x="$(git -C "$root" ls-files -s -- "$f" | awk 'NR == 1 { print $2 }')"
+    if [ "$x" != "$h" ]; then clash+=("$f")   # staged here by another session
+    elif [ "$w" = "$h" ]; then take+=("$f")
+    elif [ "$w" = "$t" ]; then :
+    elif [ -z "$h" ]; then keep+=("$f")
+    else clash+=("$f"); fi
+    zero=0000000000000000000000000000000000000000
+    if [ -n "$t" ]; then
+      printf '%s\t%s\n' "$(git -C "$root" ls-tree "$tip" -- "$f" | awk '{ print $1 " " $3 }')" "$f" >>"$info"
+    else printf '0 %s\t%s\n' "$zero" "$f" >>"$info"; fi
+    if [ -n "$h" ]; then printf '%s\t%s\n' "$(git -C "$root" ls-tree HEAD -- "$f" | awk '{ print $1 " " $3 }')" "$f" >>"$undo"
+    else printf '0 %s\t%s\n' "$zero" "$f" >>"$undo"; fi
+  done < <(git -C "$root" diff -z --name-only --no-renames HEAD "$tip")
+  if [ "${#clash[@]}" -gt 0 ]; then
+    refuse "edited or staged here and changed on $remote/$branch: ${clash[*]}. Nothing was changed. Merge by hand: save your edit elsewhere, restore the file, run this again, then put the edit back."
+  fi
+  git -C "$root" update-index --index-info <"$info" 2>"$tmp/err" || refuse "could not update this clone's index ($(head -1 "$tmp/err")); nothing was changed"
+  if ! git -C "$root" update-ref HEAD "$tip" "$head" 2>"$tmp/err"; then
+    git -C "$root" update-index --index-info <"$undo" 2>/dev/null
+    refuse "another session moved this clone's branch meanwhile ($(head -1 "$tmp/err")); nothing was changed. Run this again."
+  fi
+  for f in ${take[@]+"${take[@]}"}; do
+    if git -C "$root" cat-file -e "$tip:$f" 2>/dev/null; then git -C "$root" checkout-index -f -- "$f"
+    else rm -f -- "$root/$f"; rmdir -p --ignore-fail-on-non-empty -- "$root/$(dirname "$f")" 2>/dev/null; fi
+  done
+  echo "realigned to $(git -C "$root" rev-parse --short "$tip"): took the remote's copy of ${#take[@]} file(s), kept ${#keep[@]} edited file(s)"
+  for f in ${keep[@]+"${keep[@]}"}; do echo "  kept: $f"; done
+  exit 0
+fi
 
 # The change: the named paths in the working tree against HEAD, read through a private index so
 # the clone's own index (another session's staged files) is never touched.
@@ -75,7 +137,16 @@ while :; do
   wt="$tmp/write-$$-$n"
   git -C "$root" worktree add -q --detach "$wt" "$tip" 2>"$tmp/err" || die "could not make a worktree: $(cat "$tmp/err")"
   if ! git -C "$wt" apply --3way --index "$tmp/patch" >"$tmp/err" 2>&1; then
-    refuse "the change to $(git -C "$wt" diff --name-only --diff-filter=U | tr '\n' ' ')overlaps what is already on $remote/$branch; nothing was pushed, and the files stay as written. Pull, merge the two by hand, and write again."
+    # A clone that lags the remote (commits of its own, or behind) lacks files pushed since: the
+    # patch re-adds such a file whole and meets the pushed copy. That is not an overlap of lines.
+    conflicted="$(git -C "$wt" diff --name-only --diff-filter=U | tr '\n' ' ')"
+    own="$(git -C "$root" rev-list --count "$tip..$base")"; behind="$(git -C "$root" rev-list --count "$base..$tip")"
+    lacking=""
+    for f in $conflicted; do git -C "$root" cat-file -e "$base:$f" 2>/dev/null || lacking="$lacking$f "; done
+    if [ -n "$lacking" ] && { [ "$own" -gt 0 ] || [ "$behind" -gt 0 ]; }; then
+      refuse "the change to ${lacking}cannot be read against this clone: it has $own commit(s) of its own and is $behind behind $remote/$branch, so its HEAD lacks what was pushed since; nothing was pushed, and the files stay as written. In this clone, run projects-write.sh --realign (it checks that the commits of its own are upstream and keeps edited files), then write again."
+    fi
+    refuse "the change to ${conflicted}overlaps what is already on $remote/$branch; nothing was pushed, and the files stay as written. Pull, merge the two by hand, and write again."
   fi
   if git -C "$wt" diff --cached --quiet; then
     new="$tip"   # the remote already holds this change (another writer took it along)
@@ -103,7 +174,7 @@ while :; do
   cur="$(git -C "$root" rev-parse HEAD)"
   git -C "$root" merge-base --is-ancestor "$new" "$cur" && break
   if ! git -C "$root" merge-base --is-ancestor "$cur" "$new"; then
-    note="this clone has commits of its own, so it was not fast-forwarded"; break
+    note="this clone has $(git -C "$root" rev-list --count "$new..$cur") commit(s) of its own that are not on $remote/$branch, so it was not fast-forwarded; list them in this clone: git log --oneline $remote/$branch..HEAD"; break
   fi
   if git -C "$root" add -A -- "${rel[@]}" 2>"$tmp/err" && git -C "$root" merge -q --ff-only "$new" >"$tmp/err" 2>&1; then
     break

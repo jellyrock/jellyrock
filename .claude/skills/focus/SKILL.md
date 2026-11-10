@@ -90,10 +90,10 @@ Take the CANDIDATES block's lines in order; the first that yields a candidate is
 1. **On fire:** `ERROR` lines, then fire `BANNER` lines (a failing pipeline, CI run or deploy; a dirty tree left by an unclosed session).
 2. **Pinned followups:** `PIN` lines, `mail-pinned` banners (a message another repo pinned) and `request-pinned` banners (a work request part another repo pinned), the oldest first, above all project work. One its body says a project tracks routes to that project (resume) with the fid after the slug, `/resume-project {{slug}} {{fid}}`, so the session starts at the followup rather than the kickoff.
 3. **In-flight work to resume:** resume `BANNER` lines (a paused handoff, running work, a project that no longer waits, an open message from another repo about a project), then `SLOT 3`, printed when the journal's in-flight section has items: one no project tracks is a candidate here; when every item is a project's, the slot yields nothing.
-4. **Overdue:** overdue `BANNER` lines (an overdue cadence, a stale journal, a dormant project, a PLAN that contradicts itself: a close that should have fixed it; a followup whose every wait is met, or whose wait names nothing found; a re-check date that passed; an open message from another repo about no project, once 14 days old).
+4. **Overdue:** overdue `BANNER` lines (an overdue cadence, a stale journal, a dormant project, a project whose waits-on names nothing found, a PLAN that contradicts itself: a close that should have fixed it; followups not re-read within the journal's review window; a followup whose every wait is met, or whose wait names nothing found; a re-check date that passed; a followup past its due date, or within its repo's warning window; an open message from another repo about no project, once 14 days old).
 5. **Cheap unblocks**, at `SLOT 5-6`: a followup whose fix is already named and small (never one the reader lists as held; pick the likely ones from their titles, then `show` them to confirm); a ready row in a backlog `## This repo` names.
 6. **Project forward motion**, at `SLOT 5-6`, after rank 5: the next step in an active project's kickoff.
-7. **Maintenance debt:** debt `BANNER` lines (a younger open message about no project; a PLAN whose Verify first lines predate the `command` prints `value` shape; a wait no script can check with no re-check date), then `SLOT 7`: known smells no line forces.
+7. **Maintenance debt:** debt `BANNER` lines (a younger open message about no project; a PLAN whose Verify first lines predate the `command` prints `value` shape; a wait no script can check with no re-check date; a title that names a due date with no marker), then `SLOT 7`: known smells no line forces.
 
 **No candidate in any rank:** say so in one line (the last commit, the tree's state) and stop, with no pick and no route; never promote something to fill the block.
 
@@ -187,6 +187,8 @@ Draft with this structure:
 |---|---|
 | `{{path}}` | {{Create / Edit / Delete: one line. One path per row: plan-run.sh reads one path from each File cell}} |
 | `{{dir}}/` | {{Create / Edit / Delete: a directory; its path ends in `/`, and every file under it is in the plan}} |
+
+{{This table lists only this repo's files, by path from the repo root, because plan-run.sh checks each against this repo's tree and commits. A step that changes something outside the repo goes in the Approach with its absolute path, and gets its own check in Verification.}}
 
 ## Verification
 
