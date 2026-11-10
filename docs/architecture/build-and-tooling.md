@@ -316,7 +316,7 @@ Not every plugin honors every marker, and an unsupported one fails silently: the
 - a `callFunc("x")` or `node@.x()` call;
 - an XML tag, attribute name or attribute value;
 - a string value in packaged JSON (`settings.json`'s `settingName`);
-- a concatenated string prefix: `"segmentAction" + type` reaches every `segmentAction*` field.
+- a concatenated string prefix: `"segmentAction" + type` reaches every `segmentAction*` field. A prefix reaches a namespaced declaration only when it spells the whole namespace as transpiled (`ns_`), so `"syncPlay" + action` reaches nothing in `syncPlayPlayback`.
 
 Resolution follows scope:
 
