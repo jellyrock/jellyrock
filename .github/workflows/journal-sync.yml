@@ -1,7 +1,12 @@
 # Post-merge journal sync.
 #
 # When a PR merges to main, this workflow runs scripts/journal-sync.js to
-# perform the mechanical close-loop edit on docs/progress.md:
+# perform the mechanical close-loop edit on docs/progress.md. The trigger
+# filters on branches: [main] because a PR into any other branch, such as an
+# integration branch, has not shipped. Its line comes with the PR that brings
+# it to main.
+#
+# The edit:
 #   - Prepend "- YYYY-MM-DD: <pr-title>" to ## Recently shipped
 #   - Clear ## Currently running when its text overlaps the PR title
 #   - Bump frontmatter last-updated:
@@ -52,6 +57,7 @@ name: Journal Sync (post-merge)
 on:
   pull_request:
     types: [closed]
+    branches: [main]
 
 concurrency:
   group: journal-sync-${{ github.event.pull_request.number }}
