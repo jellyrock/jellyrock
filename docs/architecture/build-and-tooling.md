@@ -131,7 +131,7 @@ Each build target has its own `bsconfig*.json`, and every one inherits from `bsc
 | `bsconfig-tests.json` | Every suite except the `migration`, `registry` and `measurement` tags, without code coverage. The gating build (`test:all`, CI) |
 | `bsconfig-tests-unit.json` | Unit tests only, except the `measurement` tag |
 | `bsconfig-tests-integration.json` | Integration tests only, except the `migration` and `registry` tags |
-| `bsconfig-tests-complete.json` | Every tag, with code coverage recorded (`test:complete`, the CI `complete` dispatch) |
+| `bsconfig-tests-complete.json` | Every suite except the `measurement` tag, with code coverage recorded (`test:complete`, the CI `complete` dispatch) |
 | `bsconfig-tdd-sample.json` | Extends `bsconfig-tests.json`. Copy it to the gitignored `bsconfig-tdd.json` and pick the suites to run |
 
 `bsconfig.json` is the place to read the plugin list. The prod config leaves out `brighterscript-xml-plugin`, `callfunc-interface`, `button-row-bracket`, `field-observer-wiring`, `register-once-observer` and `dead-code`. No reason is recorded; those rules still gate every PR through `validate`, which builds `bsconfig.json`.

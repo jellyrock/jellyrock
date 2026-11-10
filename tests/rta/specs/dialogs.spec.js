@@ -230,7 +230,7 @@ async function playingOsd(userSettings = null) {
 
 it('series watched button opens the standard confirm dialog; back cancels it', async () => {
   const expectedServer = await seedHome(session, LOCALE);
-  const landing = await seedLibraryLanding(session, libraryIdFor(libraries, 'tvshows'), 'Shows');
+  const landing = await seedLibraryLanding(session, libraryIdFor(libraries, 'tvshows'), 'shows');
   await hardRelaunch();
   await assertSeedTookEffect(expectedServer, 'series watched dialog', { landing });
   await navSeriesDetails();
@@ -348,7 +348,9 @@ it('series watched button opens the standard confirm dialog; back cancels it', a
 // focus back on the opener rather than wherever derivation would have guessed.
 it('item description opens the overview overlay; back restores focus to it', async () => {
   const expectedServer = await seedHome(session, LOCALE);
-  const landing = await seedLibraryLanding(session, libraryIdFor(libraries, 'movies'), 'Movies');
+  const landing = await seedLibraryLanding(session, libraryIdFor(libraries, 'movies'), 'movies', {
+    layout: 'presentation',
+  });
   await hardRelaunch();
   await assertSeedTookEffect(expectedServer, 'item description overlay', { landing });
   await navMovieDetails({ libraries });
@@ -422,7 +424,9 @@ it('item description opens the overview overlay; back restores focus to it', asy
 // non-scrolling branch, which is the branch that passes either way.
 it('a scrolling overview overlay opens focused on the text, not on OK', async () => {
   const expectedServer = await seedHome(session, LOCALE);
-  const landing = await seedLibraryLanding(session, libraryIdFor(libraries, 'movies'), 'Movies');
+  const landing = await seedLibraryLanding(session, libraryIdFor(libraries, 'movies'), 'movies', {
+    layout: 'presentation',
+  });
   await hardRelaunch();
   await assertSeedTookEffect(expectedServer, 'scrolling overview overlay', { landing });
   await navMovieDetails({ libraries });

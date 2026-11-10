@@ -305,18 +305,18 @@ namespace tests
       m.assertEqual(gridQuery.resolveView(savedView, [{ Name: "Movies" }], "MoviesGrid"), "MoviesGrid")
     end function
 
-    @it("returns an empty default untouched for the presenters that run without a named view")
-    ' Live TV, Photos and Generic get "" from getDefaultView(), and "" is in no presenter's
-    ' views list, so a rule of "reset anything not offered" would reset them on every
-    ' load. Only a non-empty SAVED name is checked.
+    @it("returns an empty default untouched for a grid that runs without a named view")
+    ' A folder or collection gets "" from getDefaultView() and offers no tabs, and "" is in
+    ' no presenter's views list, so a rule of "reset anything not offered" would reset it
+    ' on every load. Only a non-empty SAVED name is checked.
     function _()
-      m.assertEqual(gridQuery.resolveView(invalid, [{ Name: "livetv" }, { Name: "tvGuide" }], ""), "")
+      m.assertEqual(gridQuery.resolveView(invalid, [], ""), "")
     end function
 
-    @it("keeps a saved view for those presenters too")
+    @it("keeps a saved view whatever the default is")
     function _()
-      views = [{ Name: "livetv" }, { Name: "tvGuide" }]
-      m.assertEqual(gridQuery.resolveView("tvGuide", views, ""), "tvGuide")
+      views = [{ Name: "channels" }, { Name: "guide" }]
+      m.assertEqual(gridQuery.resolveView("guide", views, "channels"), "guide")
     end function
 
   end class

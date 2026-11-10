@@ -131,7 +131,7 @@ it('details: keys pressed while it loads do no harm, and the item lands', async 
 
 /** Open the Live TV library on its guide view with the first channel page held for `ms`. */
 async function openGuideHeld(ms) {
-  await freshApp('screen-load-waits guide', { libraryId: liveTvId, view: 'tvguide' });
+  await freshApp('screen-load-waits guide', { libraryId: liveTvId, view: 'guide' });
   await failRequests([{ prefix: GUIDE_READ, kind: 'slow', ms, times: 1 }]);
   await navLibraryByType('livetv', liveTvId);
   await waitHeld(1, 'the first channel page is on a pool slot');
