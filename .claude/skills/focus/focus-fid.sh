@@ -8,8 +8,9 @@
 # user, so only text the model writes does.
 #
 # - A followup's title is the entry's heading without its leading `#### ` and its trailing backticked
-#   [fid: …], [captured …], [prompt: …] and [pinned] markers; the date is the [captured …] marker.
-#   A part's title, sender, date and project come from its `mailbox.sh requests --tsv` row.
+#   [fid: …], [captured …], [prompt: …], [waits-on: …], [due: …] and [pinned] markers; the date is
+#   the [captured …] marker. A part's title, sender, date and project come from its
+#   `mailbox.sh requests --tsv` row.
 # - A line of the text that starts with NOTE: (after any spaces) could be read as one of this
 #   script's own notes, so a NOTE line after the closing tag names each one as followup or request text.
 # - The {{…}} parts of the PICK block are fill-ins for the model; they print literally.
@@ -98,7 +99,7 @@ else
   date=""
   if [[ $heading =~ \[captured\ ([0-9]{4}-[0-9]{2}-[0-9]{2})\] ]]; then date="${BASH_REMATCH[1]}"; fi
   # shellcheck disable=SC2016
-  marker='^(.*[^[:space:]])[[:space:]]+`?\[(fid|captured|prompt|pinned)[^]]*\]`?[[:space:]]*$'
+  marker='^(.*[^[:space:]])[[:space:]]+`?\[(fid|captured|prompt|waits-on|due|pinned)[^]]*\]`?[[:space:]]*$'
   while [[ $title =~ $marker ]]; do title="${BASH_REMATCH[1]}"; done
   why="[fid: $fid], captured $date"
 fi

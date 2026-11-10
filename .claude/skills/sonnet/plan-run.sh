@@ -425,7 +425,7 @@ do_gate() {
   if [ -z "$UP" ]; then echo "behind: not counted (no upstream and no origin default branch)"
   else
     echo "behind: $BEHIND (on $UP, not in this branch)"
-    [ "$BEHIND" = 0 ] || stops+=("$UP has $BEHIND commit(s) this branch lacks: rebase onto it and run the checks again")
+    [ "$BEHIND" = 0 ] || stops+=("$UP has $BEHIND commit(s) this branch lacks: merge it in, never rebase (a rebase changes the hashes of commits already cited), and run the checks again")
   fi
   [ "$FETCH_OK" = 1 ] || stops+=("could not fetch: the behind count may be stale (fetch, then run the gate again)")
 

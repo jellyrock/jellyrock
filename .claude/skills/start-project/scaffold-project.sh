@@ -145,7 +145,10 @@ if [ "$COMMIT" -eq 1 ]; then
     rc=0; out="$(cd "$PROJECTS" && bash "$(dirname "$RESOLVER")/projects-write.sh" --subject "$SUBJECT" -- "${paths[@]}" 2>&1)" || rc=$?
     case $rc in
       0) printf '%s\n' "$out" | grep '^NOTE:' || true
-         echo "committed and pushed as $(git -C "$PROJECTS" rev-parse --short HEAD) to the projects home" ;;
+         # the pushed commit is the one projects-write.sh names, not the clone's HEAD (which may hold commits of its own)
+         sha="$(printf '%s\n' "$out" | sed -n 's/^pushed \([0-9a-f][0-9a-f]*\) to .*/\1/p')"
+         if [ -n "$sha" ]; then echo "committed and pushed as $sha to the projects home"
+         else printf '%s\n' "$out" | grep -v '^NOTE:' || true; fi ;;
       3) printf '%s\n' "$out"; die "refused: nothing was committed; the stub is kept in the projects home, uncommitted" ;;
       4) printf '%s\n' "$out"; die "not pushed: nothing was committed; the stub is kept in the projects home, uncommitted: run --commit again once its remote is reachable" ;;
       *) printf '%s\n' "$out"; die "projects-write.sh failed (exit $rc): nothing was committed" ;;
