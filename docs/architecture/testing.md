@@ -60,7 +60,7 @@ Each `test:` script builds one test app with `bsc`, then runs it through `script
 | `npm run test:unit` | `bsconfig-tests-unit.json` | Unit tests, except `measurement` |
 | `npm run test:integration` | `bsconfig-tests-integration.json` | Integration tests, except `migration` and `registry` |
 | `npm run test:all` | `bsconfig-tests.json` | Everything except `migration`, `registry` and `measurement`. CI's gating run uses this. |
-| `npm run test:complete` | `bsconfig-tests-complete.json` | Everything, with code coverage recorded |
+| `npm run test:complete` | `bsconfig-tests-complete.json` | Everything except `measurement`, with code coverage recorded |
 
 Each has a `build:` twin that only builds (`build:tdd`, `build:tests-unit`, `build:tests-integration`, `build:tests`, `build:tests-complete`). None of them watches for changes.
 

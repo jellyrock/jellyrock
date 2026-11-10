@@ -28,7 +28,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      removeGlobalSplashScreenFromUser(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: globalSplashScreen is deleted from user section
       reg = CreateObject("roRegistrySection", testUserId)
@@ -47,7 +47,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      removeGlobalSplashScreenFromUser(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: globalSplashScreen is deleted from user section
       reg = CreateObject("roRegistrySection", testUserId)
@@ -66,7 +66,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      removeGlobalSplashScreenFromUser(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: No error occurs, setting still doesn't exist
       reg = CreateObject("roRegistrySection", testUserId)
@@ -87,7 +87,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      removeGlobalSplashScreenFromUser(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: Only globalSplashScreen is deleted, others preserved
       reg = CreateObject("roRegistrySection", testUserId)
@@ -110,7 +110,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      removeGlobalSplashScreenFromUser(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: globalRememberMe is kept (only globalSplashScreen is cleaned up)
       reg = CreateObject("roRegistrySection", testUserId)
@@ -212,7 +212,9 @@ namespace tests
       reg3.flush()
 
       ' WHEN: All users migrate
-      runRegistryUserMigrations([user1, user2, user3])
+      removeGlobalSplashScreenFromUser(CreateObject("roRegistrySection", user1), user1)
+      removeGlobalSplashScreenFromUser(CreateObject("roRegistrySection", user2), user2)
+      removeGlobalSplashScreenFromUser(CreateObject("roRegistrySection", user3), user3)
 
       ' THEN: Each user migrated correctly
       reg1 = CreateObject("roRegistrySection", user1)
@@ -247,7 +249,7 @@ namespace tests
       globalReg.flush()
 
       ' WHEN: Migration runs on user section
-      runRegistryUserMigrations([testUserId])
+      removeGlobalSplashScreenFromUser(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: User section cleaned up, but global section preserved
       userReg = CreateObject("roRegistrySection", testUserId)
