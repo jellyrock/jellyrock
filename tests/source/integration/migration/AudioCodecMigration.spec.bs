@@ -26,7 +26,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs (only for this specific user to isolate test)
-      runRegistryUserMigrations([testUserId])
+      migrateAudioCodecSetting(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: New setting name exists with preserved value
       reg = CreateObject("roRegistrySection", testUserId)
@@ -51,7 +51,7 @@ namespace tests
       reg.write("playbackPreferredAudioCodec", "auto")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateAudioCodecSetting(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read("playbackPreferredMultichannelCodec"), "eac3", "'auto' should migrate to 'eac3'")
@@ -68,7 +68,7 @@ namespace tests
       reg.write("playbackPreferredAudioCodec", "aac")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateAudioCodecSetting(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read("playbackPreferredMultichannelCodec"), "eac3", "'aac' should migrate to 'eac3'")
@@ -85,7 +85,7 @@ namespace tests
       reg.write("playbackPreferredAudioCodec", "")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateAudioCodecSetting(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read("playbackPreferredMultichannelCodec"), "eac3", "Empty string should migrate to 'eac3'")
@@ -106,7 +106,7 @@ namespace tests
       reg.write("playbackPreferredAudioCodec", "ac3")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateAudioCodecSetting(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read("playbackPreferredMultichannelCodec"), "ac3", "'ac3' should be preserved")
@@ -123,7 +123,7 @@ namespace tests
       reg.write("playbackPreferredAudioCodec", "eac3")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateAudioCodecSetting(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read("playbackPreferredMultichannelCodec"), "eac3", "'eac3' should be preserved")
@@ -140,7 +140,7 @@ namespace tests
       reg.write("playbackPreferredAudioCodec", "dts")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateAudioCodecSetting(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read("playbackPreferredMultichannelCodec"), "dts", "'dts' should be preserved")
@@ -161,7 +161,7 @@ namespace tests
       ' Don't write playbackPreferredAudioCodec
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateAudioCodecSetting(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertFalse(reg.exists("playbackPreferredMultichannelCodec"), "New setting should not be created")
@@ -178,7 +178,7 @@ namespace tests
       reg.write("playbackPreferredAudioCodec", "unknown-codec")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateAudioCodecSetting(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read("playbackPreferredMultichannelCodec"), "unknown-codec", "Unknown values should be preserved")
@@ -280,7 +280,9 @@ namespace tests
       reg3.flush()
 
       ' WHEN: Migration runs for these 3 users only
-      runRegistryUserMigrations([user1, user2, user3])
+      migrateAudioCodecSetting(CreateObject("roRegistrySection", user1), user1)
+      migrateAudioCodecSetting(CreateObject("roRegistrySection", user2), user2)
+      migrateAudioCodecSetting(CreateObject("roRegistrySection", user3), user3)
 
       ' THEN: Each user migrated correctly with independent values
       reg1 = CreateObject("roRegistrySection", user1)
@@ -307,7 +309,7 @@ namespace tests
       reg.write("playbackPreferredMultichannelCodec", "eac3") ' New name already exists
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateAudioCodecSetting(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       ' Old value should overwrite new value during migration

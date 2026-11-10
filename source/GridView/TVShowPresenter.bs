@@ -1,5 +1,6 @@
 import "pkg:/source/GridView/collectionsView.bs"
 import "pkg:/source/GridView/GridPresenterBase.bs"
+import "pkg:/source/GridView/libraryTab.bs"
 import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/utils/displaySettings.bs"
 
@@ -7,7 +8,7 @@ import "pkg:/source/utils/displaySettings.bs"
 class TVShowPresenter extends GridPresenterBase
 
   ' TV shows always use fullscreen backdrop
-  override function getBackdropMode() as string
+  override function getBackdropMode(_viewMode as string, _layout as string) as string
     return "fullscreen"
   end function
 
@@ -27,28 +28,30 @@ class TVShowPresenter extends GridPresenterBase
   override function getOptions(parentItem as object) as object
     options = {
       views: [],
+      layouts: {},
       sort: [],
       filter: []
     }
 
-    ' TV show views
+    ' The web client's tab order (Shows, Suggestions, Upcoming, Genres, Networks,
+    ' Episodes), with the tabs JellyRock has.
     options.views = [
-      { "Title": translate(translationKeys.LabelShows), "Name": "Shows" },
-      { "Title": translate(translationKeys.LabelNetworks), "Name": "Networks" },
-      { "Title": translate(translationKeys.LabelGenres), "Name": "Genres" }
+      { "Title": translate(translationKeys.LabelShows), "Name": libraryTab.SHOWS },
+      { "Title": translate(translationKeys.LabelGenres), "Name": libraryTab.GENRES },
+      { "Title": translate(translationKeys.LabelNetworks), "Name": libraryTab.NETWORKS }
     ]
 
     ' The library itself on 12.0+ only; see collectionsView for both rules. A TV library
     ' gets the view for the same reason a movie library does: the server scopes BoxSets by
-    ' library, a collection can hold series, and jellyfin-web lists a Collections tab on
-    ' both library kinds.
+    ' library and a collection can hold series. The web's TV library has no Collections
+    ' tab, so it goes last.
     if collectionsView.offeredFor(parentItem, m.serverVersion())
-      options.views.push({ "Title": translate(translationKeys.LabelCollections), "Name": collectionsView.VIEW_NAME })
+      options.views.push({ "Title": translate(translationKeys.LabelCollections), "Name": libraryTab.COLLECTIONS })
     end if
 
     ' Sort options vary by view - get current view from presenter's view reference
     viewLower = LCase(m.currentView())
-    if viewLower = LCase(collectionsView.VIEW_NAME)
+    if viewLower = libraryTab.COLLECTIONS
       ' Collections lists BoxSets, not series. Same shorter list the movie libraries'
       ' Collections view uses, and the same one jellyfin-web offers on its Collections
       ' tab: a collection has no episode-added date or series-played date of its own.
@@ -66,7 +69,7 @@ class TVShowPresenter extends GridPresenterBase
         { "Title": translate(translationKeys.LabelPlayed), "Name": "Played" },
         { "Title": translate(translationKeys.LabelUnplayed), "Name": "Unplayed" }
       ]
-    else if viewLower = "genres"
+    else if viewLower = libraryTab.GENRES
       ' Genre view only has title sort
       options.sort = [
         { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" }
@@ -99,10 +102,10 @@ class TVShowPresenter extends GridPresenterBase
   end function
 
   ' Configure grid layout and positioning for TV show views
-  override function getGridConfig(currentView as string) as object
+  override function getGridConfig(currentView as string, _layout as string) as object
     viewLower = LCase(currentView)
 
-    if viewLower = "shows"
+    if viewLower = libraryTab.SHOWS
       ' Full grid view - rowHeights > itemSize to always leave space for titles
       return {
         translation: [96, 102],
@@ -112,7 +115,7 @@ class TVShowPresenter extends GridPresenterBase
         numColumns: "6",
         imageDisplayMode: "scaleToZoom"
       }
-    else if viewLower = "networks"
+    else if viewLower = libraryTab.NETWORKS
       ' Full grid view - rowHeights > itemSize to always leave space for titles
       return {
         translation: [96, 102],
@@ -122,7 +125,7 @@ class TVShowPresenter extends GridPresenterBase
         numColumns: "6",
         imageDisplayMode: "scaleToZoom"
       }
-    else if viewLower = "genres"
+    else if viewLower = libraryTab.GENRES
       ' genres - smaller posters. scaleToZoom (matching MoviePresenter) so 2:3 posters
       ' fill the genre RowList cell with no crop (the cell is 2:3) and the watched/unplayed
       ' badge anchors to the image corner rather than a letterbox bar.
@@ -148,12 +151,12 @@ class TVShowPresenter extends GridPresenterBase
   end function
 
   ' TV shows don't have presentation view
-  override function shouldShowPresentationInfo(_currentView as string) as boolean
+  override function shouldShowPresentationInfo(_currentView as string, _layout as string) as boolean
     return false
   end function
 
   ' No special handling needed for TV shows (no presentation view)
-  override sub onItemFocused(_item as object, _currentView as string)
+  override sub onItemFocused(_item as object, _currentView as string, _layout as string)
     ' No-op - TV shows use standard grid without metadata panel
   end sub
 
@@ -165,18 +168,18 @@ class TVShowPresenter extends GridPresenterBase
     task.additionalFields = "Genres"
 
     ' Configure based on view type
-    if viewLower = LCase(collectionsView.VIEW_NAME)
+    if viewLower = libraryTab.COLLECTIONS
       ' The library's collections. `isRecursive` stays true, which is what the 12.x
       ' servers scope correctly; Genres is a series field a BoxSet has no use for.
       task.itemType = "BoxSet"
       task.additionalFields = ""
       task.itemId = parentItem.Id
-      task.view = collectionsView.VIEW_NAME
-    else if viewLower = "networks"
+      task.view = "Collections"
+    else if viewLower = libraryTab.NETWORKS
       task.itemType = "Series"
       task.itemId = parentItem.Id
       task.view = "Networks"
-    else if viewLower = "genres"
+    else if viewLower = libraryTab.GENRES
       task.itemType = "Series"
       task.itemId = parentItem.Id
       task.view = "Genres"
