@@ -36,6 +36,10 @@
  *     fields by `settingName`);
  *   - a string-literal PREFIX that is concatenated (`"segmentAction" + type`
  *     reaches every declaration whose name starts with `segmentAction`).
+ *     A namespaced declaration is reached only when the prefix spells its whole
+ *     namespace, as transpiled (`ns_`, or `a_b_` for a nested one), and goes on
+ *     from there: `"syncPlay" + x` reaches nothing in `syncPlayPlayer`, while
+ *     `"syncPlayPlayer_new" + x` reaches `syncPlayPlayer.newPlayer`.
  *
  * Matching is case-insensitive (BrightScript is), and resolution follows scope:
  *   - A namespaced declaration is matched by its QUALIFIED name, or by a
@@ -1104,8 +1108,9 @@ function liveness(d, ctx, collect) {
     }
     return false;
   };
-  const prefixHit = (name) => {
+  const prefixHit = (name, nsUnderscore) => {
     for (const p of idx.prefixes) {
+      if (nsUnderscore && !p.prefix.startsWith(nsUnderscore)) continue;
       if (
         name.startsWith(p.prefix) &&
         name !== p.prefix &&
@@ -1122,7 +1127,8 @@ function liveness(d, ctx, collect) {
     case 'const': {
       if (d.ns) {
         const q = qualifiedLive(d, ctx, anyLive);
-        return result(prefixHit(underscore) || q);
+        const nsUnderscore = lq.slice(0, lq.lastIndexOf('.')).replace(/\./g, '_') + '_';
+        return result(prefixHit(underscore, nsUnderscore) || q);
       }
       // A codebehind function is reached by name only from the component scopes that
       // include its file. A `source/` function is reached by a bare call from
