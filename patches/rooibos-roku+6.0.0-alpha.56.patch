@@ -90,3 +90,18 @@ index 77053bc..b4d7672 100644
                  m.printLine(0, "IGNORED TESTS:")
                  for each ignoredItemName in ignoredInfo.items
                      m.printLine(1, ignoredItemName)
+diff --git a/node_modules/rooibos-roku/dist/lib/rooibos/CodeCoverageProcessor.js b/node_modules/rooibos-roku/dist/lib/rooibos/CodeCoverageProcessor.js
+index 1de4a87..4ccda2f 100644
+--- a/node_modules/rooibos-roku/dist/lib/rooibos/CodeCoverageProcessor.js
++++ b/node_modules/rooibos-roku/dist/lib/rooibos/CodeCoverageProcessor.js
+@@ -145,6 +145,10 @@ class CodeCoverageProcessor {
+             ConditionalCompileStatement: (ccStmt, parent, owner, key) => {
+                 var _a;
+                 this.addStatement(ccStmt);
++                // A call outside a function is a syntax error, so a file-level `#if` gets none.
++                if (!ccStmt.findAncestor(brighterscript_1.isFunctionExpression)) {
++                    return;
++                }
+                 let blockStatements = (_a = ccStmt.thenBranch) === null || _a === void 0 ? void 0 : _a.statements;
+                 if (blockStatements) {
+                     let coverageStatement = new RawCodeStatement_1.RawCodeStatement(this.getFuncCallText(ccStmt.location.range.start.line, CodeCoverageLineType.conditionalCompile));
