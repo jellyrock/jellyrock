@@ -91,10 +91,18 @@ index 77053bc..b4d7672 100644
                  for each ignoredItemName in ignoredInfo.items
                      m.printLine(1, ignoredItemName)
 diff --git a/node_modules/rooibos-roku/dist/lib/rooibos/CodeCoverageProcessor.js b/node_modules/rooibos-roku/dist/lib/rooibos/CodeCoverageProcessor.js
-index 1de4a87..4ccda2f 100644
+index 1de4a87..b007eaf 100644
 --- a/node_modules/rooibos-roku/dist/lib/rooibos/CodeCoverageProcessor.js
 +++ b/node_modules/rooibos-roku/dist/lib/rooibos/CodeCoverageProcessor.js
-@@ -145,6 +145,10 @@ class CodeCoverageProcessor {
+@@ -59,6 +59,7 @@ class CodeCoverageProcessor {
+         this.addedStatements = new Set();
+         this.astEditor = astEditor;
+         file.program.logger.info(Diagnostics_1.RooibosLogPrefix, 'Processing file for code coverage:', this.fileId, file.pkgPath);
++        this.keepStatementPositions(file);
+         file.ast.walk((0, brighterscript_1.createVisitor)({
+             ForStatement: (ds, parent, owner, key) => {
+                 this.addStatement(ds);
+@@ -145,6 +146,10 @@ class CodeCoverageProcessor {
              ConditionalCompileStatement: (ccStmt, parent, owner, key) => {
                  var _a;
                  this.addStatement(ccStmt);
@@ -105,3 +113,58 @@ index 1de4a87..4ccda2f 100644
                  let blockStatements = (_a = ccStmt.thenBranch) === null || _a === void 0 ? void 0 : _a.statements;
                  if (blockStatements) {
                      let coverageStatement = new RawCodeStatement_1.RawCodeStatement(this.getFuncCallText(ccStmt.location.range.start.line, CodeCoverageLineType.conditionalCompile));
+@@ -197,6 +202,45 @@ class CodeCoverageProcessor {
+         // store the statement in a set to avoid handling again after inserting statement above
+         this.processedStatements.add(statement);
+     }
++    // bsc finds a local by its statement's position in the block, and records those positions
++    // while validating. The calls this processor inserts shift every later statement, so bsc can
++    // decide a local is not defined yet and transpile a name it shares with a namespace member as
++    // that member. Each statement therefore keeps answering with the position it had before any
++    // call was inserted.
++    keepStatementPositions(file) {
++        const positions = CodeCoverageProcessor.statementPositions;
++        const remember = (statements) => {
++            if (Array.isArray(statements)) {
++                statements.forEach((statement, index) => positions.set(statement, index));
++            }
++        };
++        remember(file.ast.statements);
++        file.ast.walk((0, brighterscript_1.createVisitor)({
++            Block: (block) => remember(block.statements),
++            NamespaceStatement: (namespace) => { var _a; return remember((_a = namespace.body) === null || _a === void 0 ? void 0 : _a.statements); }
++            // eslint-disable-next-line no-bitwise
++        }), { walkMode: brighterscript_1.WalkMode.visitAllRecursive | brighterscript_1.InternalWalkMode.visitFalseConditionalCompilationBlocks });
++        if (CodeCoverageProcessor.keepsStatementPositions) {
++            return;
++        }
++        CodeCoverageProcessor.keepsStatementPositions = true;
++        const prototype = brighterscript_1.AstNode.prototype;
++        const liveIndex = Object.getOwnPropertyDescriptor(prototype, 'statementIndex').get;
++        Object.defineProperty(prototype, 'statementIndex', {
++            configurable: true,
++            get() {
++                const live = liveIndex.call(this);
++                if (live < 0 || (0, brighterscript_1.isBody)(this)) {
++                    return live;
++                }
++                let node = this;
++                while (node && !((0, brighterscript_1.isBlock)(node.parent) || (0, brighterscript_1.isBody)(node.parent))) {
++                    node = node.parent;
++                }
++                return node && positions.has(node) ? positions.get(node) : live;
++            }
++        });
++    }
+     addBrsAPIText(file, astEditor) {
+         const astCodeToInject = brighterscript_1.Parser.parse(this.coverageBrsTemplate.replace(/\#ID\#/g, this.fileId.toString().trim())).ast.statements;
+         astEditor.arrayPush(file.ast.statements, ...astCodeToInject);
+@@ -214,5 +258,7 @@ class CodeCoverageProcessor {
+         return `RBS_CC_${this.fileId}_reportLine("${lineNumber.toString().trim()}", ${lineType.toString().trim()})`;
+     }
+ }
++CodeCoverageProcessor.statementPositions = new WeakMap();
++CodeCoverageProcessor.keepsStatementPositions = false;
+ exports.CodeCoverageProcessor = CodeCoverageProcessor;
+ //# sourceMappingURL=CodeCoverageProcessor.js.map
+\ No newline at end of file
