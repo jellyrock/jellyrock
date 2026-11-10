@@ -13,14 +13,17 @@ namespace tests
     ' The saved `landing` setting and the views list may not agree on case.
     function _()
       presenter = new LiveTVPresenter()
-      m.assertTrue(presenter.showsTVGuide("tvGuide"))
-      m.assertTrue(presenter.showsTVGuide("TVGUIDE"))
+      m.assertTrue(presenter.showsTVGuide("guide"))
+      m.assertTrue(presenter.showsTVGuide("GUIDE"))
     end function
 
     @it("shows the channel grid for every other view")
     function _()
       presenter = new LiveTVPresenter()
-      m.assertFalse(presenter.showsTVGuide("livetv"))
+      m.assertFalse(presenter.showsTVGuide("channels"))
+      ' The name the guide was saved under before the libraryTab ids. The registry migration
+      ' rewrites it, so the presenter no longer answers to it.
+      m.assertFalse(presenter.showsTVGuide("tvGuide"))
       m.assertFalse(presenter.showsTVGuide(""))
     end function
 

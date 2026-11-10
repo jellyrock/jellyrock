@@ -28,7 +28,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      removeEmptyPrimaryImageTag(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: Empty primaryImageTag is deleted
       reg = CreateObject("roRegistrySection", testUserId)
@@ -47,7 +47,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      removeEmptyPrimaryImageTag(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: Whitespace primaryImageTag is deleted
       reg = CreateObject("roRegistrySection", testUserId)
@@ -66,7 +66,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      removeEmptyPrimaryImageTag(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: Valid primaryImageTag is preserved
       reg = CreateObject("roRegistrySection", testUserId)
@@ -86,7 +86,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      removeEmptyPrimaryImageTag(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: No error occurs, primaryImageTag still doesn't exist
       reg = CreateObject("roRegistrySection", testUserId)
@@ -188,7 +188,9 @@ namespace tests
       reg3.flush()
 
       ' WHEN: All users migrate
-      runRegistryUserMigrations([user1, user2, user3])
+      removeEmptyPrimaryImageTag(CreateObject("roRegistrySection", user1), user1)
+      removeEmptyPrimaryImageTag(CreateObject("roRegistrySection", user2), user2)
+      removeEmptyPrimaryImageTag(CreateObject("roRegistrySection", user3), user3)
 
       ' THEN: Each user migrated correctly
       reg1 = CreateObject("roRegistrySection", user1)
@@ -218,7 +220,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      removeEmptyPrimaryImageTag(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: Special whitespace is deleted
       reg = CreateObject("roRegistrySection", testUserId)
@@ -237,7 +239,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      removeEmptyPrimaryImageTag(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: Tag is preserved (trim() results in non-empty)
       reg = CreateObject("roRegistrySection", testUserId)

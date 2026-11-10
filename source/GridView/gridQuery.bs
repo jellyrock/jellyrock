@@ -89,9 +89,9 @@ namespace gridQuery
   ' case and is answered with the default exactly as before. A saved name is honored
   ' unless the presenter has stopped offering it.
   '
-  ' The empty default is not a missing view. getDefaultView() returns "" for the Live TV,
-  ' Photos and Generic presenters, whose grids run with no named view at all, and "" is
-  ' in no presenter's list, so a rule of "reset anything not offered" would reset those on
+  ' The empty default is not a missing view. getDefaultView() returns "" for a folder or
+  ' collection (the Generic presenter), whose grid runs with no named view at all, and ""
+  ' is in no presenter's list, so a rule of "reset anything not offered" would reset it on
   ' every load. Only a non-empty saved name is checked.
   '
   ' The caller does not write the fallback back to the registry: the saved choice is still

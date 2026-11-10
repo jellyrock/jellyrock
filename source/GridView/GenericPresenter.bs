@@ -2,6 +2,9 @@
 '
 ' Used for: Collections, Boxsets, Folders, etc.
 ' Uses full-screen global backdrop and standard grid layout.
+'
+' A folder or collection has one view and no tabs, so it lists none: its grid runs with
+' the empty view, and the title names the folder.
 
 import "pkg:/source/GridView/GridPresenterBase.bs"
 import "pkg:/source/utils/misc.bs"
@@ -13,12 +16,12 @@ class GenericPresenter extends GridPresenterBase
   end sub
 
   ' Uses global full-screen backdrop
-  override function getBackdropMode() as string
+  override function getBackdropMode(_viewMode as string, _layout as string) as string
     return "fullscreen"
   end function
 
   ' No presentation info for generic view
-  override function shouldShowPresentationInfo(_viewMode as string) as boolean
+  override function shouldShowPresentationInfo(_viewMode as string, _layout as string) as boolean
     return false
   end function
 
@@ -30,9 +33,8 @@ class GenericPresenter extends GridPresenterBase
     if isBoxset
       ' Boxset-specific options with Folders sort
       return {
-        views: [
-          { "Title": translate(translationKeys.LabelDefault), "Name": "default" }
-        ],
+        views: [],
+        layouts: {},
         sort: [
           { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
           { "Title": translate(translationKeys.LabelRandom), "Name": "Random" },
@@ -57,9 +59,8 @@ class GenericPresenter extends GridPresenterBase
 
     ' Default generic options
     return {
-      views: [
-        { "Title": translate(translationKeys.LabelDefault), "Name": "default" }
-      ],
+      views: [],
+      layouts: {},
       sort: [
         { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
         { "Title": translate(translationKeys.LabelDateAdded), "Name": "DateCreated" },
@@ -80,7 +81,7 @@ class GenericPresenter extends GridPresenterBase
   end function
 
   ' Standard grid layout
-  override function getGridConfig(_viewMode as string) as object
+  override function getGridConfig(_viewMode as string, _layout as string) as object
     return {
       translation: [96, 102],
       itemSize: [264, 396],
