@@ -44,6 +44,16 @@
     "exposureConsumers": ["tests/source/**/*.bs", "tests/rta/**/*.{js,mjs}"],
     "keep": [
       {
+        "kind": "planned",
+        "files": [
+          "source/syncplay/syncPlayPlayer.bs",
+          "source/syncplay/syncPlayGroup.bs",
+          "source/syncplay/syncPlayConverge.bs"
+        ],
+        "names": ["*"],
+        "reason": "SyncPlay member convergence (#1251): the pure models and the comparison land with their tests before the manager calls them. Remove when SyncPlayManager feeds them."
+      },
+      {
         "kind": "design-system",
         "files": ["components/ui/label/colors/**"],
         "reason": "Themed label color x size matrix (#106): the full set is the design system, and screens pick variants as they need them."
