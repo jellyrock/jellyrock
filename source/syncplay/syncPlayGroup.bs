@@ -282,10 +282,11 @@ namespace syncPlayGroup
   ' Whether a command is for the item now playing and not older than the update that last
   ' changed it (a same-item restart sends no command of its own).
   function commandIsCurrent(group as object, cmd as object) as boolean
-    if cmd.command = "Stop" then return true
-    if cmd.playlistItemId <> group.playingItemId then return false
+    ' A Stop names no item, but one from before the item started is the last play's too: every
+    ' join brings a Stop, and the queue update that follows it starts the item.
     if syncPlayTime.isWholeNumber(cmd.emittedAtMs) and syncPlayTime.asLong(cmd.emittedAtMs) < syncPlayTime.asLong(group.queueChangedAtMs) then return false
-    return true
+    if cmd.command = "Stop" then return true
+    return cmd.playlistItemId = group.playingItemId
   end function
 
 end namespace
