@@ -19,6 +19,9 @@ namespace syncPlayPlayback
 
   ' An Unpause seeks first only when the player is further off than this (web's minDelaySkipToSync).
   const SKIP_TO_SYNC_MIN_MS = 400
+  ' The longest a position notification can be older than the pause write and still anchor
+  ' pausedPositionTicks: one notification interval (500 ms of media) plus headroom for a late one.
+  const PAUSE_ESTIMATE_MAX_AGE_MS = 1000
   ' A seek counts as landed once a position notification is within this of the target: the
   ' server's own tolerance on a Ready report (Group.MaxPlaybackOffset).
   const READY_TOLERANCE_MS = 500
@@ -33,6 +36,10 @@ namespace syncPlayPlayback
   ' in the phase A spike (2026-10-23) and by the first 200 ms sample on 2026-10-24, so this leaves
   ' headroom.
   const PAUSE_CONFIRM_MS = 1000
+  ' How long after a group Pause's write the node's `paused` state may take to arrive before the
+  ' position estimate for that pause is not trusted. It arrived 26 to 40 ms after the write on a
+  ' Stick 4K (2026-11-10).
+  const PAUSE_LANDED_MS = 250
   ' The most pause writes the manager makes for one group command.
   const PAUSE_ATTEMPTS = 3
   ' After an Unpause, once the node plays, a member further ahead of the group than this holds
@@ -62,14 +69,58 @@ namespace syncPlayPlayback
 
   ' --- scheduling ---
 
+  ' Where a pause stopped the node, in ticks, whether the group's Pause wrote it or the viewer's own did. The Video node's position moves only on a
+  ' position notification and reads stale while paused, so the pause's own position is the last
+  ' notified one run forward by the time since that notification: 7 rounds on a Stick 4K
+  ' (2026-11-10) predicted the drift seen after the Unpause to within 12 ms. Invalid when an input
+  ' is missing, the notification is newer than the write, or older than PAUSE_ESTIMATE_MAX_AGE_MS.
+  ' @param notifiedTicks - the position of the last notification taken while the node played
+  ' @param notifiedAtMs - the device clock when that notification arrived
+  ' @param pausedAtMs - the device clock when the pause was written
+  function pausedPositionTicks(notifiedTicks as dynamic, notifiedAtMs as dynamic, pausedAtMs as dynamic) as dynamic
+    if not syncPlayTime.isWholeNumber(notifiedTicks) or not syncPlayTime.isWholeNumber(notifiedAtMs) or not syncPlayTime.isWholeNumber(pausedAtMs) then return invalid
+    ageMs& = syncPlayTime.asLong(pausedAtMs) - syncPlayTime.asLong(notifiedAtMs)
+    if ageMs& < 0 or ageMs& > PAUSE_ESTIMATE_MAX_AGE_MS then return invalid
+    return syncPlayTime.asLong(notifiedTicks) + syncPlayTime.msToTicks(ageMs&)
+  end function
+
+  ' The estimate a group Pause keeps. The viewer's own pause writes the node's pause before the
+  ' group's Pause comes back, so that Pause finds the node paused and writes none: the estimate
+  ' the viewer's pause made stands once it has landed. A Pause that writes its own pause makes a
+  ' new estimate, and any other route (a seek in flight, a buffering node, a node held for a
+  ' correction) leaves none.
+  ' @param estimate - the manager's { ticks, writtenAtMs, landed }, or invalid
+  ' @param playerState - the Video node's `state` when the Pause applies
+  ' @param heldForCorrection - the node is paused for a drift correction
+  function carriedPausedEstimate(estimate as dynamic, playerState as string, heldForCorrection as boolean) as dynamic
+    if not isValid(estimate) or heldForCorrection or playerState <> "paused" then return invalid
+    if estimate.landed <> true then return invalid
+    return estimate
+  end function
+
+  ' How many ms an Unpause's resume shifts for the lead the pause left, positive when the member
+  ' stopped ahead of the Unpause's position (resume later by the lead), negative when behind
+  ' (resume earlier). A seek on a paused node resumes it, so nothing else takes the lead back.
+  ' Zero with no estimate, and past SKIP_TO_SYNC_MIN_MS, where the Unpause seeks (applyPlan).
+  ' @param pausedTicks - pausedPositionTicks, or invalid
+  ' @param planPositionTicks - the Unpause plan's position
+  function resumeShiftMs(pausedTicks as dynamic, planPositionTicks as dynamic) as longinteger
+    if not syncPlayTime.isWholeNumber(pausedTicks) or not syncPlayTime.isWholeNumber(planPositionTicks) then return 0&
+    leadMs& = syncPlayTime.ticksToMs(syncPlayTime.asLong(pausedTicks) - syncPlayTime.asLong(planPositionTicks))
+    if Abs(leadMs&) > SKIP_TO_SYNC_MIN_MS then return 0&
+    return leadMs&
+  end function
+
   ' When and how a parsed, accepted SyncPlayCommand applies.
   ' @param estimator - the syncPlayOffset estimator (hasEstimate must be true)
   ' @param command - a syncPlayMessage "syncplaycommand" AA
   ' @param nowMs - the device clock now
-  ' @returns an AA with action, delayMs and positionTicks: delayMs is 0 when `When` has passed. An Unpause
+  ' @param shiftMs - resumeShiftMs: moves a future Unpause's delay, never below 0. The position stays
+  '   the server's, since the drift reading runs it forward from its When.
+  ' @returns an AA with action, delayMs, positionTicks and shiftMs (the shift applied): delayMs is 0 when `When` has passed. An Unpause
   '   whose When has passed carries the position the group is at now, estimated forward from the
   '   command's own position (web's estimateCurrentTicks); every other command keeps its ticks.
-  function scheduleCommand(estimator as object, command as object, nowMs as longinteger) as object
+  function scheduleCommand(estimator as object, command as object, nowMs as longinteger, shiftMs = 0& as longinteger) as object
     applyAtMs& = syncPlayOffset.deviceTimeForServerMs(estimator, command.whenMs)
     delay& = applyAtMs& - nowMs
     if delay& < 0 then delay& = 0&
@@ -78,7 +129,13 @@ namespace syncPlayPlayback
       serverNow& = syncPlayOffset.serverNowMs(estimator, nowMs)
       positionTicks& = positionTicks& + syncPlayTime.msToTicks(serverNow& - command.whenMs)
     end if
-    return { action: command.command, delayMs: delay&, positionTicks: positionTicks& }
+    appliedShiftMs& = 0&
+    if command.command = "Unpause" and delay& > 0 and shiftMs <> 0
+      appliedShiftMs& = shiftMs
+      delay& = delay& + shiftMs
+      if delay& < 0 then delay& = 0&
+    end if
+    return { action: command.command, delayMs: delay&, positionTicks: positionTicks&, shiftMs: appliedShiftMs& }
   end function
 
   ' The transport verbs (PlayerHostView.handleTransport's evt shapes) that carry a plan out, in
@@ -107,7 +164,10 @@ namespace syncPlayPlayback
   ' @param trackerPhase - the ready tracker's phase, to tell a load from a stall
   ' @param heldForCorrection - the node is paused for a drift correction, so a group Pause is news
   '   to the viewer though it needs no pause of its own
-  function applyPlan(plan as object, playerState as string, playerPositionTicks as longinteger, trackerPhase = "" as string, heldForCorrection = false as boolean) as object
+  ' @param pausedEstimateTicks - where the group Pause stopped the node (pausedPositionTicks), or
+  '   invalid. An Unpause's seek check reads it in place of the last notified position, which lags
+  '   a pause by up to a notification interval.
+  function applyPlan(plan as object, playerState as string, playerPositionTicks as longinteger, trackerPhase = "" as string, heldForCorrection = false as boolean, pausedEstimateTicks = invalid as dynamic) as object
     steps = []
     target = { command: "seekto", position: ticksToSeconds(plan.positionTicks), report: false, thenPause: false }
     if plan.action = "Unpause"
@@ -116,7 +176,9 @@ namespace syncPlayPlayback
       ' first frame: a seek written here chased the load, and left a member 23 s behind on a slow
       ' file (Stick 4K, 2026-10-31).
       if trackerPhase = "loading" then return steps
-      needsSeek = Abs(playerPositionTicks - plan.positionTicks) > syncPlayTime.msToTicks(SKIP_TO_SYNC_MIN_MS)
+      seekFromTicks = playerPositionTicks
+      if syncPlayTime.isWholeNumber(pausedEstimateTicks) then seekFromTicks = syncPlayTime.asLong(pausedEstimateTicks)
+      needsSeek = Abs(seekFromTicks - plan.positionTicks) > syncPlayTime.msToTicks(SKIP_TO_SYNC_MIN_MS)
       if needsSeek then steps.push(target)
       if playerState = "paused" and not needsSeek then steps.push({ command: "resume" })
     else if plan.action = "Pause"

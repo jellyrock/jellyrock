@@ -66,9 +66,116 @@ namespace tests
       m.assertEqual(plan.positionTicks, 15000&)
     end function
 
+    @it("a future Unpause waits longer by a positive shift, and its position stays the server's")
+    function _()
+      plan = syncPlayPlayback.scheduleCommand(m.estimator(), m.command("Unpause", "2026-10-23T20:47:31.000Z", 600000000&), m.deviceNow, 300&)
+      m.assertEqual(plan.delayMs, 1300&)
+      m.assertEqual(plan.positionTicks, 600000000&)
+      m.assertEqual(plan.shiftMs, 300&)
+    end function
+
+    @it("a future Unpause waits less by a negative shift, and never below zero")
+    function _()
+      early = syncPlayPlayback.scheduleCommand(m.estimator(), m.command("Unpause", "2026-10-23T20:47:31.000Z", 600000000&), m.deviceNow, -300&)
+      m.assertEqual(early.delayMs, 700&)
+      m.assertEqual(early.shiftMs, -300&)
+      clamped = syncPlayPlayback.scheduleCommand(m.estimator(), m.command("Unpause", "2026-10-23T20:47:31.000Z", 600000000&), m.deviceNow, -5000&)
+      m.assertEqual(clamped.delayMs, 0&)
+      m.assertEqual(clamped.positionTicks, 600000000&)
+    end function
+
+    @it("a shift leaves a past Unpause and any other command as they were")
+    function _()
+      past = syncPlayPlayback.scheduleCommand(m.estimator(), m.command("Unpause", "2026-10-23T20:47:28.000Z", 600000000&), m.deviceNow, 300&)
+      m.assertEqual(past.delayMs, 0&)
+      m.assertEqual(past.positionTicks, 620000000&)
+      m.assertEqual(past.shiftMs, 0&)
+      pause = syncPlayPlayback.scheduleCommand(m.estimator(), m.command("Pause", "2026-10-23T20:47:31.000Z", 600000000&), m.deviceNow, 300&)
+      m.assertEqual(pause.delayMs, 1000&)
+      m.assertEqual(pause.shiftMs, 0&)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("pausedPositionTicks()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("runs the last notified position forward by the time from that notification to the pause write")
+    function _()
+      m.assertEqual(syncPlayPlayback.pausedPositionTicks(600000000&, 1000&, 1300&), 603000000&)
+      m.assertEqual(syncPlayPlayback.pausedPositionTicks(600000000&, 1000&, 1000&), 600000000&)
+    end function
+
+    @it("is invalid when an input is missing")
+    function _()
+      m.assertInvalid(syncPlayPlayback.pausedPositionTicks(invalid, 1000&, 1300&))
+      m.assertInvalid(syncPlayPlayback.pausedPositionTicks(600000000&, invalid, 1300&))
+      m.assertInvalid(syncPlayPlayback.pausedPositionTicks(600000000&, 1000&, invalid))
+    end function
+
+    @it("is invalid when the notification is newer than the write, or older than the bound")
+    function _()
+      m.assertInvalid(syncPlayPlayback.pausedPositionTicks(600000000&, 1300&, 1000&))
+      m.assertEqual(syncPlayPlayback.pausedPositionTicks(600000000&, 1000&, 2000&), 610000000&)
+      m.assertInvalid(syncPlayPlayback.pausedPositionTicks(600000000&, 1000&, 2001&))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("carriedPausedEstimate()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a group Pause that finds the node already paused keeps an estimate that has landed")
+    function _()
+      estimate = { ticks: 603000000&, writtenAtMs: 1300&, landed: true }
+      kept = syncPlayPlayback.carriedPausedEstimate(estimate, "paused", false)
+      m.assertTrue(isValid(kept))
+      if isValid(kept) then m.assertEqual(kept.ticks, 603000000&)
+    end function
+
+    @it("drops an estimate that has not landed, and every estimate when the Pause writes its own pause or finds another state")
+    function _()
+      pending = { ticks: 603000000&, writtenAtMs: 1300&, landed: false }
+      landed = { ticks: 603000000&, writtenAtMs: 1300&, landed: true }
+      m.assertInvalid(syncPlayPlayback.carriedPausedEstimate(pending, "paused", false))
+      m.assertInvalid(syncPlayPlayback.carriedPausedEstimate(landed, "playing", false))
+      m.assertInvalid(syncPlayPlayback.carriedPausedEstimate(landed, "buffering", false))
+      m.assertInvalid(syncPlayPlayback.carriedPausedEstimate(landed, "paused", true))
+      m.assertInvalid(syncPlayPlayback.carriedPausedEstimate(invalid, "paused", false))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resumeShiftMs()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is positive by the lead when the member stopped ahead of the Unpause's position, negative when behind")
+    function _()
+      m.assertEqual(syncPlayPlayback.resumeShiftMs(603000000&, 600000000&), 300&)
+      m.assertEqual(syncPlayPlayback.resumeShiftMs(597000000&, 600000000&), -300&)
+      m.assertEqual(syncPlayPlayback.resumeShiftMs(600000000&, 600000000&), 0&)
+    end function
+
+    @it("is zero with no estimate, and past the seek bar, where the Unpause seeks")
+    function _()
+      m.assertEqual(syncPlayPlayback.resumeShiftMs(invalid, 600000000&), 0&)
+      m.assertEqual(syncPlayPlayback.resumeShiftMs(604000000&, 600000000&), 400&)
+      m.assertEqual(syncPlayPlayback.resumeShiftMs(604500000&, 600000000&), 0&)
+      m.assertEqual(syncPlayPlayback.resumeShiftMs(595500000&, 600000000&), 0&)
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("applyPlan()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("Unpause seeks on the estimated paused position when one is valid, not on the stale last notification")
+    function _()
+      plan = { action: "Unpause", delayMs: 0&, positionTicks: 600000000& }
+      ' Last notified 451 ms from the group's position, the estimate 17 ms from it.
+      steps = syncPlayPlayback.applyPlan(plan, "paused", 604510000&, "ready", false, 600170000&)
+      m.assertEqual(steps.count(), 1)
+      m.assertEqual(steps[0].command, "resume")
+      ' With no estimate the stale reading decides, as before; a far estimate seeks.
+      m.assertEqual(syncPlayPlayback.applyPlan(plan, "paused", 604510000&, "ready", false, invalid)[0].command, "seekto")
+      m.assertEqual(syncPlayPlayback.applyPlan(plan, "paused", 600170000&, "ready", false, 604510000&)[0].command, "seekto")
+    end function
 
     @it("Unpause on a paused player in sync resumes without a seek")
     function _()
