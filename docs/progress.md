@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-09
+last-updated: 2026-11-10
 ---
 
 # Progress
@@ -952,6 +952,18 @@ Closes after a measurement on the real path: a capture or an ODC read of the ove
 #### A SyncPlay Buffering report takes 0.35 to 0.6 s to be handled; find where the time goes `[fid: syncplay-buffering-report-latency]` `[captured 2026-11-09]`
 
 A SyncPlay Buffering report takes 0.35 to 0.6 s to reach the server's handling: the anchor log line (`SyncPlayManager.anchorGroupPause`, "group paused for this member's buffering", `reportLatencyMs`) measured 345 to 577 ms over eight reloads on a Stick 4K against a local Jellyfin 12.4.0 on a wired LAN, 2026-11-09. The group plays on for that long after this member stalls or reloads before the server pauses it, and that distance is what the drift correction then closes after the `Unpause`. The report goes out through the fire-and-forget side-effect queue (`SubmitSideEffect`, `SideEffectTask`), so the time may be the queue's, the network's or the server's. Measure where it goes (a timestamp when the request leaves the task, against the anchor's arrival); if the queue holds it, give Buffering and Ready a path that sends at once. Not now: the anchor (decision `syncplay-reload-starts-where-group-is`) keeps the Ready exact whatever the latency, so this is a quality gain, not a correctness fix.
+
+#### The SyncPlay pause estimate's manager wiring has no unit case, and one device round is unexplained `[fid: syncplay-pause-estimate-wiring-untested]` `[captured 2026-11-10]`
+
+`SyncPlayManager` stores, confirms and drops the paused-position estimate (`storePausedEstimate`, `noteStateForPausedEstimate`, `dropPausedEstimate`, `viewerPause`, `applyPendingPlan`), but the pause write needs a mounted `PlayerHostView`, so no unit case reaches it. Only device rounds cover it: commit `94026ff3`, 12 rounds on a Stick 4K against a local 12.4 server, 2026-11-10. The pure half (`syncPlayPlayback.pausedPositionTicks`, `resumeShiftMs`, `carriedPausedEstimate`) is unit-tested.
+
+In those rounds one Play key pause settled 62 ms ahead after a resume moved 89 ms earlier, where ten rounds settled within 10 ms. The next round settled 4 ms ahead, so the error did not carry over.
+
+Not checked: why that estimate was off, a transcode, HTTPS, the low-end Stick.
+
+Not done now because the wiring needs a design choice (a host stub or a seam in the manager) and the odd round needs a device capture of the estimate's inputs.
+
+Closes with: a manager-level case for the estimate's life (stored on a group Pause and on the viewer's pause, kept by a Pause that finds the node paused, dropped by a seek), or a recorded reason no seam is worth it; and the inputs captured on a round that settles past 50 ms.
 
 ### source
 
