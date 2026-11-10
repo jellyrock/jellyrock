@@ -4,7 +4,7 @@ related-files:
   - source/migrations.bs
   - source/main.bs
   - source/utils/config.bs
-last-reviewed: 2026-10-09
+last-reviewed: 2026-11-10
 ---
 
 # Registry migrations
@@ -15,7 +15,7 @@ How the registry migration runner in `source/migrations.bs` works: where it runs
 
 `Main()` in `source/main.bs` calls `runGlobalMigrations()`, then `runRegistryUserMigrations()`. That happens after the globals and the setting defaults load, and before `Main()` creates the scene. So nothing that reads settings later, including `SessionDataTransformer` when a session loads, ever sees an old key name or value shape.
 
-Each migration is a block guarded by a version constant from the top of the file. A block runs when the section was last used by a version older than its constant (`versionChecker(a, b)` is true when `a` is at least `b`). The blocks sit in version order, so a user several versions behind runs every block they missed, oldest first. A block that changed something sets `m.wasMigrated`, and `Main()` then prints the registry so the console shows the result.
+Each user migration is a function of its own, called from a block guarded by a version constant from the top of the file. The runner holds the gates, the `m.wasMigrated` flag and the order; the function holds the work, so a spec can call one migration without the later ones. A block runs when the section was last used by a version older than its constant (`versionChecker(a, b)` is true when `a` is at least `b`). The gated calls sit in version order, so a user several versions behind runs every block they missed, oldest first. A gated call sets `m.wasMigrated` before it calls its function, and `Main()` then prints the registry so the console shows the result.
 
 ## Two version records
 
