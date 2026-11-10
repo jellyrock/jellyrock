@@ -79,6 +79,12 @@
 #   followup-wait-broken: overdue a followup whose waits-on names nothing found, or an abandoned
 #                                 project; never a PIN line. A followup still waiting is held out of
 #                                 the ranking, pinned or not, and listed under Held followups.
+#   followup-past-due: overdue    a followup past its `[due: YYYY-MM-DD]` date, the most overdue first
+#                                 (a pinned one is its PIN line, with the date added to the title)
+#   followup-due-soon: overdue    a followup due within journal.conf's due_soon_days (default 14); a
+#                                 pinned one is its PIN line with the date added, a held one still
+#                                 warns with its wait named, and one whose re-check date passed or
+#                                 whose waits are all met is this one line, not its own
 #   followup-recheck: overdue     an unpinned followup whose only waits left are ones no script can
 #                                 check, and every after: re-check date among them has passed (a
 #                                 pinned one is a PIN line); check on it, then set a new date
@@ -90,6 +96,9 @@
 #   wait-in-prose: debt           a followup title that names a date or a time after a wait word
 #                                 (after, until, not before, on or after, at or after) and has no
 #                                 waits-on marker; one line for all, a detail per followup
+#   due-in-prose: debt            a followup title that names a full date after by, before, deadline,
+#                                 due or no later than ("not before" and "due to" excluded) and has
+#                                 no due marker; one line for all, a detail per followup
 #   verify-first-format: debt     a PLAN's Verify first lines not in the `command` prints `value`
 #                                 shape, one line per PLAN (the rest of the PLAN check is
 #                                 plan-contradicts)
@@ -150,7 +159,8 @@ declare -A SHARED=([dirty-tree]="2 1" [work-running]="4 1" [project-unblocked]="
   [journal-stale]="5 1" [wait-unknown]="5 2" [plan-contradicts]="5 3" [project-dormant]="5 4"
   [cadence-overdue]="5 5" [followups-unreviewed]="5 6" [mail-open]="5 7" [followup-unblocked]="5 8" [followup-wait-broken]="5 9"
   [followup-recheck]="5 10" [project-recheck]="5 11" [mail-waiting]="5 12"
-  [cadence-unfilled]="7 1" [verify-first-format]="7 2" [wait-no-recheck]="7 3" [wait-in-prose]="7 4"
+  [followup-past-due]="5 0" [followup-due-soon]="5 0"
+  [cadence-unfilled]="7 1" [verify-first-format]="7 2" [wait-no-recheck]="7 3" [wait-in-prose]="7 4" [due-in-prose]="7 5"
   [behind]="9 1" [off-branch]="9 2" [unpushed]="9 3" [gate-missing]="9 4" [journal-shaped]="9 5" [mail-landed]="9 6"
   [request-project]="4 4" [request-pinned]="3 0" [request-open]="5 14" [request-waiting]="5 13" [request-landed]="9 7" [request-settle]="5 15")
 shared() { # <id> <text> [project slug] [detail...]: a shared check that fired, with its route;
@@ -176,6 +186,9 @@ shared() { # <id> <text> [project slug] [detail...]: a shared check that fired, 
     request-settle) route="read each decline (bash .claude/skills/start-project/mailbox.sh requests show $3), decide what follows, then /done request $3" ;;
     followup-unblocked) route="act on it (journal.sh show $3); when you keep it, drop its waits: journal.sh replace $3 --waits-on \"\"" ;;
     followup-wait-broken) route="fix its waits-on: journal.sh replace $3 --waits-on \"{{list}}\"" ;;
+    followup-past-due) route="do it now (journal.sh show $3); if the outside date moved, journal.sh replace $3 --due YYYY-MM-DD; if it no longer matters, /done followup $3" ;;
+    followup-due-soon) route="do it before the date (journal.sh show $3); if the outside date moved, journal.sh replace $3 --due YYYY-MM-DD" ;;
+    due-in-prose) route="add the date: journal.sh replace {{fid}} --due YYYY-MM-DD; or reword a title that only tells what happened" ;;
     followup-recheck) route="check on what it waits on (journal.sh show $3), then set a new after: date (journal.sh replace $3 --waits-on \"…\") or close it" ;;
     wait-no-recheck) route="add a re-check date: for a followup, journal.sh replace {{fid}} --waits-on \"{{list}}, after:YYYY-MM-DD\"; for a project, after:YYYY-MM-DD in its waits-on at its next /end-session" ;;
     wait-in-prose) route="add the wait: journal.sh replace {{fid}} --waits-on \"after:YYYY-MM-DD\" (a time: after:YYYY-MM-DDTHH:MM with Z or an offset); or reword a title that only tells what happened" ;;
@@ -183,9 +196,9 @@ shared() { # <id> <text> [project slug] [detail...]: a shared check that fired, 
     followups-unreviewed) route="re-read each against today's state, then /done followup {{fid}}, or keep it with a dated Re-checked YYYY-MM-DD note (journal.sh replace)" ;;
     cadence-overdue) route="run the command its row names" ;;
     cadence-unfilled) route="fill the table (or say there are none)" ;;
-    behind) route="git pull --rebase, then run the read again" ;;
+    behind) route="git pull --no-rebase, then run the read again" ;;
     off-branch) route="confirm the branch" ;;
-    unpushed) route="${DIVERGED:+git pull --rebase && }git push" ;;
+    unpushed) route="${DIVERGED:+git pull --no-rebase && }git push" ;;
     gate-missing) route="pre-commit install --allow-missing-config" ;;
     journal-shaped) route="reword each one in $3" ;;
     *) route="" ;;
@@ -397,27 +410,69 @@ else
           case "$ws" in free|held|broken|recheck|unchecked) wst[$wf]="$ws"; wdt[$wf]="$wd" ;; esac
         done <<<"$wl"
       fi
+      # followups with a due date, from journal.sh due: the rows inside the warning window, soonest
+      # first (days negative once past), and its TOTAL row's window. A due entry is one line, which
+      # is a PIN line when the entry is pinned and not held, and otherwise a due banner after the loop.
+      declare -A ddate=() ddays=() dtitle=() dstate=() dshown=()
+      dorder=(); dpast=0; dsoon=0; dwin=""; dok=1
+      if dv="$(jr due)"; then
+        while IFS=$'\t' read -r df _ dd dn _; do
+          case "$df" in
+            ''|fid) continue ;;
+            TOTAL) dwin="$dn"; continue ;;
+          esac
+          ddate[$df]="$dd"; ddays[$df]="$dn"; dorder+=("$df")
+          if [ "$dn" -lt 0 ]; then dpast=$((dpast + 1)); else dsoon=$((dsoon + 1)); fi
+        done <<<"$dv"
+      else
+        dok=0; serr JOURNAL "followup due dates n/a — journal.sh due failed: ${dv#journal.sh: }"
+      fi
+      # due_when <days>: today, in N days or N days ago, with 1 day in the singular
+      due_when() {
+        local n="$1"
+        if [ "$n" -lt 0 ]; then n=$((0 - n)); if [ "$n" = 1 ]; then echo "1 day ago"; else echo "$n days ago"; fi
+        elif [ "$n" = 0 ]; then echo today
+        elif [ "$n" = 1 ]; then echo "in 1 day"
+        else echo "in $n days"; fi
+      }
       npin=0; nheld=0; held_lines=()
-      while IFS=$'\037' read -r _ wf wcap _ _ wt wp ww; do
+      while IFS=$'\037' read -r _ wf wcap _ _ wt wp ww _; do
         [ -n "$wf" ] || continue
+        dtitle[$wf]="$wt"
         if [ -n "$ww" ] && [ -z "${wst[$wf]:-}" ]; then wst[$wf]=held; wdt[$wf]="not resolved"; fi
         case "${wst[$wf]:-none}" in
           held|broken|unchecked)
+            dstate[$wf]="; held: ${wdt[$wf]}"
             nheld=$((nheld + 1)); held_lines+=("  $wf  ${wst[$wf]}  ${wdt[$wf]}${wp:+  [pinned]}")
             [ "${wst[$wf]}" = broken ] && shared followup-wait-broken "followup $wf waits on something not found or abandoned: ${wdt[$wf]}" "$wf"
             [ "${wst[$wf]}" = unchecked ] && shared wait-no-recheck "followup $wf waits on something no script can check, with no re-check date: ${wdt[$wf]}" "$wf" ;;
           *)
             if [ -n "$wp" ]; then
               wd="${wcap//-/}"; [[ $wd =~ ^[0-9]{8}$ ]] || wd=99999999
-              cand 3 1 "$wd" "PIN$TAB$wf$TAB$wt"; npin=$((npin + 1))
+              pt="$wt"
+              if [ -n "${ddate[$wf]:-}" ]; then pt="$wt (due ${ddate[$wf]}, $(due_when "${ddays[$wf]}"))"; dshown[$wf]=1; fi
+              cand 3 1 "$wd" "PIN$TAB$wf$TAB$pt"; npin=$((npin + 1))
             elif [ "${wst[$wf]:-none}" = free ]; then
-              shared followup-unblocked "followup $wf no longer waits: every wait is met (${wdt[$wf]}): $wt" "$wf"
+              if [ -n "${ddate[$wf]:-}" ]; then dstate[$wf]="; every wait is met"
+              else shared followup-unblocked "followup $wf no longer waits: every wait is met (${wdt[$wf]}): $wt" "$wf"; fi
             elif [ "${wst[$wf]:-none}" = recheck ]; then
-              shared followup-recheck "followup $wf: its re-check date passed (${wdt[$wf]}): $wt" "$wf"
+              if [ -n "${ddate[$wf]:-}" ]; then dstate[$wf]="; its re-check date passed"
+              else shared followup-recheck "followup $wf: its re-check date passed (${wdt[$wf]}): $wt" "$wf"; fi
             fi ;;
         esac
       done <<<"$lst"
       echo "pinned: $npin"
+      # each due entry that is not a PIN line: one banner, past due or due soon, in date order
+      for df in ${dorder[@]+"${dorder[@]}"}; do
+        [ -z "${dshown[$df]:-}" ] || continue
+        dw="$(due_when "${ddays[$df]}")"
+        if [ "${ddays[$df]}" -lt 0 ]; then
+          shared followup-past-due "followup $df was due ${ddate[$df]} ($dw)${dstate[$df]:-}: ${dtitle[$df]:-$df}" "$df"
+        else
+          shared followup-due-soon "followup $df is due ${ddate[$df]} ($dw)${dstate[$df]:-}: ${dtitle[$df]:-$df}" "$df"
+        fi
+      done
+      if [ "$dok" = 1 ]; then echo "due: $dpast past, $dsoon within ${dwin:-14} days"; else echo "due: n/a"; fi
       echo "--- Held followups ($nheld) ---"
       if [ "$nheld" -gt 0 ]; then printf '%s\n' "${held_lines[@]}"; else echo "Nothing held."; fi
       # a title with no waits-on marker that names a time after a wait word: the wait was written in
@@ -445,6 +500,39 @@ else
         }' <<<"$lst")
       if [ "${#prose_hits[@]}" -gt 0 ]; then
         shared wait-in-prose "${#prose_hits[@]} followup title(s) name a time with no waits-on marker" "" "${prose_hits[@]}"
+      fi
+      # a title with no due marker that says something is due by a full date: the deadline was written
+      # in prose only. "not before" and "due to" are blanked first (a wait, and a cause). A keyword as
+      # a whole word, then a full date that starts within 6 characters of it (after a short filler
+      # such as "the" or "on"), with no "." or ";" between (plain tolower/index/substr/match: the
+      # same under gawk and mawk)
+      mapfile -t due_hits < <(awk -F'\037' '
+        function blank(l, kw,   p) {
+          while ((p = index(l, kw)) > 0) l = substr(l, 1, p - 1) sprintf("%" length(kw) "s", "") substr(l, p + length(kw))
+          return l
+        }
+        function hit(l, kw,   from, p, n, rest) {
+          from = 1
+          while ((p = index(substr(l, from), kw)) > 0) {
+            p += from - 1
+            if (substr(l, p - 1, 1) !~ /[a-z0-9_]/ && substr(l, p + length(kw), 1) !~ /[a-z0-9_]/) {
+              rest = substr(l, p + length(kw), 30)
+              n = index(rest, "."); if (n) rest = substr(rest, 1, n - 1)
+              n = index(rest, ";"); if (n) rest = substr(rest, 1, n - 1)
+              if (match(rest, /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/) && RSTART <= 6) return 1
+            }
+            from = p + length(kw)
+          }
+          return 0
+        }
+        $9 == "" && $2 != "" {
+          l = " " tolower($6)
+          l = blank(l, "not before"); l = blank(l, "due to")
+          if (hit(l, "by") || hit(l, "before") || hit(l, "deadline") || hit(l, "due") || hit(l, "no later than"))
+            print "  " $2 ": " $6
+        }' <<<"$lst")
+      if [ "${#due_hits[@]}" -gt 0 ]; then
+        shared due-in-prose "${#due_hits[@]} followup title(s) name a date something is due by, with no due marker" "" "${due_hits[@]}"
       fi
     else serr JOURNAL "pinned followups n/a — journal.sh list failed: ${lst#journal.sh: }"; fi
 

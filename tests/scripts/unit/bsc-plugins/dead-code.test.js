@@ -167,6 +167,35 @@ describe('dead-code — references by name (each one a real false-positive shape
     ).toEqual([]);
   });
 
+  it('does not let a prefix shorter than the namespace name keep a namespaced function alive', () => {
+    expect(
+      dead({
+        'source/main.bs': 'sub main()\n  print "syncPlay" + "Action"\nend sub',
+        'source/player.bs':
+          'namespace syncPlayPlayer\n  function newPlayer() as boolean\n    return true\n  end function\nend namespace',
+      }),
+    ).toEqual(['syncPlayPlayer.newPlayer']);
+  });
+
+  it('counts a prefix that spells the namespace, an underscore and the start of the name', () => {
+    expect(
+      dead({
+        'source/main.bs': 'sub main()\n  print "syncPlayPlayer_new" + "Suffix"\nend sub',
+        'source/player.bs':
+          'namespace syncPlayPlayer\n  function newPlayer() as boolean\n    return true\n  end function\nend namespace',
+      }),
+    ).toEqual([]);
+  });
+
+  it('still lets a prefix reach a declaration outside a namespace', () => {
+    expect(
+      dead({
+        'source/main.bs': 'sub main()\n  print "syncPlay" + "Action"\nend sub',
+        'source/util.bs': 'function syncPlayHelper() as boolean\n  return true\nend function',
+      }),
+    ).toEqual([]);
+  });
+
   it('does not treat a short concatenated string ("x" + w) as a name prefix', () => {
     expect(
       dead({

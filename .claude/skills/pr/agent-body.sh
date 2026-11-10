@@ -10,8 +10,11 @@
 # path is matched from the repo root.
 #
 # Usage: bash .claude/skills/pr/agent-body.sh <command> [--all] [<file>]
-#   title   the title of an agent-only PR or commit in a public repo, which also has no other text;
-#           takes no option or input, and needs no repository
+#   title   the title of an agent-only PR or commit, which also has no other text; takes no option
+#           or input. It says Add for a first setup (the base has no tracked `.claude/skills/` and
+#           the change adds them) and Update otherwise, and outside a repository says Update. The
+#           base is the default branch (origin/HEAD) when git knows it; else HEAD while changes are
+#           staged, else HEAD's parent; a root commit has an empty base.
 #   paths   the agent paths, one per line
 #   split   each input line, led by `agent` or `other` and a tab
 #   kind    `agent-only`, `mixed` or `none`
@@ -27,6 +30,7 @@ set -euo pipefail
 
 LINE='Update the agent skills and rules.'
 TITLE='chore(agents): Update the agent skills and rules'
+TITLE_ADD='chore(agents): Add the agent skills and rules'
 DEFAULTS=(.claude/ AGENTS.md CLAUDE.md .voice-baseline.tsv .voice-ignore .worktreeinclude)
 
 die() { printf 'agent-body: %s\n' "$1" >&2; exit 2; }
@@ -45,7 +49,17 @@ done
 case "$cmd" in title|paths|split|kind|list|body) ;; *) die "$usage" ;; esac
 if [ "$cmd" = title ]; then
   [ "$all" = 0 ] && [ -z "$file" ] || die "title takes no option or input; $usage"
-  printf '%s\n' "$TITLE"; exit 0
+  first=0
+  if git rev-parse --git-dir >/dev/null 2>&1 && [ -n "$(git ls-files -- .claude/skills/)" ]; then
+    first=1
+    if base="$(git rev-parse --verify -q refs/remotes/origin/HEAD)"; then :
+    elif ! git rev-parse --verify -q HEAD >/dev/null; then base=""
+    elif ! git diff --cached --quiet; then base=HEAD
+    else base="$(git rev-parse --verify -q HEAD^ || true)"; fi
+    if [ -n "$base" ] && [ -n "$(git ls-tree -r --name-only "$base" -- .claude/skills/)" ]; then first=0; fi
+  fi
+  if [ "$first" = 1 ]; then printf '%s\n' "$TITLE_ADD"; else printf '%s\n' "$TITLE"; fi
+  exit 0
 fi
 
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git repository"

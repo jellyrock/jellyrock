@@ -24,6 +24,20 @@ A project's `[external-gate: <reason>]` tag in its Status is a wait as well: onl
 
 A person's answer, an outside event (a release, an upgrade), or another repo's project this machine cannot read: no script can tell when these are met. Add an `after:` date to the same list as the day to check on it again. On that day the item comes back as "check on it". Without a date, `/catchup` flags the item as debt, since nobody would look again. When the date passes and the wait still holds, set a later date.
 
+## Due dates
+
+A due date is a date set from outside that the work must be done by, with a consequence if it is missed: a vendor retires an API on 2027-03-31, a certificate expires, a season starts. A target you set yourself is not one: leave it out, or pin the followup.
+
+It differs from `after:`. An `after:` wait says not before that day (a hold). A due date says no later than that day (a deadline). An item that cannot start before one date and must be done by another takes both.
+
+- `journal.sh add … --due 2027-03-31`, or `journal.sh replace <fid> --due 2027-03-31` (an empty value clears it). It is kept as a `[due: …]` marker in the entry's heading, after `[waits-on: …]` and before `[pinned]`.
+- Not before 2026-12-01 and done by 2027-03-31: `--waits-on "after:2026-12-01" --due 2027-03-31`.
+- The value is a date only. A deadline with a time of day has no instance here.
+
+From `due_soon_days` before the date (14 by default; set it in `journal.conf`), `/catchup` ranks the followup as overdue: due soon, then past due every day after. A pinned followup stays one pin line, with its due date added to the title. A held followup still warns, with its wait named. One whose re-check date passed or whose waits are all met is that one line, not a second. `journal.sh due` lists what is inside the window.
+
+`/catchup` flags a followup title that says by, before, deadline, due or no later than with a full date and has no marker as debt (`due-in-prose`): add the date, or reword a title that only tells what happened.
+
 ## What `/catchup` shows for each state
 
 | State | Means | Shown as |

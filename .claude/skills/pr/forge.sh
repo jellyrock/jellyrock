@@ -39,7 +39,7 @@ set -uo pipefail
 prog="forge.sh"
 
 # The fields each JSON verb asks for: the ones the skills read, never more.
-F_PR_VIEW="number,url,state,author,title,labels,body,headRefOid"
+F_PR_VIEW="number,url,state,author,title,labels,body,headRefOid,baseRefName"
 F_PR_LIST="number,title,mergedAt"
 F_PR_FOR_COMMIT="number,url,mergedAt,mergeCommit"
 F_ISSUE_VIEW="number,title,body,state,stateReason,labels,author,comments,createdAt,updatedAt,closedByPullRequestsReferences,url"
@@ -63,7 +63,7 @@ pr mergeable;<N>;text: MERGEABLE, CONFLICTING or UNKNOWN;Whether PR <N> can merg
 pr list;[--state open|closed|merged|all] [--search <q>] [--limit <n>];JSON: $F_PR_LIST;PRs matching a search.
 pr for-commit;<sha>;JSON: [$F_PR_FOR_COMMIT];The merged PRs holding the commit, squash merges too; [] when none, or the forge never saw it.
 pr create;--base <branch> --title <t> [--label <l>]... [--draft] --body-file <file>;text: the PR's URL;Open a PR from the current branch, as a draft with --draft.
-pr edit;<N> [--title <t>] [--add-label <l,..>] [--remove-label <l,..>] [--body-file <file>];text: the PR's URL;Change a PR (at least one part).
+pr edit;<N> [--title <t>] [--add-label <l,..>] [--remove-label <l,..>] [--base <branch>] [--body-file <file>];text: the PR's URL;Change a PR (at least one part), its base branch included.
 pr comment;<N> --body-file <file>;text: the comment's URL;Comment on a PR.
 pr reopen;<N>;text;Reopen a closed PR.
 comment edit;<id> --body-file <file>;text: the comment's URL;Replace a PR or issue comment's body, by its numeric id.
@@ -187,9 +187,9 @@ case "$cmd" in
     parse "--base --title --label --draft --body-file" "$@"; positional 0 0
     required --base "$opt_base"; required --title "$opt_title"; body_file ;;
   "pr edit")
-    parse "--title --add-label --remove-label --body-file" "$@"; positional 1 1; number "<N>" "${pos[0]}"
-    [ -n "$opt_title$opt_add_label$opt_remove_label$opt_body_file" ] \
-      || die 2 "$cmd: nothing to change (give --title, --add-label, --remove-label or --body-file)"
+    parse "--title --add-label --remove-label --base --body-file" "$@"; positional 1 1; number "<N>" "${pos[0]}"
+    [ -n "$opt_title$opt_add_label$opt_remove_label$opt_base$opt_body_file" ] \
+      || die 2 "$cmd: nothing to change (give --title, --add-label, --remove-label, --base or --body-file)"
     [ -z "$opt_body_file" ] || body_file ;;
   "pr comment"|"issue comment")
     parse "--body-file" "$@"; positional 1 1; number "<N>" "${pos[0]}"; body_file ;;
@@ -390,7 +390,7 @@ if [ "$backend" = forgejo ]; then
   # Forgejo keeps a draft in the title (a WIP: or [WIP] prefix, any case); gh keeps it out, so a draft's title loses one
   unwip='def unwip(d): if d then .title |= sub("^(\\[wip\\]|wip:) *"; ""; "i") else . end;'
   prmap="$unwip unwip(.draft) | {number, url: .html_url, state: (if .merged then \"MERGED\" elif .state == \"open\" then \"OPEN\" else \"CLOSED\" end),
-    author: $who, title, labels: $lbl, body: (.body // \"\"), headRefOid: .head.sha}"
+    author: $who, title, labels: $lbl, body: (.body // \"\"), headRefOid: .head.sha, baseRefName: .base.ref}"
   cmap='[.[] | {author: {login: .user.login}, body, createdAt: .created_at, url: .html_url}]'
   state='(if .state == "open" then "OPEN" else "CLOSED" end)'
   n="${pos[0]:-}"
@@ -481,8 +481,8 @@ if [ "$backend" = forgejo ]; then
         title="$(jq -r --arg t "$opt_title" 'def pre: "^(\\[wip\\]|wip:)";
           if .draft and ($t | test(pre; "i") | not) and (.title | test(pre; "i")) then (.title | capture("(?<p>" + pre + ")"; "i").p) + " " + $t else $t end' "$resp")" || die 1 "unreadable answer from GET pulls/$n"
       fi
-      if [ -n "$opt_title$opt_body_file" ]; then
-        patch="$(jq -n --arg title "$title" 'if $title == "" then {} else {title: $title} end')"
+      if [ -n "$opt_title$opt_body_file$opt_base" ]; then
+        patch="$(jq -n --arg title "$title" --arg base "$opt_base" '(if $title == "" then {} else {title: $title} end) + (if $base == "" then {} else {base: $base} end)')"
         [ -z "$opt_body_file" ] || patch="$(body_json --argjson p "$patch" '$p + {body: $body}')"
         fj PATCH "$rapi/pulls/$n" "$patch"; url="$(jq -r .html_url "$resp")"
       fi
@@ -588,7 +588,7 @@ case "$cmd" in
     gh_run pr create --base "$opt_base" --title "$opt_title" "${extra[@]}" --body-file "$opt_body_file" ;;
   "pr edit")
     optional --title "$opt_title"; optional --add-label "$opt_add_label"
-    optional --remove-label "$opt_remove_label"; optional --body-file "$opt_body_file"
+    optional --remove-label "$opt_remove_label"; optional --base "$opt_base"; optional --body-file "$opt_body_file"
     gh_run pr edit "$n" "${extra[@]}" ;;
   "pr comment")          gh_run pr comment "$n" --body-file "$opt_body_file" ;;
   "pr reopen")           gh_run pr reopen "$n" ;;
