@@ -2776,6 +2776,16 @@ The overhang's icon cluster and the SyncPlay mark on the OSD sit a fixed gap (`o
 
 Ruled out: a fixed slot in both bars (`slot`), and leaving the overhang's old fixed slot beside a measured OSD mark (`leave`), both for the dead space; measuring the widest string the format can produce once, which would stop the movement but was declined as not worth it. Operator: `measure`, 2026-11-06; shipped in #1335.
 
+## decision-id: syncplay-pause-position-reckoned
+
+**date**: 2026-11-10
+**status**: accepted
+**related-files**: `source/syncplay/syncPlayPlayback.bs`, `components/syncplay/SyncPlayManager.bs`, `components/video/VideoPlayerView.bs`
+
+After a pause, a SyncPlay member's `Unpause` resumes off the command's `When` by the lead the pause left, and its seek check reads a reckoned position, not the node's. A `Video` node's `position` and `positionInfo` move only on a position notification, every half second, and read stale while paused, so the manager works out where a pause stopped the node: the last known position in the current run of playing, run forward to the instant the player reports writing the pause (`syncPlayPlayback.newPausePosition`, the `pauseWritten` player event). This departs from jellyfin-web, which resumes at `When` after seeking back to the `Pause`'s position. Measured on a Stick 4K against a 12.4 server (2026-11-10): before, each pause left the member 50 to 115 ms further ahead until the 150 ms correction froze the picture, and one `Unpause` in 14 wrote a seek for a member that was in step; after, 20 rounds had no correction and no seek.
+
+Ruled out: the seek back that jellyfin-web makes on a `Pause`, since a seek on a paused node resumes it; reading the paused position from the node, since it reads stale; lowering `SETTLE_CORRECTION_MS`, which freezes the picture after nearly every pause and leaves the cause; taking the pause's time in the manager before the player writes it, which rests on nothing sitting between the two. A pause with no known position (after a stall, a seek or a load, before a notification) keeps the old behavior. Re-evaluate if Roku makes `position` live while paused, or if a camera measurement shows the node's own clocks mislead.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

@@ -953,17 +953,15 @@ Closes after a measurement on the real path: a capture or an ODC read of the ove
 
 A SyncPlay Buffering report takes 0.35 to 0.6 s to reach the server's handling: the anchor log line (`SyncPlayManager.anchorGroupPause`, "group paused for this member's buffering", `reportLatencyMs`) measured 345 to 577 ms over eight reloads on a Stick 4K against a local Jellyfin 12.4.0 on a wired LAN, 2026-11-09. The group plays on for that long after this member stalls or reloads before the server pauses it, and that distance is what the drift correction then closes after the `Unpause`. The report goes out through the fire-and-forget side-effect queue (`SubmitSideEffect`, `SideEffectTask`), so the time may be the queue's, the network's or the server's. Measure where it goes (a timestamp when the request leaves the task, against the anchor's arrival); if the queue holds it, give Buffering and Ready a path that sends at once. Not now: the anchor (decision `syncplay-reload-starts-where-group-is`) keeps the Ready exact whatever the latency, so this is a quality gain, not a correctness fix.
 
-#### The SyncPlay pause estimate's manager wiring has no unit case, and one device round is unexplained `[fid: syncplay-pause-estimate-wiring-untested]` `[captured 2026-11-10]`
+#### The SyncPlay pause position's manager forwarding has no unit case, and one Play key round in twelve settles ahead `[fid: syncplay-pause-estimate-wiring-untested]` `[captured 2026-11-10]`
 
-`SyncPlayManager` stores, confirms and drops the paused-position estimate (`storePausedEstimate`, `noteStateForPausedEstimate`, `dropPausedEstimate`, `viewerPause`, `applyPendingPlan`), but the pause write needs a mounted `PlayerHostView`, so no unit case reaches it. Only device rounds cover it: commit `94026ff3`, 12 rounds on a Stick 4K against a local 12.4 server, 2026-11-10. The pure half (`syncPlayPlayback.pausedPositionTicks`, `resumeShiftMs`, `carriedPausedEstimate`) is unit-tested.
+The rules for where a pause stopped a SyncPlay member live in the pure layer (`syncPlayPlayback.newPausePosition` and the functions beside it) and are unit-tested there. `SyncPlayManager` forwards player events to them (`playerEvent`'s `pauseWritten`, `state` and `position` branches, `applyPendingPlan`, `dropPausedEstimate`, `withdrawStaleResumeShift`), and no unit case reaches that forwarding: the manager's spec runs with no clock estimate, so every command is held, and with no mounted `PlayerHostView`. Device rounds cover it: 12 plain and 8 rapid pause rounds on a Stick 4K against a local 12.4 server, 2026-11-10. `withdrawStaleResumeShift` did not run in any device round, so only the pure `unshiftPlan` case covers the withdrawn shift.
 
-In those rounds one Play key pause settled 62 ms ahead after a resume moved 89 ms earlier, where ten rounds settled within 10 ms. The next round settled 4 ms ahead, so the error did not carry over.
+One Play key pause in each 12-round run settles ahead of the rest: 62 ms, then 46 ms after the pause's time moved to the player's own write. The time from the old stamp to the write measured 0 to 10 ms on 39 writes, so that is not the cause. Not checked: whether a position notification delivered late on a busy render thread makes the anchor read early, whether the probe's own reads load that thread, a transcode, HTTPS, the low-end Stick.
 
-Not checked: why that estimate was off, a transcode, HTTPS, the low-end Stick.
+Not done now because the forwarding needs a design choice (a clock estimate and a host stub in the manager's spec) and the odd round needs a device capture of the anchor's lateness.
 
-Not done now because the wiring needs a design choice (a host stub or a seam in the manager) and the odd round needs a device capture of the estimate's inputs.
-
-Closes with: a manager-level case for the estimate's life (stored on a group Pause and on the viewer's pause, kept by a Pause that finds the node paused, dropped by a seek), or a recorded reason no seam is worth it; and the inputs captured on a round that settles past 50 ms.
+Closes with: a manager-level case that drives a pause, its `paused` state and an `Unpause` through `playerEvent` and reads the shift, or a recorded reason no seam is worth it; and the anchor's arrival time against the drift reading captured on a round that settles past 40 ms.
 
 ### source
 

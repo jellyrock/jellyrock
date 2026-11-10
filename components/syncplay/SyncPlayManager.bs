@@ -77,15 +77,10 @@ sub ensureReady()
   ' What the player last told us.
   m.playerState = ""
   m.playerPositionTicks = 0&
-  ' The last position notification taken while the node played and the tracker was settled, and the
-  ' device clock when it arrived: the node's position moves only on a notification, so a group Pause
-  ' is estimated from these (syncPlayPlayback.pausedPositionTicks).
-  m.notifiedPositionTicks = invalid
-  m.notifiedAtMs = invalid
-  ' Where the last pause stopped the node, { ticks, writtenAtMs, landed }, or invalid: a group Pause's
-  ' own write (applyPendingPlan) or the viewer's (viewerPause). The next Unpause reads it in its seek
-  ' check and its resume time, then drops it (dropPausedEstimate).
-  m.pausedEstimate = invalid
+  ' Where the node is known to be while it plays, and where its last pause stopped it
+  ' (syncPlayPlayback.newPausePosition): the node's position moves only on a notification, so the
+  ' next Unpause reads the pause's estimate in its seek check and its resume time.
+  m.pausePosition = syncPlayPlayback.newPausePosition()
   ' Where the load now starting was asked to start (ticks), for the tracker's first Ready.
   m.loadStartTicks = 0&
   ' The group is paused: a Pause or Seek was applied and no Unpause or Stop since. While it holds
@@ -298,7 +293,8 @@ function playerEvent(evt as object) as object
     end if
   else if kind = "state"
     if isFollowing()
-      noteStateForPausedEstimate()
+      syncPlayPlayback.notePauseState(m.pausePosition, m.playerState, syncPlayTime.nowMs())
+      withdrawStaleResumeShift()
       track({ kind: "state", state: m.playerState, positionTicks: m.playerPositionTicks })
       ' Never written from here: the node passes through `buffering` for milliseconds on its own
       ' pause, and the timer lets that settle.
@@ -328,12 +324,17 @@ function playerEvent(evt as object) as object
     end if
   else if kind = "position"
     if isFollowing()
-      if m.playerState = "playing" and m.tracker.phase = "ready"
-        m.notifiedPositionTicks = m.playerPositionTicks
-        m.notifiedAtMs = syncPlayTime.nowMs()
-      end if
+      if m.playerState = "playing" and m.tracker.phase = "ready" then syncPlayPlayback.notePausePosition(m.pausePosition, m.playerPositionTicks, syncPlayTime.nowMs())
       track({ kind: "position", positionTicks: m.playerPositionTicks })
       checkSettle()
+    end if
+  else if kind = "pauseWritten"
+    ' The player wrote the node's pause this instant, for the group or for the viewer. A node
+    ' playing in a settled tracker with no correction under way has a position to estimate.
+    if isFollowing()
+      canEstimate = m.playerState = "playing" and m.tracker.phase = "ready" and not isValid(m.correction)
+      syncPlayPlayback.notePauseWritten(m.pausePosition, canEstimate, syncPlayTime.nowMs())
+      withdrawStaleResumeShift()
     end if
   else if kind = "finished"
     if isFollowing()
@@ -796,37 +797,27 @@ sub startStreamTracking()
   syncPlayPlayback.disarmSettleCheck(m.settle)
 end sub
 
-' Where the last group Pause stopped the node is no longer known: a seek, a mount, a reload, a
-' correction, a pause written again, or the Unpause that used it. The last notification goes with it,
-' so a pause after any of these needs a notification of its own to estimate from.
+' Where the node is, and where its last pause stopped it, are no longer known: a seek, a mount, a
+' reload, a correction or a pause written again. The next pause needs a notification of its own.
 sub dropPausedEstimate()
-  m.pausedEstimate = invalid
-  m.notifiedPositionTicks = invalid
-  m.notifiedAtMs = invalid
+  syncPlayPlayback.dropPausePosition(m.pausePosition)
+  withdrawStaleResumeShift()
 end sub
 
-' A state event settles the estimate a pause made: `paused` within
-' syncPlayPlayback.PAUSE_LANDED_MS of the write confirms it, a later `paused` or a node that
-' plays again leaves nothing to trust.
-sub noteStateForPausedEstimate()
-  if not isValid(m.pausedEstimate) then return
-  if m.playerState = "paused"
-    if m.pausedEstimate.landed then return
-    if syncPlayTime.nowMs() - m.pausedEstimate.writtenAtMs > syncPlayPlayback.PAUSE_LANDED_MS
-      dropPausedEstimate()
-    else
-      m.pausedEstimate.landed = true
-    end if
-  else if m.playerState = "playing"
-    dropPausedEstimate()
-  end if
+' A shifted resume lives only as long as the estimate it was worked out from: once that is gone,
+' the Unpause still waiting goes back to the command's own time, so its resume time and its seek
+' check never rest on different positions.
+sub withdrawStaleResumeShift()
+  plan = m.pendingPlan
+  if not isValid(plan) or not isValid(plan.shiftMs) or plan.shiftMs = 0 then return
+  if isValid(syncPlayPlayback.landedPauseTicks(m.pausePosition)) then return
+  syncPlayPlayback.unshiftPlan(plan, syncPlayTime.nowMs())
+  m.log.info("resume shift withdrawn: the pause's position is no longer known", "inMs", plan.delayMs.toStr())
+  m.commandTimer.control = "stop"
+  ' Never applied from here: this runs inside other handlers, and the timer keeps one way in.
+  if plan.delayMs > 0 then m.commandTimer.duration = plan.delayMs / 1000# else m.commandTimer.duration = 0.001
+  m.commandTimer.control = "start"
 end sub
-
-' The estimate in ticks once the pause landed, else invalid.
-function landedPausedEstimateTicks() as dynamic
-  if isValid(m.pausedEstimate) and m.pausedEstimate.landed then return m.pausedEstimate.ticks
-  return invalid
-end function
 
 ' A group command or an unmount took over: what it does replaces the correction.
 sub dropCorrection()
@@ -1023,7 +1014,7 @@ sub scheduleCommand(command as object)
   m.reportedBuffering = false
   ' An Unpause resumes later or earlier by the lead the group Pause left (a seek would resume the node, so nothing else takes it back).
   shiftMs& = 0&
-  if command.command = "Unpause" then shiftMs& = syncPlayPlayback.resumeShiftMs(landedPausedEstimateTicks(), command.positionTicks)
+  if command.command = "Unpause" then shiftMs& = syncPlayPlayback.resumeShiftMs(syncPlayPlayback.landedPauseTicks(m.pausePosition), command.positionTicks)
   plan = syncPlayPlayback.scheduleCommand(m.estimator, command, syncPlayTime.nowMs(), shiftMs&)
   m.pendingPlan = plan
   m.commandTimer.control = "stop"
@@ -1058,13 +1049,11 @@ sub applyPendingPlan()
   ' A paused node is resumed by the plan itself (a resume or a seek), so nothing stays owed.
   if m.groupPaused or m.playerState = "paused" then m.correctionPauseOwed = false
   heldForCorrection = isValid(m.correction) and m.playerState = "paused"
-  ' A group Pause that writes a pause to a node playing in a settled tracker has a position to estimate,
-  ' and replaces the last estimate. One that finds the node already paused by the viewer's own pause
-  ' keeps that pause's estimate once it has landed (viewerPause).
-  canEstimatePause = plan.action = "Pause" and m.playerState = "playing" and m.tracker.phase = "ready" and not heldForCorrection
-  if plan.action = "Pause" then m.pausedEstimate = syncPlayPlayback.carriedPausedEstimate(m.pausedEstimate, m.playerState, heldForCorrection)
+  ' A group Pause that finds the node already paused (the viewer's own pause wrote it) keeps that
+  ' pause's estimate. One that writes its own pause makes a new one (the player's pauseWritten).
+  if plan.action = "Pause" then syncPlayPlayback.carryPause(m.pausePosition, m.playerState, heldForCorrection)
   pausedEstimateTicks = invalid
-  if plan.action = "Unpause" then pausedEstimateTicks = landedPausedEstimateTicks()
+  if plan.action = "Unpause" then pausedEstimateTicks = syncPlayPlayback.landedPauseTicks(m.pausePosition)
   dropCorrection()
   ' A Pause that finds a seek in flight is left to the seek's landing. An Unpause that follows
   ' it must take that pause back, or the node would land paused with nothing to resume it.
@@ -1096,7 +1085,15 @@ sub applyPendingPlan()
     return
   end if
   steps = syncPlayPlayback.applyPlan(plan, m.playerState, m.playerPositionTicks, m.tracker.phase, heldForCorrection, pausedEstimateTicks)
-  if plan.action = "Unpause" then dropPausedEstimate()
+  if plan.action = "Unpause"
+    ' A plain resume starts the node from the estimate, which anchors a pause that comes before the
+    ' next notification. Any other outcome (a seek, a node not paused) leaves nothing known.
+    if steps.count() = 1 and steps[0].command = "resume"
+      syncPlayPlayback.noteResumed(m.pausePosition)
+    else
+      dropPausedEstimate()
+    end if
+  end if
   for each verb in steps
     if verb.command = "stop"
       m.loadAwaitsReady = false
@@ -1107,25 +1104,15 @@ sub applyPendingPlan()
       ' wins, and the tracker hands it back at the landing (track).
       track({ kind: "holdSeek", targetTicks: plan.positionTicks, report: verb.report, thenPause: verb.thenPause })
     else
-      writtenAtMs& = syncPlayTime.nowMs()
       tellPlayer(host, verb)
       if verb.command = "pause"
         m.pauseAttempts++
         armPauseTimer()
-        if canEstimatePause then storePausedEstimate(writtenAtMs&)
       end if
       if verb.command = "seekto" then track({ kind: "seek", positionTicks: plan.positionTicks, report: verb.report, thenPause: verb.thenPause })
     end if
   end for
   publish()
-end sub
-
-' The estimate for the pause written now, a group Pause's or the viewer's (syncPlayPlayback.pausedPositionTicks), kept only once the
-' node's `paused` state lands (noteStateForPausedEstimate).
-sub storePausedEstimate(writtenAtMs as longinteger)
-  ticks = syncPlayPlayback.pausedPositionTicks(m.notifiedPositionTicks, m.notifiedAtMs, writtenAtMs)
-  if not isValid(ticks) then return
-  m.pausedEstimate = { ticks: ticks, writtenAtMs: writtenAtMs, landed: false }
 end sub
 
 ' --- the queue ---
@@ -1577,15 +1564,9 @@ function viewerPause() as boolean
   ensureReady()
   if not isFollowing() then return true
   control({ kind: "pause" })
-  ' The player writes the node's pause as this returns, so now is the write time. A node playing in a
-  ' settled tracker with no correction under way has a position to estimate, as for a group Pause.
-  canEstimatePause = m.playerState = "playing" and m.tracker.phase = "ready" and not isValid(m.correction)
   dropCorrection()
   m.correctionPauseOwed = false
-  if not syncPlayPlayback.pauseWaitsForSeek(m.tracker.phase)
-    if canEstimatePause then storePausedEstimate(syncPlayTime.nowMs())
-    return true
-  end if
+  if not syncPlayPlayback.pauseWaitsForSeek(m.tracker.phase) then return true
   syncPlayPlayback.pauseAfterSeek(m.tracker)
   return false
 end function

@@ -541,7 +541,15 @@ sub pausePlayer(showOsd as boolean)
   else if not writeNode
     m.osd.playbackState = "paused"
   end if
-  if writeNode then m.top.control = "pause"
+  if writeNode then writeGroupTimedPause()
+end sub
+
+' Writes the node's pause and tells a followed SyncPlay group's manager the moment it was written
+' (kind "pauseWritten"): the manager works out where the node stopped from that time, so nothing
+' may sit between the write and the notice.
+sub writeGroupTimedPause()
+  m.top.control = "pause"
+  syncPlayHooks.notify({ kind: "pauseWritten" })
 end sub
 
 sub resumePlayer()
@@ -3194,7 +3202,7 @@ function handleTransport(evt as object) as object
     ' does (syncPlayPlayback.applyPlan marks the verb), even on a node already paused for the group.
     if evt.showOsd = true then showPausedOsd()
     if m.top.state = "paused" then return { status: "error.redundant" }
-    m.top.control = "pause"
+    writeGroupTimedPause()
     return { status: "success" }
   end if
 
