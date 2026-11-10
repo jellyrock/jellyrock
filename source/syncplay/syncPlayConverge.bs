@@ -258,6 +258,8 @@ namespace syncPlayConverge
       if activity = "loading" then reason = "load"
       if activity = "stalled" then reason = "stall"
       if activity = "seeking" and player.seekOwner = "group" then reason = "seek"
+      ' A seek of this member's own that outlasted its budget is a stall to the group.
+      if activity = "seeking" and player.seekSlow and reason = "" then reason = "stall"
       if reason <> "" then return { kind: "report", what: "buffering", heldFor: reason, positionTicks: bestKnownTicks(player, nowMs), isPlaying: player.nodeState = "playing" }
     end if
 

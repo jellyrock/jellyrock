@@ -396,21 +396,28 @@ namespace tests
       m.assertEqual(player.activity, "arrived")
     end function
 
-    @it("a seek still buffering at its budget is given up as a stall")
+    @it("a seek still buffering at its budget stays in flight, marked slow, until it lands")
     function _()
       player = m.playingAt60()
-      syncPlayPlayer.told(player, "seek", "group", 1000000000&, 1100&)
+      syncPlayPlayer.told(player, "seek", "hold", 1000000000&, 1100&)
       syncPlayPlayer.nodeState(player, "buffering", 1180&)
       syncPlayPlayer.advance(player, 1099& + syncPlayPlayback.SEEK_SETTLE_MS)
-      m.assertEqual(player.activity, "seeking")
+      m.assertFalse(player.seekSlow)
       syncPlayPlayer.advance(player, 1100& + syncPlayPlayback.SEEK_SETTLE_MS)
-      m.assertEqual(player.activity, "stalled")
+      m.assertEqual(player.activity, "seeking")
+      m.assertTrue(syncPlayPlayer.isInFlight(player))
+      m.assertTrue(player.seekSlow)
       m.assertTrue(player.lastSeekGaveUp)
-      m.assertEqual(player.lastSeekMs, syncPlayTime.asLong(syncPlayPlayback.SEEK_SETTLE_MS))
-      ' It plays in the end: a stall recovering, not an arrival to pause on.
+      m.assertInvalid(syncPlayPlayer.nextDeadlineMs(player))
+      ' It lands in the end, 7.9 s after the write: an arrival like any other, and still a seek
+      ' too slow to repeat.
       syncPlayPlayer.nodeState(player, "playing", 9000&)
+      m.assertEqual(player.activity, "arrived")
+      syncPlayPlayer.reading(player, 1000200000&, 9020&)
       m.assertEqual(player.activity, "playing")
+      m.assertFalse(player.seekSlow)
       m.assertTrue(player.lastSeekGaveUp)
+      m.assertEqual(player.lastSeekMs, 7920&)
     end function
 
     @it("a seek the node never answered is given up where its state says")

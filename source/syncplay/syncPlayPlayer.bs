@@ -22,7 +22,10 @@ namespace syncPlayPlayer
   ' Activities:
   '   "none"      no player.
   '   "loading"   a load was told or a player mounted; no first frame yet.
-  '   "seeking"   a seek was written and the node has not reported `playing` since.
+  '   "seeking"   a seek was written and the node has not reported `playing` since. It stays in
+  '               flight however long it takes: once it outlasts its budget while buffering it
+  '               is also `seekSlow`, a stall the group should hear of, and still not a node
+  '               to write to.
   '   "arrived"   the first frame of a load, or a seek's `playing`: the next notification says
   '               where the node landed. A seek lands up to seconds off its target, so the target
   '               is never taken for the landing.
@@ -31,7 +34,7 @@ namespace syncPlayPlayer
   '   "playing"   the node plays.
   '   "paused"    the node is paused.
   '   "stalling"  the node buffers after playing, for less than the stall bar.
-  '   "stalled"   it has buffered past the bar, or a seek outlasted its budget while buffering.
+  '   "stalled"   it has buffered past the bar.
   '   "finished"  the item ended.
   '
   ' Clock kinds:
@@ -56,6 +59,7 @@ namespace syncPlayPlayer
       seekTargetTicks: 0&,
       seekWrittenAtMs: 0&,
       seekOwner: "",
+      seekSlow: false,
       lastSeekMs: 0&,
       lastSeekGaveUp: false,
       lastLandingTicks: invalid
@@ -87,6 +91,7 @@ namespace syncPlayPlayer
       player.seekTargetTicks = syncPlayTime.asLong(targetTicks)
       player.seekWrittenAtMs = nowMs
       player.seekOwner = owner
+      player.seekSlow = false
       player.pauseOwner = ""
       player.pauseTicks = invalid
       enter(player, "seeking", nowMs)
@@ -120,6 +125,7 @@ namespace syncPlayPlayer
     player.pauseOwner = ""
     player.pauseWrites = 0
     player.pauseTicks = invalid
+    player.seekSlow = false
     player.lastSeekMs = 0&
     player.lastSeekGaveUp = false
     player.lastLandingTicks = invalid
@@ -228,13 +234,17 @@ namespace syncPlayPlayer
     if not isValid(due) or nowMs < syncPlayTime.asLong(due) then return
     activity = player.activity
     if activity = "seeking"
-      ' The seek's budget ran out with no `playing`. A node still buffering is a stall the group
-      ' should hear of; any other is left where its state says, with nothing known of its position.
-      endSeek(player, nowMs, true, invalid)
+      ' The seek's budget ran out with no `playing`. A node still buffering is still seeking: a
+      ' write now could leave it buffering for good, so it stays in flight, marked slow so the
+      ' group hears of the stall. A node that never answered the seek is left where its state
+      ' says, with nothing known of its position.
       if player.nodeState = "buffering"
-        enter(player, "stalled", nowMs)
-        setClock(player, "unknown", 0&, nowMs, false)
-      else if player.nodeState = "paused"
+        player.seekSlow = true
+        player.lastSeekGaveUp = true
+        return
+      end if
+      endSeek(player, nowMs, true, invalid)
+      if player.nodeState = "paused"
         pausedUnknown(player, nowMs)
       else
         enter(player, "playing", nowMs)
@@ -267,7 +277,7 @@ namespace syncPlayPlayer
   function nextDeadlineMs(player as object) as dynamic
     activity = player.activity
     since& = syncPlayTime.asLong(player.sinceMs)
-    if activity = "seeking" then return since& + syncPlayPlayback.SEEK_SETTLE_MS
+    if activity = "seeking" and not player.seekSlow then return since& + syncPlayPlayback.SEEK_SETTLE_MS
     if activity = "arrived" then return since& + ARRIVAL_READING_MS
     if activity = "pausing" or activity = "resuming" then return since& + syncPlayPlayback.PAUSE_CONFIRM_MS
     if activity = "stalling" then return since& + syncPlayPlayback.STALL_MS
@@ -342,7 +352,10 @@ namespace syncPlayPlayer
   ' (invalid when no notification said).
   sub endSeek(player as object, nowMs as longinteger, gaveUp as boolean, landingTicks as dynamic)
     player.lastSeekMs = nowMs - syncPlayTime.asLong(player.seekWrittenAtMs)
-    player.lastSeekGaveUp = gaveUp
+    ' A seek that outlasted its budget counts as given up even when it lands in the end: the
+    ' next one would be as slow.
+    player.lastSeekGaveUp = gaveUp or player.seekSlow
+    player.seekSlow = false
     player.lastLandingTicks = landingTicks
   end sub
 

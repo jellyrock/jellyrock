@@ -1,0 +1,523 @@
+' A simulated SyncPlay member for the convergence spec: a fake Video node, a fake server and the
+' loop the manager will run, on a virtual clock, with every random choice drawn from one seed so
+' a failing order replays from its seed.
+'
+' The fake node behaves as a Stick 4K's did in the records of 2026-11-10: a pause lands 16 to
+' 61 ms after its write, a resume 8 to 25 ms, a seek reaches `playing` 266 to 840 ms after its
+' write and lands 1 to 38 ms past its target, the position field reads a seek's target before the
+' node moves, and a notification follows `playing` by 7 to 42 ms and then comes every 500 ms.
+' With faults on, a seek can land 948 ms or 10 s before its target or take seconds, the node can
+' stall, and a request can be lost. A write the real node would wedge on (anything written to a
+' node with a write in flight, a resume to a node that is not paused) is recorded as a violation.
+'
+' The fake server follows the group states of the Jellyfin server (PlayingGroupState,
+' PausedGroupState and WaitingGroupState, read at master 2026-11-10), with one other member that
+' is always ready. Positions here are milliseconds; the models take ticks.
+namespace tests.syncPlaySim
+
+  const TICKS_PER_MS = 10000&
+  ' The server's own values (Group.cs and IGroupStateContext.cs, master).
+  const SERVER_DEFAULT_PING_MS = 500
+  const SERVER_MAX_PLAYBACK_OFFSET_MS = 500
+  const SERVER_MAX_CATCH_UP_OFFSET_MS = 60000
+
+  function newSim(seed as integer, faults as boolean) as object
+    estimator = syncPlayOffset.newEstimator()
+    ' The device and the server share a clock here: offset 0, a 10 ms round trip.
+    syncPlayOffset.addRound(estimator, 1000&, 1005&, 1005&, 1010&)
+    sim = {
+      rng: 1& + seed,
+      now: 100000&,
+      queue: [],
+      faults: faults,
+      violations: [],
+      following: true,
+      estimator: estimator,
+      policy: syncPlayConverge.defaultPolicy(),
+      player: syncPlayPlayer.newPlayer(),
+      group: syncPlayGroup.newGroup(),
+      groupState: "Paused",
+      node: { state: "none", posMs: 0&, atMs: 0&, moving: false, busy: "", epoch: 0, noteEpoch: 0 },
+      server: { state: "Paused", posMs: 60000&, activityMs: 100000&, meBuffering: true, resumePlaying: false, jumped: false },
+      lastFrameAtMs: 0&,
+      wakeEpoch: 0,
+      notices: 0,
+      seeks: 0,
+      events: 0,
+      ' What the run went through, so a spec can check its faults happened at all.
+      counts: { farLandings: 0, slowSeeks: 0, lostRequests: 0, stalls: 0, catchUps: 0, holds: 0, waitAsks: 0, whereAsks: 0 }
+    }
+    ' The group stands paused on one item, and this member's player mounts for it.
+    syncPlayGroup.itemChanged(sim.group, "p-1", 99000&)
+    syncPlayPlayer.mounted(sim.player, 60000& * TICKS_PER_MS, sim.now)
+    sim.node.busy = "load"
+    sim.node.state = "buffering"
+    push(sim, sim.now + nextInt(sim, 500, 2500), { kind: "loadDone", epoch: 0, landMs: 60000& - nextInt(sim, 0, 400) })
+    settle(sim)
+    return sim
+  end function
+
+  ' --- the seeded generator ---
+
+  function nextInt(sim as object, lo as integer, hi as integer) as integer
+    sim.rng = (sim.rng * 1103515245& + 12345&) mod 2147483648&
+    span& = hi - lo + 1
+    pick& = (sim.rng \ 65536&) mod span&
+    offset% = pick&
+    return lo + offset%
+  end function
+
+  function chance(sim as object, percent as integer) as boolean
+    return nextInt(sim, 1, 100) <= percent
+  end function
+
+  ' --- the event queue ---
+
+  sub push(sim as object, atMs as longinteger, evt as object)
+    evt.at = atMs
+    sim.queue.push(evt)
+  end sub
+
+  ' Run every event due up to untilMs, in time order, settling the member after each.
+  sub runUntil(sim as object, untilMs as longinteger)
+    while true
+      index = -1
+      for i = 0 to sim.queue.count() - 1
+        if sim.queue[i].at <= untilMs and (index < 0 or sim.queue[i].at < sim.queue[index].at) then index = i
+      end for
+      if index < 0 then exit while
+      evt = sim.queue[index]
+      sim.queue.delete(index)
+      if evt.at > sim.now then sim.now = evt.at
+      sim.events++
+      handle(sim, evt)
+      settle(sim)
+    end while
+    sim.now = untilMs
+    settle(sim)
+  end sub
+
+  sub violate(sim as object, what as string)
+    sim.violations.push(what + " at " + sim.now.toStr())
+  end sub
+
+  ' --- the manager's loop ---
+
+  ' One event at a time: move the models' time limits on, compare, carry the action out, and
+  ' compare again until nothing is asked.
+  sub settle(sim as object)
+    for attempt = 1 to 12
+      syncPlayPlayer.advance(sim.player, sim.now)
+      syncPlayGroup.advance(sim.group, syncPlayTime.asLong(sim.policy.requestLimitMs), sim.now)
+      ctx = { following: sim.following, estimator: sim.estimator, loadOwed: false, isLastItem: false, durationSeconds: 0 }
+      result = syncPlayConverge.decide(sim.player, sim.group, ctx, sim.policy, sim.now)
+      if not isValid(result.action)
+        if isValid(result.wakeAtMs)
+          wakeAt& = syncPlayTime.asLong(result.wakeAtMs)
+          if wakeAt& <= sim.now then wakeAt& = sim.now + 1
+          sim.wakeEpoch++
+          push(sim, wakeAt&, { kind: "wake", epoch: sim.wakeEpoch })
+        end if
+        return
+      end if
+      carryOut(sim, result.action)
+    end for
+    violate(sim, "the comparison did not settle")
+  end sub
+
+  sub carryOut(sim as object, action as object)
+    kind = action.kind
+    alreadyPaused = sim.player.activity = "paused" or sim.player.activity = "pausing"
+    if kind = "pause"
+      ' A pause for a node already paused only changes whose pause it is.
+      if not alreadyPaused then writePause(sim)
+      if action.owner = "hold" then sim.counts.holds++
+    else if kind = "resume"
+      writeResume(sim)
+    else if kind = "seek"
+      sim.seeks++
+      if action.catchUp = true then sim.counts.catchUps++
+      writeSeek(sim, syncPlayTime.ticksToMs(action.targetTicks))
+    else if kind = "report"
+      if action.where = true then sim.counts.whereAsks++
+      sendRequest(sim, "report", action)
+    else if kind = "ask"
+      if action.waitOnMe = true then sim.counts.waitAsks++
+      sendRequest(sim, "ask", action)
+    else if kind = "notice"
+      sim.notices++
+    else if kind = "halt"
+      sim.following = false
+      violate(sim, "the member halted")
+    end if
+    syncPlayConverge.applied(sim.player, sim.group, action, sim.now)
+  end sub
+
+  ' --- the fake node ---
+
+  function nodePosMs(sim as object) as longinteger
+    node = sim.node
+    if node.moving then return node.posMs + (sim.now - node.atMs)
+    return node.posMs
+  end function
+
+  sub freeze(sim as object)
+    node = sim.node
+    node.posMs = nodePosMs(sim)
+    node.atMs = sim.now
+    node.moving = false
+    node.noteEpoch++
+  end sub
+
+  sub writePause(sim as object)
+    node = sim.node
+    if node.busy <> ""
+      violate(sim, "a pause was written to a node in flight (" + node.busy + ")")
+      return
+    end if
+    if node.state = "paused" then return
+    node.busy = "pause"
+    delay = nextInt(sim, 16, 61)
+    if node.state = "buffering" then delay = 5
+    push(sim, sim.now + delay, { kind: "pauseDone", epoch: node.epoch })
+  end sub
+
+  sub writeResume(sim as object)
+    node = sim.node
+    if node.busy <> ""
+      violate(sim, "a resume was written to a node in flight (" + node.busy + ")")
+      return
+    end if
+    if node.state <> "paused"
+      violate(sim, "a resume was written to a node that is " + node.state)
+      return
+    end if
+    node.busy = "resume"
+    push(sim, sim.now + nextInt(sim, 8, 25), { kind: "resumeDone", epoch: node.epoch })
+  end sub
+
+  sub writeSeek(sim as object, targetMs as longinteger)
+    node = sim.node
+    if node.busy <> ""
+      violate(sim, "a seek was written to a node in flight (" + node.busy + ")")
+      return
+    end if
+    freeze(sim)
+    node.busy = "seek"
+    node.epoch++
+    landMs& = targetMs + nextInt(sim, 1, 38)
+    tookMs = nextInt(sim, 266, 840)
+    if sim.faults
+      if chance(sim, 5) then landMs& = targetMs - 948
+      if chance(sim, 3) then landMs& = targetMs - 10000
+      if landMs& < targetMs then sim.counts.farLandings++
+      if chance(sim, 7)
+        tookMs = nextInt(sim, 3200, 6000)
+        sim.counts.slowSeeks++
+      end if
+    end if
+    if landMs& < 0 then landMs& = 0&
+    ' The position field reads the target before the node moves.
+    push(sim, sim.now + 70, { kind: "staleNote", epoch: node.epoch, posMs: targetMs })
+    push(sim, sim.now + 80, { kind: "seekBuffering", epoch: node.epoch })
+    push(sim, sim.now + tookMs, { kind: "seekDone", epoch: node.epoch, landMs: landMs& })
+  end sub
+
+  sub startPlaying(sim as object, fromMs as longinteger, firstNoteMs as integer)
+    node = sim.node
+    node.state = "playing"
+    node.busy = ""
+    node.posMs = fromMs
+    node.atMs = sim.now
+    node.moving = true
+    node.noteEpoch++
+    push(sim, sim.now + firstNoteMs, { kind: "note", noteEpoch: node.noteEpoch })
+    syncPlayPlayer.nodeState(sim.player, "playing", sim.now)
+  end sub
+
+  ' --- events ---
+
+  sub handle(sim as object, evt as object)
+    kind = evt.kind
+    node = sim.node
+    if kind = "loadDone" or kind = "seekDone"
+      if evt.epoch <> node.epoch then return
+      startPlaying(sim, evt.landMs, nextInt(sim, 7, 42))
+    else if kind = "seekBuffering"
+      if evt.epoch <> node.epoch or node.busy <> "seek" then return
+      node.state = "buffering"
+      syncPlayPlayer.nodeState(sim.player, "buffering", sim.now)
+    else if kind = "staleNote"
+      if evt.epoch <> node.epoch or node.busy <> "seek" then return
+      syncPlayPlayer.reading(sim.player, evt.posMs * TICKS_PER_MS, sim.now)
+    else if kind = "pauseDone"
+      if evt.epoch <> node.epoch or node.busy <> "pause" then return
+      freeze(sim)
+      node.state = "paused"
+      node.busy = ""
+      syncPlayPlayer.nodeState(sim.player, "paused", sim.now)
+    else if kind = "resumeDone"
+      if evt.epoch <> node.epoch or node.busy <> "resume" then return
+      startPlaying(sim, node.posMs, nextInt(sim, 400, 500))
+    else if kind = "note"
+      if evt.noteEpoch <> node.noteEpoch or not node.moving then return
+      syncPlayPlayer.reading(sim.player, nodePosMs(sim) * TICKS_PER_MS, sim.now)
+      push(sim, sim.now + 500, { kind: "note", noteEpoch: node.noteEpoch })
+    else if kind = "stallStart"
+      if node.state <> "playing" or node.busy <> "" then return
+      freeze(sim)
+      node.state = "buffering"
+      node.epoch++
+      sim.counts.stalls++
+      syncPlayPlayer.nodeState(sim.player, "buffering", sim.now)
+      push(sim, sim.now + evt.forMs, { kind: "stallEnd", epoch: node.epoch })
+    else if kind = "stallEnd"
+      if evt.epoch <> node.epoch or node.state <> "buffering" or node.busy <> "" then return
+      startPlaying(sim, node.posMs, nextInt(sim, 20, 500))
+    else if kind = "frame"
+      deliverFrame(sim, evt)
+    else if kind = "request"
+      serverHandle(sim, evt.request)
+      push(sim, sim.now + nextInt(sim, 10, 60), { kind: "result", slot: evt.slot, what: evt.request.what })
+    else if kind = "result"
+      syncPlayGroup.requestArrived(sim.group, evt.slot, evt.what)
+    else if kind = "other"
+      serverHandle(sim, { what: evt.what, fromMe: false, posMs: evt.posMs, isPlaying: true, whenMs: sim.now })
+    else if kind = "viewer"
+      viewerPress(sim, evt.what)
+    end if
+    ' "wake" carries nothing: the settle after every event is what it is for.
+  end sub
+
+  sub deliverFrame(sim as object, evt as object)
+    if evt.frame = "state"
+      previous = sim.groupState
+      sim.groupState = evt.current
+      syncPlayGroup.stateChanged(sim.group, previous, evt.current, sim.estimator, sim.now)
+    else
+      syncPlayGroup.command(sim.group, evt.command)
+    end if
+  end sub
+
+  ' The viewer's own pause or play: the group is asked, and the comparison pauses the node as
+  ' theirs at once.
+  sub viewerPress(sim as object, what as string)
+    activity = sim.player.activity
+    if what = "pause" and activity <> "playing" then return
+    if what = "unpause" and activity <> "paused" then return
+    if sim.group.ask.state = "flight" then return
+    syncPlayGroup.viewerAsked(sim.group, what, invalid, sim.now)
+    action = { kind: "ask", what: what }
+    sendRequest(sim, "ask", action)
+    syncPlayConverge.applied(sim.player, sim.group, action, sim.now)
+  end sub
+
+  ' --- requests ---
+
+  sub sendRequest(sim as object, slot as string, action as object)
+    ' A lost request draws no result: the model's own limit calls it failed.
+    if sim.faults and chance(sim, 5)
+      sim.counts.lostRequests++
+      return
+    end if
+    posMs& = 0&
+    if isValid(action.positionTicks) then posMs& = syncPlayTime.ticksToMs(action.positionTicks)
+    request = { what: action.what, fromMe: true, posMs: posMs&, isPlaying: action.isPlaying = true, whenMs: sim.now }
+    push(sim, sim.now + nextInt(sim, 10, 60), { kind: "request", slot: slot, request: request })
+  end sub
+
+  ' --- the fake server ---
+
+  function groupPosMs(sim as object) as longinteger
+    server = sim.server
+    if server.state = "Playing" and sim.now > server.activityMs then return server.posMs + (sim.now - server.activityMs)
+    return server.posMs
+  end function
+
+  ' A frame for this member, in the order the server sent them.
+  sub sendFrame(sim as object, evt as object)
+    atMs& = sim.now + nextInt(sim, 20, 150)
+    if atMs& <= sim.lastFrameAtMs then atMs& = sim.lastFrameAtMs + 1
+    sim.lastFrameAtMs = atMs&
+    evt.kind = "frame"
+    push(sim, atMs&, evt)
+  end sub
+
+  sub sendCommand(sim as object, name as string)
+    server = sim.server
+    sendFrame(sim, { frame: "command", command: { kind: "syncplaycommand", command: name, whenMs: server.activityMs, emittedAtMs: sim.now, positionTicks: server.posMs * TICKS_PER_MS, playlistItemId: "p-1", groupId: "g-1" } })
+  end sub
+
+  ' The state update that follows a command: the server sends the command first.
+  sub setServerState(sim as object, state as string)
+    server = sim.server
+    if server.state <> "Waiting" and state = "Waiting" then server.jumped = false
+    server.state = state
+    sendFrame(sim, { frame: "state", current: state })
+  end sub
+
+  ' Whether the member is where the group is: paused with a paused group, or playing inside the
+  ' bars of a playing one. "" when it is, else what is off. A group still waiting says nothing.
+  function outOfStep(sim as object) as string
+    server = sim.server
+    if server.state = "Paused"
+      if sim.node.state <> "paused" then return "the group is paused and the node is " + sim.node.state
+      return ""
+    end if
+    if server.state <> "Playing" or sim.now < server.activityMs then return ""
+    if sim.node.state <> "playing" then return "the group plays and the node is " + sim.node.state + " (" + sim.player.activity + ", owner " + sim.player.pauseOwner + ")"
+    drift& = driftMs(sim)
+    ' Inside the bars, with room for the error of one reading.
+    if drift& > sim.policy.behindBarMs + 50 or drift& < - (sim.policy.aheadBarMs + 50) then return "the node is " + drift&.toStr() + " ms from the group"
+    return ""
+  end function
+
+  ' Pause the group's line where it is.
+  sub stopLine(sim as object)
+    server = sim.server
+    server.posMs = groupPosMs(sim)
+    server.activityMs = sim.now
+  end sub
+
+  sub serverHandle(sim as object, request as object)
+    server = sim.server
+    what = request.what
+    state = server.state
+    if what = "pause"
+      if state = "Playing"
+        stopLine(sim)
+        server.state = "Paused"
+        sendCommand(sim, "Pause")
+        setServerState(sim, "Paused")
+      else if state = "Paused"
+        ' Client got lost, sending current state.
+        if request.fromMe then sendCommand(sim, "Pause")
+      else
+        server.resumePlaying = false
+        sendFrame(sim, { frame: "state", current: state })
+      end if
+    else if what = "unpause"
+      if state = "Paused"
+        server.activityMs = sim.now + SERVER_DEFAULT_PING_MS
+        server.state = "Playing"
+        sendCommand(sim, "Unpause")
+        setServerState(sim, "Playing")
+      else if state = "Playing"
+        if request.fromMe then sendCommand(sim, "Unpause")
+      end if
+    else if what = "seek"
+      if state = "Playing" then server.resumePlaying = true
+      if state = "Paused" then server.resumePlaying = false
+      server.posMs = request.posMs
+      server.activityMs = sim.now
+      if state <> "Waiting" then server.jumped = false
+      server.state = "Waiting"
+      server.jumped = true
+      server.meBuffering = true
+      sendCommand(sim, "Seek")
+      setServerState(sim, "Waiting")
+    else if what = "buffering"
+      if state = "Playing"
+        server.resumePlaying = true
+        stopLine(sim)
+        server.meBuffering = true
+        setServerState(sim, "Waiting")
+      else if state = "Paused"
+        server.resumePlaying = false
+        server.meBuffering = true
+        server.jumped = false
+        server.state = "Waiting"
+        sendCommand(sim, "Pause")
+        setServerState(sim, "Waiting")
+      else
+        server.meBuffering = true
+        if not server.resumePlaying then sendCommand(sim, "Pause")
+        sendFrame(sim, { frame: "state", current: state })
+      end if
+    else if what = "ready"
+      serverReady(sim, request)
+    end if
+    ' "next" draws nothing here: the simulated playlist has one item.
+  end sub
+
+  sub serverReady(sim as object, request as object)
+    server = sim.server
+    if server.state = "Playing"
+      ' Group was not waiting, make sure client has latest state.
+      sendCommand(sim, "Unpause")
+      return
+    end if
+    if server.state = "Paused"
+      sendCommand(sim, "Pause")
+      return
+    end if
+    clientMs& = request.posMs
+    if request.isPlaying then clientMs& = clientMs& + (sim.now - request.whenMs)
+    delayMs& = server.posMs - clientMs&
+    if server.resumePlaying
+      maxOffset = SERVER_MAX_PLAYBACK_OFFSET_MS
+      if request.isPlaying and not server.jumped then maxOffset = SERVER_MAX_CATCH_UP_OFFSET_MS
+      if Abs(delayMs&) > maxOffset
+        server.meBuffering = true
+        sendCommand(sim, "Seek")
+        sendFrame(sim, { frame: "state", current: "Waiting" })
+        return
+      end if
+      server.meBuffering = false
+      if delayMs& > 2 * 10
+        ' The member that was buffering is recovering: the others resume as it catches up, and
+        ' it hears of it only when it was paused.
+        server.activityMs = sim.now + delayMs&
+        server.state = "Playing"
+        if not request.isPlaying then sendCommand(sim, "Unpause")
+        setServerState(sim, "Playing")
+      else
+        server.activityMs = sim.now + SERVER_DEFAULT_PING_MS
+        server.state = "Playing"
+        sendCommand(sim, "Unpause")
+        setServerState(sim, "Playing")
+      end if
+    else
+      if Abs(server.posMs - request.posMs) > SERVER_MAX_PLAYBACK_OFFSET_MS
+        server.meBuffering = true
+        sendCommand(sim, "Seek")
+        sendFrame(sim, { frame: "state", current: "Waiting" })
+        return
+      end if
+      server.meBuffering = false
+      server.state = "Paused"
+      sendCommand(sim, "Pause")
+      setServerState(sim, "Paused")
+    end if
+  end sub
+
+  ' --- a scenario ---
+
+  ' Schedule a seeded mix of what can happen to a member over spanMs: the other member pausing,
+  ' playing and seeking, the viewer's own pause and play, and (with faults) stalls.
+  sub scheduleRandom(sim as object, fromMs as longinteger, spanMs as integer, count as integer)
+    for n = 1 to count
+      atMs& = fromMs + nextInt(sim, 0, spanMs)
+      roll = nextInt(sim, 1, 100)
+      if roll <= 25
+        push(sim, atMs&, { kind: "other", what: "pause", posMs: 0& })
+      else if roll <= 55
+        push(sim, atMs&, { kind: "other", what: "unpause", posMs: 0& })
+      else if roll <= 70
+        push(sim, atMs&, { kind: "other", what: "seek", posMs: 1000& * nextInt(sim, 30, 600) })
+      else if roll <= 80
+        push(sim, atMs&, { kind: "viewer", what: "pause" })
+      else if roll <= 90
+        push(sim, atMs&, { kind: "viewer", what: "unpause" })
+      else if sim.faults
+        push(sim, atMs&, { kind: "stallStart", forMs: nextInt(sim, 200, 4000) })
+      end if
+    end for
+  end sub
+
+  ' How far the node is from the group, in ms (positive: behind). Meaningful while both play.
+  function driftMs(sim as object) as longinteger
+    return groupPosMs(sim) - nodePosMs(sim)
+  end function
+
+end namespace

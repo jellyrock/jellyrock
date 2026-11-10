@@ -373,6 +373,25 @@ namespace tests
       m.assertEqual(ready.action.positionTicks, m.at65s + 500 * m.oneMs)
     end function
 
+    @it("a catch-up seek that outlasts its budget is a stall to the group, and is still not written to")
+    function _()
+      player = m.playingAt(m.at65s - 500 * m.oneMs, 10000&)
+      group = m.playingLine()
+      seek = m.decide(player, group, 10000&)
+      syncPlayConverge.applied(player, group, seek.action, 10000&)
+      syncPlayPlayer.nodeState(player, "buffering", 10080&)
+      syncPlayPlayer.advance(player, 10000& + syncPlayPlayback.SEEK_SETTLE_MS)
+      buffering = m.decide(player, group, 13000&)
+      m.assertEqual(m.kindOf(buffering), "report")
+      m.assertEqual(buffering.action.what, "buffering")
+      m.assertEqual(buffering.action.heldFor, "stall")
+      syncPlayConverge.applied(player, group, buffering.action, 13000&)
+      syncPlayGroup.requestArrived(group, "report", "buffering")
+      ' The group pauses meanwhile: the node, still seeking, is left alone.
+      syncPlayGroup.command(group, m.cmd("Pause", 14500&, m.at65s))
+      m.assertEqual(m.kindOf(m.decide(player, group, 13600&)), "")
+    end function
+
     @it("a wait this member ended with no command asks where the group is")
     function _()
       player = m.playingAt(m.at65s, 12100&)
