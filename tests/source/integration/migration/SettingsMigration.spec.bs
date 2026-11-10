@@ -75,6 +75,9 @@ namespace tests
       ' Display settings
       reg.write("display.livetv.landing", "guide")
 
+      ' A library's saved view (v3.3.2 renames it to its libraryTab id and splits off the layout)
+      reg.write("display.lib-movies.landing", "Movies")
+
       ' Server policy keys (will be deleted during migration - these should never be in registry)
       reg.write("livetv.canrecord", "true")
       reg.write("content.candelete", "false")
@@ -180,6 +183,8 @@ namespace tests
       ' Verify display settings migrated correctly
       m.assertTrue(reg.exists("displayLiveTvLanding"))
       m.assertEqual(reg.read("displayLiveTvLanding"), "guide")
+      m.assertEqual(reg.read("display.lib-movies.landing"), "movies", "the saved view becomes its tab id")
+      m.assertEqual(reg.read("display.lib-movies.layout"), "presentation", "and the layout it implied")
 
       ' AND: OLD setting names are deleted
       m.assertFalse(reg.exists("ui.row.layout"), "Old setting name should be deleted")
@@ -249,7 +254,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs (isolated to this specific user)
-      runRegistryUserMigrations([testUserId])
+      renameUserSettingsToCamelCase(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: Only existing settings are migrated
       reg = CreateObject("roRegistrySection", testUserId)
@@ -279,7 +284,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs (isolated to this specific user)
-      runRegistryUserMigrations([testUserId])
+      renameUserSettingsToCamelCase(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: No errors, no new settings created
       reg = CreateObject("roRegistrySection", testUserId)
@@ -315,8 +320,9 @@ namespace tests
       reg2.write("ui.design.hideclock", "false")
       reg2.flush()
 
-      ' WHEN: Migration runs
-      runRegistryUserMigrations()
+      ' WHEN: The rename runs for each user
+      renameUserSettingsToCamelCase(CreateObject("roRegistrySection", testUserId1), testUserId1)
+      renameUserSettingsToCamelCase(CreateObject("roRegistrySection", testUserId2), testUserId2)
 
       ' THEN: Both users migrated independently with correct values
       reg1 = CreateObject("roRegistrySection", testUserId1)
@@ -346,7 +352,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs (isolated to this specific user)
-      runRegistryUserMigrations([testUserId])
+      renameUserSettingsToCamelCase(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: Old values overwrite new values (migration always wins)
       reg = CreateObject("roRegistrySection", testUserId)
@@ -466,7 +472,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs (isolated to this specific user)
-      runRegistryUserMigrations([testUserId])
+      renameUserSettingsToCamelCase(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: Only displayLiveTvLanding is migrated
       reg = CreateObject("roRegistrySection", testUserId)
@@ -503,7 +509,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs (isolated to this specific user)
-      runRegistryUserMigrations([testUserId])
+      renameUserSettingsToCamelCase(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: Server policy keys are deleted
       reg = CreateObject("roRegistrySection", testUserId)
@@ -540,7 +546,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs (isolated to this specific user)
-      runRegistryUserMigrations([testUserId])
+      renameUserSettingsToCamelCase(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: Verify the registry has correct NEW names after migration
       ' Note: After migration, all settings use NEW camelCase names in registry
@@ -614,7 +620,7 @@ namespace tests
       reg.write("uiRowLayout", "landscape") ' Unrelated setting should survive
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      removeHomeSectionKeys(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertFalse(reg.exists("homeSection0"), "homeSection0 should be deleted")
@@ -640,7 +646,7 @@ namespace tests
       ' No homeSection keys written
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      removeHomeSectionKeys(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertTrue(reg.exists("LastRunVersion"))
@@ -682,7 +688,8 @@ namespace tests
       reg2.write("homeSection1", "resume")
       reg2.flush()
 
-      runRegistryUserMigrations([user1, user2])
+      removeHomeSectionKeys(CreateObject("roRegistrySection", user1), user1)
+      removeHomeSectionKeys(CreateObject("roRegistrySection", user2), user2)
 
       reg1 = CreateObject("roRegistrySection", user1)
       m.assertFalse(reg1.exists("homeSection0"))
