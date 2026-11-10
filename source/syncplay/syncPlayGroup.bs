@@ -1,0 +1,290 @@
+' The SyncPlay group model, pure: what the group wants of this member's playback, and what the
+' server holds from this member. Membership and the queue stay in syncPlayState and syncPlayQueue.
+'
+' It is fed:
+'   - command: a SyncPlayCommand accepted for the playing item (syncPlayState.acceptsCommand).
+'   - itemChanged: a queue update changed the playing item.
+'   - stateChanged: the group's state moved (Idle, Waiting, Paused, Playing).
+'   - viewerAsked: the viewer pressed pause, play or a seek, which the group is asked for.
+'   - requestSent, requestArrived, requestFailed: the life of each request this member makes.
+'
+' The server answers a request with a frame, never in the HTTP reply, so a request that fails
+' draws no frame at all. Each request's HTTP result is therefore kept here: a failed one that is
+' still wanted goes again, and the viewer hears of one that cannot be delivered.
+'
+' Nothing here decides what to do: syncPlayConverge compares this model with the player's. Every
+' time is a LongInteger: epoch milliseconds or Jellyfin ticks (decision syncplay-time-longinteger).
+namespace syncPlayGroup
+
+  function newGroup() as object
+    return {
+      ' The last command accepted for the playing item, or invalid when none says where the
+      ' group is.
+      command: invalid,
+      playingItemId: "",
+      queueChangedAtMs: 0&,
+      ' The server waits for this member's Ready: after its own Buffering, a group Seek, or a
+      ' new item (the server marks every member buffering for those two).
+      owesReady: false,
+      ' This member's Buffering holds the group and no command has come since. The command from
+      ' before it no longer says where the group is: the server paused the group when it handled
+      ' the report.
+      heldByMe: false,
+      ' Why this member holds it: "load", "seek" or "stall". A stalled node that recovers keeps
+      ' playing and reports Ready as it plays; a load or a seek pauses first.
+      heldFor: "",
+      ' Whether the server has this member's Buffering for the load, seek or stall under way,
+      ' so it is sent once.
+      saidBuffering: false,
+      ' Where the server paused the group for that Buffering (anchorWait), or invalid.
+      waitPointTicks: invalid,
+      ' What the viewer asked that no command has answered yet: { kind, positionTicks, atMs }.
+      viewerAsk: invalid,
+      ' Catch-ups written since the last command, and whether this member asked the group to
+      ' wait on it since the last Pause.
+      catchUps: 0,
+      askedWait: false,
+      ' Seeks written toward the point the group waits at, since the last command.
+      pointSeeks: 0,
+      ' The playlist item whose end this member asked the group to move on from.
+      nextAskedFor: "",
+      ' Whether the viewer was told the group cannot be reached, so it is said once.
+      toldUnreachable: false,
+      ' The viewer picked a time offset: the next settled reading is judged by the tighter bar.
+      pickPending: false,
+      ' When this member last asked where the group is, so it does not ask on every event.
+      whereAskedAtMs: invalid,
+      ' The two requests in flight at most: a report (Buffering or Ready) and an ask (Pause,
+      ' Unpause, Seek, NextItem and the like).
+      report: newRequest(),
+      ask: newRequest()
+    }
+  end function
+
+  ' A request's life: "idle" (none), "flight" (sent, no result), "failed" (the last try failed
+  ' and the request may go again). `what` names it ("ready", "buffering", "pause", …), `tries`
+  ' counts sends of this same `what` in a row.
+  function newRequest() as object
+    return { state: "idle", what: "", sentAtMs: 0&, tries: 0 }
+  end function
+
+  ' --- facts in ---
+
+  ' A command accepted for the playing item. It says where the group is, so it ends everything
+  ' that stood in for that: this member's hold on the group, the viewer's unanswered ask, the
+  ' catch-up count.
+  sub command(group as object, cmd as object)
+    group.command = cmd
+    group.heldByMe = false
+    group.waitPointTicks = invalid
+    group.heldFor = ""
+    group.viewerAsk = invalid
+    group.catchUps = 0
+    group.pointSeeks = 0
+    group.whereAskedAtMs = invalid
+    group.toldUnreachable = false
+    ' A Seek is a new wait: this member's Buffering for it has not been sent.
+    if cmd.command = "Seek" then group.saidBuffering = false
+    ' The server marks every member buffering for a Seek, and waits for each Ready.
+    if cmd.command = "Seek" then group.owesReady = true
+    if cmd.command = "Stop" then group.owesReady = false
+    ' A Pause starts a new chain: this member may ask the group to wait on it once more.
+    if cmd.command = "Pause" then group.askedWait = false
+  end sub
+
+  ' A queue update changed the playing item. A command from before it is about the item it
+  ' replaced, and the server waits for every member's Ready on the new one.
+  sub itemChanged(group as object, playingItemId as string, changedAtMs as longinteger)
+    group.playingItemId = playingItemId
+    group.queueChangedAtMs = changedAtMs
+    group.heldByMe = false
+    group.heldFor = ""
+    group.saidBuffering = false
+    group.waitPointTicks = invalid
+    group.catchUps = 0
+    group.pointSeeks = 0
+    group.askedWait = false
+    group.owesReady = playingItemId <> ""
+    if isValid(group.command) and not commandIsCurrent(group, group.command) then group.command = invalid
+  end sub
+
+  ' The group's state moved.
+  ' @param previous - the state before ("Idle", "Waiting", "Paused", "Playing" or "")
+  ' @param estimator - the clock estimator (delayMs is the measured round trip)
+  sub stateChanged(group as object, previous as string, current as string, estimator as object, nowMs as longinteger)
+    if previous = "Playing" and current = "Waiting" and group.heldByMe and not isValid(group.waitPointTicks)
+      anchorWait(group, estimator, nowMs)
+    else if previous = "Waiting" and current <> "Waiting" and group.heldByMe
+      ' The wait this member caused is over and no command came for it: a server from 12.1 sends
+      ' the Unpause to the others alone. Nothing says where the group is until this member asks.
+      group.heldByMe = false
+      group.heldFor = ""
+      group.waitPointTicks = invalid
+      group.command = invalid
+    end if
+  end sub
+
+  ' Where the server paused the group for this member's Buffering: the group's line run forward
+  ' to the moment the server handled the report, taken as now less half the measured round trip.
+  sub anchorWait(group as object, estimator as object, nowMs as longinteger)
+    cmd = group.command
+    if not isValid(cmd) or not commandIsCurrent(group, cmd) then return
+    handledAtMs& = nowMs - syncPlayTime.asLong(estimator.delayMs) \ 2
+    point = syncPlayPlayback.groupPositionTicks(cmd, estimator, handledAtMs&)
+    if isValid(point) then group.waitPointTicks = syncPlayTime.asLong(point)
+  end sub
+
+  ' The viewer pressed pause, play or a seek while following.
+  ' @param kind - "pause", "unpause" or "seek"
+  sub viewerAsked(group as object, kind as string, positionTicks as dynamic, nowMs as longinteger)
+    group.viewerAsk = { kind: kind, positionTicks: positionTicks, atMs: nowMs }
+  end sub
+
+  ' The viewer picked a time offset.
+  sub offsetPicked(group as object)
+    group.pickPending = true
+  end sub
+
+  ' A request went out.
+  ' @param slot - "report" or "ask"
+  ' @param what - the request's name
+  sub requestSent(group as object, slot as string, what as string, nowMs as longinteger)
+    request = group[slot]
+    if request.what = what then request.tries++ else request.tries = 1
+    request.what = what
+    request.state = "flight"
+    request.sentAtMs = nowMs
+    if slot <> "report" then return
+    if what = "buffering"
+      ' Taken as held from the send: the server may act on it before the result is back.
+      group.owesReady = true
+      group.heldByMe = true
+      group.saidBuffering = true
+      group.waitPointTicks = invalid
+    else if what = "ready"
+      group.saidBuffering = false
+    end if
+  end sub
+
+  ' The server took the request (a 2xx).
+  sub requestArrived(group as object, slot as string, what as string)
+    request = group[slot]
+    if request.what <> what or request.state <> "flight" then return
+    request.state = "idle"
+    request.tries = 0
+    if slot = "report" and what = "ready" then group.owesReady = false
+  end sub
+
+  ' The request failed: no answer in time, or an error.
+  sub requestFailed(group as object, slot as string, what as string)
+    request = group[slot]
+    if request.what <> what or request.state <> "flight" then return
+    request.state = "failed"
+  end sub
+
+  ' A request in flight with no result past its limit has failed.
+  sub advance(group as object, limitMs as longinteger, nowMs as longinteger)
+    for each slot in ["report", "ask"]
+      request = group[slot]
+      if request.state = "flight" and nowMs - syncPlayTime.asLong(request.sentAtMs) >= limitMs then request.state = "failed"
+    end for
+  end sub
+
+  ' The device-clock time at which advance has something to do, or invalid.
+  function nextDeadlineMs(group as object, limitMs as longinteger) as dynamic
+    due = invalid
+    for each slot in ["report", "ask"]
+      request = group[slot]
+      if request.state = "flight"
+        at& = syncPlayTime.asLong(request.sentAtMs) + limitMs
+        if not isValid(due) or at& < syncPlayTime.asLong(due) then due = at&
+      end if
+    end for
+    return due
+  end function
+
+  ' A new join, or a follow again: nothing of the last group's playback carries over.
+  sub reset(group as object)
+    fresh = newGroup()
+    for each key in fresh
+      group[key] = fresh[key]
+    end for
+  end sub
+
+  ' --- facts out ---
+
+  ' What the group wants now.
+  ' @returns an AA with:
+  '   mode: "unknown" (nothing says where the group is, or no clock estimate), "stopped",
+  '     "paused", "waiting" (the group stands at a point until its members are ready) or "playing";
+  '   pointTicks: where a paused or waiting group stands, or invalid when not known;
+  '   positionTicks: where a playing group is now;
+  '   startsAtMs: for a paused group about to play, the device-clock time its Unpause applies;
+  '   owesReady: the server waits for this member's Ready;
+  '   byViewer: the pause is the viewer's own ask, not yet answered;
+  '   heldFor: why this member's Buffering holds the group ("load", "seek", "stall"), or "".
+  function wants(group as object, estimator as object, nowMs as longinteger) as object
+    want = { mode: "unknown", pointTicks: invalid, positionTicks: invalid, startsAtMs: invalid, owesReady: group.owesReady, byViewer: false, heldFor: "" }
+    if estimator.hasEstimate <> true then return want
+    ask = group.viewerAsk
+    if isValid(ask) and ask.kind = "pause"
+      want.mode = "paused"
+      want.byViewer = true
+      return want
+    end if
+    cmd = group.command
+    hasCommand = isValid(cmd) and commandIsCurrent(group, cmd)
+    ' A group standing at a Pause or a Seek stays there through this member's Buffering. One
+    ' playing along a line does not: the server paused it when it handled the report.
+    standsStill = hasCommand and (cmd.command = "Pause" or cmd.command = "Seek" or cmd.command = "Stop")
+    if group.heldByMe
+      want.heldFor = group.heldFor
+      if not standsStill
+        want.mode = "waiting"
+        want.pointTicks = group.waitPointTicks
+        return want
+      end if
+    end if
+    if not hasCommand then return want
+    point& = syncPlayTime.asLong(cmd.positionTicks)
+    if cmd.command = "Stop"
+      want.mode = "stopped"
+    else if cmd.command = "Pause"
+      want.mode = "paused"
+      want.pointTicks = point&
+    else if cmd.command = "Seek"
+      want.mode = "waiting"
+      want.pointTicks = point&
+    else if cmd.command = "Unpause"
+      startsAt& = syncPlayOffset.deviceTimeForServerMs(estimator, cmd.whenMs)
+      if nowMs < startsAt&
+        want.mode = "paused"
+        want.pointTicks = point&
+        want.startsAtMs = startsAt&
+      else
+        want.mode = "playing"
+        want.positionTicks = point& + syncPlayTime.msToTicks(syncPlayOffset.serverNowMs(estimator, nowMs) - syncPlayTime.asLong(cmd.whenMs))
+      end if
+    end if
+    return want
+  end function
+
+  ' The device-clock time at which a group playing along the command's line reaches a position.
+  ' Invalid unless the command is an Unpause.
+  function reachesAtMs(group as object, estimator as object, positionTicks as longinteger) as dynamic
+    cmd = group.command
+    if not isValid(cmd) or cmd.command <> "Unpause" then return invalid
+    serverMs& = syncPlayTime.asLong(cmd.whenMs) + syncPlayTime.ticksToMs(positionTicks - syncPlayTime.asLong(cmd.positionTicks))
+    return syncPlayOffset.deviceTimeForServerMs(estimator, serverMs&)
+  end function
+
+  ' Whether a command is for the item now playing and not older than the update that last
+  ' changed it (a same-item restart sends no command of its own).
+  function commandIsCurrent(group as object, cmd as object) as boolean
+    if cmd.command = "Stop" then return true
+    if cmd.playlistItemId <> group.playingItemId then return false
+    if syncPlayTime.isWholeNumber(cmd.emittedAtMs) and syncPlayTime.asLong(cmd.emittedAtMs) < syncPlayTime.asLong(group.queueChangedAtMs) then return false
+    return true
+  end function
+
+end namespace

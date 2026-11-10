@@ -1,0 +1,676 @@
+import "pkg:/source/syncplay/syncPlayConverge.bs"
+import "pkg:/source/syncplay/syncPlayGroup.bs"
+import "pkg:/source/syncplay/syncPlayOffset.bs"
+import "pkg:/source/syncplay/syncPlayPlayback.bs"
+import "pkg:/source/syncplay/syncPlayPlayer.bs"
+import "pkg:/source/syncplay/syncPlayTime.bs"
+
+namespace tests
+
+  ' The comparison's table: one case per pairing of what the node is doing and what the group
+  ' wants. The device reads 1000 ms behind the server (device 10000 is server 11000). The usual
+  ' line is an Unpause at server 6000 (device 5000) from 60 s, so at device 10000 the group is
+  ' at 65 s. Positions are ticks: 1 s is 10000000.
+  @suite("syncPlayConverge: one action from two models")
+  class SyncPlayConvergeTests extends tests.BaseTestSuite
+
+    private at60s = 600000000&
+    private at65s = 650000000&
+    private at100s = 1000000000&
+    private oneMs = 10000&
+
+    private function estimator() as object
+      est = syncPlayOffset.newEstimator()
+      syncPlayOffset.addRound(est, 1000&, 2005&, 2005&, 1010&)
+      return est
+    end function
+
+    private function ctx() as object
+      return { following: true, estimator: m.estimator(), loadOwed: false, isLastItem: false, durationSeconds: 0 }
+    end function
+
+    private function cmd(name as string, whenMs as longinteger, positionTicks as longinteger) as object
+      return { kind: "syncplaycommand", command: name, whenMs: whenMs, emittedAtMs: whenMs - 100, positionTicks: positionTicks, playlistItemId: "p-1", groupId: "g-1" }
+    end function
+
+    ' A group on item p-1 whose Ready the server has, with one command in force (or none).
+    private function groupWith(command as dynamic) as object
+      group = syncPlayGroup.newGroup()
+      syncPlayGroup.itemChanged(group, "p-1", 1000&)
+      syncPlayGroup.requestSent(group, "report", "ready", 2000&)
+      syncPlayGroup.requestArrived(group, "report", "ready")
+      if isValid(command) then syncPlayGroup.command(group, command)
+      return group
+    end function
+
+    private function playingLine() as object
+      return m.groupWith(m.cmd("Unpause", 6000&, m.at60s))
+    end function
+
+    private function pausedGroup() as object
+      return m.groupWith(m.cmd("Pause", 9000&, m.at60s))
+    end function
+
+    private function seekGroup() as object
+      return m.groupWith(m.cmd("Seek", 9000&, m.at100s))
+    end function
+
+    ' A node playing, with a reading of `ticks` at `atMs`.
+    private function playingAt(ticks as longinteger, atMs as longinteger) as object
+      player = syncPlayPlayer.newPlayer()
+      syncPlayPlayer.mounted(player, invalid, 100&)
+      syncPlayPlayer.nodeState(player, "playing", 900&)
+      syncPlayPlayer.reading(player, ticks, atMs)
+      return player
+    end function
+
+    ' A node paused by `owner`, stopped at `ticks`, landed by 9930.
+    private function pausedAt(ticks as longinteger, owner as string) as object
+      player = m.playingAt(ticks, 9900&)
+      syncPlayPlayer.told(player, "pause", owner, invalid, 9900&)
+      syncPlayPlayer.nodeState(player, "paused", 9930&)
+      return player
+    end function
+
+    private function decide(player as object, group as object, nowMs as longinteger) as object
+      return syncPlayConverge.decide(player, group, m.ctx(), syncPlayConverge.defaultPolicy(), nowMs)
+    end function
+
+    private function kindOf(result as object) as string
+      if not isValid(result.action) then return ""
+      return result.action.kind
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a stopped group, a load, a member that does not follow")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a stopped group stops a player, and asks nothing with none")
+    function _()
+      group = m.groupWith(m.cmd("Stop", 9000&, 0&))
+      m.assertEqual(m.kindOf(m.decide(m.playingAt(m.at60s, 10000&), group, 10000&)), "stop")
+      m.assertEqual(m.kindOf(m.decide(syncPlayPlayer.newPlayer(), group, 10000&)), "")
+    end function
+
+    @it("a load the queue layer owes is performed, whatever the node is doing")
+    function _()
+      context = m.ctx()
+      context.loadOwed = true
+      player = m.playingAt(m.at60s, 10000&)
+      syncPlayPlayer.told(player, "seek", "group", m.at100s, 10000&)
+      result = syncPlayConverge.decide(player, m.pausedGroup(), context, syncPlayConverge.defaultPolicy(), 10000&)
+      m.assertEqual(m.kindOf(result), "load")
+    end function
+
+    @it("a halted member is written to once: a node a hold or a wait paused is resumed")
+    function _()
+      context = m.ctx()
+      context.following = false
+      policy = syncPlayConverge.defaultPolicy()
+      held = syncPlayConverge.decide(m.pausedAt(m.at65s, "hold"), m.playingLine(), context, policy, 10000&)
+      m.assertEqual(m.kindOf(held), "resume")
+      m.assertEqual(held.action.owner, "release")
+      m.assertEqual(m.kindOf(syncPlayConverge.decide(m.pausedAt(m.at65s, "wait"), m.playingLine(), context, policy, 10000&)), "resume")
+      m.assertEqual(m.kindOf(syncPlayConverge.decide(m.pausedAt(m.at65s, "viewer"), m.playingLine(), context, policy, 10000&)), "")
+      m.assertEqual(m.kindOf(syncPlayConverge.decide(m.playingAt(m.at60s, 10000&), m.pausedGroup(), context, policy, 10000&)), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a node in flight")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a node loading, seeking, arrived, pausing or resuming is not written to, whatever the group wants")
+    function _()
+      loading = syncPlayPlayer.newPlayer()
+      syncPlayPlayer.mounted(loading, invalid, 9900&)
+      seeking = m.playingAt(m.at60s, 9900&)
+      syncPlayPlayer.told(seeking, "seek", "hold", m.at100s, 9950&)
+      arrived = m.playingAt(m.at60s, 9900&)
+      syncPlayPlayer.told(arrived, "seek", "hold", m.at100s, 9950&)
+      syncPlayPlayer.nodeState(arrived, "playing", 9990&)
+      pausing = m.playingAt(m.at60s, 9900&)
+      syncPlayPlayer.told(pausing, "pause", "group", invalid, 9950&)
+      resuming = m.pausedAt(m.at60s, "group")
+      syncPlayPlayer.told(resuming, "resume", "group", invalid, 9950&)
+      for each player in [loading, seeking, arrived, pausing, resuming]
+        for each group in [m.pausedGroup(), m.seekGroup(), m.playingLine(), m.groupWith(invalid)]
+          ' The server has this member's Buffering, so no report stands in for a node write.
+          group.saidBuffering = true
+          group.owesReady = false
+          group.whereAskedAtMs = 9999&
+          m.assertEqual(m.kindOf(m.decide(player, group, 10000&)), "", player.activity)
+        end for
+      end for
+    end function
+
+    @it("a node in flight still stops for a stopped group")
+    function _()
+      seeking = m.playingAt(m.at60s, 9900&)
+      syncPlayPlayer.told(seeking, "seek", "hold", m.at100s, 9950&)
+      m.assertEqual(m.kindOf(m.decide(seeking, m.groupWith(m.cmd("Stop", 9000&, 0&)), 10000&)), "stop")
+    end function
+
+    @it("the time to look again is the node's own deadline while it is in flight")
+    function _()
+      pausing = m.playingAt(m.at60s, 9900&)
+      syncPlayPlayer.told(pausing, "pause", "group", invalid, 9950&)
+      m.assertEqual(m.decide(pausing, m.pausedGroup(), 10000&).wakeAtMs, 9950& + syncPlayPlayback.PAUSE_CONFIRM_MS)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a paused group")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a playing node is paused for the group, with the OSD")
+    function _()
+      result = m.decide(m.playingAt(m.at60s, 10000&), m.pausedGroup(), 10000&)
+      m.assertEqual(m.kindOf(result), "pause")
+      m.assertEqual(result.action.owner, "group")
+      m.assertTrue(result.action.showOsd)
+    end function
+
+    @it("the viewer's own unanswered pause pauses the node as theirs")
+    function _()
+      group = m.playingLine()
+      syncPlayGroup.viewerAsked(group, "pause", invalid, 9990&)
+      result = m.decide(m.playingAt(m.at65s, 10000&), group, 10000&)
+      m.assertEqual(m.kindOf(result), "pause")
+      m.assertEqual(result.action.owner, "viewer")
+    end function
+
+    @it("a node the group or the viewer already paused is left alone")
+    function _()
+      m.assertEqual(m.kindOf(m.decide(m.pausedAt(m.at60s, "group"), m.pausedGroup(), 10000&)), "")
+      m.assertEqual(m.kindOf(m.decide(m.pausedAt(m.at60s, "viewer"), m.pausedGroup(), 10000&)), "")
+    end function
+
+    @it("a node a hold or a wait paused becomes the group's pause, with the OSD and no second write")
+    function _()
+      for each owner in ["hold", "wait"]
+        player = m.pausedAt(m.at60s, owner)
+        group = m.pausedGroup()
+        result = m.decide(player, group, 10000&)
+        m.assertEqual(m.kindOf(result), "pause")
+        m.assertTrue(result.action.showOsd)
+        syncPlayConverge.applied(player, group, result.action, 10000&)
+        m.assertEqual(player.pauseOwner, "group")
+        m.assertEqual(player.activity, "paused")
+        m.assertEqual(m.kindOf(m.decide(player, group, 10001&)), "")
+      end for
+    end function
+
+    @it("a stalling or stalled node is paused too")
+    function _()
+      player = m.playingAt(m.at60s, 9000&)
+      syncPlayPlayer.nodeState(player, "buffering", 9500&)
+      m.assertEqual(m.kindOf(m.decide(player, m.pausedGroup(), 10000&)), "pause")
+      syncPlayPlayer.advance(player, 9500& + syncPlayPlayback.STALL_MS)
+      m.assertEqual(player.activity, "stalled")
+      m.assertEqual(m.kindOf(m.decide(player, m.pausedGroup(), 10600&)), "pause")
+    end function
+
+    @it("a node that plays on through its pause writes halts the member")
+    function _()
+      player = m.playingAt(m.at60s, 10000&)
+      player.pauseWrites = syncPlayPlayback.PAUSE_ATTEMPTS
+      m.assertEqual(m.kindOf(m.decide(player, m.pausedGroup(), 10000&)), "halt")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a group waiting at a Seek's point")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a node elsewhere seeks to the point, then tells the server it is buffering")
+    function _()
+      player = m.playingAt(m.at60s, 10000&)
+      group = m.seekGroup()
+      result = m.decide(player, group, 10000&)
+      m.assertEqual(m.kindOf(result), "seek")
+      m.assertEqual(result.action.targetTicks, m.at100s)
+      m.assertEqual(result.action.owner, "group")
+      syncPlayConverge.applied(player, group, result.action, 10000&)
+      m.assertEqual(group.pointSeeks, 1)
+      report = m.decide(player, group, 10001&)
+      m.assertEqual(m.kindOf(report), "report")
+      m.assertEqual(report.action.what, "buffering")
+      m.assertEqual(report.action.heldFor, "seek")
+      syncPlayConverge.applied(player, group, report.action, 10001&)
+      m.assertEqual(m.kindOf(m.decide(player, group, 10002&)), "")
+    end function
+
+    @it("a node at the point is paused with no OSD, then reports Ready where it stopped")
+    function _()
+      player = m.playingAt(m.at100s + 100 * m.oneMs, 10000&)
+      group = m.seekGroup()
+      result = m.decide(player, group, 10000&)
+      m.assertEqual(m.kindOf(result), "pause")
+      m.assertEqual(result.action.owner, "wait")
+      m.assertFalse(result.action.showOsd)
+      syncPlayConverge.applied(player, group, result.action, 10000&)
+      syncPlayPlayer.nodeState(player, "paused", 10030&)
+      ready = m.decide(player, group, 10030&)
+      m.assertEqual(m.kindOf(ready), "report")
+      m.assertEqual(ready.action.what, "ready")
+      m.assertFalse(ready.action.isPlaying)
+      m.assertEqual(ready.action.positionTicks, m.at100s + 100 * m.oneMs)
+    end function
+
+    @it("a paused node elsewhere seeks to the point")
+    function _()
+      m.assertEqual(m.kindOf(m.decide(m.pausedAt(m.at60s, "group"), m.seekGroup(), 10000&)), "seek")
+    end function
+
+    @it("a node still off the point after its seeks reports the point, and seeks no more")
+    function _()
+      player = m.pausedAt(m.at100s - 948 * m.oneMs, "wait")
+      group = m.seekGroup()
+      group.pointSeeks = 2
+      result = m.decide(player, group, 10000&)
+      m.assertEqual(m.kindOf(result), "report")
+      m.assertEqual(result.action.what, "ready")
+      m.assertEqual(result.action.positionTicks, m.at100s)
+    end function
+
+    @it("a seek that landed with no reading counts as at the point")
+    function _()
+      player = m.playingAt(m.at60s, 9000&)
+      syncPlayPlayer.told(player, "seek", "group", m.at100s, 9100&)
+      syncPlayPlayer.nodeState(player, "playing", 9600&)
+      syncPlayPlayer.advance(player, 9600& + syncPlayPlayer.ARRIVAL_READING_MS)
+      group = m.seekGroup()
+      group.pointSeeks = 1
+      group.saidBuffering = true
+      result = m.decide(player, group, 10000&)
+      m.assertEqual(m.kindOf(result), "pause")
+      m.assertEqual(result.action.owner, "wait")
+    end function
+
+    @it("a Ready in flight is not sent twice, and a failed one goes again")
+    function _()
+      player = m.pausedAt(m.at100s, "wait")
+      group = m.seekGroup()
+      ready = m.decide(player, group, 10000&)
+      syncPlayConverge.applied(player, group, ready.action, 10000&)
+      waiting = m.decide(player, group, 10100&)
+      m.assertEqual(m.kindOf(waiting), "")
+      m.assertEqual(waiting.wakeAtMs, 13000&)
+      syncPlayGroup.requestFailed(group, "report", "ready")
+      again = m.decide(player, group, 10200&)
+      m.assertEqual(m.kindOf(again), "report")
+      m.assertEqual(again.action.what, "ready")
+    end function
+
+    @it("a Ready that keeps failing is told to the viewer once")
+    function _()
+      player = m.pausedAt(m.at100s, "wait")
+      group = m.seekGroup()
+      policy = syncPlayConverge.defaultPolicy()
+      for attempt = 1 to policy.requestTries
+        syncPlayGroup.requestSent(group, "report", "ready", 10000&)
+        syncPlayGroup.requestFailed(group, "report", "ready")
+      end for
+      told = m.decide(player, group, 10500&)
+      m.assertEqual(m.kindOf(told), "notice")
+      m.assertEqual(told.action.what, "unreachable")
+      syncPlayConverge.applied(player, group, told.action, 10500&)
+      m.assertEqual(m.kindOf(m.decide(player, group, 10600&)), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("this member's own load and stall")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a load tells the server it is buffering once, pauses at its first frame and reports Ready")
+    function _()
+      player = syncPlayPlayer.newPlayer()
+      group = syncPlayGroup.newGroup()
+      syncPlayGroup.itemChanged(group, "p-1", 1000&)
+      syncPlayPlayer.mounted(player, m.at60s, 9000&)
+      buffering = m.decide(player, group, 9000&)
+      m.assertEqual(m.kindOf(buffering), "report")
+      m.assertEqual(buffering.action.what, "buffering")
+      m.assertEqual(buffering.action.heldFor, "load")
+      m.assertEqual(buffering.action.positionTicks, m.at60s)
+      syncPlayConverge.applied(player, group, buffering.action, 9000&)
+      syncPlayGroup.requestArrived(group, "report", "buffering")
+      m.assertEqual(m.kindOf(m.decide(player, group, 9100&)), "")
+      syncPlayPlayer.nodeState(player, "playing", 9800&)
+      m.assertEqual(m.kindOf(m.decide(player, group, 9800&)), "")
+      ' The first reading is far below the load's start: a node can read 0 at its first frame.
+      syncPlayPlayer.reading(player, 0&, 9820&)
+      pause = m.decide(player, group, 9820&)
+      m.assertEqual(m.kindOf(pause), "pause")
+      m.assertEqual(pause.action.owner, "wait")
+      syncPlayConverge.applied(player, group, pause.action, 9820&)
+      syncPlayPlayer.nodeState(player, "paused", 9850&)
+      ready = m.decide(player, group, 9850&)
+      m.assertEqual(ready.action.what, "ready")
+      m.assertEqual(ready.action.positionTicks, m.at60s)
+      m.assertFalse(ready.action.isPlaying)
+    end function
+
+    @it("a stall past the bar tells the server once, and the node that recovers reports Ready as it plays")
+    function _()
+      player = m.playingAt(m.at65s, 10000&)
+      group = m.playingLine()
+      syncPlayPlayer.nodeState(player, "buffering", 10100&)
+      m.assertEqual(m.kindOf(m.decide(player, group, 10200&)), "")
+      syncPlayPlayer.advance(player, 10100& + syncPlayPlayback.STALL_MS)
+      buffering = m.decide(player, group, 11100&)
+      m.assertEqual(buffering.action.what, "buffering")
+      m.assertEqual(buffering.action.heldFor, "stall")
+      syncPlayConverge.applied(player, group, buffering.action, 11100&)
+      syncPlayGroup.requestArrived(group, "report", "buffering")
+      m.assertEqual(m.kindOf(m.decide(player, group, 11200&)), "")
+      syncPlayPlayer.nodeState(player, "playing", 12000&)
+      ' No position yet: the Ready waits for a reading.
+      m.assertEqual(m.kindOf(m.decide(player, group, 12000&)), "")
+      syncPlayPlayer.reading(player, m.at65s + 500 * m.oneMs, 12100&)
+      ready = m.decide(player, group, 12100&)
+      m.assertEqual(m.kindOf(ready), "report")
+      m.assertEqual(ready.action.what, "ready")
+      m.assertTrue(ready.action.isPlaying)
+      m.assertEqual(ready.action.positionTicks, m.at65s + 500 * m.oneMs)
+    end function
+
+    @it("a wait this member ended with no command asks where the group is")
+    function _()
+      player = m.playingAt(m.at65s, 12100&)
+      group = m.playingLine()
+      group.heldFor = "stall"
+      syncPlayGroup.requestSent(group, "report", "buffering", 11100&)
+      syncPlayGroup.requestSent(group, "report", "ready", 12100&)
+      syncPlayGroup.requestArrived(group, "report", "ready")
+      syncPlayGroup.stateChanged(group, "Waiting", "Playing", m.estimator(), 12200&)
+      where = m.decide(player, group, 12200&)
+      m.assertEqual(m.kindOf(where), "report")
+      m.assertEqual(where.action.what, "ready")
+      m.assertTrue(where.action.where)
+      m.assertTrue(where.action.isPlaying)
+      syncPlayConverge.applied(player, group, where.action, 12200&)
+      syncPlayGroup.requestArrived(group, "report", "ready")
+      quiet = m.decide(player, group, 12300&)
+      m.assertEqual(m.kindOf(quiet), "")
+      m.assertEqual(quiet.wakeAtMs, 12200& + 3000&)
+    end function
+
+    @it("nothing is asked with no clock estimate")
+    function _()
+      context = m.ctx()
+      context.estimator = syncPlayOffset.newEstimator()
+      result = syncPlayConverge.decide(m.playingAt(m.at65s, 10000&), m.groupWith(invalid), context, syncPlayConverge.defaultPolicy(), 10000&)
+      m.assertEqual(m.kindOf(result), "")
+    end function
+
+    @it("a hold with nothing saying where the group is resumes, so the picture is not left frozen")
+    function _()
+      group = m.groupWith(invalid)
+      group.whereAskedAtMs = 9999&
+      m.assertEqual(m.kindOf(m.decide(m.pausedAt(m.at65s, "hold"), group, 10000&)), "resume")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a playing group and a playing node")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a node inside the bars is left alone")
+    function _()
+      m.assertEqual(m.kindOf(m.decide(m.playingAt(m.at65s, 10000&), m.playingLine(), 10000&)), "")
+      m.assertEqual(m.kindOf(m.decide(m.playingAt(m.at65s + 140 * m.oneMs, 10000&), m.playingLine(), 10000&)), "")
+      m.assertEqual(m.kindOf(m.decide(m.playingAt(m.at65s - 390 * m.oneMs, 10000&), m.playingLine(), 10000&)), "")
+    end function
+
+    @it("a node ahead past the bar holds, with no OSD")
+    function _()
+      result = m.decide(m.playingAt(m.at65s + 200 * m.oneMs, 10000&), m.playingLine(), 10000&)
+      m.assertEqual(m.kindOf(result), "pause")
+      m.assertEqual(result.action.owner, "hold")
+      m.assertFalse(result.action.showOsd)
+    end function
+
+    @it("a node behind past the bar catches up: one seek ahead of the group by the lead")
+    function _()
+      player = m.playingAt(m.at65s - 500 * m.oneMs, 10000&)
+      group = m.playingLine()
+      result = m.decide(player, group, 10000&)
+      m.assertEqual(m.kindOf(result), "seek")
+      m.assertEqual(result.action.owner, "hold")
+      ' The group at device 12000 (the 2 s lead): 67 s.
+      m.assertEqual(result.action.targetTicks, 670000000&)
+      syncPlayConverge.applied(player, group, result.action, 10000&)
+      m.assertEqual(group.catchUps, 1)
+      m.assertEqual(player.activity, "seeking")
+    end function
+
+    @it("the lead grows with how long the last seek took")
+    function _()
+      player = m.playingAt(m.at65s - 500 * m.oneMs, 10000&)
+      player.lastSeekMs = 2600&
+      result = m.decide(player, m.playingLine(), 10000&)
+      ' 2600 + 500 ms on from 65 s.
+      m.assertEqual(result.action.targetTicks, m.at65s + 3100 * m.oneMs)
+    end function
+
+    @it("a drift is judged only on a measured position")
+    function _()
+      player = m.pausedAt(m.at65s - 900 * m.oneMs, "group")
+      syncPlayPlayer.told(player, "resume", "group", invalid, 9950&)
+      syncPlayPlayer.nodeState(player, "playing", 9960&)
+      m.assertFalse(player.clock.measured)
+      m.assertEqual(m.kindOf(m.decide(player, m.playingLine(), 10000&)), "")
+    end function
+
+    @it("a catch-up that landed ahead holds, and resumes as the group arrives")
+    function _()
+      player = m.playingAt(m.at65s - 500 * m.oneMs, 10000&)
+      group = m.playingLine()
+      seek = m.decide(player, group, 10000&)
+      syncPlayConverge.applied(player, group, seek.action, 10000&)
+      syncPlayPlayer.nodeState(player, "buffering", 10080&)
+      syncPlayPlayer.nodeState(player, "playing", 10600&)
+      ' Landed 20 ms past the target, 1.42 s ahead of the group at 10620.
+      syncPlayPlayer.reading(player, 670000000& + 20 * m.oneMs, 10620&)
+      hold = m.decide(player, group, 10620&)
+      m.assertEqual(m.kindOf(hold), "pause")
+      m.assertEqual(hold.action.owner, "hold")
+      syncPlayConverge.applied(player, group, hold.action, 10620&)
+      syncPlayPlayer.nodeState(player, "paused", 10650&)
+      waiting = m.decide(player, group, 10650&)
+      m.assertEqual(m.kindOf(waiting), "")
+      ' The group reaches 67.02 s at device 12020.
+      m.assertEqual(waiting.wakeAtMs, 12020&)
+      m.assertEqual(m.kindOf(m.decide(player, group, 12020&)), "resume")
+    end function
+
+    @it("a catch-up that landed behind runs once more, then asks the group to wait, once")
+    function _()
+      player = m.playingAt(m.at65s - 2000 * m.oneMs, 10000&)
+      group = m.playingLine()
+      group.catchUps = 1
+      second = m.decide(player, group, 10000&)
+      m.assertEqual(m.kindOf(second), "seek")
+      group.catchUps = 2
+      ask = m.decide(player, group, 10000&)
+      m.assertEqual(m.kindOf(ask), "ask")
+      m.assertEqual(ask.action.what, "seek")
+      m.assertTrue(ask.action.waitOnMe)
+      m.assertEqual(ask.action.positionTicks, m.at65s - 2000 * m.oneMs)
+      syncPlayConverge.applied(player, group, ask.action, 10000&)
+      syncPlayGroup.requestArrived(group, "ask", "seek")
+      m.assertTrue(group.askedWait)
+      m.assertEqual(m.kindOf(m.decide(player, group, 10001&)), "")
+    end function
+
+    @it("a seek the node gave up asks the group to wait in place of another seek")
+    function _()
+      player = m.playingAt(m.at65s - 2000 * m.oneMs, 10000&)
+      player.lastSeekGaveUp = true
+      m.assertEqual(m.kindOf(m.decide(player, m.playingLine(), 10000&)), "ask")
+    end function
+
+    @it("a catch-up that would run off the item is not written")
+    function _()
+      context = m.ctx()
+      context.durationSeconds = 66
+      result = syncPlayConverge.decide(m.playingAt(m.at65s - 500 * m.oneMs, 10000&), m.playingLine(), context, syncPlayConverge.defaultPolicy(), 10000&)
+      m.assertEqual(m.kindOf(result), "")
+    end function
+
+    @it("after a time offset pick the bar is tighter either way, once")
+    function _()
+      group = m.playingLine()
+      syncPlayGroup.offsetPicked(group)
+      ahead = m.decide(m.playingAt(m.at65s + 80 * m.oneMs, 10000&), group, 10000&)
+      m.assertEqual(m.kindOf(ahead), "pause")
+      behind = m.decide(m.playingAt(m.at65s - 80 * m.oneMs, 10000&), group, 10000&)
+      m.assertEqual(m.kindOf(behind), "seek")
+      m.assertTrue(behind.action.byPick)
+      inside = m.playingAt(m.at65s + 30 * m.oneMs, 10000&)
+      settled = m.decide(inside, group, 10000&)
+      m.assertEqual(m.kindOf(settled), "settled")
+      syncPlayConverge.applied(inside, group, settled.action, 10000&)
+      m.assertFalse(group.pickPending)
+      m.assertEqual(m.kindOf(m.decide(m.playingAt(m.at65s + 80 * m.oneMs, 10000&), group, 10000&)), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a playing group and a paused node")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a node ahead waits and resumes as the group reaches it, with no seek")
+    function _()
+      player = m.pausedAt(m.at65s + 300 * m.oneMs, "group")
+      waiting = m.decide(player, m.playingLine(), 10000&)
+      m.assertEqual(m.kindOf(waiting), "")
+      m.assertEqual(waiting.wakeAtMs, 10300&)
+      m.assertEqual(m.kindOf(m.decide(player, m.playingLine(), 10300&)), "resume")
+    end function
+
+    @it("a node a little behind resumes now")
+    function _()
+      m.assertEqual(m.kindOf(m.decide(m.pausedAt(m.at65s - 200 * m.oneMs, "group"), m.playingLine(), 10000&)), "resume")
+    end function
+
+    @it("a node further behind catches up")
+    function _()
+      result = m.decide(m.pausedAt(m.at65s - 1000 * m.oneMs, "group"), m.playingLine(), 10000&)
+      m.assertEqual(m.kindOf(result), "seek")
+      m.assertTrue(result.action.catchUp)
+    end function
+
+    @it("a node too far ahead to wait for seeks back to the group")
+    function _()
+      result = m.decide(m.pausedAt(m.at65s + 6000 * m.oneMs, "group"), m.playingLine(), 10000&)
+      m.assertEqual(m.kindOf(result), "seek")
+    end function
+
+    @it("a node stopped at no known position resumes now, and is never seeked on a guess")
+    function _()
+      player = m.playingAt(m.at60s, 9000&)
+      syncPlayPlayer.nodeState(player, "paused", 9500&)
+      m.assertEqual(m.kindOf(m.decide(player, m.playingLine(), 10000&)), "resume")
+    end function
+
+    @it("with the budget spent and the wait asked, a paused node still resumes")
+    function _()
+      group = m.playingLine()
+      group.catchUps = 2
+      group.askedWait = true
+      m.assertEqual(m.kindOf(m.decide(m.pausedAt(m.at65s - 1000 * m.oneMs, "group"), group, 10000&)), "resume")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a group about to play")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a node stopped at the Unpause's position resumes on its time")
+    function _()
+      ' Server 11500 is device 10500.
+      group = m.groupWith(m.cmd("Unpause", 11500&, m.at60s))
+      player = m.pausedAt(m.at60s, "group")
+      waiting = m.decide(player, group, 10000&)
+      m.assertEqual(m.kindOf(waiting), "")
+      m.assertEqual(waiting.wakeAtMs, 10500&)
+      m.assertEqual(m.kindOf(m.decide(player, group, 10500&)), "resume")
+    end function
+
+    @it("a node stopped ahead resumes later by its lead, one behind earlier by its lag")
+    function _()
+      group = m.groupWith(m.cmd("Unpause", 11500&, m.at60s))
+      m.assertEqual(m.decide(m.pausedAt(m.at60s + 100 * m.oneMs, "group"), group, 10000&).wakeAtMs, 10600&)
+      m.assertEqual(m.decide(m.pausedAt(m.at60s - 100 * m.oneMs, "group"), group, 10000&).wakeAtMs, 10400&)
+    end function
+
+    @it("a node stopped at no known position resumes on the command's time")
+    function _()
+      group = m.groupWith(m.cmd("Unpause", 11500&, m.at60s))
+      player = m.playingAt(m.at60s, 9000&)
+      syncPlayPlayer.nodeState(player, "paused", 9500&)
+      m.assertEqual(m.decide(player, group, 10000&).wakeAtMs, 10500&)
+      m.assertEqual(m.kindOf(m.decide(player, group, 10500&)), "resume")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the item finishing and the viewer's asks")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a finished item asks the group for the next one, once")
+    function _()
+      player = m.playingAt(m.at65s, 10000&)
+      group = m.playingLine()
+      syncPlayPlayer.finished(player, 10100&)
+      ask = m.decide(player, group, 10100&)
+      m.assertEqual(m.kindOf(ask), "ask")
+      m.assertEqual(ask.action.what, "next")
+      syncPlayConverge.applied(player, group, ask.action, 10100&)
+      m.assertEqual(m.kindOf(m.decide(player, group, 10200&)), "")
+      syncPlayGroup.requestArrived(group, "ask", "next")
+      m.assertEqual(m.kindOf(m.decide(player, group, 10300&)), "")
+    end function
+
+    @it("on the playlist's last item the member leaves the player once it has asked")
+    function _()
+      player = m.playingAt(m.at65s, 10000&)
+      group = m.playingLine()
+      syncPlayPlayer.finished(player, 10100&)
+      ask = m.decide(player, group, 10100&)
+      syncPlayConverge.applied(player, group, ask.action, 10100&)
+      syncPlayGroup.requestArrived(group, "ask", "next")
+      context = m.ctx()
+      context.isLastItem = true
+      m.assertEqual(m.kindOf(syncPlayConverge.decide(player, group, context, syncPlayConverge.defaultPolicy(), 10300&)), "leave")
+    end function
+
+    @it("the viewer's pause that failed is asked again while it is still their ask")
+    function _()
+      player = m.pausedAt(m.at65s, "viewer")
+      group = m.playingLine()
+      syncPlayGroup.viewerAsked(group, "pause", invalid, 9900&)
+      syncPlayGroup.requestSent(group, "ask", "pause", 9900&)
+      syncPlayGroup.requestFailed(group, "ask", "pause")
+      again = m.decide(player, group, 10000&)
+      m.assertEqual(m.kindOf(again), "ask")
+      m.assertEqual(again.action.what, "pause")
+      ' A command answered it meanwhile: nothing is repeated.
+      syncPlayGroup.command(group, m.cmd("Pause", 10900&, m.at65s))
+      m.assertEqual(m.kindOf(m.decide(player, group, 10100&)), "")
+    end function
+
+    @it("the viewer's ask that keeps failing is told to them once")
+    function _()
+      player = m.pausedAt(m.at65s, "viewer")
+      group = m.playingLine()
+      syncPlayGroup.viewerAsked(group, "pause", invalid, 9900&)
+      for attempt = 1 to syncPlayConverge.defaultPolicy().requestTries
+        syncPlayGroup.requestSent(group, "ask", "pause", 9900&)
+        syncPlayGroup.requestFailed(group, "ask", "pause")
+      end for
+      told = m.decide(player, group, 10000&)
+      m.assertEqual(m.kindOf(told), "notice")
+      syncPlayConverge.applied(player, group, told.action, 10000&)
+      m.assertEqual(m.kindOf(m.decide(player, group, 10100&)), "")
+    end function
+
+  end class
+
+end namespace

@@ -1,0 +1,305 @@
+import "pkg:/source/syncplay/syncPlayGroup.bs"
+import "pkg:/source/syncplay/syncPlayOffset.bs"
+import "pkg:/source/syncplay/syncPlayPlayback.bs"
+import "pkg:/source/syncplay/syncPlayTime.bs"
+
+namespace tests
+
+  ' The group model against a fixed offset: the device reads 1000 ms behind the server, with a
+  ' 10 ms round trip. Device time 5000 is server time 6000.
+  @suite("syncPlayGroup: what the group wants and what the server holds")
+  class SyncPlayGroupTests extends tests.BaseTestSuite
+
+    private at60s = 600000000&
+
+    private function estimator() as object
+      est = syncPlayOffset.newEstimator()
+      syncPlayOffset.addRound(est, 1000&, 2005&, 2005&, 1010&)
+      return est
+    end function
+
+    private function cmd(name as string, whenMs as longinteger, positionTicks as longinteger) as object
+      return { kind: "syncplaycommand", command: name, whenMs: whenMs, emittedAtMs: whenMs - 100, positionTicks: positionTicks, playlistItemId: "p-1", groupId: "g-1" }
+    end function
+
+    ' A group on item p-1 since server time 1000.
+    private function groupOnItem() as object
+      group = syncPlayGroup.newGroup()
+      syncPlayGroup.itemChanged(group, "p-1", 1000&)
+      return group
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("wants()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("nothing is known before any command, or with no clock estimate")
+    function _()
+      group = m.groupOnItem()
+      m.assertEqual(syncPlayGroup.wants(group, m.estimator(), 5000&).mode, "unknown")
+      syncPlayGroup.command(group, m.cmd("Pause", 5000&, m.at60s))
+      m.assertEqual(syncPlayGroup.wants(group, syncPlayOffset.newEstimator(), 5000&).mode, "unknown")
+    end function
+
+    @it("a Pause is paused at its position, a Stop is stopped")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.command(group, m.cmd("Pause", 5000&, m.at60s))
+      want = syncPlayGroup.wants(group, m.estimator(), 5000&)
+      m.assertEqual(want.mode, "paused")
+      m.assertEqual(want.pointTicks, m.at60s)
+      m.assertInvalid(want.startsAtMs)
+      syncPlayGroup.command(group, m.cmd("Stop", 5500&, 0&))
+      m.assertEqual(syncPlayGroup.wants(group, m.estimator(), 5000&).mode, "stopped")
+    end function
+
+    @it("an Unpause for a future time is paused until then, with the time it starts")
+    function _()
+      group = m.groupOnItem()
+      ' Server 6500 is device 5500.
+      syncPlayGroup.command(group, m.cmd("Unpause", 6500&, m.at60s))
+      want = syncPlayGroup.wants(group, m.estimator(), 5000&)
+      m.assertEqual(want.mode, "paused")
+      m.assertEqual(want.pointTicks, m.at60s)
+      m.assertEqual(want.startsAtMs, 5500&)
+    end function
+
+    @it("an Unpause whose time has come plays along its line")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.command(group, m.cmd("Unpause", 6500&, m.at60s))
+      want = syncPlayGroup.wants(group, m.estimator(), 5500&)
+      m.assertEqual(want.mode, "playing")
+      m.assertEqual(want.positionTicks, m.at60s)
+      later = syncPlayGroup.wants(group, m.estimator(), 5800&)
+      m.assertEqual(later.positionTicks, m.at60s + 3000000&)
+    end function
+
+    @it("a Seek is waiting at its position, and the server waits for this member's Ready")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.requestSent(group, "report", "ready", 4000&)
+      syncPlayGroup.requestArrived(group, "report", "ready")
+      m.assertFalse(group.owesReady)
+      syncPlayGroup.command(group, m.cmd("Seek", 5000&, m.at60s))
+      want = syncPlayGroup.wants(group, m.estimator(), 5000&)
+      m.assertEqual(want.mode, "waiting")
+      m.assertEqual(want.pointTicks, m.at60s)
+      m.assertTrue(want.owesReady)
+    end function
+
+    @it("a command for another item, or from before the item last changed, says nothing")
+    function _()
+      group = m.groupOnItem()
+      other = m.cmd("Pause", 5000&, m.at60s)
+      other.playlistItemId = "p-0"
+      syncPlayGroup.command(group, other)
+      m.assertEqual(syncPlayGroup.wants(group, m.estimator(), 5000&).mode, "unknown")
+      syncPlayGroup.command(group, m.cmd("Pause", 5000&, m.at60s))
+      ' A same-item restart at server 5500: the Pause emitted at 4900 is the last play's.
+      syncPlayGroup.itemChanged(group, "p-1", 5500&)
+      m.assertEqual(syncPlayGroup.wants(group, m.estimator(), 5000&).mode, "unknown")
+    end function
+
+    @it("a new item makes the server wait for this member's Ready")
+    function _()
+      group = syncPlayGroup.newGroup()
+      m.assertFalse(group.owesReady)
+      syncPlayGroup.itemChanged(group, "p-1", 1000&)
+      m.assertTrue(group.owesReady)
+      syncPlayGroup.itemChanged(group, "", 2000&)
+      m.assertFalse(group.owesReady)
+    end function
+
+    @it("reachesAtMs gives when a playing group reaches a position")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.command(group, m.cmd("Unpause", 6500&, m.at60s))
+      ' 2 s further on: server 8500, device 7500.
+      m.assertEqual(syncPlayGroup.reachesAtMs(group, m.estimator(), m.at60s + 20000000&), 7500&)
+      syncPlayGroup.command(group, m.cmd("Pause", 7000&, m.at60s))
+      m.assertInvalid(syncPlayGroup.reachesAtMs(group, m.estimator(), m.at60s))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("this member's Buffering")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a Buffering sent holds the group: waiting, at no known point, with a Ready owed")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.command(group, m.cmd("Unpause", 6500&, m.at60s))
+      syncPlayGroup.requestSent(group, "report", "buffering", 7000&)
+      want = syncPlayGroup.wants(group, m.estimator(), 7100&)
+      m.assertEqual(want.mode, "waiting")
+      m.assertInvalid(want.pointTicks)
+      m.assertTrue(want.owesReady)
+    end function
+
+    @it("the Waiting state update anchors where the server paused the group")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.command(group, m.cmd("Unpause", 6500&, m.at60s))
+      syncPlayGroup.requestSent(group, "report", "buffering", 7000&)
+      ' Arrives at device 7405: handled at 7400 (half the 10 ms round trip back), server 8400,
+      ' 1900 ms along the line.
+      syncPlayGroup.stateChanged(group, "Playing", "Waiting", m.estimator(), 7405&)
+      want = syncPlayGroup.wants(group, m.estimator(), 7500&)
+      m.assertEqual(want.mode, "waiting")
+      m.assertEqual(want.pointTicks, m.at60s + 19000000&)
+    end function
+
+    @it("a Waiting update with no Buffering of this member's anchors nothing")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.command(group, m.cmd("Unpause", 6500&, m.at60s))
+      syncPlayGroup.stateChanged(group, "Playing", "Waiting", m.estimator(), 7405&)
+      m.assertInvalid(group.waitPointTicks)
+      m.assertEqual(syncPlayGroup.wants(group, m.estimator(), 7500&).mode, "playing")
+    end function
+
+    @it("a command ends the hold and says where the group is again")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.command(group, m.cmd("Unpause", 6500&, m.at60s))
+      syncPlayGroup.requestSent(group, "report", "buffering", 7000&)
+      syncPlayGroup.stateChanged(group, "Playing", "Waiting", m.estimator(), 7405&)
+      syncPlayGroup.command(group, m.cmd("Unpause", 9000&, m.at60s + 19000000&))
+      m.assertFalse(group.heldByMe)
+      want = syncPlayGroup.wants(group, m.estimator(), 8000&)
+      m.assertEqual(want.mode, "playing")
+      m.assertEqual(want.positionTicks, m.at60s + 19000000&)
+    end function
+
+    @it("a wait that ends with no command leaves the group unknown, never on the old line")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.command(group, m.cmd("Unpause", 6500&, m.at60s))
+      syncPlayGroup.requestSent(group, "report", "buffering", 7000&)
+      syncPlayGroup.stateChanged(group, "Playing", "Waiting", m.estimator(), 7405&)
+      syncPlayGroup.requestSent(group, "report", "ready", 9000&)
+      syncPlayGroup.requestArrived(group, "report", "ready")
+      m.assertFalse(group.owesReady)
+      syncPlayGroup.stateChanged(group, "Waiting", "Playing", m.estimator(), 9100&)
+      m.assertEqual(syncPlayGroup.wants(group, m.estimator(), 9200&).mode, "unknown")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the viewer's asks and the budgets")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the viewer's pause is paused for this member until a command answers it")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.command(group, m.cmd("Unpause", 6500&, m.at60s))
+      syncPlayGroup.viewerAsked(group, "pause", invalid, 7000&)
+      want = syncPlayGroup.wants(group, m.estimator(), 7100&)
+      m.assertEqual(want.mode, "paused")
+      m.assertTrue(want.byViewer)
+      ' A state update is not an answer: the pause stands.
+      syncPlayGroup.stateChanged(group, "Playing", "Paused", m.estimator(), 7200&)
+      m.assertTrue(syncPlayGroup.wants(group, m.estimator(), 7300&).byViewer)
+      syncPlayGroup.command(group, m.cmd("Pause", 8100&, m.at60s + 5000000&))
+      answered = syncPlayGroup.wants(group, m.estimator(), 7400&)
+      m.assertFalse(answered.byViewer)
+      m.assertEqual(answered.pointTicks, m.at60s + 5000000&)
+    end function
+
+    @it("the viewer's play or seek does not pause the member")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.command(group, m.cmd("Pause", 6000&, m.at60s))
+      syncPlayGroup.viewerAsked(group, "unpause", invalid, 7000&)
+      m.assertFalse(syncPlayGroup.wants(group, m.estimator(), 7100&).byViewer)
+    end function
+
+    @it("a command refills the catch-up budget, and only a Pause lets the member ask to wait again")
+    function _()
+      group = m.groupOnItem()
+      group.catchUps = 2
+      group.askedWait = true
+      syncPlayGroup.command(group, m.cmd("Unpause", 6500&, m.at60s))
+      m.assertEqual(group.catchUps, 0)
+      m.assertTrue(group.askedWait)
+      syncPlayGroup.command(group, m.cmd("Pause", 7000&, m.at60s))
+      m.assertFalse(group.askedWait)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("requests")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a request is in flight from the send until its result")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.requestSent(group, "ask", "pause", 5000&)
+      m.assertEqual(group.ask.state, "flight")
+      m.assertEqual(group.ask.tries, 1)
+      syncPlayGroup.requestArrived(group, "ask", "pause")
+      m.assertEqual(group.ask.state, "idle")
+      m.assertEqual(group.ask.tries, 0)
+    end function
+
+    @it("a failed request counts its tries while the same thing is sent again")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.requestSent(group, "report", "ready", 5000&)
+      syncPlayGroup.requestFailed(group, "report", "ready")
+      m.assertEqual(group.report.state, "failed")
+      m.assertTrue(group.owesReady)
+      syncPlayGroup.requestSent(group, "report", "ready", 5600&)
+      m.assertEqual(group.report.tries, 2)
+      syncPlayGroup.requestSent(group, "report", "buffering", 5700&)
+      m.assertEqual(group.report.tries, 1)
+    end function
+
+    @it("a Ready that arrives is no longer owed; one that fails still is")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.requestSent(group, "report", "ready", 5000&)
+      m.assertTrue(group.owesReady)
+      syncPlayGroup.requestArrived(group, "report", "ready")
+      m.assertFalse(group.owesReady)
+    end function
+
+    @it("a result for a request that was replaced changes nothing")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.requestSent(group, "report", "buffering", 5000&)
+      syncPlayGroup.requestSent(group, "report", "ready", 5100&)
+      syncPlayGroup.requestFailed(group, "report", "buffering")
+      m.assertEqual(group.report.state, "flight")
+      syncPlayGroup.requestArrived(group, "report", "buffering")
+      m.assertEqual(group.report.state, "flight")
+    end function
+
+    @it("a request with no result past the limit has failed")
+    function _()
+      group = m.groupOnItem()
+      m.assertInvalid(syncPlayGroup.nextDeadlineMs(group, 2000&))
+      syncPlayGroup.requestSent(group, "ask", "pause", 5000&)
+      syncPlayGroup.requestSent(group, "report", "ready", 5300&)
+      m.assertEqual(syncPlayGroup.nextDeadlineMs(group, 2000&), 7000&)
+      syncPlayGroup.advance(group, 2000&, 6999&)
+      m.assertEqual(group.ask.state, "flight")
+      syncPlayGroup.advance(group, 2000&, 7000&)
+      m.assertEqual(group.ask.state, "failed")
+      m.assertEqual(group.report.state, "flight")
+      m.assertEqual(syncPlayGroup.nextDeadlineMs(group, 2000&), 7300&)
+    end function
+
+    @it("reset forgets the last group's playback")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.command(group, m.cmd("Unpause", 6500&, m.at60s))
+      syncPlayGroup.requestSent(group, "report", "buffering", 7000&)
+      syncPlayGroup.reset(group)
+      m.assertInvalid(group.command)
+      m.assertEqual(group.playingItemId, "")
+      m.assertFalse(group.heldByMe)
+      m.assertEqual(group.report.state, "idle")
+    end function
+
+  end class
+
+end namespace
