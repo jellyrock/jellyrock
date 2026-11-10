@@ -110,4 +110,19 @@ describe('bsconfig inheritance', () => {
       expect(extendsChain(name).filter((file) => !deviceFilter.test(file))).toEqual([]);
     },
   );
+
+  // The coverage build puts a coverage call on every line, so a `measurement`
+  // suite (a timing run) goes silent past the runner's no-output limit there and
+  // stalls the whole run. It still runs `migration` and `registry` suites.
+  describe('bsconfig-tests-complete.json rooibos tags', () => {
+    const tags = load('bsconfig-tests-complete.json').rooibos?.tags ?? [];
+
+    it('excludes the measurement tag', () => {
+      expect(tags).toContain('!measurement');
+    });
+
+    it.each(['migration', 'registry'])('does not exclude the %s tag', (tag) => {
+      expect(tags).not.toContain(`!${tag}`);
+    });
+  });
 });
