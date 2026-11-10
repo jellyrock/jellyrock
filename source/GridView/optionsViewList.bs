@@ -1,0 +1,50 @@
+import "pkg:/source/utils/misc.bs"
+
+' The options dialog's View list, built from a presenter's tabs and the layouts each offers.
+'
+' Temporary, and owned by the dialog: it goes when ItemGridOptions does (tech-debt
+' `itemgridoptions-hand-rolled-dialog`). A presenter lists each tab once, by its
+' libraryTab id. The dialog has no Layout menu of its own, so a tab that offers a
+' layout choice is shown once per layout, which keeps a movie library's list as it was
+' before the two axes split: "Movies (Presentation)", "Movies (Grid)", then the rest.
+namespace optionsViewList
+
+  ' build: one dialog entry per tab, or one per layout for a tab that offers a choice.
+  '
+  ' @param views - a presenter's `getOptions().views`: [{ Title, Name }]
+  ' @param layouts - a presenter's `getOptions().layouts`: { <tab id>: [{ Title, Name }] },
+  '   where each entry's Title is the whole label the dialog shows for that pair
+  ' @return {object} [{ Title, Name, Layout }]; `Layout` is "" for a tab with no choice
+  function build(views as dynamic, layouts as dynamic) as object
+    entries = []
+    if type(views) <> "roArray" then return entries
+
+    for each view in views
+      if not isValid(view) then continue for
+      tabLayouts = invalid
+      if type(layouts) = "roAssociativeArray" then tabLayouts = layouts[textOrEmpty(view.Name)]
+
+      if type(tabLayouts) = "roArray" and tabLayouts.count() > 0
+        for each choice in tabLayouts
+          entries.push({ Title: textOrEmpty(choice.Title), Name: textOrEmpty(view.Name), Layout: textOrEmpty(choice.Name) })
+        end for
+      else
+        entries.push({ Title: textOrEmpty(view.Title), Name: textOrEmpty(view.Name), Layout: "" })
+      end if
+    end for
+    return entries
+  end function
+
+  ' isSelected: whether an entry is the grid's current view and layout.
+  '
+  ' A tab with no layout choice matches on the tab alone, so the movie library's stored
+  ' layout does not untick Studios. Case-insensitive on the tab, the same rule
+  ' gridQuery.offersView uses, so the two cannot disagree about which view is up.
+  function isSelected(entry as dynamic, view as dynamic, layout as dynamic) as boolean
+    if not isValid(entry) then return false
+    if LCase(textOrEmpty(entry.Name)) <> LCase(textOrEmpty(view)) then return false
+    entryLayout = textOrEmpty(entry.Layout)
+    return entryLayout = "" or entryLayout = textOrEmpty(layout)
+  end function
+
+end namespace

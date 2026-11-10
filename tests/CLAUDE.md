@@ -65,10 +65,10 @@ Agents can and should run tests to verify fixes: don't commit a change on reason
 | `npm run test:unit` | Every unit test except the `measurement` tag |
 | `npm run test:integration` | The integration tests except the `migration` and `registry` tags |
 | `npm run test:all` | Every suite except the `migration`, `registry` and `measurement` tags, without code coverage; CI's gating run |
-| `npm run test:complete` | Everything, those tags included, **with code coverage recorded**. Much slower: the only build that instruments the code |
+| `npm run test:complete` | Everything except `measurement` (the `migration` and `registry` suites are included), **with code coverage recorded**. Much slower: the only build that instruments the code |
 | `npm run test:rta` | **RTA functional tests** (Vitest, driving a real device): build, install and check each screen loads. See [`docs/dev/rta-tests.md`](../docs/dev/rta-tests.md). |
 
-**`@tags("measurement")`** marks a suite that records a platform rate rather than gating behavior: it is slow and can't fail on the number it prints (`TaskRelaunchBlockModes.spec.bs`). It runs only when asked for: `test:tdd` with the spec selected, or `test:complete`. Put the property the app depends on in a spec without the tag, so every run still gates it.
+**`@tags("measurement")`** marks a suite that records a platform rate rather than gating behavior: it is slow and can't fail on the number it prints (`TaskRelaunchBlockModes.spec.bs`). It runs only when asked for: `test:tdd` with the spec selected. `test:complete` leaves it out: coverage slows every line enough to stall a timing run. Put the property the app depends on in a spec without the tag, so every run still gates it.
 
 The Rooibos runner (`scripts/run-roku-tests.js`) zips the build, installs it on the Roku at `ROKU_IP` and reads the debug console for `[Rooibos Result]: PASS|FAIL`. It also fails a PASS whose summary doesn't add up (`Total` is not `Passed` + `Crashed` + `Failed` + `Ignored`): a test counted but never reported ran invisibly. The RTA tests run under Vitest instead (`vitest.rta.config.js`) and check in Node.
 

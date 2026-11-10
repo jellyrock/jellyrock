@@ -1,0 +1,127 @@
+import "pkg:/source/utils/misc.bs"
+
+' The ids of a library's views (its tabs): JellyRock's own vocabulary.
+'
+' A view's id is what a presenter lists as `Name`, what the grid holds as its current view
+' and what the `landing` display setting stores. The ids are the app's, named for what the
+' tab shows, so a tab the web client lacks (a History tab, say) is added like any other.
+' Most match jellyfin-web's `LibraryTab` ids where the web has the same tab, because those
+' names read well, not because they must. Anything read from the server's display
+' preferences (the web's `landing-<libraryId>` default tab, its per-tab sort) is
+' translated into these ids where it is read, so a rename on the web side changes that one
+' table and never a stored setting.
+'
+' The layout a grid draws a view in (a poster grid, the movie presentation panel) is a
+' separate axis, in libraryLayout. A view id never says how it is drawn.
+namespace libraryTab
+
+  const ALBUMS = "albums"
+  const ALBUM_ARTISTS = "albumartists"
+  const ARTISTS = "artists"
+  const CHANNELS = "channels"
+  const COLLECTIONS = "collections"
+  const GENRES = "genres"
+  const GUIDE = "guide"
+  const MOVIES = "movies"
+  const PHOTOS = "photos"
+  const NETWORKS = "networks"
+  const SHOWS = "shows"
+  const STUDIOS = "studios"
+
+  ' Every id above.
+  function ids() as object
+    return [
+      libraryTab.ALBUMS, libraryTab.ALBUM_ARTISTS, libraryTab.ARTISTS, libraryTab.CHANNELS,
+      libraryTab.COLLECTIONS, libraryTab.GENRES, libraryTab.GUIDE, libraryTab.MOVIES,
+      libraryTab.NETWORKS, libraryTab.PHOTOS, libraryTab.SHOWS, libraryTab.STUDIOS
+    ]
+  end function
+
+  ' isKnown: whether `id` is exactly one of the tab ids above.
+  '
+  ' Case-sensitive on purpose. The ids are all lowercase, and the view names the
+  ' presenters wrote before them were PascalCase (`Movies`, `Genres`), so exact case is
+  ' what tells an id already in the new vocabulary from a legacy name that folds to it.
+  ' `Movies` and `movies` mean different things: the first is the old presentation view.
+  ' Keep every new id lowercase for the same reason.
+  function isKnown(id as dynamic) as boolean
+    if type(id) <> "roString" and type(id) <> "String" then return false
+    for each known in libraryTab.ids()
+      if id = known then return true
+    end for
+    return false
+  end function
+
+  ' fromLegacyView: the tab and layout a view name saved before these ids stands for.
+  '
+  ' The registry migration's mapping, kept here so it is pure and specced. A name that is
+  ' already a tab id comes back unchanged, so the mapping can run twice and change nothing
+  ' the first run did not. A name that is neither comes back as it is, for the grid's
+  ' resolveView to fall back from: the migration leaves what it does not recognize alone.
+  ' `default`, the one view of a folder or collection, maps to no tab at all.
+  '
+  ' Legacy names match case-insensitively, since an older build may have saved one in
+  ' another case, except where that would read a tab id as a legacy name (see isKnown).
+  '
+  ' @param name - a saved `landing` value
+  ' @return {object} { tab, layout }; `layout` is "" when the name implied none
+  function fromLegacyView(name as dynamic) as object
+    saved = textOrEmpty(name).trim()
+    if libraryTab.isKnown(saved) then return { tab: saved, layout: "" }
+
+    lower = LCase(saved)
+    if lower = "movies" then return { tab: libraryTab.MOVIES, layout: libraryLayout.PRESENTATION }
+    if lower = "moviesgrid" then return { tab: libraryTab.MOVIES, layout: libraryLayout.COMFORTABLE }
+    if lower = "studios" then return { tab: libraryTab.STUDIOS, layout: "" }
+    if lower = "networks" then return { tab: libraryTab.NETWORKS, layout: "" }
+    if lower = "genres" then return { tab: libraryTab.GENRES, layout: "" }
+    if lower = "collections" then return { tab: libraryTab.COLLECTIONS, layout: "" }
+    if lower = "shows" then return { tab: libraryTab.SHOWS, layout: "" }
+    if lower = "albumartistsgrid" then return { tab: libraryTab.ALBUM_ARTISTS, layout: "" }
+    if lower = "albums" then return { tab: libraryTab.ALBUMS, layout: "" }
+    if lower = "artistsgrid" then return { tab: libraryTab.ARTISTS, layout: "" }
+    if lower = "livetv" then return { tab: libraryTab.CHANNELS, layout: "" }
+    if lower = "tvguide" then return { tab: libraryTab.GUIDE, layout: "" }
+    ' The photo library listed its slideshow toggles as views. They are settings now
+    ' (photosSlideshow, photosRandom), already written when one was picked.
+    if lower = "singlephoto" or lower = "slideshowphoto" or lower = "randomphoto" then return { tab: libraryTab.PHOTOS, layout: "" }
+    if lower = "default" then return { tab: "", layout: "" }
+
+    return { tab: saved, layout: "" }
+  end function
+
+end namespace
+
+' How a grid draws a library view, separate from which view it is.
+'
+' Stored per library as the `layout` display setting. Only a movie library's Movies tab
+' offers a choice today (the presentation panel or the poster grid); every other view
+' draws its own fixed grid whatever this says.
+namespace libraryLayout
+
+  ' The poster grid with titles under the posters: what every library showed by default.
+  const COMFORTABLE = "comfortable"
+
+  ' The movie presentation panel: the focused movie's details above a two-row grid.
+  const PRESENTATION = "presentation"
+
+  ' isKnown: whether `layout` is exactly one of the layouts above.
+  function isKnown(layout as dynamic) as boolean
+    if type(layout) <> "roString" and type(layout) <> "String" then return false
+    return layout = libraryLayout.COMFORTABLE or layout = libraryLayout.PRESENTATION
+  end function
+
+  ' resolve: the layout a load should use.
+  '
+  ' A saved layout is honored when it is one this build knows; anything else (nothing
+  ' saved, a layout from a newer build) falls back to the presenter's default, without
+  ' writing the fallback back.
+  '
+  ' @param saved - the stored `layout` setting, or Invalid when none is stored
+  ' @param defaultLayout - the presenter's getDefaultLayout()
+  function resolve(saved as dynamic, defaultLayout as string) as string
+    if libraryLayout.isKnown(saved) then return saved
+    return defaultLayout
+  end function
+
+end namespace

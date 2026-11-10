@@ -28,7 +28,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      removeTvSeasonStraightToEpisodes(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: uiTvShowsGoStraightToEpisodes is deleted
       reg = CreateObject("roRegistrySection", testUserId)
@@ -47,7 +47,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      removeTvSeasonStraightToEpisodes(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: uiTvShowsGoStraightToEpisodes is deleted regardless of value
       reg = CreateObject("roRegistrySection", testUserId)
@@ -66,7 +66,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      removeTvSeasonStraightToEpisodes(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: Old dotted key is also deleted
       reg = CreateObject("roRegistrySection", testUserId)
@@ -86,7 +86,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      removeTvSeasonStraightToEpisodes(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: No error occurs, setting still doesn't exist
       reg = CreateObject("roRegistrySection", testUserId)
@@ -107,7 +107,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      removeTvSeasonStraightToEpisodes(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: Only the removed setting is deleted, others preserved
       reg = CreateObject("roRegistrySection", testUserId)
@@ -175,7 +175,8 @@ namespace tests
       reg2.flush()
 
       ' WHEN: Both users migrate
-      runRegistryUserMigrations([user1, user2])
+      removeTvSeasonStraightToEpisodes(CreateObject("roRegistrySection", user1), user1)
+      removeTvSeasonStraightToEpisodes(CreateObject("roRegistrySection", user2), user2)
 
       ' THEN: Both have the setting deleted
       reg1 = CreateObject("roRegistrySection", user1)
