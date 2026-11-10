@@ -374,6 +374,16 @@ The fix "Free the device when a run is stopped before the suite starts" added a 
 
 Not fixed now: the handler is installed before `const run = beginRun(...)`, so reading `run` from it throws while that `const` is in its temporal dead zone. A fix needs a `let` declared earlier, or a close that is installed once `beginRun` has run, plus a test that a stop at each stage folds `interrupted`. Close it when a stop before the spawn folds as `interrupted`.
 
+#### Another checkout's test run deployed over an RTA run that held the device lock `[fid: deploy-over-held-device-lock]` `[captured 2026-11-10]`
+
+An RTA run that held the device lock was interrupted by another checkout's deploy to the same Stick 4K (2026-11-10). The `syncplay-correction` run started at 16:33:57 UTC with `locked: true` in its ledger record. The device console shows the app exiting at 16:35:15 with no crash trace and a different build (`JellyRock run-312130b1`) compiling three seconds later; every later case failed with "Failed to connect to Roku at ... port 9000", and the run was recorded `blocked`. Right after, `npm run device:status` showed the lock held by `roku device tests` (`scripts/run-roku-tests.js`) from the main clone, building `bsconfig-tdd-tmp-migrations.json`, and the device left mid-restore.
+
+Both runners take the lock through `acquireDeviceLock` (`scripts/rta-run.js`, `scripts/run-roku-tests.js`), so one of them went around it. Not checked: whether that run degraded (`RTA_SKIP_LOCK`, a read-only path, a failed write) or keyed the lock differently, and whether its own log says it ran unlocked. Related: `no-lock-across-multi-step-campaign`, `acquire-lock-unguarded-read-throws`.
+
+Why it matters: a run that loses the device mid-way reads as an app failure until someone finds the other build in the console, and the registry restore it leaves owed holds an auth token.
+
+Closes with: the cause found from the other run's record and the lock's history for that minute, and a runner that refuses to deploy over a held lock, or the reason it had to.
+
 ### components
 
 #### The `cell-load` counters are silently zeroed whenever a screen replaces its content root, so any measurement of a session that does so under-reports. `[fid: cell-load-counters-zeroed-by-root-swap]` `[captured 2026-08-22]`
