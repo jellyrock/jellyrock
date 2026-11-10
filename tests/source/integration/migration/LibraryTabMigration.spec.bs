@@ -61,7 +61,7 @@ namespace tests
       end for
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       for each libraryId in legacy
@@ -83,7 +83,7 @@ namespace tests
       reg.write("display.lib-folder.sortField", "SortName")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertFalse(reg.exists("display.lib-folder.landing"))
@@ -98,7 +98,7 @@ namespace tests
       reg.write("display.lib-1.landing", "SomethingNewer")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read("display.lib-1.landing"), "SomethingNewer")
@@ -116,7 +116,7 @@ namespace tests
       reg.write("display.lib-1.filterOptions", "{}")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
 
       values = m.readAll(testUserId)
       m.assertEqual(values["display.lib-1.sortField"], "DateCreated")
@@ -139,9 +139,9 @@ namespace tests
       reg.write("display.lib-c.landing", "default")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
       afterFirst = m.readAll(testUserId)
-      runRegistryUserMigrations([testUserId])
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
 
       m.assertEqual(m.readAll(testUserId), afterFirst)
     end function
@@ -157,7 +157,7 @@ namespace tests
       reg.write("display.lib-1.layout", "comfortable")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read("display.lib-1.landing"), "movies")
@@ -174,7 +174,7 @@ namespace tests
       reg.write("display.lib-1.layout", "comfortable")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read("display.lib-1.landing"), "movies")
@@ -249,7 +249,8 @@ namespace tests
       reg2.write("display.lib-shared.landing", "MoviesGrid")
       reg2.flush()
 
-      runRegistryUserMigrations([firstUser, secondUser])
+      migrateLibraryTabs(CreateObject("roRegistrySection", firstUser), firstUser)
+      migrateLibraryTabs(CreateObject("roRegistrySection", secondUser), secondUser)
 
       reg1 = CreateObject("roRegistrySection", firstUser)
       reg2 = CreateObject("roRegistrySection", secondUser)
