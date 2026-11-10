@@ -238,7 +238,7 @@ sub deleteLibraryFromRegistry(libraryId as string)
   end if
 
   ' Known display setting keys
-  possibleKeys = ["sortField", "filter", "landing", "sortAscending", "filterOptions", "view"]
+  possibleKeys = ["sortField", "filter", "landing", "layout", "sortAscending", "filterOptions", "view"]
 
   for each key in possibleKeys
     registryKey = "display." + libraryId + "." + key

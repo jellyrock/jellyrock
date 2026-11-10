@@ -32,11 +32,6 @@ namespace collectionsView
   ' request succeeds and answers wrongly, so this is a gate, not an optimization.
   const MIN_SERVER = "12.0.0"
 
-  ' The view's `Name` in a presenter's `views` list, in the saved `landing` display
-  ' setting, and in the `viewMode` a presenter is configured with. Shared so the
-  ' presenters, the query branch and the title branch cannot drift apart on spelling.
-  const VIEW_NAME = "Collections"
-
   ' supported: Whether this server scopes a per-library BoxSet query.
   '
   ' @param {string} serverVersion - m.global.server.version

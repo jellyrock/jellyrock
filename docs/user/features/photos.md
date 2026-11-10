@@ -17,7 +17,7 @@ A photo library on your Jellyfin server.
 Open your photo library from Home. Select an album to open its page, or a photo to open it full screen.
 
 - **On an album's page**, press **Slideshow** to show its photos one after another, a few seconds each, or **Shuffle** to show them in random order.
-- **In the library**, press the options button (**\***) and pick **Slideshow On** to have a selected photo start a slideshow from there, or **Random On** to have it show random photos. **Slideshow Off** opens one photo at a time.
+- **For a photo you open from the library**, go to **Settings → User Interface → Libraries → Photos**. Turn on **Slideshow** to have the photo start a slideshow from there, or **Random Order** to have it show random photos. With both off, a photo opens on its own. When both are on, the slideshow goes in order.
 
 While a photo is open, press **Left** or **Right** for the previous or next one; during a slideshow, that stops it. Press **Play** to pause a slideshow (JellyRock shows **Slideshow Paused**) and **Play** again to go on, which also starts a slideshow from a single photo. Press **Back** to leave the photos.
 
