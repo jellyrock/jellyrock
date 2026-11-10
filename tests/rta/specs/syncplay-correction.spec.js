@@ -318,7 +318,7 @@ async function pauseRound() {
 it('pause rounds leave this member in step, with no correction', async (testCtx) => {
   skipWithoutPush(testCtx);
   await setOffset(0);
-  // The round before the count: whatever the last case left (an offset just taken back) is put
+  // The round before the count: whatever the last case left (an offset taken back a moment ago) is put
   // right by this Unpause, its seek or its correction.
   await pauseRound();
   const before = await getGlobalVal('syncPlayManager.sync.correctionsDone');
