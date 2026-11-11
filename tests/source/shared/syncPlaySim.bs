@@ -382,9 +382,9 @@ namespace tests.syncPlaySim
     end if
     posMs& = 0&
     if isValid(action.positionTicks) then posMs& = syncPlayTime.ticksToMs(action.positionTicks)
-    ' applied() runs right after the send and numbers this request: the next number.
+    ' applied() runs right after the send and numbers this request.
     request = { what: action.what, fromMe: true, posMs: posMs&, isPlaying: action.isPlaying = true, whenMs: sim.now }
-    push(sim, sim.now + nextInt(sim, 10, 60), { kind: "request", slot: slot, request: request, id: sim.group.requestCount + 1 })
+    push(sim, sim.now + nextInt(sim, 10, 60), { kind: "request", slot: slot, request: request, id: syncPlayGroup.nextRequestId(sim.group) })
   end sub
 
   ' --- the fake server ---

@@ -171,6 +171,12 @@ namespace syncPlayGroup
     group.catchUps = 0
   end sub
 
+  ' The number the next request sent gets. A caller that sends before it tells the model reads
+  ' it here first, so the result it feeds back carries the number requestSent then gives.
+  function nextRequestId(group as object) as integer
+    return group.requestCount + 1
+  end function
+
   ' A request went out.
   ' @param slot - "report" or "ask"
   ' @param what - the request's name
@@ -180,8 +186,8 @@ namespace syncPlayGroup
     request.what = what
     request.state = "flight"
     request.sentAtMs = nowMs
-    group.requestCount++
-    request.id = group.requestCount
+    request.id = nextRequestId(group)
+    group.requestCount = request.id
     if slot <> "report" then return
     if what = "buffering"
       ' Taken as held from the send: the server may act on it before the result is back.

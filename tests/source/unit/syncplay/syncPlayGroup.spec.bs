@@ -325,6 +325,21 @@ namespace tests
       m.assertEqual(group.report.state, "flight")
     end function
 
+    @it("the next request's number is the one the send then gives it")
+    function _()
+      group = m.groupOnItem()
+      expected = syncPlayGroup.nextRequestId(group)
+      syncPlayGroup.requestSent(group, "ask", "seek", 5000&)
+      m.assertEqual(group.ask.id, expected)
+      ' A result fed back with that number settles the request: a caller that sends before it
+      ' tells the model (the viewer's own ask) is matched all the same.
+      syncPlayGroup.requestArrived(group, "ask", "seek", expected)
+      m.assertEqual(group.ask.state, "idle")
+      expected = syncPlayGroup.nextRequestId(group)
+      syncPlayGroup.requestSent(group, "report", "ready", 5100&)
+      m.assertEqual(group.report.id, expected)
+    end function
+
     @it("a late failure of a try the retry replaced leaves the retry in flight")
     function _()
       group = m.groupOnItem()

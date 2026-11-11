@@ -195,6 +195,9 @@ sub ensureReady()
   ' How many Ready reports this member sent (report), published so a spec can wait for the server to
   ' have a load's Ready rather than for a group command that can come before it.
   m.readiesSent = 0
+  ' Times the viewer was told the group cannot be reached, for the specs: a soak step that tells
+  ' them with no outage has found a request whose result was lost.
+  m.unreachableNotices = 0
   ' The player and group models of the convergence rewrite. They decide when the comparison is
   ' the engine (usesComparison), and are fed beside this code in an RTA build, as a shadow whose
   ' disagreements are logged (shadowAfter). Any other build with the old engine has none.
@@ -1732,6 +1735,7 @@ sub publish()
       correctionInFlight: correctionInFlight(),
       groupSeeks: m.groupSeeks,
       readiesSent: m.readiesSent,
+      unreachableNotices: m.unreachableNotices,
       shadowDisagreements: shadowCount(),
       engine: engineName(),
       repeatMode: m.state.repeatMode,
@@ -2009,7 +2013,9 @@ function compareViewerAsk(request as object) as boolean
     positionTicks = syncPlayPlayback.secondsToTicks(request.position)
   end if
   action = { kind: "ask", what: what, positionTicks: positionTicks }
-  if not sendRequest("ask", action) then return false
+  ' Sent before the model is told, so that a send that cannot go leaves the model untouched: the
+  ' request's number is the one applied() gives it below.
+  if not sendRequest("ask", action, syncPlayGroup.nextRequestId(m.shadow.group)) then return false
   nowMs& = syncPlayTime.nowMs()
   syncPlayGroup.viewerAsked(m.shadow.group, what, positionTicks, nowMs&)
   syncPlayConverge.applied(m.shadow.player, m.shadow.group, action, nowMs&)
@@ -2134,7 +2140,7 @@ sub carryOut(action as object)
     end if
   else if kind = "report" or kind = "ask"
     syncPlayConverge.applied(player, group, action, nowMs&)
-    if not sendRequest(kind, action) then syncPlayGroup.requestFailed(group, kind, action.what, group[kind].id)
+    if not sendRequest(kind, action, group[kind].id) then syncPlayGroup.requestFailed(group, kind, action.what, group[kind].id)
   else if kind = "halt"
     haltFollowing(action.reason)
   else
@@ -2147,6 +2153,7 @@ sub carryOut(action as object)
     syncPlayConverge.applied(player, group, action, nowMs&)
     if kind = "notice"
       m.log.warn("the group cannot be reached", "report", group.report.what, "ask", group.ask.what)
+      m.unreachableNotices++
       notify("unreachable", m.state.groupName, "")
     end if
   end if
@@ -2155,8 +2162,10 @@ end sub
 ' Send a Buffering, a Ready or an ask, and feed its result to the group model. The server answers
 ' with a frame, never in the reply, so the reply says only whether the request arrived.
 ' @param slot - "report" or "ask"
+' @param requestId - the request's number in the group model, which its result is matched by:
+'   `group[slot].id` once applied() has run, or syncPlayGroup.nextRequestId() before it
 ' @returns false when no request could be built
-function sendRequest(slot as string, action as object) as boolean
+function sendRequest(slot as string, action as object, requestId as integer) as boolean
   what = action.what
   nowMs& = syncPlayTime.nowMs()
   whenMs& = syncPlayOffset.serverNowMs(m.estimator, nowMs&)
@@ -2188,8 +2197,6 @@ function sendRequest(slot as string, action as object) as boolean
   if not isValid(req) then return false
   req.timeoutMs = m.shadow.policy.requestLimitMs
   m.requestCount++
-  ' The comparison's applied() numbered this request in the group model just before the send.
-  requestId = m.shadow.group[slot].id
   sentAtMs& = syncPlayTime.nowMs()
   m.log.info("sent", what, "positionTicks", positionTicks&.toStr(), "isPlaying", action.isPlaying = true)
   ' The id opens with the request's own name ("syncPlaySeek"), which is what a spec's

@@ -383,6 +383,7 @@ async function snapshot() {
     corrections: sync?.correctionsdone,
     groupSeeks: sync?.groupseeks,
     readies: sync?.readiessent,
+    unreachable: sync?.unreachablenotices,
     loads: sync?.loadcount,
     itemIndex: sync?.playingitemindex,
     itemId: sync?.playingitemid,
@@ -592,6 +593,10 @@ describe.skipIf(ROUNDS <= 0)('SyncPlay stress', () => {
         await drive(before);
         const result = await settleMix(expected, startedAt, windowMs, stableMs);
         const end = result.end ?? {};
+        // No step of the mix fails a request three times, so none may tell the viewer the group
+        // cannot be reached: a notice here is a request whose result never counted.
+        const toldUnreachable = (end.unreachable ?? 0) - (before.unreachable ?? 0);
+        if (toldUnreachable > 0) result.outcome = 'frozen';
         record({
           index,
           step: name,
@@ -604,6 +609,7 @@ describe.skipIf(ROUNDS <= 0)('SyncPlay stress', () => {
           corrections: (end.corrections ?? 0) - (before.corrections ?? 0),
           groupSeeks: (end.groupSeeks ?? 0) - (before.groupSeeks ?? 0),
           readies: (end.readies ?? 0) - (before.readies ?? 0),
+          toldUnreachable,
           loads: (end.loads ?? 0) - (before.loads ?? 0),
           positionBefore: before.position,
           end,
