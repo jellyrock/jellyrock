@@ -1777,6 +1777,16 @@ Found 2026-11-11: the `syncplay-correction` case "a member's own stall recovery 
 
 Why not now: it needs a new piece of test infrastructure and a choice of approach. Closes when an RTA case can make the stream itself stall (for example a local throttling proxy in front of the test server, or a server fixture that serves a segment slowly) and the stall-recovery case runs under the comparison engine.
 
+#### The SyncPlay simulator never delivers a late result from an earlier try of a request `[fid: syncplay-sim-no-late-request-result]` `[captured 2026-11-11]`
+
+The SyncPlay simulator never delivers a late result from an earlier try, so the stale-result flaw fixed in `bc9bcb4d` (a request's result matched to the try it belongs to) has only two unit cases behind it, in `syncPlayGroup.spec.bs`.
+
+`tests/source/shared/syncPlaySim.bs` delivers each request's result once, within about a tenth of a second of the send, and a lost request draws no result at all. So `syncPlayConvergeSim.spec.bs` cannot reach a result that arrives after the request limit has called its try failed and the retry is in flight.
+
+Not done with the fix because it needs a new fault kind and its own invariants. To close it: add a fault that delivers a try's result after the limit and the retry, and assert the retry stays in flight and the run still ends in step.
+
+While there: the simulator predicts a request's number as `requestCount + 1`, because its `sendRequest` runs before `syncPlayConverge.applied` numbers the request. With the prediction broken on purpose the spec hung the device run and no case failed (Stick 4K, 2026-11-11). Read the number after `applied` so a mismatch fails a case.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`
