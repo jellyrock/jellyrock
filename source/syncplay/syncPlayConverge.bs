@@ -12,8 +12,8 @@
 '      node past a bar holds (ahead) or catches up (behind).
 '   5. The server's picture of this member is closed with one report at a time: Buffering for a
 '      load, a group seek or a stall, Ready when it is over.
-'   6. A request that failed goes again while it is still wanted; one that cannot be delivered
-'      is told to the viewer once.
+'   6. A request that failed goes again for as long as it is wanted; after a few tries the
+'      viewer is told once, and it keeps going at a slower pace.
 '   7. When nothing says where the group is, this member asks with a Ready, which the server
 '      answers to it alone with the group's current command.
 '
@@ -47,7 +47,10 @@ namespace syncPlayConverge
       ' a member asks where the group is.
       requestLimitMs: 3000,
       requestTries: 3,
-      whereEveryMs: 3000
+      whereEveryMs: 3000,
+      ' How often a request that has used up its tries goes again. It never stops: a Ready the
+      ' server waits for holds the whole group until it arrives.
+      retryEveryMs: 5000
     }
   end function
 
@@ -74,7 +77,7 @@ namespace syncPlayConverge
     wake(result, syncPlayGroup.nextDeadlineMs(group, syncPlayTime.asLong(policy.requestLimitMs)))
     action = nodeAction(player, group, want, ctx, policy, nowMs, result)
     if not isValid(action) then action = reportAction(player, group, want, ctx, policy, nowMs, result)
-    if not isValid(action) then action = askAction(player, group, ctx, policy)
+    if not isValid(action) then action = askAction(player, group, ctx, policy, nowMs, result)
     result.action = action
     return result
   end function
@@ -246,9 +249,9 @@ namespace syncPlayConverge
   function reportAction(player as object, group as object, want as object, ctx as object, policy as object, nowMs as longinteger, result as object) as dynamic
     slot = group.report
     if slot.state = "flight" then return invalid
-    if slot.state = "failed" and slot.tries >= policy.requestTries
+    if outOfTries(slot, policy)
       if not group.toldUnreachable then return { kind: "notice", what: "unreachable" }
-      return invalid
+      if not retryIsDue(slot, policy, nowMs, result) then return invalid
     end if
     if want.mode = "stopped" then return invalid
     activity = player.activity
@@ -291,12 +294,12 @@ namespace syncPlayConverge
 
   ' --- what this member asks of the group ---
 
-  function askAction(player as object, group as object, ctx as object, policy as object) as dynamic
+  function askAction(player as object, group as object, ctx as object, policy as object, nowMs as longinteger, result as object) as dynamic
     slot = group.ask
     if slot.state = "flight" then return invalid
-    if slot.state = "failed" and slot.tries >= policy.requestTries
+    if outOfTries(slot, policy)
       if not group.toldUnreachable then return { kind: "notice", what: "unreachable" }
-      return invalid
+      if not retryIsDue(slot, policy, nowMs, result) then return invalid
     end if
     if player.activity = "finished"
       ' The group moves on together: the server answers every member with the next item.
@@ -315,6 +318,20 @@ namespace syncPlayConverge
   end function
 
   ' --- helpers ---
+
+  ' Whether a request has failed as many times in a row as it is tried before the viewer hears.
+  function outOfTries(slot as object, policy as object) as boolean
+    return slot.state = "failed" and slot.tries >= policy.requestTries
+  end function
+
+  ' A request out of tries still goes again, at a slower pace, for as long as it is wanted:
+  ' whether its time has come, with the time to look again when it has not.
+  function retryIsDue(slot as object, policy as object, nowMs as longinteger, result as object) as boolean
+    retryAt& = syncPlayTime.asLong(slot.sentAtMs) + policy.retryEveryMs
+    if nowMs >= retryAt& then return true
+    wake(result, retryAt&)
+    return false
+  end function
 
   ' Keep the earliest time to look again.
   sub wake(result as object, atMs as dynamic)

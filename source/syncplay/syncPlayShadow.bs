@@ -101,11 +101,13 @@ namespace syncPlayShadow
     if kind = "seek" then targetTicks = syncPlayPlayback.secondsToTicks(verb.position)
     if kind = "load" then targetTicks = verb.startTicks
     syncPlayPlayer.told(shadow.player, kind, owner, targetTicks, nowMs)
+    ' Keep the comparison's own counts in step with what it would have counted.
     if kind = "seek" and isValid(want) and want.kind = "seek"
-      ' Keep the comparison's own counts in step with what it would have counted.
       if want.catchUp = true then shadow.group.catchUps++
       if want.toPoint = true then shadow.group.pointSeeks++
     end if
+    ' A correction of this member's own spends the time offset pick's tighter bar.
+    if owner = "hold" and (kind = "seek" or kind = "pause") then shadow.group.pickPending = false
   end sub
 
   ' The manager is about to send a Buffering or a Ready.

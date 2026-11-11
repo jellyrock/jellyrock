@@ -313,7 +313,29 @@ namespace tests
       m.assertEqual(m.kindOf(told), "notice")
       m.assertEqual(told.action.what, "unreachable")
       syncPlayConverge.applied(player, group, told.action, 10500&)
-      m.assertEqual(m.kindOf(m.decide(player, group, 10600&)), "")
+      quiet = m.decide(player, group, 10600&)
+      m.assertEqual(m.kindOf(quiet), "")
+      m.assertEqual(quiet.wakeAtMs, 10000& + policy.retryEveryMs)
+    end function
+
+    @it("a Ready the group waits for is never given up: after the notice it goes again at a slower pace")
+    function _()
+      player = m.pausedAt(m.at100s, "wait")
+      group = m.seekGroup()
+      policy = syncPlayConverge.defaultPolicy()
+      for attempt = 1 to policy.requestTries
+        syncPlayGroup.requestSent(group, "report", "ready", 10000&)
+        syncPlayGroup.requestFailed(group, "report", "ready")
+      end for
+      told = m.decide(player, group, 10500&)
+      syncPlayConverge.applied(player, group, told.action, 10500&)
+      again = m.decide(player, group, 10000& + policy.retryEveryMs)
+      m.assertEqual(m.kindOf(again), "report")
+      m.assertEqual(again.action.what, "ready")
+      syncPlayConverge.applied(player, group, again.action, 15000&)
+      syncPlayGroup.requestFailed(group, "report", "ready")
+      m.assertEqual(m.kindOf(m.decide(player, group, 15100&)), "")
+      m.assertEqual(m.kindOf(m.decide(player, group, 15000& + policy.retryEveryMs)), "report")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

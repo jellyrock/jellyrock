@@ -266,8 +266,14 @@ namespace syncPlayPlayer
         setClock(player, "unknown", 0&, nowMs, false)
       end if
     else if activity = "resuming"
-      ' The write did not take: still paused, where it was.
-      enter(player, "paused", nowMs)
+      ' A node that left `paused` and buffers is resuming slowly: a stall, and a second resume
+      ' written to it could leave it buffering for good. One still paused did not take the
+      ' write, and is where it was.
+      if player.nodeState = "buffering"
+        stall(player, nowMs)
+      else
+        enter(player, "paused", nowMs)
+      end if
     else if activity = "stalling"
       enter(player, "stalled", nowMs)
     end if

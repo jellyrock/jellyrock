@@ -40,12 +40,14 @@ namespace tests.syncPlaySim
       node: { state: "none", posMs: 0&, atMs: 0&, moving: false, busy: "", epoch: 0, noteEpoch: 0 },
       server: { state: "Paused", posMs: 60000&, activityMs: 100000&, meBuffering: true, resumePlaying: false, jumped: false },
       lastFrameAtMs: 0&,
+      ' Set true to print every event and action of the run to the console, to read a failing seed.
+      tracing: false,
       wakeEpoch: 0,
       notices: 0,
       seeks: 0,
       events: 0,
       ' What the run went through, so a spec can check its faults happened at all.
-      counts: { farLandings: 0, slowSeeks: 0, lostRequests: 0, stalls: 0, catchUps: 0, holds: 0, waitAsks: 0, whereAsks: 0 }
+      counts: { farLandings: 0, slowSeeks: 0, slowResumes: 0, lostRequests: 0, stalls: 0, catchUps: 0, holds: 0, waitAsks: 0, whereAsks: 0 }
     }
     ' The group stands paused on one item, and this member's player mounts for it.
     syncPlayGroup.itemChanged(sim.group, "p-1", 99000&)
@@ -90,11 +92,28 @@ namespace tests.syncPlaySim
       sim.queue.delete(index)
       if evt.at > sim.now then sim.now = evt.at
       sim.events++
+      traceEvent(sim, evt)
       handle(sim, evt)
       settle(sim)
     end while
     sim.now = untilMs
     settle(sim)
+  end sub
+
+  function flag(value as dynamic) as string
+    if value = true then return "T"
+    return "F"
+  end function
+
+  ' One line per event for a traced run: the event, then where the node, the model, the server
+  ' and this member's report stood as it arrived.
+  sub traceEvent(sim as object, evt as object)
+    if not sim.tracing or evt.kind = "note" or evt.kind = "wake" then return
+    text = "SIMTRACE " + sim.now.toStr() + " evt " + Left(FormatJson(evt), 170)
+    text = text + " | node " + sim.node.state + "/" + sim.node.busy + " act " + sim.player.activity + " srv " + sim.server.state
+    text = text + " meBuf " + flag(sim.server.meBuffering) + " owes " + flag(sim.group.owesReady) + " held " + flag(sim.group.heldByMe) + " " + sim.group.heldFor
+    text = text + " said " + flag(sim.group.saidBuffering) + " rep " + sim.group.report.state + " " + sim.group.report.what
+    print text
   end sub
 
   sub violate(sim as object, what as string)
@@ -127,6 +146,7 @@ namespace tests.syncPlaySim
 
   sub carryOut(sim as object, action as object)
     kind = action.kind
+    if sim.tracing then print "SIMTRACE " + sim.now.toStr() + "    ACTION " + Left(FormatJson(action), 170)
     alreadyPaused = sim.player.activity = "paused" or sim.player.activity = "pausing"
     if kind = "pause"
       ' A pause for a node already paused only changes whose pause it is.
@@ -258,6 +278,18 @@ namespace tests.syncPlaySim
       syncPlayPlayer.nodeState(sim.player, "paused", sim.now)
     else if kind = "resumeDone"
       if evt.epoch <> node.epoch or node.busy <> "resume" then return
+      if sim.faults and chance(sim, 6)
+        ' A resume that buffers for seconds before it plays (seen after a reload, Stick 4K,
+        ' 2026-11-11). The node is buffering, as in a stall: a pause would land, and a second
+        ' resume is the write that leaves it buffering for good.
+        sim.counts.slowResumes++
+        node.state = "buffering"
+        node.busy = ""
+        node.epoch++
+        syncPlayPlayer.nodeState(sim.player, "buffering", sim.now)
+        push(sim, sim.now + nextInt(sim, 1500, 6000), { kind: "stallEnd", epoch: node.epoch })
+        return
+      end if
       startPlaying(sim, node.posMs, nextInt(sim, 400, 500))
     else if kind = "note"
       if evt.noteEpoch <> node.noteEpoch or not node.moving then return

@@ -331,6 +331,20 @@ namespace tests
       m.assertEqual(syncPlayPlayer.positionAt(player, 9000&), m.at60s + 3000000&)
     end function
 
+    @it("a resume that leaves the node buffering past the limit is a stall, never a node to resume again")
+    function _()
+      player = m.pausedAfter300()
+      syncPlayPlayer.told(player, "resume", "group", invalid, 5000&)
+      syncPlayPlayer.nodeState(player, "buffering", 5010&)
+      syncPlayPlayer.advance(player, 5000& + syncPlayPlayback.PAUSE_CONFIRM_MS)
+      m.assertEqual(player.activity, "stalling")
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 6100&))
+      syncPlayPlayer.advance(player, 6000& + syncPlayPlayback.STALL_MS)
+      m.assertEqual(player.activity, "stalled")
+      syncPlayPlayer.nodeState(player, "playing", 11000&)
+      m.assertEqual(player.activity, "playing")
+    end function
+
     @it("a resume is written only to a paused node")
     function _()
       player = m.playingAt60()

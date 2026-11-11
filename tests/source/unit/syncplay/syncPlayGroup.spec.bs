@@ -275,6 +275,24 @@ namespace tests
       m.assertFalse(group.owesReady)
     end function
 
+    @it("a Ready's result that arrives after a Seek started a new wait does not settle that wait")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.command(group, m.cmd("Unpause", 6500&, m.at60s))
+      syncPlayGroup.requestSent(group, "report", "buffering", 7000&)
+      syncPlayGroup.requestArrived(group, "report", "buffering")
+      syncPlayGroup.requestSent(group, "report", "ready", 8000&)
+      ' The server found that Ready too far off: its corrective Seek comes before the result.
+      syncPlayGroup.command(group, m.cmd("Seek", 9050&, m.at60s))
+      syncPlayGroup.requestArrived(group, "report", "ready")
+      m.assertTrue(group.owesReady)
+      m.assertEqual(group.report.state, "idle")
+      ' The Ready sent for the Seek's own wait settles it.
+      syncPlayGroup.requestSent(group, "report", "ready", 9500&)
+      syncPlayGroup.requestArrived(group, "report", "ready")
+      m.assertFalse(group.owesReady)
+    end function
+
     @it("a result for a request that was replaced changes nothing")
     function _()
       group = m.groupOnItem()

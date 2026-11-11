@@ -14,12 +14,17 @@ namespace tests
   @suite("syncPlayConverge: seeded runs against a simulated node and server")
   class SyncPlayConvergeSimTests extends tests.BaseTestSuite
 
+    ' A seed whose every event and action is printed to the console, to read a failing run; 0
+    ' for none.
+    private tracedSeed = 0
+
     ' What the runs of one case went through, summed (tests.syncPlaySim's counts).
     private totals = {}
 
     ' One run. Returns what went wrong, or "" for a run that ended in step.
     private function runSeed(seed as integer, faults as boolean) as string
       sim = tests.syncPlaySim.newSim(seed, faults)
+      sim.tracing = seed = m.tracedSeed
       ' The load, its first frame and its Ready.
       tests.syncPlaySim.runUntil(sim, sim.now + 6000)
       tests.syncPlaySim.scheduleRandom(sim, sim.now, 40000, 14)
@@ -75,7 +80,7 @@ namespace tests
       failed = m.failures(101, 180, true)
       m.assertEqual(failed.count(), 0, failed.join(" | "))
       ' A run that met no fault proves nothing about faults.
-      for each name in ["farLandings", "slowSeeks", "lostRequests", "stalls", "catchUps", "holds", "whereAsks"]
+      for each name in ["farLandings", "slowSeeks", "slowResumes", "lostRequests", "stalls", "catchUps", "holds", "whereAsks"]
         m.assertTrue(m.totals[name] > 0, "no run went through any " + name)
       end for
     end function

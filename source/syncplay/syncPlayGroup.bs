@@ -26,6 +26,10 @@ namespace syncPlayGroup
       ' The server waits for this member's Ready: after its own Buffering, a group Seek, or a
       ' new item (the server marks every member buffering for those two).
       owesReady: false,
+      ' Counts the waits: each thing that makes the server wait for a Ready starts a new one. A
+      ' Ready settles only the wait it was sent in, since its result can arrive after the frame
+      ' that started the next (a Ready the server found too far off is answered with a Seek).
+      waitCount: 0,
       ' This member's Buffering holds the group and no command has come since. The command from
       ' before it no longer says where the group is: the server paused the group when it handled
       ' the report.
@@ -65,7 +69,7 @@ namespace syncPlayGroup
   ' and the request may go again). `what` names it ("ready", "buffering", "pause", …), `tries`
   ' counts sends of this same `what` in a row.
   function newRequest() as object
-    return { state: "idle", what: "", sentAtMs: 0&, tries: 0 }
+    return { state: "idle", what: "", sentAtMs: 0&, tries: 0, waitCount: 0 }
   end function
 
   ' --- facts in ---
@@ -86,7 +90,7 @@ namespace syncPlayGroup
     ' A Seek is a new wait: this member's Buffering for it has not been sent.
     if cmd.command = "Seek" then group.saidBuffering = false
     ' The server marks every member buffering for a Seek, and waits for each Ready.
-    if cmd.command = "Seek" then group.owesReady = true
+    if cmd.command = "Seek" then startWait(group)
     if cmd.command = "Stop" then group.owesReady = false
     ' A Pause starts a new chain: this member may ask the group to wait on it once more.
     if cmd.command = "Pause" then group.askedWait = false
@@ -104,7 +108,8 @@ namespace syncPlayGroup
     group.catchUps = 0
     group.pointSeeks = 0
     group.askedWait = false
-    group.owesReady = playingItemId <> ""
+    group.owesReady = false
+    if playingItemId <> "" then startWait(group)
     if isValid(group.command) and not commandIsCurrent(group, group.command) then group.command = invalid
   end sub
 
@@ -157,12 +162,13 @@ namespace syncPlayGroup
     if slot <> "report" then return
     if what = "buffering"
       ' Taken as held from the send: the server may act on it before the result is back.
-      group.owesReady = true
+      startWait(group)
       group.heldByMe = true
       group.saidBuffering = true
       group.waitPointTicks = invalid
     else if what = "ready"
       group.saidBuffering = false
+      request.waitCount = group.waitCount
     end if
   end sub
 
@@ -172,7 +178,13 @@ namespace syncPlayGroup
     if request.what <> what or request.state <> "flight" then return
     request.state = "idle"
     request.tries = 0
-    if slot = "report" and what = "ready" then group.owesReady = false
+    if slot = "report" and what = "ready" and request.waitCount = group.waitCount then group.owesReady = false
+  end sub
+
+  ' The server now waits for this member's Ready, in a wait of its own.
+  sub startWait(group as object)
+    group.owesReady = true
+    group.waitCount++
   end sub
 
   ' The request failed: no answer in time, or an error.
