@@ -527,7 +527,7 @@ When GitHub is unreachable or you aren't signed in, a run warns and proceeds wit
 
 ## Stress a SyncPlay race (`syncplay-stress`)
 
-[`syncplay-stress.spec.js`](../../tests/rta/specs/syncplay-stress.spec.js) repeats one input that races the player's own seek and counts how each round ends. It is skipped unless `RTA_STRESS_ROUNDS` is set, so a normal run pays nothing for it. It needs a server with a push channel to the Roku, and a second member of the same account over REST, as [`syncplay-controls.spec.js`](../../tests/rta/specs/syncplay-controls.spec.js) does.
+[`syncplay-stress.spec.js`](../../tests/rta/specs/syncplay-stress.spec.js) repeats one input that races the player's own seek and counts how each round ends, or mixes many inputs in a seeded order (the `mix` case, below). It is skipped unless `RTA_STRESS_ROUNDS` is set, so a normal run pays nothing for it. It needs a server with a push channel to the Roku, and a second member of the same account over REST, as [`syncplay-controls.spec.js`](../../tests/rta/specs/syncplay-controls.spec.js) does.
 
 ```bash
 RTA_STRESS_ROUNDS=40 RTA_STRESS_CASE=scrub npm run test:rta -- syncplay-stress
@@ -537,6 +537,22 @@ RTA_STRESS_ROUNDS=40 RTA_STRESS_CASE=scrub npm run test:rta -- syncplay-stress
 - Each round ends as `ok`, `frozen` (the node is not playing and the group is not Playing when the settle window ends) or `paused` (the group is Paused). A frozen round fails the test after the run; a paused round is only reported.
 - Vitest hides a passing test's console output, so each round line and the closing `SUMMARY` line (the counts, plus the bar's minimum, median and maximum close time for the scrub cases) go to `.device-runs/syncplay-stress-<case>.log`, which is gitignored. The run prints the path, and a red run carries the `SUMMARY` in its failure message. The test also fails when the rounds counted are not `RTA_STRESS_ROUNDS`.
 - One pass of a race proves little. Count rounds, and read the summary rather than the verdict.
+
+### The mixed soak (`RTA_STRESS_CASE=mix`)
+
+The `mix` case draws a seeded order of steps and checks after each that this member is at rest where the group is. A step is drawn only from those that start in the state the last one ended in, so the same seed gives the same order on every run and under either engine.
+
+```bash
+RTA_STRESS_ROUNDS=150 RTA_STRESS_CASE=mix RTA_STRESS_SEED=1 npm run test:rta -- syncplay-stress
+```
+
+- The steps are in `MIX_STEPS` in [`tests/rta/lib/soak-mix.js`](../../tests/rta/lib/soak-mix.js): another member's pause, resume and seek (playing or paused), the Play key, a scrub, Replay, the race pairs above, a time offset pick, a step to the group's other item, a halt with Back and a follow again, a SyncPlay request made late or lost, and a dwell with nothing happening.
+- At rest means `atRest()` in the same file. Playing: the node plays, no correction is under way, the scrub bar is down and the drift is inside the correction bars. Paused: the node is paused with the OSD up. Either way the member still follows.
+- A step that is not at rest when its window ends counts as `frozen` and fails the run. Its record keeps every reading of the window and what each queued item's player node answered. The run then brings the group back to playing and goes on, or stops if that does not settle.
+- Each step is one JSON line in `.device-runs/syncplay-stress-mix-seed<seed>-<engine>-<start time>.jsonl`: how long it took to settle, how long the node was not playing, every drift reading, and how many corrections, group Seeks, Ready reports and loads it caused.
+- The run's device console holds the rest: `request answered` and `request failed` carry how long each SyncPlay request took, and `unpause reaches this member` how long a paused member waits for the group. The next run replaces `console.log` in the run folder, so copy it out after each run.
+- A clean run's console has four `Compiling 'JellyRock'` lines, two before the steps and two after. One between them is another session's deploy, and the run is void.
+- The group's second item can take another playback path than the first (a transcode beside a direct play), so read a measurement per item (`end.itemIndex`).
 
 ## Notes
 

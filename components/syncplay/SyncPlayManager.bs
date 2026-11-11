@@ -1068,6 +1068,7 @@ sub onCommand(command as object)
     if command.command = "Seek" then m.groupSeeks++
     shadowCommand(command)
     m.log.info("command taken", "command", command.command, "positionTicks", syncPlayTime.asLong(command.positionTicks).toStr())
+    if command.command = "Unpause" then logUnpauseReach()
     publish()
     return
   end if
@@ -2016,6 +2017,20 @@ function compareViewerAsk(request as object) as boolean
   return true
 end function
 
+' Logs how long the group's Unpause leaves this member waiting where it stands: positive for a
+' member ahead of the group's line, negative for one behind. It is the wait the comparison holds
+' to aheadWaitMaxMs and behindBarMs for a paused node, so a log of it shows what those bars cost.
+sub logUnpauseReach()
+  nowMs& = syncPlayTime.nowMs()
+  player = m.shadow.player
+  position = syncPlayPlayer.positionAt(player, nowMs&)
+  if not isValid(position) then return
+  reachAt = syncPlayGroup.reachesAtMs(m.shadow.group, m.estimator, syncPlayTime.asLong(position))
+  if not isValid(reachAt) then return
+  waitMs& = syncPlayTime.asLong(reachAt) - nowMs&
+  m.log.info("unpause reaches this member", "waitMs", waitMs&.toStr(), "activity", player.activity)
+end sub
+
 ' Ask the comparison, carry out its one action, and ask again until it gives none. An event that
 ' arrives while this runs (the player answers a write from inside the write) only marks that
 ' another round is owed, so the loop is never entered twice.
@@ -2173,16 +2188,17 @@ function sendRequest(slot as string, action as object) as boolean
   if not isValid(req) then return false
   req.timeoutMs = m.shadow.policy.requestLimitMs
   m.requestCount++
+  sentAtMs& = syncPlayTime.nowMs()
   m.log.info("sent", what, "positionTicks", positionTicks&.toStr(), "isPlaying", action.isPlaying = true)
   ' The id opens with the request's own name ("syncPlaySeek"), which is what a spec's
   ' request-failure rule matches.
   promiseId = "syncPlay" + apiAction + "-" + m.requestCount.toStr()
-  promises.chain(fetchAsync(req, promiseId), { slot: slot, what: what }).then(sub(res as object, ctx as object)
+  promises.chain(fetchAsync(req, promiseId), { slot: slot, what: what, sentAtMs: sentAtMs& }).then(sub(res as object, ctx as object)
     statusCode = 0
     if isValid(res) and isValid(res.statusCode) then statusCode = res.statusCode
-    onRequestResult(ctx.slot, ctx.what, statusCode)
+    onRequestResult(ctx.slot, ctx.what, statusCode, syncPlayTime.nowMs() - syncPlayTime.asLong(ctx.sentAtMs))
   end sub).catch(sub(_err as object, ctx as object)
-    onRequestResult(ctx.slot, ctx.what, 0)
+    onRequestResult(ctx.slot, ctx.what, 0, syncPlayTime.nowMs() - syncPlayTime.asLong(ctx.sentAtMs))
   end sub)
   return true
 end function
@@ -2192,15 +2208,17 @@ end function
 ' in time, a transport error, a 5xx, a 4xx to a report the group waits for) failed, and goes
 ' again while it is still wanted.
 ' @param statusCode - the HTTP status, 0 with none
-sub onRequestResult(slot as string, what as string, statusCode as integer)
+' @param tookMs - how long the result took, for the log: what the request limit is judged against
+sub onRequestResult(slot as string, what as string, statusCode as integer, tookMs as longinteger)
   if not isValid(m.shadow) then return
   hasArrived = statusCode >= 200 and statusCode < 300
   wasRefused = slot = "ask" and statusCode >= 400 and statusCode < 500
   if hasArrived or wasRefused
     if wasRefused then m.log.warn("ask refused by the server", "what", what, "status", statusCode)
+    if hasArrived then m.log.info("request answered", "what", what, "tookMs", tookMs.toStr())
     syncPlayGroup.requestArrived(m.shadow.group, slot, what)
   else
-    m.log.warn("request failed", "what", what, "status", statusCode)
+    m.log.warn("request failed", "what", what, "status", statusCode, "tookMs", tookMs.toStr())
     syncPlayGroup.requestFailed(m.shadow.group, slot, what)
   end if
   converge()
