@@ -195,6 +195,10 @@ sub init()
   m.reencodeCheckTimer = m.top.findNode("reencodeCheckTimer")
   m.reencodeCheckTimer.observeField("fire", "onReencodeCheckDue")
   m.groupSeekFallbackTimer.observeField("fire", "onGroupSeekOverdue")
+  ' The trick-play bar is the Video node's own, and the node pauses itself while the viewer scrubs,
+  ' with no write of this player's. A SyncPlay member's manager has to hear of it, or it takes that
+  ' pause for one to undo (onTrickPlayBarVisibleChanged).
+  m.top.trickPlayBar.observeField("visible", "onTrickPlayBarVisibleChanged")
   m.bufferPercentage = 0 ' Track whether content is being loaded
   m.isPlayReported = false
   ' The stream on the node has reached `playing` since its load began, so its position is real
@@ -1920,7 +1924,7 @@ sub onPositionChanged()
 
   ' A SyncPlay member confirms a seek landed from a position notification, never at the
   ' `playing` edge (syncPlayPlayback.bs). Nothing is sent while not following.
-  syncPlayHooks.notify({ kind: "position", position: m.top.position, duration: effectiveDuration })
+  syncPlayHooks.notify({ kind: "position", position: m.top.position, duration: effectiveDuration, scrubbing: m.top.trickPlayBar.visible })
 
   ' Without the content.length fallback (see getEffectiveDuration), progressPercentage stays
   ' pinned at 0 on live-transcoded MKV, and since the OSD only observes progressPercentage,
@@ -2375,6 +2379,12 @@ sub restartPlaybackTimer(seconds as float)
   m.playbackTimer.control = "stop"
   m.playbackTimer.duration = seconds
   m.playbackTimer.control = "start"
+end sub
+
+' The viewer opened or closed the trick-play bar: a SyncPlay member's manager leaves a node the
+' viewer is scrubbing alone. Nothing is sent while not following.
+sub onTrickPlayBarVisibleChanged()
+  syncPlayHooks.notify({ kind: "scrub", scrubbing: m.top.trickPlayBar.visible })
 end sub
 
 ' No group Seek answered the OK on the trick-play bar in time (it was refused or lost), so the bar
@@ -2987,6 +2997,7 @@ sub onDestroy()
   m.top.unobserveField("subtitleTrack")
   m.top.unobserveField("globalCaptionMode")
   m.top.unobserveField("position")
+  m.top.trickPlayBar.unobserveField("visible")
 
   ' One line per live mount: the steps its progress was built from, the evidence for tuning
   ' LIVE_PROGRESS_MAX_STEP_MS. A largest step near that cap, or a smallest jump right above it,

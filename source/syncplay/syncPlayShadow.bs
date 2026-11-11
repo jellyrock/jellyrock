@@ -38,6 +38,8 @@ namespace syncPlayShadow
     kind = evt.kind
     positionTicks& = 0&
     if isValid(evt.position) then positionTicks& = syncPlayPlayback.secondsToTicks(evt.position)
+    ' Known before the state it comes with: a pause that arrives with the bar up is the scrub's.
+    if isValid(evt.scrubbing) then syncPlayPlayer.scrub(player, evt.scrubbing = true)
     if kind = "mounted"
       syncPlayPlayer.mounted(player, loadStartTicks, nowMs)
     else if kind = "reloaded"

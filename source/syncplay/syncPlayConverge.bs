@@ -5,7 +5,8 @@
 '
 ' The rules, in order:
 '   1. A stopped group stops the player; a load the queue layer owes is performed.
-'   2. A node in flight (loading, seeking, arrived, pausing, resuming) is never written to.
+'   2. A node in flight (loading, seeking, arrived, pausing, resuming) is never written to,
+'      and a node the viewer is scrubbing only to bring it to where the group stands.
 '   3. A group standing still (paused, or waiting at a point) holds the node paused, at the point
 '      when the server waits for this member's Ready there.
 '   4. A group playing along a line: a paused node resumes as the line reaches it; a playing
@@ -129,7 +130,7 @@ namespace syncPlayConverge
     if syncPlayPlayer.isInFlight(player) then return invalid
     if want.mode = "unknown"
       ' Nothing says to wait, so a hold does not keep the picture frozen.
-      if activity = "paused" and player.pauseOwner = "hold" then return { kind: "resume", owner: "hold" }
+      if activity = "paused" and player.pauseOwner = "hold" and not player.scrubbing then return { kind: "resume", owner: "hold" }
       return invalid
     end if
     if want.mode = "playing" or isValid(want.startsAtMs) then return lineAction(player, group, want, ctx, policy, nowMs, result)
@@ -156,6 +157,11 @@ namespace syncPlayConverge
       end if
     end if
 
+    ' The viewer is scrubbing: the node is theirs until the bar closes. Only a seek to where the
+    ' group stands (above) is written under it, which is the group moving, their own scrub's
+    ' answer included.
+    if player.scrubbing then return invalid
+
     if isPlayingOn
       if activity = "stalling" and want.mode = "waiting" then return invalid
       if player.pauseWrites >= policy.pauseWriteLimit then return { kind: "halt", reason: "the player would not stay paused" }
@@ -180,6 +186,9 @@ namespace syncPlayConverge
   function lineAction(player as object, group as object, want as object, ctx as object, policy as object, nowMs as longinteger, result as object) as dynamic
     activity = player.activity
     estimator = ctx.estimator
+    ' The viewer is scrubbing: no resume, hold or catch-up under their open bar. The node is
+    ' brought back in step once the bar closes.
+    if player.scrubbing then return invalid
     if activity = "paused"
       resumeAt& = nowMs
       if isValid(want.startsAtMs) then resumeAt& = syncPlayTime.asLong(want.startsAtMs)

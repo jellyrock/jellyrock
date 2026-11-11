@@ -293,6 +293,31 @@ namespace tests
       m.assertInvalid(syncPlayPlayer.positionAt(player, 1200&))
     end function
 
+    @it("a pause that lands while the viewer scrubs is the scrub's, whichever is heard of first")
+    function _()
+      barFirst = m.playingAt60()
+      syncPlayPlayer.scrub(barFirst, true)
+      syncPlayPlayer.nodeState(barFirst, "paused", 1200&)
+      m.assertEqual(barFirst.pauseOwner, "scrub")
+      pauseFirst = m.playingAt60()
+      syncPlayPlayer.nodeState(pauseFirst, "paused", 1200&)
+      m.assertEqual(pauseFirst.pauseOwner, "")
+      syncPlayPlayer.scrub(pauseFirst, true)
+      m.assertEqual(pauseFirst.pauseOwner, "scrub")
+      ' The bar closes: the pause is nobody's again, and the node may be brought back in step.
+      syncPlayPlayer.scrub(pauseFirst, false)
+      m.assertFalse(pauseFirst.scrubbing)
+      m.assertEqual(pauseFirst.pauseOwner, "")
+    end function
+
+    @it("a scrub does not outlive its player")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.scrub(player, true)
+      syncPlayPlayer.unmounted(player, 2000&)
+      m.assertFalse(player.scrubbing)
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("a resume")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

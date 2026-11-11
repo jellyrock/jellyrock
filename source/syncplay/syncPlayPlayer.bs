@@ -50,6 +50,9 @@ namespace syncPlayPlayer
       nodeState: "",
       clock: { kind: "unknown", ticks: 0&, atMs: 0&, measured: false },
       pauseOwner: "",
+      ' The viewer has the trick-play bar up. The Video node pauses itself for a scrub with no
+      ' write of the player's, so a pause nobody wrote while this holds is the scrub's.
+      scrubbing: false,
       pauseWrites: 0,
       pauseWrittenAtMs: 0&,
       pauseTicks: invalid,
@@ -117,12 +120,20 @@ namespace syncPlayPlayer
     enter(player, "pausing", nowMs)
   end sub
 
+  ' The viewer opened or closed the trick-play bar.
+  sub scrub(player as object, isScrubbing as boolean)
+    player.scrubbing = isScrubbing
+    if isScrubbing and player.activity = "paused" and player.pauseOwner = "" then player.pauseOwner = "scrub"
+    if not isScrubbing and player.pauseOwner = "scrub" then player.pauseOwner = ""
+  end sub
+
   ' A player mounted for a load.
   ' @param startTicks - where the load was asked to start, or invalid for the item's start
   sub mounted(player as object, startTicks as dynamic, nowMs as longinteger)
     player.toldUnmount = false
     player.nodeState = ""
     player.pauseOwner = ""
+    player.scrubbing = false
     player.pauseWrites = 0
     player.pauseTicks = invalid
     player.seekSlow = false
@@ -154,6 +165,7 @@ namespace syncPlayPlayer
     enter(player, "none", nowMs)
     setClock(player, "unknown", 0&, nowMs, false)
     player.pauseOwner = ""
+    player.scrubbing = false
     return wasTold
   end function
 
@@ -337,6 +349,7 @@ namespace syncPlayPlayer
     setClock(player, "unknown", 0&, nowMs, false)
     player.pauseTicks = invalid
     player.pauseWrites = 0
+    if player.scrubbing and player.pauseOwner = "" then player.pauseOwner = "scrub"
   end sub
 
   ' The pause's `paused` state came. The stop is known when the clock ran at the write and the

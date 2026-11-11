@@ -8,7 +8,7 @@ namespace tests
 
   ' The two models and the comparison against a simulated node and server (tests.syncPlaySim),
   ' over seeded random orders of what can happen to a member: the other member pausing, playing
-  ' and seeking, the viewer's own pause and play, stalls, lost requests, seeks that land far off
+  ' and seeking, the viewer's own pause, play and scrubs, stalls, lost requests, seeks that land far off
   ' or take seconds. After every event the member settles; each run then ends with a quiet
   ' stretch, a clean pause and play, and a check that the member is in step.
   @suite("syncPlayConverge: seeded runs against a simulated node and server")
@@ -80,7 +80,7 @@ namespace tests
       failed = m.failures(101, 180, true)
       m.assertEqual(failed.count(), 0, failed.join(" | "))
       ' A run that met no fault proves nothing about faults.
-      for each name in ["farLandings", "slowSeeks", "slowResumes", "lostRequests", "stalls", "catchUps", "holds", "whereAsks"]
+      for each name in ["farLandings", "slowSeeks", "slowResumes", "scrubs", "lostRequests", "stalls", "catchUps", "holds", "whereAsks"]
         m.assertTrue(m.totals[name] > 0, "no run went through any " + name)
       end for
     end function

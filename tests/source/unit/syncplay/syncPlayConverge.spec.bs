@@ -621,6 +621,42 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the viewer's scrub")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a node the viewer is scrubbing is not resumed, held, caught up or paused for the group")
+    function _()
+      behind = m.pausedAt(m.at65s - 1000 * m.oneMs, "scrub")
+      syncPlayPlayer.scrub(behind, true)
+      m.assertEqual(m.kindOf(m.decide(behind, m.playingLine(), 10000&)), "")
+      unknown = m.playingAt(m.at60s, 9000&)
+      syncPlayPlayer.scrub(unknown, true)
+      syncPlayPlayer.nodeState(unknown, "paused", 9500&)
+      m.assertEqual(m.kindOf(m.decide(unknown, m.playingLine(), 10000&)), "")
+      ahead = m.playingAt(m.at65s + 300 * m.oneMs, 10000&)
+      syncPlayPlayer.scrub(ahead, true)
+      m.assertEqual(m.kindOf(m.decide(ahead, m.playingLine(), 10000&)), "")
+      m.assertEqual(m.kindOf(m.decide(ahead, m.pausedGroup(), 10000&)), "")
+    end function
+
+    @it("the bar closing hands the node back: one left paused behind the group is caught up")
+    function _()
+      player = m.pausedAt(m.at65s - 1000 * m.oneMs, "scrub")
+      syncPlayPlayer.scrub(player, true)
+      syncPlayPlayer.scrub(player, false)
+      m.assertEqual(m.kindOf(m.decide(player, m.playingLine(), 10000&)), "seek")
+    end function
+
+    @it("a seek to where the group stands is still written under a scrub: the group moved")
+    function _()
+      player = m.pausedAt(m.at60s, "scrub")
+      syncPlayPlayer.scrub(player, true)
+      result = m.decide(player, m.seekGroup(), 10000&)
+      m.assertEqual(m.kindOf(result), "seek")
+      m.assertEqual(result.action.owner, "group")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("a group about to play")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

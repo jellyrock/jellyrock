@@ -32,6 +32,8 @@ namespace tests.syncPlaySim
       faults: faults,
       violations: [],
       following: true,
+      ' The viewer has the trick-play bar up: the node paused itself, and is theirs meanwhile.
+      scrubbing: false,
       estimator: estimator,
       policy: syncPlayConverge.defaultPolicy(),
       player: syncPlayPlayer.newPlayer(),
@@ -47,7 +49,7 @@ namespace tests.syncPlaySim
       seeks: 0,
       events: 0,
       ' What the run went through, so a spec can check its faults happened at all.
-      counts: { farLandings: 0, slowSeeks: 0, slowResumes: 0, lostRequests: 0, stalls: 0, catchUps: 0, holds: 0, waitAsks: 0, whereAsks: 0 }
+      counts: { farLandings: 0, slowSeeks: 0, slowResumes: 0, scrubs: 0, lostRequests: 0, stalls: 0, catchUps: 0, holds: 0, waitAsks: 0, whereAsks: 0 }
     }
     ' The group stands paused on one item, and this member's player mounts for it.
     syncPlayGroup.itemChanged(sim.group, "p-1", 99000&)
@@ -157,6 +159,7 @@ namespace tests.syncPlaySim
     else if kind = "seek"
       sim.seeks++
       if action.catchUp = true then sim.counts.catchUps++
+      if sim.scrubbing and action.owner <> "group" then violate(sim, "a seek of the member's own was written under the viewer's scrub")
       writeSeek(sim, syncPlayTime.ticksToMs(action.targetTicks))
     else if kind = "report"
       if action.where = true then sim.counts.whereAsks++
@@ -191,6 +194,7 @@ namespace tests.syncPlaySim
 
   sub writePause(sim as object)
     node = sim.node
+    if sim.scrubbing then violate(sim, "a pause was written under the viewer's scrub")
     if node.busy <> ""
       violate(sim, "a pause was written to a node in flight (" + node.busy + ")")
       return
@@ -204,6 +208,7 @@ namespace tests.syncPlaySim
 
   sub writeResume(sim as object)
     node = sim.node
+    if sim.scrubbing then violate(sim, "a resume was written under the viewer's scrub")
     if node.busy <> ""
       violate(sim, "a resume was written to a node in flight (" + node.busy + ")")
       return
@@ -223,6 +228,11 @@ namespace tests.syncPlaySim
       return
     end if
     freeze(sim)
+    ' A seek closes the trick-play bar.
+    if sim.scrubbing
+      sim.scrubbing = false
+      syncPlayPlayer.scrub(sim.player, false)
+    end if
     node.busy = "seek"
     node.epoch++
     landMs& = targetMs + nextInt(sim, 1, 38)
@@ -306,6 +316,24 @@ namespace tests.syncPlaySim
     else if kind = "stallEnd"
       if evt.epoch <> node.epoch or node.state <> "buffering" or node.busy <> "" then return
       startPlaying(sim, node.posMs, nextInt(sim, 20, 500))
+    else if kind = "scrubStart"
+      ' The viewer opens the trick-play bar: the node pauses itself, with no write of the player's.
+      if node.state <> "playing" or node.busy <> "" or sim.scrubbing then return
+      sim.counts.scrubs++
+      sim.scrubbing = true
+      freeze(sim)
+      node.state = "paused"
+      node.epoch++
+      syncPlayPlayer.scrub(sim.player, true)
+      syncPlayPlayer.nodeState(sim.player, "paused", sim.now)
+      push(sim, sim.now + evt.forMs, { kind: "scrubEnd", epoch: node.epoch, resumes: evt.resumes })
+    else if kind = "scrubEnd"
+      ' The viewer backs out of the bar. Whether the node then plays by itself is not measured,
+      ' so a run can go either way.
+      if not sim.scrubbing or evt.epoch <> node.epoch then return
+      sim.scrubbing = false
+      syncPlayPlayer.scrub(sim.player, false)
+      if evt.resumes = true and node.state = "paused" and node.busy = "" then startPlaying(sim, node.posMs, nextInt(sim, 20, 500))
     else if kind = "frame"
       deliverFrame(sim, evt)
     else if kind = "request"
@@ -531,16 +559,18 @@ namespace tests.syncPlaySim
     for n = 1 to count
       atMs& = fromMs + nextInt(sim, 0, spanMs)
       roll = nextInt(sim, 1, 100)
-      if roll <= 25
+      if roll <= 22
         push(sim, atMs&, { kind: "other", what: "pause", posMs: 0& })
-      else if roll <= 55
+      else if roll <= 48
         push(sim, atMs&, { kind: "other", what: "unpause", posMs: 0& })
-      else if roll <= 70
+      else if roll <= 62
         push(sim, atMs&, { kind: "other", what: "seek", posMs: 1000& * nextInt(sim, 30, 600) })
-      else if roll <= 80
+      else if roll <= 71
         push(sim, atMs&, { kind: "viewer", what: "pause" })
-      else if roll <= 90
+      else if roll <= 80
         push(sim, atMs&, { kind: "viewer", what: "unpause" })
+      else if roll <= 90
+        push(sim, atMs&, { kind: "scrubStart", forMs: nextInt(sim, 800, 5000), resumes: chance(sim, 50) })
       else if sim.faults
         push(sim, atMs&, { kind: "stallStart", forMs: nextInt(sim, 200, 4000) })
       end if
