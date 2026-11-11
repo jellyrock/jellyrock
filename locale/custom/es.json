@@ -365,5 +365,9 @@
   "MessageUseTheReplayButtonToSlowly": "Usa el botón de repetir para animar lentamente al primer elemento de la carpeta. (Si está deshabilitado, la carpeta se restablecerá al primer elemento inmediatamente).",
   "MessageWhatTypeOfImagesToUse": "Que tipo de imágenes utilizar para los Episodios mostrados en la secciones 'A continuación' y 'Seguir Viendo'.",
   "MessageWhenFinishedPlayingASingleEpisode": "Cuando termine de reproducirse un episodio, reproduce el siguiente automáticamente.",
-  "MessageYouCanSearchForTitlesPeople": "Puedes buscar por títulos, personas, canales en vivo y más"
+  "MessageYouCanSearchForTitlesPeople": "Puedes buscar por títulos, personas, canales en vivo y más",
+  "ButtonYes": "Sí",
+  "ButtonSkip": "Saltar",
+  "ButtonNo": "No",
+  "ButtonExit": "Salir"
 }

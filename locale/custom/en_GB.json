@@ -123,5 +123,8 @@
   "MessageEndsAt1": "Ends at {0}",
   "MessageMoreFrom1": "More from {0}",
   "MessageSetTheMaximumAmountOfDays": "Set the maximum amount of days a programme should stay in the 'Next Up' list without watching it.",
-  "MessageShowItemCountInTheLibrary": "Show item count in the library and index of the selected item."
+  "MessageShowItemCountInTheLibrary": "Show item count in the library and index of the selected item.",
+  "ButtonExit": "Exit",
+  "ButtonDetails": "Details",
+  "ButtonContinueWatching": "Continue Watching"
 }

@@ -347,5 +347,9 @@
   "MessageUseTheReplayButtonToSlowly": "Beim Drücken der Wiederholen-Taste langsam zum ersten Element im Ordner scrollen. (Wenn deaktiviert, wird sofort zum ersten Element gesprungen).",
   "MessageWhatTypeOfImagesToUse": "Welche Art von Bildern soll für die Episoden in den Abschnitten \"Weiter\" und \"Weiterschauen\" verwendet werden.",
   "MessageWhenFinishedPlayingASingleEpisode": "Wenn die Wiedergabe einer einzelnen Episode beendet ist, wird automatisch die nächste Episode abgespielt.",
-  "MessageYouCanSearchForTitlesPeople": "Es kann nach Titeln, Personen, Live-TV-Sendern und mehr gesucht werden"
+  "MessageYouCanSearchForTitlesPeople": "Es kann nach Titeln, Personen, Live-TV-Sendern und mehr gesucht werden",
+  "ButtonSkip": "Überspringen",
+  "ButtonMarkWatched": "Als gesehen markieren",
+  "ButtonMarkUnwatched": "Als ungesehen markieren",
+  "ButtonExit": "Verlassen"
 }
