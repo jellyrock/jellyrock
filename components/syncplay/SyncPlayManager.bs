@@ -2134,7 +2134,7 @@ sub carryOut(action as object)
     end if
   else if kind = "report" or kind = "ask"
     syncPlayConverge.applied(player, group, action, nowMs&)
-    if not sendRequest(kind, action) then syncPlayGroup.requestFailed(group, kind, action.what)
+    if not sendRequest(kind, action) then syncPlayGroup.requestFailed(group, kind, action.what, group[kind].id)
   else if kind = "halt"
     haltFollowing(action.reason)
   else
@@ -2188,17 +2188,19 @@ function sendRequest(slot as string, action as object) as boolean
   if not isValid(req) then return false
   req.timeoutMs = m.shadow.policy.requestLimitMs
   m.requestCount++
+  ' The comparison's applied() numbered this request in the group model just before the send.
+  requestId = m.shadow.group[slot].id
   sentAtMs& = syncPlayTime.nowMs()
   m.log.info("sent", what, "positionTicks", positionTicks&.toStr(), "isPlaying", action.isPlaying = true)
   ' The id opens with the request's own name ("syncPlaySeek"), which is what a spec's
   ' request-failure rule matches.
   promiseId = "syncPlay" + apiAction + "-" + m.requestCount.toStr()
-  promises.chain(fetchAsync(req, promiseId), { slot: slot, what: what, sentAtMs: sentAtMs& }).then(sub(res as object, ctx as object)
+  promises.chain(fetchAsync(req, promiseId), { slot: slot, what: what, id: requestId, sentAtMs: sentAtMs& }).then(sub(res as object, ctx as object)
     statusCode = 0
     if isValid(res) and isValid(res.statusCode) then statusCode = res.statusCode
-    onRequestResult(ctx.slot, ctx.what, statusCode, syncPlayTime.nowMs() - syncPlayTime.asLong(ctx.sentAtMs))
+    onRequestResult(ctx.slot, ctx.what, ctx.id, statusCode, syncPlayTime.nowMs() - syncPlayTime.asLong(ctx.sentAtMs))
   end sub).catch(sub(_err as object, ctx as object)
-    onRequestResult(ctx.slot, ctx.what, 0, syncPlayTime.nowMs() - syncPlayTime.asLong(ctx.sentAtMs))
+    onRequestResult(ctx.slot, ctx.what, ctx.id, 0, syncPlayTime.nowMs() - syncPlayTime.asLong(ctx.sentAtMs))
   end sub)
   return true
 end function
@@ -2207,19 +2209,20 @@ end function
 ' and said no, so sending it again is noise, and it counts as answered. Anything else (no reply
 ' in time, a transport error, a 5xx, a 4xx to a report the group waits for) failed, and goes
 ' again while it is still wanted.
+' @param id - the request's number in the group model; a result for an earlier try is ignored there
 ' @param statusCode - the HTTP status, 0 with none
 ' @param tookMs - how long the result took, for the log: what the request limit is judged against
-sub onRequestResult(slot as string, what as string, statusCode as integer, tookMs as longinteger)
+sub onRequestResult(slot as string, what as string, id as integer, statusCode as integer, tookMs as longinteger)
   if not isValid(m.shadow) then return
   hasArrived = statusCode >= 200 and statusCode < 300
   wasRefused = slot = "ask" and statusCode >= 400 and statusCode < 500
   if hasArrived or wasRefused
     if wasRefused then m.log.warn("ask refused by the server", "what", what, "status", statusCode)
     if hasArrived then m.log.info("request answered", "what", what, "tookMs", tookMs.toStr())
-    syncPlayGroup.requestArrived(m.shadow.group, slot, what)
+    syncPlayGroup.requestArrived(m.shadow.group, slot, what, id)
   else
     m.log.warn("request failed", "what", what, "status", statusCode, "tookMs", tookMs.toStr())
-    syncPlayGroup.requestFailed(m.shadow.group, slot, what)
+    syncPlayGroup.requestFailed(m.shadow.group, slot, what, id)
   end if
   converge()
 end sub

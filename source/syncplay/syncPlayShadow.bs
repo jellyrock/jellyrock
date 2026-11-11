@@ -129,7 +129,7 @@ namespace syncPlayShadow
     end if
     if what = "ready" then group.readyForLoad = shadow.player.loadCount
     syncPlayGroup.requestSent(group, "report", what, nowMs)
-    syncPlayGroup.requestArrived(group, "report", what)
+    syncPlayGroup.requestArrived(group, "report", what, group.report.id)
   end sub
 
   ' The manager sent an ask to the group.
@@ -146,7 +146,7 @@ namespace syncPlayShadow
       group.nextAskedFor = group.playingItemId
     end if
     syncPlayGroup.requestSent(group, "ask", what, nowMs)
-    syncPlayGroup.requestArrived(group, "ask", what)
+    syncPlayGroup.requestArrived(group, "ask", what, group.ask.id)
   end sub
 
   sub offsetPicked(shadow as object)

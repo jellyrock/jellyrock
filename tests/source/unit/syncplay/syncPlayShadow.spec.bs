@@ -29,7 +29,7 @@ namespace tests
       syncPlayShadow.playerFact(shadow, { kind: "state", state: "playing" }, 0&, 900&)
       syncPlayShadow.playerFact(shadow, { kind: "position", position: 65 }, 0&, 10000&)
       syncPlayGroup.requestSent(shadow.group, "report", "ready", 2000&)
-      syncPlayGroup.requestArrived(shadow.group, "report", "ready")
+      syncPlayGroup.requestArrived(shadow.group, "report", "ready", shadow.group.report.id)
       syncPlayShadow.commandArrived(shadow, command)
       return shadow
     end function

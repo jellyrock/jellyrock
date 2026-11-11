@@ -338,9 +338,9 @@ namespace tests.syncPlaySim
       deliverFrame(sim, evt)
     else if kind = "request"
       serverHandle(sim, evt.request)
-      push(sim, sim.now + nextInt(sim, 10, 60), { kind: "result", slot: evt.slot, what: evt.request.what })
+      push(sim, sim.now + nextInt(sim, 10, 60), { kind: "result", slot: evt.slot, what: evt.request.what, id: evt.id })
     else if kind = "result"
-      syncPlayGroup.requestArrived(sim.group, evt.slot, evt.what)
+      syncPlayGroup.requestArrived(sim.group, evt.slot, evt.what, evt.id)
     else if kind = "other"
       serverHandle(sim, { what: evt.what, fromMe: false, posMs: evt.posMs, isPlaying: true, whenMs: sim.now })
     else if kind = "viewer"
@@ -382,8 +382,9 @@ namespace tests.syncPlaySim
     end if
     posMs& = 0&
     if isValid(action.positionTicks) then posMs& = syncPlayTime.ticksToMs(action.positionTicks)
+    ' applied() runs right after the send and numbers this request: the next number.
     request = { what: action.what, fromMe: true, posMs: posMs&, isPlaying: action.isPlaying = true, whenMs: sim.now }
-    push(sim, sim.now + nextInt(sim, 10, 60), { kind: "request", slot: slot, request: request })
+    push(sim, sim.now + nextInt(sim, 10, 60), { kind: "request", slot: slot, request: request, id: sim.group.requestCount + 1 })
   end sub
 
   ' --- the fake server ---

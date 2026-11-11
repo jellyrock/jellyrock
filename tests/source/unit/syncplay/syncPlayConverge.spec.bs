@@ -38,7 +38,7 @@ namespace tests
       group = syncPlayGroup.newGroup()
       syncPlayGroup.itemChanged(group, "p-1", 1000&)
       syncPlayGroup.requestSent(group, "report", "ready", 2000&)
-      syncPlayGroup.requestArrived(group, "report", "ready")
+      syncPlayGroup.requestArrived(group, "report", "ready", group.report.id)
       if isValid(command) then syncPlayGroup.command(group, command)
       return group
     end function
@@ -306,7 +306,7 @@ namespace tests
       waiting = m.decide(player, group, 10100&)
       m.assertEqual(m.kindOf(waiting), "")
       m.assertEqual(waiting.wakeAtMs, 13000&)
-      syncPlayGroup.requestFailed(group, "report", "ready")
+      syncPlayGroup.requestFailed(group, "report", "ready", group.report.id)
       again = m.decide(player, group, 10200&)
       m.assertEqual(m.kindOf(again), "report")
       m.assertEqual(again.action.what, "ready")
@@ -319,7 +319,7 @@ namespace tests
       policy = syncPlayConverge.defaultPolicy()
       for attempt = 1 to policy.requestTries
         syncPlayGroup.requestSent(group, "report", "ready", 10000&)
-        syncPlayGroup.requestFailed(group, "report", "ready")
+        syncPlayGroup.requestFailed(group, "report", "ready", group.report.id)
       end for
       told = m.decide(player, group, 10500&)
       m.assertEqual(m.kindOf(told), "notice")
@@ -337,7 +337,7 @@ namespace tests
       policy = syncPlayConverge.defaultPolicy()
       for attempt = 1 to policy.requestTries
         syncPlayGroup.requestSent(group, "report", "ready", 10000&)
-        syncPlayGroup.requestFailed(group, "report", "ready")
+        syncPlayGroup.requestFailed(group, "report", "ready", group.report.id)
       end for
       told = m.decide(player, group, 10500&)
       syncPlayConverge.applied(player, group, told.action, 10500&)
@@ -345,7 +345,7 @@ namespace tests
       m.assertEqual(m.kindOf(again), "report")
       m.assertEqual(again.action.what, "ready")
       syncPlayConverge.applied(player, group, again.action, 15000&)
-      syncPlayGroup.requestFailed(group, "report", "ready")
+      syncPlayGroup.requestFailed(group, "report", "ready", group.report.id)
       m.assertEqual(m.kindOf(m.decide(player, group, 15100&)), "")
       m.assertEqual(m.kindOf(m.decide(player, group, 15000& + policy.retryEveryMs)), "report")
     end function
@@ -366,7 +366,7 @@ namespace tests
       m.assertEqual(buffering.action.heldFor, "load")
       m.assertEqual(buffering.action.positionTicks, m.at60s)
       syncPlayConverge.applied(player, group, buffering.action, 9000&)
-      syncPlayGroup.requestArrived(group, "report", "buffering")
+      syncPlayGroup.requestArrived(group, "report", "buffering", group.report.id)
       m.assertEqual(m.kindOf(m.decide(player, group, 9100&)), "")
       syncPlayPlayer.nodeState(player, "playing", 9800&)
       m.assertEqual(m.kindOf(m.decide(player, group, 9800&)), "")
@@ -398,7 +398,7 @@ namespace tests
       m.assertEqual(first.action.what, "buffering")
       m.assertEqual(first.action.heldFor, "load")
       syncPlayConverge.applied(player, group, first.action, 10200&)
-      syncPlayGroup.requestArrived(group, "report", "buffering")
+      syncPlayGroup.requestArrived(group, "report", "buffering", group.report.id)
       ' The mount of that load is the same load: nothing is said twice.
       syncPlayPlayer.mounted(player, m.at65s, 10500&)
       m.assertEqual(m.kindOf(m.decide(player, group, 10500&)), "")
@@ -422,7 +422,7 @@ namespace tests
       syncPlayPlayer.mounted(player, m.at60s, 9000&)
       first = m.decide(player, group, 9000&)
       syncPlayConverge.applied(player, group, first.action, 9000&)
-      syncPlayGroup.requestArrived(group, "report", "buffering")
+      syncPlayGroup.requestArrived(group, "report", "buffering", group.report.id)
       ' The group restarts the item while that load is still loading: the queue layer loads anew.
       syncPlayGroup.itemChanged(group, "p-1", 9500&)
       syncPlayPlayer.told(player, "load", "group", 0&, 9600&)
@@ -478,7 +478,7 @@ namespace tests
       m.assertEqual(buffering.action.what, "buffering")
       m.assertEqual(buffering.action.heldFor, "stall")
       syncPlayConverge.applied(player, group, buffering.action, 11100&)
-      syncPlayGroup.requestArrived(group, "report", "buffering")
+      syncPlayGroup.requestArrived(group, "report", "buffering", group.report.id)
       m.assertEqual(m.kindOf(m.decide(player, group, 11200&)), "")
       syncPlayPlayer.nodeState(player, "playing", 12000&)
       ' No position yet: the Ready waits for a reading.
@@ -504,7 +504,7 @@ namespace tests
       m.assertEqual(buffering.action.what, "buffering")
       m.assertEqual(buffering.action.heldFor, "stall")
       syncPlayConverge.applied(player, group, buffering.action, 13000&)
-      syncPlayGroup.requestArrived(group, "report", "buffering")
+      syncPlayGroup.requestArrived(group, "report", "buffering", group.report.id)
       ' The group pauses meanwhile: the node, still seeking, is left alone.
       syncPlayGroup.command(group, m.cmd("Pause", 14500&, m.at65s))
       m.assertEqual(m.kindOf(m.decide(player, group, 13600&)), "")
@@ -517,7 +517,7 @@ namespace tests
       group.heldFor = "stall"
       syncPlayGroup.requestSent(group, "report", "buffering", 11100&)
       syncPlayGroup.requestSent(group, "report", "ready", 12100&)
-      syncPlayGroup.requestArrived(group, "report", "ready")
+      syncPlayGroup.requestArrived(group, "report", "ready", group.report.id)
       syncPlayGroup.stateChanged(group, "Waiting", "Playing", m.estimator(), 12200&)
       where = m.decide(player, group, 12200&)
       m.assertEqual(m.kindOf(where), "report")
@@ -525,7 +525,7 @@ namespace tests
       m.assertTrue(where.action.where)
       m.assertTrue(where.action.isPlaying)
       syncPlayConverge.applied(player, group, where.action, 12200&)
-      syncPlayGroup.requestArrived(group, "report", "ready")
+      syncPlayGroup.requestArrived(group, "report", "ready", group.report.id)
       quiet = m.decide(player, group, 12300&)
       m.assertEqual(m.kindOf(quiet), "")
       m.assertEqual(quiet.wakeAtMs, 12200& + 3000&)
@@ -633,7 +633,7 @@ namespace tests
       m.assertTrue(ask.action.waitOnMe)
       m.assertEqual(ask.action.positionTicks, m.at65s - 2000 * m.oneMs)
       syncPlayConverge.applied(player, group, ask.action, 10000&)
-      syncPlayGroup.requestArrived(group, "ask", "seek")
+      syncPlayGroup.requestArrived(group, "ask", "seek", group.ask.id)
       m.assertTrue(group.askedWait)
       m.assertEqual(m.kindOf(m.decide(player, group, 10001&)), "")
     end function
@@ -820,7 +820,7 @@ namespace tests
       m.assertEqual(ask.action.what, "next")
       syncPlayConverge.applied(player, group, ask.action, 10100&)
       m.assertEqual(m.kindOf(m.decide(player, group, 10200&)), "")
-      syncPlayGroup.requestArrived(group, "ask", "next")
+      syncPlayGroup.requestArrived(group, "ask", "next", group.ask.id)
       m.assertEqual(m.kindOf(m.decide(player, group, 10300&)), "")
     end function
 
@@ -831,7 +831,7 @@ namespace tests
       syncPlayPlayer.finished(player, 10100&)
       ask = m.decide(player, group, 10100&)
       syncPlayConverge.applied(player, group, ask.action, 10100&)
-      syncPlayGroup.requestArrived(group, "ask", "next")
+      syncPlayGroup.requestArrived(group, "ask", "next", group.ask.id)
       context = m.ctx()
       context.isLastItem = true
       m.assertEqual(m.kindOf(syncPlayConverge.decide(player, group, context, syncPlayConverge.defaultPolicy(), 10300&)), "leave")
@@ -843,7 +843,7 @@ namespace tests
       group = m.playingLine()
       syncPlayGroup.viewerAsked(group, "pause", invalid, 9900&)
       syncPlayGroup.requestSent(group, "ask", "pause", 9900&)
-      syncPlayGroup.requestFailed(group, "ask", "pause")
+      syncPlayGroup.requestFailed(group, "ask", "pause", group.ask.id)
       again = m.decide(player, group, 10000&)
       m.assertEqual(m.kindOf(again), "ask")
       m.assertEqual(again.action.what, "pause")
@@ -859,7 +859,7 @@ namespace tests
       syncPlayGroup.viewerAsked(group, "pause", invalid, 9900&)
       for attempt = 1 to syncPlayConverge.defaultPolicy().requestTries
         syncPlayGroup.requestSent(group, "ask", "pause", 9900&)
-        syncPlayGroup.requestFailed(group, "ask", "pause")
+        syncPlayGroup.requestFailed(group, "ask", "pause", group.ask.id)
       end for
       told = m.decide(player, group, 10000&)
       m.assertEqual(m.kindOf(told), "notice")

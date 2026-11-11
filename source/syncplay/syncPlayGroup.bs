@@ -30,6 +30,9 @@ namespace syncPlayGroup
       ' Ready settles only the wait it was sent in, since its result can arrive after the frame
       ' that started the next (a Ready the server found too far off is answered with a Seek).
       waitCount: 0,
+      ' Numbers the requests sent: each gets the next, so a result is matched to the try it
+      ' belongs to and not to a later try of the same request.
+      requestCount: 0,
       ' This member's Buffering holds the group and no command has come since. The command from
       ' before it no longer says where the group is: the server paused the group when it handled
       ' the report.
@@ -72,9 +75,9 @@ namespace syncPlayGroup
 
   ' A request's life: "idle" (none), "flight" (sent, no result), "failed" (the last try failed
   ' and the request may go again). `what` names it ("ready", "buffering", "pause", …), `tries`
-  ' counts sends of this same `what` in a row.
+  ' counts sends of this same `what` in a row, and `id` numbers the try in flight.
   function newRequest() as object
-    return { state: "idle", what: "", sentAtMs: 0&, tries: 0, waitCount: 0 }
+    return { state: "idle", what: "", sentAtMs: 0&, tries: 0, waitCount: 0, id: 0 }
   end function
 
   ' --- facts in ---
@@ -177,6 +180,8 @@ namespace syncPlayGroup
     request.what = what
     request.state = "flight"
     request.sentAtMs = nowMs
+    group.requestCount++
+    request.id = group.requestCount
     if slot <> "report" then return
     if what = "buffering"
       ' Taken as held from the send: the server may act on it before the result is back.
@@ -191,9 +196,11 @@ namespace syncPlayGroup
   end sub
 
   ' The server took the request (a 2xx).
-  sub requestArrived(group as object, slot as string, what as string)
+  ' @param id - the request's number (`group[slot].id` when it was sent); a result for an earlier
+  '   try of the same request, one the limit already called failed, is ignored
+  sub requestArrived(group as object, slot as string, what as string, id as integer)
     request = group[slot]
-    if request.what <> what or request.state <> "flight" then return
+    if request.what <> what or request.state <> "flight" or request.id <> id then return
     request.state = "idle"
     request.tries = 0
     if slot = "report" and what = "ready" and request.waitCount = group.waitCount then group.owesReady = false
@@ -206,9 +213,10 @@ namespace syncPlayGroup
   end sub
 
   ' The request failed: no answer in time, or an error.
-  sub requestFailed(group as object, slot as string, what as string)
+  ' @param id - the request's number, as for requestArrived
+  sub requestFailed(group as object, slot as string, what as string, id as integer)
     request = group[slot]
-    if request.what <> what or request.state <> "flight" then return
+    if request.what <> what or request.state <> "flight" or request.id <> id then return
     request.state = "failed"
   end sub
 
@@ -254,10 +262,13 @@ namespace syncPlayGroup
 
   ' A new join: nothing of the last group's playback carries over.
   sub reset(group as object)
+    ' The numbering goes on, so a result from the last group's request matches nothing.
+    requestCount = group.requestCount
     fresh = newGroup()
     for each key in fresh
       group[key] = fresh[key]
     end for
+    group.requestCount = requestCount
   end sub
 
   ' --- facts out ---

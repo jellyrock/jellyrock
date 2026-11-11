@@ -79,7 +79,7 @@ namespace tests
     function _()
       group = m.groupOnItem()
       syncPlayGroup.requestSent(group, "report", "ready", 4000&)
-      syncPlayGroup.requestArrived(group, "report", "ready")
+      syncPlayGroup.requestArrived(group, "report", "ready", group.report.id)
       m.assertFalse(group.owesReady)
       syncPlayGroup.command(group, m.cmd("Seek", 5000&, m.at60s))
       want = syncPlayGroup.wants(group, m.estimator(), 5000&)
@@ -212,7 +212,7 @@ namespace tests
       syncPlayGroup.requestSent(group, "report", "buffering", 7000&)
       syncPlayGroup.stateChanged(group, "Playing", "Waiting", m.estimator(), 7405&)
       syncPlayGroup.requestSent(group, "report", "ready", 9000&)
-      syncPlayGroup.requestArrived(group, "report", "ready")
+      syncPlayGroup.requestArrived(group, "report", "ready", group.report.id)
       m.assertFalse(group.owesReady)
       syncPlayGroup.stateChanged(group, "Waiting", "Playing", m.estimator(), 9100&)
       m.assertEqual(syncPlayGroup.wants(group, m.estimator(), 9200&).mode, "unknown")
@@ -269,7 +269,7 @@ namespace tests
       syncPlayGroup.requestSent(group, "ask", "pause", 5000&)
       m.assertEqual(group.ask.state, "flight")
       m.assertEqual(group.ask.tries, 1)
-      syncPlayGroup.requestArrived(group, "ask", "pause")
+      syncPlayGroup.requestArrived(group, "ask", "pause", group.ask.id)
       m.assertEqual(group.ask.state, "idle")
       m.assertEqual(group.ask.tries, 0)
     end function
@@ -278,7 +278,7 @@ namespace tests
     function _()
       group = m.groupOnItem()
       syncPlayGroup.requestSent(group, "report", "ready", 5000&)
-      syncPlayGroup.requestFailed(group, "report", "ready")
+      syncPlayGroup.requestFailed(group, "report", "ready", group.report.id)
       m.assertEqual(group.report.state, "failed")
       m.assertTrue(group.owesReady)
       syncPlayGroup.requestSent(group, "report", "ready", 5600&)
@@ -292,7 +292,7 @@ namespace tests
       group = m.groupOnItem()
       syncPlayGroup.requestSent(group, "report", "ready", 5000&)
       m.assertTrue(group.owesReady)
-      syncPlayGroup.requestArrived(group, "report", "ready")
+      syncPlayGroup.requestArrived(group, "report", "ready", group.report.id)
       m.assertFalse(group.owesReady)
     end function
 
@@ -301,16 +301,16 @@ namespace tests
       group = m.groupOnItem()
       syncPlayGroup.command(group, m.cmd("Unpause", 6500&, m.at60s))
       syncPlayGroup.requestSent(group, "report", "buffering", 7000&)
-      syncPlayGroup.requestArrived(group, "report", "buffering")
+      syncPlayGroup.requestArrived(group, "report", "buffering", group.report.id)
       syncPlayGroup.requestSent(group, "report", "ready", 8000&)
       ' The server found that Ready too far off: its corrective Seek comes before the result.
       syncPlayGroup.command(group, m.cmd("Seek", 9050&, m.at60s))
-      syncPlayGroup.requestArrived(group, "report", "ready")
+      syncPlayGroup.requestArrived(group, "report", "ready", group.report.id)
       m.assertTrue(group.owesReady)
       m.assertEqual(group.report.state, "idle")
       ' The Ready sent for the Seek's own wait settles it.
       syncPlayGroup.requestSent(group, "report", "ready", 9500&)
-      syncPlayGroup.requestArrived(group, "report", "ready")
+      syncPlayGroup.requestArrived(group, "report", "ready", group.report.id)
       m.assertFalse(group.owesReady)
     end function
 
@@ -319,10 +319,39 @@ namespace tests
       group = m.groupOnItem()
       syncPlayGroup.requestSent(group, "report", "buffering", 5000&)
       syncPlayGroup.requestSent(group, "report", "ready", 5100&)
-      syncPlayGroup.requestFailed(group, "report", "buffering")
+      syncPlayGroup.requestFailed(group, "report", "buffering", group.report.id)
       m.assertEqual(group.report.state, "flight")
-      syncPlayGroup.requestArrived(group, "report", "buffering")
+      syncPlayGroup.requestArrived(group, "report", "buffering", group.report.id)
       m.assertEqual(group.report.state, "flight")
+    end function
+
+    @it("a late failure of a try the retry replaced leaves the retry in flight")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.requestSent(group, "ask", "pause", 5000&)
+      firstId = group.ask.id
+      syncPlayGroup.advance(group, 2000&, 7000&)
+      m.assertEqual(group.ask.state, "failed")
+      syncPlayGroup.requestSent(group, "ask", "pause", 7100&)
+      m.assertEqual(group.ask.tries, 2)
+      ' The first try's own failure arrives now.
+      syncPlayGroup.requestFailed(group, "ask", "pause", firstId)
+      m.assertEqual(group.ask.state, "flight")
+      m.assertEqual(group.ask.tries, 2)
+    end function
+
+    @it("a late success of a try the retry replaced leaves the retry in flight")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.requestSent(group, "report", "ready", 5000&)
+      firstId = group.report.id
+      syncPlayGroup.advance(group, 2000&, 7000&)
+      syncPlayGroup.requestSent(group, "report", "ready", 7100&)
+      m.assertEqual(group.report.tries, 2)
+      ' The first try's own success arrives now: the retry's result settles the Ready.
+      syncPlayGroup.requestArrived(group, "report", "ready", firstId)
+      m.assertEqual(group.report.state, "flight")
+      m.assertTrue(group.owesReady)
     end function
 
     @it("a request with no result past the limit has failed")
