@@ -1769,6 +1769,14 @@ The stream restart after a playback error (`PlaybackErrorRetry.RESTART_STREAM`, 
 
 Decision `reload-in-place-one-path` fixed a second gear, track or version pick made while a reload loads restarting the video from 0, for every viewer, not only in a group. Its only RTA step (the two-pick step in `tests/rta/specs/syncplay-reload.spec.js`) runs inside a SyncPlay group, so it skips on any server without a push channel to the Roku, including the public demo server a plain `npm run test:rta` uses; unit tests reach only `reloadStartTicks()`. Not done in #1344 because whether the demo server can drive it is unchecked: the closed followup `reload-during-reload-stale-position` recorded the hero sitting at 300 s after a seek, and the OSD auto-hiding there. Close it with an RTA step that plays an item partway in with no group, makes two gear picks with the second landing while the first reload's node reads 0 and has not played, asserts the second reload's `content.PlayStart` is near the position before the picks, and fails once with `reloadStartTicks()` broken on purpose.
 
+#### The RTA suite cannot stall a real video stream, so stall recovery has no device test `[fid: rta-cannot-stall-video-stream]` `[captured 2026-11-11]`
+
+The RTA suite's request-failure rules (`rtaFailRequests`) reach only requests the app sends through its own API pool and `SideEffectTask`. The Video node fetches the stream itself, so no case can make playback stall for real.
+
+Found 2026-11-11: the `syncplay-correction` case "a member's own stall recovery keeps its place" stages its stall by pausing the node over ODC and injecting a `buffering` player event. The SyncPlay comparison engine (`DECIDE_BY_COMPARISON`) reads that as a pause and undoes it, so the case is skipped under that engine (`skipUnderComparison`). Stall behavior (the Buffering and Ready reports of a SyncPlay member, the frozen-position watchdog, playback check-ins while buffering) therefore has no device test.
+
+Why not now: it needs a new piece of test infrastructure and a choice of approach. Closes when an RTA case can make the stream itself stall (for example a local throttling proxy in front of the test server, or a server fixture that serves a segment slowly) and the stall-recovery case runs under the comparison engine.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`
