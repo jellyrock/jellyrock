@@ -852,6 +852,45 @@ namespace tests
       m.assertEqual(m.kindOf(m.decide(player, group, 10100&)), "")
     end function
 
+    @it("an ask the group answered before its slow reply is not held against the next ask")
+    function _()
+      player = m.playingAt(m.at65s, 10000&)
+      group = m.playingLine()
+      for attempt = 1 to syncPlayConverge.defaultPolicy().requestTries
+        syncPlayGroup.viewerAsked(group, "seek", m.at65s, 6900&)
+        syncPlayGroup.requestSent(group, "ask", "seek", 6900&)
+        ' The group's command answers the ask at once; the HTTP reply has not come by the limit.
+        syncPlayGroup.command(group, m.cmd("Unpause", 6000&, m.at60s))
+        syncPlayGroup.advance(group, 3000&, 9900&)
+      end for
+      m.assertEqual(m.kindOf(m.decide(player, group, 10000&)), "")
+      m.assertEqual(group.ask.tries, 0)
+    end function
+
+    @it("an ask the limit called failed and the group then answered is not held against the next ask")
+    function _()
+      player = m.playingAt(m.at65s, 10000&)
+      group = m.playingLine()
+      for attempt = 1 to syncPlayConverge.defaultPolicy().requestTries
+        syncPlayGroup.viewerAsked(group, "seek", m.at65s, 6900&)
+        syncPlayGroup.requestSent(group, "ask", "seek", 6900&)
+        syncPlayGroup.advance(group, 3000&, 9900&)
+        m.assertEqual(group.ask.state, "failed")
+        syncPlayGroup.command(group, m.cmd("Unpause", 6000&, m.at60s))
+      end for
+      m.assertEqual(m.kindOf(m.decide(player, group, 10000&)), "")
+      m.assertEqual(group.ask.tries, 0)
+    end function
+
+    @it("an ask for the next item is not settled by a command: only the queue's answer ends it")
+    function _()
+      group = m.playingLine()
+      syncPlayGroup.requestSent(group, "ask", "next", 6900&)
+      syncPlayGroup.command(group, m.cmd("Unpause", 6000&, m.at60s))
+      m.assertEqual(group.ask.state, "flight")
+      m.assertEqual(group.ask.tries, 1)
+    end function
+
     @it("the viewer's ask that keeps failing is told to them once")
     function _()
       player = m.pausedAt(m.at65s, "viewer")

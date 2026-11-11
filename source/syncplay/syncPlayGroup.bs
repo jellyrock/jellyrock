@@ -91,6 +91,13 @@ namespace syncPlayGroup
     group.waitPointTicks = invalid
     group.heldFor = ""
     group.viewerAsk = invalid
+    ' The server heard that ask, whatever became of its HTTP reply: a reply slower than the limit
+    ' is not a try that failed, and is not held against the next ask. An ask for the next item
+    ' is answered by the queue, never by a command.
+    if group.ask.state <> "idle" and group.ask.what <> "next"
+      group.ask.state = "idle"
+      group.ask.tries = 0
+    end if
     group.catchUps = 0
     group.pointSeeks = 0
     group.whereAskedAtMs = invalid
