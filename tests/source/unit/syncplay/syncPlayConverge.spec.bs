@@ -638,6 +638,29 @@ namespace tests
       m.assertEqual(m.kindOf(m.decide(player, group, 10001&)), "")
     end function
 
+    @it("a reading in step refills the catch-up budget, so a later drift is caught up, not asked of the group")
+    function _()
+      group = m.playingLine()
+      group.catchUps = 2
+      inStep = m.playingAt(m.at65s, 10000&)
+      refill = m.decide(inStep, group, 10000&)
+      m.assertEqual(m.kindOf(refill), "inStep")
+      syncPlayConverge.applied(inStep, group, refill.action, 10000&)
+      m.assertEqual(group.catchUps, 0)
+      m.assertEqual(m.kindOf(m.decide(inStep, group, 10001&)), "")
+      m.assertEqual(m.kindOf(m.decide(m.playingAt(m.at65s - 2000 * m.oneMs, 10000&), group, 10000&)), "seek")
+    end function
+
+    @it("the viewer's time offset pick has a catch-up budget of its own")
+    function _()
+      group = m.playingLine()
+      group.catchUps = 2
+      syncPlayGroup.offsetPicked(group)
+      result = m.decide(m.playingAt(m.at65s - 100 * m.oneMs, 10000&), group, 10000&)
+      m.assertEqual(m.kindOf(result), "seek")
+      m.assertTrue(result.action.byPick)
+    end function
+
     @it("a seek the node gave up asks the group to wait in place of another seek")
     function _()
       player = m.playingAt(m.at65s - 2000 * m.oneMs, 10000&)

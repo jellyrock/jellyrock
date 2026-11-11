@@ -741,6 +741,7 @@
   "MessageSyncPlayFollowingAgain": "Following {0} again.",
   "MessageSyncPlayGroupDoesNotExist": "That group no longer exists.",
   "MessageSyncPlayGroupStarted": "Playing with {0}.",
+  "MessageSyncPlayGroupUnreachable": "Can't reach the group. Still trying.",
   "MessageSyncPlayGroupsFailed": "Couldn't load the SyncPlay groups. Try again.",
   "MessageSyncPlayJoinGroupDenied": "Can't join that group.",
   "MessageSyncPlayJoinedGroup": "Joined {0}.",

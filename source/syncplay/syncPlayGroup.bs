@@ -49,8 +49,8 @@ namespace syncPlayGroup
       waitPointTicks: invalid,
       ' What the viewer asked that no command has answered yet: { kind, positionTicks, atMs }.
       viewerAsk: invalid,
-      ' Catch-ups written since the last command, and whether this member asked the group to
-      ' wait on it since the last Pause.
+      ' Catch-ups written since the member was last found in step (or the last command), and
+      ' whether this member asked the group to wait on it since the last Pause.
       catchUps: 0,
       askedWait: false,
       ' Seeks written toward the point the group waits at, since the last command.
@@ -162,8 +162,10 @@ namespace syncPlayGroup
   end sub
 
   ' The viewer picked a time offset.
+  ' The shift it asks for is the viewer's own, so it starts with a full catch-up budget.
   sub offsetPicked(group as object)
     group.pickPending = true
+    group.catchUps = 0
   end sub
 
   ' A request went out.

@@ -171,6 +171,7 @@ namespace syncPlayMenu
     if kind = "resumeFailed" then return { key: translationKeys.MessageSyncPlayResumeFailed, toastType: "warning", arg: groupName }
     if kind = "syncing" then return { key: translationKeys.MessageSyncPlaySyncingWithGroup, toastType: "info", arg: "" }
     if kind = "halted" then return { key: translationKeys.MessageSyncPlayStoppedFollowing, toastType: "warning", arg: groupName }
+    if kind = "unreachable" then return { key: translationKeys.MessageSyncPlayGroupUnreachable, toastType: "warning", arg: "" }
     if kind = "GroupDoesNotExist" then return { key: translationKeys.MessageSyncPlayGroupDoesNotExist, toastType: "error", arg: "" }
     if kind = "LibraryAccessDenied" then return { key: translationKeys.MessageSyncPlayLibraryAccessDenied, toastType: "error", arg: "" }
     if kind = "CreateGroupDenied" then return { key: translationKeys.MessageSyncPlayCreateGroupDenied, toastType: "error", arg: "" }

@@ -31,11 +31,12 @@ const SYNC_ROUNDS = 3
 ' A Home exit ends the app without a Leave, and on HTTPS the session outlives it
 ' (decision `syncplay-stale-membership-at-launch`).
 const STALE_GROUP_KEY = "syncPlayGroup"
-' Which engine decides a member's playback while it follows: false, this file's command, tracker
-' and correction code; true, the comparison (syncPlayConverge), with this file carrying out the
-' one action it asks for. An RTA build can pick per run through the `engine` field. The other
-' engine's code stays until the comparison has passed its soak.
-const DECIDE_BY_COMPARISON = false
+' Which engine decides a member's playback while it follows: true, the comparison
+' (syncPlayConverge), with this file carrying out the one action it asks for; false, this file's
+' own command, tracker and correction code. The node's `engine` field picks for one run or one
+' spec. The manager's own engine is kept only as the control for the comparison's soak, and is
+' deleted before this reaches `main`.
+const DECIDE_BY_COMPARISON = true
 ' The most actions one event may lead to before the comparison is taken as not settling.
 const CONVERGE_ROUNDS = 12
 
@@ -2087,12 +2088,17 @@ sub carryOut(action as object)
   group = m.shadow.group
   host = playerHost()
   if kind = "pause" or kind = "resume" or kind = "seek"
+    ' The drift the comparison acted on, for the log: read before the write changes the models.
+    driftText = "unknown"
+    drift = publishedDriftMs()
+    if isValid(drift) then driftText = syncPlayTime.asLong(drift).toStr()
+    byPick = group.pickPending
     syncPlayConverge.applied(player, group, action, nowMs&)
     if not isValid(host)
       m.log.warn("the comparison's write found no player", "kind", kind)
       return
     end if
-    m.log.info("comparison wrote", kind, "owner", action.owner, "activity", player.activity)
+    m.log.info("comparison wrote", kind, "owner", action.owner, "driftMs", driftText, "byPick", byPick)
     if kind = "pause"
       tellPlayer(host, { command: "pause", showOsd: action.showOsd = true }, action.owner)
     else if kind = "resume"
@@ -2117,9 +2123,17 @@ sub carryOut(action as object)
   else if kind = "halt"
     haltFollowing(action.reason)
   else
-    ' "notice" and "settled" change only the models. The viewer's notice has no words yet.
+    ' "settled" changes only the models. A notice also tells the viewer, once per outage: the
+    ' requests keep going, and playback is left as it is.
+    if kind = "settled"
+      settledDrift = publishedDriftMs()
+      if isValid(settledDrift) then m.log.info("time offset pick found the member in step", "driftMs", syncPlayTime.asLong(settledDrift).toStr())
+    end if
     syncPlayConverge.applied(player, group, action, nowMs&)
-    if kind = "notice" then m.log.warn("the group cannot be reached", "report", group.report.what, "ask", group.ask.what)
+    if kind = "notice"
+      m.log.warn("the group cannot be reached", "report", group.report.what, "ask", group.ask.what)
+      notify("unreachable", m.state.groupName, "")
+    end if
   end if
 end sub
 

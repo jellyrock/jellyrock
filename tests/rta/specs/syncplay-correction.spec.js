@@ -478,18 +478,24 @@ it("another member's Pause during a correction's hold brings up the OSD", async 
 it('a resume that seeks reports no stall, so the group does not wait', async (testCtx) => {
   skipWithoutPush(testCtx);
   // Above the setting's range: a keypad cannot reach this, and it makes the seek happen.
-  await setOffset(RESUME_SEEKS_OFFSET_MS);
   const phases = new Set();
   const groupStates = new Set();
+  const sampleFor = async (ms) => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) {
+      phases.add(await getGlobalVal('syncPlayManager.sync.trackerPhase'));
+      groupStates.add(await getGlobalVal('syncPlayManager.groupState'));
+    }
+  };
+  await setOffset(RESUME_SEEKS_OFFSET_MS);
+  // Sampled from the offset on: the comparison judges the drift at every reading and seeks at
+  // once, where the manager's own engine waits for the next resume.
+  await sampleFor(5000);
   for (let round = 0; round < 4; round++) {
     await syncPlay(member, 'Pause');
     await waitPaused();
     await syncPlay(member, 'Unpause');
-    const t0 = Date.now();
-    while (Date.now() - t0 < 8000) {
-      phases.add(await getGlobalVal('syncPlayManager.sync.trackerPhase'));
-      groupStates.add(await getGlobalVal('syncPlayManager.groupState'));
-    }
+    await sampleFor(8000);
   }
   await setOffset(0);
   expect(phases.has('seeking') || phases.has('landing'), 'a resume did seek').toBe(true);

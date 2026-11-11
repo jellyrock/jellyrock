@@ -156,8 +156,8 @@ namespace syncPlayShadow
   ' The manager finished handling an event: what does the comparison still ask for?
   sub afterEvent(shadow as object, ctx as object, nowMs as longinteger)
     want = wanted(shadow, ctx, nowMs)
-    ' Two asks touch only the models, so they are carried out here and are no disagreement.
-    if isValid(want) and (want.kind = "settled" or want.kind = "notice")
+    ' Some asks touch only the models, so they are carried out here and are no disagreement.
+    if isValid(want) and (want.kind = "settled" or want.kind = "notice" or want.kind = "inStep")
       syncPlayConverge.applied(shadow.player, shadow.group, want, nowMs)
       want = invalid
     end if

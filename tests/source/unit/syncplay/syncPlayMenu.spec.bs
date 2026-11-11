@@ -177,6 +177,13 @@ namespace tests
       end if
     end function
 
+    @it("a group that cannot be reached is a warning toast that the app is still trying")
+    function _()
+      toast = syncPlayMenu.toastFor({ kind: "unreachable", groupName: "Movie night" })
+      m.assertEqual(toast.key, translationKeys.MessageSyncPlayGroupUnreachable)
+      m.assertEqual(toast.toastType, "warning")
+    end function
+
     @it("a time offset pick's correction is an info toast that the member is syncing")
     function _()
       toast = syncPlayMenu.toastFor({ kind: "syncing" })

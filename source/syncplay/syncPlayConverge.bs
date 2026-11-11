@@ -38,7 +38,8 @@ namespace syncPlayConverge
       ' seek's time.
       leadMs: syncPlayPlayback.CORRECTION_LEAD_MS,
       leadMarginMs: syncPlayPlayback.CORRECTION_LEAD_MARGIN_MS,
-      ' Catch-ups, and seeks toward a waiting group's point, per group command.
+      ' Catch-ups in a row that did not bring the member in step, before the group is asked to
+      ' wait instead, and seeks toward a waiting group's point per group command.
       catchUpLimit: 2,
       pointSeekLimit: 2,
       pauseWriteLimit: syncPlayPlayback.PAUSE_ATTEMPTS,
@@ -116,6 +117,8 @@ namespace syncPlayConverge
       group.toldUnreachable = true
     else if kind = "settled"
       group.pickPending = false
+    else if kind = "inStep"
+      group.catchUps = 0
     end if
   end sub
 
@@ -236,6 +239,9 @@ namespace syncPlayConverge
     if aheadMs& > aheadBar then return { kind: "pause", owner: "hold", showOsd: false }
     if -aheadMs& > behindBar then return catchUp(player, group, ctx, policy, nowMs)
     if group.pickPending then return { kind: "settled" }
+    ' In step on a measured reading: whatever catch-ups it took worked, so the budget is whole
+    ' again. It counts catch-ups that did not bring the member in, not every one in a long film.
+    if group.catchUps > 0 then return { kind: "inStep" }
     return invalid
   end function
 
