@@ -104,6 +104,8 @@ namespace syncPlayConverge
       if action.toPoint = true then group.pointSeeks++
     else if kind = "report"
       if action.what = "buffering" then group.heldFor = action.heldFor
+      if action.what = "buffering" and isValid(action.forLoad) then group.bufferingForLoad = action.forLoad
+      if action.what = "ready" then group.readyForLoad = player.loadCount
       syncPlayGroup.requestSent(group, "report", action.what, nowMs)
       if action.where = true then group.whereAskedAtMs = nowMs
     else if kind = "ask"
@@ -122,13 +124,20 @@ namespace syncPlayConverge
   function nodeAction(player as object, group as object, want as object, ctx as object, policy as object, nowMs as longinteger, result as object) as dynamic
     activity = player.activity
     if want.mode = "stopped"
-      if activity <> "none" then return { kind: "stop" }
+      ' Told once: the player leaves in its own time.
+      if activity <> "none" and not player.toldUnmount then return { kind: "stop" }
       return invalid
     end if
     if ctx.loadOwed = true then return { kind: "load", startTicks: invalid }
     if activity = "none" or activity = "finished" then return invalid
     if syncPlayPlayer.isInFlight(player) then return invalid
     if want.mode = "unknown"
+      ' A load whose Ready the server waits for holds at its first frame, as in any wait, even
+      ' when nothing says where the group stands: a restart of the item while this member's
+      ' reload was still loading leaves it so.
+      if activity = "playing" and want.owesReady and group.readyForLoad <> player.loadCount and group.playingItemId <> "" and not player.scrubbing
+        return { kind: "pause", owner: "wait", showOsd: false }
+      end if
       ' Nothing says to wait, so a hold does not keep the picture frozen.
       if activity = "paused" and player.pauseOwner = "hold" and not player.scrubbing then return { kind: "resume", owner: "hold" }
       return invalid
@@ -262,12 +271,18 @@ namespace syncPlayConverge
       if not group.toldUnreachable then return { kind: "notice", what: "unreachable" }
       if not retryIsDue(slot, policy, nowMs, result) then return invalid
     end if
-    if want.mode = "stopped" then return invalid
+    ' With no item the group plays, there is nothing to report on: a Buffering or a Ready names
+    ' the playing item, and the server refuses one that names none.
+    if want.mode = "stopped" or group.playingItemId = "" then return invalid
     activity = player.activity
 
+    ' Each load is told to the server once, whatever was said before it: a member that follows
+    ' again, or loads the next item, starts a wait of its own.
+    if activity = "loading" and group.bufferingForLoad <> player.loadCount
+      return { kind: "report", what: "buffering", heldFor: "load", forLoad: player.loadCount, positionTicks: bestKnownTicks(player, nowMs), isPlaying: false }
+    end if
     if not group.saidBuffering
       reason = ""
-      if activity = "loading" then reason = "load"
       if activity = "stalled" then reason = "stall"
       if activity = "seeking" and player.seekOwner = "group" then reason = "seek"
       ' A seek of this member's own that outlasted its budget is a stall to the group.
@@ -279,9 +294,10 @@ namespace syncPlayConverge
       if activity = "paused"
         return { kind: "report", what: "ready", positionTicks: readyTicks(player, want, policy, nowMs), isPlaying: false }
       end if
-      ' Only a node that plays on purpose reports as it plays: one recovering from a stall, or
-      ' one in a group that plays on.
-      playsOnPurpose = want.mode = "playing" or (want.mode = "waiting" and want.heldFor = "stall")
+      ' Only a node that plays on purpose reports as it plays: one recovering from a stall, one
+      ' in a group that plays on, or one with nothing saying where the group stands (the server's
+      ' answer to the Ready then says so).
+      playsOnPurpose = want.mode = "playing" or want.mode = "unknown" or (want.mode = "waiting" and want.heldFor = "stall")
       if activity = "playing" and playsOnPurpose
         position = syncPlayPlayer.positionAt(player, nowMs)
         if isValid(position) then return { kind: "report", what: "ready", positionTicks: syncPlayTime.asLong(position), isPlaying: true }

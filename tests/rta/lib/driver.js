@@ -484,5 +484,23 @@ export async function hardRelaunch({ timing = 'polled', params } = {}) {
   await ecp.sendLaunchChannel({ channelId: 'dev', params, verifyLaunch: false });
   await ensureOdcReachable();
   await waitSceneAnswering({ timeout: SCENE_ANSWER_TIMEOUT_MS, interval: 200 });
+  await applySyncPlayEngine();
   await waitLandingSettled();
+}
+
+/**
+ * Sets the SyncPlay engine a run asked for: `RTA_SYNCPLAY_ENGINE=comparison` or `manager` picks
+ * which code decides a member's playback (`SyncPlayManager.usesComparison()`), so one build runs
+ * the SyncPlay specs under either. The field resets with the app, so every cold start sets it
+ * again, before any spec can join a group. Unset, the build's own engine stays.
+ */
+async function applySyncPlayEngine() {
+  const engine = process.env.RTA_SYNCPLAY_ENGINE;
+  if (!engine) return;
+  if (engine !== 'comparison' && engine !== 'manager') {
+    throw new Error(
+      `RTA_SYNCPLAY_ENGINE must be 'comparison' or 'manager', not ${JSON.stringify(engine)}`,
+    );
+  }
+  await odc.setValue({ base: 'global', keyPath: 'syncPlayManager.engine', value: engine });
 }

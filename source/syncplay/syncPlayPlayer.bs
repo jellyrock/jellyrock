@@ -58,6 +58,11 @@ namespace syncPlayPlayer
       pauseTicks: invalid,
       arrivedFrom: "",
       loadStartTicks: 0&,
+      ' Counts the loads: one per stream this player started on. The server is told of each
+      ' once (syncPlayConverge's Buffering for a load).
+      loadCount: 0,
+      ' A load was told and its player has not mounted yet: that mount is the same load.
+      loadTold: false,
       toldUnmount: false,
       seekTargetTicks: 0&,
       seekWrittenAtMs: 0&,
@@ -79,6 +84,9 @@ namespace syncPlayPlayer
     if verb = "load"
       ' The player now mounted, if any, unmounts for the new one: that unmount is the load's.
       player.toldUnmount = player.activity <> "none"
+      ' Every load told is a load of its own, one that replaces a load still in flight included.
+      player.loadCount++
+      player.loadTold = true
       enter(player, "loading", nowMs)
       player.loadStartTicks = 0&
       if syncPlayTime.isWholeNumber(targetTicks) then player.loadStartTicks = syncPlayTime.asLong(targetTicks)
@@ -142,6 +150,9 @@ namespace syncPlayPlayer
     player.lastLandingTicks = invalid
     player.loadStartTicks = 0&
     if syncPlayTime.isWholeNumber(startTicks) then player.loadStartTicks = syncPlayTime.asLong(startTicks)
+    ' The mount of a load already told is that load; any other mount is a load of its own.
+    if not player.loadTold then player.loadCount++
+    player.loadTold = false
     enter(player, "loading", nowMs)
     setClock(player, "unknown", 0&, nowMs, false)
   end sub
@@ -150,6 +161,8 @@ namespace syncPlayPlayer
   ' was learned about the old stream's seeks does not carry over.
   sub reloaded(player as object, startTicks as dynamic, nowMs as longinteger)
     if player.activity = "none" then return
+    ' A retry before the first frame is the same load: the server has its Buffering already.
+    player.loadTold = player.activity = "loading"
     mounted(player, startTicks, nowMs)
   end sub
 

@@ -114,6 +114,27 @@ namespace tests
       m.assertEqual(syncPlayGroup.wants(group, m.estimator(), 5400&).mode, "stopped")
     end function
 
+    @it("a Stop stands only while the group is idle: any state after it ends it")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.command(group, m.cmd("Stop", 6000&, 0&))
+      syncPlayGroup.stateChanged(group, "Playing", "Idle", m.estimator(), 5100&)
+      m.assertEqual(syncPlayGroup.wants(group, m.estimator(), 5200&).mode, "stopped")
+      ' The group starts again on the same item, with no queue update that changes it.
+      syncPlayGroup.stateChanged(group, "Idle", "Waiting", m.estimator(), 5300&)
+      m.assertEqual(syncPlayGroup.wants(group, m.estimator(), 5400&).mode, "unknown")
+    end function
+
+    @it("a queue update that starts an item ends a Stop taken before it, whatever their times")
+    function _()
+      group = m.groupOnItem()
+      syncPlayGroup.command(group, m.cmd("Stop", 6000&, 0&))
+      ' The stopped group starts again on the same item: its queue's own time is older than the Stop.
+      syncPlayGroup.playbackStarted(group)
+      syncPlayGroup.itemChanged(group, "p-1", 1000&)
+      m.assertEqual(syncPlayGroup.wants(group, m.estimator(), 5400&).mode, "unknown")
+    end function
+
     @it("a new item makes the server wait for this member's Ready")
     function _()
       group = syncPlayGroup.newGroup()

@@ -33,6 +33,9 @@ namespace tests
       m.previousQueue = m.global.queueManager
       m.global.queueManager = CreateObject("roSGNode", "QueueManager")
       m.manager = CreateObject("roSGNode", "SyncPlayManager")
+      ' These cases are the manager's own engine's (its commands, tracker and corrections), and go
+      ' with it. The comparison's are SyncPlayManagerComparison.spec.bs and the pure specs.
+      m.manager.engine = "manager"
       m.isCapturingPosts = false
       m.previousTimeOffset = m.global.user.settings.playbackSyncPlayTimeOffsetMs
     end function

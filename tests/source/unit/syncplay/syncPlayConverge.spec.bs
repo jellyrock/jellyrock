@@ -92,6 +92,17 @@ namespace tests
       m.assertEqual(m.kindOf(m.decide(syncPlayPlayer.newPlayer(), group, 10000&)), "")
     end function
 
+    @it("a stop is asked once: the player leaves in its own time")
+    function _()
+      player = m.playingAt(m.at60s, 10000&)
+      group = m.groupWith(m.cmd("Stop", 9000&, 0&))
+      stopAction = m.decide(player, group, 10000&)
+      syncPlayConverge.applied(player, group, stopAction.action, 10000&)
+      m.assertEqual(m.kindOf(m.decide(player, group, 10001&)), "")
+      syncPlayPlayer.unmounted(player, 10100&)
+      m.assertEqual(m.kindOf(m.decide(player, group, 10200&)), "")
+    end function
+
     @it("a load the queue layer owes is performed, whatever the node is doing")
     function _()
       context = m.ctx()
@@ -136,6 +147,7 @@ namespace tests
         for each group in [m.pausedGroup(), m.seekGroup(), m.playingLine(), m.groupWith(invalid)]
           ' The server has this member's Buffering, so no report stands in for a node write.
           group.saidBuffering = true
+          group.bufferingForLoad = player.loadCount
           group.owesReady = false
           group.whereAskedAtMs = 9999&
           m.assertEqual(m.kindOf(m.decide(player, group, 10000&)), "", player.activity)
@@ -369,6 +381,90 @@ namespace tests
       m.assertEqual(ready.action.what, "ready")
       m.assertEqual(ready.action.positionTicks, m.at60s)
       m.assertFalse(ready.action.isPlaying)
+    end function
+
+    @it("each load is told to the server, whatever was said before: a member that follows again waits its turn")
+    function _()
+      player = m.playingAt(m.at65s, 10000&)
+      group = m.playingLine()
+      group.bufferingForLoad = player.loadCount
+      group.saidBuffering = true
+      ' Halted, then following again: the group's item loads anew.
+      syncPlayGroup.followedAgain(group)
+      syncPlayPlayer.unmounted(player, 10100&)
+      syncPlayPlayer.told(player, "load", "group", m.at65s, 10200&)
+      first = m.decide(player, group, 10200&)
+      m.assertEqual(m.kindOf(first), "report")
+      m.assertEqual(first.action.what, "buffering")
+      m.assertEqual(first.action.heldFor, "load")
+      syncPlayConverge.applied(player, group, first.action, 10200&)
+      syncPlayGroup.requestArrived(group, "report", "buffering")
+      ' The mount of that load is the same load: nothing is said twice.
+      syncPlayPlayer.mounted(player, m.at65s, 10500&)
+      m.assertEqual(m.kindOf(m.decide(player, group, 10500&)), "")
+    end function
+
+    @it("nothing is reported while the group plays no item")
+    function _()
+      player = syncPlayPlayer.newPlayer()
+      group = syncPlayGroup.newGroup()
+      syncPlayPlayer.mounted(player, invalid, 9000&)
+      m.assertEqual(m.kindOf(m.decide(player, group, 9000&)), "")
+      syncPlayGroup.itemChanged(group, "p-1", 9100&)
+      m.assertEqual(m.kindOf(m.decide(player, group, 9200&)), "report")
+    end function
+
+    @it("a load that replaces one still loading is told to the server as a load of its own")
+    function _()
+      player = syncPlayPlayer.newPlayer()
+      group = syncPlayGroup.newGroup()
+      syncPlayGroup.itemChanged(group, "p-1", 1000&)
+      syncPlayPlayer.mounted(player, m.at60s, 9000&)
+      first = m.decide(player, group, 9000&)
+      syncPlayConverge.applied(player, group, first.action, 9000&)
+      syncPlayGroup.requestArrived(group, "report", "buffering")
+      ' The group restarts the item while that load is still loading: the queue layer loads anew.
+      syncPlayGroup.itemChanged(group, "p-1", 9500&)
+      syncPlayPlayer.told(player, "load", "group", 0&, 9600&)
+      second = m.decide(player, group, 9600&)
+      m.assertEqual(m.kindOf(second), "report")
+      m.assertEqual(second.action.what, "buffering")
+      m.assertEqual(second.action.heldFor, "load")
+    end function
+
+    @it("a load's first frame holds for its Ready even when nothing says where the group stands")
+    function _()
+      player = syncPlayPlayer.newPlayer()
+      group = syncPlayGroup.newGroup()
+      syncPlayGroup.itemChanged(group, "p-1", 1000&)
+      syncPlayPlayer.mounted(player, 0&, 9000&)
+      ' The server was told of this load, and the wait it started was reset by a restart.
+      group.bufferingForLoad = player.loadCount
+      syncPlayPlayer.nodeState(player, "playing", 9800&)
+      syncPlayPlayer.reading(player, 3000000&, 9820&)
+      hold = m.decide(player, group, 9820&)
+      m.assertEqual(m.kindOf(hold), "pause")
+      m.assertEqual(hold.action.owner, "wait")
+      syncPlayConverge.applied(player, group, hold.action, 9820&)
+      syncPlayPlayer.nodeState(player, "paused", 9850&)
+      ready = m.decide(player, group, 9850&)
+      m.assertEqual(ready.action.what, "ready")
+      m.assertFalse(ready.action.isPlaying)
+      syncPlayConverge.applied(player, group, ready.action, 9850&)
+      m.assertEqual(group.readyForLoad, player.loadCount)
+    end function
+
+    @it("a playing member the server waits on, with nothing saying where the group stands, reports as it plays")
+    function _()
+      player = m.playingAt(m.at65s, 10000&)
+      group = m.groupWith(invalid)
+      group.readyForLoad = player.loadCount
+      group.bufferingForLoad = player.loadCount
+      syncPlayGroup.startWait(group)
+      ready = m.decide(player, group, 10000&)
+      m.assertEqual(m.kindOf(ready), "report")
+      m.assertEqual(ready.action.what, "ready")
+      m.assertTrue(ready.action.isPlaying)
     end function
 
     @it("a stall past the bar tells the server once, and the node that recovers reports Ready as it plays")

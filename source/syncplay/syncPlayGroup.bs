@@ -40,6 +40,11 @@ namespace syncPlayGroup
       ' Whether the server has this member's Buffering for the load, seek or stall under way,
       ' so it is sent once.
       saidBuffering: false,
+      ' The load (syncPlayPlayer's loadCount) the server was last told of with a Buffering.
+      bufferingForLoad: 0,
+      ' The load whose Ready was last sent: until a load's own Ready goes out, its first frame
+      ' is held for it.
+      readyForLoad: 0,
       ' Where the server paused the group for that Buffering (anchorWait), or invalid.
       waitPointTicks: invalid,
       ' What the viewer asked that no command has answered yet: { kind, positionTicks, atMs }.
@@ -113,10 +118,21 @@ namespace syncPlayGroup
     if isValid(group.command) and not commandIsCurrent(group, group.command) then group.command = invalid
   end sub
 
+  ' A queue update that starts an item arrived. Frames come in the order the server sent them,
+  ' so a Stop taken before it is over, whatever the two frames' own times say: a stopped group
+  ' started again on the same item sends its queue with the time the queue last changed, which
+  ' is older than the Stop.
+  sub playbackStarted(group as object)
+    if isValid(group.command) and group.command.command = "Stop" then group.command = invalid
+  end sub
+
   ' The group's state moved.
   ' @param previous - the state before ("Idle", "Waiting", "Paused", "Playing" or "")
   ' @param estimator - the clock estimator (delayMs is the measured round trip)
   sub stateChanged(group as object, previous as string, current as string, estimator as object, nowMs as longinteger)
+    ' A group that left Idle is no longer stopped, whatever started it again: a Stop stands only
+    ' while the server says the group is idle.
+    if current <> "Idle" and isValid(group.command) and group.command.command = "Stop" then group.command = invalid
     if previous = "Playing" and current = "Waiting" and group.heldByMe and not isValid(group.waitPointTicks)
       anchorWait(group, estimator, nowMs)
     else if previous = "Waiting" and current <> "Waiting" and group.heldByMe
@@ -188,7 +204,6 @@ namespace syncPlayGroup
   end sub
 
   ' The request failed: no answer in time, or an error.
-  ' bsc-disable-next-line dead-code keep: planned: #1251 the manager reads request results once it decides through the comparison
   sub requestFailed(group as object, slot as string, what as string)
     request = group[slot]
     if request.what <> what or request.state <> "flight" then return
@@ -216,7 +231,26 @@ namespace syncPlayGroup
     return due
   end function
 
-  ' A new join, or a follow again: nothing of the last group's playback carries over.
+  ' A halted member follows the group again. Where the group is still stands (commands are
+  ' taken while halted); what the server held from this member before the halt does not, nor
+  ' does anything the viewer asked then.
+  sub followedAgain(group as object)
+    group.owesReady = false
+    group.heldByMe = false
+    group.heldFor = ""
+    group.saidBuffering = false
+    group.waitPointTicks = invalid
+    group.viewerAsk = invalid
+    group.catchUps = 0
+    group.pointSeeks = 0
+    group.askedWait = false
+    group.whereAskedAtMs = invalid
+    group.toldUnreachable = false
+    group.report = newRequest()
+    group.ask = newRequest()
+  end sub
+
+  ' A new join: nothing of the last group's playback carries over.
   sub reset(group as object)
     fresh = newGroup()
     for each key in fresh

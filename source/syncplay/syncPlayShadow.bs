@@ -71,8 +71,10 @@ namespace syncPlayShadow
     if previous <> current then syncPlayGroup.stateChanged(shadow.group, previous, current, estimator, nowMs)
   end sub
 
-  sub itemChanged(shadow as object, playingItemId as string, changedAtMs as longinteger)
+  ' @param startsItem - the update starts this member on an item (syncPlayQueue.changesPlayingItem)
+  sub itemChanged(shadow as object, playingItemId as string, changedAtMs as longinteger, startsItem = false as boolean)
     group = shadow.group
+    if startsItem then syncPlayGroup.playbackStarted(group)
     if group.playingItemId = playingItemId and syncPlayTime.asLong(group.queueChangedAtMs) = changedAtMs then return
     syncPlayGroup.itemChanged(group, playingItemId, changedAtMs)
   end sub
@@ -121,9 +123,11 @@ namespace syncPlayShadow
     if what = "buffering"
       activity = shadow.player.activity
       group.heldFor = "stall"
+      if activity = "loading" then group.bufferingForLoad = shadow.player.loadCount
       if activity = "loading" then group.heldFor = "load"
       if activity = "seeking" then group.heldFor = "seek"
     end if
+    if what = "ready" then group.readyForLoad = shadow.player.loadCount
     syncPlayGroup.requestSent(group, "report", what, nowMs)
     syncPlayGroup.requestArrived(group, "report", what)
   end sub
