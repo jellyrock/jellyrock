@@ -551,7 +551,7 @@ RTA_STRESS_ROUNDS=150 RTA_STRESS_CASE=mix RTA_STRESS_SEED=1 npm run test:rta -- 
 - A step that is not at rest when its window ends counts as `frozen` and fails the run. Its record keeps every reading of the window and what each queued item's player node answered. The run then brings the group back to playing and goes on, or stops if that does not settle.
 - Each step is one JSON line in `.device-runs/syncplay-stress-mix-seed<seed>-<engine>-<start time>.jsonl`: how long it took to settle, how long the node was not playing, every drift reading, and how many corrections, group Seeks, Ready reports and loads it caused.
 - The run's device console holds the rest: `request answered` and `request failed` carry how long each SyncPlay request took, and `unpause reaches this member` how long a paused member waits for the group. The next run replaces `console.log` in the run folder, so copy it out after each run.
-- A clean run's console has four `Compiling 'JellyRock'` lines, two before the steps and two after. One between them is another session's deploy, and the run is void.
+- A clean run's console has no `Compiling 'JellyRock'` line between its first `SyncPlayManager` line and its last: the run's own compiles come before the steps (two, or three when the run deploys) and after them (two). One between them is another session's deploy, and the run is void.
 - The group's second item can take another playback path than the first (a transcode beside a direct play), so read a measurement per item (`end.itemIndex`).
 
 ## Notes
