@@ -231,6 +231,6 @@
   "MessageMoreFrom": "Más de {0}",
   "MessageSyncPlayCreateGroupDenied": "Permiso requerido para crear un grupo.",
   "MessageSyncPlayLibraryAccessDenied": "El acceso a este contenido está restringido.",
-  "SettingDescMaxDaysNextUp": "Establece la cantidad máxima de días que un programa debe permanecer en la lista \"Siguiente\" sin verlo.",
-  "SettingDisplayLanguage": "Idioma de pantalla"
+  "ButtonMarkUnwatched": "Marcar como \"no visto\"",
+  "ButtonExit": "Salir"
 }
