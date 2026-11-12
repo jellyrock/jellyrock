@@ -1427,7 +1427,7 @@ export async function navAudioDetails(ctx) {
  * second copy of a walk whose entire purpose is the stale-read guard is exactly the
  * drift that rule exists to prevent.
  */
-async function focusGridTile(target) {
+export async function focusGridTile(target) {
   // Grid LOADED is not grid FOCUSED, and `itemFocused` retains its last value while
   // the grid is unfocused, so without this the walk can read a stale 0 forever and
   // press Right at whatever actually holds focus. Same precondition as the Home walk.
