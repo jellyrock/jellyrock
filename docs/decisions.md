@@ -2776,6 +2776,16 @@ The overhang's icon cluster and the SyncPlay mark on the OSD sit a fixed gap (`o
 
 Ruled out: a fixed slot in both bars (`slot`), and leaving the overhang's old fixed slot beside a measured OSD mark (`leave`), both for the dead space; measuring the widest string the format can produce once, which would stop the movement but was declined as not worth it. Operator: `measure`, 2026-11-06; shipped in #1335.
 
+## decision-id: backdrop-owner-declared
+
+**date**: 2026-11-12
+**status**: accepted
+**related-files**: `components/JRScene.bs`, `source/utils/backdrop.bs`, `source/utils/queueBackdropHelper.bs`
+
+In the Backdrop Images `details` mode, `JRScene.setBackgroundImage` decides which writes show from an `owner` the writer declares, its own subtype. `isItemBackdropOwner()` holds the one list of item screens (`ItemDetails`, `PlayerHostView`, `VideoPlayerView`, `AudioPlayerView`), and `backdropUriFor()` turns any other write into a clear. So Back from an item clears through the browse screen's own write as it is shown again: a new browse screen must write its backdrop, or `""`, when shown again.
+
+Ruled out: deciding by `m.global.activeRoutedView`, because `AudioPlayerView.init()` writes its backdrop before `JRScreen.onViewOpen` makes it active, so Now Playing would lose its backdrop when music starts from a browse screen; a mode check in every browse screen, about 20 call sites in 6 files where a new screen that forgets leaks backdrops; and a clear in `onActiveRoutedViewChanged` on reaching a browse screen, dropped because no test could fail it (measured on a Roku Ultra 2026-11-11: with it disabled, Back to the library grid, to Home with its refresh held 15 s, and to search results all still cleared). Requested in discussion 1361.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
