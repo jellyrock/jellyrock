@@ -16,6 +16,7 @@ import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
 import { captureRawUI } from '../capture.js';
 import {
+  focusOverhangIcon,
   navLibraryGrid,
   navMovieDetails,
   navSettings,
@@ -144,6 +145,83 @@ it('Settings: Up enters the row, the gear there does nothing, Back from the row 
   // Back from the row leaves the screen through its own leaveScreen: one press, not two.
   await press(ecp.Key.Back);
   await waitHome();
+});
+
+// Star from the row does what Star does on the screen under it. The row sits outside the
+// screen, so the scene gets the key and hands it to the screen (JRScreen.onOptionsKey).
+it('Star from the row on a library opens its options, and Star again closes them', async () => {
+  await freshApp('overhang-cluster star library');
+  await navLibraryGrid(ctx);
+  await enterRow('the grid');
+
+  await press(ecp.Key.Option);
+  await waitFocusInside('#options', { label: 'the library options, opened from the row' });
+  expect(await getActiveVal('subtype()'), 'the app is still on the library').toBe('BaseGridView');
+
+  await press(ecp.Key.Option);
+  await waitFocusInside('#itemGrid', { label: 'the grid after Star closed the options' });
+});
+
+it('Star from the row on Settings closes Settings in one press, as it does on the screen', async () => {
+  await freshApp('overhang-cluster star settings');
+  await navSettings();
+  await waitFocusInside('#settingsMenu', { label: 'the settings menu' });
+  await press(ecp.Key.Up);
+  await waitFocused(atSyncPlayIcon, {
+    timeout: 8000,
+    interval: 250,
+    label: 'the row from Settings',
+  });
+
+  await press(ecp.Key.Option);
+  await waitHome();
+});
+
+// Back closes the library at once (onDestroy), but Home becomes the active view a turn later.
+// A Star sent right behind the Back reaches the scene in that gap, from a screen already torn
+// down: the scene must drop it while the router navigates, as it drops Back.
+it('Star right after Back from a library is dropped, and Home comes back', async () => {
+  await freshApp('overhang-cluster star during back');
+  await navLibraryGrid(ctx);
+  await waitFocusInside('#itemGrid', { label: 'the library grid' });
+
+  await press(ecp.Key.Back);
+  await press(ecp.Key.Option);
+  await press(ecp.Key.Option);
+  await press(ecp.Key.Option);
+
+  await waitHome();
+});
+
+// The case above races a real Back, so it cannot say whether its Stars landed in the gap. This
+// one builds the gap's state with no race: the router's own close call tears the library down
+// in place, so it stays the active view with its onDestroy run and no navigation in flight.
+// The scene must call none of that screen's hooks (JRScreen.isClosed). Nothing a viewer does
+// leaves the app here, so the next case starts the app again.
+it('Star on a library that is closed but still the active view is dropped', async () => {
+  await freshApp('overhang-cluster star on a closed screen');
+  await navLibraryGrid(ctx);
+  await waitFocusInside('#itemGrid', { label: 'the library grid' });
+
+  await odc.callFunc({ base: 'global', keyPath: 'activeRoutedView', funcName: 'beforeViewClose' });
+  expect(await getActiveVal('isClosed'), 'the library reports itself closed').toBe(true);
+
+  await press(ecp.Key.Option);
+  // A read that completes is the app still running: without the check the key reached
+  // BaseGridView.toggleOptions() on released state and the app stopped in the debugger.
+  expect(await getActiveVal('subtype()'), 'the app still answers, on the same view').toBe(
+    'BaseGridView',
+  );
+});
+
+it('Star from the row on Home opens its panel', async () => {
+  await freshApp('overhang-cluster star home');
+  await waitHome();
+  await focusOverhangIcon('settingsIcon');
+
+  await press(ecp.Key.Option);
+  await waitFocusInside('#options', { label: "Home's panel, opened from the row" });
+  expect(await getActiveVal('subtype()')).toBe('Home');
 });
 
 it('search: Up from the keyboard enters the row, and the search icon reopens the keyboard', async () => {

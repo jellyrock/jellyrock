@@ -852,6 +852,11 @@ function leaveScreen() as boolean
   return true
 end function
 
+' JRScreen hook: Star closes Settings, from the overhang row as from the screen.
+function onOptionsKey() as boolean
+  return leaveScreen()
+end function
+
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 
