@@ -10,7 +10,7 @@
 '   3. A group standing still (paused, or waiting at a point) holds the node paused, at the point
 '      when the server waits for this member's Ready there.
 '   4. A group playing along a line: a paused node resumes as the line reaches it; a playing
-'      node past a bar holds (ahead) or catches up (behind).
+'      node past a bar holds (ahead) or catches up (behind), as does one that sends no readings.
 '   5. The server's picture of this member is closed with one report at a time: Buffering for a
 '      load, a group seek or a stall, Ready when it is over.
 '   6. A request that failed goes again for as long as it is wanted; after a few tries the
@@ -52,7 +52,11 @@ namespace syncPlayConverge
       whereEveryMs: 3000,
       ' How often a request that has used up its tries goes again. It never stops: a Ready the
       ' server waits for holds the whole group until it arrives.
-      retryEveryMs: 5000
+      retryEveryMs: 5000,
+      ' How long a node the model calls playing may go without a position reading before it is
+      ' taken as not moving. Notifications come every 500 ms of media, so this is six of them.
+      ' Provisional: nothing has measured it.
+      silentPlayingMs: 3000
     }
   end function
 
@@ -223,6 +227,15 @@ namespace syncPlayConverge
       return invalid
     end if
     if activity <> "playing" then return invalid
+    ' A node that reads playing and sends no reading is taken as not moving once the limit
+    ' passes, and a seek is what frees it. A node whose readings arrive never gets here.
+    silentAt& = syncPlayTime.asLong(player.clock.atMs) + policy.silentPlayingMs
+    if nowMs >= silentAt&
+      silent = catchUp(player, group, ctx, policy, nowMs)
+      if isValid(silent) and silent.kind = "seek" then silent.silent = true
+      return silent
+    end if
+    wake(result, silentAt&)
     ' A drift is judged only on a position a notification measured.
     if player.clock.kind <> "running" or player.clock.measured <> true then return invalid
     position = syncPlayPlayer.positionAt(player, nowMs)

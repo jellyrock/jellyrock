@@ -638,6 +638,58 @@ namespace tests
       m.assertEqual(m.kindOf(m.decide(player, group, 10001&)), "")
     end function
 
+    @it("a node whose pause was never confirmed, left playing and not moving, is caught up at the silence limit")
+    function _()
+      player = m.playingAt(m.at65s, 9000&)
+      group = m.playingLine()
+      syncPlayPlayer.told(player, "pause", "hold", invalid, 9100&)
+      syncPlayPlayer.advance(player, 10100&)
+      m.assertEqual(player.activity, "playing")
+      m.assertEqual(player.clock.kind, "unknown")
+      limit& = 10100& + 3000&
+      before = m.decide(player, group, limit& - 1)
+      m.assertEqual(m.kindOf(before), "")
+      m.assertEqual(before.wakeAtMs, limit&)
+      atLimit = m.decide(player, group, limit&)
+      m.assertEqual(m.kindOf(atLimit), "seek")
+      m.assertTrue(atLimit.action.catchUp)
+      m.assertTrue(atLimit.action.silent)
+      m.assertEqual(atLimit.action.owner, "hold")
+    end function
+
+    @it("a playing node with a running clock whose readings stopped is caught up at the silence limit")
+    function _()
+      player = m.playingAt(m.at65s, 10000&)
+      group = m.playingLine()
+      limit& = 10000& + 3000&
+      m.assertEqual(m.kindOf(m.decide(player, group, limit& - 1)), "")
+      m.assertEqual(m.decide(player, group, limit& - 1).wakeAtMs, limit&)
+      atLimit = m.decide(player, group, limit&)
+      m.assertEqual(m.kindOf(atLimit), "seek")
+      m.assertTrue(atLimit.action.catchUp)
+      m.assertTrue(atLimit.action.silent)
+      m.assertEqual(atLimit.action.owner, "hold")
+    end function
+
+    @it("a playing node whose readings keep arriving is never caught up for silence")
+    function _()
+      group = m.playingLine()
+      player = m.playingAt(m.at60s + 5000& * m.oneMs, 10000&)
+      for t = 10500 to 30000 step 500
+        now& = syncPlayTime.asLong(t)
+        syncPlayPlayer.reading(player, m.at60s + (now& - 5000&) * m.oneMs, now&)
+        m.assertEqual(m.kindOf(m.decide(player, group, now& + 10&)), "", "an action at " + t.toStr())
+      end for
+    end function
+
+    @it("a silent playing node gets nothing under the viewer's open scrub bar")
+    function _()
+      player = m.playingAt(m.at65s, 10000&)
+      syncPlayPlayer.scrub(player, true)
+      result = m.decide(player, m.playingLine(), 30000&)
+      m.assertEqual(m.kindOf(result), "")
+    end function
+
     @it("a reading in step refills the catch-up budget, so a later drift is caught up, not asked of the group")
     function _()
       group = m.playingLine()

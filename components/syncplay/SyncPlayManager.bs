@@ -2127,6 +2127,7 @@ sub carryOut(action as object)
     drift = publishedDriftMs()
     if isValid(drift) then driftText = syncPlayTime.asLong(drift).toStr()
     byPick = group.pickPending
+    if action.silent = true then m.log.info("playing node sent no reading", "activity", player.activity, "clock", player.clock.kind)
     syncPlayConverge.applied(player, group, action, nowMs&)
     if not isValid(host)
       m.log.warn("the comparison's write found no player", "kind", kind)

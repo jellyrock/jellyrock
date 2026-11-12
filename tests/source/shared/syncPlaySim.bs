@@ -39,7 +39,7 @@ namespace tests.syncPlaySim
       player: syncPlayPlayer.newPlayer(),
       group: syncPlayGroup.newGroup(),
       groupState: "Paused",
-      node: { state: "none", posMs: 0&, atMs: 0&, moving: false, busy: "", epoch: 0, noteEpoch: 0 },
+      node: { state: "none", posMs: 0&, atMs: 0&, moving: false, busy: "", epoch: 0, noteEpoch: 0, wedged: false },
       server: { state: "Paused", posMs: 60000&, activityMs: 100000&, meBuffering: true, resumePlaying: false, jumped: false },
       lastFrameAtMs: 0&,
       ' Set true to print every event and action of the run to the console, to read a failing seed.
@@ -49,7 +49,7 @@ namespace tests.syncPlaySim
       seeks: 0,
       events: 0,
       ' What the run went through, so a spec can check its faults happened at all.
-      counts: { farLandings: 0, slowSeeks: 0, slowResumes: 0, scrubs: 0, lostRequests: 0, stalls: 0, catchUps: 0, holds: 0, waitAsks: 0, whereAsks: 0 }
+      counts: { farLandings: 0, slowSeeks: 0, slowResumes: 0, scrubs: 0, lostRequests: 0, stalls: 0, wedgedPauses: 0, silentCatchUps: 0, catchUps: 0, holds: 0, waitAsks: 0, whereAsks: 0 }
     }
     ' The group stands paused on one item, and this member's player mounts for it.
     syncPlayGroup.itemChanged(sim.group, "p-1", 99000&)
@@ -159,6 +159,7 @@ namespace tests.syncPlaySim
     else if kind = "seek"
       sim.seeks++
       if action.catchUp = true then sim.counts.catchUps++
+      if action.silent = true then sim.counts.silentCatchUps++
       if sim.scrubbing and action.owner <> "group" then violate(sim, "a seek of the member's own was written under the viewer's scrub")
       writeSeek(sim, syncPlayTime.ticksToMs(action.targetTicks))
     else if kind = "report"
@@ -200,6 +201,14 @@ namespace tests.syncPlaySim
       return
     end if
     if node.state = "paused" then return
+    if sim.faults and node.state = "playing" and sim.server.state = "Playing" and chance(sim, 8)
+      ' A pause that never takes: the node reads playing, stands still and sends no position
+      ' notification, until a seek is written to it.
+      freeze(sim)
+      node.wedged = true
+      sim.counts.wedgedPauses++
+      return
+    end if
     node.busy = "pause"
     delay = nextInt(sim, 16, 61)
     if node.state = "buffering" then delay = 5
@@ -228,6 +237,7 @@ namespace tests.syncPlaySim
       return
     end if
     freeze(sim)
+    node.wedged = false
     ' A seek closes the trick-play bar.
     if sim.scrubbing
       sim.scrubbing = false
@@ -257,6 +267,7 @@ namespace tests.syncPlaySim
     node = sim.node
     node.state = "playing"
     node.busy = ""
+    node.wedged = false
     node.posMs = fromMs
     node.atMs = sim.now
     node.moving = true
@@ -306,7 +317,7 @@ namespace tests.syncPlaySim
       syncPlayPlayer.reading(sim.player, nodePosMs(sim) * TICKS_PER_MS, sim.now)
       push(sim, sim.now + 500, { kind: "note", noteEpoch: node.noteEpoch })
     else if kind = "stallStart"
-      if node.state <> "playing" or node.busy <> "" then return
+      if node.state <> "playing" or node.busy <> "" or node.wedged then return
       freeze(sim)
       node.state = "buffering"
       node.epoch++
@@ -318,7 +329,7 @@ namespace tests.syncPlaySim
       startPlaying(sim, node.posMs, nextInt(sim, 20, 500))
     else if kind = "scrubStart"
       ' The viewer opens the trick-play bar: the node pauses itself, with no write of the player's.
-      if node.state <> "playing" or node.busy <> "" or sim.scrubbing then return
+      if node.state <> "playing" or node.busy <> "" or node.wedged or sim.scrubbing then return
       sim.counts.scrubs++
       sim.scrubbing = true
       freeze(sim)
