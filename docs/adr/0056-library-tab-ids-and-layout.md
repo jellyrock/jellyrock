@@ -1,6 +1,7 @@
 # ADR 0056: Library tabs have JellyRock's own ids, and layout is a setting of its own
 
 **Status:** Accepted
+**Partially superseded by:** [ADR 0058](0058-library-layout-saved-per-view.md) (the layout is saved per view, not per library)
 **Date:** 2026-11-05
 
 **related-files**: `source/GridView/libraryTab.bs`, `source/GridView/optionsViewList.bs`, `source/GridView/GridPresenterBase.bs`, `components/ItemGrid/BaseGridView.bs`, `source/migrations.bs`

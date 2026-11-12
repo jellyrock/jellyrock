@@ -7,7 +7,7 @@ related-files:
   - source/utils/session.bs
   - components/data/jellyfin/JellyfinUserSettings.xml
   - components/data/jellyfin/JellyfinUserSettings.bs
-last-reviewed: 2026-10-10
+last-reviewed: 2026-11-12
 ---
 
 # Settings
@@ -21,6 +21,10 @@ How `settings/settings.json` defines every setting, how settings reach `m.global
 3. **Server config** comes from Jellyfin at sign-in and is never written to the registry. It lives in `m.global.user.config` and `m.global.user.policy`. The order of Home's sections is server data too: one `homeSection<N>` field per slot, `homeSlots.SLOT_COUNT` slots to match the web client, filled from Jellyfin's `DisplayPreferences` API. A migration removes old per-user `homeSection*` keys ([`migrations.md`](migrations.md)).
 
 Defaults for the first two live only in `settings/settings.json`. Server config has no defaults: the server decides.
+
+### Page settings are not in `settings.json`
+
+A setting whose value belongs to one screen (how one library view is drawn) is a page setting. It is offered on that screen only, from the overhang's settings icon ([navigation.md](navigation.md#the-overhang-row-up-down-and-the-cluster)), and never in the Settings screen, which has no library to apply it to. An app-wide setting lives in Settings only, so no setting has two homes. A library's page settings are display settings: per-user registry keys named `display.<libraryId>.<key>`, held in `m.global.user.settings.displaySettings` and written through `setLibraryDisplaySetting()`. A key that is per view carries the view inside its third part (`layout_<view>`, from `libraryLayout.settingKey()`), because only three-part `display.` keys load. Removing a library from `displaySettings` deletes every key under its prefix.
 
 ## `settings/settings.json`, the one definition
 
