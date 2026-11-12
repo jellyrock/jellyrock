@@ -24,7 +24,7 @@ related-files:
   - source/utils/dialogNarration.bs
   - source/utils/buttonOverflow.bs
   - scripts/bsc-plugins/no-hand-rolled-dialog.cjs
-last-reviewed: 2026-11-08
+last-reviewed: 2026-11-12
 ---
 
 # The dialog family
@@ -77,7 +77,7 @@ The flow above is the inside of the panel. Where the panel goes is also this fun
 | `anchor` | Placement | Used by |
 |---|---|---|
 | Omitted | Centered on screen | Every dialog except the overflow menus |
-| `{ x, y, width }` | Left-aligned to the anchor when it fits before the right margin, else right-aligned to it, and grown upward from `anchor.y` | The **More** overflow menus (#788) |
+| `{ x, y, width, height }` | Left-aligned to the anchor when it fits before the right margin, else right-aligned to it. Above the anchor when it fits there, else on the side with more room | The **More** overflow menus (#788), the player's gear, and the overhang's settings icon, which opens below |
 
 Anchoring exists because a centered panel covers both the button row a menu belongs to and the metadata beside it. On `ItemDetails` the row is at y 800, and the title, date and stream lines start at x 96 and run toward the logo. A centered 900-pixel panel (x 510 to 1410) sits on top of them. A narrow panel anchored to the **More** button covers backdrop art instead.
 
@@ -92,10 +92,11 @@ So a narrow menu extends right on both surfaces, and a wide one (a long translat
 
 Overflow cannot be reached on either surface today (`ItemDetails` has 8 of its 8 buttons, the OSD 7 of 10; see the header of `buttonOverflow.bs`), so only the specs exercise these menus for now.
 
-Before adding a third caller:
+**Above or below is derived too.** Above is preferred, so a menu sits over the row it belongs to. The panel goes below only when what it asked for does not fit above and the band below the anchor is the larger one. A button row low on the screen never flips; the overhang's settings icon, with nothing above it, always does (`JRScene.openPageMenu`). An anchor passes its `height` so the panel can start under it; `iconBarNav.iconAnchor()` builds the one for a cluster icon.
 
-- **The ceiling moves with the anchor.** An anchored panel may only fill the band between the top margin and `ANCHOR_GAP` above its anchor, so it overflows sooner than a centered one. It reports that through the same `overflows` field, so `JRListDialog` needed no new overflow handling: its loop that drops rows and lays out again already reacts.
-- **Upward is an observation, not a law.** Both callers have their row near the bottom of the screen. A row near the top needs a downward variant, and it belongs in `computeDialogLayout` beside the horizontal flip, not as a second placement mode somewhere else.
+Before adding another caller:
+
+- **The ceiling moves with the anchor.** An anchored panel may only fill the band it opens into: from the top margin to `ANCHOR_GAP` above its anchor, or from `ANCHOR_GAP` below it to the bottom margin. So it overflows sooner than a centered one. It reports that through the same `overflows` field, so `JRListDialog` needed no new overflow handling: its loop that drops rows and lays out again already reacts.
 
 Build the anchor with `moreButtonAnchor()` (`source/utils/buttonOverflow.bs`) rather than measuring the rendered button. It derives the slot from the same arithmetic that set the button cap, so the anchor cannot drift from the button. It needs no conversion from local to screen coordinates, and it answers before the row has laid out.
 
@@ -194,7 +195,7 @@ The helpers and the result contract are in [`navigation.md`](./navigation.md#the
 
 Code that only asks whether an overlay dialog is open imports `source/utils/overlayDialog.bs`, which holds `openOverlayDialog`, `isOverlayDialogOpen` and the shared overlay id, not `dialogs.bs`. `JRScreen` is the base of every screen, so importing the helpers there would put them and their layout code in every screen's scope.
 
-`showOverflowMenu` looks like a new surface and is not. It presents the same `JRListDialog` (same chrome, key model, result contract and specs) with three presentation fields set: `anchor`, `sizeToContent` and `titleVisible = false`. Use it for a menu hanging off a button (**More**, or the playback-settings gear on the player), and `showListDialog` for everything else. Its optional `defaultIndex` is `JRListDialog`'s own field, for a menu reopened on the row the user left it from. If you need a fourth difference, add a field to `JRListDialog`, not a second component.
+`showOverflowMenu` looks like a new surface and is not. It presents the same `JRListDialog` (same chrome, key model, result contract and specs) with three presentation fields set: `anchor`, `sizeToContent` and `titleVisible = false`. Use it for a menu hanging off a button (**More**, the playback-settings gear on the player, or the overhang's settings icon on a screen with page settings), and `showListDialog` for everything else. Its optional `defaultIndex` is `JRListDialog`'s own field, for a menu reopened on the row the user left it from. If you need a fourth difference, add a field to `JRListDialog`, not a second component.
 
 The keyboard (`JRKeyboardDialog`) is Roku's `StandardKeyboardDialog`, themed through `RSGPalette`. It returns the family's result shape but uses Roku's modal channel, not the family's chrome, layout or narration.
 

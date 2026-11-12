@@ -955,6 +955,12 @@ The layout choice (presentation or poster grid, the per-library `display.<id>.la
 
 Close it by moving the layout choice to its new home in the same change that retires `ItemGridOptions`, then deleting `source/GridView/optionsViewList.bs`, its spec and the `layouts` list the presenters return for it, if the new home reads layouts another way. Why not now: the dialog's replacement does not exist yet.
 
+#### A setting changed in Settings does not reach the screen under it unless that screen re-reads it by hand `[fid: settings-change-reaches-covered-screen]` `[captured 2026-11-12]`
+
+Settings can be opened from any screen, and a setting changed there reaches the screen under it only where that screen reads it again by hand. A theme or language change rebuilds the screen (`settings.performSettingsExit`, `JRScene.reloadRoutedHome`); any other change goes back to a screen that resumes as it was. `BaseGridView` reads `itemGridShowItemCount` and `itemGridTitles` once in `init`, so changing either from a library does nothing until the library is reopened; `reapplyPresentationBackdropSetting` in its `onScreenShown` is the one hand-wired exception. Other screens were not checked. Found 2026-11-12 while building page settings for the library screens.
+
+Agreed shape: one more `JRScreen` function beside `pageSettingsEntries` and `onPageSettingChanged`, `onSettingsChanged(names)`. `JellyfinUserSettings.onSettingChanged` already sees every setting write, so it notes which changed, and the base screen hands a screen the names changed since it was last shown; the screen applies what it cares about in place and keeps its scroll position. First measure which settings each screen type reads only at `init`. Not now because it touches every screen type and is its own pull request to `main`, apart from the library screens branch.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`

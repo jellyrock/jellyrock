@@ -1,0 +1,116 @@
+import "pkg:/source/utils/pageSettings.bs"
+
+namespace tests
+
+  @suite("pageSettings.bs - the settings icon's page menu")
+  class PageSettingsTests extends tests.BaseTestSuite
+
+    private function layoutEntry(selected as dynamic) as object
+      return {
+        id: "layout",
+        title: "Layout",
+        options: [{ id: "presentation", title: "Presentation" }, { id: "comfortable", title: "Comfortable" }],
+        selected: selected
+      }
+    end function
+
+    ' Piece 07's shape: the first option's id is the empty string.
+    private function defaultTabEntry(selected as dynamic) as object
+      return {
+        id: "defaultTab",
+        title: "Default tab",
+        options: [{ id: "", title: "Use web client setting" }, { id: "genres", title: "Genres" }],
+        selected: selected
+      }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("menuRows")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("lists the entries in order, each with its value, then All settings")
+    function _()
+      menu = pageSettings.menuRows([m.layoutEntry("comfortable"), m.defaultTabEntry("genres")])
+
+      m.assertEqual(menu.ids, ["layout", "defaultTab", pageSettings.ALL_SETTINGS])
+      m.assertEqual(menu.labels, ["Layout (Comfortable)", "Default tab (Genres)", "All settings"])
+    end function
+
+    @it("shows the value of an option whose id is the empty string")
+    function _()
+      menu = pageSettings.menuRows([m.defaultTabEntry("")])
+
+      m.assertEqual(menu.labels[0], "Default tab (Use web client setting)")
+    end function
+
+    @it("shows the title alone when the selected id names no option")
+    @params("posters")
+    @params(invalid)
+    function _(selected)
+      menu = pageSettings.menuRows([m.layoutEntry(selected)])
+
+      m.assertEqual(menu.labels, ["Layout", "All settings"])
+    end function
+
+    @it("has no menu, and no All settings row, when a screen offers nothing")
+    @params([])
+    @params(invalid)
+    @params("layout")
+    function _(entries)
+      menu = pageSettings.menuRows(entries)
+
+      m.assertEqual(menu.ids, [])
+      m.assertEqual(menu.labels, [])
+    end function
+
+    @it("leaves out an entry it cannot show")
+    function _()
+      noOptions = { id: "empty", title: "Empty", options: [] }
+      noId = { title: "Nameless", options: [{ id: "a", title: "A" }] }
+      reserved = { id: pageSettings.ALL_SETTINGS, title: "Impostor", options: [{ id: "a", title: "A" }] }
+
+      menu = pageSettings.menuRows([noOptions, noId, reserved, invalid, m.layoutEntry("comfortable")])
+
+      m.assertEqual(menu.ids, ["layout", pageSettings.ALL_SETTINGS])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("findEntry")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("finds an entry by id and reports a missing one as invalid")
+    function _()
+      entries = [m.layoutEntry("comfortable"), m.defaultTabEntry("")]
+
+      m.assertEqual(pageSettings.findEntry(entries, "defaultTab").title, "Default tab")
+      m.assertInvalid(pageSettings.findEntry(entries, "sort"))
+      m.assertInvalid(pageSettings.findEntry(entries, pageSettings.ALL_SETTINGS))
+      m.assertInvalid(pageSettings.findEntry(invalid, "layout"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("picker")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("lists the options with the selected one marked")
+    function _()
+      list = pageSettings.picker(m.layoutEntry("comfortable"))
+
+      m.assertEqual(list.labels, ["Presentation", "Comfortable"])
+      m.assertEqual(list.values, ["presentation", "comfortable"])
+      m.assertEqual(list.selectedIndex, 1)
+    end function
+
+    @it("marks an option whose id is the empty string")
+    function _()
+      m.assertEqual(pageSettings.picker(m.defaultTabEntry("")).selectedIndex, 0)
+    end function
+
+    @it("marks nothing when the selected id names no option")
+    function _()
+      m.assertEqual(pageSettings.picker(m.layoutEntry("posters")).selectedIndex, -1)
+    end function
+
+  end class
+
+end namespace

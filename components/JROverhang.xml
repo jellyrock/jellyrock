@@ -58,6 +58,9 @@
     <field id="isClockVisible" value="true" type="boolean" onChange="isClockVisibleChanged" />
     <!-- The cluster icon for an entry id ("syncplay", "search", "settings"), for a screen's focus bookkeeping. -->
     <function name="getIcon" />
+    <!-- The focus box of a cluster icon in screen coordinates ({ x, y, width, height }), for a
+         menu JRScene anchors to it; invalid for an id the cluster does not show. -->
+    <function name="iconAnchor" />
     <!-- The SyncPlay icon's state from JRScene: { shown, active, badge }. Shown first in the cluster
          when the account may use SyncPlay; active (drawn in colorSecondary) while in a group; a
          badge (a colorSecondary dot) while a group exists to join. -->

@@ -191,6 +191,50 @@ export async function navSettings() {
   await sleep(1000); // let the settings menu + panels paint before capture
 }
 
+/** The Settings screen is up: its version label is the gate. */
+export async function waitSettingsScreen() {
+  await waitFor('#versionLabel.text', (t) => typeof t === 'string' && /^v/.test(t), {
+    label: 'settings version label',
+    timeout: 20000,
+  });
+}
+
+/**
+ * The gear's page menu is up (JRScene.openPageMenu): its rows are built and focus is on its
+ * list. Returns the row count; the last row is All settings.
+ */
+export async function waitPageMenu(label = 'the page menu') {
+  await waitFor('#optionList.content.getChildCount()', (n) => typeof n === 'number' && n > 1, {
+    label: `${label}: rows`,
+    timeout: 10000,
+  });
+  await waitFocusInside('#optionList', {
+    label: `${label}: focused`,
+    timeout: 5000,
+    interval: 250,
+  });
+  return getVal('#optionList.content.getChildCount()');
+}
+
+/**
+ * OK on the gear, which already holds focus, through to the Settings screen. On a screen with
+ * page settings (`pageMenu`: a movie library on its Movies tab) the gear opens its menu
+ * first, and All settings is the last row: Up from the first row wraps to it.
+ */
+export async function openSettingsFromGear({ pageMenu = false } = {}) {
+  await press(ecp.Key.Ok);
+  if (pageMenu) {
+    const rows = await waitPageMenu('the gear menu');
+    await press(ecp.Key.Up);
+    await waitFor('#optionList.itemFocused', (n) => n === rows - 1, {
+      label: 'All settings, the last row',
+      timeout: 8000,
+    });
+    await press(ecp.Key.Ok);
+  }
+  await waitSettingsScreen();
+}
+
 /**
  * The entry for `settingName` in settings.json, the same file the app builds its Settings
  * menu from: `{ title, options, ... }`, or `undefined` when no entry has that name.

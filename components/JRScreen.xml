@@ -24,6 +24,12 @@
          (the search screen reopens its keyboard on the search icon); false lets JRScene route
          it (search and settings open their screens). -->
     <function name="onOverhangAction" />
+    <!-- The settings this page offers about itself, for the settings icon's menu:
+         [{ id, title, options: [{ id, title }], selected }]. Empty (the default) leaves the
+         icon opening Settings. JRScene asks at the press and presents them. -->
+    <function name="pageSettingsEntries" />
+    <!-- The viewer picked a new option (its id) for one of those settings: save and apply it. -->
+    <function name="onPageSettingChanged" />
     <!-- Back from the overhang row: leave this screen. True when it went back (leaveScreen). -->
     <function name="leaveScreen" />
   </interface>
