@@ -150,7 +150,7 @@ namespace tests.syncPlaySim
     for attempt = 1 to 12
       syncPlayPlayer.advance(sim.player, sim.now)
       syncPlayGroup.advance(sim.group, syncPlayTime.asLong(sim.policy.requestLimitMs), sim.now)
-      ctx = { following: sim.following, estimator: sim.estimator, loadOwed: false, isLastItem: false, durationSeconds: 0 }
+      ctx = { following: sim.following, estimator: sim.estimator, loadOwed: false, isLastItem: false, durationSeconds: 0, isTranscoded: false }
       result = syncPlayConverge.decide(sim.player, sim.group, ctx, sim.policy, sim.now)
       if not isValid(result.action)
         if isValid(result.wakeAtMs)

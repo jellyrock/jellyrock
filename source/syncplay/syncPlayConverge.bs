@@ -61,9 +61,10 @@ namespace syncPlayConverge
 
   ' @param player - the syncPlayPlayer model
   ' @param group - the syncPlayGroup model
-  ' @param ctx - { following, estimator, loadOwed, isLastItem, durationSeconds }: whether this
-  '   member follows, the clock estimator, whether the queue layer owes a load, whether the
-  '   playing item is the playlist's last, and the item's length in seconds (0 while unknown)
+  ' @param ctx - { following, estimator, loadOwed, isLastItem, durationSeconds, isTranscoded }:
+  '   whether this member follows, the clock estimator, whether the queue layer owes a load,
+  '   whether the playing item is the playlist's last, the item's length in seconds (0 while
+  '   unknown), and whether the stream is a transcode (invalid while nothing has said)
   ' @param policy - defaultPolicy, or a candidate
   ' @returns an AA with `action`, at most one (an AA with `kind`, or invalid), and `wakeAtMs`,
   '   the device-clock time to compare again when no event comes first (or invalid)
@@ -110,6 +111,7 @@ namespace syncPlayConverge
       ' The node is sent to a waiting group's point once. Any other seek moves it on from there.
       if action.toPoint = true
         group.pointSoughtTicks = action.targetTicks
+        group.pointRetried = action.retry = true
       else
         group.pointSoughtTicks = invalid
       end if
@@ -159,11 +161,12 @@ namespace syncPlayConverge
       return invalid
     end if
     if want.mode = "playing" or isValid(want.startsAtMs) then return lineAction(player, group, want, ctx, policy, nowMs, result)
-    return standingAction(player, group, want, ctx.estimator, policy, nowMs)
+    return standingAction(player, group, want, ctx.estimator, policy, nowMs, ctx.isTranscoded = false)
   end function
 
   ' The group stands still: paused, or waiting at a point for its members.
-  function standingAction(player as object, group as object, want as object, estimator as object, policy as object, nowMs as longinteger) as dynamic
+  ' @param isDirectPlay - true only when the stream is known not to be a transcode
+  function standingAction(player as object, group as object, want as object, estimator as object, policy as object, nowMs as longinteger, isDirectPlay as boolean) as dynamic
     activity = player.activity
     isPlayingOn = activity = "playing" or activity = "stalling" or activity = "stalled"
     if want.mode = "waiting" and want.heldFor = "stall" and not standsAtCommand(group)
@@ -177,8 +180,13 @@ namespace syncPlayConverge
     ' rule of its own below: the load already started there, so only one that lands short seeks.
     if want.owesReady and isValid(want.pointTicks) and standsAtCommand(group) and (isPlayingOn or activity = "paused")
       point& = syncPlayTime.asLong(want.pointTicks)
-      if not nearPoint(player, point&, policy, nowMs) and not soughtPoint(group, point&, policy)
-        return { kind: "seek", owner: "group", targetTicks: point&, toPoint: true }
+      if not nearPoint(player, point&, policy, nowMs)
+        if not soughtPoint(group, point&, policy) then return { kind: "seek", owner: "group", targetTicks: point&, toPoint: true }
+        ' A direct play can start from the keyframe before its target, and a second seek there
+        ' lands on the target. A transcode lands as short the second time, so it gets none.
+        if isDirectPlay and not group.pointRetried and landedOffPoint(player, point&, policy)
+          return { kind: "seek", owner: "group", targetTicks: point&, toPoint: true, retry: true }
+        end if
       end if
     end if
 
@@ -466,6 +474,13 @@ namespace syncPlayConverge
   function soughtPoint(group as object, pointTicks as longinteger, policy as object) as boolean
     if not isValid(group.pointSoughtTicks) then return false
     return Abs(syncPlayTime.asLong(group.pointSoughtTicks) - pointTicks) <= syncPlayTime.msToTicks(policy.pointToleranceMs)
+  end function
+
+  ' Whether the node's last seek was the group's and a notification read its landing further
+  ' from the point than the server's tolerance.
+  function landedOffPoint(player as object, pointTicks as longinteger, policy as object) as boolean
+    if player.seekOwner <> "group" or not isValid(player.lastLandingTicks) then return false
+    return Abs(syncPlayTime.asLong(player.lastLandingTicks) - pointTicks) > syncPlayTime.msToTicks(policy.pointToleranceMs)
   end function
 
   ' Whether the node is at the point, within the server's tolerance. A node whose position is

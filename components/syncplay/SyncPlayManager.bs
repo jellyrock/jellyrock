@@ -165,6 +165,8 @@ sub ensureReady()
   m.lastSeekGaveUp = false
   ' The playing item's length in the Video node's seconds; 0 while unknown.
   m.playerDurationSeconds = 0
+  ' Whether the playing stream is a transcode; invalid until the player has said.
+  m.playerIsTranscoded = invalid
   ' The correction under way (syncPlayPlayback.correctionPlan): the node pauses ahead of the
   ' group, after a seek when it was behind, and correctionTimer resumes it as the group arrives.
   ' Any group command or a pause the viewer presses replaces it.
@@ -296,6 +298,7 @@ function playerEvent(evt as object) as object
   kind = evt.kind
   if isValid(evt.position) then m.playerPositionTicks = syncPlayPlayback.secondsToTicks(evt.position)
   if isValid(evt.duration) then m.playerDurationSeconds = evt.duration
+  if isValid(evt.isTranscoded) then m.playerIsTranscoded = evt.isTranscoded
   if kind = "state" and syncPlayTime.isText(evt.state) then m.playerState = evt.state
 
   if kind = "mounted"
@@ -838,6 +841,7 @@ end sub
 ' settle check on it.
 sub startStreamTracking()
   m.playerDurationSeconds = 0
+  m.playerIsTranscoded = invalid
   m.lastSeekMs = 0&
   m.lastSeekGaveUp = false
   m.playbackDiffMs = invalid
@@ -1564,7 +1568,7 @@ end sub
 ' What the comparison is told beside the two models. When it decides, the queue layer still
 ' performs each load itself, as its item arrives, so no load is ever asked of the comparison.
 function shadowCtx() as object
-  return { following: isFollowing(), estimator: m.estimator, loadOwed: isValid(m.owedLoad) and not usesComparison(), isLastItem: syncPlayQueue.isLastItem(m.state), durationSeconds: m.playerDurationSeconds }
+  return { following: isFollowing(), estimator: m.estimator, loadOwed: isValid(m.owedLoad) and not usesComparison(), isLastItem: syncPlayQueue.isLastItem(m.state), durationSeconds: m.playerDurationSeconds, isTranscoded: m.playerIsTranscoded }
 end function
 
 sub shadowPlayerFact(evt as object)
@@ -1999,6 +2003,7 @@ function comparePlayerEvent(evt as object) as object
   endUnansweredRefollow()
   if isValid(evt.position) then m.playerPositionTicks = syncPlayPlayback.secondsToTicks(evt.position)
   if isValid(evt.duration) then m.playerDurationSeconds = evt.duration
+  if isValid(evt.isTranscoded) then m.playerIsTranscoded = evt.isTranscoded
   if kind = "state" and syncPlayTime.isText(evt.state) then m.playerState = evt.state
   if kind = "mounted"
     m.expectingRemount = false

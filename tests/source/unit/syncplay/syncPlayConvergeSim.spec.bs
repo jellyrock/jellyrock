@@ -51,7 +51,7 @@ namespace tests
       if sim.server.state <> "Playing" then return "the group ended " + sim.server.state
       atEnd = tests.syncPlaySim.outOfStep(sim)
       if atEnd <> "" then return "at the end: " + atEnd
-      ctx = { following: sim.following, estimator: sim.estimator, loadOwed: false, isLastItem: false, durationSeconds: 0 }
+      ctx = { following: sim.following, estimator: sim.estimator, loadOwed: false, isLastItem: false, durationSeconds: 0, isTranscoded: false }
       last = syncPlayConverge.decide(sim.player, sim.group, ctx, sim.policy, sim.now)
       if isValid(last.action) then return "the comparison still asks for " + last.action.kind
       return ""

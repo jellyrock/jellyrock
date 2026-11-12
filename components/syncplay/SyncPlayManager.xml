@@ -82,9 +82,9 @@
          position when the manager knows it, else the player's own (syncPlayHooks.reloadStart). -->
     <function name="reloadStart" />
     <!-- { kind: "mounted" | "reloaded" | "state" | "position" | "finished" | "unmounted", state,
-         position, startSeconds } from the host and the player, position in the Video node's float
-         seconds; "reloaded" (the player loading its stream again in place) carries the
-         startSeconds it reloads from. -->
+         position, startSeconds, isTranscoded } from the host and the player, position in the Video
+         node's float seconds; "reloaded" (the player loading its stream again in place) carries
+         the startSeconds it reloads from; a "position" says whether the stream is a transcode. -->
     <function name="playerEvent" />
     <!-- control({ kind: "pause" | "unpause" | "seek" | "next" | "previous" | "repeat" | "shuffle" |
          "timeOffset", position, mode }): a control the viewer pressed while following, posted to the

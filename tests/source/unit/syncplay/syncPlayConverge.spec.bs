@@ -90,6 +90,32 @@ namespace tests
       return syncPlayConverge.decide(player, group, m.ctx(), syncPlayConverge.defaultPolicy(), nowMs)
     end function
 
+    ' The same decision with the playback path known: a direct play, or a transcode.
+    private function decideOnPath(player as object, group as object, nowMs as longinteger, isTranscoded as boolean) as object
+      ctx = m.ctx()
+      ctx.isTranscoded = isTranscoded
+      return syncPlayConverge.decide(player, group, ctx, syncPlayConverge.defaultPolicy(), nowMs)
+    end function
+
+    ' A node whose seek to 100 s landed at `landTicks`, read at 9610, and plays on.
+    private function landedFromSeek(landTicks as longinteger) as object
+      player = m.playingAt(m.at60s, 9000&)
+      syncPlayPlayer.told(player, "seek", "group", m.at100s, 9100&)
+      syncPlayPlayer.nodeState(player, "buffering", 9200&)
+      syncPlayPlayer.nodeState(player, "playing", 9600&)
+      syncPlayPlayer.reading(player, landTicks, 9610&)
+      return player
+    end function
+
+    ' A group waiting at 100 s whose one seek there this member has written.
+    private function soughtSeekGroup() as object
+      group = m.seekGroup()
+      group.saidBuffering = true
+      first = m.decide(m.playingAt(m.at60s, 9000&), group, 9000&)
+      syncPlayConverge.applied(m.playingAt(m.at60s, 9000&), group, first.action, 9000&)
+      return group
+    end function
+
     private function kindOf(result as object) as string
       if not isValid(result.action) then return ""
       return result.action.kind
@@ -355,6 +381,40 @@ namespace tests
       m.assertEqual(m.kindOf(result), "report")
       m.assertEqual(result.action.what, "ready")
       m.assertEqual(result.action.positionTicks, m.at100s)
+    end function
+
+    @it("a direct play that landed off the point is sent there once more")
+    function _()
+      group = m.soughtSeekGroup()
+      result = m.decideOnPath(m.landedFromSeek(m.at100s - 3000 * m.oneMs), group, 9620&, false)
+      m.assertEqual(m.kindOf(result), "seek")
+      m.assertEqual(result.action.targetTicks, m.at100s)
+      m.assertTrue(result.action.toPoint)
+    end function
+
+    @it("a direct play still off the point after that second seek gets no third, whatever command names the point")
+    function _()
+      group = m.soughtSeekGroup()
+      player = m.landedFromSeek(m.at100s - 3000 * m.oneMs)
+      again = m.decideOnPath(player, group, 9620&, false)
+      syncPlayConverge.applied(player, group, again.action, 9620&)
+      m.assertEqual(m.kindOf(m.decideOnPath(m.landedFromSeek(m.at100s - 3000 * m.oneMs), group, 9620&, false)), "pause")
+      syncPlayGroup.command(group, m.cmd("Seek", 9500&, m.at100s))
+      group.saidBuffering = true
+      m.assertEqual(m.kindOf(m.decideOnPath(m.landedFromSeek(m.at100s - 3000 * m.oneMs), group, 9620&, false)), "pause")
+    end function
+
+    @it("a transcode that landed off the point is not sent there again, nor is a path nothing has named")
+    function _()
+      group = m.soughtSeekGroup()
+      m.assertEqual(m.kindOf(m.decideOnPath(m.landedFromSeek(m.at100s - 3000 * m.oneMs), group, 9620&, true)), "pause")
+      m.assertEqual(m.kindOf(m.decide(m.landedFromSeek(m.at100s - 3000 * m.oneMs), group, 9620&)), "pause")
+    end function
+
+    @it("a direct play that landed at the point is not sent there again")
+    function _()
+      group = m.soughtSeekGroup()
+      m.assertEqual(m.kindOf(m.decideOnPath(m.landedFromSeek(m.at100s + 20 * m.oneMs), group, 9620&, false)), "pause")
     end function
 
     @it("a second command naming the point a node was sent to writes no second seek")

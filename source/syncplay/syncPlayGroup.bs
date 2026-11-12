@@ -63,6 +63,8 @@ namespace syncPlayGroup
       ' group moves on from it. One seek goes toward a point: a second to the same place has
       ' preceded every frozen player seen.
       pointSoughtTicks: invalid,
+      ' Whether the one second seek a direct play may take toward that point was written.
+      pointRetried: false,
       ' Seeks written to free a node that reads playing and takes no pause, since the last command.
       recoverSeeks: 0,
       ' The playlist item whose end this member asked the group to move on from.
