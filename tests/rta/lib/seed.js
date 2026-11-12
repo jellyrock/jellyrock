@@ -107,6 +107,10 @@ export async function seedHome(session, locale) {
         username: session.username,
         primaryImageTag: session.primaryImageTag,
         translationLocale: locale,
+        // Back to the app's default (null deletes the key): the registry is restored only
+        // when the whole run ends, so a mode one spec chose would reach every spec after it.
+        // A spec that wants a mode writes it after this seed (backdrop-mode.spec.js).
+        uiShowBackdrop: null,
       },
     },
   });
@@ -241,9 +245,10 @@ export async function seedUserSelect(session, locale) {
  * `view` is a tab id (`movies`, `shows`, `genres`; `source/GridView/libraryTab.bs`),
  * never a name saved before those ids: the app's registry
  * migration rewrites an old name at launch, so `assertSeedTookEffect` would then find
- * the app holding a different value from the seed. How a tab is drawn is a separate
- * setting, `display.<libraryId>.layout`: pass `layout` (`presentation`) to seed it too,
- * or leave it out for the library's default (the poster grid).
+ * the app holding a different value from the seed. How a view is drawn is a separate
+ * setting, saved per view as `display.<libraryId>.layout_<view>`
+ * (`libraryLayout.settingKey`): pass `layout` (`presentation`) to seed it for `view` too,
+ * or leave it out for the library's default.
  *
  * @param {{layout?: string}} [options]
  * @returns {Promise<{libraryId: string, view: string}|null>} what was written, for
@@ -252,7 +257,7 @@ export async function seedUserSelect(session, locale) {
 export async function seedLibraryLanding(session, libraryId, view, { layout } = {}) {
   if (!libraryId || !view) return null;
   const keys = { [`display.${libraryId}.landing`]: view };
-  if (layout) keys[`display.${libraryId}.layout`] = layout;
+  if (layout) keys[`display.${libraryId}.layout_${view}`] = layout;
   await odc.writeRegistry({ values: { [session.userId]: keys } });
   return { libraryId, view };
 }

@@ -20,6 +20,7 @@ import {
   navLibraryGrid,
   navMovieDetails,
   navSettings,
+  openSettingsFromGear,
   openSearchKeyboard,
   submitSearchFromKeyboard,
   waitSearchResults,
@@ -72,14 +73,14 @@ async function enterRow(label) {
 const walkRowTo = (iconId, label) => walkOverhangRowTo(iconId, { label: `${iconId} on ${label}` });
 const walkToGear = (label) => walkRowTo('settingsIcon', label);
 
-/** Right to the gear, OK, Settings up, Back: the gear holds focus again on the screen left. */
-async function roundTripThroughSettings(label) {
+/**
+ * Right to the gear, OK, Settings up, Back: the gear holds focus again on the screen left.
+ * `pageMenu`: the screen has page settings, so the gear opens its menu and All settings is a
+ * row of it (page-settings.spec.js covers the menu itself).
+ */
+async function roundTripThroughSettings(label, { pageMenu = false } = {}) {
   await walkToGear(label);
-  await press(ecp.Key.Ok);
-  await waitFor('#versionLabel.text', (t) => typeof t === 'string' && /^v/.test(t), {
-    label: 'settings version label',
-    timeout: 20000,
-  });
+  await openSettingsFromGear({ pageMenu });
   await press(ecp.Key.Back);
   await waitFocused(atSettingsIcon, {
     timeout: 15000,
@@ -96,7 +97,7 @@ it('a library screen: Up enters the row, the gear round-trips, Down returns to t
   await enterRow('the grid');
   // The row with the cluster against the clock's measured digits (JROverhang.layout).
   if (CAPTURE) await captureRawUI('overhangCluster');
-  await roundTripThroughSettings('the library');
+  await roundTripThroughSettings('the library', { pageMenu: true });
 
   await press(ecp.Key.Down);
   await waitFocusInside('#itemGrid', { label: 'the grid after Down from the row' });
@@ -265,11 +266,7 @@ it('a theme reload from Settings opened on a library returns to the library, wit
 
   await enterRow('the grid');
   await walkToGear('the library');
-  await press(ecp.Key.Ok);
-  await waitFor('#versionLabel.text', (t) => typeof t === 'string' && /^v/.test(t), {
-    label: 'settings version label',
-    timeout: 20000,
-  });
+  await openSettingsFromGear({ pageMenu: true });
 
   await reloadAsSettingsDoes();
   await waitFor('subtype()', (v) => v === subtype, {

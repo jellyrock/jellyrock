@@ -242,6 +242,20 @@ function onOptionsKey() as boolean
   return true
 end function
 
+' JRScene: the settings this page offers about itself, for the settings icon's menu. Each is
+' { id, title, options: [{ id, title }], selected }, with translated titles and `selected`
+' the id of the option in force (source/utils/pageSettings.bs). The base offers none, and
+' the icon then opens Settings in one press. A screen only declares: the scene shows the
+' menu and the picker.
+function pageSettingsEntries() as object
+  return []
+end function
+
+' JRScene: the viewer picked `value`, an option id, for the page setting `id`, and it is not
+' the one that was selected. The screen saves it and applies it now.
+sub onPageSettingChanged(_id as string, _value as string)
+end sub
+
 ' Focus the cluster icon this screen was left by (overhangReturnIcon), when the viewer is
 ' coming back from it and the row still shows it. `consume` forgets it: the resume's
 ' restoreScreenFocus does, a peek from onScreenShown does not, since handleFocus follows it
