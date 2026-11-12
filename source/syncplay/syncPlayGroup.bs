@@ -48,6 +48,9 @@ namespace syncPlayGroup
       ' The load whose Ready was last sent: until a load's own Ready goes out, its first frame
       ' is held for it.
       readyForLoad: 0,
+      ' The load that was sent to the point the group waits at, after landing short of it: once
+      ' per load.
+      seekForLoad: 0,
       ' Where the server paused the group for that Buffering (anchorWait), or invalid.
       waitPointTicks: invalid,
       ' What the viewer asked that no command has answered yet: { kind, positionTicks, atMs }.

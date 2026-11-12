@@ -108,6 +108,7 @@ namespace syncPlayConverge
       end if
       if action.toPoint = true then group.pointSeeks++
       if action.recover = true then group.recoverSeeks++
+      if isValid(action.forLoad) then group.seekForLoad = action.forLoad
     else if kind = "report"
       if action.what = "buffering" then group.heldFor = action.heldFor
       if action.what = "buffering" and isValid(action.forLoad) then group.bufferingForLoad = action.forLoad
@@ -165,8 +166,8 @@ namespace syncPlayConverge
     end if
 
     ' The server takes a Ready only near the point a command names, so a member elsewhere seeks
-    ' there first. Where the server stopped the group's line for this member's own load is not
-    ' seeked to: the load already started there, and its Ready names it (readyTicks).
+    ' there first. Where the server stopped the group's line for this member's own load has a
+    ' rule of its own below: the load already started there, so only one that lands short seeks.
     if want.owesReady and isValid(want.pointTicks) and standsAtCommand(group) and (isPlayingOn or activity = "paused")
       point& = syncPlayTime.asLong(want.pointTicks)
       if not nearPoint(player, point&, policy, nowMs) and group.pointSeeks < policy.pointSeekLimit
@@ -178,6 +179,14 @@ namespace syncPlayConverge
     ' group stands (above) is written under it, which is the group moving, their own scrub's
     ' answer included.
     if player.scrubbing then return invalid
+
+    ' A load of this member's own can land well short of where the server stopped the group for
+    ' it. Its Ready would then name a place the node is not at, and the member would resume
+    ' behind by what is left. A seek lands nearer than a load, so the first frame seeks to the
+    ' point once, before the pause its Ready waits for.
+    if activity = "playing" and landedShortOfLoadPoint(player, group, want, policy, nowMs)
+      return { kind: "seek", owner: "group", targetTicks: syncPlayTime.asLong(want.pointTicks), forLoad: player.loadCount }
+    end if
 
     if isPlayingOn
       if activity = "stalling" and want.mode = "waiting" then return invalid
@@ -411,6 +420,17 @@ namespace syncPlayConverge
     cmd = group.command
     if not isValid(cmd) or not syncPlayGroup.commandIsCurrent(group, cmd) then return false
     return cmd.command = "Pause" or cmd.command = "Seek"
+  end function
+
+  ' Whether this member's own load, held for its Ready, read a position further below the point
+  ' the group waits at than the server's tolerance, and has not been sent there yet. A node with
+  ' no reading is left alone: nothing says it is short.
+  function landedShortOfLoadPoint(player as object, group as object, want as object, policy as object, nowMs as longinteger) as boolean
+    if not want.owesReady or want.heldFor <> "load" or not isValid(want.pointTicks) then return false
+    if group.readyForLoad = player.loadCount or group.seekForLoad = player.loadCount then return false
+    position = syncPlayPlayer.positionAt(player, nowMs)
+    if not isValid(position) then return false
+    return syncPlayTime.asLong(want.pointTicks) - syncPlayTime.asLong(position) > syncPlayTime.msToTicks(policy.pointToleranceMs)
   end function
 
   ' Whether the node is at the point, within the server's tolerance. A node whose position is

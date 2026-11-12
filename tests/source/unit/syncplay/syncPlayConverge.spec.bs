@@ -72,6 +72,20 @@ namespace tests
       return player
     end function
 
+    ' A group playing along the usual line that this member follows again: its reload was told to
+    ' the server, the server stopped the group for it, and `player` has mounted for that load.
+    private function waitingOnReload(player as object) as object
+      group = m.playingLine()
+      syncPlayGroup.followedAgain(group)
+      syncPlayPlayer.told(player, "load", "group", m.at65s, 10200&)
+      buffering = m.decide(player, group, 10200&)
+      syncPlayConverge.applied(player, group, buffering.action, 10200&)
+      syncPlayGroup.requestArrived(group, "report", "buffering", group.report.id)
+      syncPlayGroup.stateChanged(group, "Playing", "Waiting", m.estimator(), 10300&)
+      syncPlayPlayer.mounted(player, m.at65s, 10500&)
+      return group
+    end function
+
     private function decide(player as object, group as object, nowMs as longinteger) as object
       return syncPlayConverge.decide(player, group, m.ctx(), syncPlayConverge.defaultPolicy(), nowMs)
     end function
@@ -461,6 +475,66 @@ namespace tests
       ' The mount of that load is the same load: nothing is said twice.
       syncPlayPlayer.mounted(player, m.at65s, 10500&)
       m.assertEqual(m.kindOf(m.decide(player, group, 10500&)), "")
+    end function
+
+    @it("a load that lands short of where the group waits seeks there once, then reports where it stopped")
+    function _()
+      player = syncPlayPlayer.newPlayer()
+      group = m.waitingOnReload(player)
+      point& = syncPlayTime.asLong(group.waitPointTicks)
+      syncPlayPlayer.nodeState(player, "playing", 12000&)
+      syncPlayPlayer.reading(player, point& - 1000 * m.oneMs, 12010&)
+      seek = m.decide(player, group, 12010&)
+      m.assertEqual(m.kindOf(seek), "seek")
+      m.assertEqual(seek.action.owner, "group")
+      m.assertEqual(seek.action.targetTicks, point&)
+      syncPlayConverge.applied(player, group, seek.action, 12010&)
+      ' The server has this load's Buffering: the seek is not told to it again.
+      m.assertEqual(m.kindOf(m.decide(player, group, 12020&)), "")
+      syncPlayPlayer.nodeState(player, "playing", 13000&)
+      syncPlayPlayer.reading(player, point& + 20 * m.oneMs, 13010&)
+      pause = m.decide(player, group, 13010&)
+      m.assertEqual(m.kindOf(pause), "pause")
+      m.assertEqual(pause.action.owner, "wait")
+      syncPlayConverge.applied(player, group, pause.action, 13010&)
+      syncPlayPlayer.nodeState(player, "paused", 13040&)
+      ready = m.decide(player, group, 13040&)
+      m.assertEqual(ready.action.what, "ready")
+      ' The landing's reading is dated at the `playing` state, 10 ms before the pause's write.
+      m.assertEqual(ready.action.positionTicks, point& + 30 * m.oneMs)
+    end function
+
+    @it("a load still short after its one seek is paused, and its Ready names the point")
+    function _()
+      player = syncPlayPlayer.newPlayer()
+      group = m.waitingOnReload(player)
+      point& = syncPlayTime.asLong(group.waitPointTicks)
+      syncPlayPlayer.nodeState(player, "playing", 12000&)
+      syncPlayPlayer.reading(player, point& - 1000 * m.oneMs, 12010&)
+      seek = m.decide(player, group, 12010&)
+      m.assertEqual(m.kindOf(seek), "seek")
+      syncPlayConverge.applied(player, group, seek.action, 12010&)
+      syncPlayPlayer.nodeState(player, "playing", 13000&)
+      syncPlayPlayer.reading(player, point& - 900 * m.oneMs, 13010&)
+      pause = m.decide(player, group, 13010&)
+      m.assertEqual(m.kindOf(pause), "pause")
+      syncPlayConverge.applied(player, group, pause.action, 13010&)
+      syncPlayPlayer.nodeState(player, "paused", 13040&)
+      ready = m.decide(player, group, 13040&)
+      m.assertEqual(ready.action.what, "ready")
+      m.assertEqual(ready.action.positionTicks, point&)
+    end function
+
+    @it("a load that lands within the server's tolerance of the point is paused with no seek")
+    function _()
+      player = syncPlayPlayer.newPlayer()
+      group = m.waitingOnReload(player)
+      point& = syncPlayTime.asLong(group.waitPointTicks)
+      syncPlayPlayer.nodeState(player, "playing", 12000&)
+      syncPlayPlayer.reading(player, point& - 300 * m.oneMs, 12010&)
+      pause = m.decide(player, group, 12010&)
+      m.assertEqual(m.kindOf(pause), "pause")
+      m.assertEqual(pause.action.owner, "wait")
     end function
 
     @it("nothing is reported while the group plays no item")
