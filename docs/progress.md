@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-12: fix(ui): Star from the overhang no longer crashes the app
 - 2026-11-12: feat(ui): Item-details-only backdrops; Movies pane obeys the setting
 - 2026-11-10: chore(tooling): Report dead code a short string prefix hid
 - 2026-11-10: ci(journal): Sync the journal only for PRs merged into `main`
