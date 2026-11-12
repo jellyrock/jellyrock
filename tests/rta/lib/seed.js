@@ -107,6 +107,10 @@ export async function seedHome(session, locale) {
         username: session.username,
         primaryImageTag: session.primaryImageTag,
         translationLocale: locale,
+        // Back to the app's default (null deletes the key): the registry is restored only
+        // when the whole run ends, so a mode one spec chose would reach every spec after it.
+        // A spec that wants a mode writes it after this seed (backdrop-mode.spec.js).
+        uiShowBackdrop: null,
       },
     },
   });
