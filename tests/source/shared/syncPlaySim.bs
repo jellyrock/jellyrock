@@ -3,9 +3,11 @@
 ' a failing order replays from its seed.
 '
 ' The fake node behaves as a Stick 4K's did in the records of 2026-11-10: a pause lands 16 to
-' 61 ms after its write, a resume 8 to 25 ms, a seek reaches `playing` 266 to 840 ms after its
-' write and lands 1 to 38 ms past its target, the position field reads a seek's target before the
-' node moves, and a notification follows `playing` by 7 to 42 ms and then comes every 500 ms.
+' 61 ms after its write, a resume 8 to 25 ms, a seek lands 1 to 38 ms past its target, the
+' position field reads a seek's target before the node moves, and a notification follows
+' `playing` by 7 to 42 ms and then comes every 500 ms. A seek reaches `playing` sooner the nearer
+' its target sits to the keyframe before it (seekTookMs), so two seeks to one place take the same
+' time, and a place far past its keyframe is slow on every seek.
 ' With faults on, a seek can land 948 ms or 10 s before its target or take seconds, the node can
 ' stall, and a request can be lost. A write the real node would wedge on (anything written to a
 ' node with a write in flight, a resume to a node that is not paused) is recorded as a violation.
@@ -20,6 +22,13 @@ namespace tests.syncPlaySim
   const SERVER_DEFAULT_PING_MS = 500
   const SERVER_MAX_PLAYBACK_OFFSET_MS = 500
   const SERVER_MAX_CATCH_UP_OFFSET_MS = 60000
+  ' A seek's time from its write to `playing`, as a Stick 4K's exact seeks on a direct-play file
+  ' were measured on 2026-11-11: a base, plus the decode forward from the keyframe before the
+  ' target. Its slowest stays under the player's seek limit (syncPlayPlayback.SEEK_SETTLE_MS).
+  const SEEK_BASE_MS = 421
+  const SEEK_MS_PER_SECOND_PAST_KEYFRAME = 235
+  ' A seek that outlasts this outlasts the lead a catch-up had before 2026-11-12.
+  const LONG_SEEK_MS = 2000
 
   function newSim(seed as integer, faults as boolean) as object
     estimator = syncPlayOffset.newEstimator()
@@ -40,6 +49,8 @@ namespace tests.syncPlaySim
       group: syncPlayGroup.newGroup(),
       groupState: "Paused",
       node: { state: "none", posMs: 0&, atMs: 0&, moving: false, busy: "", epoch: 0, noteEpoch: 0, wedged: false },
+      ' This run's file has a keyframe every so many ms, from 0 (set below, from the seed).
+      keyframeGapMs: 1000,
       server: { state: "Paused", posMs: 60000&, activityMs: 100000&, meBuffering: true, resumePlaying: false, jumped: false },
       lastFrameAtMs: 0&,
       ' Set true to print every event and action of the run to the console, to read a failing seed.
@@ -51,11 +62,13 @@ namespace tests.syncPlaySim
       seeks: 0,
       events: 0,
       ' What the run went through, so a spec can check its faults happened at all.
-      counts: { farLandings: 0, slowSeeks: 0, slowResumes: 0, scrubs: 0, lostRequests: 0, stalls: 0, wedgedPauses: 0, silentCatchUps: 0, recoverSeeks: 0, designedHalts: 0, catchUps: 0, holds: 0, waitAsks: 0, whereAsks: 0 }
+      counts: { farLandings: 0, slowSeeks: 0, longSeeks: 0, slowResumes: 0, scrubs: 0, lostRequests: 0, stalls: 0, wedgedPauses: 0, silentCatchUps: 0, recoverSeeks: 0, designedHalts: 0, catchUps: 0, holds: 0, waitAsks: 0, whereAsks: 0 }
     }
     ' The group stands paused on one item, and this member's player mounts for it.
     syncPlayGroup.itemChanged(sim.group, "p-1", 99000&)
     sim.resumeLagMs = nextInt(sim, 0, 80)
+    ' The measured file's keyframes were up to 10 s apart.
+    sim.keyframeGapMs = 1000 * nextInt(sim, 1, 10)
     syncPlayPlayer.mounted(sim.player, 60000& * TICKS_PER_MS, sim.now)
     sim.node.busy = "load"
     sim.node.state = "buffering"
@@ -257,7 +270,8 @@ namespace tests.syncPlaySim
     node.busy = "seek"
     node.epoch++
     landMs& = targetMs + nextInt(sim, 1, 38)
-    tookMs = nextInt(sim, 266, 840)
+    tookMs = seekTookMs(sim, targetMs)
+    if tookMs > LONG_SEEK_MS then sim.counts.longSeeks++
     if sim.faults
       if chance(sim, 5) then landMs& = targetMs - 948
       if chance(sim, 3) then landMs& = targetMs - 10000
@@ -273,6 +287,15 @@ namespace tests.syncPlaySim
     push(sim, sim.now + 80, { kind: "seekBuffering", epoch: node.epoch })
     push(sim, sim.now + tookMs, { kind: "seekDone", epoch: node.epoch, landMs: landMs& })
   end sub
+
+  ' How long a seek to targetMs takes to reach `playing`: the base, the decode from the keyframe
+  ' before the target, and the scatter the measured seeks showed around that line.
+  function seekTookMs(sim as object, targetMs as longinteger) as integer
+    pastKeyframeMs& = 0&
+    if targetMs > 0 then pastKeyframeMs& = targetMs mod sim.keyframeGapMs
+    decodeMs% = (SEEK_MS_PER_SECOND_PAST_KEYFRAME * pastKeyframeMs&) \ 1000
+    return SEEK_BASE_MS + decodeMs% + nextInt(sim, -60, 90)
+  end function
 
   sub startPlaying(sim as object, fromMs as longinteger, firstNoteMs as integer)
     node = sim.node

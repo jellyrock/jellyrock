@@ -75,6 +75,8 @@ namespace tests
     function _()
       failed = m.failures(1, 40, false)
       m.assertEqual(failed.count(), 0, failed.join(" | "))
+      ' A seek that takes most of a catch-up's lead is part of a clean run.
+      m.assertTrue(m.totals.longSeeks > 0, "no run went through any longSeeks")
     end function
 
     @it("with far landings, slow seeks, stalls and lost requests, every run still ends in step")
@@ -82,20 +84,18 @@ namespace tests
       failed = m.failures(101, 180, true)
       m.assertEqual(failed.count(), 0, failed.join(" | "))
       ' A run that met no fault proves nothing about faults.
-      for each name in ["farLandings", "slowSeeks", "slowResumes", "scrubs", "lostRequests", "stalls", "wedgedPauses", "silentCatchUps", "recoverSeeks", "catchUps", "holds", "whereAsks"]
+      for each name in ["farLandings", "slowSeeks", "longSeeks", "slowResumes", "scrubs", "lostRequests", "stalls", "wedgedPauses", "silentCatchUps", "recoverSeeks", "catchUps", "holds", "whereAsks"]
         m.assertTrue(m.totals[name] > 0, "no run went through any " + name)
       end for
     end function
 
     @it("a node that takes no pause again after its recovery seek halts, as the rule says")
     function _()
-      ' Two seeds the full sweep found: a pause never takes, the one recovery seek frees the
-      ' node, and the next pause never takes either.
+      ' A seed the full sweep found: a pause never takes, the one recovery seek frees the node,
+      ' and the next pause never takes either.
       m.totals = {}
-      for each seed in [10429, 10778]
-        m.assertEqual(m.runSeed(seed, true), "", "seed " + seed.toStr())
-      end for
-      m.assertEqual(m.totals.designedHalts, 2)
+      m.assertEqual(m.runSeed(10816, true), "", "seed 10816")
+      m.assertEqual(m.totals.designedHalts, 1)
     end function
 
   end class
