@@ -1,4 +1,6 @@
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 ' The ids of a library's views (its tabs): JellyRock's own vocabulary.
 '
@@ -94,9 +96,10 @@ end namespace
 
 ' How a grid draws a library view, separate from which view it is.
 '
-' Stored per library as the `layout` display setting. Only a movie library's Movies tab
-' offers a choice today (the presentation panel or the poster grid); every other view
-' draws its own fixed grid whatever this says.
+' Stored per library and view, as the display setting settingKey() names: the choice
+' belongs to the grid on show, the way jellyfin-web saves its view style per library and
+' tab. Only a movie library's Movies view offers a choice today (the presentation panel
+' or the poster grid); every other view draws its own fixed grid.
 namespace libraryLayout
 
   ' The poster grid with titles under the posters: what every library showed by default.
@@ -111,13 +114,28 @@ namespace libraryLayout
     return layout = libraryLayout.COMFORTABLE or layout = libraryLayout.PRESENTATION
   end function
 
+  ' settingKey: the display-setting key a view's layout is saved under.
+  '
+  ' One flat key per view, because only three-part registry keys load
+  ' (`display.<libraryId>.<key>`, TransformDisplaySettings).
+  function settingKey(view as dynamic) as string
+    return "layout_" + LCase(textOrEmpty(view))
+  end function
+
+  ' title: a layout's own name, for the Layout page setting; "" for one this build lacks.
+  function title(layout as dynamic) as string
+    if not libraryLayout.isKnown(layout) then return ""
+    if layout = libraryLayout.PRESENTATION then return translate(translationKeys.LabelLayoutPresentation)
+    return translate(translationKeys.LabelLayoutComfortable)
+  end function
+
   ' resolve: the layout a load should use.
   '
   ' A saved layout is honored when it is one this build knows; anything else (nothing
   ' saved, a layout from a newer build) falls back to the presenter's default, without
   ' writing the fallback back.
   '
-  ' @param saved - the stored `layout` setting, or Invalid when none is stored
+  ' @param saved - the view's stored layout setting, or Invalid when none is stored
   ' @param defaultLayout - the presenter's getDefaultLayout()
   function resolve(saved as dynamic, defaultLayout as string) as string
     if libraryLayout.isKnown(saved) then return saved

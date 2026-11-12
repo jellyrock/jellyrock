@@ -329,6 +329,12 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // a pulse. Read against the app source 2026-10-23.
   '#optionList.content.0.title',
   '#optionList.itemFocused',
+  // `BaseGridView.configureBackdrop` sets it on each load to whether the view on show draws
+  // the presentation panel, and only an empty or a failed load clears it after that: held
+  // until the layout, the view or the content changes, so a poll cannot miss it. Read
+  // against the app source 2026-11-12 (`configureBackdrop` and the two clears in the load
+  // handlers).
+  '#presentationInfo.visible',
   '#osd.visible',
   '#quickConnectCode.text',
   '#scrollContent.translation',
