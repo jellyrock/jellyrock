@@ -13,7 +13,7 @@ namespace overhangRow
   ' a box does, and its focus border (6 px, drawn inside the box) sits 9 px clear of the text
   const TAB_PADDING = 15
   const TAB_SPACING = 0 ' Between two tabs' boxes: the padding is the air, so the boxes touch
-  const TAB_GAP = 9 ' Between the title's text and the status after it
+  const TITLE_STATUS_GAP = 9 ' Between the title's text and the status after it
   const ELEMENT_GAP = 6 ' On the right (before the dropdown, before and inside the cluster): a glyph's canvas pads it
   const CLOCK_GAP = 24 ' Between an icon's box and the clock's digits (Clock.textWidth): the cluster's last icon, the OSD's group mark
   ' A label's caps sit above its box's middle (capsAboveCenter in textMetrics.bs: 3 px at the

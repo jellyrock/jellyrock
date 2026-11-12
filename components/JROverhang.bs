@@ -392,7 +392,7 @@ sub layout()
   m.status.visible = false
   if m.status.text <> "" and m.title.visible
     textWidth = snapToGrid(-int(-m.titleMeasure.localBoundingRect().width))
-    statusX = titleX + textWidth + overhangRow.TAB_GAP
+    statusX = titleX + textWidth + overhangRow.TITLE_STATUS_GAP
     statusWidth = leftOfDropdown - statusX
     if textWidth > 0 and statusWidth >= TITLE_MIN_WIDTH
       m.status.translation = [statusX, overhangRow.TEXT_TOP]
