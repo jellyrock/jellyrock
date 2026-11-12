@@ -962,6 +962,12 @@ Settings can be opened from any screen, and a setting changed there reaches the 
 
 Agreed shape: one more `JRScreen` function beside `pageSettingsEntries` and `onPageSettingChanged`, `onSettingsChanged(names)`. `JellyfinUserSettings.onSettingChanged` already sees every setting write, so it notes which changed, and the base screen hands a screen the names changed since it was last shown; the screen applies what it cares about in place and keeps its scroll position. First measure which settings each screen type reads only at `init`. Not now because it touches every screen type and is its own pull request to `main`, apart from the library screens branch.
 
+#### A music library has no Favorites tab: build one as rows per kind `[fid: music-library-favorites-tab]` `[captured 2026-11-12]`
+
+A movie or TV library has a Favorites tab since the library tabs work: its content tab's view with favorites fixed on (decision `library-tab-view-plus-fixed`). A music library has no one content tab (Albums, Album Artists and Artists are peers), so it got no tab and keeps the Favorites filter on each of its tabs.
+
+Build it as rows per kind (albums, album artists, artists, songs), the way Home's Favorites tab is (`FavoritesRows`), not as one grid. Not done with the tabs work because it is a new surface with its own loading, not a view with a filter fixed on. To close: `MusicPresenter.getOptions()` lists a `favorites` tab, the grid view draws it as rows, the Favorites filter leaves the lists it covers, and `docs/user/features/favorites.md` says so.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`

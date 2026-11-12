@@ -170,6 +170,69 @@ export async function selectHomeTab(tabId) {
   await waitFocusInHomeContent({ label: `focus inside ${wantSubtype}` });
 }
 
+/** The ids of the tabs the overhang shows, in order; `[]` when it shows a title instead. */
+export async function overhangTabIds() {
+  const [visible, tabs] = await getVals(['#overhang.#tabBar.visible', '#overhang.#tabBar.tabs']);
+  if (visible !== true || !Array.isArray(tabs)) return [];
+  return tabs.map((t) => t.id);
+}
+
+/** The id of the one tab the overhang draws selected, or `null` when none or several are. */
+export async function overhangSelectedTab() {
+  const ids = await overhangTabIds();
+  const flags = await getVals(ids.map((_, i) => `#overhang.#tabContainer.${i}.isButtonSelected`));
+  const selected = ids.filter((_, i) => flags[i] === true);
+  return selected.length === 1 ? selected[0] : null;
+}
+
+/**
+ * On a library with tabs, with focus in its content: Up into the tab bar, along it to the
+ * tab `tabId`, OK. Returns once the screen shows that tab (`selectedTabId`, which holds
+ * until the next tab press). It does not wait for the tab's load or for focus: a caller
+ * asserts those, since where focus goes at the press is part of what a tab press does.
+ *
+ * Up reaches the bar only from the content's top (`BaseGridView.onKeyEvent`), so call it
+ * from a freshly opened or freshly loaded grid. The walk along the bar reads the tabs' own
+ * `isFocused`, as `selectHomeTab` does and for its reason.
+ */
+export async function selectLibraryTab(tabId) {
+  const inBar = (f) => f?.node?.subtype === 'JRTabBar';
+  const bar = await waitFocused(inBar, {
+    timeout: 10000,
+    interval: 400,
+    action: walkFocusUntil(ecp.Key.Up, inBar),
+    label: `the tab bar, for the "${tabId}" tab`,
+  });
+
+  const tabs = await getVal(`${bar.keyPath}.tabs`);
+  const target = Array.isArray(tabs) ? tabs.findIndex((t) => t.id === tabId) : -1;
+  // eslint-disable-next-line no-restricted-syntax -- a fail-fast naming its cause, not a timeout
+  if (target < 0) throw new Error(`tab bar has no "${tabId}" tab (tabs=${JSON.stringify(tabs)})`);
+  const focusedTab = async () => {
+    const flags = await getVals(tabs.map((_, i) => `${bar.keyPath}.#tabContainer.${i}.isFocused`));
+    return flags.indexOf(true);
+  };
+  await waitFor('focusedTab()', (i) => i === target, {
+    read: focusedTab,
+    action: async () => {
+      const i = await focusedTab();
+      if (i < 0 || i === target) return;
+      await press(i < target ? ecp.Key.Right : ecp.Key.Left);
+    },
+    timeout: 8000,
+    interval: 400,
+    label: `tab "${tabId}" focused`,
+  });
+
+  await press(ecp.Key.Ok);
+  await waitFor('selectedTabId', (v) => v === tabId, {
+    read: getActiveVal,
+    timeout: 8000,
+    interval: 250,
+    label: `the library showing its "${tabId}" tab`,
+  });
+}
+
 /**
  * Move focus in Home's active row list to row `row`, column 0 (the one tile a row still
  * showing a placeholder has). Shares `walkHomeRowsTo`, so both halves go through `scrollFocus`,
@@ -1131,7 +1194,7 @@ async function walkHomeRowsTo(list, { row, col }, collectionType) {
  * number chosen for other call sites, the drift that cost `waitFocusInside` six sites
  * their intervals in Phase 2.
  */
-async function waitGridLoaded(label, timeout = 20000) {
+export async function waitGridLoaded(label, timeout = 20000) {
   let state;
   await waitFor(
     'loadState',

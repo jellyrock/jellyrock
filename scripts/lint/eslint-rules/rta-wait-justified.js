@@ -374,6 +374,15 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   'audioPlayer.state',
   'itemId',
   'loadState',
+  // A screen's selected tab, read off the active view. BaseGridView and Home write it only
+  // through a tab press (the overhang proxies the bar's selection) and once when a library
+  // opens, so it holds until the next tab press. Read 2026-11-12 against JRScene's
+  // onOverhangTabSelected and BaseGridView.openLibrary.
+  'selectedTabId',
+  // The library a grid screen shows, read off the active view. BaseGridView.loadLibraryFromRoute
+  // sets `parentItem` once, when the screen opens, so the id holds for the screen's life and
+  // changes only when another screen becomes the active one. Read 2026-11-12.
+  'parentItem.id',
   // Roku's `Video.position`, read off the player by id. While the video plays it only
   // climbs, so a `>= target` predicate stays true once true. Read 2026-10-02 against the
   // one gate using it (playback-notifications.spec.js, which seeks before it waits). A

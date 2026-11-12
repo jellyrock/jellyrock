@@ -163,6 +163,11 @@ sub loadItems()
     params.append({ Filters: "IsResumable" })
   end if
 
+  ' A Favorites tab: favorites fixed on, apart from `filter`, so it combines with Played
+  ' or Unplayed (`Filters` takes one of those). Every supported server honors the
+  ' parameter alone.
+  if m.top.isFavorite then params.append({ isFavorite: true })
+
   if isValid(m.top.filterOptions)
     if m.top.filterOptions.count() > 0
       params.append(m.top.filterOptions)

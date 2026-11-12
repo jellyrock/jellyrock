@@ -1,0 +1,145 @@
+import "pkg:/source/GridView/gridQuery.bs"
+import "pkg:/source/GridView/libraryTab.bs"
+import "pkg:/source/GridView/MoviePresenter.bs"
+import "pkg:/source/GridView/MusicPresenter.bs"
+import "pkg:/source/GridView/TVShowPresenter.bs"
+
+namespace tests
+
+  ' Which tabs a library lists, and where the Favorites filter stays.
+  '
+  ' A movie or TV library has one content tab (Movies, Shows), so it gets a Favorites tab:
+  ' that tab's view with favorites fixed on. The Favorites filter leaves the content tab's
+  ' list there and stays on every list the tab does not cover. A studio, network or genre
+  ' folder has one view, so it has no tabs and keeps the filter.
+  @suite("Presenters - tabs, the Favorites tab and the Favorites filter")
+  class PresenterTabsTests extends tests.BaseTestSuite
+
+    ' Only what a presenter reads off its host (see MoviePresenterCollections.spec.bs).
+    private function host(currentView as string) as object
+      return {
+        top: {
+          currentView: currentView,
+          callFunc: function(_name as string, _args as object) as object
+            return invalid
+          end function
+        },
+        global: {
+          server: { version: "12.0.0" },
+          user: { id: "user-1" }
+        }
+      }
+    end function
+
+    private function presenterFor(kind as string, currentView as string) as object
+      if kind = "movie"
+        presenter = new MoviePresenter()
+      else if kind = "tvshow"
+        presenter = new TVShowPresenter()
+      else
+        presenter = new MusicPresenter()
+      end if
+      presenter.onInit(m.host(currentView))
+      return presenter
+    end function
+
+    private function library(collectionType as string) as object
+      return { Id: "lib-1", type: "CollectionFolder", folderType: "CollectionFolder", collectionType: collectionType }
+    end function
+
+    private function names(entries as object) as object
+      out = []
+      for each entry in entries
+        out.push(entry.Name)
+      end for
+      return out
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the Favorites tab")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("comes right after the content tab in a movie and a TV library")
+    @params("movie", "movies", "movies")
+    @params("tvshow", "tvshows", "shows")
+    function _(kind, collectionType, contentTab)
+      views = m.presenterFor(kind, contentTab).getOptions(m.library(collectionType)).views
+
+      m.assertEqual(views[0].Name, contentTab)
+      m.assertEqual(views[1].Name, libraryTab.FAVORITES)
+    end function
+
+    @it("is the content tab's view with favorites fixed on")
+    @params("movie", "movies", "movies")
+    @params("tvshow", "tvshows", "shows")
+    function _(kind, collectionType, contentTab)
+      views = m.presenterFor(kind, contentTab).getOptions(m.library(collectionType)).views
+
+      m.assertEqual(gridQuery.viewOfTab(views, libraryTab.FAVORITES), { view: contentTab, isFavorite: true })
+      m.assertEqual(gridQuery.viewOfTab(views, contentTab), { view: contentTab, isFavorite: false })
+    end function
+
+    @it("is not listed by a music library, which has no one content tab")
+    function _()
+      views = m.presenterFor("music", "albums").getOptions(m.library("music")).views
+
+      m.assertFalse(inArray(m.names(views), libraryTab.FAVORITES))
+      m.assertEqual(m.names(views), ["albums", "albumartists", "artists", "genres"])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a folder inside a library")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("lists one view, so it has no tabs and no Favorites tab")
+    @params("movie", "movies", { Id: "f1", type: "Studio", collectionType: "movies" })
+    @params("movie", "movies", { Id: "f1", type: "Genre", collectionType: "movies" })
+    @params("movie", "movies", { Id: "f1", type: "Folder", folderType: "Genre" })
+    @params("tvshow", "shows", { Id: "f1", type: "Studio", collectionType: "tvshows" })
+    @params("tvshow", "shows", { Id: "f1", type: "Genre", collectionType: "tvshows" })
+    @params("tvshow", "shows", { Id: "f1", type: "Folder", folderType: "studio" })
+    function _(kind, contentTab, folder)
+      views = m.presenterFor(kind, contentTab).getOptions(folder).views
+
+      m.assertEqual(m.names(views), [contentTab])
+    end function
+
+    @it("keeps the Favorites filter, which no tab covers there")
+    @params("movie", "movies", { Id: "f1", type: "Studio", collectionType: "movies" })
+    @params("tvshow", "shows", { Id: "f1", type: "Genre", collectionType: "tvshows" })
+    function _(kind, contentTab, folder)
+      filters = m.presenterFor(kind, contentTab).getOptions(folder).filter
+
+      m.assertTrue(inArray(m.names(filters), "Favorites"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the Favorites filter in a library")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves the content tab's list, which the Favorites tab covers")
+    @params("movie", "movies", "movies", ["All", "Played", "Unplayed", "Resumable"])
+    @params("tvshow", "tvshows", "shows", ["All", "Played", "Unplayed"])
+    function _(kind, collectionType, contentTab, expected)
+      filters = m.presenterFor(kind, contentTab).getOptions(m.library(collectionType)).filter
+
+      m.assertEqual(m.names(filters), expected)
+    end function
+
+    @it("stays on every list the Favorites tab does not cover")
+    @params("movie", "movies", "collections")
+    @params("movie", "movies", "studios")
+    @params("tvshow", "tvshows", "collections")
+    @params("tvshow", "tvshows", "networks")
+    @params("music", "music", "albums")
+    @params("music", "music", "albumartists")
+    @params("music", "music", "artists")
+    function _(kind, collectionType, currentView)
+      filters = m.presenterFor(kind, currentView).getOptions(m.library(collectionType)).filter
+
+      m.assertTrue(inArray(m.names(filters), "Favorites"), currentView)
+    end function
+
+  end class
+
+end namespace

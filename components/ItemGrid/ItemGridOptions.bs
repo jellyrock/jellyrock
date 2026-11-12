@@ -1,7 +1,6 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/GridView/gridQuery.bs"
-import "pkg:/source/GridView/optionsViewList.bs"
 import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
@@ -12,8 +11,8 @@ sub init()
   m.top.findNode("dialogBackground").blendColor = m.global.constants.colorBackgroundSecondary
 
   m.buttons = m.top.findNode("buttons")
-  m.buttons.buttons = [translate(translationKeys.LabelView), translate(translationKeys.LabelSort), translate(translationKeys.LabelFilter)]
-  m.buttons.selectedIndex = 1
+  m.buttons.buttons = [translate(translationKeys.LabelSort), translate(translationKeys.LabelFilter)]
+  m.buttons.selectedIndex = 0
   m.buttons.setFocus(true)
 
   m.favoriteMenu = m.top.findNode("favoriteMenu")
@@ -21,10 +20,10 @@ sub init()
   m.selectedFavoriteItem = m.top.findNode("selectedFavoriteItem")
 
   m.selectedSortIndex = 0
-  m.selectedItem = 1
+  ' The menu on show, an index into m.menus: Sort, then Filter
+  m.selectedItem = 0
 
   m.menus = []
-  m.menus.push(m.top.findNode("viewMenu"))
   m.menus.push(m.top.findNode("sortMenu"))
   m.menus.push(m.top.findNode("filterMenu"))
 
@@ -33,9 +32,6 @@ sub init()
   m.filterMenu = m.top.findNode("filterMenu")
   m.filterMenu.observeField("itemFocused", "onFilterFocusChange")
 
-  m.viewNames = []
-  m.viewLayouts = []
-  m.selectedViewIndex = 0
   m.sortNames = []
   m.filterNames = []
 
@@ -100,31 +96,6 @@ function isFilterMenuDataValid() as boolean
 end function
 
 sub onOptionsSet()
-  '  Views Tab
-  if isValid(m.top.options.views)
-    viewContent = CreateObject("roSGNode", "ContentNode")
-    index = 0
-    selectedViewIndex = m.selectedViewIndex
-    ' Rebuilt with the menu: each options set lists the views afresh, and a stale entry
-    ' would sit before the new ones at the index the menu reports.
-    m.viewNames = []
-    m.viewLayouts = []
-
-    for each view in m.top.options.views
-      entry = viewContent.CreateChild("ContentNode")
-      entry.title = view.Title
-      m.viewNames.push(view.Name)
-      m.viewLayouts.push(textOrEmpty(view.Layout))
-      ' Matched on the layout too: a movie library lists the Movies tab once per layout.
-      if (isValid(view.selected) and view.selected = true) or optionsViewList.isSelected(view, m.top.view, m.top.layout)
-        selectedViewIndex = index
-      end if
-      index = index + 1
-    end for
-    m.menus[0].content = viewContent
-    m.menus[0].checkedItem = selectedViewIndex
-  end if
-
   ' Sort Tab
   if isValid(m.top.options.sort)
     sortContent = CreateObject("roSGNode", "ContentNode")
@@ -148,16 +119,16 @@ sub onOptionsSet()
       end if
       index = index + 1
     end for
-    m.menus[1].content = sortContent
-    m.menus[1].checkedItem = m.selectedSortIndex
+    m.menus[0].content = sortContent
+    m.menus[0].checkedItem = m.selectedSortIndex
 
     constants = m.global.constants
     if m.top.sortAscending = true
-      m.menus[1].focusedCheckedIconUri = constants.iconArrowUpBlack
-      m.menus[1].checkedIconUri = constants.iconArrowUpWhite
+      m.menus[0].focusedCheckedIconUri = constants.iconArrowUpBlack
+      m.menus[0].checkedIconUri = constants.iconArrowUpWhite
     else
-      m.menus[1].focusedCheckedIconUri = constants.iconArrowDownBlack
-      m.menus[1].checkedIconUri = constants.iconArrowDownWhite
+      m.menus[0].focusedCheckedIconUri = constants.iconArrowDownBlack
+      m.menus[0].checkedIconUri = constants.iconArrowDownWhite
     end if
   end if
 
@@ -188,15 +159,15 @@ sub onOptionsSet()
       end if
       index = index + 1
     end for
-    m.menus[2].content = filterContent
-    m.menus[2].checkedItem = m.selectedFilterIndex
+    m.menus[1].content = filterContent
+    m.menus[1].checkedItem = m.selectedFilterIndex
   else
     filterContent = CreateObject("roSGNode", "ContentNode")
     entry = filterContent.CreateChild("ContentNode")
     entry.title = translate(translationKeys.LabelAll)
     m.filterNames.push("All")
-    m.menus[2].content = filterContent
-    m.menus[2].checkedItem = 0
+    m.menus[1].content = filterContent
+    m.menus[1].checkedItem = 0
   end if
 end sub
 
@@ -285,7 +256,7 @@ function onKeyEvent(key as string, _press as boolean) as boolean
 
     if m.menus[m.selectedItem].isInFocusChain()
       ' Handle Filter screen
-      if m.selectedItem = 2
+      if m.selectedItem = 1
         ' Selected filter has options, move cursor to it
         if m.filterMenu.content.getChild(m.filterMenu.itemFocused).getChildCount() > 0
           m.menus[m.selectedItem].setFocus(false)
@@ -310,45 +281,38 @@ function onKeyEvent(key as string, _press as boolean) as boolean
   else if key = "OK"
 
     if m.menus[m.selectedItem].isInFocusChain()
-      ' Handle View Screen
-      if m.selectedItem = 0
-        m.selectedViewIndex = m.menus[0].itemSelected
-        m.top.layout = m.viewLayouts[m.selectedViewIndex]
-        m.top.view = m.viewNames[m.selectedViewIndex]
-      end if
-
       ' Handle Sort screen
-      if m.selectedItem = 1
+      if m.selectedItem = 0
         constants = m.global.constants
 
-        if m.menus[1].itemSelected <> m.selectedSortIndex
-          m.menus[1].focusedCheckedIconUri = constants.iconArrowUpBlack
-          m.menus[1].checkedIconUri = constants.iconArrowUpWhite
+        if m.menus[0].itemSelected <> m.selectedSortIndex
+          m.menus[0].focusedCheckedIconUri = constants.iconArrowUpBlack
+          m.menus[0].checkedIconUri = constants.iconArrowUpWhite
 
-          m.selectedSortIndex = m.menus[1].itemSelected
+          m.selectedSortIndex = m.menus[0].itemSelected
           m.top.sortAscending = true
           m.top.sortField = m.sortNames[m.selectedSortIndex]
         else
 
           if m.top.sortAscending = true
             m.top.sortAscending = false
-            m.menus[1].focusedCheckedIconUri = constants.iconArrowDownBlack
-            m.menus[1].checkedIconUri = constants.iconArrowDownWhite
+            m.menus[0].focusedCheckedIconUri = constants.iconArrowDownBlack
+            m.menus[0].checkedIconUri = constants.iconArrowDownWhite
           else
             m.top.sortAscending = true
-            m.menus[1].focusedCheckedIconUri = constants.iconArrowUpBlack
-            m.menus[1].checkedIconUri = constants.iconArrowUpWhite
+            m.menus[0].focusedCheckedIconUri = constants.iconArrowUpBlack
+            m.menus[0].checkedIconUri = constants.iconArrowUpWhite
           end if
         end if
       end if
 
       ' Handle Filter screen
-      if m.selectedItem = 2
+      if m.selectedItem = 1
         if not isFilterMenuDataValid() then return false
         ' If filter has no options, select it
         if m.filterMenu.content.getChild(m.filterMenu.itemFocused).getChildCount() = 0
-          m.menus[2].checkedItem = m.menus[2].itemSelected
-          m.selectedFilterIndex = m.menus[2].itemSelected
+          m.menus[1].checkedItem = m.menus[1].itemSelected
+          m.selectedFilterIndex = m.menus[1].itemSelected
           m.top.filter = m.filterNames[m.selectedFilterIndex]
           m.top.filterOptions = {}
           return true
@@ -369,15 +333,15 @@ function onKeyEvent(key as string, _press as boolean) as boolean
       selectedValue = gridQuery.queryValueFor(optionValues, m.filterOptions.checkedState, m.filterMenu.content.getChild(m.filterMenu.itemFocused).delimiter)
 
       if selectedValue <> ""
-        m.menus[2].checkedItem = m.menus[2].itemFocused
-        m.selectedFilterIndex = m.menus[2].itemFocused
+        m.menus[1].checkedItem = m.menus[1].itemFocused
+        m.selectedFilterIndex = m.menus[1].itemFocused
         m.top.filter = m.filterMenu.content.getChild(m.filterMenu.itemFocused).Name
 
         newFilter = {}
         newFilter[m.top.filter] = selectedValue
         m.top.filterOptions = newFilter
       else
-        m.menus[2].checkedItem = 0
+        m.menus[1].checkedItem = 0
         m.selectedFilterIndex = 0
         m.top.filter = m.filterNames[0]
         m.top.filterOptions = {}
@@ -391,7 +355,7 @@ function onKeyEvent(key as string, _press as boolean) as boolean
   else if key = "back" or key = "up"
     if key = "back" then hideChecklist()
 
-    m.menus[2].visible = true ' Show Filter contents in case hidden by favorite button
+    m.menus[1].visible = true ' Show Filter contents in case hidden by favorite button
     if m.menus[m.selectedItem].isInFocusChain()
       m.buttons.setFocus(true)
       m.menus[m.selectedItem].drawFocusFeedback = false
@@ -399,7 +363,7 @@ function onKeyEvent(key as string, _press as boolean) as boolean
     end if
   else if key = "options"
     hideChecklist()
-    m.menus[2].visible = true ' Show Filter contents in case hidden by favorite button
+    m.menus[1].visible = true ' Show Filter contents in case hidden by favorite button
     m.menus[m.selectedItem].drawFocusFeedback = false
     return false
   end if
