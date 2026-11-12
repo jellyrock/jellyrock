@@ -4,11 +4,15 @@ import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/logging/Logger.bs"
+import "pkg:/source/syncplay/syncPlayConverge.bs"
+import "pkg:/source/syncplay/syncPlayGroup.bs"
 import "pkg:/source/syncplay/syncPlayMessage.bs"
 import "pkg:/source/syncplay/syncPlayOffset.bs"
 import "pkg:/source/syncplay/syncPlayPlayback.bs"
+import "pkg:/source/syncplay/syncPlayPlayer.bs"
 import "pkg:/source/syncplay/syncPlayQueue.bs"
 import "pkg:/source/syncplay/syncPlayRequests.bs"
+import "pkg:/source/syncplay/syncPlayShadow.bs"
 import "pkg:/source/syncplay/syncPlayState.bs"
 import "pkg:/source/syncplay/syncPlayTime.bs"
 import "pkg:/source/utils/appWaits.bs"
@@ -27,6 +31,14 @@ const SYNC_ROUNDS = 3
 ' A Home exit ends the app without a Leave, and on HTTPS the session outlives it
 ' (decision `syncplay-stale-membership-at-launch`).
 const STALE_GROUP_KEY = "syncPlayGroup"
+' Which engine decides a member's playback while it follows: true, the comparison
+' (syncPlayConverge), with this file carrying out the one action it asks for; false, this file's
+' own command, tracker and correction code. The node's `engine` field picks for one run or one
+' spec. The manager's own engine is kept only as the control for the comparison's soak, and is
+' deleted before this reaches `main`.
+const DECIDE_BY_COMPARISON = true
+' The most actions one event may lead to before the comparison is taken as not settling.
+const CONVERGE_ROUNDS = 12
 
 sub init()
   m.log = new log.Logger("SyncPlayManager")
@@ -40,6 +52,8 @@ sub init()
   m.pauseTimer.observeField("fire", "onPauseTimer")
   m.correctionTimer = m.top.findNode("correctionTimer")
   m.correctionTimer.observeField("fire", "onCorrectionTimer")
+  m.convergeTimer = m.top.findNode("convergeTimer")
+  m.convergeTimer.observeField("fire", "onConvergeTimer")
   ' The working state is built on first use, not here. setGlobalNodes() creates this node from the main
   ' thread, so init() runs there, and the AAs it leaves in `m` reach the render thread (where
   ' every handler below runs) without their LongInteger and `invalid` entries: measured on the
@@ -77,6 +91,10 @@ sub ensureReady()
   ' What the player last told us.
   m.playerState = ""
   m.playerPositionTicks = 0&
+  ' Where the node is known to be while it plays, and where its last pause stopped it
+  ' (syncPlayPlayback.newPausePosition): the node's position moves only on a notification, so the
+  ' next Unpause reads the pause's estimate in its seek check and its resume time.
+  m.pausePosition = syncPlayPlayback.newPausePosition()
   ' Where the load now starting was asked to start (ticks), for the tracker's first Ready.
   m.loadStartTicks = 0&
   ' The group is paused: a Pause or Seek was applied and no Unpause or Stop since. While it holds
@@ -168,12 +186,38 @@ sub ensureReady()
   ' How many drift corrections ran to their resume (onCorrectionTimer), published so a spec can
   ' wait for the one a time offset pick started, not for a drift reading that may predate it.
   m.correctionsDone = 0
+  ' For the specs: the shift the last Unpause applied with, and how often a waiting one's changed.
+  m.resumeShiftMs = invalid
+  m.resumeShiftChanges = 0
   ' How many Seek commands the group sent while this member followed (scheduleCommand), published so a
   ' spec can tell a load the server accepted from one it had to correct with a Seek.
   m.groupSeeks = 0
   ' How many Ready reports this member sent (report), published so a spec can wait for the server to
   ' have a load's Ready rather than for a group command that can come before it.
   m.readiesSent = 0
+  ' Times the viewer was told the group cannot be reached, for the specs: a soak step that tells
+  ' them with no outage has found a request whose result was lost.
+  m.unreachableNotices = 0
+  ' How long the last pause took to stop the node, for the specs (shadowPlayerFact).
+  m.pauseLandedMs = 0&
+  ' The player and group models of the convergence rewrite. They decide when the comparison is
+  ' the engine (usesComparison), and are fed beside this code in an RTA build, as a shadow whose
+  ' disagreements are logged (shadowAfter). Any other build with the old engine has none.
+  m.shadow = invalid
+  #if ENABLE_RTA
+    m.shadow = syncPlayShadow.newShadow()
+  #end if
+  if (DECIDE_BY_COMPARISON or m.top.engine = "comparison") and not isValid(m.shadow) then m.shadow = syncPlayShadow.newShadow()
+  ' The comparison's loop is running (converge), and an event came in while it was.
+  m.converging = false
+  m.convergeAgain = false
+  ' Numbers each request the comparison sends, for its promise's id.
+  m.requestCount = 0
+  ' How many corrections of this member's own the comparison saw through (a catch-up, with the
+  ' hold after it when it needed one, or a hold alone), for the specs (as correctionsDone), and
+  ' whether one was under way when the comparison last settled.
+  m.correctionsEnded = 0
+  m.wasCorrecting = false
   publish()
 end sub
 
@@ -237,8 +281,18 @@ end function
 function playerEvent(evt as object) as object
   ensureReady()
   if not isValid(evt) or not syncPlayTime.isText(evt.kind) then return { following: isFollowing() }
+  if usesComparison() then return comparePlayerEvent(evt)
+  ' First, and nothing else: the player sends this from inside the manager's own handlers (a
+  ' verb the manager gave it wrote the pause), so it only records the write and never runs the
+  ' checks below, which can halt following.
+  if evt.kind = "pauseWritten"
+    notePauseWritten()
+    shadowPlayerFact(evt)
+    return { following: isFollowing() }
+  end if
   refreshExtraOffset()
   endUnansweredRefollow()
+  shadowPlayerFact(evt)
   kind = evt.kind
   if isValid(evt.position) then m.playerPositionTicks = syncPlayPlayback.secondsToTicks(evt.position)
   if isValid(evt.duration) then m.playerDurationSeconds = evt.duration
@@ -289,6 +343,8 @@ function playerEvent(evt as object) as object
     end if
   else if kind = "state"
     if isFollowing()
+      syncPlayPlayback.notePauseState(m.pausePosition, m.playerState, syncPlayTime.nowMs())
+      syncResumeShift()
       track({ kind: "state", state: m.playerState, positionTicks: m.playerPositionTicks })
       ' Never written from here: the node passes through `buffering` for milliseconds on its own
       ' pause, and the timer lets that settle.
@@ -300,12 +356,13 @@ function playerEvent(evt as object) as object
       ' node paused while the group plays.
       if syncPlayPlayback.owesCorrectionResume(m.correctionPauseOwed, isValid(m.correction), m.groupPaused, m.playerState)
         host = playerHost()
-        if isValid(host) then tellPlayer(host, { command: "resume" })
+        if isValid(host) then tellPlayer(host, { command: "resume" }, "hold")
         m.log.info("drift correction's pause resumed after the correction ended", "positionTicks", m.playerPositionTicks.toStr())
         m.correctionPauseOwed = false
       end if
     end if
   else if kind = "localSeek"
+    dropPausedEstimate()
     ' The fallback wrote a seek of its own (VideoPlayerView.onGroupSeekOverdue): the tracker must
     ' know it, or a group Seek that comes next would run beside it. Only a stall the server was
     ' told about is owed a Ready at the landing. A load or an idle tracker is left alone, since a seek
@@ -317,6 +374,7 @@ function playerEvent(evt as object) as object
     end if
   else if kind = "position"
     if isFollowing()
+      if m.playerState = "playing" and m.tracker.phase = "ready" then syncPlayPlayback.notePausePosition(m.pausePosition, m.playerPositionTicks, syncPlayTime.nowMs())
       track({ kind: "position", positionTicks: m.playerPositionTicks })
       checkSettle()
     end if
@@ -326,10 +384,13 @@ function playerEvent(evt as object) as object
       ' PlayQueue(NextItem) that remounts. On the playlist's last item it answers nothing, so
       ' this member leaves the route as for any finished queue.
       post("NextItem", syncPlayRequests.nextItem(m.state.playingItemId))
+      shadowAsked("next", invalid, false)
       host = playerHost()
       if syncPlayQueue.isLastItem(m.state) and isValid(host)
         m.expectingRemount = true
+        shadowWriteBegin({ command: "stop" }, "group")
         host.callFunc("exitPlayback")
+        shadowWriteEnd()
       end if
     end if
   else if kind = "unmounted"
@@ -343,6 +404,7 @@ function playerEvent(evt as object) as object
       haltFollowing("the player left while following")
     end if
   end if
+  shadowAfter()
   return { following: isFollowing() }
 end function
 
@@ -372,6 +434,8 @@ sub haltFollowing(reason as string, tell = true as boolean)
   m.queuedNext = invalid
   post("SetIgnoreWait", syncPlayRequests.setIgnoreWait(true))
   releaseGroupRepeat()
+  ' A node the comparison held for the group has no one left to resume it.
+  if usesComparison() then converge()
   publish()
 end sub
 
@@ -514,6 +578,7 @@ sub followAgain()
   m.log.info("following again", "groupId", m.state.groupId)
   syncPlayState.resume(m.state)
   m.tracker = syncPlayPlayback.newReadyTracker()
+  if isValid(m.shadow) then syncPlayGroup.followedAgain(m.shadow.group)
   m.correctionPauseOwed = false
   post("SetIgnoreWait", syncPlayRequests.setIgnoreWait(false))
   publish()
@@ -602,7 +667,7 @@ end function
 function keepsPlayingFor(item as dynamic) as boolean
   if not isFollowing() then return false
   if not syncPlayQueue.isGroupsPlayingItem(item, m.state, m.lastCommand) then return false
-  if not syncPlayQueue.playerIsOnGroupItem(true, isValid(playerHost()), m.expectingRemount, m.tracker.phase) then return false
+  if not syncPlayQueue.playerIsOnGroupItem(true, isValid(playerHost()), m.expectingRemount, trackerPhase()) then return false
   notify("alreadyWatching", m.state.groupName, "")
   return true
 end function
@@ -671,6 +736,7 @@ sub checkSettle()
         ' (seekIsWhereWeAre), so it writes none.
         if not m.waitedOnMe and post("Seek", syncPlayRequests.seek(m.playerPositionTicks))
           m.waitedOnMe = true
+          shadowAsked("seek", m.playerPositionTicks, false)
           m.log.info("drift correction asks the group to wait: the tracker gave up the last seek on this node", "driftMs", syncPlayTime.asLong(drift).toStr(), "lastSeekMs", m.lastSeekMs.toStr(), "positionTicks", m.playerPositionTicks.toStr())
         else
           m.log.info("drift correction skipped: the tracker gave up the last seek on this node, and the group waited once already", "driftMs", syncPlayTime.asLong(drift).toStr(), "lastSeekMs", m.lastSeekMs.toStr())
@@ -679,14 +745,15 @@ sub checkSettle()
         m.log.info("drift correction skipped: its seek would run off the item", "driftMs", syncPlayTime.asLong(drift).toStr())
       else
         m.correction = plan
+        dropPausedEstimate()
         m.log.info("drift correction started", "driftMs", syncPlayTime.asLong(drift).toStr(), "targetTicks", plan.targetTicks.toStr(), "resumeInMs", syncPlayPlayback.correctionResumeDelayMs(plan, syncPlayTime.nowMs()).toStr())
         if plan.seek
           ' A jump the viewer's own time offset pick caused reads as intended with a word; a hold shows nothing.
           if toldToViewer then notify("syncing", "", "")
-          tellPlayer(host, { command: "seekto", position: syncPlayPlayback.ticksToSeconds(plan.targetTicks), report: false, thenPause: true })
+          tellPlayer(host, { command: "seekto", position: syncPlayPlayback.ticksToSeconds(plan.targetTicks), report: false, thenPause: true }, "hold")
           track({ kind: "seek", positionTicks: plan.targetTicks, report: false, thenPause: true })
         else
-          tellPlayer(host, { command: "pause" })
+          tellPlayer(host, { command: "pause" }, "hold")
           armCorrectionWatchdog()
         end if
       end if
@@ -749,7 +816,7 @@ sub onCorrectionTimer()
     endCorrection("the node did not pause")
     return
   end if
-  tellPlayer(host, { command: "resume" })
+  tellPlayer(host, { command: "resume" }, "hold")
   m.correctionPauseOwed = false
   m.log.info("drift correction resumed", "positionTicks", m.playerPositionTicks.toStr())
   m.correction = invalid
@@ -775,8 +842,43 @@ sub startStreamTracking()
   m.lastSeekGaveUp = false
   m.playbackDiffMs = invalid
   m.correctionPauseOwed = false
+  dropPausedEstimate()
   dropCorrection()
   syncPlayPlayback.disarmSettleCheck(m.settle)
+end sub
+
+' Where the node is, and where its last pause stopped it, are no longer known: a seek, a mount, a
+' reload, a correction or a pause written again. The next pause needs a notification of its own.
+sub dropPausedEstimate()
+  syncPlayPlayback.dropPausePosition(m.pausePosition)
+  syncResumeShift()
+end sub
+
+' The player wrote the node's pause this instant, for the group or for the viewer. A node playing
+' in a settled tracker with no correction under way has a position to estimate.
+sub notePauseWritten()
+  if not isFollowing() then return
+  canEstimate = m.playerState = "playing" and m.tracker.phase = "ready" and not isValid(m.correction)
+  syncPlayPlayback.notePauseWritten(m.pausePosition, canEstimate, syncPlayTime.nowMs())
+  syncResumeShift()
+end sub
+
+' An Unpause still waiting keeps the shift the pause's estimate gives now: it takes one when the
+' estimate lands after the command came, and loses it when the estimate is dropped. So its resume
+' time and its seek check always rest on the same position.
+sub syncResumeShift()
+  plan = m.pendingPlan
+  if not isValid(plan) or plan.action <> "Unpause" or not isValid(plan.askedShiftMs) then return
+  shiftMs& = syncPlayPlayback.resumeShiftMs(syncPlayPlayback.landedPauseTicks(m.pausePosition), plan.positionTicks)
+  if shiftMs& = plan.askedShiftMs then return
+  syncPlayPlayback.reshiftPlan(plan, shiftMs&, syncPlayTime.nowMs())
+  m.resumeShiftChanges++
+  m.log.info("resume shift changed for a waiting Unpause", "shiftMs", plan.shiftMs.toStr(), "inMs", plan.delayMs.toStr())
+  m.commandTimer.control = "stop"
+  ' Never applied from here: this runs inside other handlers, and the timer keeps one way in.
+  if plan.delayMs > 0 then m.commandTimer.duration = plan.delayMs / 1000# else m.commandTimer.duration = 0.001
+  m.commandTimer.control = "start"
+  publish()
 end sub
 
 ' A group command or an unmount took over: what it does replaces the correction.
@@ -792,7 +894,7 @@ sub releaseCorrection()
   m.correctionPauseOwed = false
   if isValid(m.correction) and m.playerState = "paused"
     host = playerHost()
-    if isValid(host) then tellPlayer(host, { command: "resume" })
+    if isValid(host) then tellPlayer(host, { command: "resume" }, "release")
   end if
 end sub
 
@@ -811,6 +913,7 @@ sub resetPlaybackTracking()
   m.readyTimer.control = "stop"
   m.pauseTimer.control = "stop"
   m.waitedOnMe = false
+  dropPausedEstimate()
   dropCorrection()
 end sub
 
@@ -830,6 +933,7 @@ sub onFrame(event as object)
     m.joinAwaitsQueue = false
     onCommand(frame)
   end if
+  if usesComparison() then converge() else shadowAfter()
 end sub
 
 sub onGroupUpdate(update as object)
@@ -844,25 +948,33 @@ sub onGroupUpdate(update as object)
   wasInGroup = m.state.inGroup
   previousGroupName = m.state.groupName
   m.state = syncPlayState.applyGroupUpdate(m.state, update)
+  startsItem = updateType = "PlayQueue" and syncPlayQueue.changesPlayingItem(update.reason, previousPlayingItemId, m.state.playingItemId)
+  shadowGroupUpdate(updateType, startsItem)
   if updateType = "PlayQueue"
     ' A same-item step this member is already part of reloads nothing (syncPlayQueue.restartAbsorbed).
     absorbed = ""
     if isFollowing() and not hasOpenClaim()
       loadInFlight = isValid(m.owedLoad) or m.loadAwaitsReady
-      loadFromStart = syncPlayPlayback.restartLoadFromStart(m.tracker.phase, m.tracker.loadStartTicks, m.loadAwaitsReady, m.loadStartTicks)
-      absorbed = syncPlayQueue.restartAbsorbed(update.reason, previousPlayingItemId, m.state.playingItemId, loadInFlight, m.tracker.phase, loadFromStart, m.playerState, m.lastCommand, previousQueueChangedAtMs)
+      loadFromStart = syncPlayPlayback.restartLoadFromStart(trackerPhase(), trackerLoadStartTicks(), m.loadAwaitsReady, m.loadStartTicks)
+      absorbed = syncPlayQueue.restartAbsorbed(update.reason, previousPlayingItemId, m.state.playingItemId, loadInFlight, trackerPhase(), loadFromStart, m.playerState, m.lastCommand, previousQueueChangedAtMs)
       if (update.reason = "NextItem" or update.reason = "PreviousItem") and previousPlayingItemId = m.state.playingItemId
-        m.log.info("same-item step", "answer", absorbed, "loadFromStart", loadFromStart, "trackerPhase", m.tracker.phase, "loadAwaitsReady", m.loadAwaitsReady)
+        m.log.info("same-item step", "answer", absorbed, "loadFromStart", loadFromStart, "trackerPhase", trackerPhase(), "loadAwaitsReady", m.loadAwaitsReady)
       end if
     end if
     m.owedLoad = syncPlayQueue.owedLoadAfter(m.owedLoad, update.reason, previousPlayingItemId, m.state.playingItemId, absorbed <> "")
     if absorbed <> "" then m.log.info("restart of the item already loaded or loading absorbed", "reason", update.reason, "answer", absorbed)
     ' The Ready this member sent was for the wait the server has reset: the item is held at its start.
-    if absorbed = "ready" then report("ready", false, m.playerPositionTicks)
+    ' Under the comparison the new wait the update started is owed its Ready by the group model.
+    if absorbed = "ready" and not usesComparison() then report("ready", false, m.playerPositionTicks)
     if hasOpenClaim() then m.owedLoad = syncPlayQueue.owedLoadForClaimedPlay(m.owedLoad, update.reason, m.state.playingItemId)
+    ' A load this update owes is playback starting, whatever the update's reason: a play of the
+    ' item a stopped group was on comes back as a queue that keeps that item.
+    if isValid(m.owedLoad) and isValid(m.shadow) then syncPlayGroup.playbackStarted(m.shadow.group)
   end if
   m.log.info("group update", "type", updateType, "groupId", m.state.groupId, "state", m.state.groupState)
-  if updateType = "StateUpdate" and previousGroupState = "Playing" and m.state.groupState = "Waiting" and m.reportedBuffering and not isValid(m.groupPausedTicks)
+  if usesComparison()
+    ' The group model anchors and ends this member's wait itself (shadowGroupUpdate).
+  else if updateType = "StateUpdate" and previousGroupState = "Playing" and m.state.groupState = "Waiting" and m.reportedBuffering and not isValid(m.groupPausedTicks)
     anchorGroupPause()
   else if updateType = "StateUpdate" and previousGroupState = "Waiting" and m.state.groupState <> "Waiting"
     endGroupWait()
@@ -950,6 +1062,18 @@ sub onCommand(command as object)
     ' starts from the last command.
     m.log.debug("command recorded while halted", "command", command.command)
     m.lastCommand = command
+    if usesComparison() then shadowCommand(command)
+    publish()
+    return
+  end if
+  if usesComparison()
+    ' The group model takes the command as it arrives: it knows a command's own time, and that
+    ' nothing can be placed on the device clock before the first estimate.
+    m.lastCommand = command
+    if command.command = "Seek" then m.groupSeeks++
+    shadowCommand(command)
+    m.log.info("command taken", "command", command.command, "positionTicks", syncPlayTime.asLong(command.positionTicks).toStr())
+    if command.command = "Unpause" then logUnpauseReach()
     publish()
     return
   end if
@@ -963,6 +1087,7 @@ end sub
 
 sub scheduleCommand(command as object)
   m.lastCommand = command
+  shadowCommand(command)
   if command.command = "Seek" then m.groupSeeks++
   ' The Unpause after this member's Ready carries where the group really paused: how far the
   ' anchor was off is the measure of the anchor itself.
@@ -971,10 +1096,14 @@ sub scheduleCommand(command as object)
   end if
   m.groupPausedTicks = invalid
   m.reportedBuffering = false
-  plan = syncPlayPlayback.scheduleCommand(m.estimator, command, syncPlayTime.nowMs())
+  ' An Unpause resumes later or earlier by the lead the group Pause left (a seek would resume the node, so nothing else takes it back).
+  shiftMs& = 0&
+  if command.command = "Unpause" then shiftMs& = syncPlayPlayback.resumeShiftMs(syncPlayPlayback.landedPauseTicks(m.pausePosition), command.positionTicks)
+  plan = syncPlayPlayback.scheduleCommand(m.estimator, command, syncPlayTime.nowMs(), shiftMs&)
   m.pendingPlan = plan
   m.commandTimer.control = "stop"
   m.log.info("command scheduled", "command", plan.action, "inMs", plan.delayMs.toStr(), "positionTicks", plan.positionTicks.toStr())
+  if plan.shiftMs <> 0 then m.log.info("resume shifted for the pause's lead", "shiftMs", plan.shiftMs.toStr())
   if plan.delayMs = 0
     applyPendingPlan()
   else
@@ -987,6 +1116,7 @@ end sub
 sub onCommandTimer()
   ensureReady()
   applyPendingPlan()
+  shadowAfter()
 end sub
 
 sub applyPendingPlan()
@@ -1004,6 +1134,11 @@ sub applyPendingPlan()
   ' A paused node is resumed by the plan itself (a resume or a seek), so nothing stays owed.
   if m.groupPaused or m.playerState = "paused" then m.correctionPauseOwed = false
   heldForCorrection = isValid(m.correction) and m.playerState = "paused"
+  ' A group Pause that finds the node already paused (the viewer's own pause wrote it) keeps that
+  ' pause's estimate. One that writes its own pause makes a new one (the player's pauseWritten).
+  if plan.action = "Pause" then syncPlayPlayback.carryPause(m.pausePosition, m.playerState, heldForCorrection)
+  pausedEstimateTicks = invalid
+  if plan.action = "Unpause" then pausedEstimateTicks = syncPlayPlayback.landedPauseTicks(m.pausePosition)
   dropCorrection()
   ' A Pause that finds a seek in flight is left to the seek's landing. An Unpause that follows
   ' it must take that pause back, or the node would land paused with nothing to resume it.
@@ -1027,25 +1162,40 @@ sub applyPendingPlan()
   if plan.action = "Seek" and syncPlayPlayback.seekIsWhereWeAre(plan.positionTicks, m.playerPositionTicks, m.playerState, m.tracker.phase)
     ' The group is coming to where this node is (its own wait-on-me Seek, or another member's
     ' to the same place): no seek, a pause, and Ready from here.
-    tellPlayer(host, { command: "pause", showOsd: true })
+    tellPlayer(host, { command: "pause", showOsd: true }, "wait")
     m.pauseAttempts++
     armPauseTimer()
     report("ready", false, m.playerPositionTicks)
     publish()
     return
   end if
-  steps = syncPlayPlayback.applyPlan(plan, m.playerState, m.playerPositionTicks, m.tracker.phase, heldForCorrection)
+  steps = syncPlayPlayback.applyPlan(plan, m.playerState, m.playerPositionTicks, m.tracker.phase, heldForCorrection, pausedEstimateTicks)
+  if plan.action = "Unpause"
+    m.resumeShiftMs = plan.shiftMs
+    ' A plain resume starts the node from the estimate, which anchors a pause that comes before the
+    ' next notification. Any other outcome (a seek, a node not paused) leaves nothing known.
+    if steps.count() = 1 and steps[0].command = "resume"
+      syncPlayPlayback.noteResumed(m.pausePosition)
+    else
+      dropPausedEstimate()
+    end if
+  end if
   for each verb in steps
     if verb.command = "stop"
       m.loadAwaitsReady = false
       m.expectingRemount = true
+      shadowWriteBegin({ command: "stop" }, "group")
       host.callFunc("exitPlayback")
+      shadowWriteEnd()
     else if verb.command = "seekto" and syncPlayPlayback.pauseWaitsForSeek(m.tracker.phase)
       ' The node never runs two seeks at once: this one waits for the one in flight, the newest
       ' wins, and the tracker hands it back at the landing (track).
       track({ kind: "holdSeek", targetTicks: plan.positionTicks, report: verb.report, thenPause: verb.thenPause })
     else
-      tellPlayer(host, verb)
+      ' A seek the server waits on is the group's; a silent one is this member's own.
+      verbOwner = "group"
+      if verb.command = "seekto" and verb.report <> true then verbOwner = "hold"
+      tellPlayer(host, verb, verbOwner)
       if verb.command = "pause"
         m.pauseAttempts++
         armPauseTimer()
@@ -1189,6 +1339,7 @@ sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteg
   else
     m.loadStartTicks = 0&
   end if
+  shadowWriteBegin({ command: "load", startTicks: m.loadStartTicks }, "group")
   if action = "remount"
     ' The play route over a mounted player reloads nothing for the same item and stacks a second
     ' player for another, so the player reloads in place. No playback-start wait opens here.
@@ -1205,6 +1356,7 @@ sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteg
     queueManager.callFunc("beginPlaybackStart", "")
     queueManager.callFunc("playQueue")
   end if
+  shadowWriteEnd()
 end sub
 
 ' --- reports ---
@@ -1212,6 +1364,7 @@ end sub
 sub track(evt as object)
   phaseBefore = m.tracker.phase
   if evt.kind = "seek" then m.seekWrittenAtMs = syncPlayTime.nowMs()
+  if evt.kind = "seek" or evt.kind = "holdSeek" then dropPausedEstimate()
   result = syncPlayPlayback.trackPlayerEvent(m.tracker, evt)
   if result.waitMs > 0
     m.readyTimer.control = "stop"
@@ -1224,7 +1377,10 @@ sub track(evt as object)
     ' everyone together (web pauses at playbackstart the same way). A correction's landing
     ' pauses the same way, and then waits for the group (onCorrectionLanded).
     host = playerHost()
-    if isValid(host) then tellPlayer(host, { command: "pause", showOsd: result.showOsd })
+    pauseOwner = "wait"
+    if isValid(m.correction) then pauseOwner = "hold"
+    if result.showOsd then pauseOwner = "group"
+    if isValid(host) then tellPlayer(host, { command: "pause", showOsd: result.showOsd }, pauseOwner)
     ' A pause the node swallowed is caught by no other check: count the write like a group Pause's.
     if m.groupPaused
       m.pauseAttempts++
@@ -1263,7 +1419,9 @@ sub track(evt as object)
   if isValid(queued)
     host = playerHost()
     if isValid(host)
-      tellPlayer(host, { command: "seekto", position: syncPlayPlayback.ticksToSeconds(queued.targetTicks), report: queued.report, thenPause: queued.thenPause })
+      queuedOwner = "hold"
+      if queued.report = true then queuedOwner = "group"
+      tellPlayer(host, { command: "seekto", position: syncPlayPlayback.ticksToSeconds(queued.targetTicks), report: queued.report, thenPause: queued.thenPause }, queuedOwner)
       track({ kind: "seek", positionTicks: queued.targetTicks, report: queued.report, thenPause: queued.thenPause })
     else
       m.log.warn("held seek dropped: no player mounted", "targetTicks", queued.targetTicks.toStr())
@@ -1274,6 +1432,7 @@ end sub
 sub onReadyTimer()
   ensureReady()
   if isFollowing() then track({ kind: "timeout" })
+  shadowAfter()
 end sub
 
 ' Check, a moment after a pause write or a state change, that the player is still held.
@@ -1301,6 +1460,7 @@ sub onPauseTimer()
   end if
   host = playerHost()
   if not isValid(host) then return
+  dropPausedEstimate()
   tellPlayer(host, { command: "pause" })
   m.pauseAttempts++
   armPauseTimer()
@@ -1311,6 +1471,7 @@ sub report(kind as string, isPlaying as boolean, positionTicks = invalid as dyna
   whenMs& = syncPlayOffset.serverNowMs(m.estimator, syncPlayTime.nowMs())
   reported& = m.playerPositionTicks
   if isValid(positionTicks) then reported& = syncPlayTime.asLong(positionTicks)
+  shadowReported(kind)
   if kind = "ready"
     m.readiesSent++
     m.lastReady = { whenMs: whenMs&, positionTicks: reported&, isPlaying: isPlaying }
@@ -1364,6 +1525,8 @@ sub onTimeSyncResults(event as object)
   end if
   m.syncTimer.duration = syncPlayOffset.nextBurstSeconds(m.estimator.hasEstimate, m.failedBursts)
   m.syncTimer.control = "start"
+  ' A new estimate moves every time the comparison placed on the device clock.
+  if usesComparison() then converge()
   publish()
 end sub
 
@@ -1382,10 +1545,111 @@ end function
 ' instead of asking the group for it again (VideoPlayerView.handleTransport). Without the mark a
 ' group Seek came back as a new Seek request and went round for good, and the load's first-frame
 ' pause paused the whole group (Stick 4K, 2026-10-28).
-sub tellPlayer(host as object, verb as object)
+' @param owner - who the write is for, for shadow mode: "group", "wait" (the group getting ready),
+'   "hold" (a correction of this member's own) or "release" (a halt letting a held node go)
+sub tellPlayer(host as object, verb as object, owner = "group" as string)
   verb.fromGroup = true
+  shadowWriteBegin(verb, owner)
   host.callFunc("handleTransport", verb)
+  shadowWriteEnd()
 end sub
+
+' --- shadow mode ---
+'
+' The player and group models of the convergence rewrite are fed here beside this code, and each
+' place the comparison would have decided differently is logged (syncPlayShadow). Nothing they say
+' is acted on while the old engine decides. Only an RTA build holds the models then: any other
+' build has none, and these subs do nothing.
+
+' What the comparison is told beside the two models. When it decides, the queue layer still
+' performs each load itself, as its item arrives, so no load is ever asked of the comparison.
+function shadowCtx() as object
+  return { following: isFollowing(), estimator: m.estimator, loadOwed: isValid(m.owedLoad) and not usesComparison(), isLastItem: syncPlayQueue.isLastItem(m.state), durationSeconds: m.playerDurationSeconds }
+end function
+
+sub shadowPlayerFact(evt as object)
+  if not isValid(m.shadow) then return
+  nowMs& = syncPlayTime.nowMs()
+  player = m.shadow.player
+  ' How long the node took to stop after a pause was written to it. The player model takes the
+  ' stop as where the node was at the write, so this is what that estimate leaves out, and what
+  ' syncPlayPlayback.PAUSE_LANDED_MS is judged against.
+  if evt.kind = "state" and player.activity = "pausing" and syncPlayTime.isText(evt.state) and evt.state = "paused"
+    m.pauseLandedMs = nowMs& - syncPlayTime.asLong(player.pauseWrittenAtMs)
+    m.log.info("pause landed", "afterMs", m.pauseLandedMs.toStr(), "owner", player.pauseOwner)
+  end if
+  syncPlayShadow.playerFact(m.shadow, evt, m.loadStartTicks, nowMs&)
+end sub
+
+' The player model's learned resume lag, or its last sample, for the specs: a soak's record says
+' what each resume was written against. Invalid with no model or no sample yet.
+function resumeLagForSpecs(field as string) as dynamic
+  if not isValid(m.shadow) then return invalid
+  return m.shadow.player[field]
+end function
+
+' The pause the player reports from inside a write of this manager's is that write, not the
+' viewer's own, so the write is bracketed.
+' The pause the player reports from inside a write of this manager's is that write, not the
+' viewer's own, so the write is bracketed. When the comparison decides, the write is its own
+' and the models were told by it already (carryOut).
+sub shadowWriteBegin(verb as object, owner as string)
+  if not isValid(m.shadow) then return
+  if not usesComparison()
+    syncPlayShadow.managerWrote(m.shadow, shadowCtx(), verb, owner, syncPlayTime.nowMs())
+  else if verb.command = "load"
+    ' The queue layer performs a load under either engine; the player model is told of it here.
+    syncPlayPlayer.told(m.shadow.player, "load", owner, verb.startTicks, syncPlayTime.nowMs())
+  end if
+  m.shadow.ownWrite = true
+end sub
+
+sub shadowWriteEnd()
+  if isValid(m.shadow) then m.shadow.ownWrite = false
+end sub
+
+sub shadowReported(what as string)
+  if isValid(m.shadow) and not usesComparison() then syncPlayShadow.managerReported(m.shadow, shadowCtx(), what, syncPlayTime.nowMs())
+end sub
+
+sub shadowAsked(what as string, positionTicks as dynamic, fromViewer as boolean)
+  if isValid(m.shadow) and not usesComparison() then syncPlayShadow.managerAsked(m.shadow, what, positionTicks, fromViewer, syncPlayTime.nowMs())
+end sub
+
+sub shadowCommand(command as object)
+  if isValid(m.shadow) then syncPlayShadow.commandArrived(m.shadow, command)
+end sub
+
+' @param startsItem - a queue update that starts this member on an item
+sub shadowGroupUpdate(updateType as string, startsItem as boolean)
+  if not isValid(m.shadow) then return
+  if updateType = "GroupJoined" or updateType = "GroupLeft" or updateType = "NotInGroup"
+    syncPlayShadow.membershipChanged(m.shadow, m.state.groupState)
+  else if updateType = "StateUpdate"
+    syncPlayShadow.groupStateChanged(m.shadow, m.state.groupState, m.estimator, syncPlayTime.nowMs())
+  else if updateType = "PlayQueue"
+    syncPlayShadow.itemChanged(m.shadow, m.state.playingItemId, m.state.playbackQueueAtMs, startsItem)
+  end if
+end sub
+
+sub shadowOffsetPicked()
+  if isValid(m.shadow) then syncPlayShadow.offsetPicked(m.shadow)
+end sub
+
+' The end of an event under the old engine: ask the comparison what it still wants, and log each
+' disagreement recorded since the last one.
+sub shadowAfter()
+  if not isValid(m.shadow) or usesComparison() then return
+  syncPlayShadow.afterEvent(m.shadow, shadowCtx(), syncPlayTime.nowMs())
+  for each entry in syncPlayShadow.takeEntries(m.shadow)
+    m.log.info("shadow disagreement", entry.kind, "old", entry.old, "wanted", entry.wanted, "at", entry.at, entry.forMs.toStr())
+  end for
+end sub
+
+function shadowCount() as integer
+  if isValid(m.shadow) then return m.shadow.count
+  return 0
+end function
 
 ' The routed play host, when the viewer is on the play route.
 function playerHost() as dynamic
@@ -1422,6 +1686,7 @@ end function
 
 sub leaveLocally()
   m.syncTimer.control = "stop"
+  m.convergeTimer.control = "stop"
   releaseCorrection()
   resetPlaybackTracking()
   m.timeSyncTask = releaseTask(m.timeSyncTask, "results")
@@ -1462,6 +1727,7 @@ sub releaseGroupRepeat()
 end sub
 
 sub publish()
+  m.publishedPhase = trackerPhase()
   m.top.setFields({
     inGroup: m.state.inGroup,
     following: isFollowing(),
@@ -1474,18 +1740,27 @@ sub publish()
       delayMs: m.estimator.delayMs,
       hasEstimate: m.estimator.hasEstimate,
       lastCommand: m.lastCommand,
-      trackerPhase: m.tracker.phase,
+      trackerPhase: m.publishedPhase,
       playingItemId: m.state.playingItemId,
       playingItemIndex: m.state.playingItemIndex,
       playlistCount: m.state.playlist.count(),
       loadNotice: m.loadNotice,
-      playbackDiffMs: m.playbackDiffMs,
+      playbackDiffMs: publishedDriftMs(),
       extraOffsetMs: m.estimator.extraOffsetMs,
       loadCount: m.loadCount,
-      correctionsDone: m.correctionsDone,
-      correctionInFlight: isValid(m.correction),
+      correctionsDone: m.correctionsDone + m.correctionsEnded,
+      resumeShiftMs: m.resumeShiftMs,
+      resumeShiftChanges: m.resumeShiftChanges,
+      correctionInFlight: correctionInFlight(),
       groupSeeks: m.groupSeeks,
       readiesSent: m.readiesSent,
+      unreachableNotices: m.unreachableNotices,
+      pauseLandedMs: m.pauseLandedMs,
+      resumeLagMs: resumeLagForSpecs("resumeLagMs"),
+      resumeLagSampleMs: resumeLagForSpecs("resumeLagLastSampleMs"),
+      resumeLagKind: resumeLagForSpecs("resumeLagLastKind"),
+      shadowDisagreements: shadowCount(),
+      engine: engineName(),
       repeatMode: m.state.repeatMode,
       shuffleMode: m.state.shuffleMode
     }
@@ -1502,6 +1777,12 @@ end sub
 function viewerPause() as boolean
   ensureReady()
   if not isFollowing() then return true
+  if usesComparison()
+    ' The group is asked, and the comparison pauses the node as the viewer's own at once, or as
+    ' the seek in flight lands: the player writes nothing itself. When the ask cannot be sent at
+    ' all, the player pauses its own node, as outside a group.
+    return not control({ kind: "pause" })
+  end if
   control({ kind: "pause" })
   dropCorrection()
   m.correctionPauseOwed = false
@@ -1514,6 +1795,7 @@ end function
 ' @param nodeState - the Video node's `state`
 function pausedForViewer(nodeState as string) as boolean
   ensureReady()
+  if usesComparison() then return comparePausedForViewer(nodeState)
   return syncPlayPlayback.pausedForViewer(nodeState, isValid(m.correction), m.tracker.showOsd)
 end function
 
@@ -1522,6 +1804,11 @@ end function
 ' own Buffering holds the group, or before any command names the playing item.
 function groupPositionNow() as dynamic
   if not isFollowing() then return invalid
+  if usesComparison()
+    want = syncPlayGroup.wants(m.shadow.group, m.estimator, syncPlayTime.nowMs())
+    if want.mode = "playing" then return want.positionTicks
+    return want.pointTicks
+  end if
   ' While this member's Buffering holds the group, it is paused where the server's Waiting
   ' update anchored it (anchorGroupPause), or nowhere known yet.
   if m.reportedBuffering then return m.groupPausedTicks
@@ -1579,7 +1866,7 @@ end function
 ' Whether a seek is in flight, so a pause the viewer presses now can wait for its landing.
 function seekInFlight() as boolean
   ensureReady()
-  return isFollowing() and syncPlayPlayback.pauseWaitsForSeek(m.tracker.phase)
+  return isFollowing() and syncPlayPlayback.pauseWaitsForSeek(trackerPhase())
 end function
 
 ' A control the viewer pressed while following, asked of the group in place of the player:
@@ -1606,16 +1893,367 @@ function control(request as object) as boolean
     ' the group is paused nothing counts toward it, and the next Unpause arms it again.
     refreshExtraOffset()
     syncPlayPlayback.armSettleCheck(m.settle, true)
+    shadowOffsetPicked()
+    if usesComparison() then converge()
     publish()
     return true
   end if
+  if usesComparison() and (request.kind = "pause" or request.kind = "unpause" or request.kind = "seek")
+    return compareViewerAsk(request)
+  end if
+  if request.kind = "pause" or request.kind = "unpause" then shadowAsked(request.kind, invalid, true)
   if request.kind = "pause" then return post("Pause", invalid)
   if request.kind = "unpause" then return post("Unpause", invalid)
   if request.kind = "seek"
     if not isValid(request.position) then return false
+    shadowAsked("seek", syncPlayPlayback.secondsToTicks(request.position), true)
     return post("Seek", syncPlayRequests.seek(syncPlayPlayback.secondsToTicks(request.position)))
   end if
   if request.kind = "next" then return post("NextItem", syncPlayRequests.nextItem(m.state.playingItemId))
   if request.kind = "previous" then return post("PreviousItem", syncPlayRequests.previousItem(m.state.playingItemId))
   return false
 end function
+
+' --- the comparison as the engine ---
+'
+' When the comparison decides (usesComparison), this file is a loop around it: each fact (a player
+' event, a frame, a request's result, the timer) updates a model, converge() asks the comparison
+' and carries out the one action it gives, and asks again until it gives none. No handler decides
+' anything, so two events in either order end in the same place. Membership, the queue and its
+' loads, the time sync and the menu are the same code under both engines.
+
+function usesComparison() as boolean
+  ' The `engine` field picks for one node: an RTA run sets it after each cold start, and a unit
+  ' spec on the node it made. Nothing in the app writes it, so the constant decides there.
+  if m.top.engine = "comparison" then return isValid(m.shadow)
+  if m.top.engine = "manager" then return false
+  return DECIDE_BY_COMPARISON
+end function
+
+function engineName() as string
+  if usesComparison() then return "comparison"
+  return "manager"
+end function
+
+' The ready tracker's phase, for the queue layer, the viewer's controls and the specs. Under the
+' comparison it is the player model's activity in the tracker's words.
+function trackerPhase() as string
+  if not usesComparison() then return m.tracker.phase
+  activity = m.shadow.player.activity
+  if activity = "none" or activity = "finished" then return "idle"
+  if activity = "loading" then return "loading"
+  if activity = "seeking" then return "seeking"
+  if activity = "arrived" then return "landing"
+  if activity = "stalling" then return "stalling"
+  if activity = "stalled" then return "rebuffering"
+  return "ready"
+end function
+
+function trackerLoadStartTicks() as longinteger
+  if not usesComparison() then return m.tracker.loadStartTicks
+  return syncPlayTime.asLong(m.shadow.player.loadStartTicks)
+end function
+
+' How far this member sits from the group, in ms, positive when behind, or invalid when not
+' known: under the comparison, the group's line against the player model's clock.
+function publishedDriftMs() as dynamic
+  if not usesComparison() then return m.playbackDiffMs
+  player = m.shadow.player
+  if player.activity <> "playing" or player.clock.measured <> true then return invalid
+  nowMs& = syncPlayTime.nowMs()
+  position = syncPlayPlayer.positionAt(player, nowMs&)
+  want = syncPlayGroup.wants(m.shadow.group, m.estimator, nowMs&)
+  if not isValid(position) or want.mode <> "playing" then return invalid
+  return syncPlayTime.ticksToMs(syncPlayTime.asLong(want.positionTicks) - syncPlayTime.asLong(position))
+end function
+
+' Whether a correction of this member's own is under way: a catch-up's seek, or a hold.
+function correctionInFlight() as boolean
+  if not usesComparison() then return isValid(m.correction)
+  player = m.shadow.player
+  activity = player.activity
+  if player.seekOwner = "hold" and (activity = "seeking" or activity = "arrived") then return true
+  return player.pauseOwner = "hold" and (activity = "paused" or activity = "pausing" or activity = "resuming")
+end function
+
+' Whether the viewer should take this member as paused: the group is paused for them, or the node
+' is paused for anything but a hold or a wait, neither of which is a pause anyone pressed.
+function comparePausedForViewer(nodeState as string) as boolean
+  player = m.shadow.player
+  if player.pauseOwner = "hold" or player.pauseOwner = "wait" then return false
+  want = syncPlayGroup.wants(m.shadow.group, m.estimator, syncPlayTime.nowMs())
+  if want.mode = "paused" and not isValid(want.startsAtMs) then return true
+  return nodeState = "paused"
+end function
+
+' A player event under the comparison: the models take the fact, and the comparison is asked.
+function comparePlayerEvent(evt as object) as object
+  kind = evt.kind
+  if kind = "pauseWritten"
+    ' The player wrote a pause of its own, outside any write of this manager's: the viewer's.
+    ' It comes from inside the player's key handling, so the model only records it here.
+    shadowPlayerFact(evt)
+    return { following: isFollowing() }
+  end if
+  refreshExtraOffset()
+  endUnansweredRefollow()
+  if isValid(evt.position) then m.playerPositionTicks = syncPlayPlayback.secondsToTicks(evt.position)
+  if isValid(evt.duration) then m.playerDurationSeconds = evt.duration
+  if kind = "state" and syncPlayTime.isText(evt.state) then m.playerState = evt.state
+  if kind = "mounted"
+    m.expectingRemount = false
+    m.playerState = ""
+    m.playerPositionTicks = m.loadStartTicks
+    shadowPlayerFact(evt)
+    ' Only the group's item answers to the group: anything else the viewer started is their own.
+    if isFollowing() and not syncPlayQueue.isGroupItem(m.global.queueManager.callFunc("getCurrentItem"), m.state.playingItemId)
+      haltFollowing("a player mounted for an item the group is not playing")
+    end if
+  else if kind = "unmounted"
+    m.playerState = ""
+    syncPlayPlayer.unmounted(m.shadow.player, syncPlayTime.nowMs())
+    wasExpected = m.expectingRemount
+    m.expectingRemount = false
+    m.log.info("player left", "expected", wasExpected, "following", isFollowing())
+    ' Back during group playback, or an error that left the player.
+    if not wasExpected and isFollowing() then haltFollowing("the player left while following")
+  else
+    shadowPlayerFact(evt)
+  end if
+  converge()
+  return { following: isFollowing() }
+end function
+
+' The viewer's pause, play or seek under the comparison: the group is asked, the group model
+' holds the ask until a command answers it, and the comparison acts on it at once (a pause
+' lands on the node as the viewer's own).
+' @returns whether the ask went out; false leaves the player to act by itself, as with no group
+function compareViewerAsk(request as object) as boolean
+  what = request.kind
+  positionTicks = invalid
+  if what = "seek"
+    if not isValid(request.position) then return false
+    positionTicks = syncPlayPlayback.secondsToTicks(request.position)
+  end if
+  action = { kind: "ask", what: what, positionTicks: positionTicks }
+  ' Sent before the model is told, so that a send that cannot go leaves the model untouched: the
+  ' request's number is the one applied() gives it below.
+  if not sendRequest("ask", action, syncPlayGroup.nextRequestId(m.shadow.group)) then return false
+  nowMs& = syncPlayTime.nowMs()
+  syncPlayGroup.viewerAsked(m.shadow.group, what, positionTicks, nowMs&)
+  syncPlayConverge.applied(m.shadow.player, m.shadow.group, action, nowMs&)
+  converge()
+  return true
+end function
+
+' Logs how long the group's Unpause leaves this member waiting where it stands: positive for a
+' member ahead of the group's line, negative for one behind. It is the wait the comparison holds
+' to aheadWaitMaxMs and behindBarMs for a paused node, so a log of it shows what those bars cost.
+sub logUnpauseReach()
+  nowMs& = syncPlayTime.nowMs()
+  player = m.shadow.player
+  position = syncPlayPlayer.positionAt(player, nowMs&)
+  if not isValid(position) then return
+  reachAt = syncPlayGroup.reachesAtMs(m.shadow.group, m.estimator, syncPlayTime.asLong(position))
+  if not isValid(reachAt) then return
+  waitMs& = syncPlayTime.asLong(reachAt) - nowMs&
+  m.log.info("unpause reaches this member", "waitMs", waitMs&.toStr(), "activity", player.activity)
+end sub
+
+' Ask the comparison, carry out its one action, and ask again until it gives none. An event that
+' arrives while this runs (the player answers a write from inside the write) only marks that
+' another round is owed, so the loop is never entered twice.
+sub converge()
+  if not isValid(m.shadow) then return
+  if m.converging
+    m.convergeAgain = true
+    return
+  end if
+  m.converging = true
+  m.convergeTimer.control = "stop"
+  player = m.shadow.player
+  group = m.shadow.group
+  policy = m.shadow.policy
+  wakeAtMs = invalid
+  hasSettled = false
+  hasActed = false
+  for attempt = 1 to CONVERGE_ROUNDS
+    m.convergeAgain = false
+    nowMs& = syncPlayTime.nowMs()
+    syncPlayPlayer.advance(player, nowMs&)
+    syncPlayGroup.advance(group, syncPlayTime.asLong(policy.requestLimitMs), nowMs&)
+    result = syncPlayConverge.decide(player, group, shadowCtx(), policy, nowMs&)
+    if isValid(result.action)
+      hasActed = true
+      carryOut(result.action)
+    else if not m.convergeAgain
+      wakeAtMs = result.wakeAtMs
+      hasSettled = true
+      exit for
+    end if
+  end for
+  m.converging = false
+  ' A correction is counted once, as the comparison settles with none under way: a catch-up whose
+  ' landing still needs a hold is the same correction.
+  isCorrecting = correctionInFlight()
+  if m.wasCorrecting and not isCorrecting and hasSettled then m.correctionsEnded++
+  if hasSettled then m.wasCorrecting = isCorrecting
+  delayMs& = 1000&
+  if hasSettled
+    delayMs& = 0&
+    if isValid(wakeAtMs) then delayMs& = syncPlayTime.asLong(wakeAtMs) - syncPlayTime.nowMs()
+    if isValid(wakeAtMs) and delayMs& < 1 then delayMs& = 1&
+  else
+    m.log.warn("the comparison did not settle", "activity", player.activity, "rounds", CONVERGE_ROUNDS)
+  end if
+  if delayMs& > 0
+    m.convergeTimer.duration = delayMs& / 1000#
+    m.convergeTimer.control = "start"
+  end if
+  ' The RTA specs wait on the drift, so an RTA build publishes after every event: one field write
+  ' on this render-owned node per position notification, which a release build does not pay.
+  #if ENABLE_RTA
+    hasActed = true
+  #end if
+  ' A phase change with no action still reaches the published field.
+  if hasActed or trackerPhase() <> m.publishedPhase then publish()
+end sub
+
+sub onConvergeTimer()
+  ensureReady()
+  converge()
+end sub
+
+' Carry out one action of the comparison's, and tell the models it was done.
+sub carryOut(action as object)
+  kind = action.kind
+  nowMs& = syncPlayTime.nowMs()
+  player = m.shadow.player
+  group = m.shadow.group
+  host = playerHost()
+  if kind = "pause" or kind = "resume" or kind = "seek"
+    ' The drift the comparison acted on, for the log: read before the write changes the models.
+    driftText = "unknown"
+    drift = publishedDriftMs()
+    if isValid(drift) then driftText = syncPlayTime.asLong(drift).toStr()
+    byPick = group.pickPending
+    if action.silent = true then m.log.info("playing node sent no reading", "activity", player.activity, "clock", player.clock.kind)
+    syncPlayConverge.applied(player, group, action, nowMs&)
+    if not isValid(host)
+      m.log.warn("the comparison's write found no player", "kind", kind)
+      return
+    end if
+    m.log.info("comparison wrote", kind, "owner", action.owner, "driftMs", driftText, "byPick", byPick)
+    if kind = "pause"
+      tellPlayer(host, { command: "pause", showOsd: action.showOsd = true }, action.owner)
+    else if kind = "resume"
+      tellPlayer(host, { command: "resume" }, action.owner)
+    else
+      ' A jump the viewer's own time offset pick caused reads as intended with a word.
+      if action.byPick = true then notify("syncing", "", "")
+      tellPlayer(host, { command: "seekto", position: syncPlayPlayback.ticksToSeconds(syncPlayTime.asLong(action.targetTicks)), report: false, thenPause: false }, action.owner)
+    end if
+  else if kind = "stop" or kind = "leave"
+    syncPlayConverge.applied(player, group, action, nowMs&)
+    m.loadAwaitsReady = false
+    m.log.info("comparison closes the player", kind, "hasPlayer", isValid(host))
+    ' Only a player that is there leaves for this: with none, the next unmount is the viewer's.
+    if isValid(host)
+      m.expectingRemount = true
+      host.callFunc("exitPlayback")
+    end if
+  else if kind = "report" or kind = "ask"
+    syncPlayConverge.applied(player, group, action, nowMs&)
+    if not sendRequest(kind, action, group[kind].id) then syncPlayGroup.requestFailed(group, kind, action.what, group[kind].id)
+  else if kind = "halt"
+    haltFollowing(action.reason)
+  else
+    ' "settled" changes only the models. A notice also tells the viewer, once per outage: the
+    ' requests keep going, and playback is left as it is.
+    if kind = "settled"
+      settledDrift = publishedDriftMs()
+      if isValid(settledDrift) then m.log.info("time offset pick found the member in step", "driftMs", syncPlayTime.asLong(settledDrift).toStr())
+    end if
+    syncPlayConverge.applied(player, group, action, nowMs&)
+    if kind = "notice"
+      m.log.warn("the group cannot be reached", "report", group.report.what, "ask", group.ask.what)
+      m.unreachableNotices++
+      notify("unreachable", m.state.groupName, "")
+    end if
+  end if
+end sub
+
+' Send a Buffering, a Ready or an ask, and feed its result to the group model. The server answers
+' with a frame, never in the reply, so the reply says only whether the request arrived.
+' @param slot - "report" or "ask"
+' @param requestId - the request's number in the group model, which its result is matched by:
+'   `group[slot].id` once applied() has run, or syncPlayGroup.nextRequestId() before it
+' @returns false when no request could be built
+function sendRequest(slot as string, action as object, requestId as integer) as boolean
+  what = action.what
+  nowMs& = syncPlayTime.nowMs()
+  whenMs& = syncPlayOffset.serverNowMs(m.estimator, nowMs&)
+  positionTicks& = 0&
+  if isValid(action.positionTicks) then positionTicks& = syncPlayTime.asLong(action.positionTicks)
+  apiAction = ""
+  body = invalid
+  if what = "ready"
+    apiAction = "Ready"
+    body = syncPlayRequests.ready(whenMs&, positionTicks&, action.isPlaying = true, m.state.playingItemId)
+    m.readiesSent++
+    m.loadAwaitsReady = false
+  else if what = "buffering"
+    apiAction = "Buffering"
+    body = syncPlayRequests.buffering(whenMs&, positionTicks&, action.isPlaying = true, m.state.playingItemId)
+  else if what = "pause"
+    apiAction = "Pause"
+  else if what = "unpause"
+    apiAction = "Unpause"
+  else if what = "seek"
+    apiAction = "Seek"
+    body = syncPlayRequests.seek(positionTicks&)
+  else if what = "next"
+    apiAction = "NextItem"
+    body = syncPlayRequests.nextItem(m.state.playingItemId)
+  end if
+  if apiAction = "" then return false
+  req = syncPlayRequest(apiAction, body)
+  if not isValid(req) then return false
+  req.timeoutMs = m.shadow.policy.requestLimitMs
+  m.requestCount++
+  sentAtMs& = syncPlayTime.nowMs()
+  m.log.info("sent", what, "positionTicks", positionTicks&.toStr(), "isPlaying", action.isPlaying = true)
+  ' The id opens with the request's own name ("syncPlaySeek"), which is what a spec's
+  ' request-failure rule matches.
+  promiseId = "syncPlay" + apiAction + "-" + m.requestCount.toStr()
+  promises.chain(fetchAsync(req, promiseId), { slot: slot, what: what, id: requestId, sentAtMs: sentAtMs& }).then(sub(res as object, ctx as object)
+    statusCode = 0
+    if isValid(res) and isValid(res.statusCode) then statusCode = res.statusCode
+    onRequestResult(ctx.slot, ctx.what, ctx.id, statusCode, syncPlayTime.nowMs() - syncPlayTime.asLong(ctx.sentAtMs))
+  end sub).catch(sub(_err as object, ctx as object)
+    onRequestResult(ctx.slot, ctx.what, ctx.id, 0, syncPlayTime.nowMs() - syncPlayTime.asLong(ctx.sentAtMs))
+  end sub)
+  return true
+end function
+
+' A request's result. A 2xx arrived. A 4xx to an ask is the server's refusal: it heard the ask
+' and said no, so sending it again is noise, and it counts as answered. Anything else (no reply
+' in time, a transport error, a 5xx, a 4xx to a report the group waits for) failed, and goes
+' again while it is still wanted.
+' @param id - the request's number in the group model; a result for an earlier try is ignored there
+' @param statusCode - the HTTP status, 0 with none
+' @param tookMs - how long the result took, for the log: what the request limit is judged against
+sub onRequestResult(slot as string, what as string, id as integer, statusCode as integer, tookMs as longinteger)
+  if not isValid(m.shadow) then return
+  hasArrived = statusCode >= 200 and statusCode < 300
+  wasRefused = slot = "ask" and statusCode >= 400 and statusCode < 500
+  if hasArrived or wasRefused
+    if wasRefused then m.log.warn("ask refused by the server", "what", what, "status", statusCode)
+    if hasArrived then m.log.info("request answered", "what", what, "tookMs", tookMs.toStr())
+    syncPlayGroup.requestArrived(m.shadow.group, slot, what, id)
+  else
+    m.log.warn("request failed", "what", what, "status", statusCode, "tookMs", tookMs.toStr())
+    syncPlayGroup.requestFailed(m.shadow.group, slot, what, id)
+  end if
+  converge()
+end sub

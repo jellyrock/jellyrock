@@ -1,0 +1,104 @@
+import "pkg:/source/remotecontrol/remoteCommand.bs"
+
+namespace tests
+
+  ' The coordinator node with the comparison as its engine: the manager as a loop around
+  ' syncPlayConverge. No server and no clock estimate, so no request leaves the device and no
+  ' command can be placed on the clock: what is asserted is the wiring (the models fed, the halt,
+  ' the viewer's pause). The decisions themselves are syncPlayConverge.spec.bs's and the
+  ' simulator's.
+  @suite("SyncPlayManager - the comparison as the engine")
+  class SyncPlayManagerComparisonTests extends tests.BaseTestSuite
+
+    private manager as object
+    private previousView as object
+    private previousServerUrl as string
+    private previousQueue as object
+
+    ' beforeEach, not setup: every test moves the node's state (tests/CLAUDE.md).
+    protected override function beforeEach()
+      super.beforeEach()
+      if not m.global.doesExist("activeRoutedView") then m.global.addField("activeRoutedView", "node", false)
+      m.previousView = m.global.activeRoutedView
+      m.global.activeRoutedView = invalid
+      m.previousServerUrl = m.global.server.serverUrl
+      m.global.server.serverUrl = ""
+      if not m.global.doesExist("queueManager") then m.global.addField("queueManager", "node", false)
+      m.previousQueue = m.global.queueManager
+      m.global.queueManager = CreateObject("roSGNode", "QueueManager")
+      m.manager = CreateObject("roSGNode", "SyncPlayManager")
+      m.manager.engine = "comparison"
+    end function
+
+    protected override function afterEach()
+      m.manager.callFunc("reset")
+      m.manager = invalid
+      m.global.queueManager = m.previousQueue
+      m.previousQueue = invalid
+      m.global.server.serverUrl = m.previousServerUrl
+      m.global.activeRoutedView = m.previousView
+      m.previousView = invalid
+      super.afterEach()
+    end function
+
+    private function update(updateType as string, inner as dynamic) as object
+      return remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g1", Type: updateType, Data: inner } })
+    end function
+
+    ' The member in a group that plays p1, with p1 as the local queue's current item.
+    private sub followGroupItem()
+      m.manager.frame = m.update("GroupJoined", { GroupId: "g1", GroupName: "Movie night", State: "Idle", Participants: ["ann"], LastUpdatedAt: "2026-10-23T20:47:20.500Z" })
+      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }], PlayingItemIndex: 0, StartPositionTicks: 0, IsPlaying: true, ShuffleMode: "Sorted", RepeatMode: "RepeatNone" })
+      m.global.queueManager.callFunc("set", [{ id: "i1", type: "Movie", syncPlayPlaylistItemId: "p1" }])
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the wiring")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the engine is published, and the tracker phase follows the player model")
+    function _()
+      m.followGroupItem()
+      m.assertEqual(m.manager.sync.engine, "comparison")
+      m.assertEqual(m.manager.sync.trackerPhase, "idle")
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.assertEqual(m.manager.sync.trackerPhase, "loading")
+      m.manager.callFunc("playerEvent", { kind: "state", state: "playing", position: 0 })
+      m.assertEqual(m.manager.sync.trackerPhase, "landing")
+      m.manager.callFunc("playerEvent", { kind: "position", position: 0.5 })
+      m.assertTrue(m.manager.following)
+    end function
+
+    @it("a player the viewer leaves halts the member, and one for another item halts at its mount")
+    function _()
+      m.followGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.assertTrue(m.manager.following)
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.assertFalse(m.manager.following)
+      m.assertTrue(m.manager.inGroup)
+    end function
+
+    @it("a mount for an item the group is not playing halts the member")
+    function _()
+      m.followGroupItem()
+      m.global.queueManager.callFunc("set", [{ id: "i9", type: "Movie" }])
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.assertFalse(m.manager.following)
+    end function
+
+    @it("the viewer's pause with no way to ask the group is left to the player, as outside a group")
+    function _()
+      m.followGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.assertTrue(m.manager.callFunc("viewerPause"))
+    end function
+
+    @it("outside a group the viewer's pause is the player's own")
+    function _()
+      m.assertTrue(m.manager.callFunc("viewerPause"))
+    end function
+
+  end class
+
+end namespace

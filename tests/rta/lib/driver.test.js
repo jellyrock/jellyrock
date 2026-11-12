@@ -14,11 +14,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // to import at all. `odc.getValue` and the ECP calls are driven by the restart tests;
 // `shippedRtaFlagMismatch` is pure and never reaches any of this.
 const getValue = vi.fn();
+const setValue = vi.fn();
 const getActiveApp = vi.fn();
 const sendKeypress = vi.fn();
 const sendLaunchChannel = vi.fn();
 vi.mock('roku-test-automation', () => ({
-  odc: { getValue: (...a) => getValue(...a) },
+  odc: { getValue: (...a) => getValue(...a), setValue: (...a) => setValue(...a) },
   ecp: {
     sendKeypress: (...a) => sendKeypress(...a),
     sendLaunchChannel: (...a) => sendLaunchChannel(...a),
@@ -65,6 +66,7 @@ const {
   ensureOdcReachable,
   waitChannelExited,
   hardRelaunch,
+  applySyncPlayEngine,
 } = await import('./driver.js');
 
 describe('shippedRtaFlagMismatch — did the ENABLE_RTA flip actually take?', () => {
@@ -401,5 +403,65 @@ describe('hardRelaunch — a confirmed cold start, then the landing', () => {
   it('refuses an unknown timing before it presses anything', async () => {
     await expect(hardRelaunch({ timing: 'fast' })).rejects.toThrow(/timing must be/);
     expect(sendKeypress).not.toHaveBeenCalled();
+  });
+});
+
+describe('applySyncPlayEngine — the engine a run asked for is the one the manager reads', () => {
+  const asked = process.env.RTA_SYNCPLAY_ENGINE;
+  beforeEach(() => {
+    getValue.mockReset();
+    setValue.mockReset();
+    setValue.mockResolvedValue(undefined);
+  });
+  afterEach(() => {
+    if (asked === undefined) delete process.env.RTA_SYNCPLAY_ENGINE;
+    else process.env.RTA_SYNCPLAY_ENGINE = asked;
+  });
+
+  it('writes nothing when the run asked for no engine', async () => {
+    delete process.env.RTA_SYNCPLAY_ENGINE;
+    await applySyncPlayEngine();
+    expect(setValue).not.toHaveBeenCalled();
+    expect(getValue).not.toHaveBeenCalled();
+  });
+
+  it('writes again until the manager reads the engine: the first write can land before the node exists', async () => {
+    process.env.RTA_SYNCPLAY_ENGINE = 'manager';
+    // The manager is added to m.global after the scene answers, so the first read finds nothing.
+    getValue
+      .mockResolvedValueOnce({ found: false })
+      .mockResolvedValueOnce({ found: true, value: '' })
+      .mockResolvedValue({ found: true, value: 'manager' });
+    await applySyncPlayEngine({ timeout: 2000, interval: 1 });
+    expect(setValue).toHaveBeenCalledTimes(3);
+    expect(setValue).toHaveBeenLastCalledWith({
+      base: 'global',
+      keyPath: 'syncPlayManager.engine',
+      value: 'manager',
+    });
+  });
+
+  it('fails the cold start, naming both engines, when the write never takes', async () => {
+    process.env.RTA_SYNCPLAY_ENGINE = 'manager';
+    getValue.mockResolvedValue({ found: true, value: '' });
+    await expect(applySyncPlayEngine({ timeout: 20, interval: 1 })).rejects.toThrow(
+      /asked for 'manager'.*reads ""/,
+    );
+  });
+
+  it('survives a read or a write that throws while the app is still coming up', async () => {
+    process.env.RTA_SYNCPLAY_ENGINE = 'comparison';
+    setValue.mockRejectedValueOnce(new Error('not ready'));
+    getValue
+      .mockRejectedValueOnce(new Error('not ready'))
+      .mockResolvedValue({ found: true, value: 'comparison' });
+    await applySyncPlayEngine({ timeout: 2000, interval: 1 });
+    expect(setValue).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses an engine name it does not know', async () => {
+    process.env.RTA_SYNCPLAY_ENGINE = 'both';
+    await expect(applySyncPlayEngine()).rejects.toThrow(/must be 'comparison' or 'manager'/);
+    expect(setValue).not.toHaveBeenCalled();
   });
 });

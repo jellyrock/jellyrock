@@ -1,0 +1,493 @@
+' The SyncPlay comparison, pure: given the player model (what the node is doing and where it
+' is) and the group model (what the group wants and what the server holds), the one thing to do
+' now and the time to look again. No handler decides anything: every event updates a model and
+' asks here, so the same two models always give the same answer, whatever order events came in.
+'
+' The rules, in order:
+'   1. A stopped group stops the player; a load the queue layer owes is performed.
+'   2. A node in flight (loading, seeking, arrived, pausing, resuming) is never written to,
+'      and a node the viewer is scrubbing only to bring it to where the group stands.
+'   3. A group standing still (paused, or waiting at a point) holds the node paused, at the point
+'      when the server waits for this member's Ready there.
+'   4. A group playing along a line: a paused node resumes as the line reaches it; a playing
+'      node past a bar holds (ahead) or catches up (behind), as does one that sends no readings.
+'   5. The server's picture of this member is closed with one report at a time: Buffering for a
+'      load, a group seek or a stall, Ready when it is over.
+'   6. A request that failed goes again for as long as it is wanted; after a few tries the
+'      viewer is told once, and it keeps going at a slower pace.
+'   7. When nothing says where the group is, this member asks with a Ready, which the server
+'      answers to it alone with the group's current command.
+'
+' Every time is a LongInteger: epoch milliseconds or Jellyfin ticks.
+namespace syncPlayConverge
+
+  ' The thresholds, in one place so a soak can compare candidates. The drift bars, the lead and
+  ' the write limits are the values the manager used before the rewrite and are not yet
+  ' justified by a measurement of their own. The request limits and aheadWaitMaxMs are
+  ' provisional: nothing has measured them.
+  function defaultPolicy() as object
+    return {
+      ' A playing member further behind the group than this catches up; further ahead than
+      ' aheadBarMs, it holds. pickBarMs is the bar either way after a time offset pick.
+      behindBarMs: syncPlayPlayback.SKIP_TO_SYNC_MIN_MS,
+      aheadBarMs: syncPlayPlayback.SETTLE_CORRECTION_MS,
+      pickBarMs: syncPlayPlayback.PICK_CORRECTION_MS,
+      ' How near the point a member must be for the server to take its Ready.
+      pointToleranceMs: syncPlayPlayback.READY_TOLERANCE_MS,
+      ' How far ahead of the group a catch-up seeks, at least, and what it keeps over the last
+      ' seek's time.
+      leadMs: syncPlayPlayback.CORRECTION_LEAD_MS,
+      leadMarginMs: syncPlayPlayback.CORRECTION_LEAD_MARGIN_MS,
+      ' Catch-ups in a row that did not bring the member in step, before the group is asked to
+      ' wait instead, and seeks toward a waiting group's point per group command.
+      catchUpLimit: 2,
+      pointSeekLimit: 2,
+      pauseWriteLimit: syncPlayPlayback.PAUSE_ATTEMPTS,
+      ' The longest a paused member ahead of the group waits for it before seeking back instead.
+      aheadWaitMaxMs: 5000,
+      ' How long a request may go without a result, how many times it is tried, and how often
+      ' a member asks where the group is.
+      requestLimitMs: 3000,
+      requestTries: 3,
+      whereEveryMs: 3000,
+      ' How often a request that has used up its tries goes again. It never stops: a Ready the
+      ' server waits for holds the whole group until it arrives.
+      retryEveryMs: 5000,
+      ' How long a node the model calls playing may go without a position reading before it is
+      ' taken as not moving. Notifications come every 500 ms of media, so this is six of them.
+      ' Provisional: nothing has measured it.
+      silentPlayingMs: 3000
+    }
+  end function
+
+  ' @param player - the syncPlayPlayer model
+  ' @param group - the syncPlayGroup model
+  ' @param ctx - { following, estimator, loadOwed, isLastItem, durationSeconds }: whether this
+  '   member follows, the clock estimator, whether the queue layer owes a load, whether the
+  '   playing item is the playlist's last, and the item's length in seconds (0 while unknown)
+  ' @param policy - defaultPolicy, or a candidate
+  ' @returns an AA with `action`, at most one (an AA with `kind`, or invalid), and `wakeAtMs`,
+  '   the device-clock time to compare again when no event comes first (or invalid)
+  function decide(player as object, group as object, ctx as object, policy as object, nowMs as longinteger) as object
+    result = { action: invalid, wakeAtMs: invalid }
+    if ctx.following <> true
+      ' A halted member is written to once: a node a hold or a wait paused has no one left to
+      ' resume it, and the viewer never paused it.
+      if player.activity = "paused" and (player.pauseOwner = "hold" or player.pauseOwner = "wait")
+        result.action = { kind: "resume", owner: "release" }
+      end if
+      return result
+    end if
+    want = syncPlayGroup.wants(group, ctx.estimator, nowMs)
+    wake(result, syncPlayPlayer.nextDeadlineMs(player))
+    wake(result, syncPlayGroup.nextDeadlineMs(group, syncPlayTime.asLong(policy.requestLimitMs)))
+    action = nodeAction(player, group, want, ctx, policy, nowMs, result)
+    if not isValid(action) then action = reportAction(player, group, want, ctx, policy, nowMs, result)
+    if not isValid(action) then action = askAction(player, group, ctx, policy, nowMs, result)
+    result.action = action
+    return result
+  end function
+
+  ' The models after an action was carried out: what the node was told, and what was sent.
+  sub applied(player as object, group as object, action as object, nowMs as longinteger)
+    kind = action.kind
+    if kind = "stop" or kind = "leave"
+      syncPlayPlayer.told(player, "stop", "group", invalid, nowMs)
+    else if kind = "load"
+      syncPlayPlayer.told(player, "load", "group", action.startTicks, nowMs)
+    else if kind = "pause"
+      syncPlayPlayer.told(player, "pause", action.owner, invalid, nowMs)
+      if action.owner = "hold" then group.pickPending = false
+    else if kind = "resume"
+      syncPlayPlayer.told(player, "resume", action.owner, invalid, nowMs)
+    else if kind = "seek"
+      syncPlayPlayer.told(player, "seek", action.owner, action.targetTicks, nowMs)
+      if action.catchUp = true
+        group.catchUps++
+        group.pickPending = false
+      end if
+      if action.toPoint = true then group.pointSeeks++
+      if action.recover = true then group.recoverSeeks++
+      if isValid(action.forLoad) then group.seekForLoad = action.forLoad
+    else if kind = "report"
+      if action.what = "buffering" then group.heldFor = action.heldFor
+      if action.what = "buffering" and isValid(action.forLoad) then group.bufferingForLoad = action.forLoad
+      if action.what = "ready" then group.readyForLoad = player.loadCount
+      syncPlayGroup.requestSent(group, "report", action.what, nowMs)
+      if action.where = true then group.whereAskedAtMs = nowMs
+    else if kind = "ask"
+      syncPlayGroup.requestSent(group, "ask", action.what, nowMs)
+      if action.what = "next" then group.nextAskedFor = group.playingItemId
+      if action.waitOnMe = true then group.askedWait = true
+    else if kind = "notice"
+      group.toldUnreachable = true
+    else if kind = "settled"
+      group.pickPending = false
+    else if kind = "inStep"
+      group.catchUps = 0
+    end if
+  end sub
+
+  ' --- the node ---
+
+  function nodeAction(player as object, group as object, want as object, ctx as object, policy as object, nowMs as longinteger, result as object) as dynamic
+    activity = player.activity
+    if want.mode = "stopped"
+      ' Told once: the player leaves in its own time.
+      if activity <> "none" and not player.toldUnmount then return { kind: "stop" }
+      return invalid
+    end if
+    if ctx.loadOwed = true then return { kind: "load", startTicks: invalid }
+    if activity = "none" or activity = "finished" then return invalid
+    if syncPlayPlayer.isInFlight(player) then return invalid
+    if want.mode = "unknown"
+      ' A load whose Ready the server waits for holds at its first frame, as in any wait, even
+      ' when nothing says where the group stands: a restart of the item while this member's
+      ' reload was still loading leaves it so.
+      if activity = "playing" and want.owesReady and group.readyForLoad <> player.loadCount and group.playingItemId <> "" and not player.scrubbing
+        return { kind: "pause", owner: "wait", showOsd: false }
+      end if
+      ' Nothing says to wait, so a hold does not keep the picture frozen.
+      if activity = "paused" and player.pauseOwner = "hold" and not player.scrubbing then return { kind: "resume", owner: "hold" }
+      return invalid
+    end if
+    if want.mode = "playing" or isValid(want.startsAtMs) then return lineAction(player, group, want, ctx, policy, nowMs, result)
+    return standingAction(player, group, want, ctx.estimator, policy, nowMs)
+  end function
+
+  ' The group stands still: paused, or waiting at a point for its members.
+  function standingAction(player as object, group as object, want as object, estimator as object, policy as object, nowMs as longinteger) as dynamic
+    activity = player.activity
+    isPlayingOn = activity = "playing" or activity = "stalling" or activity = "stalled"
+    if want.mode = "waiting" and want.heldFor = "stall" and not standsAtCommand(group)
+      ' A stalled node that recovers keeps playing and reports Ready as it plays: the server
+      ' lets the others resume as it catches up.
+      return invalid
+    end if
+
+    ' The server takes a Ready only near the point a command names, so a member elsewhere seeks
+    ' there first. Where the server stopped the group's line for this member's own load has a
+    ' rule of its own below: the load already started there, so only one that lands short seeks.
+    if want.owesReady and isValid(want.pointTicks) and standsAtCommand(group) and (isPlayingOn or activity = "paused")
+      point& = syncPlayTime.asLong(want.pointTicks)
+      if not nearPoint(player, point&, policy, nowMs) and group.pointSeeks < policy.pointSeekLimit
+        return { kind: "seek", owner: "group", targetTicks: point&, toPoint: true }
+      end if
+    end if
+
+    ' The viewer is scrubbing: the node is theirs until the bar closes. Only a seek to where the
+    ' group stands (above) is written under it, which is the group moving, their own scrub's
+    ' answer included.
+    if player.scrubbing then return invalid
+
+    ' A load of this member's own can land well short of where the server stopped the group for
+    ' it. Its Ready would then name a place the node is not at, and the member would resume
+    ' behind by what is left. A seek lands nearer than a load, so the first frame seeks to the
+    ' point once, before the pause its Ready waits for.
+    if activity = "playing" and landedShortOfLoadPoint(player, group, want, policy, nowMs)
+      return { kind: "seek", owner: "group", targetTicks: syncPlayTime.asLong(want.pointTicks), forLoad: player.loadCount }
+    end if
+
+    if isPlayingOn
+      if activity = "stalling" and want.mode = "waiting" then return invalid
+      if player.pauseWrites >= policy.pauseWriteLimit
+        ' A node that reads playing, sends no reading and takes no pause is taken as not moving,
+        ' and a seek is what frees it. One that truly plays on has a running clock and is halted.
+        target = recoverTicks(player, group, want, estimator, nowMs)
+        if activity = "playing" and player.clock.kind = "unknown" and group.recoverSeeks < 1 and isValid(target)
+          return { kind: "seek", owner: "group", targetTicks: syncPlayTime.asLong(target), recover: true, silent: true }
+        end if
+        return { kind: "halt", reason: "the player would not stay paused" }
+      end if
+      if want.mode = "paused"
+        owner = "group"
+        if want.byViewer then owner = "viewer"
+        return { kind: "pause", owner: owner, showOsd: true }
+      end if
+      ' A wait is the group getting ready, not a pause anyone pressed: no OSD.
+      return { kind: "pause", owner: "wait", showOsd: false }
+    end if
+
+    if activity = "paused" and want.mode = "paused" and (player.pauseOwner = "hold" or player.pauseOwner = "wait")
+      ' The node is already paused, for a reason the viewer was not shown. The pause is now the
+      ' group's: no node write, the owner changes and the OSD shows.
+      return { kind: "pause", owner: "group", showOsd: true }
+    end if
+    return invalid
+  end function
+
+  ' The group plays along a line, or will from a known time.
+  function lineAction(player as object, group as object, want as object, ctx as object, policy as object, nowMs as longinteger, result as object) as dynamic
+    activity = player.activity
+    estimator = ctx.estimator
+    ' The viewer is scrubbing: no resume, hold or catch-up under their open bar. The node is
+    ' brought back in step once the bar closes.
+    if player.scrubbing then return invalid
+    if activity = "paused"
+      resumeAt& = nowMs
+      if isValid(want.startsAtMs) then resumeAt& = syncPlayTime.asLong(want.startsAtMs)
+      position = syncPlayPlayer.positionAt(player, nowMs)
+      if isValid(position)
+        ' When the line reaches where the node stopped: later for a member ahead, earlier for
+        ' one a little behind. A seek on a paused node would resume it, so nothing else takes
+        ' a lead or a lag back.
+        reachAt = syncPlayGroup.reachesAtMs(group, estimator, syncPlayTime.asLong(position))
+        if isValid(reachAt)
+          reach& = syncPlayTime.asLong(reachAt)
+          if reach& - nowMs > policy.aheadWaitMaxMs or nowMs - reach& > policy.behindBarMs
+            return catchUp(player, group, ctx, policy, nowMs)
+          end if
+          resumeAt& = reach&
+        end if
+      end if
+      ' A resume takes effect late by a lag the player model learns, so it is written that early.
+      resumeAt& -= syncPlayTime.asLong(player.resumeLagMs)
+      if nowMs >= resumeAt& then return { kind: "resume", owner: "group" }
+      wake(result, resumeAt&)
+      return invalid
+    end if
+    if activity <> "playing" then return invalid
+    ' A node that reads playing and sends no reading is taken as not moving once the limit
+    ' passes, and a seek is what frees it. A node whose readings arrive never gets here.
+    silentAt& = syncPlayTime.asLong(player.clock.atMs) + policy.silentPlayingMs
+    if nowMs >= silentAt&
+      silent = catchUp(player, group, ctx, policy, nowMs)
+      if isValid(silent) and silent.kind = "seek" then silent.silent = true
+      return silent
+    end if
+    wake(result, silentAt&)
+    ' A drift is judged only on a position a notification measured.
+    if player.clock.kind <> "running" or player.clock.measured <> true then return invalid
+    position = syncPlayPlayer.positionAt(player, nowMs)
+    if not isValid(position) then return invalid
+    reachAt = syncPlayGroup.reachesAtMs(group, estimator, syncPlayTime.asLong(position))
+    if not isValid(reachAt) then return invalid
+    aheadMs& = syncPlayTime.asLong(reachAt) - nowMs
+    aheadBar = policy.aheadBarMs
+    behindBar = policy.behindBarMs
+    if group.pickPending
+      aheadBar = policy.pickBarMs
+      behindBar = policy.pickBarMs
+    end if
+    if aheadMs& > aheadBar then return { kind: "pause", owner: "hold", showOsd: false }
+    if -aheadMs& > behindBar then return catchUp(player, group, ctx, policy, nowMs)
+    if group.pickPending then return { kind: "settled" }
+    ' In step on a measured reading: whatever catch-ups it took worked, so the budget is whole
+    ' again. It counts catch-ups that did not bring the member in, not every one in a long film.
+    if group.catchUps > 0 then return { kind: "inStep" }
+    return invalid
+  end function
+
+  ' Where to seek a node that reads playing and takes no pause: the point the group stands at,
+  ' else where its line is now (the viewer's own pause, not yet answered), else where this
+  ' member's own load was to start. Invalid when nothing names a place.
+  function recoverTicks(player as object, group as object, want as object, estimator as object, nowMs as longinteger) as dynamic
+    if isValid(want.pointTicks) then return want.pointTicks
+    onLine = lineTicksAt(group, estimator, nowMs)
+    if isValid(onLine) then return onLine
+    if player.arrivedFrom = "load" then return player.loadStartTicks
+    return invalid
+  end function
+
+  ' One catch-up: seek ahead of the group by the time a seek takes plus a margin. The node then
+  ' arrives, its landing is read, and the rules above hold it until the group reaches it. When
+  ' the budget is spent or the last seek was given up, the group is asked to wait once instead.
+  function catchUp(player as object, group as object, ctx as object, policy as object, nowMs as longinteger) as dynamic
+    if player.lastSeekGaveUp or group.catchUps >= policy.catchUpLimit
+      position = syncPlayPlayer.positionAt(player, nowMs)
+      if not group.askedWait and group.ask.state <> "flight" and isValid(position)
+        return { kind: "ask", what: "seek", positionTicks: syncPlayTime.asLong(position), waitOnMe: true }
+      end if
+      ' Nothing more can bring it in: it plays where it is, never left frozen.
+      if player.activity = "paused" then return { kind: "resume", owner: "group" }
+      return invalid
+    end if
+    leadMs& = syncPlayTime.asLong(player.lastSeekMs) + policy.leadMarginMs
+    if leadMs& < policy.leadMs then leadMs& = policy.leadMs
+    target = lineTicksAt(group, ctx.estimator, nowMs + leadMs&)
+    if not isValid(target) or syncPlayPlayback.seekPastEnd(syncPlayTime.asLong(target), ctx.durationSeconds)
+      if player.activity = "paused" then return { kind: "resume", owner: "group" }
+      return invalid
+    end if
+    return { kind: "seek", owner: "hold", targetTicks: syncPlayTime.asLong(target), catchUp: true, byPick: group.pickPending }
+  end function
+
+  ' --- the server's picture of this member ---
+
+  function reportAction(player as object, group as object, want as object, ctx as object, policy as object, nowMs as longinteger, result as object) as dynamic
+    slot = group.report
+    if slot.state = "flight" then return invalid
+    if outOfTries(slot, policy)
+      if not group.toldUnreachable then return { kind: "notice", what: "unreachable" }
+      if not retryIsDue(slot, policy, nowMs, result) then return invalid
+    end if
+    ' With no item the group plays, there is nothing to report on: a Buffering or a Ready names
+    ' the playing item, and the server refuses one that names none.
+    if want.mode = "stopped" or group.playingItemId = "" then return invalid
+    activity = player.activity
+
+    ' Each load is told to the server once, whatever was said before it: a member that follows
+    ' again, or loads the next item, starts a wait of its own.
+    if activity = "loading" and group.bufferingForLoad <> player.loadCount
+      return { kind: "report", what: "buffering", heldFor: "load", forLoad: player.loadCount, positionTicks: bestKnownTicks(player, nowMs), isPlaying: false }
+    end if
+    if not group.saidBuffering
+      reason = ""
+      if activity = "stalled" then reason = "stall"
+      if activity = "seeking" and player.seekOwner = "group" then reason = "seek"
+      ' A seek of this member's own that outlasted its budget is a stall to the group.
+      if activity = "seeking" and player.seekSlow and reason = "" then reason = "stall"
+      if reason <> "" then return { kind: "report", what: "buffering", heldFor: reason, positionTicks: bestKnownTicks(player, nowMs), isPlaying: player.nodeState = "playing" }
+    end if
+
+    if group.owesReady
+      if activity = "paused"
+        return { kind: "report", what: "ready", positionTicks: readyTicks(player, want, policy, nowMs), isPlaying: false }
+      end if
+      ' Only a node that plays on purpose reports as it plays: one recovering from a stall, one
+      ' in a group that plays on, or one with nothing saying where the group stands (the server's
+      ' answer to the Ready then says so).
+      playsOnPurpose = want.mode = "playing" or want.mode = "unknown" or (want.mode = "waiting" and want.heldFor = "stall")
+      if activity = "playing" and playsOnPurpose
+        position = syncPlayPlayer.positionAt(player, nowMs)
+        if isValid(position) then return { kind: "report", what: "ready", positionTicks: syncPlayTime.asLong(position), isPlaying: true }
+      end if
+      return invalid
+    end if
+
+    if want.mode = "unknown" and ctx.estimator.hasEstimate = true and group.playingItemId <> "" and (activity = "playing" or activity = "paused")
+      ' The server answers a Ready from a member it is not waiting on with the group's current
+      ' command, to that member alone.
+      askedAt = group.whereAskedAtMs
+      if not isValid(askedAt) or nowMs - syncPlayTime.asLong(askedAt) >= policy.whereEveryMs
+        return { kind: "report", what: "ready", where: true, positionTicks: bestKnownTicks(player, nowMs), isPlaying: activity = "playing" }
+      end if
+      wake(result, syncPlayTime.asLong(askedAt) + policy.whereEveryMs)
+    end if
+    return invalid
+  end function
+
+  ' --- what this member asks of the group ---
+
+  function askAction(player as object, group as object, ctx as object, policy as object, nowMs as longinteger, result as object) as dynamic
+    slot = group.ask
+    if slot.state = "flight" then return invalid
+    if outOfTries(slot, policy)
+      if not group.toldUnreachable then return { kind: "notice", what: "unreachable" }
+      if not retryIsDue(slot, policy, nowMs, result) then return invalid
+    end if
+    if player.activity = "finished"
+      ' The group moves on together: the server answers every member with the next item.
+      asked = group.nextAskedFor = group.playingItemId
+      if not asked or (slot.state = "failed" and slot.what = "next") then return { kind: "ask", what: "next" }
+      ' On the playlist's last item the server answers nothing, so this member leaves the player.
+      if ctx.isLastItem = true then return { kind: "leave" }
+      return invalid
+    end if
+    ' The viewer's own ask that failed goes again while it is still what they asked.
+    ask = group.viewerAsk
+    if slot.state = "failed" and isValid(ask) and ask.kind = slot.what
+      return { kind: "ask", what: slot.what, positionTicks: ask.positionTicks }
+    end if
+    return invalid
+  end function
+
+  ' --- helpers ---
+
+  ' Whether a request has failed as many times in a row as it is tried before the viewer hears.
+  function outOfTries(slot as object, policy as object) as boolean
+    return slot.state = "failed" and slot.tries >= policy.requestTries
+  end function
+
+  ' A request out of tries still goes again, at a slower pace, for as long as it is wanted:
+  ' whether its time has come, with the time to look again when it has not.
+  function retryIsDue(slot as object, policy as object, nowMs as longinteger, result as object) as boolean
+    retryAt& = syncPlayTime.asLong(slot.sentAtMs) + policy.retryEveryMs
+    if nowMs >= retryAt& then return true
+    wake(result, retryAt&)
+    return false
+  end function
+
+  ' Keep the earliest time to look again.
+  sub wake(result as object, atMs as dynamic)
+    if not isValid(atMs) then return
+    if not isValid(result.wakeAtMs) or syncPlayTime.asLong(atMs) < syncPlayTime.asLong(result.wakeAtMs) then result.wakeAtMs = syncPlayTime.asLong(atMs)
+  end sub
+
+  ' Whether the group stands at a point a command names (a Pause or a Seek), as opposed to
+  ' where the server stopped its line for this member.
+  function standsAtCommand(group as object) as boolean
+    cmd = group.command
+    if not isValid(cmd) or not syncPlayGroup.commandIsCurrent(group, cmd) then return false
+    return cmd.command = "Pause" or cmd.command = "Seek"
+  end function
+
+  ' Whether this member's own load, held for its Ready, read a position further below the point
+  ' the group waits at than the server's tolerance, and has not been sent there yet. A node with
+  ' no reading is left alone: nothing says it is short.
+  function landedShortOfLoadPoint(player as object, group as object, want as object, policy as object, nowMs as longinteger) as boolean
+    if not want.owesReady or want.heldFor <> "load" or not isValid(want.pointTicks) then return false
+    if group.readyForLoad = player.loadCount or group.seekForLoad = player.loadCount then return false
+    position = syncPlayPlayer.positionAt(player, nowMs)
+    if not isValid(position) then return false
+    return syncPlayTime.asLong(want.pointTicks) - syncPlayTime.asLong(position) > syncPlayTime.msToTicks(policy.pointToleranceMs)
+  end function
+
+  ' Whether the node is at the point, within the server's tolerance. A node whose position is
+  ' not known counts as there only when its last seek aimed there and no landing was read.
+  function nearPoint(player as object, pointTicks as longinteger, policy as object, nowMs as longinteger) as boolean
+    tolerance& = syncPlayTime.msToTicks(policy.pointToleranceMs)
+    position = syncPlayPlayer.positionAt(player, nowMs)
+    if isValid(position) then return Abs(syncPlayTime.asLong(position) - pointTicks) <= tolerance&
+    if player.seekOwner <> "group" or isValid(player.lastLandingTicks) then return false
+    return Abs(syncPlayTime.asLong(player.seekTargetTicks) - pointTicks) <= tolerance&
+  end function
+
+  ' The position a Ready from a paused node carries: where it stopped, when that is known and
+  ' the server would take it. Two cases report a position the node is not known to be at, since
+  ' the server corrects a Ready more than its tolerance off with a Seek, and a node that cannot
+  ' land nearer would trade Seeks with it for good:
+  '   - a load's first Ready reports where the load was to start (the point the server stopped
+  '     the group at, once known) when the node reads far below it or has no reading: a node
+  '     can read 0 at its first frame;
+  '   - a node still off a command's point after its seeks there, or with no reading, reports
+  '     the point. The offset left is taken back when the group plays (lineAction).
+  function readyTicks(player as object, want as object, policy as object, nowMs as longinteger) as longinteger
+    tolerance& = syncPlayTime.msToTicks(policy.pointToleranceMs)
+    position = syncPlayPlayer.positionAt(player, nowMs)
+    hasPoint = isValid(want.pointTicks)
+    if player.arrivedFrom = "load"
+      loadStart& = syncPlayTime.asLong(player.loadStartTicks)
+      if hasPoint then loadStart& = syncPlayTime.asLong(want.pointTicks)
+      if not isValid(position) or loadStart& - syncPlayTime.asLong(position) > tolerance& then return loadStart&
+      return syncPlayTime.asLong(position)
+    end if
+    if not hasPoint
+      if isValid(position) then return syncPlayTime.asLong(position)
+      return syncPlayTime.asLong(player.seekTargetTicks)
+    end if
+    point& = syncPlayTime.asLong(want.pointTicks)
+    if isValid(position) and Abs(syncPlayTime.asLong(position) - point&) <= tolerance& then return syncPlayTime.asLong(position)
+    return point&
+  end function
+
+  ' A position for a report the server does not judge (a Buffering, or a Ready that only asks
+  ' where the group is): where the node is when known, else the seek's target or the load's start.
+  function bestKnownTicks(player as object, nowMs as longinteger) as longinteger
+    position = syncPlayPlayer.positionAt(player, nowMs)
+    if isValid(position) then return syncPlayTime.asLong(position)
+    if player.activity = "seeking" then return syncPlayTime.asLong(player.seekTargetTicks)
+    return syncPlayTime.asLong(player.loadStartTicks)
+  end function
+
+  ' Where the group's line is at a device-clock time, in ticks: its Unpause's position until
+  ' that Unpause's time, then run forward. Invalid unless an Unpause is the command.
+  function lineTicksAt(group as object, estimator as object, atMs as longinteger) as dynamic
+    cmd = group.command
+    if not isValid(cmd) or cmd.command <> "Unpause" then return invalid
+    elapsedMs& = syncPlayOffset.serverNowMs(estimator, atMs) - syncPlayTime.asLong(cmd.whenMs)
+    if elapsedMs& < 0 then elapsedMs& = 0&
+    return syncPlayTime.asLong(cmd.positionTicks) + syncPlayTime.msToTicks(elapsedMs&)
+  end function
+
+end namespace

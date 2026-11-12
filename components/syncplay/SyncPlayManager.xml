@@ -38,6 +38,9 @@
          (GroupDoesNotExist, LibraryAccessDenied, CreateGroupDenied, JoinGroupDenied). JRScene
          turns it into a toast; the manager holds no translation. alwaysNotify: two notices of
          one kind in a row are two. -->
+    <!-- "comparison" or "manager" picks the engine for this node (usesComparison): an RTA run and
+         a unit spec set it; empty leaves the build's own. Set before joining a group. -->
+    <field id="engine" type="string" value="" />
     <field id="notice" type="assocarray" alwaysNotify="true" />
 
     <!-- POST /SyncPlay/Join { GroupId }: the GroupJoined frame confirms it. -->
@@ -111,5 +114,7 @@
          a seek ahead when it was behind (syncPlayPlayback.correctionPlan). Until the node reports
          `paused`, it ends a correction whose pause never lands. -->
     <Timer id="correctionTimer" repeat="false" />
+    <!-- The comparison's one timer: the next moment it has something to decide (converge). -->
+    <Timer id="convergeTimer" repeat="false" />
   </children>
 </component>

@@ -52,6 +52,13 @@ const BEHIND_OFFSET_MS = 1000;
 // Past the Unpause's own lead by more than `SKIP_TO_SYNC_MIN_MS`, so every resume seeks. The lead
 // can reach most of a second, which is why `BEHIND_OFFSET_MS` does not always do it.
 const RESUME_SEEKS_OFFSET_MS = 2000;
+// Pause and unpause rounds in a row. Before the pause position was reckoned, each round left this
+// member 50 to 115 ms further ahead, so a hold correction ran by the second or third (Stick 4K,
+// 2026-11-10).
+const PAUSE_ROUNDS = 5;
+// Where the drift must sit after those rounds: inside the hold's bar with room to spare. Twelve
+// such rounds settled within 13 ms on a remote member's pause (same device and date).
+const PAUSE_ROUND_DRIFT_MS = 100;
 
 let session;
 let member;
@@ -159,16 +166,8 @@ async function expectStaysPaused() {
   const t0 = Date.now();
   while (Date.now() - t0 < 3500) expect(await playerState(), 'still paused').toBe('paused');
 }
-/**
- * The drift past the threshold first, so a reading from before the correction cannot pass; then
- * back inside it, and moving, since a frozen node keeps its last reading.
- */
-async function expectCorrected(isOff, label) {
-  await waitFor('syncPlayManager.sync.playbackDiffMs', (v) => typeof v === 'number' && isOff(v), {
-    read: getGlobalVal,
-    timeout: 10000,
-    label,
-  });
+/** After a correction: the drift inside the thresholds, and the node moving and still playing. */
+async function expectBackInStep() {
   await waitDriftInside();
   await waitPlaying();
   const before = await playerPosition();
@@ -238,6 +237,14 @@ afterEach(async () => {
   await setOffset(0).catch(() => {});
 });
 
+/**
+ * Skips a case that checks something only the manager's own engine does, when the comparison
+ * decides this run (`SyncPlayManager.usesComparison()`, published as `sync.engine`).
+ */
+const skipUnderComparison = async (testCtx, why) => {
+  if ((await getGlobalVal('syncPlayManager.sync.engine')) === 'comparison') testCtx.skip(why);
+};
+
 const skipWithoutPush = (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(
@@ -256,26 +263,123 @@ it('a group pause leaves the drift unknown, and a member ahead of the group land
     label: 'the drift unknown while the group is paused',
   });
   await syncPlay(member, 'Unpause');
-  // The firing time is fixed when the command is scheduled, so the node still starts early.
   await waitLastCommand('Unpause');
+  // The offset stays until the node plays, so it resumes early by the offset whichever engine
+  // decides: the comparison places the resume on the clock again at every event, and would
+  // resume on time if the offset were taken back before then.
+  await waitPlaying();
+  const correctionsBefore = await getGlobalVal('syncPlayManager.sync.correctionsDone');
   await setOffset(0);
-  await expectCorrected((v) => v < -THRESHOLD_MS, 'this member reading ahead of the group');
+  // The member now sits ahead of the group by the offset. The comparison holds it at its first
+  // reading, before a drift that large is ever published, so the case waits for the correction
+  // itself and then for the member in step.
+  await waitFor('syncPlayManager.sync.correctionsDone', (v) => v > correctionsBefore, {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: 'the correction for the member ahead of the group, run to its end',
+  });
+  await expectBackInStep();
 });
 
 it('a member behind the group lands in step', async (testCtx) => {
   skipWithoutPush(testCtx);
+  // The drift past the threshold shows only until the seek is written, when the offset lands after
+  // the resume's first reading. The seek's own phase lasts, and the helper resumes again when the
+  // two readings were spent first.
+  await forceCorrectionSeek();
+  await expectBackInStep();
+  await setOffset(0);
+});
+
+/**
+ * One group pause and unpause, then the member settled: played on long enough for the check's two
+ * readings, any correction they started run to its end, and the tracker back at rest. Without the
+ * gate the next Pause lands inside a correction's seek, whose jump also satisfies a wait on the
+ * position alone, and the rounds then measure the corrections they caused.
+ */
+async function pauseRound() {
   await syncPlay(member, 'Pause');
   await waitPaused();
   await syncPlay(member, 'Unpause');
   await waitLastCommand('Unpause');
   await waitPlaying();
-  await setOffset(BEHIND_OFFSET_MS);
-  await expectCorrected((v) => v > BEHIND_THRESHOLD_MS, 'this member reading behind the group');
+  const from = await playerPosition();
+  await waitFor('position', (p) => p > from + 1.5, {
+    read: playerPosition,
+    timeout: 10000,
+    label: 'the node playing on after the round',
+  });
+  await waitFor('syncPlayManager.sync.correctionInFlight', (v) => v === false, {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: 'no correction under way after the round',
+  });
+  await waitFor('syncPlayManager.sync.trackerPhase', (v) => v === 'ready', {
+    read: getGlobalVal,
+    timeout: 10000,
+    label: 'the tracker at rest after the round',
+  });
+  await waitPlaying();
+  await waitDriftInside();
+}
+
+it('pause rounds leave this member in step, with no correction', async (testCtx) => {
+  skipWithoutPush(testCtx);
   await setOffset(0);
+  // The round before the count: whatever the last case left (an offset taken back a moment ago) is put
+  // right by this Unpause, its seek or its correction.
+  await pauseRound();
+  const before = await getGlobalVal('syncPlayManager.sync.correctionsDone');
+  expect(typeof before, 'the corrections count is published').toBe('number');
+  for (let round = 0; round < PAUSE_ROUNDS; round++) await pauseRound();
+  const drift = await getGlobalVal('syncPlayManager.sync.playbackDiffMs');
+  expect(await getGlobalVal('syncPlayManager.sync.correctionsDone'), 'no correction ran').toBe(
+    before,
+  );
+  expect(typeof drift, 'the drift is read').toBe('number');
+  expect(Math.abs(drift), 'the drift after the rounds').toBeLessThan(PAUSE_ROUND_DRIFT_MS);
+});
+
+it("a waiting Unpause gives up its shift when the pause's position is dropped", async (testCtx) => {
+  skipWithoutPush(testCtx);
+  // The comparison stores no shift: it works the resume moment out from the node's known position
+  // each time, which the pause rounds above cover. This case goes with the manager's own engine.
+  await skipUnderComparison(testCtx, 'the comparison keeps no resume shift to give up');
+  const changes = () => getGlobalVal('syncPlayManager.sync.resumeShiftChanges');
+  // The drop has to land while the Unpause waits for its time, about a second, and a pause that
+  // left no lead has no shift to give up: another round rather than a failure on either.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await syncPlay(member, 'Pause');
+    await waitPaused();
+    const before = await changes();
+    expect(typeof before, 'the shift changes count is published').toBe('number');
+    await syncPlay(member, 'Unpause');
+    const t0 = Date.now();
+    while (Date.now() - t0 < 3000) {
+      if ((await getGlobalVal('syncPlayManager.sync.lastCommand.command')) === 'Unpause') break;
+    }
+    // A pause written to a node already paused has no position to estimate, so it drops the one
+    // the group's Pause left.
+    await managerCall('playerEvent', { kind: 'pauseWritten' });
+    await waitPlaying();
+    if ((await changes()) > before) {
+      expect(
+        await getGlobalVal('syncPlayManager.sync.resumeShiftMs'),
+        'the Unpause applied unshifted',
+      ).toBe(0);
+      return;
+    }
+  }
+  throw new Error('no waiting Unpause had a shift to give up in five rounds');
 });
 
 it("a member's own stall recovery keeps its place, with the drift unknown until the group's next command", async (testCtx) => {
   skipWithoutPush(testCtx);
+  // The stall here is staged: the node is paused by hand and the manager is told it buffers. The
+  // comparison's player model sees that pause and resumes the node before the staged report, so
+  // the case cannot run under it. A stall under the comparison is covered by its unit table and
+  // its simulator; a real stall on a device is still to be measured.
+  await skipUnderComparison(testCtx, 'the staged stall is a pause the comparison undoes');
   // Twice the group's highest ping decides the server's recovery branch. A real client's ping sends
   // the Unpause to the others alone, so this member's last command stays the one before the stall.
   await syncPlay(member, 'Ping', { Ping: 20 });
@@ -374,18 +478,24 @@ it("another member's Pause during a correction's hold brings up the OSD", async 
 it('a resume that seeks reports no stall, so the group does not wait', async (testCtx) => {
   skipWithoutPush(testCtx);
   // Above the setting's range: a keypad cannot reach this, and it makes the seek happen.
-  await setOffset(RESUME_SEEKS_OFFSET_MS);
   const phases = new Set();
   const groupStates = new Set();
+  const sampleFor = async (ms) => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) {
+      phases.add(await getGlobalVal('syncPlayManager.sync.trackerPhase'));
+      groupStates.add(await getGlobalVal('syncPlayManager.groupState'));
+    }
+  };
+  await setOffset(RESUME_SEEKS_OFFSET_MS);
+  // Sampled from the offset on: the comparison judges the drift at every reading and seeks at
+  // once, where the manager's own engine waits for the next resume.
+  await sampleFor(5000);
   for (let round = 0; round < 4; round++) {
     await syncPlay(member, 'Pause');
     await waitPaused();
     await syncPlay(member, 'Unpause');
-    const t0 = Date.now();
-    while (Date.now() - t0 < 8000) {
-      phases.add(await getGlobalVal('syncPlayManager.sync.trackerPhase'));
-      groupStates.add(await getGlobalVal('syncPlayManager.groupState'));
-    }
+    await sampleFor(8000);
   }
   await setOffset(0);
   expect(phases.has('seeking') || phases.has('landing'), 'a resume did seek').toBe(true);

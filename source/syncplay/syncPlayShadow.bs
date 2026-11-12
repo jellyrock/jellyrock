@@ -1,0 +1,206 @@
+' SyncPlay shadow mode, pure: the player and group models fed beside the manager's own code, and
+' a record of each place the comparison would have decided differently. Nothing here acts: the
+' manager still decides everything, and tells this what it learned and what it did.
+'
+' Two kinds of disagreement are recorded:
+'   - "old-wrote": the manager wrote to the node, or reported to the server, something the
+'     comparison would not have asked for at that moment.
+'   - "new-wanted": the comparison asked for something the manager did not do. It is recorded
+'     when the ask ends or changes, with how long it stood: the manager does some things on its
+'     own timers, so a short-lived ask is a difference of timing, a long one a difference of rule.
+'
+' One limit: the manager's requests go out with no result read, so the group model is told each
+' arrived as it was sent. The rules for a failed request are not exercised here.
+namespace syncPlayShadow
+
+  function newShadow() as object
+    return {
+      player: syncPlayPlayer.newPlayer(),
+      group: syncPlayGroup.newGroup(),
+      policy: syncPlayConverge.defaultPolicy(),
+      groupState: "",
+      ' A write of the manager's own is under way: the pause the player reports back is that
+      ' write, not the viewer's.
+      ownWrite: false,
+      count: 0,
+      entries: [],
+      pending: "",
+      pendingSinceMs: 0&
+    }
+  end function
+
+  ' --- what the player reported ---
+
+  ' @param evt - a SyncPlayManager.playerEvent AA
+  ' @param loadStartTicks - where the load now starting was asked to start
+  sub playerFact(shadow as object, evt as object, loadStartTicks as longinteger, nowMs as longinteger)
+    player = shadow.player
+    kind = evt.kind
+    positionTicks& = 0&
+    if isValid(evt.position) then positionTicks& = syncPlayPlayback.secondsToTicks(evt.position)
+    ' Known before the state it comes with: a pause that arrives with the bar up is the scrub's.
+    if isValid(evt.scrubbing) then syncPlayPlayer.scrub(player, evt.scrubbing = true)
+    if kind = "mounted"
+      syncPlayPlayer.mounted(player, loadStartTicks, nowMs)
+    else if kind = "reloaded"
+      syncPlayPlayer.reloaded(player, syncPlayPlayback.secondsToTicks(evt.startSeconds), nowMs)
+    else if kind = "state"
+      if syncPlayTime.isText(evt.state) then syncPlayPlayer.nodeState(player, evt.state, nowMs)
+    else if kind = "position"
+      syncPlayPlayer.reading(player, positionTicks&, nowMs)
+    else if kind = "finished"
+      syncPlayPlayer.finished(player, nowMs)
+    else if kind = "unmounted"
+      syncPlayPlayer.unmounted(player, nowMs)
+    else if kind = "pauseWritten"
+      if not shadow.ownWrite then syncPlayPlayer.told(player, "pause", "viewer", invalid, nowMs)
+    else if kind = "localSeek"
+      syncPlayPlayer.told(player, "seek", "viewer", positionTicks&, nowMs)
+    end if
+  end sub
+
+  ' --- what the group said ---
+
+  sub commandArrived(shadow as object, command as object)
+    syncPlayGroup.command(shadow.group, command)
+  end sub
+
+  sub groupStateChanged(shadow as object, current as string, estimator as object, nowMs as longinteger)
+    previous = shadow.groupState
+    shadow.groupState = current
+    if previous <> current then syncPlayGroup.stateChanged(shadow.group, previous, current, estimator, nowMs)
+  end sub
+
+  ' @param startsItem - the update starts this member on an item (syncPlayQueue.changesPlayingItem)
+  sub itemChanged(shadow as object, playingItemId as string, changedAtMs as longinteger, startsItem = false as boolean)
+    group = shadow.group
+    if startsItem then syncPlayGroup.playbackStarted(group)
+    if group.playingItemId = playingItemId and syncPlayTime.asLong(group.queueChangedAtMs) = changedAtMs then return
+    syncPlayGroup.itemChanged(group, playingItemId, changedAtMs)
+  end sub
+
+  ' A join or a leave: nothing of the last membership's playback carries over.
+  sub membershipChanged(shadow as object, groupState as string)
+    syncPlayGroup.reset(shadow.group)
+    shadow.groupState = groupState
+    shadow.pending = ""
+  end sub
+
+  ' --- what the manager did ---
+
+  ' The manager is about to write a transport verb to the player.
+  ' @param verb - the handleTransport AA
+  ' @param owner - who the write is for: "group", "wait", "hold", "viewer" or "release"
+  sub managerWrote(shadow as object, ctx as object, verb as object, owner as string, nowMs as longinteger)
+    kind = ""
+    if verb.command = "pause" then kind = "pause"
+    if verb.command = "resume" then kind = "resume"
+    if verb.command = "seekto" then kind = "seek"
+    if verb.command = "stop" then kind = "stop"
+    if verb.command = "load" then kind = "load"
+    if kind = "" then return
+    want = wanted(shadow, ctx, nowMs)
+    if not isValid(want) or want.kind <> kind then note(shadow, ctx, "old-wrote", kind + ":" + owner, describe(want), 0&, nowMs)
+    targetTicks = invalid
+    if kind = "seek" then targetTicks = syncPlayPlayback.secondsToTicks(verb.position)
+    if kind = "load" then targetTicks = verb.startTicks
+    syncPlayPlayer.told(shadow.player, kind, owner, targetTicks, nowMs)
+    ' Keep the comparison's own counts in step with what it would have counted.
+    if kind = "seek" and isValid(want) and want.kind = "seek"
+      if want.catchUp = true then shadow.group.catchUps++
+      if want.toPoint = true then shadow.group.pointSeeks++
+    end if
+    ' A correction of this member's own spends the time offset pick's tighter bar.
+    if owner = "hold" and (kind = "seek" or kind = "pause") then shadow.group.pickPending = false
+  end sub
+
+  ' The manager is about to send a Buffering or a Ready.
+  ' @param what - "buffering" or "ready"
+  sub managerReported(shadow as object, ctx as object, what as string, nowMs as longinteger)
+    want = wanted(shadow, ctx, nowMs)
+    if not isValid(want) or want.kind <> "report" or want.what <> what then note(shadow, ctx, "old-wrote", "report:" + what, describe(want), 0&, nowMs)
+    group = shadow.group
+    if what = "buffering"
+      activity = shadow.player.activity
+      group.heldFor = "stall"
+      if activity = "loading" then group.bufferingForLoad = shadow.player.loadCount
+      if activity = "loading" then group.heldFor = "load"
+      if activity = "seeking" then group.heldFor = "seek"
+    end if
+    if what = "ready" then group.readyForLoad = shadow.player.loadCount
+    syncPlayGroup.requestSent(group, "report", what, nowMs)
+    syncPlayGroup.requestArrived(group, "report", what, group.report.id)
+  end sub
+
+  ' The manager sent an ask to the group.
+  ' @param what - "pause", "unpause", "seek" or "next"
+  ' @param fromViewer - the viewer pressed it; false for the manager's own (a wait on this
+  '   member, the next item at an item's end)
+  sub managerAsked(shadow as object, what as string, positionTicks as dynamic, fromViewer as boolean, nowMs as longinteger)
+    group = shadow.group
+    if fromViewer
+      syncPlayGroup.viewerAsked(group, what, positionTicks, nowMs)
+    else if what = "seek"
+      group.askedWait = true
+    else if what = "next"
+      group.nextAskedFor = group.playingItemId
+    end if
+    syncPlayGroup.requestSent(group, "ask", what, nowMs)
+    syncPlayGroup.requestArrived(group, "ask", what, group.ask.id)
+  end sub
+
+  sub offsetPicked(shadow as object)
+    syncPlayGroup.offsetPicked(shadow.group)
+  end sub
+
+  ' The manager finished handling an event: what does the comparison still ask for?
+  sub afterEvent(shadow as object, ctx as object, nowMs as longinteger)
+    want = wanted(shadow, ctx, nowMs)
+    ' Some asks touch only the models, so they are carried out here and are no disagreement.
+    if isValid(want) and (want.kind = "settled" or want.kind = "notice" or want.kind = "inStep")
+      syncPlayConverge.applied(shadow.player, shadow.group, want, nowMs)
+      want = invalid
+    end if
+    asked = ""
+    if isValid(want) then asked = describe(want)
+    if asked = shadow.pending then return
+    if shadow.pending <> "" then note(shadow, ctx, "new-wanted", "nothing", shadow.pending, nowMs - syncPlayTime.asLong(shadow.pendingSinceMs), nowMs)
+    shadow.pending = asked
+    shadow.pendingSinceMs = nowMs
+  end sub
+
+  ' The disagreements recorded since the last call, oldest first.
+  function takeEntries(shadow as object) as object
+    entries = shadow.entries
+    shadow.entries = []
+    return entries
+  end function
+
+  ' --- internals ---
+
+  function wanted(shadow as object, ctx as object, nowMs as longinteger) as dynamic
+    syncPlayPlayer.advance(shadow.player, nowMs)
+    syncPlayGroup.advance(shadow.group, syncPlayTime.asLong(shadow.policy.requestLimitMs), nowMs)
+    return syncPlayConverge.decide(shadow.player, shadow.group, ctx, shadow.policy, nowMs).action
+  end function
+
+  ' An action in a few words: its kind, and who or what it is for.
+  function describe(action as dynamic) as string
+    if not isValid(action) then return "nothing"
+    text = action.kind
+    if syncPlayTime.isText(action.owner) then text = text + ":" + action.owner
+    if syncPlayTime.isText(action.what) then text = text + ":" + action.what
+    if action.catchUp = true then text = text + ":catch-up"
+    if action.toPoint = true then text = text + ":to-point"
+    if action.where = true then text = text + ":where"
+    if action.waitOnMe = true then text = text + ":wait-on-me"
+    return text
+  end function
+
+  sub note(shadow as object, ctx as object, kind as string, old as string, asked as string, forMs as longinteger, nowMs as longinteger)
+    shadow.count++
+    mode = syncPlayGroup.wants(shadow.group, ctx.estimator, nowMs).mode
+    shadow.entries.push({ kind: kind, old: old, wanted: asked, forMs: forMs, at: shadow.player.activity + "/" + mode })
+  end sub
+
+end namespace

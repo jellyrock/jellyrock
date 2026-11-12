@@ -1,0 +1,90 @@
+import "pkg:/source/syncplay/syncPlayConverge.bs"
+import "pkg:/source/syncplay/syncPlayGroup.bs"
+import "pkg:/source/syncplay/syncPlayOffset.bs"
+import "pkg:/source/syncplay/syncPlayPlayer.bs"
+import "pkg:/source/syncplay/syncPlayTime.bs"
+
+namespace tests
+
+  ' The two models and the comparison against a simulated node and server (tests.syncPlaySim),
+  ' over seeded random orders of what can happen to a member: the other member pausing, playing
+  ' and seeking, the viewer's own pause, play and scrubs, stalls, lost requests, seeks that land far off
+  ' or take seconds. After every event the member settles; each run then ends with a quiet
+  ' stretch, a clean pause and play, and a check that the member is in step.
+  @suite("syncPlayConverge: seeded runs against a simulated node and server")
+  class SyncPlayConvergeSimTests extends tests.BaseTestSuite
+
+    ' A seed whose every event and action is printed to the console, to read a failing run; 0
+    ' for none.
+    private tracedSeed = 0
+
+    ' What the runs of one case went through, summed (tests.syncPlaySim's counts).
+    private totals = {}
+
+    ' One run. Returns what went wrong, or "" for a run that ended in step.
+    private function runSeed(seed as integer, faults as boolean) as string
+      sim = tests.syncPlaySim.newSim(seed, faults)
+      sim.tracing = seed = m.tracedSeed
+      ' The load, its first frame and its Ready.
+      tests.syncPlaySim.runUntil(sim, sim.now + 6000)
+      tests.syncPlaySim.scheduleRandom(sim, sim.now, 40000, 14)
+      tests.syncPlaySim.runUntil(sim, sim.now + 45000)
+      ' A quiet stretch with no faults, then one clean pause and play from the other member.
+      sim.faults = false
+      tests.syncPlaySim.runUntil(sim, sim.now + 12000)
+      ' Left alone with no faults, the member is in step with whatever the group does, before
+      ' any new command helps it.
+      midway = tests.syncPlaySim.outOfStep(sim)
+      tests.syncPlaySim.push(sim, sim.now, { kind: "other", what: "pause", posMs: 0& })
+      tests.syncPlaySim.runUntil(sim, sim.now + 3000)
+      tests.syncPlaySim.push(sim, sim.now, { kind: "other", what: "unpause", posMs: 0& })
+      tests.syncPlaySim.runUntil(sim, sim.now + 12000)
+
+      for each name in sim.counts
+        if not m.totals.doesExist(name) then m.totals[name] = 0
+        m.totals[name] = m.totals[name] + sim.counts[name]
+      end for
+      if sim.violations.count() > 0 then return sim.violations[0]
+      if midway <> "" then return "before the clean pause: " + midway
+      if sim.server.state <> "Playing" then return "the group ended " + sim.server.state
+      atEnd = tests.syncPlaySim.outOfStep(sim)
+      if atEnd <> "" then return "at the end: " + atEnd
+      ctx = { following: sim.following, estimator: sim.estimator, loadOwed: false, isLastItem: false, durationSeconds: 0 }
+      last = syncPlayConverge.decide(sim.player, sim.group, ctx, sim.policy, sim.now)
+      if isValid(last.action) then return "the comparison still asks for " + last.action.kind
+      return ""
+    end function
+
+    private function failures(firstSeed as integer, lastSeed as integer, faults as boolean) as object
+      failed = []
+      m.totals = {}
+      for seed = firstSeed to lastSeed
+        problem = m.runSeed(seed, faults)
+        if problem <> "" then failed.push("seed " + seed.toStr() + ": " + problem)
+      end for
+      return failed
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("seeded runs")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("with no faults, every run ends in step with no forbidden write")
+    function _()
+      failed = m.failures(1, 40, false)
+      m.assertEqual(failed.count(), 0, failed.join(" | "))
+    end function
+
+    @it("with far landings, slow seeks, stalls and lost requests, every run still ends in step")
+    function _()
+      failed = m.failures(101, 180, true)
+      m.assertEqual(failed.count(), 0, failed.join(" | "))
+      ' A run that met no fault proves nothing about faults.
+      for each name in ["farLandings", "slowSeeks", "slowResumes", "scrubs", "lostRequests", "stalls", "wedgedPauses", "silentCatchUps", "recoverSeeks", "catchUps", "holds", "whereAsks"]
+        m.assertTrue(m.totals[name] > 0, "no run went through any " + name)
+      end for
+    end function
+
+  end class
+
+end namespace

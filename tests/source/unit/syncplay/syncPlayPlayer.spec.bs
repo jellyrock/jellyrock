@@ -1,0 +1,659 @@
+import "pkg:/source/syncplay/syncPlayPlayback.bs"
+import "pkg:/source/syncplay/syncPlayPlayer.bs"
+import "pkg:/source/syncplay/syncPlayTime.bs"
+
+namespace tests
+
+  ' The player model against a device clock that starts at 1000 ms. Positions are ticks: 60 s is
+  ' 600000000.
+  @suite("syncPlayPlayer: what the node is doing and where it is")
+  class SyncPlayPlayerTests extends tests.BaseTestSuite
+
+    private at60s = 600000000&
+
+    ' A player that mounted, showed its first frame and gave one reading at 60 s, at 1000 ms.
+    private function playingAt60() as object
+      player = syncPlayPlayer.newPlayer()
+      syncPlayPlayer.mounted(player, invalid, 100&)
+      syncPlayPlayer.nodeState(player, "buffering", 150&)
+      syncPlayPlayer.nodeState(player, "playing", 900&)
+      syncPlayPlayer.reading(player, m.at60s, 1000&)
+      return player
+    end function
+
+    ' Resumes a paused player at `atMs`: the node plays 10 ms later, and its first reading, 500 ms
+    ' after the write, shows the resume took effect `lagMs` late.
+    private sub resumeCycle(player as object, atMs as longinteger, lagMs as longinteger)
+      stop& = syncPlayTime.asLong(player.clock.ticks)
+      syncPlayPlayer.told(player, "resume", "group", invalid, atMs)
+      syncPlayPlayer.nodeState(player, "playing", atMs + 10)
+      syncPlayPlayer.reading(player, stop& + (500& - lagMs) * 10000&, atMs + 500)
+    end sub
+
+    ' Pauses a playing player at `atMs`, 100 ms after a reading, landed 30 ms later.
+    ' @returns where it stopped, in ticks
+    private function pauseAt(player as object, atMs as longinteger) as longinteger
+      clock = player.clock
+      playedMs& = atMs - 100 - syncPlayTime.asLong(clock.atMs)
+      syncPlayPlayer.reading(player, syncPlayTime.asLong(clock.ticks) + playedMs& * 10000&, atMs - 100)
+      syncPlayPlayer.told(player, "pause", "group", invalid, atMs)
+      syncPlayPlayer.nodeState(player, "paused", atMs + 30)
+      return syncPlayTime.asLong(player.clock.ticks)
+    end function
+
+    ' That player, paused by the group 300 ms after the reading, landed 30 ms later.
+    private function pausedAfter300() as object
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "pause", "group", invalid, 1300&)
+      syncPlayPlayer.nodeState(player, "paused", 1330&)
+      return player
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a load")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a new model has no player and no position")
+    function _()
+      player = syncPlayPlayer.newPlayer()
+      m.assertEqual(player.activity, "none")
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 1000&))
+      m.assertFalse(syncPlayPlayer.isInFlight(player))
+      m.assertInvalid(syncPlayPlayer.nextDeadlineMs(player))
+    end function
+
+    @it("a mount is loading and in flight until the first frame")
+    function _()
+      player = syncPlayPlayer.newPlayer()
+      syncPlayPlayer.mounted(player, 3490000000&, 100&)
+      m.assertEqual(player.activity, "loading")
+      m.assertEqual(player.loadStartTicks, 3490000000&)
+      m.assertTrue(syncPlayPlayer.isInFlight(player))
+      syncPlayPlayer.nodeState(player, "buffering", 150&)
+      m.assertEqual(player.activity, "loading")
+    end function
+
+    @it("the first frame is an arrival, and its first reading is where the node is")
+    function _()
+      player = syncPlayPlayer.newPlayer()
+      syncPlayPlayer.mounted(player, invalid, 100&)
+      syncPlayPlayer.nodeState(player, "playing", 900&)
+      m.assertEqual(player.activity, "arrived")
+      m.assertTrue(syncPlayPlayer.isInFlight(player))
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 910&))
+      syncPlayPlayer.reading(player, m.at60s, 920&)
+      m.assertEqual(player.activity, "playing")
+      m.assertEqual(syncPlayPlayer.positionAt(player, 920&), m.at60s)
+      m.assertFalse(syncPlayPlayer.isInFlight(player))
+    end function
+
+    @it("an arrival with no reading in time plays on with no position known")
+    function _()
+      player = syncPlayPlayer.newPlayer()
+      syncPlayPlayer.mounted(player, invalid, 100&)
+      syncPlayPlayer.nodeState(player, "playing", 900&)
+      m.assertEqual(syncPlayPlayer.nextDeadlineMs(player), 900& + syncPlayPlayer.ARRIVAL_READING_MS)
+      syncPlayPlayer.advance(player, 900& + syncPlayPlayer.ARRIVAL_READING_MS - 1)
+      m.assertEqual(player.activity, "arrived")
+      syncPlayPlayer.advance(player, 900& + syncPlayPlayer.ARRIVAL_READING_MS)
+      m.assertEqual(player.activity, "playing")
+      m.assertEqual(player.clock.kind, "unknown")
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 1200&))
+    end function
+
+    @it("a load told before any player mounts is loading, and the old player's unmount is its own")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "load", "group", 0&, 2000&)
+      m.assertEqual(player.activity, "loading")
+      m.assertTrue(syncPlayPlayer.unmounted(player, 2100&))
+      m.assertEqual(player.activity, "loading")
+      syncPlayPlayer.mounted(player, invalid, 2200&)
+      m.assertEqual(player.activity, "loading")
+    end function
+
+    @it("an unmount nobody told is the viewer's, and a stop's is the model's")
+    function _()
+      player = m.playingAt60()
+      m.assertFalse(syncPlayPlayer.unmounted(player, 2000&))
+      m.assertEqual(player.activity, "none")
+      stopped = m.playingAt60()
+      syncPlayPlayer.told(stopped, "stop", "group", invalid, 2000&)
+      m.assertTrue(syncPlayPlayer.unmounted(stopped, 2100&))
+      m.assertEqual(stopped.activity, "none")
+    end function
+
+    @it("a reload in place is a load again, and forgets how the old stream's seeks went")
+    function _()
+      player = m.playingAt60()
+      player.lastSeekMs = 900&
+      player.lastSeekGaveUp = true
+      syncPlayPlayer.reloaded(player, m.at60s, 2000&)
+      m.assertEqual(player.activity, "loading")
+      m.assertEqual(player.loadStartTicks, m.at60s)
+      m.assertEqual(player.lastSeekMs, 0&)
+      m.assertFalse(player.lastSeekGaveUp)
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 2000&))
+    end function
+
+    @it("a reload with no player is nothing")
+    function _()
+      player = syncPlayPlayer.newPlayer()
+      syncPlayPlayer.reloaded(player, m.at60s, 2000&)
+      m.assertEqual(player.activity, "none")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the clock while playing")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a reading runs forward with the device clock")
+    function _()
+      player = m.playingAt60()
+      m.assertEqual(syncPlayPlayer.positionAt(player, 1300&), m.at60s + 3000000&)
+      m.assertTrue(player.clock.measured)
+    end function
+
+    @it("a reading older than one late notification says nothing")
+    function _()
+      player = m.playingAt60()
+      m.assertNotInvalid(syncPlayPlayer.positionAt(player, 1000& + syncPlayPlayback.PAUSE_ESTIMATE_MAX_AGE_MS))
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 1001& + syncPlayPlayback.PAUSE_ESTIMATE_MAX_AGE_MS))
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 999&))
+    end function
+
+    @it("a stall ends the run: the time buffering is never counted as played")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.nodeState(player, "buffering", 1100&)
+      m.assertEqual(player.activity, "stalling")
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 1150&))
+      syncPlayPlayer.nodeState(player, "playing", 1700&)
+      m.assertEqual(player.activity, "playing")
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 1750&))
+      syncPlayPlayer.reading(player, m.at60s + 1000000&, 1800&)
+      m.assertEqual(syncPlayPlayer.positionAt(player, 1800&), m.at60s + 1000000&)
+    end function
+
+    @it("a stall becomes one worth reporting only past the stall bar")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.nodeState(player, "buffering", 1100&)
+      syncPlayPlayer.advance(player, 1099& + syncPlayPlayback.STALL_MS)
+      m.assertEqual(player.activity, "stalling")
+      syncPlayPlayer.advance(player, 1100& + syncPlayPlayback.STALL_MS)
+      m.assertEqual(player.activity, "stalled")
+      m.assertFalse(syncPlayPlayer.isInFlight(player))
+      syncPlayPlayer.nodeState(player, "playing", 5000&)
+      m.assertEqual(player.activity, "playing")
+    end function
+
+    @it("the item finishing ends the clock")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.finished(player, 1200&)
+      m.assertEqual(player.activity, "finished")
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 1200&))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a pause")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a pause written is pausing, in flight, until the paused state lands")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "pause", "group", invalid, 1300&)
+      m.assertEqual(player.activity, "pausing")
+      m.assertTrue(syncPlayPlayer.isInFlight(player))
+      syncPlayPlayer.nodeState(player, "buffering", 1310&)
+      m.assertEqual(player.activity, "pausing")
+      syncPlayPlayer.nodeState(player, "paused", 1330&)
+      m.assertEqual(player.activity, "paused")
+      m.assertFalse(syncPlayPlayer.isInFlight(player))
+    end function
+
+    @it("the stop is the running clock read at the write, and stays there")
+    function _()
+      player = m.pausedAfter300()
+      m.assertEqual(player.clock.kind, "stopped")
+      m.assertEqual(syncPlayPlayer.positionAt(player, 1330&), m.at60s + 3000000&)
+      m.assertEqual(syncPlayPlayer.positionAt(player, 90000&), m.at60s + 3000000&)
+      m.assertEqual(player.pauseOwner, "group")
+    end function
+
+    @it("a paused state that lands late leaves the stop unknown")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "pause", "group", invalid, 1300&)
+      syncPlayPlayer.nodeState(player, "paused", 1301& + syncPlayPlayback.PAUSE_LANDED_MS)
+      m.assertEqual(player.activity, "paused")
+      m.assertEqual(player.clock.kind, "unknown")
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 2000&))
+    end function
+
+    @it("a pause written with no fresh reading leaves the stop unknown")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "pause", "group", invalid, 2500&)
+      syncPlayPlayer.nodeState(player, "paused", 2530&)
+      m.assertEqual(player.activity, "paused")
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 2530&))
+    end function
+
+    @it("a reading between the write and the paused state does not move the stop")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "pause", "group", invalid, 1300&)
+      syncPlayPlayer.reading(player, m.at60s + 5000000&, 1310&)
+      syncPlayPlayer.nodeState(player, "paused", 1330&)
+      m.assertEqual(syncPlayPlayer.positionAt(player, 1330&), m.at60s + 3000000&)
+    end function
+
+    @it("a second pause while the first lands, or on a paused node, only changes whose pause it is")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "pause", "viewer", invalid, 1300&)
+      syncPlayPlayer.told(player, "pause", "group", invalid, 1320&)
+      m.assertEqual(player.pauseWrites, 1)
+      m.assertEqual(player.pauseOwner, "group")
+      syncPlayPlayer.nodeState(player, "paused", 1330&)
+      m.assertEqual(syncPlayPlayer.positionAt(player, 1330&), m.at60s + 3000000&)
+      syncPlayPlayer.told(player, "pause", "hold", invalid, 1400&)
+      m.assertEqual(player.pauseOwner, "hold")
+      m.assertEqual(player.activity, "paused")
+    end function
+
+    @it("a seek told to the node clears the pause writes counted so far")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "pause", "group", invalid, 1300&)
+      syncPlayPlayer.advance(player, 1300& + syncPlayPlayback.PAUSE_CONFIRM_MS)
+      m.assertEqual(player.pauseWrites, 1)
+      syncPlayPlayer.told(player, "seek", "group", m.at60s, 2400&)
+      m.assertEqual(player.pauseWrites, 0)
+    end function
+
+    @it("a pause the node swallowed ends as playing, with the write counted")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "pause", "group", invalid, 1300&)
+      syncPlayPlayer.advance(player, 1299& + syncPlayPlayback.PAUSE_CONFIRM_MS)
+      m.assertEqual(player.activity, "pausing")
+      syncPlayPlayer.advance(player, 1300& + syncPlayPlayback.PAUSE_CONFIRM_MS)
+      m.assertEqual(player.activity, "playing")
+      m.assertEqual(player.pauseWrites, 1)
+      m.assertEqual(player.pauseOwner, "")
+      syncPlayPlayer.told(player, "pause", "group", invalid, 2400&)
+      m.assertEqual(player.pauseWrites, 2)
+      syncPlayPlayer.nodeState(player, "paused", 2430&)
+      m.assertEqual(player.pauseWrites, 0)
+    end function
+
+    @it("a pause written to a stalled node lands paused with no position")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.nodeState(player, "buffering", 1100&)
+      syncPlayPlayer.told(player, "pause", "group", invalid, 1200&)
+      m.assertEqual(player.activity, "pausing")
+      syncPlayPlayer.nodeState(player, "paused", 1205&)
+      m.assertEqual(player.activity, "paused")
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 1205&))
+    end function
+
+    @it("a pause is not written to a load or a seek in flight")
+    function _()
+      loading = syncPlayPlayer.newPlayer()
+      syncPlayPlayer.mounted(loading, invalid, 100&)
+      syncPlayPlayer.told(loading, "pause", "group", invalid, 200&)
+      m.assertEqual(loading.activity, "loading")
+      seeking = m.playingAt60()
+      syncPlayPlayer.told(seeking, "seek", "group", m.at60s * 2, 1100&)
+      syncPlayPlayer.told(seeking, "pause", "group", invalid, 1200&)
+      m.assertEqual(seeking.activity, "seeking")
+      m.assertEqual(seeking.pauseWrites, 0)
+    end function
+
+    @it("a paused state nobody wrote is paused with no position and no owner")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.nodeState(player, "paused", 1200&)
+      m.assertEqual(player.activity, "paused")
+      m.assertEqual(player.pauseOwner, "")
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 1200&))
+    end function
+
+    @it("a pause that lands while the viewer scrubs is the scrub's, whichever is heard of first")
+    function _()
+      barFirst = m.playingAt60()
+      syncPlayPlayer.scrub(barFirst, true)
+      syncPlayPlayer.nodeState(barFirst, "paused", 1200&)
+      m.assertEqual(barFirst.pauseOwner, "scrub")
+      pauseFirst = m.playingAt60()
+      syncPlayPlayer.nodeState(pauseFirst, "paused", 1200&)
+      m.assertEqual(pauseFirst.pauseOwner, "")
+      syncPlayPlayer.scrub(pauseFirst, true)
+      m.assertEqual(pauseFirst.pauseOwner, "scrub")
+      ' The bar closes: the pause is nobody's again, and the node may be brought back in step.
+      syncPlayPlayer.scrub(pauseFirst, false)
+      m.assertFalse(pauseFirst.scrubbing)
+      m.assertEqual(pauseFirst.pauseOwner, "")
+    end function
+
+    @it("a scrub does not outlive its player")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.scrub(player, true)
+      syncPlayPlayer.unmounted(player, 2000&)
+      m.assertFalse(player.scrubbing)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a resume")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a resume from a known stop runs the clock from there, from the write while no lag is learned")
+    function _()
+      player = m.pausedAfter300()
+      syncPlayPlayer.told(player, "resume", "group", invalid, 5000&)
+      m.assertEqual(player.activity, "resuming")
+      m.assertTrue(syncPlayPlayer.isInFlight(player))
+      m.assertEqual(syncPlayPlayer.positionAt(player, 5005&), m.at60s + 3000000&)
+      syncPlayPlayer.nodeState(player, "buffering", 5004&)
+      syncPlayPlayer.nodeState(player, "playing", 5010&)
+      m.assertEqual(player.activity, "playing")
+      m.assertFalse(player.clock.measured)
+      m.assertEqual(player.pauseOwner, "")
+      m.assertEqual(syncPlayPlayer.positionAt(player, 5110&), m.at60s + 3000000& + 1100000&)
+    end function
+
+    @it("the first reading after a resume says how late the resume took effect")
+    function _()
+      player = m.pausedAfter300()
+      m.assertEqual(player.resumeLagMs, 0&)
+      syncPlayPlayer.told(player, "resume", "group", invalid, 5000&)
+      syncPlayPlayer.nodeState(player, "playing", 5010&)
+      ' 519 ms after the write the node has played 480 ms: the resume took effect 39 ms late.
+      syncPlayPlayer.reading(player, m.at60s + 3000000& + 4800000&, 5519&)
+      m.assertEqual(player.resumeLagMs, 39&)
+      ' Only the first reading is a sample.
+      syncPlayPlayer.reading(player, m.at60s + 3000000& + 9000000&, 6019&)
+      m.assertEqual(player.resumeLagMs, 39&)
+    end function
+
+    @it("a resume runs the clock from the write plus the lag learned")
+    function _()
+      player = m.pausedAfter300()
+      m.resumeCycle(player, 2000&, 0&)
+      m.pauseAt(player, 4000&)
+      m.resumeCycle(player, 5000&, 40&)
+      stop& = m.pauseAt(player, 7000&)
+      syncPlayPlayer.told(player, "resume", "group", invalid, 8000&)
+      syncPlayPlayer.nodeState(player, "playing", 8010&)
+      ' The node is taken to start 40 ms after the write, at 8040.
+      m.assertEqual(syncPlayPlayer.positionAt(player, 8140&), stop& + 1000000&)
+    end function
+
+    @it("the lag in use is the median of the last five samples, and a sample outside the cap is dropped")
+    function _()
+      player = m.pausedAfter300()
+      m.resumeCycle(player, 2000&, 0&)
+      m.pauseAt(player, 4000&)
+      m.resumeCycle(player, 5000&, 30&)
+      m.assertEqual(player.resumeLagMs, 30&)
+      m.pauseAt(player, 7000&)
+      m.resumeCycle(player, 8000&, 50&)
+      m.assertEqual(player.resumeLagMs, 40&)
+      m.pauseAt(player, 10000&)
+      m.resumeCycle(player, 11000&, 400&)
+      m.assertEqual(player.resumeLagMs, 40&)
+      m.pauseAt(player, 13000&)
+      m.resumeCycle(player, 14000&, -20&)
+      m.assertEqual(player.resumeLagMs, 40&)
+      m.pauseAt(player, 16000&)
+      m.resumeCycle(player, 17000&, 35&)
+      m.assertEqual(player.resumeLagMs, 35&)
+      for i = 0 to 4
+        m.pauseAt(player, 20000& + i * 3000)
+        m.resumeCycle(player, 21000& + i * 3000, 60&)
+      end for
+      m.assertEqual(player.resumeLagMs, 60&)
+    end function
+
+    @it("a stop straight after a landing and a stop in steady play each keep a lag of their own")
+    function _()
+      ' The first pause comes with no reading since the load's landing.
+      player = m.pausedAfter300()
+      m.assertEqual(player.stopKind, "landing")
+      m.resumeCycle(player, 2000&, 60&)
+      m.assertEqual(player.resumeLagMs, 60&)
+      ' The next comes after a later reading: steady play, nothing learned for it yet.
+      m.pauseAt(player, 4000&)
+      m.assertEqual(player.stopKind, "steady")
+      m.assertEqual(player.resumeLagMs, 0&)
+      m.resumeCycle(player, 5000&, 10&)
+      m.assertEqual(player.resumeLagMs, 10&)
+      ' A seek's landing, paused before a second reading, is a landing stop again.
+      syncPlayPlayer.told(player, "seek", "group", m.at60s, 7000&)
+      syncPlayPlayer.nodeState(player, "buffering", 7100&)
+      syncPlayPlayer.nodeState(player, "playing", 7500&)
+      syncPlayPlayer.reading(player, m.at60s, 7520&)
+      syncPlayPlayer.told(player, "pause", "wait", invalid, 7530&)
+      syncPlayPlayer.nodeState(player, "paused", 7560&)
+      m.assertEqual(player.stopKind, "landing")
+      m.assertEqual(player.resumeLagMs, 60&)
+    end function
+
+    @it("a resume with a stall before its first reading gives no sample")
+    function _()
+      player = m.pausedAfter300()
+      syncPlayPlayer.told(player, "resume", "group", invalid, 5000&)
+      syncPlayPlayer.nodeState(player, "playing", 5010&)
+      syncPlayPlayer.nodeState(player, "buffering", 5100&)
+      syncPlayPlayer.nodeState(player, "playing", 5400&)
+      syncPlayPlayer.reading(player, m.at60s + 3000000& + 1000000&, 5519&)
+      m.assertEqual(player.resumeLagMs, 0&)
+    end function
+
+    @it("a new stream starts with no lag learned")
+    function _()
+      player = m.pausedAfter300()
+      m.resumeCycle(player, 5000&, 40&)
+      m.assertEqual(player.resumeLagMs, 40&)
+      syncPlayPlayer.reloaded(player, invalid, 9000&)
+      m.assertEqual(player.resumeLagMs, 0&)
+    end function
+
+    @it("a resume from an unknown stop plays with no position until a reading")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.nodeState(player, "paused", 1200&)
+      syncPlayPlayer.told(player, "resume", "group", invalid, 5000&)
+      syncPlayPlayer.nodeState(player, "playing", 5010&)
+      m.assertEqual(player.activity, "playing")
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 5100&))
+    end function
+
+    @it("a resume the node swallowed ends as paused, where it was")
+    function _()
+      player = m.pausedAfter300()
+      syncPlayPlayer.told(player, "resume", "group", invalid, 5000&)
+      syncPlayPlayer.advance(player, 5000& + syncPlayPlayback.PAUSE_CONFIRM_MS)
+      m.assertEqual(player.activity, "paused")
+      m.assertEqual(syncPlayPlayer.positionAt(player, 9000&), m.at60s + 3000000&)
+    end function
+
+    @it("a resume that leaves the node buffering past the limit is a stall, never a node to resume again")
+    function _()
+      player = m.pausedAfter300()
+      syncPlayPlayer.told(player, "resume", "group", invalid, 5000&)
+      syncPlayPlayer.nodeState(player, "buffering", 5010&)
+      syncPlayPlayer.advance(player, 5000& + syncPlayPlayback.PAUSE_CONFIRM_MS)
+      m.assertEqual(player.activity, "stalling")
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 6100&))
+      syncPlayPlayer.advance(player, 6000& + syncPlayPlayback.STALL_MS)
+      m.assertEqual(player.activity, "stalled")
+      syncPlayPlayer.nodeState(player, "playing", 11000&)
+      m.assertEqual(player.activity, "playing")
+    end function
+
+    @it("a resume is written only to a paused node")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.nodeState(player, "buffering", 1100&)
+      syncPlayPlayer.told(player, "resume", "group", invalid, 1200&)
+      m.assertEqual(player.activity, "stalling")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a seek")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a seek is in flight with no position, whatever the node's field reads")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "seek", "group", 1000000000&, 1100&)
+      m.assertEqual(player.activity, "seeking")
+      m.assertEqual(player.clock.kind, "seeking")
+      m.assertTrue(syncPlayPlayer.isInFlight(player))
+      ' The field reads the target at once.
+      syncPlayPlayer.reading(player, 1000000000&, 1180&)
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 1180&))
+      syncPlayPlayer.nodeState(player, "buffering", 1190&)
+      m.assertEqual(player.activity, "seeking")
+    end function
+
+    @it("the landing is the first reading after playing, not the target")
+    function _()
+      player = m.playingAt60()
+      ' The 2026-11-10 direct-play seek to 156.0 s that landed at 145.8 s.
+      syncPlayPlayer.told(player, "seek", "hold", 1560160000&, 1100&)
+      syncPlayPlayer.nodeState(player, "buffering", 1180&)
+      syncPlayPlayer.nodeState(player, "playing", 1460&)
+      m.assertEqual(player.activity, "arrived")
+      syncPlayPlayer.reading(player, 1458330000&, 1478&)
+      m.assertEqual(player.activity, "playing")
+      m.assertEqual(player.lastLandingTicks, 1458330000&)
+      ' The node began playing at 1460, so by the reading's arrival it has played 18 ms on.
+      m.assertEqual(syncPlayPlayer.positionAt(player, 1478&), 1458510000&)
+      m.assertEqual(player.lastSeekMs, 378&)
+      m.assertFalse(player.lastSeekGaveUp)
+      m.assertEqual(player.seekOwner, "hold")
+    end function
+
+    @it("a landing's first reading is where the node was when it began playing, however late it arrives")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "seek", "group", 1458300000&, 1100&)
+      syncPlayPlayer.nodeState(player, "buffering", 1180&)
+      syncPlayPlayer.nodeState(player, "playing", 1460&)
+      ' The reading reaches the model 150 ms after the node began playing: it played on meanwhile.
+      syncPlayPlayer.reading(player, 1458330000&, 1610&)
+      m.assertEqual(player.lastLandingTicks, 1458330000&)
+      m.assertEqual(syncPlayPlayer.positionAt(player, 1610&), 1459830000&)
+      ' A pause written now stops the node where it is, not where the reading said.
+      syncPlayPlayer.told(player, "pause", "wait", invalid, 1610&)
+      syncPlayPlayer.nodeState(player, "paused", 1630&)
+      m.assertEqual(syncPlayPlayer.positionAt(player, 5000&), 1459830000&)
+    end function
+
+    @it("a reading more than a notification interval after the landing is not the landing's own")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "seek", "group", 1458300000&, 1100&)
+      syncPlayPlayer.nodeState(player, "buffering", 1180&)
+      syncPlayPlayer.nodeState(player, "playing", 1460&)
+      ' Notifications come every 500 ms of media, so this one is a later reading, taken as it comes.
+      syncPlayPlayer.reading(player, 1464700000&, 2100&)
+      m.assertEqual(syncPlayPlayer.positionAt(player, 2100&), 1464700000&)
+    end function
+
+    @it("a seek that lands with no reading in time has no landing")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "seek", "group", 1000000000&, 1100&)
+      syncPlayPlayer.nodeState(player, "playing", 1800&)
+      syncPlayPlayer.advance(player, 1800& + syncPlayPlayer.ARRIVAL_READING_MS)
+      m.assertEqual(player.activity, "playing")
+      m.assertInvalid(player.lastLandingTicks)
+      m.assertFalse(player.lastSeekGaveUp)
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 2100&))
+    end function
+
+    @it("a seek on a paused node resumes it: playing is its arrival")
+    function _()
+      player = m.pausedAfter300()
+      syncPlayPlayer.told(player, "seek", "group", 1000000000&, 5000&)
+      m.assertEqual(player.pauseOwner, "")
+      syncPlayPlayer.nodeState(player, "buffering", 5010&)
+      syncPlayPlayer.nodeState(player, "playing", 5500&)
+      m.assertEqual(player.activity, "arrived")
+    end function
+
+    @it("a seek still buffering at its budget stays in flight, marked slow, until it lands")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "seek", "hold", 1000000000&, 1100&)
+      syncPlayPlayer.nodeState(player, "buffering", 1180&)
+      syncPlayPlayer.advance(player, 1099& + syncPlayPlayback.SEEK_SETTLE_MS)
+      m.assertFalse(player.seekSlow)
+      syncPlayPlayer.advance(player, 1100& + syncPlayPlayback.SEEK_SETTLE_MS)
+      m.assertEqual(player.activity, "seeking")
+      m.assertTrue(syncPlayPlayer.isInFlight(player))
+      m.assertTrue(player.seekSlow)
+      m.assertTrue(player.lastSeekGaveUp)
+      m.assertInvalid(syncPlayPlayer.nextDeadlineMs(player))
+      ' It lands in the end, 7.9 s after the write: an arrival like any other, and still a seek
+      ' too slow to repeat.
+      syncPlayPlayer.nodeState(player, "playing", 9000&)
+      m.assertEqual(player.activity, "arrived")
+      syncPlayPlayer.reading(player, 1000200000&, 9020&)
+      m.assertEqual(player.activity, "playing")
+      m.assertFalse(player.seekSlow)
+      m.assertTrue(player.lastSeekGaveUp)
+      m.assertEqual(player.lastSeekMs, 7920&)
+    end function
+
+    @it("a seek the node never answered is given up where its state says")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "seek", "group", 1000000000&, 1100&)
+      syncPlayPlayer.advance(player, 1100& + syncPlayPlayback.SEEK_SETTLE_MS)
+      m.assertEqual(player.activity, "playing")
+      m.assertTrue(player.lastSeekGaveUp)
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 4200&))
+    end function
+
+    @it("a seek that lands paused is paused with no position")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "seek", "group", 1000000000&, 1100&)
+      syncPlayPlayer.nodeState(player, "paused", 1500&)
+      m.assertEqual(player.activity, "paused")
+      m.assertFalse(player.lastSeekGaveUp)
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 1500&))
+    end function
+
+    @it("a newer seek replaces the one in flight")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "seek", "group", 1000000000&, 1100&)
+      syncPlayPlayer.told(player, "seek", "group", 2000000000&, 1300&)
+      m.assertEqual(player.seekTargetTicks, 2000000000&)
+      m.assertEqual(syncPlayPlayer.nextDeadlineMs(player), 1300& + syncPlayPlayback.SEEK_SETTLE_MS)
+    end function
+
+    @it("a seek is not written with no player, during a load or after the item finished")
+    function _()
+      none = syncPlayPlayer.newPlayer()
+      syncPlayPlayer.told(none, "seek", "group", 1000000000&, 100&)
+      m.assertEqual(none.activity, "none")
+      loading = syncPlayPlayer.newPlayer()
+      syncPlayPlayer.mounted(loading, invalid, 100&)
+      syncPlayPlayer.told(loading, "seek", "group", 1000000000&, 200&)
+      m.assertEqual(loading.activity, "loading")
+    end function
+
+  end class
+
+end namespace

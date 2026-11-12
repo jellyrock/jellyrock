@@ -1,0 +1,129 @@
+import "pkg:/source/syncplay/syncPlayGroup.bs"
+import "pkg:/source/syncplay/syncPlayOffset.bs"
+import "pkg:/source/syncplay/syncPlayPlayer.bs"
+import "pkg:/source/syncplay/syncPlayShadow.bs"
+
+namespace tests
+
+  ' Shadow mode's record of where the manager and the comparison differ. The device reads
+  ' 1000 ms behind the server; the group's line is an Unpause at server 6000 from 60 s, so at
+  ' device 10000 the group is at 65 s.
+  @suite("syncPlayShadow: where the manager and the comparison differ")
+  class SyncPlayShadowTests extends tests.BaseTestSuite
+
+    private function ctx() as object
+      est = syncPlayOffset.newEstimator()
+      syncPlayOffset.addRound(est, 1000&, 2005&, 2005&, 1010&)
+      return { following: true, estimator: est, loadOwed: false, isLastItem: false, durationSeconds: 0 }
+    end function
+
+    private function cmd(name as string, whenMs as longinteger, positionTicks as longinteger) as object
+      return { kind: "syncplaycommand", command: name, whenMs: whenMs, emittedAtMs: whenMs - 100, positionTicks: positionTicks, playlistItemId: "p-1", groupId: "g-1" }
+    end function
+
+    ' A shadow whose node plays at 65 s (read at 10000) in a group whose Ready the server has.
+    private function playing(command as object) as object
+      shadow = syncPlayShadow.newShadow()
+      syncPlayShadow.itemChanged(shadow, "p-1", 1000&)
+      syncPlayShadow.playerFact(shadow, { kind: "mounted" }, 0&, 100&)
+      syncPlayShadow.playerFact(shadow, { kind: "state", state: "playing" }, 0&, 900&)
+      syncPlayShadow.playerFact(shadow, { kind: "position", position: 65 }, 0&, 10000&)
+      syncPlayGroup.requestSent(shadow.group, "report", "ready", 2000&)
+      syncPlayGroup.requestArrived(shadow.group, "report", "ready", shadow.group.report.id)
+      syncPlayShadow.commandArrived(shadow, command)
+      return shadow
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("what the manager wrote")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a write the comparison also asks for is no disagreement")
+    function _()
+      shadow = m.playing(m.cmd("Pause", 9000&, 650000000&))
+      syncPlayShadow.managerWrote(shadow, m.ctx(), { command: "pause" }, "group", 10000&)
+      m.assertEqual(shadow.count, 0)
+      m.assertEqual(shadow.player.activity, "pausing")
+      m.assertEqual(shadow.player.pauseOwner, "group")
+    end function
+
+    @it("a write the comparison did not ask for is recorded with both sides")
+    function _()
+      shadow = m.playing(m.cmd("Unpause", 6000&, 600000000&))
+      syncPlayShadow.managerWrote(shadow, m.ctx(), { command: "seekto", position: 65.2 }, "hold", 10000&)
+      entries = syncPlayShadow.takeEntries(shadow)
+      m.assertEqual(entries.count(), 1)
+      m.assertEqual(entries[0].kind, "old-wrote")
+      m.assertEqual(entries[0].old, "seek:hold")
+      m.assertEqual(entries[0].wanted, "nothing")
+      m.assertEqual(entries[0].at, "playing/playing")
+      m.assertEqual(shadow.player.activity, "seeking")
+      m.assertEqual(syncPlayShadow.takeEntries(shadow).count(), 0)
+    end function
+
+    @it("a verb that is no transport write, such as a queue change, is ignored")
+    function _()
+      shadow = m.playing(m.cmd("Unpause", 6000&, 600000000&))
+      syncPlayShadow.managerWrote(shadow, m.ctx(), { command: "queuechanged" }, "group", 10000&)
+      m.assertEqual(shadow.count, 0)
+      m.assertEqual(shadow.player.activity, "playing")
+    end function
+
+    @it("the pause the player reports from inside the manager's own write is not the viewer's")
+    function _()
+      shadow = m.playing(m.cmd("Pause", 9000&, 650000000&))
+      syncPlayShadow.managerWrote(shadow, m.ctx(), { command: "pause" }, "group", 10000&)
+      shadow.ownWrite = true
+      syncPlayShadow.playerFact(shadow, { kind: "pauseWritten" }, 0&, 10001&)
+      m.assertEqual(shadow.player.pauseOwner, "group")
+      shadow.ownWrite = false
+      viewer = m.playing(m.cmd("Unpause", 6000&, 600000000&))
+      syncPlayShadow.playerFact(viewer, { kind: "pauseWritten" }, 0&, 10001&)
+      m.assertEqual(viewer.player.pauseOwner, "viewer")
+    end function
+
+    @it("a report the comparison also asks for is no disagreement, and one it does not is")
+    function _()
+      shadow = syncPlayShadow.newShadow()
+      syncPlayShadow.itemChanged(shadow, "p-1", 1000&)
+      syncPlayShadow.playerFact(shadow, { kind: "mounted" }, 600000000&, 9000&)
+      syncPlayShadow.managerReported(shadow, m.ctx(), "buffering", 9000&)
+      m.assertEqual(shadow.count, 0)
+      m.assertEqual(shadow.group.heldFor, "load")
+      syncPlayShadow.managerReported(shadow, m.ctx(), "ready", 9100&)
+      entries = syncPlayShadow.takeEntries(shadow)
+      m.assertEqual(entries.count(), 1)
+      m.assertEqual(entries[0].old, "report:ready")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("what the comparison still asks for")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("an ask the manager meets later is recorded with how long it stood")
+    function _()
+      shadow = m.playing(m.cmd("Pause", 9000&, 650000000&))
+      syncPlayShadow.afterEvent(shadow, m.ctx(), 10000&)
+      syncPlayShadow.afterEvent(shadow, m.ctx(), 10100&)
+      m.assertEqual(shadow.count, 0)
+      syncPlayShadow.managerWrote(shadow, m.ctx(), { command: "pause" }, "group", 10300&)
+      syncPlayShadow.afterEvent(shadow, m.ctx(), 10300&)
+      entries = syncPlayShadow.takeEntries(shadow)
+      m.assertEqual(entries.count(), 1)
+      m.assertEqual(entries[0].kind, "new-wanted")
+      m.assertEqual(entries[0].wanted, "pause:group")
+      m.assertEqual(entries[0].forMs, 300&)
+    end function
+
+    @it("a node in step with the group records nothing")
+    function _()
+      shadow = m.playing(m.cmd("Unpause", 6000&, 600000000&))
+      syncPlayShadow.afterEvent(shadow, m.ctx(), 10000&)
+      syncPlayShadow.playerFact(shadow, { kind: "position", position: 65.5 }, 0&, 10500&)
+      syncPlayShadow.afterEvent(shadow, m.ctx(), 10500&)
+      m.assertEqual(shadow.count, 0)
+    end function
+
+  end class
+
+end namespace

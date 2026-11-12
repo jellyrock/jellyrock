@@ -484,5 +484,46 @@ export async function hardRelaunch({ timing = 'polled', params } = {}) {
   await ecp.sendLaunchChannel({ channelId: 'dev', params, verifyLaunch: false });
   await ensureOdcReachable();
   await waitSceneAnswering({ timeout: SCENE_ANSWER_TIMEOUT_MS, interval: 200 });
+  await applySyncPlayEngine();
   await waitLandingSettled();
+}
+
+/**
+ * Sets the SyncPlay engine a run asked for: `RTA_SYNCPLAY_ENGINE=comparison` or `manager` picks
+ * which code decides a member's playback (`SyncPlayManager.usesComparison()`), so one build runs
+ * the SyncPlay specs under either. The field resets with the app, so every cold start sets it
+ * again, before any spec can join a group. Unset, the build's own engine stays.
+ *
+ * The write is repeated until the manager reads it back. The scene answers before `main.bs` has
+ * added `syncPlayManager` to `m.global` (`setGlobalNodes()` runs after the scene is shown), and a
+ * write that lands in between sets nothing and raises nothing: a run asked to use one engine then
+ * ran under the other with no sign of it. A write that never takes fails the cold start.
+ *
+ * @param {object} [opts]
+ * @param {number} [opts.timeout] how long the manager may take to read the engine asked for
+ * @param {number} [opts.interval] the pause between tries
+ */
+export async function applySyncPlayEngine({ timeout = 15000, interval = 200 } = {}) {
+  const engine = process.env.RTA_SYNCPLAY_ENGINE;
+  if (!engine) return;
+  if (engine !== 'comparison' && engine !== 'manager') {
+    throw new Error(
+      `RTA_SYNCPLAY_ENGINE must be 'comparison' or 'manager', not ${JSON.stringify(engine)}`,
+    );
+  }
+  const target = { base: 'global', keyPath: 'syncPlayManager.engine' };
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    // A write or a read that throws is the app still coming up: not yet, like a wrong value.
+    await odc.setValue({ ...target, value: engine }).catch(() => {});
+    const read = await odc.getValue(target).catch(() => ({}));
+    if (read.value === engine) return;
+    if (Date.now() > deadline) {
+      throw new Error(
+        `the SyncPlay engine did not take within ${timeout} ms: the run asked for '${engine}' ` +
+          `and the manager reads ${JSON.stringify(read.value ?? '')}`,
+      );
+    }
+    await sleep(interval);
+  }
 }
