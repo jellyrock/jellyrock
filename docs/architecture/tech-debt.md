@@ -574,7 +574,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 #### `jrtabbar-ondestroy-never-called`
 
 - **area**: [`components/ui/tabbar/JRTabBar.bs`](../../components/ui/tabbar/JRTabBar.bs), `components/JROverhang.bs` (`onTabsChanged`), [`components/home/Home.bs`](../../components/home/Home.bs)
-- **issue**: `JRTabBar` declares an `onDestroy` (it unobserves `tabs`, `focusedTabIndex` and `focusedChild` and clears its container) that nothing calls. The overhang owns the bar: `JROverhang.onTabsChanged` creates it and hides it when the tabs empty, to reuse it. `Home` only borrows it; in its own `onDestroy` it unobserves `requestFocusReturn` and drops the reference. `JROverhang` has no `onDestroy`. So the injected `m.isDestroyed` guard in `JRTabBar` is inert, and nothing leaks today, since the bar lives as long as the overhang.
+- **issue**: `JRTabBar` declares an `onDestroy` (it unobserves `tabs`, `focusedTabIndex`, `focusedChild`, `mode`, `slotWidth` and each tab's `isReady`, stops the scroll animation and clears its container) that nothing calls. The overhang owns the bar: `JROverhang.onTabsChanged` creates it and hides it when the tabs empty, to reuse it. `Home` only borrows it; in its own `onDestroy` it unobserves `requestFocusReturn` and drops the reference. `JROverhang` has no `onDestroy`. So the injected `m.isDestroyed` guard in `JRTabBar` is inert, and nothing leaks today, since the bar lives as long as the overhang.
 - **direction**: Pick one and make it true. Delete the dead `onDestroy` so it stops reading as live teardown, or give the overhang a teardown that cascades into it. Do not cascade from `Home`: that would destroy a bar the overhang reuses.
 
 #### `dev-tooling-platforms-unverified`
