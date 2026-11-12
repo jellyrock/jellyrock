@@ -64,6 +64,9 @@ const REPLAY_CASES = new Set(['replay', 'replay-twice']);
 // How long a mix step's end state must hold before the step counts as settled: three position
 // notifications while playing, so a correction the resume's first readings start is seen.
 const MIX_STABLE_MS = 1500;
+// How often a mix step is sampled. Every sample is seven reads the app answers on its render
+// thread, so `RTA_STRESS_POLL_MS` lets a run check that the sampling is not what it measures.
+const MIX_POLL_MS = Number(process.env.RTA_STRESS_POLL_MS || 100);
 const MIX_DWELL_PLAYING_MS = 5000;
 const MIX_DWELL_PAUSED_MS = 3000;
 const MIX_WINDOW_MS = 20000;
@@ -421,7 +424,7 @@ async function settleMix(expected, startedAt, windowMs, stableMs = MIX_STABLE_MS
       restSince = null;
     }
     last = s;
-    await sleep(100);
+    await sleep(MIX_POLL_MS);
   }
   return { outcome: 'frozen', settleMs: null, notPlayingMs, drifts, end: s, trail };
 }
