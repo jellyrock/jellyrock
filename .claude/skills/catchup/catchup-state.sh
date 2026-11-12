@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # catchup-state.sh: the one read /catchup makes (and /focus through it). It prints the repo's git
-# position, the journal, the projects, this repo's own reader, the recent commits and, when this
+# position, the journal, the projects, the catchup.conf settings that turn a check off, this repo's
+# own reader, the forge checks (CI, pull requests, watched issues), the recent commits and, when this
 # machine keeps a mailbox, the open messages other repos left this one and the work request parts
 # naming it,
 # then one CANDIDATES block: every check that fired, as a typed line, ranked in code, so the model
@@ -23,7 +24,9 @@
 #     only, since a checkout behind its remote reads as the old tree. The own reader may read the
 #     network, never write: a change to the tree while it ran is reported as an ERROR candidate
 #     naming each changed path.
-#   - A repo's own state (CI, PRs, pipelines, disk) is its own reader's job, not this one's.
+#   - A repo's own state that no shared check reads (deploys, pipelines, disk) is its own reader's
+#     job. A line the own reader prints under a shared id is dropped: it shows under OWN READER and
+#     an own-overlap INFO names it for retirement, since the shared check owns that id.
 #
 # CANDIDATES: typed, tab-separated lines (free text never breaks the parse), only in that block. Each
 # leads with its class and a tab (the one score /focus-all ranks every repo by): 1 on fire (ERROR,
@@ -102,8 +105,23 @@
 #   verify-first-format: debt     a PLAN's Verify first lines not in the `command` prints `value`
 #                                 shape, one line per PLAN (the rest of the PLAN check is
 #                                 plan-contradicts)
+#   ci-failing: fire              per active workflow, the newest finished run on the default branch
+#                                 (cancelled and skipped runs stepped past) failed, timed out or did
+#                                 not start; routes to the repo's CI triage skill with the run id
+#                                 when it has that skill, else to the run's page
+#   pr-stuck: overdue             an open PR, not a draft, with a failing check (each check's newest
+#                                 run) or merge conflicts
+#   ci-action-required, pr-action-required: INFO   a run or a PR's check awaits approval
+#   open-prs: INFO                how many PRs are open, and how many are stuck
+#   own-overlap: INFO             "Suggestion: …": the own reader printed a line under a shared id,
+#                                 or catchup.conf sets class.<shared id>; retire it
 #   behind, off-branch, unpushed, gate-missing, journal-shaped (a NOTE named a journal line),
 #   mail-landed (a handled message whose commit has landed: close it): FIX
+#
+# The forge checks (ci-failing, pr-stuck and the watches) read through the pr skill's forge.sh, and
+# print under FORGE. A repo without one gets a NOTE (an ERROR when it sets a watch); a backend that
+# cannot read runs or PR checks, a NOTE. Each call is bounded by CATCHUP_FORGE_TIMEOUT seconds
+# (default 10); a call past it, or one that fails, is an ERROR.
 #
 # This repo's own reader: catchup.conf beside this script (the repo's own file, never overwritten
 # by an update), one key=value per line, `#` comments:
@@ -111,7 +129,13 @@
 #                             parallel with the rest; absent: no own reader
 #   reader_timeout=<seconds>  default 30; past it the reader is stopped and is an ERROR
 #   class.<id>=<class>        fire, resume, overdue or debt, one line per own BANNER id; their
-#                             order is the within-class order. FIX, INFO and CAVEAT need none.
+#                             order is the within-class order. FIX, INFO and CAVEAT need none. A
+#                             shared id's class is fixed: its line gives the own-overlap Suggestion.
+#   watch.<id>=<label>        one BANNER per open issue with that label (the newest 100), ranked as
+#                             an own id; it needs class.<id>. A label the repo lacks is an ERROR.
+#   route.<id>=<route>        a watch's route, {n} the issue number; default the repo's issue
+#                             triage skill with {n} when it has that skill, else the issue number
+#   off.<id>=<reason>         turns a shared check off; the reason prints under CONFIG every run
 # The reader prints typed lines as above (not PIN or SLOT); every other line passes through under
 # OWN READER. A non-zero exit, a timeout, an id with no class, a malformed line or a line in the
 # old `BANNER: …` shape is an ERROR; this script still exits 0.
@@ -162,10 +186,13 @@ declare -A SHARED=([dirty-tree]="2 1" [work-running]="4 1" [project-unblocked]="
   [followup-past-due]="5 0" [followup-due-soon]="5 0"
   [cadence-unfilled]="7 1" [verify-first-format]="7 2" [wait-no-recheck]="7 3" [wait-in-prose]="7 4" [due-in-prose]="7 5"
   [behind]="9 1" [off-branch]="9 2" [unpushed]="9 3" [gate-missing]="9 4" [journal-shaped]="9 5" [mail-landed]="9 6"
-  [request-project]="4 4" [request-pinned]="3 0" [request-open]="5 14" [request-waiting]="5 13" [request-landed]="9 7" [request-settle]="5 15")
+  [request-project]="4 4" [request-pinned]="3 0" [request-open]="5 14" [request-waiting]="5 13" [request-landed]="9 7" [request-settle]="5 15"
+  [ci-failing]="2 2" [ci-action-required]="10 1" [pr-stuck]="5 16" [pr-action-required]="10 2" [open-prs]="10 3" [own-overlap]="10 4")
 shared() { # <id> <text> [project slug] [detail...]: a shared check that fired, with its route;
   # AT="<rank> <position>" before the call ranks this one firing elsewhere (a message's age)
   local id="$1" r p route type=BANNER
+  # a check catchup.conf turns off fires nothing; the CONFIG section says it is off
+  [ -n "${off[$id]+x}" ] && return
   read -r r p <<<"${AT:-${SHARED[$id]}}"
   # rank 10 is an INFO line: no route, never a candidate
   [ "$r" = 10 ] && { cand "$r" 1 "$p" "INFO$TAB$id$TAB$2"; return; }
@@ -183,6 +210,7 @@ shared() { # <id> <text> [project slug] [detail...]: a shared check that fired, 
     request-pinned) if [ -n "${MPROJ:-}" ]; then route="/resume-project $MPROJ $3"; else route="/focus $3"; fi ;;
     request-waiting) route="see what holds ${LBRANCH:-the branch}'s merge; once it has landed, /done request $3" ;;
     request-landed) route="/done request $3" ;;
+    ci-failing|pr-stuck) route="$3" ;;
     request-settle) route="read each decline (bash .claude/skills/start-project/mailbox.sh requests show $3), decide what follows, then /done request $3" ;;
     followup-unblocked) route="act on it (journal.sh show $3); when you keep it, drop its waits: journal.sh replace $3 --waits-on \"\"" ;;
     followup-wait-broken) route="fix its waits-on: journal.sh replace $3 --waits-on \"{{list}}\"" ;;
@@ -229,7 +257,9 @@ days_since() { local s; s="$(date -u -d "$1" +%s 2>/dev/null)" && echo $(( (toda
 day_start() { date -u -d "$today - $1 days" +%FT00:00:00Z; } # the start of the day N days ago
 
 # --- catchup.conf: read before the reader starts; its notes print under OWN READER ---
-reader=""; reader_timeout=30; conf_notes=(); declare -A cls=() clspos=(); np=0
+reader=""; reader_timeout=30; conf_notes=(); declare -A cls=() clspos=() clsshared=(); np=0; clsshared_ids=()
+# watch.<id>=<label>, route.<id>=<route>, off.<id>=<reason>; offs keeps the file's order for the NOTEs
+declare -A watch=() wroute=() off=(); offs=()
 if [ ! -f "$conf_file" ]; then
   if [ -n "${SKILLS_CONFIG_DIR:-}" ]; then conf_notes+=("NOTE: no catchup.conf in ${conf_file%/*}: no own reader runs")
   else conf_notes+=("NOTE: no catchup.conf beside the shared reader: no own reader runs"); fi
@@ -245,15 +275,220 @@ else
         else oerr catchup.conf "reader_timeout must be a whole number of seconds, 1 or more, not '$val'"; fi ;;
       class.?*)
         id="${key#class.}"
-        if [ -n "${SHARED[$id]:-}" ]; then conf_notes+=("NOTE: catchup.conf: class.$id is ignored: a shared id's class is fixed")
+        # a class line for a shared id is a leftover of an own check the shared one replaced: the
+        # Suggestion after OWN READER names it every run
+        if [ -n "${SHARED[$id]:-}" ]; then [ -n "${clsshared[$id]:-}" ] || clsshared_ids+=("$id"); clsshared[$id]=1
         elif [ -z "${RANK[$val]:-}" ]; then oerr catchup.conf "class.$id must be fire, resume, overdue or debt, not '$val'"
         elif [ -n "${cls[$id]:-}" ]; then oerr catchup.conf "class.$id is set twice"
         else cls[$id]="$val"; clspos[$id]=$((++np)); fi ;;
-      *) oerr catchup.conf "unknown key '$key' (known: reader, reader_timeout, class.<id>)" ;;
+      watch.?*)
+        id="${key#watch.}"
+        if [ -n "${SHARED[$id]:-}" ]; then oerr catchup.conf "watch.$id: $id is a shared check, not a watch"
+        elif [ -z "$val" ]; then oerr catchup.conf "watch.$id needs a label"
+        elif [ -n "${watch[$id]+x}" ]; then oerr catchup.conf "watch.$id is set twice"
+        else watch[$id]="$val"; fi ;;
+      route.?*)
+        id="${key#route.}"
+        if [ -z "$val" ]; then oerr catchup.conf "route.$id needs a route"
+        elif [ -n "${wroute[$id]+x}" ]; then oerr catchup.conf "route.$id is set twice"
+        else wroute[$id]="$val"; fi ;;
+      off.?*)
+        id="${key#off.}"
+        if [ -z "${SHARED[$id]:-}" ]; then oerr catchup.conf "off.$id: $id is not a shared check (an own check is removed from its reader)"
+        elif [ -z "$val" ]; then oerr catchup.conf "off.$id needs a reason"
+        elif [ -n "${off[$id]+x}" ]; then oerr catchup.conf "off.$id is set twice"
+        else off[$id]="$val"; offs+=("$id"); fi ;;
+      *) oerr catchup.conf "unknown key '$key' (known: reader, reader_timeout, class.<id>, watch.<id>, route.<id>, off.<id>)" ;;
     esac
   done <"$conf_file"
   [ -n "$reader" ] || conf_notes+=("NOTE: catchup.conf names no reader")
+  # checked once the whole file is read, so the order of a watch's lines does not matter
+  while IFS= read -r id; do
+    [ -n "$id" ] && [ -z "${watch[$id]+x}" ] && oerr catchup.conf "route.$id has no watch.$id"
+  done < <(printf '%s\n' "${!wroute[@]}" | LC_ALL=C sort)
+  while IFS= read -r id; do
+    [ -n "$id" ] && [ -z "${cls[$id]:-}" ] && oerr catchup.conf "watch.$id needs a class.$id line"
+  done < <(printf '%s\n' "${!watch[@]}" | LC_ALL=C sort)
 fi
+
+# --- the forge checks, through the forge skills' forge.sh: the repo's own (its folder under
+# SKILLS_CONFIG_DIR), since only a repo in the forge set has one ---
+forge_sh="$here/../pr/forge.sh"; [ -n "${SKILLS_CONFIG_DIR:-}" ] && forge_sh="$SKILLS_CONFIG_DIR/pr/forge.sh"
+# A forge route names a triage skill only when the repo has it: forge.sh is the pr skill's, and a
+# repo can install pr without the triage skills. Every repo gets this file, so it never writes a
+# triage skill's slash name as text, which would read as a promise that every repo has it.
+skills_dir="$here/.."; [ -n "${SKILLS_CONFIG_DIR:-}" ] && skills_dir="$SKILLS_CONFIG_DIR"
+ci_skill=""; [ -f "$skills_dir/ci-triage/SKILL.md" ] && ci_skill=ci-triage
+issue_skill=""; [ -f "$skills_dir/issue-triage/SKILL.md" ] && issue_skill=issue-triage
+forge_notes=(); forge_timeout="${CATCHUP_FORGE_TIMEOUT:-10}"
+if ! [[ $forge_timeout =~ ^[1-9][0-9]*$ ]]; then
+  forge_notes+=("NOTE: CATCHUP_FORGE_TIMEOUT must be a whole number of seconds, 1 or more, not '$forge_timeout'; using 10")
+  forge_timeout=10
+fi
+# forge_call <out file> <verb...>: one forge.sh call, bounded; stderr goes to <out file>.err; its
+# exit code, 124 when it gave no answer in time
+forge_call() { local o="$1"; shift; timeout "$forge_timeout" bash "$forge_sh" "$@" >"$o" 2>"$o.err" </dev/null; }
+first_err() { local e; e="$(head -n1 "$1.err" 2>/dev/null)"; echo "${e:-no message}"; }
+# forge_fail <check> <verb> <exit code> <out file>: prints the line for a call that failed and
+# returns 0; returns 1 when the call worked
+forge_fail() {
+  local what=CI
+  case "$1" in pr-stuck) what="PR checks" ;; watch*) what=issues ;; esac
+  case "$3" in
+    0) return 1 ;;
+    5) printf 'NOTE\tforge.sh cannot read %s on this backend: %s\n' "$what" "$(first_err "$4")" ;;
+    3) printf 'ERR\tforge.sh is not set up in this repo (exit 3): %s\n' "$(first_err "$4")" ;;
+    124) printf 'ERR\t%s: forge.sh %s gave no answer within %s s\n' "$1" "$2" "$forge_timeout" ;;
+    *) printf 'ERR\t%s: forge.sh %s failed (exit %s): %s\n' "$1" "$2" "$3" "$(first_err "$4")" ;;
+  esac
+}
+# forge_ci <temp dir>: ci-failing. Per active workflow, the newest finished run on the
+# default branch, cancelled and skipped runs stepped past: failure, timed_out or startup_failure
+# fails, action_required waits on approval, anything else passes. At most 16 reads at once. It
+# prints one line per finding for the main shell to rank, a type and a tab first:
+#   NOTE|LINE<TAB><text>    ERR<TAB><text>[\036<detail>...]
+#   FAIL<TAB><text><TAB><run id>    ACT<TAB><text>
+forge_ci() {
+  local t="$1" rc def row id name running=0 total=0 seen=0 pass=0 failn=0 act=0 none=0 pick c rid title date
+  local -a wfs=() bad=()
+  forge_call "$t/def" repo default-branch; rc=$?
+  forge_fail ci-failing "repo default-branch" "$rc" "$t/def" && return
+  def="$(head -n1 "$t/def")"
+  [ -n "$def" ] || { printf 'ERR\tci-failing: forge.sh repo default-branch printed no branch\n'; return; }
+  forge_call "$t/wf" workflow list; rc=$?
+  forge_fail ci-failing "workflow list" "$rc" "$t/wf" && return
+  jq -r '.[] | [.id, .name] | @tsv' <"$t/wf" >"$t/wf.tsv" 2>/dev/null \
+    || { printf 'ERR\tci-failing: forge.sh workflow list did not answer JSON\n'; return; }
+  mapfile -t wfs <"$t/wf.tsv"
+  for row in "${wfs[@]}"; do
+    id="${row%%"$TAB"*}"
+    { forge_call "$t/run.$id" run list --workflow "$id" --branch "$def" --status completed --limit 100; echo "$?" >"$t/run.$id.rc"; } &
+    if [ $((++running)) -ge 16 ]; then wait -n; running=$((running - 1)); fi
+  done
+  wait
+  for row in "${wfs[@]}"; do
+    id="${row%%"$TAB"*}"; name="${row#*"$TAB"}"; total=$((total + 1))
+    rc="$(cat "$t/run.$id.rc" 2>/dev/null)"
+    if [ "$rc" = 124 ]; then bad+=("  $name: no answer within $forge_timeout s"); continue
+    elif [ "$rc" != 0 ]; then bad+=("  $name: $(first_err "$t/run.$id")"); continue; fi
+    pick="$(jq -r 'if type == "array" then first(.[] | select(.conclusion != "cancelled" and .conclusion != "skipped"))
+        | [.conclusion, .databaseId, .displayTitle, (.createdAt | .[0:10]), .url] | @tsv else error("not a list") end' \
+        <"$t/run.$id" 2>/dev/null)" || { bad+=("  $name: the answer was not JSON"); continue; }
+    if [ -z "$pick" ]; then none=$((none + 1)); continue; fi
+    IFS=$'\037' read -r c rid title date url <<<"$(tr "$TAB" '\037' <<<"$pick")"
+    seen=$((seen + 1))
+    case "$c" in
+      failure|timed_out|startup_failure)
+        failn=$((failn + 1)); printf 'FAIL\t%s failed on %s: %s (%s, run %s)\t%s\n' "$name" "$def" "$title" "$date" "$rid" \
+          "$(if [ -n "$ci_skill" ]; then echo "/$ci_skill $rid"; else echo "look at run $rid: $url"; fi)" ;;
+      action_required)
+        act=$((act + 1)); printf 'ACT\t%s on %s awaits approval: %s (%s, run %s)\n' "$name" "$def" "$title" "$date" "$rid" ;;
+      *) pass=$((pass + 1)) ;;
+    esac
+  done
+  printf 'LINE\tci: %s workflows read on %s: %s passing, %s failing%s\n' "$seen" "$def" "$pass" "$failn" \
+    "$([ "$act" = 0 ] || echo ", $act awaiting approval")"
+  [ "$none" = 0 ] || printf 'LINE\t%s of %s workflows have no finished run on %s among their newest 100\n' "$none" "$total" "$def"
+  if [ "${#bad[@]}" -gt 0 ]; then
+    printf 'ERR\tci-failing: %s workflow read(s) failed or timed out' "${#bad[@]}"; printf '\036%s' "${bad[@]}"; echo
+  fi
+}
+# PR_JQ: forge.sh pr open-checks' answer -> the lines forge_pr prints. A PR's check list can hold
+# several runs of one check (a rerun, a re-triggered workflow), so only each check's newest run counts,
+# keyed by workflow and check name: an old failure a later run fixed is not a failure, and a rerun
+# still going is pending. A check fails as ci-failing's runs do (failure, timed_out,
+# startup_failure); another service's status fails on failure or error. Cancelled, stale, skipped,
+# neutral and pending fail nothing. Drafts are counted, never stuck. $ci is the CI triage skill's
+# name, empty when the repo lacks it: a failing Actions check routes to it, else to the PR's page.
+# shellcheck disable=SC2016 # a jq program, not shell
+PR_JQ='def clean: tostring | gsub("[\t\n\r\u001e\u001f]"; " ");
+  def checkname: if (.workflowName // "") != "" then "\(.workflowName) / \(.name)" else .name end | clean;
+  def fails: .conclusion == "FAILURE" or .conclusion == "TIMED_OUT" or .conclusion == "STARTUP_FAILURE";
+  if type != "array" then error("not a list") else . end
+  | ([.[] | select(.isDraft)] | length) as $drafts | length as $open
+  | [.[] | select(.isDraft | not) | (.statusCheckRollup // []) as $r
+      | ([$r[] | select(.__typename == "CheckRun")]
+          | group_by([.workflowName // "", .name]) | map(max_by(.startedAt // ""))) as $runs
+      | ([$runs[] | select(fails)]) as $bad
+      | { n: .number, title: (.title | clean), url: .url, conflict: (.mergeable == "CONFLICTING"),
+          failing: ([$bad[] | checkname]
+            + [$r[] | select(.__typename == "StatusContext" and (.state == "FAILURE" or .state == "ERROR")) | .context | clean]),
+          run: ([$bad[] | .detailsUrl // "" | capture("/actions/runs/(?<id>[0-9]+)")? | .id] | first),
+          act: [$runs[] | select(.conclusion == "ACTION_REQUIRED") | checkname] }] as $prs
+  | ($prs | map(select((.failing | length) > 0 or .conflict))) as $stuck
+  | ($prs | map(select(.act | length > 0))) as $acts
+  | ($stuck[] | "STUCK\tPR #\(.n) \(.title): "
+      + ([if (.failing | length) > 0 then "failing " + (.failing | join(", ")) else empty end,
+          if .conflict then "has merge conflicts" else empty end] | join("; "))
+      + "\t" + (if .run and $ci != "" then "/\($ci) \(.run)" else "look at PR #\(.n): \(.url)" end)),
+    ($acts[] | "PRACT\tPR #\(.n) \(.title): \(.act | join(", ")) awaits approval"),
+    (((if $drafts > 0 then " (\($drafts) draft)" else "" end)
+      + (if $open > 0 then ": \($stuck | length) stuck"
+          + (if ($acts | length) > 0 then ", \($acts | length) awaiting approval" else "" end) else "" end)) as $more
+      | "LINE\tprs: \($open) open\($more)",
+        (if $open > 0 then "OPEN\t\($open) open PR\(if $open == 1 then "" else "s" end)\($more)" else empty end))'
+# forge_pr <temp dir>: pr-stuck, from one forge.sh pr open-checks read. It prints the line types
+# forge_ci does, plus STUCK<TAB><text><TAB><route>, PRACT<TAB><text> and OPEN<TAB><count>;
+# forge.sh's warnings (a full page of PRs) are NOTEs.
+forge_pr() {
+  local t="$1" rc out l
+  forge_call "$t/prs" pr open-checks; rc=$?
+  forge_fail pr-stuck "pr open-checks" "$rc" "$t/prs" && return
+  out="$(jq -r --arg ci "$ci_skill" "$PR_JQ" <"$t/prs" 2>/dev/null)" \
+    || { printf 'ERR\tpr-stuck: forge.sh pr open-checks did not answer a JSON list\n'; return; }
+  while IFS= read -r l; do [ -z "$l" ] || printf 'NOTE\t%s\n' "$l"; done <"$t/prs.err"
+  printf '%s\n' "$out"
+}
+# forge_watches <temp dir>: each watch in watch_ids, one label read, then one open-issue read per
+# watch in parallel. It prints WATCH<TAB><id><TAB><text><TAB><route>, one per issue: an issue two
+# watches match prints under the first, the higher ranked. A watched label the repo lacks is an
+# error, never an empty read.
+forge_watches() {
+  local t="$1" rc i id out cnt n title others text route total=0 open=0 def_route="look at issue #{n}"
+  [ -z "$issue_skill" ] || def_route="/$issue_skill {n}"
+  local -A seen=()
+  forge_call "$t/labels" label list; rc=$?
+  forge_fail watches "label list" "$rc" "$t/labels" && return
+  jq -r 'if type == "array" then .[].name else error("not a list") end' <"$t/labels" >"$t/labels.txt" 2>/dev/null \
+    || { printf 'ERR\twatches: forge.sh label list did not answer a JSON list\n'; return; }
+  for i in "${!watch_ids[@]}"; do
+    id="${watch_ids[$i]}"
+    if ! grep -qxF -- "${watch[$id]}" "$t/labels.txt"; then
+      printf "ERR\twatch.%s: no label '%s' in this repo (forge.sh label list)\n" "$id" "${watch[$id]}"; continue; fi
+    { forge_call "$t/is.$i" issue list --state open --label "${watch[$id]}" --limit 100; echo "$?" >"$t/is.$i.rc"; } &
+  done
+  wait
+  for i in "${!watch_ids[@]}"; do
+    id="${watch_ids[$i]}"; [ -f "$t/is.$i.rc" ] || continue
+    forge_fail "watch.$id" "issue list" "$(cat "$t/is.$i.rc")" "$t/is.$i" && continue
+    out="$(jq -r --arg l "${watch[$id]}" 'def clean: tostring | gsub("[\t\n\r\u001e\u001f]"; " ");
+        if type != "array" then error("not a list") else . end
+        | (length | tostring),
+          (.[] | [(.number | tostring), (.title | clean), ([.labels[]?.name | select(. != $l) | clean] | join(", "))]
+            | join("\u001f"))' <"$t/is.$i" 2>/dev/null)" \
+      || { printf 'ERR\twatch.%s: forge.sh issue list did not answer a JSON list\n' "$id"; continue; }
+    total=$((total + 1))
+    { read -r cnt
+      [ "$cnt" != 100 ] || printf 'NOTE\twatch.%s: read the newest 100 open issues labeled %s; older ones were not read\n' "$id" "${watch[$id]}"
+      while IFS=$'\037' read -r n title others; do
+        [ -z "${seen[$n]+x}" ] || continue; seen[$n]=1; open=$((open + 1))
+        text="#$n $title"; [ -z "$others" ] || text+=" (also labeled: $others)"
+        route="${wroute[$id]:-$def_route}"
+        printf 'WATCH\t%s\t%s\t%s\n' "$id" "$text" "${route//\{n\}/$n}"
+      done; } <<<"$out"
+  done
+  printf 'LINE\twatches: %s read: %s open issue%s\n' "$total" "$open" "$([ "$open" = 1 ] || echo s)"
+}
+# forge_run <temp dir>: each forge check catchup.conf leaves on, and the watches, in parallel; CI's
+# lines first
+forge_run() {
+  local t="$1"
+  [ -n "${off[ci-failing]+x}" ] || forge_ci "$t" >"$t/ci.out" &
+  [ -n "${off[pr-stuck]+x}" ] || forge_pr "$t" >"$t/pr.out" &
+  [ "${#watch_ids[@]}" = 0 ] || forge_watches "$t" >"$t/watch.out" &
+  wait
+  cat "$t/ci.out" "$t/pr.out" "$t/watch.out" 2>/dev/null
+}
 
 section "REPO"
 top="$(git rev-parse --show-toplevel 2>/dev/null)" || { rc=2; serr REPO "not inside a git repository"; finish; }
@@ -276,7 +511,8 @@ else echo "NOTE: no default branch known (no origin/HEAD, origin/main or origin/
 dirty="$(git status --porcelain 2>/dev/null)"
 # the own reader starts only now, after the tree is read: a reader that writes cannot make the
 # dirty tree come and go between runs. Its output goes to a file outside the repo.
-own_pid=""; own_out=""
+own_pid=""; own_out=""; forge_pid=""; forge_dir=""
+trap 'rm -f "$own_out"; [ -z "$forge_dir" ] || rm -rf "$forge_dir"' EXIT
 # tree_state <array>: each path git status lists -> its status line and a content hash (hash-object
 # without -w writes nothing; a deleted path has none), so a path changed again while dirty differs too
 tree_state() {
@@ -293,10 +529,37 @@ if [ -n "$reader" ]; then
   if ! command -v timeout >/dev/null; then oerr "OWN READER" "no timeout command (coreutils): the own reader is not run"
   else
     tree_state tree_before
-    own_out="$(mktemp)"; trap 'rm -f "$own_out"' EXIT
+    own_out="$(mktemp)"
     timeout "$reader_timeout" bash -c "$reader" >"$own_out" 2>&1 </dev/null &
     own_pid=$!
   fi
+fi
+# The forge checks start now too, in parallel with the rest; their lines print under FORGE.
+# watch_ids: each watch with its class line (one without is an error above), by class, then by its
+# class line's place in catchup.conf
+mapfile -t watch_ids < <(for id in "${!watch[@]}"; do
+    [ -z "${cls[$id]:-}" ] || printf '%s\t%s\t%s\n' "${RANK[${cls[$id]}]}" "${clspos[$id]}" "$id"
+  done | LC_ALL=C sort -t "$TAB" -k1,1n -k2,2n | cut -f3)
+# names <name>...: "a is", "a and b are", "a, b and c are"
+names() {
+  local s="$1"; shift
+  [ $# = 0 ] && { echo "$s is"; return; }
+  while [ $# -gt 1 ]; do s+=", $1"; shift; done
+  echo "$s and $1 are"
+}
+forge_on=(); for c in ci-failing pr-stuck; do [ -n "${off[$c]+x}" ] || forge_on+=("$c"); done
+watch_names=(); for id in "${watch_ids[@]}"; do watch_names+=("watch.$id"); done
+forge_on+=("${watch_names[@]}")
+if [ "${#forge_on[@]}" = 0 ]; then :
+elif [ ! -f "$forge_sh" ]; then
+  [ "${#forge_on[@]}" = "${#watch_names[@]}" ] || forge_notes+=("NOTE: no forge.sh (the pr skill): forge checks are not read")
+  if [ "${#watch_names[@]}" -gt 0 ]; then w="$(names "${watch_names[@]}")"; serr FORGE "no forge.sh (the pr skill): ${w% *} cannot be read"; fi
+elif ! command -v jq >/dev/null; then serr FORGE "jq is not installed: $(names "${forge_on[@]}") not read"
+elif ! command -v timeout >/dev/null; then serr FORGE "no timeout command (coreutils): $(names "${forge_on[@]}") not read"
+else
+  forge_dir="$(mktemp -d)"
+  forge_run "$forge_dir" >"$forge_dir/out" 2>/dev/null </dev/null &
+  forge_pid=$!
 fi
 if [ -n "$dirty" ]; then
   n="$(wc -l <<<"$dirty")"
@@ -698,18 +961,31 @@ else
   fi
 fi
 
+if [ "${#offs[@]}" -gt 0 ]; then
+  section "CONFIG"
+  for id in "${offs[@]}"; do echo "NOTE: $id is off in catchup.conf: ${off[$id]}"; done
+fi
+
 section "OWN READER"
+declare -A ovl=(); ovl_ids=()
 [ "${#conf_notes[@]}" -gt 0 ] && printf '%s\n' "${conf_notes[@]}"
 if [ -n "$own_pid" ]; then
   echo "reader: $reader"
   wait "$own_pid"; own_rc=$?
   # its typed lines become candidates, each with the two-space detail lines under it; every other
   # line passes through here
+  # a line under a shared id is dropped (cur "-"), shown here with its detail lines, and counted
+  # for one Suggestion per id: the shared check owns that id now
   cur=""; ln=""; dets=()
-  flush_own() { [ -n "$cur" ] && cand "${cur%%"$TAB"*}" 0 "$(cut -f2 <<<"$cur")" "$ln" "${dets[@]}"; cur=""; dets=(); }
+  drop_own() {
+    echo "dropped (shared id $1): $2"; cur="-"
+    [ -n "${ovl[$1]:-}" ] || ovl_ids+=("$1"); ovl[$1]=$(( ${ovl[$1]:-0} + 1 ))
+  }
+  flush_own() { [ "$cur" = - ] && cur=""; [ -n "$cur" ] && cand "${cur%%"$TAB"*}" 0 "$(cut -f2 <<<"$cur")" "$ln" "${dets[@]}"; cur=""; dets=(); }
   split_tab() { local s="$1"; F=(); while [[ $s == *"$TAB"* ]]; do F+=("${s%%"$TAB"*}"); s="${s#*"$TAB"}"; done; F+=("$s"); }
   malformed() { flush_own; cur="1${TAB}0"; ln="ERROR${TAB}OWN READER${TAB}malformed $1 line: it takes $2, tab-separated"; dets=("  $3"); }
   while IFS= read -r l || [ -n "$l" ]; do
+    if [ "$cur" = - ] && [[ $l == "  "* ]]; then printf '%s\n' "$l"; continue; fi
     if [ -n "$cur" ] && [[ $l == "  "* ]]; then dets+=("$l"); continue; fi
     flush_own
     case "$l" in
@@ -717,6 +993,7 @@ if [ -n "$own_pid" ]; then
         split_tab "$l"; t="${F[0]}"
         if [ "${#F[@]}" -lt 3 ] || [ "${#F[@]}" -gt 4 ] || [ -z "${F[1]}" ] || [ -z "${F[2]}" ]; then
           malformed "$t" "an id, a text and an optional route" "$l"; continue; fi
+        [ -z "${SHARED[${F[1]}]:-}" ] || { drop_own "${F[1]}" "$l"; continue; }
         ln="$t$TAB${F[1]}$TAB${F[2]}$TAB${F[3]:-}"
         if [ "$t" = FIX ]; then cur="9${TAB}0"
         elif [ -n "${cls[${F[1]}]:-}" ]; then cur="${RANK[${cls[${F[1]}]}]}$TAB${clspos[${F[1]}]}"
@@ -724,10 +1001,12 @@ if [ -n "$own_pid" ]; then
       INFO"$TAB"*|CAVEAT"$TAB"*)
         split_tab "$l"; t="${F[0]}"
         if [ "${#F[@]}" -ne 3 ] || [ -z "${F[1]}" ] || [ -z "${F[2]}" ]; then malformed "$t" "an id and a text" "$l"; continue; fi
+        [ -z "${SHARED[${F[1]}]:-}" ] || { drop_own "${F[1]}" "$l"; continue; }
         ln="$l"; if [ "$t" = INFO ]; then cur="10${TAB}0"; else cur="11${TAB}0"; fi ;;
       ERROR"$TAB"*)
         split_tab "$l"
         if [ "${#F[@]}" -ne 3 ] || [ -z "${F[1]}" ] || [ -z "${F[2]}" ]; then malformed ERROR "a section and a text" "$l"; continue; fi
+        [ -z "${SHARED[${F[1]}]:-}" ] || { drop_own "${F[1]}" "$l"; continue; }
         ln="$l"; cur="1${TAB}0" ;;
       BANNER:*|ERROR:*|FIX:*|INFO:*|CAVEAT:*)
         cur="1${TAB}0"; dets=("  $l")
@@ -746,6 +1025,41 @@ if [ -n "$own_pid" ]; then
     mapfile -t changed < <(printf '%s\n' "${changed[@]}" | LC_ALL=C sort -u | sed 's/^/  /')
     oerr "OWN READER" "the tree changed while this repo's own reader ran (readers never write)" "${changed[@]}"
   fi
+fi
+# one Suggestion per shared id the own reader printed, then one per class line for a shared id it
+# did not print this run
+for id in "${ovl_ids[@]}"; do
+  t="Suggestion: this repo's own reader prints $id (${ovl[$id]} line$([ "${ovl[$id]}" = 1 ] || echo s) dropped), now a shared check: retire it from the reader"
+  [ -z "${clsshared[$id]:-}" ] || t+=", and class.$id from catchup.conf"
+  shared own-overlap "$t"
+done
+for id in "${clsshared_ids[@]}"; do
+  [ -n "${ovl[$id]:-}" ] || shared own-overlap "Suggestion: catchup.conf sets class.$id, but $id is a shared check with a fixed class: remove the line"
+done
+
+section "FORGE"
+[ "${#forge_notes[@]}" -gt 0 ] && printf '%s\n' "${forge_notes[@]}"
+if [ -n "$forge_pid" ]; then
+  wait "$forge_pid"
+  # both checks can meet the same cause (forge.sh not set up): its line prints once
+  declare -A forge_seen=()
+  while IFS= read -r l; do
+    [ -n "${forge_seen[$l]+x}" ] && continue; forge_seen[$l]=1
+    t="${l%%"$TAB"*}"; rest="${l#*"$TAB"}"
+    case "$t" in
+      STUCK) echo "stuck: ${rest%%"$TAB"*}"; shared pr-stuck "${rest%%"$TAB"*}" "${rest#*"$TAB"}" ;;
+      OPEN) shared open-prs "$rest" ;;
+      # a watch is the repo's own check: it ranks as an own id of its class does
+      WATCH) IFS="$TAB" read -r id text route <<<"$rest"; echo "watch $id: $text"
+        cand "${RANK[${cls[$id]}]}" 0 "${clspos[$id]}" "BANNER$TAB$id$TAB$text$TAB$route" ;;
+      NOTE) echo "NOTE: $rest" ;;
+      LINE) echo "$rest" ;;
+      ERR) IFS=$'\036' read -ra parts <<<"$rest"; serr FORGE "${parts[@]}" ;;
+      FAIL) echo "failing: ${rest%%"$TAB"*}"; shared ci-failing "${rest%%"$TAB"*}" "${rest#*"$TAB"}" ;;
+      ACT) echo "awaiting approval: $rest"; shared ci-action-required "$rest" ;;
+      PRACT) echo "awaiting approval: $rest"; shared pr-action-required "$rest" ;;
+    esac
+  done <"$forge_dir/out"
 fi
 
 section "RECENT COMMITS"

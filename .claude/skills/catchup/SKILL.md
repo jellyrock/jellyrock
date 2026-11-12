@@ -20,7 +20,7 @@ audit-span: read-only
 
 **Goal.** Turn a cold session-start into a quick read of "I know where I left off, what's running, what's queued, and what to do next." This is the **daily-ritual entry point**: the thing you type first when you sit down, and the state load `/focus` runs before it picks a move. It exists so nothing important rots between sessions: a paused project, a deferred followup, a failed background job, or a queued attention-item that the prior session captured as "deal with this tomorrow" all surface in one read instead of being discovered piecemeal. The reads and counts are done by a tested script, and the checks that fire come back as one list ranked in code, so the model's part is bounded (compose the briefing and take the list's first line as the next move).
 
-**Inputs.** None. Any arguments are ignored, since the whole point is that the briefing comes from observed state rather than from your direction. If you already know what you want to look at, ask the targeted question directly; don't pay the briefing cost. The skill expects this repo to have a journal (the followup journal `/log` writes: open followups plus in-flight non-project work, running jobs and recurring cadences) and reads any state beyond it (pipelines, builds, deploys) through this repo's own reader, which the shared reader runs when `catchup.conf` beside it names one. If the journal doesn't exist yet, the skill stops at Step 1 and tells the user to bootstrap it.
+**Inputs.** None. Any arguments are ignored, since the whole point is that the briefing comes from observed state rather than from your direction. If you already know what you want to look at, ask the targeted question directly; don't pay the briefing cost. The skill expects this repo to have a journal (the followup journal `/log` writes: open followups plus in-flight non-project work, running jobs and recurring cadences) reads CI, pull requests and watched issues through the pr skill's `forge.sh` when this repo has it, and reads any other state (pipelines, deploys) through this repo's own reader, which the shared reader runs when `catchup.conf` beside it names one. If the journal doesn't exist yet, the skill stops at Step 1 and tells the user to bootstrap it.
 
 **Outputs.**
 
@@ -59,7 +59,7 @@ audit-span: read-only
 
 ## Implementation
 
-The reader is `bash .claude/skills/catchup/catchup-state.sh` (run from anywhere in the repo; its header lists every check, threshold and line type). It also runs this repo's own reader, the command `catchup.conf` beside it names, and ranks both readers' checks into one `=== CANDIDATES ===` block at the end of its output. This repo's extra briefing sections are in this skill's `## This repo`, when it has any.
+The reader is `bash .claude/skills/catchup/catchup-state.sh` (run from anywhere in the repo; its header lists every check, threshold and line type). It also runs this repo's own reader, the command `catchup.conf` beside it names, reads the forge checks, and ranks every check into one `=== CANDIDATES ===` block at the end of its output. This repo's extra briefing sections are in this skill's `## This repo`, when it has any.
 
 ### Step 1: Read state, once
 
@@ -88,7 +88,9 @@ First the `ERROR`, `BANNER` and `PIN` lines in the block's order, never re-order
 - **Open followups**: the total and per-category counts with the oldest age, from the reader; when it says the counts are n/a, "n/a" and a pointer to that banner (never a zero).
 - **Held followups**: the reader's held list as printed (each fid, its state and what it waits on), or "Held followups: none".
 - **In-flight work / running jobs / recurring cadences**: the journal's other sections, as the reader printed them.
+- **Checks turned off**: the reader's `=== CONFIG ===` notes as printed, each check `catchup.conf` turns off and why (no heading when the reader printed no such section).
 - **This repo's own sections**: what the reader printed under `=== OWN READER ===`, per `## This repo` (none, and no heading, when it names none).
+- **Forge**: the reader's `=== FORGE ===` lines as printed: the CI and pull request counts, each watched issue, or the NOTE saying why the forge is not read here.
 - **Recent commits**: the reader's 7- and 14-day counts, then its 10 recent commits, listed. Nothing here knows when the last session was, so never call a count "since last session".
 - **Messages from other repos**: the reader's `=== MAILBOX ===` lines as printed, one per open message (no heading when the reader printed no such section: this machine has no mailbox). Each is also a candidate above, so it is not repeated as a suggestion here.
 - **Work requests from other repos**: the reader's `=== REQUESTS ===` lines as printed, one per open part naming this repo (no heading when there are none). Another repo decided the change; this repo checks it and makes it, or declines it with a reason. Each is also a candidate above, so it is not repeated as a suggestion here.
