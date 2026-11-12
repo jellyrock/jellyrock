@@ -122,6 +122,16 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // gate is `navSubtitlePanel`, which only runs on a fixture whose user can manage
   // subtitles (see `subtitlePanel` in tests/rta/screens.js).
   '#subtitlePanel.visible',
+  // `JRTabBar.onTabReady` sets it true once every tab has sized, and only a tabs change that
+  // rebuilds the tabs sets it false again: terminal for a given set of tabs. Read against the
+  // app source 2026-11-12. `tab-strip.spec.js` waits on it after setting the tabs.
+  '#overhang.#tabBar.isReady',
+  // The Animation that slides a scrolling tab strip. `JRTabBar.applyWindow` starts it in the
+  // same handler that moves focus, and `stopped` then holds until the next key: terminal.
+  // It also reads `stopped` before any slide, so `tab-strip.spec.js` waits on it only after
+  // it has seen the focus change that would have started one. Read against the app source
+  // 2026-11-12.
+  '#overhang.#scrollAnimation.state',
   // `JROverhangIconBar` writes the cluster icon's `isActive` when it builds the entry and in
   // `updateEntry`, both from `JRScene.applySyncPlayIcon` on each inGroup change and screen
   // change: terminal, held until the membership changes again. `syncplay-menu.spec.js` waits

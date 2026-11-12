@@ -34,6 +34,9 @@
     <!-- The tab bar's entries: { id, title, icon, selectedIcon }, projected from the active view's
          overhangTabs. Empty hides the tab bar and shows the title in its place. -->
     <field id="tabs" type="array" onChange="onTabsChanged" />
+    <!-- How the tab bar treats its tabs, projected from the active view's tabMode: "fixed"
+         (the default) or "scrolling" (JRTabBar.mode). Read when tabs is set, so set it first. -->
+    <field id="tabMode" type="string" value="fixed" />
     <field id="selectedTabId" type="string" alwaysNotify="true" />
     <!-- Whether the fixed cluster shows: JRScene sets it from the signed-in state, so the
          cluster is on every screen that shows the overhang once a user is signed in, except
