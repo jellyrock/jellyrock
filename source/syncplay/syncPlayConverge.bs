@@ -292,15 +292,22 @@ namespace syncPlayConverge
   ' One catch-up: seek ahead of the group by the time a seek takes plus a margin. The node then
   ' arrives, its landing is read, and the rules above hold it until the group reaches it. When
   ' the budget is spent or the last seek was given up, the group is asked to wait once instead.
+  ' A playing node with no known position cannot ask, so it gets one more seek per group command.
   function catchUp(player as object, group as object, ctx as object, policy as object, nowMs as longinteger) as dynamic
+    recover = false
     if player.lastSeekGaveUp or group.catchUps >= policy.catchUpLimit
       position = syncPlayPlayer.positionAt(player, nowMs)
       if not group.askedWait and group.ask.state <> "flight" and isValid(position)
         return { kind: "ask", what: "seek", positionTicks: syncPlayTime.asLong(position), waitOnMe: true }
       end if
-      ' Nothing more can bring it in: it plays where it is, never left frozen.
-      if player.activity = "paused" then return { kind: "resume", owner: "group" }
-      return invalid
+      ' A playing node that sends no position cannot ask, and would stay frozen until the next
+      ' group command: one more seek, shared with the standing-group recovery's count.
+      recover = player.activity = "playing" and not isValid(position) and group.recoverSeeks < 1
+      if not recover
+        ' Nothing more can bring it in: it plays where it is, never left frozen.
+        if player.activity = "paused" then return { kind: "resume", owner: "group" }
+        return invalid
+      end if
     end if
     leadMs& = syncPlayTime.asLong(player.lastSeekMs) + policy.leadMarginMs
     if leadMs& < policy.leadMs then leadMs& = policy.leadMs
@@ -309,7 +316,9 @@ namespace syncPlayConverge
       if player.activity = "paused" then return { kind: "resume", owner: "group" }
       return invalid
     end if
-    return { kind: "seek", owner: "hold", targetTicks: syncPlayTime.asLong(target), catchUp: true, byPick: group.pickPending }
+    seek = { kind: "seek", owner: "hold", targetTicks: syncPlayTime.asLong(target), catchUp: true, byPick: group.pickPending }
+    if recover then seek.recover = true
+    return seek
   end function
 
   ' --- the server's picture of this member ---

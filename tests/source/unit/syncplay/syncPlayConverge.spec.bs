@@ -806,6 +806,45 @@ namespace tests
       m.assertEqual(atLimit.action.owner, "hold")
     end function
 
+    @it("a silent playing node whose last seek was given up is sought once more")
+    function _()
+      player = m.playingAt(m.at65s, 10000&)
+      player.lastSeekGaveUp = true
+      group = m.playingLine()
+      atLimit = m.decide(player, group, 13000&)
+      m.assertEqual(m.kindOf(atLimit), "seek")
+      m.assertTrue(atLimit.action.catchUp)
+      m.assertTrue(atLimit.action.recover)
+      m.assertTrue(atLimit.action.silent)
+      m.assertEqual(atLimit.action.owner, "hold")
+      syncPlayConverge.applied(player, group, atLimit.action, 13000&)
+      m.assertEqual(group.recoverSeeks, 1)
+    end function
+
+    @it("a silent playing node whose catch-up budget is spent is sought once more")
+    function _()
+      player = m.playingAt(m.at65s, 10000&)
+      group = m.playingLine()
+      group.catchUps = 2
+      atLimit = m.decide(player, group, 13000&)
+      m.assertEqual(m.kindOf(atLimit), "seek")
+      m.assertTrue(atLimit.action.catchUp)
+      m.assertTrue(atLimit.action.recover)
+      m.assertTrue(atLimit.action.silent)
+      m.assertEqual(atLimit.action.owner, "hold")
+      syncPlayConverge.applied(player, group, atLimit.action, 13000&)
+      m.assertEqual(group.recoverSeeks, 1)
+    end function
+
+    @it("a silent playing node is sought only once per group command")
+    function _()
+      player = m.playingAt(m.at65s, 10000&)
+      player.lastSeekGaveUp = true
+      group = m.playingLine()
+      group.recoverSeeks = 1
+      m.assertEqual(m.kindOf(m.decide(player, group, 13000&)), "")
+    end function
+
     @it("a playing node whose readings keep arriving is never caught up for silence")
     function _()
       group = m.playingLine()
