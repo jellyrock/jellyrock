@@ -237,13 +237,14 @@ sub deleteLibraryFromRegistry(libraryId as string)
     return
   end if
 
-  ' Known display setting keys
-  possibleKeys = ["sortField", "filter", "landing", "layout", "sortAscending", "filterOptions", "view"]
-
-  for each key in possibleKeys
-    registryKey = "display." + libraryId + "." + key
-    ' Delete directly from registry - data was already removed from m.top.displaySettings
-    registryDelete(registryKey, localUser.id)
+  ' Every key the library has, by its prefix: a key can carry a view in its name
+  ' (libraryLayout.settingKey), so no list of names covers them. Deleted straight from the
+  ' registry: the data has already left m.top.displaySettings.
+  prefix = "display." + libraryId + "."
+  stored = RegistryReadAll(localUser.id)
+  if not isValid(stored) then return
+  for each registryKey in stored
+    if registryKey.left(prefix.len()) = prefix then registryDelete(registryKey, localUser.id)
   end for
 end sub
 
