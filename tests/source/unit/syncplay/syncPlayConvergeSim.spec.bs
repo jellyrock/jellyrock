@@ -45,6 +45,8 @@ namespace tests
         m.totals[name] = m.totals[name] + sim.counts[name]
       end for
       if sim.violations.count() > 0 then return sim.violations[0]
+      ' A member the rules halted follows no more, so nothing is left to be in step with.
+      if sim.haltedByDesign = true then return ""
       if midway <> "" then return "before the clean pause: " + midway
       if sim.server.state <> "Playing" then return "the group ended " + sim.server.state
       atEnd = tests.syncPlaySim.outOfStep(sim)
@@ -83,6 +85,17 @@ namespace tests
       for each name in ["farLandings", "slowSeeks", "slowResumes", "scrubs", "lostRequests", "stalls", "wedgedPauses", "silentCatchUps", "recoverSeeks", "catchUps", "holds", "whereAsks"]
         m.assertTrue(m.totals[name] > 0, "no run went through any " + name)
       end for
+    end function
+
+    @it("a node that takes no pause again after its recovery seek halts, as the rule says")
+    function _()
+      ' Two seeds the full sweep found: a pause never takes, the one recovery seek frees the
+      ' node, and the next pause never takes either.
+      m.totals = {}
+      for each seed in [10429, 10778]
+        m.assertEqual(m.runSeed(seed, true), "", "seed " + seed.toStr())
+      end for
+      m.assertEqual(m.totals.designedHalts, 2)
     end function
 
   end class

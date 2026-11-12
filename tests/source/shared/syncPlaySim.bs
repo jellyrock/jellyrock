@@ -44,12 +44,14 @@ namespace tests.syncPlaySim
       lastFrameAtMs: 0&,
       ' Set true to print every event and action of the run to the console, to read a failing seed.
       tracing: false,
+      ' The member was halted by the one rule that may halt it (carryOut).
+      haltedByDesign: false,
       wakeEpoch: 0,
       notices: 0,
       seeks: 0,
       events: 0,
       ' What the run went through, so a spec can check its faults happened at all.
-      counts: { farLandings: 0, slowSeeks: 0, slowResumes: 0, scrubs: 0, lostRequests: 0, stalls: 0, wedgedPauses: 0, silentCatchUps: 0, recoverSeeks: 0, catchUps: 0, holds: 0, waitAsks: 0, whereAsks: 0 }
+      counts: { farLandings: 0, slowSeeks: 0, slowResumes: 0, scrubs: 0, lostRequests: 0, stalls: 0, wedgedPauses: 0, silentCatchUps: 0, recoverSeeks: 0, designedHalts: 0, catchUps: 0, holds: 0, waitAsks: 0, whereAsks: 0 }
     }
     ' The group stands paused on one item, and this member's player mounts for it.
     syncPlayGroup.itemChanged(sim.group, "p-1", 99000&)
@@ -174,7 +176,14 @@ namespace tests.syncPlaySim
       sim.notices++
     else if kind = "halt"
       sim.following = false
-      violate(sim, "the member halted")
+      ' One halt is the rule working: the node took no pause, the one recovery seek for this
+      ' group command is spent, and it takes no pause again. Any other halt is a fault.
+      if action.reason = "the player would not stay paused" and sim.node.wedged and sim.group.recoverSeeks >= 1
+        sim.haltedByDesign = true
+        sim.counts.designedHalts++
+      else
+        violate(sim, "the member halted")
+      end if
     end if
     syncPlayConverge.applied(sim.player, sim.group, action, sim.now)
   end sub
