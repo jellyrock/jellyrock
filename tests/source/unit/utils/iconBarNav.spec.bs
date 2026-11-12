@@ -66,6 +66,18 @@ namespace tests
       m.assertEqual(iconBarNav.indexOf(invalid, "home"), -1)
     end function
 
+    @it("anchors a menu to an icon's focus box, not its slot")
+    function _()
+      first = iconBarNav.iconAnchor(1500, 27, 0)
+      third = iconBarNav.iconAnchor(1500, 27, 2)
+
+      m.assertEqual(first.x, 1500 + iconBarNav.iconX(0))
+      m.assertEqual(third.x - first.x, 2 * (iconBarNav.SLOT_SIZE + iconBarNav.SLOT_GAP))
+      m.assertEqual(first.y, 27)
+      m.assertEqual(first.width, overhangRow.ICON_BOX)
+      m.assertEqual(first.height, overhangRow.ICON_BOX)
+    end function
+
   end class
 
 end namespace

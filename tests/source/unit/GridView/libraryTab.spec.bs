@@ -186,6 +186,21 @@ namespace tests
     @describe("libraryLayout")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+    @it("saves a view's layout under a key of its own, whatever the view's case")
+    function _()
+      m.assertEqual(libraryLayout.settingKey(libraryTab.MOVIES), "layout_movies")
+      m.assertEqual(libraryLayout.settingKey("Movies"), "layout_movies")
+      m.assertEqual(libraryLayout.settingKey(invalid), "layout_")
+    end function
+
+    @it("names each layout it knows, and nothing for one it does not")
+    function _()
+      m.assertEqual(libraryLayout.title(libraryLayout.COMFORTABLE), "Comfortable")
+      m.assertEqual(libraryLayout.title(libraryLayout.PRESENTATION), "Presentation")
+      m.assertEqual(libraryLayout.title("posters"), "")
+      m.assertEqual(libraryLayout.title(invalid), "")
+    end function
+
     @it("honors a saved layout it knows")
     @params("comfortable")
     @params("presentation")

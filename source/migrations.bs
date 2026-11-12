@@ -533,7 +533,7 @@ sub migrateLibraryTabs(reg as object, section as string)
       end if
 
       if mapped.layout <> ""
-        layoutKey = key.left(key.len() - keySuffix.len()) + ".layout"
+        layoutKey = key.left(key.len() - keySuffix.len()) + "." + libraryLayout.settingKey(mapped.tab)
         if not reg.exists(layoutKey) or reg.read(layoutKey) <> mapped.layout
           reg.write(layoutKey, mapped.layout)
           changedCount++

@@ -26,6 +26,7 @@ import {
   focusGridTile,
   navLibraryGrid,
   navSearch,
+  openSettingsFromGear,
   pickSettingsRadioOption,
   pressGridTile,
   waitSettingsMenuHas,
@@ -43,13 +44,13 @@ import {
 } from '../lib/steps.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
-// The Movies library's presentation view (MoviePresenter.getBackdropMode returns
+// The Movies tab in its presentation layout (MoviePresenter.getBackdropMode returns
 // "presentation" only for it).
-const PRESENTATION_VIEW = 'Movies';
-// The Movies poster view, whose grid sends the focused movie's backdrop to the scene
+const PRESENTATION_VIEW = 'presentation';
+// The Movies tab in its poster grid, which sends the focused movie's backdrop to the scene
 // (MoviePresenter.getBackdropMode returns "fullscreen" for it), so details mode has a browse
 // write to turn into a clear.
-const POSTER_VIEW = 'MoviesGrid';
+const POSTER_VIEW = 'comfortable';
 const isImage = (u) => typeof u === 'string' && u.length > 0;
 const hasTitle = (t) => typeof t === 'string' && t.length > 0;
 
@@ -81,9 +82,9 @@ beforeAll(async () => {
 
 const NO_BACKDROP_MOVIE = 'no movie with a backdrop in the "movies" library';
 
-async function launchHome(mode, label, view = PRESENTATION_VIEW) {
+async function launchHome(mode, label, layout = PRESENTATION_VIEW) {
   const expectedServer = await seedHome(session, LOCALE);
-  const landing = await seedLibraryLanding(session, moviesId, view);
+  const landing = await seedLibraryLanding(session, moviesId, 'movies', { layout });
   // rta-run.js restores the whole registry after the run.
   await odc.writeRegistry({ values: { [session.userId]: { uiShowBackdrop: mode } } });
   await hardRelaunch();
@@ -172,11 +173,8 @@ async function openSettingsFromGrid() {
     label: 'the overhang row from the grid',
   });
   await walkOverhangRowTo('settingsIcon', { label: 'the gear from the grid' });
-  await press(ecp.Key.Ok);
-  await waitFor('#versionLabel.text', (t) => typeof t === 'string' && /^v/.test(t), {
-    label: 'settings version label',
-    timeout: 20000,
-  });
+  // A movie library's Movies tab has a page setting (Layout), so its gear opens a menu.
+  await openSettingsFromGear({ pageMenu: true });
 }
 
 /**

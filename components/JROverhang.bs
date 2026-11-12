@@ -4,6 +4,7 @@ import "pkg:/source/enums/HomeAction.bs"
 import "pkg:/source/syncplay/syncPlayMenu.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/iconBarNav.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/overhangRow.bs"
 import "pkg:/source/utils/pixelGrid.bs"
@@ -182,6 +183,16 @@ end sub
 ' The cluster icon for an entry id, for a screen focusing the icon it was left by
 function getIcon(id as string) as object
   return m.cluster.callFunc("getIcon", id)
+end function
+
+' Where a menu opened from the cluster icon `id` hangs: the icon's focus box in screen
+' coordinates, or invalid when the cluster has no such icon. The overhang sits at the
+' screen's origin while it shows, so the cluster's own translation is the screen's.
+function iconAnchor(id as string) as dynamic
+  index = iconBarNav.indexOf(clusterEntries(m.clusterHasSyncPlay, false), id)
+  if index < 0 then return invalid
+  origin = m.cluster.translation
+  return iconBarNav.iconAnchor(int(origin[0]), int(origin[1]), index)
 end function
 
 ' The cluster's entries: SyncPlay first when the account may use it, then Search and Settings,

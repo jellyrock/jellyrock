@@ -1,8 +1,8 @@
 namespace tests
 
   ' LIBRARY_TAB_MIGRATION_VERSION: each library's saved view (`display.<id>.landing`)
-  ' becomes its libraryTab id, and the two movie views become one tab plus a
-  ' `display.<id>.layout`. Run against real `test-` registry sections.
+  ' becomes its libraryTab id, and the two movie views become one tab plus that view's
+  ' layout, `display.<id>.layout_movies`. Run against real `test-` registry sections.
   @suite("Library Tab Migration - v3.3.2 Migration")
   @tags("migration")
   class LibraryTabMigrationTests extends tests.BaseTestSuite
@@ -68,9 +68,9 @@ namespace tests
         expected = legacy[libraryId]
         m.assertEqual(reg.read(`display.${libraryId}.landing`), expected[1], `${expected[0]} becomes its tab id`)
         if expected[2] = ""
-          m.assertFalse(reg.exists(`display.${libraryId}.layout`), `${expected[0]} implies no layout`)
+          m.assertFalse(reg.exists(`display.${libraryId}.layout_${expected[1]}`), `${expected[0]} implies no layout`)
         else
-          m.assertEqual(reg.read(`display.${libraryId}.layout`), expected[2], `${expected[0]} implies its layout`)
+          m.assertEqual(reg.read(`display.${libraryId}.layout_${expected[1]}`), expected[2], `${expected[0]} implies its layout`)
         end if
       end for
     end function
@@ -102,7 +102,7 @@ namespace tests
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read("display.lib-1.landing"), "SomethingNewer")
-      m.assertFalse(reg.exists("display.lib-1.layout"))
+      m.assertFalse(reg.exists("display.lib-1.layout_movies"))
     end function
 
     @it("touches no other display setting")
@@ -154,14 +154,14 @@ namespace tests
       testUserId = "test-library-tab-006"
       reg = m.userSection(testUserId)
       reg.write("display.lib-1.landing", "movies")
-      reg.write("display.lib-1.layout", "comfortable")
+      reg.write("display.lib-1.layout_movies", "comfortable")
       reg.flush()
 
       migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read("display.lib-1.landing"), "movies")
-      m.assertEqual(reg.read("display.lib-1.layout"), "comfortable")
+      m.assertEqual(reg.read("display.lib-1.layout_movies"), "comfortable")
     end function
 
     @it("writes the layout an old name implies over one already stored")
@@ -171,14 +171,14 @@ namespace tests
       testUserId = "test-library-tab-007"
       reg = m.userSection(testUserId)
       reg.write("display.lib-1.landing", "Movies")
-      reg.write("display.lib-1.layout", "comfortable")
+      reg.write("display.lib-1.layout_movies", "comfortable")
       reg.flush()
 
       migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read("display.lib-1.landing"), "movies")
-      m.assertEqual(reg.read("display.lib-1.layout"), "presentation")
+      m.assertEqual(reg.read("display.lib-1.layout_movies"), "presentation")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -198,7 +198,7 @@ namespace tests
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read("display.lib-1.landing"), "MoviesGrid")
-      m.assertFalse(reg.exists("display.lib-1.layout"))
+      m.assertFalse(reg.exists("display.lib-1.layout_movies"))
     end function
 
     @it("runs for a section below the migration's version")
@@ -214,7 +214,7 @@ namespace tests
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read("display.lib-1.landing"), "movies")
-      m.assertEqual(reg.read("display.lib-1.layout"), "comfortable")
+      m.assertEqual(reg.read("display.lib-1.layout_movies"), "comfortable")
     end function
 
     @it("follows the music view migration for a user from before it")
@@ -254,8 +254,8 @@ namespace tests
 
       reg1 = CreateObject("roRegistrySection", firstUser)
       reg2 = CreateObject("roRegistrySection", secondUser)
-      m.assertEqual(reg1.read("display.lib-shared.layout"), "presentation")
-      m.assertEqual(reg2.read("display.lib-shared.layout"), "comfortable")
+      m.assertEqual(reg1.read("display.lib-shared.layout_movies"), "presentation")
+      m.assertEqual(reg2.read("display.lib-shared.layout_movies"), "comfortable")
       m.assertEqual(reg1.read("display.lib-shared.landing"), "movies")
       m.assertEqual(reg2.read("display.lib-shared.landing"), "movies")
     end function

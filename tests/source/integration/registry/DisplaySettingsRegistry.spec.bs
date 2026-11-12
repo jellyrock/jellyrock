@@ -388,5 +388,40 @@ namespace tests
       m.assertEqual(sortAscending, false, "sortAscending should be boolean false")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Remove a library's display settings")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("deletes every key under the library's prefix, per-view keys included, and no other library's")
+    function _()
+      otherLibraryId = m.testLibraryId + "-other"
+      reg = CreateObject("roRegistrySection", m.testUserId)
+      reg.write("display." + m.testLibraryId + ".layout_movies", "presentation")
+      reg.write("display." + m.testLibraryId + ".notInMemory", "kept only in the registry")
+      reg.write("display." + otherLibraryId + ".layout_movies", "comfortable")
+      reg.write("unrelatedSetting", "stays")
+      reg.flush()
+
+      m.settingsNode.callFunc("enableAutoSync")
+      both = {}
+      both.SetModeCaseSensitive()
+      both[m.testLibraryId] = { landing: "movies" }
+      both[otherLibraryId] = { landing: "movies" }
+      m.settingsNode.displaySettings = both
+
+      onlyOther = {}
+      onlyOther.SetModeCaseSensitive()
+      onlyOther[otherLibraryId] = { landing: "movies" }
+      m.settingsNode.displaySettings = onlyOther
+
+      reg = CreateObject("roRegistrySection", m.testUserId)
+      for each key in reg.GetKeyList()
+        m.assertFalse(key.instr("display." + m.testLibraryId + ".") = 0, "left behind: " + key)
+      end for
+      m.assertEqual(reg.read("display." + otherLibraryId + ".layout_movies"), "comfortable")
+      m.assertEqual(reg.read("display." + otherLibraryId + ".landing"), "movies")
+      m.assertEqual(reg.read("unrelatedSetting"), "stays")
+    end function
+
   end class
 end namespace

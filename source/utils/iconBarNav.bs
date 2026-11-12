@@ -22,6 +22,14 @@ namespace iconBarNav
     return count * SLOT_SIZE + (count - 1) * SLOT_GAP
   end function
 
+  ' The focus box of the icon at `index`, in the coordinates the bar's own origin
+  ' (`barX`, `barY`) is in, as a dialog anchor: a menu opened from the icon hangs off this
+  ' box. From the arithmetic that placed the icon, so it needs no rendered node.
+  ' @return {object} { x, y, width, height } for computeDialogLayout's `anchor`
+  function iconAnchor(barX as integer, barY as integer, index as integer) as object
+    return { x: barX + iconX(index), y: barY, width: overhangRow.ICON_BOX, height: overhangRow.ICON_BOX }
+  end function
+
   ' Where a left or right press from the icon at `index` goes: the neighbor's index, or
   ' `exit` naming the edge the press left the bar by. The bar stops at its ends; the
   ' overhang decides what sits beyond them.
