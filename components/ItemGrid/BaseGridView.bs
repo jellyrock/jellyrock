@@ -479,7 +479,6 @@ sub loadInitialItems()
   m.filter = getLibraryDisplaySetting(libraryId, "filter", "All")
   m.filterOptions = parseJson(getLibraryDisplaySetting(libraryId, "filterOptions", "{}"))
   m.view = getLibraryDisplaySetting(libraryId, "landing", invalid)
-  savedLayout = getLibraryDisplaySetting(libraryId, "layout", invalid)
   m.sortAscending = getLibraryDisplaySetting(libraryId, "sortAscending", true)
 
   ' Set default view if not saved, or if the saved one is no longer on offer.
@@ -495,10 +494,10 @@ sub loadInitialItems()
   m.offeredViews = offeredViews()
   m.view = gridQuery.resolveView(m.view, m.offeredViews, getDefaultView())
 
-  ' The layout is per library, not per view: a movie library left in presentation still
-  ' draws Studios in its own grid, and comes back to presentation on the Movies tab.
+  ' The layout is saved per view: the choice belongs to the grid on show.
   defaultLayout = libraryLayout.COMFORTABLE
   if isValid(m.presenter) then defaultLayout = m.presenter.getDefaultLayout()
+  savedLayout = getLibraryDisplaySetting(libraryId, libraryLayout.settingKey(m.view), invalid)
   m.layout = libraryLayout.resolve(savedLayout, defaultLayout)
 
   ' Keep currentView in sync with the finalized view
@@ -524,13 +523,8 @@ sub loadInitialItems()
     hideTVGuide()
   end if
 
-  ' Alpha search
-  if m.nameStartsWith = m.top.alphaSelected
-    m.nameStartsWith = ""
-  else
-    m.nameStartsWith = m.alpha.letterSelected
-  end if
-
+  ' m.nameStartsWith is the letter in force. Only a press on the rail changes it
+  ' (onAlphaSelectedChanged), so a reload for any other reason keeps it.
   setGridQuery(buildGridQuery(m.nameStartsWith, m.voiceBox.text))
 
   ' Update title after the query is final
@@ -1522,13 +1516,13 @@ sub optionsClosed()
     setLibraryDisplaySetting(libraryId, "landing", m.view)
     if layoutChosen
       m.layout = m.options.layout
-      setLibraryDisplaySetting(libraryId, "layout", m.layout)
+      setLibraryDisplaySetting(libraryId, libraryLayout.settingKey(m.view), m.layout)
     end if
 
     ' Reset any filtering or search terms
     m.voiceBox.text = ""
     m.top.alphaSelected = ""
-    m.nameStartsWith = " "
+    m.nameStartsWith = ""
     m.filter = "All"
     m.filterOptions = {}
     m.sortField = "SortName"
@@ -1563,11 +1557,62 @@ sub optionsClosed()
 end sub
 
 ' ============================================================================
+' Page settings (the settings icon's menu)
+' ============================================================================
+
+' JRScreen hook: Layout, when the view on show can be drawn more than one way.
+function pageSettingsEntries() as object
+  entries = []
+  layouts = offeredLayouts()
+  if layouts.count() > 1
+    entries.push({ id: "layout", title: translate(translationKeys.LabelLayout), options: layouts, selected: m.layout })
+  end if
+  return entries
+end function
+
+' JRScreen hook: the viewer picked a new option for one of those settings.
+sub onPageSettingChanged(id as string, value as string)
+  if id = "layout" then applyLayout(value)
+end sub
+
+' The layouts the presenter lists for the view on show, as page-setting options
+' ([{ id, title }]); empty when it lists none.
+function offeredLayouts() as object
+  options = []
+  if not isValid(m.presenter) or not isValid(m.top.parentItem) then return options
+  layouts = m.presenter.getOptions(m.top.parentItem).layouts
+  if type(layouts) <> "roAssociativeArray" then return options
+  viewLayouts = layouts[LCase(textOrEmpty(m.view))]
+  if type(viewLayouts) <> "roArray" then return options
+  for each layout in viewLayouts
+    title = libraryLayout.title(layout.Name)
+    if title <> "" then options.push({ id: layout.Name, title: title })
+  end for
+  return options
+end function
+
+' Draw the view on show in `layout` and save the choice for it. Not a view change: the
+' sort, the filter, the alpha letter and the voice text stay as they are.
+sub applyLayout(layout as string)
+  if not libraryLayout.isKnown(layout) or layout = m.layout then return
+  m.layout = layout
+  setLibraryDisplaySetting(m.top.parentItem.Id, libraryLayout.settingKey(m.view), layout)
+  reloadGridItems()
+  focusContent()
+end sub
+
+' ============================================================================
 ' Alpha / Voice Search
 ' ============================================================================
 
+' A press on the letter rail. The same letter again turns the letter off.
 sub onAlphaSelectedChanged()
   if m.top.alphaSelected <> ""
+    if m.nameStartsWith = m.top.alphaSelected
+      m.nameStartsWith = ""
+    else
+      m.nameStartsWith = m.top.alphaSelected
+    end if
     m.loadedItems = 0
 
     m.data = CreateObject("roSGNode", "ContentNode")

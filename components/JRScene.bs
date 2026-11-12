@@ -9,9 +9,11 @@ import "pkg:/source/syncplay/syncPlayQueue.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/appWaits.bs"
 import "pkg:/source/utils/backdrop.bs"
+import "pkg:/source/utils/buttonOverflow.bs"
 import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/loadingStages.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/pageSettings.bs"
 import "pkg:/source/utils/refusedNavigation.bs"
 import "pkg:/source/utils/serverCapabilities.bs"
 import "pkg:/source/utils/session.bs"
@@ -95,6 +97,10 @@ sub init()
   ' The SyncPlay menu's open dialog and its rows (openSyncPlayMenu); one at a time.
   m.syncPlayDialog = invalid
   m.syncPlayRows = invalid
+  ' The settings icon's page menu or its picker, whichever is up (openPageMenu), and what
+  ' it was built from: { view, entries, ids } for the menu, plus { entry, values } for a picker.
+  m.pageMenuDialog = invalid
+  m.pageMenu = invalid
   ' The pressed-action wait of the menu's group-list fetch, and the count that names each fetch.
   m.syncPlayWait = invalid
   m.syncPlayFetchCount = 0
@@ -983,6 +989,9 @@ sub onActiveRoutedViewChanged()
     else
       m.previousRoutedView.visible = false
     end if
+    ' A page dialog was about the screen now covered or closed. Its handler does nothing
+    ' for a close the viewer did not make, so nothing is lost by forgetting it here.
+    releasePageMenu()
     unregisterOverhangData(m.previousRoutedView)
   end if
 
@@ -1181,6 +1190,15 @@ sub onOverhangIconAction()
     openSyncPlayMenu()
     return
   end if
+  if id = "settings"
+    openPageMenu()
+    return
+  end if
+  openClusterRoute(id)
+end sub
+
+' Open the screen a cluster icon stands for, and note the icon on the screen being left.
+sub openClusterRoute(id as string)
   path = ""
   if id = "search"
     path = "/search"
@@ -1191,9 +1209,105 @@ sub onOverhangIconAction()
     m.log.warn("overhang icon with no route", id)
     return
   end if
+  view = getActiveView()
   if isValid(view) and view.isSubType("JRScreen") then view.overhangReturnIcon = id
   routerNavigate(path)
 end sub
+
+' ---------------------------------------------------------------------------
+' Page settings: the settings icon's menu
+'
+' A screen declares the settings that belong to it (JRScreen.pageSettingsEntries); this
+' presents them. With none, the icon opens Settings as it always did. With some, a menu
+' hangs from the icon: the page's entries, then All settings. An entry opens a list of its
+' options, Back there returns to the menu on that entry's row, and a pick that changes the
+' value goes to the screen (JRScreen.onPageSettingChanged). source/utils/pageSettings.bs
+' builds the rows.
+' ---------------------------------------------------------------------------
+
+' The one way the page menu opens.
+' @param {string} focusEntryId - the row to focus, for Back from that entry's picker
+sub openPageMenu(focusEntryId = "" as string)
+  view = getActiveView()
+  entries = invalid
+  if isValid(view) and view.isSubType("JRScreen") then entries = view.callFunc("pageSettingsEntries")
+  menu = pageSettings.menuRows(entries)
+  anchor = m.overhang.callFunc("iconAnchor", "settings")
+  if menu.ids.count() = 0 or not isValid(anchor)
+    ' Back from a picker asked for the menu again: with nothing to show, it only closes.
+    if focusEntryId = "" then openClusterRoute("settings")
+    return
+  end if
+
+  focusIndex = 0
+  for i = 0 to menu.ids.count() - 1
+    if menu.ids[i] = focusEntryId then focusIndex = i
+  end for
+
+  m.pageMenu = { view: view, entries: entries, ids: menu.ids }
+  m.pageMenuDialog = showOverflowMenu(translate(translationKeys.LabelSettings), menu.labels, "onPageMenuResult", anchor, invalid, focusIndex)
+  claimPageDialogForScreen(view)
+end sub
+
+' The page's dialogs belong to the screen they are about, so they end when another screen
+' covers it (JRScreen.endOwnedDialog), although the scene presents them.
+sub claimPageDialogForScreen(view as object)
+  if isValid(m.pageMenuDialog) then m.pageMenuDialog.owner = view
+end sub
+
+' Forget the page dialog on show and what it was built from. They hold the screen they are
+' about, so a screen that closes under them (JRScreen.beforeViewClose abandons the dialog,
+' and no result comes) is let go at the screen swap.
+sub releasePageMenu()
+  m.pageMenuDialog = invalid
+  m.pageMenu = invalid
+end sub
+
+sub onPageMenuResult()
+  dialog = m.pageMenuDialog
+  menu = m.pageMenu
+  releasePageMenu()
+  if not isValid(dialog) or not isValid(menu) then return
+
+  ' Only a user's pick acts, never a close that code made.
+  rowId = overflowMenuSelection(dialog.result, menu.ids)
+  if rowId = "" or not isActivePageMenuView(menu.view) then return
+
+  if rowId = pageSettings.ALL_SETTINGS
+    openClusterRoute("settings")
+    return
+  end if
+
+  entry = pageSettings.findEntry(menu.entries, rowId)
+  if not isValid(entry) then return
+  list = pageSettings.picker(entry)
+  focusIndex = list.selectedIndex
+  if focusIndex < 0 then focusIndex = 0
+  ' Straight from this handler: the picker takes over from the menu, focus target included.
+  m.pageMenu = { view: menu.view, entry: entry, values: list.values }
+  m.pageMenuDialog = showListDialog(textOrEmpty(entry.title), list.labels, "onPageSettingPicked", focusIndex, list.selectedIndex)
+  claimPageDialogForScreen(menu.view)
+end sub
+
+sub onPageSettingPicked()
+  dialog = m.pageMenuDialog
+  picker = m.pageMenu
+  releasePageMenu()
+  if not isValid(dialog) or not isValid(picker) or not isActivePageMenuView(picker.view) then return
+
+  outcome = pageSettings.pickOutcome(dialog.result, picker.entry, picker.values)
+  if outcome.action = pageSettings.PICK_REOPEN
+    openPageMenu(picker.entry.id)
+  else if outcome.action = pageSettings.PICK_CHANGE
+    picker.view.callFunc("onPageSettingChanged", picker.entry.id, outcome.value)
+  end if
+end sub
+
+' Whether the screen a page dialog was opened for is still the one on show.
+function isActivePageMenuView(view as object) as boolean
+  active = getActiveView()
+  return isValid(view) and isValid(active) and active.isSameNode(view)
+end function
 
 ' ---------------------------------------------------------------------------
 ' SyncPlay: the cluster icon's menu
