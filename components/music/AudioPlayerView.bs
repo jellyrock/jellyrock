@@ -803,7 +803,7 @@ sub applyItemArtwork(item as object)
   if not isValidAndNotEmpty(backdropUri) then backdropUri = ""
   m.log.info("Backdrop change: old=", m.currentBackdropUrl, "new=", backdropUri)
   m.currentBackdropUrl = backdropUri
-  m.global.sceneManager.callFunc("setBackgroundImage", backdropUri)
+  m.global.sceneManager.callFunc("setBackgroundImage", backdropUri, true, false, m.top.subtype())
 
   artSize = imageSize.AUDIO_ART
   if isValidAndNotEmpty(item.albumId) and isValidAndNotEmpty(item.albumPrimaryImageTag)

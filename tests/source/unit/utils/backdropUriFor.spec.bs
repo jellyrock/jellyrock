@@ -1,0 +1,83 @@
+import "pkg:/source/utils/backdrop.bs"
+
+namespace tests
+
+  @suite("backdrop - backdropUriFor() and isItemBackdropOwner()")
+  class BackdropUriForTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isItemBackdropOwner()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for the screens that show an open item")
+    @params("ItemDetails")
+    @params("PlayerHostView")
+    @params("VideoPlayerView")
+    @params("AudioPlayerView")
+    function _(owner)
+      m.assertTrue(isItemBackdropOwner(owner))
+    end function
+
+    @it("is false for browse screens and an unnamed writer")
+    @params("Home")
+    @params("HomeRows")
+    @params("FavoritesRows")
+    @params("BaseGridView")
+    @params("SearchScreen")
+    @params("Settings")
+    @params("PhotoDetails")
+    @params("")
+    function _(owner)
+      m.assertFalse(isItemBackdropOwner(owner))
+    end function
+
+    @it("is false for invalid")
+    function _()
+      m.assertFalse(isItemBackdropOwner(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("backdropUriFor()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("passes every write through when enabled")
+    function _()
+      m.assertEqual(backdropUriFor(BackdropMode.ENABLED, "ItemDetails", "http://img/a"), "http://img/a")
+      m.assertEqual(backdropUriFor(BackdropMode.ENABLED, "HomeRows", "http://img/b"), "http://img/b")
+      m.assertEqual(backdropUriFor(BackdropMode.ENABLED, "", "http://img/c"), "http://img/c")
+    end function
+
+    @it("passes an item screen's write through in details mode")
+    @params("ItemDetails")
+    @params("PlayerHostView")
+    @params("VideoPlayerView")
+    @params("AudioPlayerView")
+    function _(owner)
+      m.assertEqual(backdropUriFor(BackdropMode.DETAILS, owner, "http://img/a"), "http://img/a")
+    end function
+
+    @it("turns a browse screen's write into a clear in details mode")
+    @params("HomeRows")
+    @params("BaseGridView")
+    @params("SearchScreen")
+    @params("")
+    function _(owner)
+      m.assertEqual(backdropUriFor(BackdropMode.DETAILS, owner, "http://img/a"), "")
+    end function
+
+    @it("clears every write when disabled")
+    function _()
+      m.assertEqual(backdropUriFor(BackdropMode.DISABLED, "ItemDetails", "http://img/a"), "")
+      m.assertEqual(backdropUriFor(BackdropMode.DISABLED, "HomeRows", "http://img/b"), "")
+    end function
+
+    @it("keeps a clear a clear in every mode")
+    function _()
+      m.assertEqual(backdropUriFor(BackdropMode.ENABLED, "HomeRows", ""), "")
+      m.assertEqual(backdropUriFor(BackdropMode.DETAILS, "ItemDetails", ""), "")
+      m.assertEqual(backdropUriFor(BackdropMode.DISABLED, "ItemDetails", ""), "")
+    end function
+
+  end class
+
+end namespace

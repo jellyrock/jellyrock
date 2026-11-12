@@ -1,0 +1,108 @@
+import "pkg:/source/utils/backdrop.bs"
+
+namespace tests
+
+  @suite("backdrop - resolveBackdropMode()")
+  class ResolveBackdropModeTests extends tests.BaseTestSuite
+
+    private function createMockUserSettings(uiShowBackdrop as dynamic) as object
+      return { uiShowBackdrop: uiShowBackdrop }
+    end function
+
+    private function createMockUserConfig(showBackdrop as dynamic) as object
+      return { showBackdrop: showBackdrop }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("JellyRock setting")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns enabled when the setting is 'enabled', whatever the server says")
+    function _()
+      result = resolveBackdropMode(m.createMockUserSettings("enabled"), m.createMockUserConfig(false))
+      m.assertEqual(result, BackdropMode.ENABLED)
+    end function
+
+    @it("returns details when the setting is 'details', whatever the server says")
+    function _()
+      m.assertEqual(resolveBackdropMode(m.createMockUserSettings("details"), m.createMockUserConfig(true)), BackdropMode.DETAILS)
+      m.assertEqual(resolveBackdropMode(m.createMockUserSettings("details"), m.createMockUserConfig(false)), BackdropMode.DETAILS)
+    end function
+
+    @it("returns disabled when the setting is 'disabled', whatever the server says")
+    function _()
+      result = resolveBackdropMode(m.createMockUserSettings("disabled"), m.createMockUserConfig(true))
+      m.assertEqual(result, BackdropMode.DISABLED)
+    end function
+
+    @it("ignores an invalid config when the setting names a mode")
+    function _()
+      m.assertEqual(resolveBackdropMode(m.createMockUserSettings("enabled"), invalid), BackdropMode.ENABLED)
+      m.assertEqual(resolveBackdropMode(m.createMockUserSettings("details"), invalid), BackdropMode.DETAILS)
+      m.assertEqual(resolveBackdropMode(m.createMockUserSettings("disabled"), invalid), BackdropMode.DISABLED)
+    end function
+
+    @it("handles a config with no showBackdrop field when the setting is 'enabled'")
+    function _()
+      result = resolveBackdropMode(m.createMockUserSettings("enabled"), {})
+      m.assertEqual(result, BackdropMode.ENABLED)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Falling back to the server's ShowBackdrop")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("uses the server value for the legacy 'webclient' setting")
+    function _()
+      m.assertEqual(resolveBackdropMode(m.createMockUserSettings("webclient"), m.createMockUserConfig(true)), BackdropMode.ENABLED)
+      m.assertEqual(resolveBackdropMode(m.createMockUserSettings("webclient"), m.createMockUserConfig(false)), BackdropMode.DISABLED)
+    end function
+
+    @it("uses the server value when the setting is an empty string")
+    function _()
+      m.assertEqual(resolveBackdropMode(m.createMockUserSettings(""), m.createMockUserConfig(true)), BackdropMode.ENABLED)
+      m.assertEqual(resolveBackdropMode(m.createMockUserSettings(""), m.createMockUserConfig(false)), BackdropMode.DISABLED)
+    end function
+
+    @it("uses the server value when the setting is an unknown value")
+    function _()
+      m.assertEqual(resolveBackdropMode(m.createMockUserSettings("invalid_value"), m.createMockUserConfig(true)), BackdropMode.ENABLED)
+      m.assertEqual(resolveBackdropMode(m.createMockUserSettings("invalid_value"), m.createMockUserConfig(false)), BackdropMode.DISABLED)
+    end function
+
+    @it("uses the server value when the settings are invalid")
+    function _()
+      result = resolveBackdropMode(invalid, m.createMockUserConfig(false))
+      m.assertEqual(result, BackdropMode.DISABLED)
+    end function
+
+    @it("uses the server value when the settings have no uiShowBackdrop field")
+    function _()
+      result = resolveBackdropMode({}, m.createMockUserConfig(false))
+      m.assertEqual(result, BackdropMode.DISABLED)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Defaults")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns enabled when both settings and config are invalid")
+    function _()
+      m.assertEqual(resolveBackdropMode(invalid, invalid), BackdropMode.ENABLED)
+    end function
+
+    @it("returns enabled when falling back and the config is invalid")
+    function _()
+      m.assertEqual(resolveBackdropMode(m.createMockUserSettings("webclient"), invalid), BackdropMode.ENABLED)
+      m.assertEqual(resolveBackdropMode(m.createMockUserSettings(""), invalid), BackdropMode.ENABLED)
+    end function
+
+    @it("returns enabled when falling back and showBackdrop is not a boolean")
+    function _()
+      m.assertEqual(resolveBackdropMode(m.createMockUserSettings("webclient"), m.createMockUserConfig("not a boolean")), BackdropMode.ENABLED)
+      m.assertEqual(resolveBackdropMode(m.createMockUserSettings(""), m.createMockUserConfig("not a boolean")), BackdropMode.ENABLED)
+    end function
+
+  end class
+
+end namespace

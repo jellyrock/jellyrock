@@ -1558,9 +1558,10 @@ end sub
 sub fetchLibraryBackdrop(libraryId as string)
   if m.libraryBackdropPendingId <> "" then return
 
-  ' No lookup when backdrops are off: the scene would drop the write anyway.
+  ' Look up only when backdrops show everywhere: otherwise the scene shows Home none, so the
+  ' answer would be dropped.
   globalUser = m.global.user
-  if not isValid(globalUser) or not resolveShowBackdrop(globalUser.settings, globalUser.config) then return
+  if not isValid(globalUser) or resolveBackdropMode(globalUser.settings, globalUser.config) <> BackdropMode.ENABLED then return
 
   req = GetApi().BuildGetItemsByQueryRequest(libraryBackdrop.query(libraryId))
   if not isValid(req) then return

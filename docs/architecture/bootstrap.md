@@ -8,7 +8,7 @@ related-files:
   - source/utils/memoryMonitor.bs
   - components/JRScene.xml
   - components/JRScene.bs
-last-reviewed: 2026-11-03
+last-reviewed: 2026-11-11
 ---
 
 # Bootstrap and lifecycle
@@ -114,7 +114,7 @@ The app has one scene for its whole life, `components/JRScene.xml`, which extend
 | `loadingText` | string | The text above the scene's spinner. |
 | `loadingKind` | string | The `LoadingKind` of the scene's spinner, which picks the stage text under it. |
 | `backgroundImageUri` | string | The backdrop image. `BackdropFader` does the crossfade. |
-| `shouldShowBackdrop` | bool | Whether backdrops show. Worked out from the user's settings on the first backdrop request after sign-in. |
+| `backdropMode` | string | Where backdrops show: a `BackdropMode` value (`enabled`, `details` or `disabled`). Empty until the first backdrop request after sign-in (a user with a token) reads the user's settings (`currentBackdropMode()`); a forced clear empties it again. |
 | `exit` | bool | Set true to close the app. |
 | `userMenuAction` | string | Set from the overhang's user dropdown (relayed by `JRScene.onOverhangUserMenuAction`) and from Home's options panel; `main.bs` passes it to `handleMenuAction()`. |
 | `preLoginIntent` | string | A sign-in screen sets it; `main.bs` passes it to `handlePreLoginIntent()`. |
@@ -123,7 +123,7 @@ The app has one scene for its whole life, `components/JRScene.xml`, which extend
 
 Its `callFunc` functions:
 
-- `setBackgroundImage(uri, isAnimated, forceBackdrop)`, `refreshBackdropSetting()` and `showToast(message, type)`.
+- `setBackgroundImage(uri, isAnimated, forceBackdrop, owner)`, `refreshBackdropSetting()` and `showToast(message, type)`.
 - The router bridge, for main-thread code in `main.bs`, `loginRouter.bs` and `replayRoute.bs`: `routerNavigate`, `resolveDeepLink`, `reloadRoutedHome`, `resetRouter` and `routerGoBack`. Main-thread code cannot call the `sgrouter` functions itself, because they run on the render thread.
 
 ### What `JRScene.bs` does
@@ -131,7 +131,7 @@ Its `callFunc` functions:
 - **Starts the `roku-log` log manager**, as the first statement of `init()`. A `log.Logger` made before the manager exists stays silent forever. It cannot start earlier: the manager creates a `Timer`, which fails on the main thread before `show()`. So everything made in `setGlobals()`, and `main.bs` up to `show()`, logs with `print`. See [`logging.md`](logging.md).
 - **Owns the router:** `initRouter()` brings it up on the first navigation, registers the routes and watches the active routed view to drive the overhang. `resetRouter()` tears it down on a session reset. [`navigation.md`](navigation.md) has the detail.
 - **Runs the spinner:** `onIsLoadingChanged()` and `showLoadingStage()` decide what the spinner and its two labels show.
-- **Shows backdrops:** `setBackgroundImage()` skips an unchanged image. `forceBackdrop` shows one whatever the setting, for the sign-in splash screen.
+- **Shows backdrops:** `setBackgroundImage()` skips an unchanged image. `forceBackdrop` shows one whatever the setting, for the sign-in splash screen. In `details` mode only an item screen's write shows (the writer passes its subtype as `owner`, and `isItemBackdropOwner()` in `source/utils/backdrop.bs` holds the list); any other write becomes a clear. So a browse screen must write its backdrop when it is shown again, as Home, the library grid, search and Settings do, or an item's backdrop stays up when Back returns to it.
 - **Decides what Back does at the top of the app.** A routed view's Back goes to the router first. Back reaches `JRScene.onKeyEvent()` only when the router has nothing to go back to, or is busy. There, in order:
   1. A deep link still being looked up is canceled.
   2. A navigation in progress keeps the press.

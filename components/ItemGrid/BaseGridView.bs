@@ -20,6 +20,7 @@ import "pkg:/source/GridView/TVShowPresenter.bs"
 import "pkg:/source/libraryViewFactory.bs"
 import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/backdrop.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/dialogNarration.bs"
@@ -146,6 +147,8 @@ sub init()
   ' Cache device backdrop size once for all getItemBackdropUrl() calls
   device = m.global.device
   m.backdropSize = { width: device.uiResolution[0], height: device.uiResolution[1] }
+  ' Whether the presentation pane shows its backdrop (configureBackdrop decides)
+  m.isPresentationBackdropShown = false
 
   m.log.debug("end init()")
 
@@ -620,17 +623,22 @@ end function
 sub configureBackdrop()
   if not isValid(m.presenter) then return
 
-  backdropMode = m.presenter.getBackdropMode()
+  layoutMode = m.presenter.getBackdropMode()
 
-  if backdropMode = "presentation"
+  if layoutMode = "presentation"
     ' Clear fullscreen backdrop first to avoid overlap during transition
     m.global.sceneManager.callFunc("setBackgroundImage", "")
 
-    ' Use presentation backdrop (right half of screen)
-    m.presentationBackdrop.visible = true
+    ' Use presentation backdrop (right half of screen). The pane is a backdrop too: an item's
+    ' artwork drawn as scenery, unlike a poster or logo. So the Backdrop Images setting governs
+    ' it, and it shows only when backdrops show everywhere. In details mode this is a browse
+    ' screen, and when it is hidden no image is requested.
+    globalUser = m.global.user
+    m.isPresentationBackdropShown = isValid(globalUser) and resolveBackdropMode(globalUser.settings, globalUser.config) = BackdropMode.ENABLED
+    m.presentationBackdrop.visible = m.isPresentationBackdropShown
 
     ' Set initial backdrop from parent item
-    m.presentationBackdrop.uri = getItemBackdropUrl(m.top.parentItem, m.backdropSize)
+    if m.isPresentationBackdropShown then m.presentationBackdrop.uri = getItemBackdropUrl(m.top.parentItem, m.backdropSize)
 
     ' Show presentation info if presenter supports it
     showInfo = m.presenter.shouldShowPresentationInfo(m.view)
@@ -1278,7 +1286,7 @@ sub updateBackdropForFocusedItem()
     if backdropMode = "presentation"
       ' Clear fullscreen backdrop to prevent overlap with presentation backdrop
       m.global.sceneManager.callFunc("setBackgroundImage", "")
-      m.presentationBackdrop.uri = backdropUrl
+      if m.isPresentationBackdropShown then m.presentationBackdrop.uri = backdropUrl
     else
       m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
     end if

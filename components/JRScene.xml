@@ -31,7 +31,8 @@
   </children>
   <interface>
     <field id="isRemoteDisabled" type="boolean" value="true" />
-    <field id="shouldShowBackdrop" type="boolean" />
+    <!-- Where backdrops show (BackdropMode); "" until decided after sign-in (currentBackdropMode) -->
+    <field id="backdropMode" type="string" value="" />
     <field id="loadingText" type="string" value="" alwaysNotify="true" onchange="onLoadingTextChanged" />
     <!-- LoadingKind of the scene's own spinner (startLoadingSpinner, a cast). Set with
          loadingText, before isLoading. A screen's own waits are its loadingWaits instead. -->
