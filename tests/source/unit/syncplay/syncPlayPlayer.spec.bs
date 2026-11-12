@@ -407,10 +407,38 @@ namespace tests
       syncPlayPlayer.reading(player, 1458330000&, 1478&)
       m.assertEqual(player.activity, "playing")
       m.assertEqual(player.lastLandingTicks, 1458330000&)
-      m.assertEqual(syncPlayPlayer.positionAt(player, 1478&), 1458330000&)
+      ' The node began playing at 1460, so by the reading's arrival it has played 18 ms on.
+      m.assertEqual(syncPlayPlayer.positionAt(player, 1478&), 1458510000&)
       m.assertEqual(player.lastSeekMs, 378&)
       m.assertFalse(player.lastSeekGaveUp)
       m.assertEqual(player.seekOwner, "hold")
+    end function
+
+    @it("a landing's first reading is where the node was when it began playing, however late it arrives")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "seek", "group", 1458300000&, 1100&)
+      syncPlayPlayer.nodeState(player, "buffering", 1180&)
+      syncPlayPlayer.nodeState(player, "playing", 1460&)
+      ' The reading reaches the model 150 ms after the node began playing: it played on meanwhile.
+      syncPlayPlayer.reading(player, 1458330000&, 1610&)
+      m.assertEqual(player.lastLandingTicks, 1458330000&)
+      m.assertEqual(syncPlayPlayer.positionAt(player, 1610&), 1459830000&)
+      ' A pause written now stops the node where it is, not where the reading said.
+      syncPlayPlayer.told(player, "pause", "wait", invalid, 1610&)
+      syncPlayPlayer.nodeState(player, "paused", 1630&)
+      m.assertEqual(syncPlayPlayer.positionAt(player, 5000&), 1459830000&)
+    end function
+
+    @it("a reading more than a notification interval after the landing is not the landing's own")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "seek", "group", 1458300000&, 1100&)
+      syncPlayPlayer.nodeState(player, "buffering", 1180&)
+      syncPlayPlayer.nodeState(player, "playing", 1460&)
+      ' Notifications come every 500 ms of media, so this one is a later reading, taken as it comes.
+      syncPlayPlayer.reading(player, 1464700000&, 2100&)
+      m.assertEqual(syncPlayPlayer.positionAt(player, 2100&), 1464700000&)
     end function
 
     @it("a seek that lands with no reading in time has no landing")

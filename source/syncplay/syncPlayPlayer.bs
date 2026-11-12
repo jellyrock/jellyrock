@@ -244,9 +244,18 @@ namespace syncPlayPlayer
   ' A position notification.
   sub reading(player as object, positionTicks as longinteger, nowMs as longinteger)
     if player.activity = "arrived"
-      if player.arrivedFrom = "seek" then endSeek(player, nowMs, false, positionTicks)
+      ' A seek's first reading says where the node was when it began playing, and can reach the
+      ' model well after that: the node played on meanwhile, so the run starts at the `playing`
+      ' state, not at the reading's arrival. Past one notification interval it is a later
+      ' reading, taken as it comes.
+      runsFromMs& = nowMs
+      if player.arrivedFrom = "seek"
+        endSeek(player, nowMs, false, positionTicks)
+        arrivedAtMs& = syncPlayTime.asLong(player.sinceMs)
+        if nowMs - arrivedAtMs& <= syncPlayPlayback.LANDING_READING_MAX_MS then runsFromMs& = arrivedAtMs&
+      end if
       enter(player, "playing", nowMs)
-      setClock(player, "running", positionTicks, nowMs, true)
+      setClock(player, "running", positionTicks, runsFromMs&, true)
     else if player.activity = "playing"
       setClock(player, "running", positionTicks, nowMs, true)
     end if

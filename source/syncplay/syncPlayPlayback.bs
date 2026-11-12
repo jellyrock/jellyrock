@@ -41,6 +41,9 @@ namespace syncPlayPlayback
   ' take to arrive before the position estimate for that pause is not trusted. It arrived 26 to
   ' 40 ms after the write on a Stick 4K (2026-11-10).
   const PAUSE_LANDED_MS = 250
+  ' How long after a seek's `playing` state its first position reading may arrive and still be
+  ' the landing's own: the notification interval, 500 ms of media.
+  const LANDING_READING_MAX_MS = 500
   ' The most pause writes the manager makes for one group command.
   const PAUSE_ATTEMPTS = 3
   ' After an Unpause, once the node plays, a member further ahead of the group than this holds

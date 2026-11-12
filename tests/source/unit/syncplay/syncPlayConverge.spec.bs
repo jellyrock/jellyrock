@@ -614,9 +614,11 @@ namespace tests
       syncPlayPlayer.nodeState(player, "paused", 10650&)
       waiting = m.decide(player, group, 10650&)
       m.assertEqual(m.kindOf(waiting), "")
-      ' The group reaches 67.02 s at device 12020.
-      m.assertEqual(waiting.wakeAtMs, 12020&)
-      m.assertEqual(m.kindOf(m.decide(player, group, 12020&)), "resume")
+      ' The reading says 67.02 s for the moment the node began playing (10600), so the pause at
+      ' 10620 stopped it at 67.04 s, which the group reaches at device 12040.
+      m.assertEqual(waiting.wakeAtMs, 12040&)
+      m.assertEqual(m.kindOf(m.decide(player, group, 12020&)), "")
+      m.assertEqual(m.kindOf(m.decide(player, group, 12040&)), "resume")
     end function
 
     @it("a catch-up that landed behind runs once more, then asks the group to wait, once")
