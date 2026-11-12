@@ -39,9 +39,8 @@ namespace syncPlayConverge
       leadMs: syncPlayPlayback.CATCH_UP_LEAD_MS,
       leadMarginMs: syncPlayPlayback.CORRECTION_LEAD_MARGIN_MS,
       ' Catch-ups in a row that did not bring the member in step, before the group is asked to
-      ' wait instead, and seeks toward a waiting group's point per group command.
+      ' wait instead.
       catchUpLimit: 2,
-      pointSeekLimit: 2,
       pauseWriteLimit: syncPlayPlayback.PAUSE_ATTEMPTS,
       ' The longest a paused member ahead of the group waits for it before seeking back instead.
       aheadWaitMaxMs: 5000,
@@ -95,18 +94,25 @@ namespace syncPlayConverge
       syncPlayPlayer.told(player, "stop", "group", invalid, nowMs)
     else if kind = "load"
       syncPlayPlayer.told(player, "load", "group", action.startTicks, nowMs)
+      group.pointSoughtTicks = invalid
     else if kind = "pause"
       syncPlayPlayer.told(player, "pause", action.owner, invalid, nowMs)
       if action.owner = "hold" then group.pickPending = false
     else if kind = "resume"
       syncPlayPlayer.told(player, "resume", action.owner, invalid, nowMs)
+      group.pointSoughtTicks = invalid
     else if kind = "seek"
       syncPlayPlayer.told(player, "seek", action.owner, action.targetTicks, nowMs)
       if action.catchUp = true
         group.catchUps++
         group.pickPending = false
       end if
-      if action.toPoint = true then group.pointSeeks++
+      ' The node is sent to a waiting group's point once. Any other seek moves it on from there.
+      if action.toPoint = true
+        group.pointSoughtTicks = action.targetTicks
+      else
+        group.pointSoughtTicks = invalid
+      end if
       if action.recover = true then group.recoverSeeks++
       if isValid(action.forLoad) then group.seekForLoad = action.forLoad
     else if kind = "report"
@@ -171,7 +177,7 @@ namespace syncPlayConverge
     ' rule of its own below: the load already started there, so only one that lands short seeks.
     if want.owesReady and isValid(want.pointTicks) and standsAtCommand(group) and (isPlayingOn or activity = "paused")
       point& = syncPlayTime.asLong(want.pointTicks)
-      if not nearPoint(player, point&, policy, nowMs) and group.pointSeeks < policy.pointSeekLimit
+      if not nearPoint(player, point&, policy, nowMs) and not soughtPoint(group, point&, policy)
         return { kind: "seek", owner: "group", targetTicks: point&, toPoint: true }
       end if
     end if
@@ -456,6 +462,12 @@ namespace syncPlayConverge
     return syncPlayTime.asLong(want.pointTicks) - syncPlayTime.asLong(position) > syncPlayTime.msToTicks(policy.pointToleranceMs)
   end function
 
+  ' Whether the node was already sent to this point and neither it nor the group has moved on.
+  function soughtPoint(group as object, pointTicks as longinteger, policy as object) as boolean
+    if not isValid(group.pointSoughtTicks) then return false
+    return Abs(syncPlayTime.asLong(group.pointSoughtTicks) - pointTicks) <= syncPlayTime.msToTicks(policy.pointToleranceMs)
+  end function
+
   ' Whether the node is at the point, within the server's tolerance. A node whose position is
   ' not known counts as there only when its last seek aimed there and no landing was read.
   function nearPoint(player as object, pointTicks as longinteger, policy as object, nowMs as longinteger) as boolean
@@ -473,7 +485,7 @@ namespace syncPlayConverge
   '   - a load's first Ready reports where the load was to start (the point the server stopped
   '     the group at, once known) when the node reads far below it or has no reading: a node
   '     can read 0 at its first frame;
-  '   - a node still off a command's point after its seeks there, or with no reading, reports
+  '   - a node still off a command's point after its seek there, or with no reading, reports
   '     the point. The offset left is taken back when the group plays (lineAction).
   function readyTicks(player as object, want as object, policy as object, nowMs as longinteger) as longinteger
     tolerance& = syncPlayTime.msToTicks(policy.pointToleranceMs)

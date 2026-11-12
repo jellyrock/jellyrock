@@ -59,8 +59,10 @@ namespace syncPlayGroup
       ' whether this member asked the group to wait on it since the last Pause.
       catchUps: 0,
       askedWait: false,
-      ' Seeks written toward the point the group waits at, since the last command.
-      pointSeeks: 0,
+      ' The point the node was last sent to for a waiting group, in ticks, until the node or the
+      ' group moves on from it. One seek goes toward a point: a second to the same place has
+      ' preceded every frozen player seen.
+      pointSoughtTicks: invalid,
       ' Seeks written to free a node that reads playing and takes no pause, since the last command.
       recoverSeeks: 0,
       ' The playlist item whose end this member asked the group to move on from.
@@ -104,7 +106,9 @@ namespace syncPlayGroup
       group.ask.tries = 0
     end if
     group.catchUps = 0
-    group.pointSeeks = 0
+    ' A group that plays on or stops has left the point. A Pause or a Seek naming the point
+    ' again has not, and allows no second seek there.
+    if cmd.command = "Unpause" or cmd.command = "Stop" then group.pointSoughtTicks = invalid
     group.recoverSeeks = 0
     group.whereAskedAtMs = invalid
     group.toldUnreachable = false
@@ -127,7 +131,7 @@ namespace syncPlayGroup
     group.saidBuffering = false
     group.waitPointTicks = invalid
     group.catchUps = 0
-    group.pointSeeks = 0
+    group.pointSoughtTicks = invalid
     group.recoverSeeks = 0
     group.askedWait = false
     group.owesReady = false
@@ -272,7 +276,7 @@ namespace syncPlayGroup
     group.waitPointTicks = invalid
     group.viewerAsk = invalid
     group.catchUps = 0
-    group.pointSeeks = 0
+    group.pointSoughtTicks = invalid
     group.recoverSeeks = 0
     group.askedWait = false
     group.whereAskedAtMs = invalid

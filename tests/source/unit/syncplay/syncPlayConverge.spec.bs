@@ -314,7 +314,7 @@ namespace tests
       m.assertEqual(result.action.targetTicks, m.at100s)
       m.assertEqual(result.action.owner, "group")
       syncPlayConverge.applied(player, group, result.action, 10000&)
-      m.assertEqual(group.pointSeeks, 1)
+      m.assertEqual(group.pointSoughtTicks, m.at100s)
       report = m.decide(player, group, 10001&)
       m.assertEqual(m.kindOf(report), "report")
       m.assertEqual(report.action.what, "buffering")
@@ -345,11 +345,45 @@ namespace tests
       m.assertEqual(m.kindOf(m.decide(m.pausedAt(m.at60s, "group"), m.seekGroup(), 10000&)), "seek")
     end function
 
-    @it("a node still off the point after its seeks reports the point, and seeks no more")
+    @it("a node that landed off the point is not sent there a second time")
+    function _()
+      group = m.seekGroup()
+      first = m.decide(m.playingAt(m.at60s, 10000&), group, 10000&)
+      m.assertEqual(m.kindOf(first), "seek")
+      syncPlayConverge.applied(m.playingAt(m.at60s, 10000&), group, first.action, 10000&)
+      result = m.decide(m.pausedAt(m.at100s - 948 * m.oneMs, "wait"), group, 10000&)
+      m.assertEqual(m.kindOf(result), "report")
+      m.assertEqual(result.action.what, "ready")
+      m.assertEqual(result.action.positionTicks, m.at100s)
+    end function
+
+    @it("a second command naming the point a node was sent to writes no second seek")
+    function _()
+      group = m.seekGroup()
+      first = m.decide(m.playingAt(m.at60s, 10000&), group, 10000&)
+      syncPlayConverge.applied(m.playingAt(m.at60s, 10000&), group, first.action, 10000&)
+      syncPlayGroup.command(group, m.cmd("Seek", 9500&, m.at100s))
+      result = m.decide(m.pausedAt(m.at100s - 948 * m.oneMs, "wait"), group, 10000&)
+      m.assertEqual(m.kindOf(result), "report")
+      m.assertEqual(result.action.what, "ready")
+      m.assertEqual(result.action.positionTicks, m.at100s)
+    end function
+
+    @it("once the group has played on, a Seek back to the same point is sought again")
+    function _()
+      group = m.seekGroup()
+      first = m.decide(m.playingAt(m.at60s, 10000&), group, 10000&)
+      syncPlayConverge.applied(m.playingAt(m.at60s, 10000&), group, first.action, 10000&)
+      syncPlayGroup.command(group, m.cmd("Unpause", 9600&, m.at100s))
+      syncPlayGroup.command(group, m.cmd("Seek", 9800&, m.at100s))
+      m.assertEqual(m.kindOf(m.decide(m.pausedAt(m.at60s, "group"), group, 10000&)), "seek")
+    end function
+
+    @it("a node still off the point after its seek reports the point, and seeks no more")
     function _()
       player = m.pausedAt(m.at100s - 948 * m.oneMs, "wait")
       group = m.seekGroup()
-      group.pointSeeks = 2
+      group.pointSoughtTicks = m.at100s
       result = m.decide(player, group, 10000&)
       m.assertEqual(m.kindOf(result), "report")
       m.assertEqual(result.action.what, "ready")
@@ -363,7 +397,7 @@ namespace tests
       syncPlayPlayer.nodeState(player, "playing", 9600&)
       syncPlayPlayer.advance(player, 9600& + syncPlayPlayer.ARRIVAL_READING_MS)
       group = m.seekGroup()
-      group.pointSeeks = 1
+      group.pointSoughtTicks = m.at100s
       group.saidBuffering = true
       result = m.decide(player, group, 10000&)
       m.assertEqual(m.kindOf(result), "pause")
