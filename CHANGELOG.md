@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- (ui) Item-details-only backdrops; Movies pane obeys the setting ([#1365](https://github.com/jellyrock/jellyrock/pull/1365)) by [@cewert](https://github.com/cewert)
+
 ### Fixed
 
 - (syncplay) Reload where the group is; load a mid-reload restart ([#1354](https://github.com/jellyrock/jellyrock/pull/1354)) by [@cewert](https://github.com/cewert)
