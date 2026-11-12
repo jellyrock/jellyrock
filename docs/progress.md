@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-12: feat(ui): Item-details-only backdrops; Movies pane obeys the setting
 - 2026-11-10: chore(tooling): Report dead code a short string prefix hid
 - 2026-11-10: ci(journal): Sync the journal only for PRs merged into `main`
 - 2026-11-09: fix(syncplay): Reload where the group is; load a mid-reload restart
@@ -73,9 +74,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-29: docs: Feature pages, a generated catalog, and checked store text
 - 2026-10-29: chore(screenshots): Recapture the new overhang, search and Home for the store
 - 2026-10-29: feat(syncplay): Send controls to the group and resume from the menu
-- 2026-10-28: feat(syncplay): See, join and play with groups from the SyncPlay icon
-- 2026-10-28: chore(skills): Name the projects folder in project skill descriptions
-- 2026-10-27: feat(ui): Search and settings icons on every screen, and safer themes
 
 ## Open followups
 
