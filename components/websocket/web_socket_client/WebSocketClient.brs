@@ -10,6 +10,8 @@
 '     no cert validation) and Roku cannot do socket TLS regardless. JellyRock is ws:// only.
 '   - _read_socket_data reads all the socket holds per pass (up to _buffer_size) and decodes every
 '     complete frame through _decode_frame, where upstream read 1024 bytes and decoded one frame.
+'   - run reads the socket on every pass, not only when a socket event arrives, so bytes already in
+'     the socket do not sit unread until the next event.
 
 ' Create a new WebSocketClient instance
 function WebSocketClient() as object
@@ -151,8 +153,10 @@ function WebSocketClient() as object
     ' Socket event
     if type(msg) = "roSocketEvent"
       m._send_handshake()
-      m._read_socket_data()
     end if
+    ' The read runs on every pass, event or not, so it no longer depends on an event arriving for
+    ' bytes already in the socket. It does nothing when the socket holds none.
+    m._read_socket_data()
     m._try_force_close()
   end sub
 

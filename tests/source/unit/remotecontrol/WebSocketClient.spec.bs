@@ -289,6 +289,21 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the loop pass reads without waiting for a socket event")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("delivers a frame already in the socket when no socket event is queued")
+    function _()
+      m.socket.feed(m.buildFrame(1, m.textBytes("no event")))
+
+      ' The client's own port holds no roSocketEvent, so run() wakes on its 200 ms timeout.
+      m.ws.run()
+
+      m.assertEqual(m.textMessages(), ["no event"])
+      m.assertEqual(m.socket.available(), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     ' Helpers
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
