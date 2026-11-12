@@ -266,6 +266,16 @@ namespace tests
       m.assertEqual(m.kindOf(m.decide(player, m.pausedGroup(), 10100&)), "halt")
     end function
 
+    @it("with the viewer's own pause not yet answered, that node is sent to where the group's line is")
+    function _()
+      group = m.playingLine()
+      syncPlayGroup.viewerAsked(group, "pause", invalid, 9990&)
+      result = m.decide(m.wedgedNode(), group, 20000&)
+      m.assertEqual(m.kindOf(result), "seek")
+      m.assertTrue(result.action.recover)
+      m.assertEqual(result.action.targetTicks, syncPlayConverge.lineTicksAt(group, m.estimator(), 20000&))
+    end function
+
     @it("a new group command makes the recover seek available again")
     function _()
       group = m.pausedGroup()

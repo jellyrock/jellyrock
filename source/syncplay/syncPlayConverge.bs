@@ -151,11 +151,11 @@ namespace syncPlayConverge
       return invalid
     end if
     if want.mode = "playing" or isValid(want.startsAtMs) then return lineAction(player, group, want, ctx, policy, nowMs, result)
-    return standingAction(player, group, want, policy, nowMs)
+    return standingAction(player, group, want, ctx.estimator, policy, nowMs)
   end function
 
   ' The group stands still: paused, or waiting at a point for its members.
-  function standingAction(player as object, group as object, want as object, policy as object, nowMs as longinteger) as dynamic
+  function standingAction(player as object, group as object, want as object, estimator as object, policy as object, nowMs as longinteger) as dynamic
     activity = player.activity
     isPlayingOn = activity = "playing" or activity = "stalling" or activity = "stalled"
     if want.mode = "waiting" and want.heldFor = "stall" and not standsAtCommand(group)
@@ -184,8 +184,9 @@ namespace syncPlayConverge
       if player.pauseWrites >= policy.pauseWriteLimit
         ' A node that reads playing, sends no reading and takes no pause is taken as not moving,
         ' and a seek is what frees it. One that truly plays on has a running clock and is halted.
-        if activity = "playing" and player.clock.kind = "unknown" and group.recoverSeeks < 1 and isValid(want.pointTicks)
-          return { kind: "seek", owner: "group", targetTicks: syncPlayTime.asLong(want.pointTicks), recover: true, silent: true }
+        target = recoverTicks(player, group, want, estimator, nowMs)
+        if activity = "playing" and player.clock.kind = "unknown" and group.recoverSeeks < 1 and isValid(target)
+          return { kind: "seek", owner: "group", targetTicks: syncPlayTime.asLong(target), recover: true, silent: true }
         end if
         return { kind: "halt", reason: "the player would not stay paused" }
       end if
@@ -263,6 +264,17 @@ namespace syncPlayConverge
     ' In step on a measured reading: whatever catch-ups it took worked, so the budget is whole
     ' again. It counts catch-ups that did not bring the member in, not every one in a long film.
     if group.catchUps > 0 then return { kind: "inStep" }
+    return invalid
+  end function
+
+  ' Where to seek a node that reads playing and takes no pause: the point the group stands at,
+  ' else where its line is now (the viewer's own pause, not yet answered), else where this
+  ' member's own load was to start. Invalid when nothing names a place.
+  function recoverTicks(player as object, group as object, want as object, estimator as object, nowMs as longinteger) as dynamic
+    if isValid(want.pointTicks) then return want.pointTicks
+    onLine = lineTicksAt(group, estimator, nowMs)
+    if isValid(onLine) then return onLine
+    if player.arrivedFrom = "load" then return player.loadStartTicks
     return invalid
   end function
 

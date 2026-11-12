@@ -202,10 +202,9 @@ namespace tests.syncPlaySim
       return
     end if
     if node.state = "paused" then return
-    if sim.faults and node.state = "playing" and isValid(sim.group.command) and (node.wedged or chance(sim, 8))
+    if sim.faults and node.state = "playing" and (node.wedged or chance(sim, 8))
       ' A pause that never takes: the node reads playing, stands still and sends no position
-      ' notification, and takes no further pause, until a seek is written to it. Only once a group
-      ' command is in force: a wait with no command names no point to seek to.
+      ' notification, and takes no further pause, until a seek is written to it.
       freeze(sim)
       node.wedged = true
       sim.counts.wedgedPauses++
