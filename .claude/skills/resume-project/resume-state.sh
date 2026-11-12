@@ -570,6 +570,20 @@ case "$mode" in waits|plancheck)
   exit 0 ;;
 esac
 
+# main_checkout: set when this is the repo's main checkout (its git dir is the common one)
+main_checkout=""
+if [ "$(cd "$(git rev-parse --git-dir)" && pwd -P)" = "$(cd "$(git rev-parse --git-common-dir)" && pwd -P)" ]; then main_checkout=1; fi
+
+# real_worktree <folder>: prints the folder's physical path and returns 0 when it is a real worktree
+# of this repo: it shares the common git dir and has a git dir of its own
+real_worktree() {
+  local common; common="$(cd "$(git rev-parse --git-common-dir)" && pwd -P)"
+  [ -d "$1" ] || return 1
+  [ "$(cd "$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P)" = "$common" ] || return 1
+  [ "$(cd "$(git -C "$1" rev-parse --path-format=absolute --git-dir 2>/dev/null)" 2>/dev/null && pwd -P)" != "$common" ] || return 1
+  (cd "$1" && pwd -P)
+}
+
 # project_plans <folder>: the PLAN of each project in <folder> the argument names: the folder
 # it names in full (YYYY-MM-<slug>) when there is one, else each folder ending in -<slug>
 project_plans() {
@@ -602,13 +616,21 @@ if [ -n "$slug" ]; then
            for p in "${arch[@]}"; do claim_release "$dir/$(basename "$(dirname "$p")")/PLAN.md"; done; exit 0
          fi
        fi
+       # a new project's PLAN is in its worktree only, until its branch is pushed and pulled here
+       if [ -n "$main_checkout" ] && [ "$mode" != check ] && wt="$(real_worktree "$top/.claude/worktrees/$slug")" \
+          && wdir="$(cd "$wt" && bash "$here/../start-project/projects-dir.sh" 2>/dev/null)" && [ -d "$wdir" ]; then
+         mapfile -t whits < <(project_plans "$wdir")
+         if [ ${#whits[@]} -eq 1 ]; then plan="${whits[0]}"; echo "requested: $slug (PLAN in its worktree)"; fi
+       fi
+       if [ -z "$plan" ]; then
        echo "ERROR: no project matches '$slug'"
        arch_hit=0; while IFS= read -r p; do
          [ -e "$p" ] && { arch_hit=1; echo "archived: $(basename "$(dirname "$p")") (closed; not resumable)"; }; done < <(project_plans "$dir/_archive")
        echo "active projects:"; active_list | sed 's/^/  /'
        # a closed project is not a slug to ask about: a terminal /end-session reads this on purpose
        if [ "$arch_hit" = 1 ]; then echo "BANNER: '$slug' is closed (archived): nothing to resume"
-       else echo "BANNER: '$slug' did not resolve — ask which"; fi; exit 2 ;;
+       else echo "BANNER: '$slug' did not resolve — ask which"; fi; exit 2
+       fi ;;
     *) echo "BANNER: '$slug' matches ${#hits[@]} projects — ask which"
        for p in "${hits[@]}"; do echo "  $(basename "$(dirname "$p")")"; done; exit 2 ;;
   esac
@@ -636,21 +658,14 @@ st="$(frontmatter "$plan" status)"; lu="$(frontmatter "$plan" last-updated)"
 # by its absolute path: after the cd, a relative one would reach the worktree's own, maybe older, copy.
 # RESUME_STATE_REDIRECTED names the worktree it was sent to: it stops a second hop and lets that run
 # say where it came from. The other modes returned above or never get here.
-main_checkout=""
-if [ "$(cd "$(git rev-parse --git-dir)" && pwd -P)" = "$(cd "$(git rev-parse --git-common-dir)" && pwd -P)" ]; then main_checkout=1; fi
-
 # project_worktree: prints the picked project's worktree and returns 0 when this run should go there:
 # the main checkout, a status of active, paused or draft, and .claude/worktrees/<slug> a real worktree
 # of this repo (it shares the common git dir and has a git dir of its own), not the one already sent to.
 project_worktree() {
-  local wt common
-  common="$(cd "$(git rev-parse --git-common-dir)" && pwd -P)"
+  local wt
   [ -n "$main_checkout" ] || return 1
   case "$st" in active|paused|draft) ;; *) return 1 ;; esac
-  wt="$top/.claude/worktrees/$pslug"; [ -d "$wt" ] || return 1
-  [ "$(cd "$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P)" = "$common" ] || return 1
-  [ "$(cd "$(git -C "$wt" rev-parse --path-format=absolute --git-dir 2>/dev/null)" 2>/dev/null && pwd -P)" != "$common" ] || return 1
-  wt="$(cd "$wt" && pwd -P)"
+  wt="$(real_worktree "$top/.claude/worktrees/$pslug")" || return 1
   [ "${RESUME_STATE_REDIRECTED:-}" != "$wt" ] || return 1
   printf '%s\n' "$wt"
 }
@@ -660,7 +675,7 @@ handoff_open() {
   [ "${CLAUDE_CODE_SESSION_ATTENDED:-1}" != 0 ] || return 1
   # the short slug, which every older script in a worktree reads, unless two projects share it
   plans=("$dir"/[0-9][0-9][0-9][0-9]-[0-9][0-9]-"$pslug"/PLAN.md)
-  [ "${#plans[@]}" -eq 1 ] || hslug="$name"
+  [ "${#plans[@]}" -le 1 ] || hslug="$name"
   cmd="/resume-project $hslug${start:+ $start}"
   script="$(git config --type=path --get handoff.script 2>/dev/null)"
   if [ -f "$script" ]; then

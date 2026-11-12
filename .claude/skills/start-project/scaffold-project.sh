@@ -24,7 +24,8 @@
 #        bash .claude/skills/start-project/scaffold-project.sh --commit <slug> --subject <text> [--with <path>]...
 #   slug:  kebab-case project slug (no date prefix: the script adds YYYY-MM-)
 #   goal:  one-line goal for the README row (the full Charter is filled by the skill)
-#   --check: only say whether the slug is free, by the same rule the scaffold uses; writes nothing
+#   --check: only say whether the slug is free, by the same rule the scaffold uses; writes nothing.
+#     The rule also reads the local branch worktree-<slug>, where an unpushed stub lives
 #   --commit: commit the scaffolded stub (the PLAN, the README, each --with file) path-restricted, so
 #     other staged or modified files are left as they were; in-repo it never pushes. The subject is the repo's
 #     own commit style, so the skill passes it. --with: a file a repo hook regenerates from the
@@ -34,7 +35,7 @@
 #     committed and the stub stays in the home, uncommitted (exit 1).
 #
 # Exit 1 (no mutation) on: missing args or a slug collision (an existing
-# *-<slug>/ dir, active or archived), so the skill can never scaffold over a
+# *-<slug>/ dir, active or archived, in this checkout or on the local branch worktree-<slug>), so the skill can never scaffold over a
 # real project's history. A missing template/README is not fatal: the script
 # self-bootstraps minimal defaults (for a repo whose project tree is gitignored,
 # see below). --commit exits 1 with nothing staged on: a missing --subject, no
@@ -170,6 +171,19 @@ fi
 shopt -s nullglob
 collisions=( "$PROJECTS"/[0-9][0-9][0-9][0-9]-[0-9][0-9]-"$SLUG" "$PROJECTS"/_archive/[0-9][0-9][0-9][0-9]-[0-9][0-9]-"$SLUG" )
 shopt -u nullglob
+# A project's stub is committed on the local branch worktree-<slug> and pushed only at session close,
+# so the folder is missing from this checkout. Read that branch too, when the projects folder is in this repo.
+branch="worktree-$SLUG"
+top="$(cd "$(git rev-parse --show-toplevel)" && pwd -P)"
+rel="$(readlink -m -- "$PROJECTS")"
+if git show-ref --verify --quiet "refs/heads/$branch" && case "$rel/" in "$top"/?*) true ;; *) false ;; esac; then
+  rel="${rel#"$top"/}"
+  while IFS= read -r p; do
+    case "$p" in
+      */[0-9][0-9][0-9][0-9]-[0-9][0-9]-"$SLUG") collisions+=( "$p on branch $branch" ) ;;
+    esac
+  done < <(git ls-tree -d --name-only "refs/heads/$branch" -- "$rel/" "$rel/_archive/")
+fi
 [ ${#collisions[@]} -eq 0 ] || die "slug '$SLUG' already exists: ${collisions[*]} — use /resume-project instead"
 if [ "$CHECK" -eq 1 ]; then printf "slug '%s' is free in %s\n" "$SLUG" "$PROJECTS"; exit 0; fi
 
