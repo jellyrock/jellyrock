@@ -1140,6 +1140,51 @@ namespace tests
       m.assertEqual(result.action.owner, "group")
     end function
 
+    @it("a seek written under the bar ends the scrub: the node that lands is paused with the bar still drawn")
+    function _()
+      player = m.pausedAt(m.at60s, "scrub")
+      syncPlayPlayer.scrub(player, true)
+      group = m.seekGroup()
+      group.saidBuffering = true
+      seek = m.decide(player, group, 10000&)
+      m.assertEqual(m.kindOf(seek), "seek")
+      syncPlayConverge.applied(player, group, seek.action, 10000&)
+      ' Every reading says the bar is up until the node has closed it.
+      syncPlayPlayer.scrub(player, true)
+      syncPlayPlayer.nodeState(player, "buffering", 10100&)
+      syncPlayPlayer.nodeState(player, "playing", 10800&)
+      syncPlayPlayer.scrub(player, true)
+      syncPlayPlayer.reading(player, m.at100s + 20 * m.oneMs, 10810&)
+      result = m.decide(player, group, 10810&)
+      m.assertEqual(m.kindOf(result), "pause")
+      m.assertEqual(result.action.owner, "wait")
+    end function
+
+    @it("once that bar is seen down, a bar up again is the viewer's scrub")
+    function _()
+      player = m.pausedAt(m.at60s, "scrub")
+      syncPlayPlayer.scrub(player, true)
+      syncPlayPlayer.told(player, "seek", "group", m.at100s, 10000&)
+      syncPlayPlayer.scrub(player, true)
+      m.assertFalse(player.scrubbing)
+      syncPlayPlayer.scrub(player, false)
+      syncPlayPlayer.scrub(player, true)
+      m.assertTrue(player.scrubbing)
+    end function
+
+    @it("a node that pauses itself while that bar is still drawn is the viewer scrubbing again")
+    function _()
+      player = m.pausedAt(m.at60s, "scrub")
+      syncPlayPlayer.scrub(player, true)
+      syncPlayPlayer.told(player, "seek", "group", m.at100s, 10000&)
+      syncPlayPlayer.nodeState(player, "playing", 10800&)
+      syncPlayPlayer.reading(player, m.at100s + 20 * m.oneMs, 10810&)
+      syncPlayPlayer.nodeState(player, "paused", 10900&)
+      m.assertTrue(player.scrubbing)
+      m.assertEqual(player.pauseOwner, "scrub")
+      m.assertEqual(m.kindOf(m.decide(player, m.playingLine(), 11000&)), "")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("a group about to play")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

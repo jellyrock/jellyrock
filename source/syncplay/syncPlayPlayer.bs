@@ -57,6 +57,9 @@ namespace syncPlayPlayer
       ' The viewer has the trick-play bar up. The Video node pauses itself for a scrub with no
       ' write of the player's, so a pause nobody wrote while this holds is the scrub's.
       scrubbing: false,
+      ' A seek was written under the viewer's open bar. The bar stays drawn until a moment
+      ' after the landing, and the viewer is no longer scrubbing meanwhile.
+      barClosing: false,
       pauseWrites: 0,
       pauseWrittenAtMs: 0&,
       pauseTicks: invalid,
@@ -127,6 +130,11 @@ namespace syncPlayPlayer
       player.seekWrittenAtMs = nowMs
       player.seekOwner = owner
       player.seekSlow = false
+      ' A seek written under the bar answers the scrub, and the node closes the bar by itself.
+      if player.scrubbing
+        player.scrubbing = false
+        player.barClosing = true
+      end if
       ' A seek starts the node afresh, so pause writes are counted from its landing.
       player.pauseWrites = 0
       player.pauseOwner = ""
@@ -159,6 +167,11 @@ namespace syncPlayPlayer
 
   ' The viewer opened or closed the trick-play bar.
   sub scrub(player as object, isScrubbing as boolean)
+    if player.barClosing
+      ' The bar a seek is closing still reads as up until it is gone.
+      if isScrubbing then return
+      player.barClosing = false
+    end if
     player.scrubbing = isScrubbing
     if isScrubbing and player.activity = "paused" and player.pauseOwner = "" then player.pauseOwner = "scrub"
     if not isScrubbing and player.pauseOwner = "scrub" then player.pauseOwner = ""
@@ -171,6 +184,7 @@ namespace syncPlayPlayer
     player.nodeState = ""
     player.pauseOwner = ""
     player.scrubbing = false
+    player.barClosing = false
     player.pauseWrites = 0
     player.pauseTicks = invalid
     player.seekSlow = false
@@ -214,6 +228,7 @@ namespace syncPlayPlayer
     setClock(player, "unknown", 0&, nowMs, false)
     player.pauseOwner = ""
     player.scrubbing = false
+    player.barClosing = false
     return wasTold
   end function
 
@@ -448,6 +463,11 @@ namespace syncPlayPlayer
     ' A stop nothing is known of has no lag learned for it.
     player.stopKind = ""
     player.resumeLagMs = 0&
+    ' A node that pauses itself while a seek's bar is still drawn is the viewer scrubbing again.
+    if player.barClosing
+      player.barClosing = false
+      player.scrubbing = true
+    end if
     if player.scrubbing and player.pauseOwner = "" then player.pauseOwner = "scrub"
   end sub
 

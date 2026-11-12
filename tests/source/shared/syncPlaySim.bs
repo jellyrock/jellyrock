@@ -43,6 +43,10 @@ namespace tests.syncPlaySim
       following: true,
       ' The viewer has the trick-play bar up: the node paused itself, and is theirs meanwhile.
       scrubbing: false,
+      ' A seek was written under the bar: the viewer is done, and the bar stays drawn until 300
+      ' to 350 ms after the landing (Stick 4K, 2026-11-12). Every reading says it is up till then.
+      barUp: false,
+      barEpoch: 0,
       estimator: estimator,
       policy: syncPlayConverge.defaultPolicy(),
       player: syncPlayPlayer.newPlayer(),
@@ -62,7 +66,7 @@ namespace tests.syncPlaySim
       seeks: 0,
       events: 0,
       ' What the run went through, so a spec can check its faults happened at all.
-      counts: { farLandings: 0, slowSeeks: 0, longSeeks: 0, slowResumes: 0, scrubs: 0, lostRequests: 0, stalls: 0, wedgedPauses: 0, silentCatchUps: 0, recoverSeeks: 0, designedHalts: 0, catchUps: 0, holds: 0, waitAsks: 0, whereAsks: 0 }
+      counts: { farLandings: 0, slowSeeks: 0, longSeeks: 0, slowResumes: 0, scrubs: 0, barCloses: 0, lostRequests: 0, stalls: 0, wedgedPauses: 0, silentCatchUps: 0, recoverSeeks: 0, designedHalts: 0, catchUps: 0, holds: 0, waitAsks: 0, whereAsks: 0 }
     }
     ' The group stands paused on one item, and this member's player mounts for it.
     syncPlayGroup.itemChanged(sim.group, "p-1", 99000&)
@@ -262,10 +266,13 @@ namespace tests.syncPlaySim
     end if
     freeze(sim)
     node.wedged = false
-    ' A seek closes the trick-play bar.
-    if sim.scrubbing
+    ' A seek ends the viewer's scrub. The node closes the bar itself, a moment after it lands.
+    closesBar = sim.scrubbing
+    if closesBar
       sim.scrubbing = false
-      syncPlayPlayer.scrub(sim.player, false)
+      sim.barUp = true
+      sim.barEpoch++
+      sim.counts.barCloses++
     end if
     node.busy = "seek"
     node.epoch++
@@ -286,6 +293,7 @@ namespace tests.syncPlaySim
     push(sim, sim.now + 70, { kind: "staleNote", epoch: node.epoch, posMs: targetMs })
     push(sim, sim.now + 80, { kind: "seekBuffering", epoch: node.epoch })
     push(sim, sim.now + tookMs, { kind: "seekDone", epoch: node.epoch, landMs: landMs& })
+    if closesBar then push(sim, sim.now + tookMs + nextInt(sim, 300, 350), { kind: "barDown", barEpoch: sim.barEpoch })
   end sub
 
   ' How long a seek to targetMs takes to reach `playing`: the base, the decode from the keyframe
@@ -324,6 +332,7 @@ namespace tests.syncPlaySim
       syncPlayPlayer.nodeState(sim.player, "buffering", sim.now)
     else if kind = "staleNote"
       if evt.epoch <> node.epoch or node.busy <> "seek" then return
+      if sim.barUp then syncPlayPlayer.scrub(sim.player, true)
       syncPlayPlayer.reading(sim.player, evt.posMs * TICKS_PER_MS, sim.now)
     else if kind = "pauseDone"
       if evt.epoch <> node.epoch or node.busy <> "pause" then return
@@ -349,6 +358,7 @@ namespace tests.syncPlaySim
       startPlaying(sim, node.posMs - sim.resumeLagMs, nextInt(sim, 400, 500))
     else if kind = "note"
       if evt.noteEpoch <> node.noteEpoch or not node.moving then return
+      if sim.barUp then syncPlayPlayer.scrub(sim.player, true)
       syncPlayPlayer.reading(sim.player, nodePosMs(sim) * TICKS_PER_MS, sim.now)
       push(sim, sim.now + 500, { kind: "note", noteEpoch: node.noteEpoch })
     else if kind = "stallStart"
@@ -365,6 +375,11 @@ namespace tests.syncPlaySim
     else if kind = "scrubStart"
       ' The viewer opens the trick-play bar: the node pauses itself, with no write of the player's.
       if node.state <> "playing" or node.busy <> "" or node.wedged or sim.scrubbing then return
+      ' A bar a seek was closing stays up for the new scrub, and never reads down between.
+      if sim.barUp
+        sim.barUp = false
+        sim.barEpoch++
+      end if
       sim.counts.scrubs++
       sim.scrubbing = true
       freeze(sim)
@@ -373,6 +388,10 @@ namespace tests.syncPlaySim
       syncPlayPlayer.scrub(sim.player, true)
       syncPlayPlayer.nodeState(sim.player, "paused", sim.now)
       push(sim, sim.now + evt.forMs, { kind: "scrubEnd", epoch: node.epoch, resumes: evt.resumes })
+    else if kind = "barDown"
+      if evt.barEpoch <> sim.barEpoch or not sim.barUp then return
+      sim.barUp = false
+      syncPlayPlayer.scrub(sim.player, false)
     else if kind = "scrubEnd"
       ' The viewer backs out of the bar. Whether the node then plays by itself is not measured,
       ' so a run can go either way.
