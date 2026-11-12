@@ -21,6 +21,26 @@ namespace tests
       return player
     end function
 
+    ' Resumes a paused player at `atMs`: the node plays 10 ms later, and its first reading, 500 ms
+    ' after the write, shows the resume took effect `lagMs` late.
+    private sub resumeCycle(player as object, atMs as longinteger, lagMs as longinteger)
+      stop& = syncPlayTime.asLong(player.clock.ticks)
+      syncPlayPlayer.told(player, "resume", "group", invalid, atMs)
+      syncPlayPlayer.nodeState(player, "playing", atMs + 10)
+      syncPlayPlayer.reading(player, stop& + (500& - lagMs) * 10000&, atMs + 500)
+    end sub
+
+    ' Pauses a playing player at `atMs`, 100 ms after a reading, landed 30 ms later.
+    ' @returns where it stopped, in ticks
+    private function pauseAt(player as object, atMs as longinteger) as longinteger
+      clock = player.clock
+      playedMs& = atMs - 100 - syncPlayTime.asLong(clock.atMs)
+      syncPlayPlayer.reading(player, syncPlayTime.asLong(clock.ticks) + playedMs& * 10000&, atMs - 100)
+      syncPlayPlayer.told(player, "pause", "group", invalid, atMs)
+      syncPlayPlayer.nodeState(player, "paused", atMs + 30)
+      return syncPlayTime.asLong(player.clock.ticks)
+    end function
+
     ' That player, paused by the group 300 ms after the reading, landed 30 ms later.
     private function pausedAfter300() as object
       player = m.playingAt60()
@@ -332,7 +352,7 @@ namespace tests
     @describe("a resume")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("a resume from a known stop runs the clock from there at the playing state")
+    @it("a resume from a known stop runs the clock from there, from the write while no lag is learned")
     function _()
       player = m.pausedAfter300()
       syncPlayPlayer.told(player, "resume", "group", invalid, 5000&)
@@ -344,7 +364,104 @@ namespace tests
       m.assertEqual(player.activity, "playing")
       m.assertFalse(player.clock.measured)
       m.assertEqual(player.pauseOwner, "")
-      m.assertEqual(syncPlayPlayer.positionAt(player, 5110&), m.at60s + 3000000& + 1000000&)
+      m.assertEqual(syncPlayPlayer.positionAt(player, 5110&), m.at60s + 3000000& + 1100000&)
+    end function
+
+    @it("the first reading after a resume says how late the resume took effect")
+    function _()
+      player = m.pausedAfter300()
+      m.assertEqual(player.resumeLagMs, 0&)
+      syncPlayPlayer.told(player, "resume", "group", invalid, 5000&)
+      syncPlayPlayer.nodeState(player, "playing", 5010&)
+      ' 519 ms after the write the node has played 480 ms: the resume took effect 39 ms late.
+      syncPlayPlayer.reading(player, m.at60s + 3000000& + 4800000&, 5519&)
+      m.assertEqual(player.resumeLagMs, 39&)
+      ' Only the first reading is a sample.
+      syncPlayPlayer.reading(player, m.at60s + 3000000& + 9000000&, 6019&)
+      m.assertEqual(player.resumeLagMs, 39&)
+    end function
+
+    @it("a resume runs the clock from the write plus the lag learned")
+    function _()
+      player = m.pausedAfter300()
+      m.resumeCycle(player, 2000&, 0&)
+      m.pauseAt(player, 4000&)
+      m.resumeCycle(player, 5000&, 40&)
+      stop& = m.pauseAt(player, 7000&)
+      syncPlayPlayer.told(player, "resume", "group", invalid, 8000&)
+      syncPlayPlayer.nodeState(player, "playing", 8010&)
+      ' The node is taken to start 40 ms after the write, at 8040.
+      m.assertEqual(syncPlayPlayer.positionAt(player, 8140&), stop& + 1000000&)
+    end function
+
+    @it("the lag in use is the median of the last five samples, and a sample outside the cap is dropped")
+    function _()
+      player = m.pausedAfter300()
+      m.resumeCycle(player, 2000&, 0&)
+      m.pauseAt(player, 4000&)
+      m.resumeCycle(player, 5000&, 30&)
+      m.assertEqual(player.resumeLagMs, 30&)
+      m.pauseAt(player, 7000&)
+      m.resumeCycle(player, 8000&, 50&)
+      m.assertEqual(player.resumeLagMs, 40&)
+      m.pauseAt(player, 10000&)
+      m.resumeCycle(player, 11000&, 400&)
+      m.assertEqual(player.resumeLagMs, 40&)
+      m.pauseAt(player, 13000&)
+      m.resumeCycle(player, 14000&, -20&)
+      m.assertEqual(player.resumeLagMs, 40&)
+      m.pauseAt(player, 16000&)
+      m.resumeCycle(player, 17000&, 35&)
+      m.assertEqual(player.resumeLagMs, 35&)
+      for i = 0 to 4
+        m.pauseAt(player, 20000& + i * 3000)
+        m.resumeCycle(player, 21000& + i * 3000, 60&)
+      end for
+      m.assertEqual(player.resumeLagMs, 60&)
+    end function
+
+    @it("a stop straight after a landing and a stop in steady play each keep a lag of their own")
+    function _()
+      ' The first pause comes with no reading since the load's landing.
+      player = m.pausedAfter300()
+      m.assertEqual(player.stopKind, "landing")
+      m.resumeCycle(player, 2000&, 60&)
+      m.assertEqual(player.resumeLagMs, 60&)
+      ' The next comes after a later reading: steady play, nothing learned for it yet.
+      m.pauseAt(player, 4000&)
+      m.assertEqual(player.stopKind, "steady")
+      m.assertEqual(player.resumeLagMs, 0&)
+      m.resumeCycle(player, 5000&, 10&)
+      m.assertEqual(player.resumeLagMs, 10&)
+      ' A seek's landing, paused before a second reading, is a landing stop again.
+      syncPlayPlayer.told(player, "seek", "group", m.at60s, 7000&)
+      syncPlayPlayer.nodeState(player, "buffering", 7100&)
+      syncPlayPlayer.nodeState(player, "playing", 7500&)
+      syncPlayPlayer.reading(player, m.at60s, 7520&)
+      syncPlayPlayer.told(player, "pause", "wait", invalid, 7530&)
+      syncPlayPlayer.nodeState(player, "paused", 7560&)
+      m.assertEqual(player.stopKind, "landing")
+      m.assertEqual(player.resumeLagMs, 60&)
+    end function
+
+    @it("a resume with a stall before its first reading gives no sample")
+    function _()
+      player = m.pausedAfter300()
+      syncPlayPlayer.told(player, "resume", "group", invalid, 5000&)
+      syncPlayPlayer.nodeState(player, "playing", 5010&)
+      syncPlayPlayer.nodeState(player, "buffering", 5100&)
+      syncPlayPlayer.nodeState(player, "playing", 5400&)
+      syncPlayPlayer.reading(player, m.at60s + 3000000& + 1000000&, 5519&)
+      m.assertEqual(player.resumeLagMs, 0&)
+    end function
+
+    @it("a new stream starts with no lag learned")
+    function _()
+      player = m.pausedAfter300()
+      m.resumeCycle(player, 5000&, 40&)
+      m.assertEqual(player.resumeLagMs, 40&)
+      syncPlayPlayer.reloaded(player, invalid, 9000&)
+      m.assertEqual(player.resumeLagMs, 0&)
     end function
 
     @it("a resume from an unknown stop plays with no position until a reading")

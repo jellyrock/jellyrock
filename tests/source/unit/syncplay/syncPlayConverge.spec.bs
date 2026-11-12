@@ -819,6 +819,17 @@ namespace tests
       m.assertEqual(m.kindOf(m.decide(player, m.playingLine(), 10300&)), "resume")
     end function
 
+    @it("a resume is written earlier by the lag the player model learned")
+    function _()
+      player = m.pausedAt(m.at65s + 300 * m.oneMs, "group")
+      player.resumeLagMs = 40&
+      waiting = m.decide(player, m.playingLine(), 10000&)
+      m.assertEqual(m.kindOf(waiting), "")
+      m.assertEqual(waiting.wakeAtMs, 10260&)
+      m.assertEqual(m.kindOf(m.decide(player, m.playingLine(), 10259&)), "")
+      m.assertEqual(m.kindOf(m.decide(player, m.playingLine(), 10260&)), "resume")
+    end function
+
     @it("a node a little behind resumes now")
     function _()
       m.assertEqual(m.kindOf(m.decide(m.pausedAt(m.at65s - 200 * m.oneMs, "group"), m.playingLine(), 10000&)), "resume")

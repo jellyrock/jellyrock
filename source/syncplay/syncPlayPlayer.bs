@@ -18,6 +18,10 @@ namespace syncPlayPlayer
   ' How long after `playing` the first position notification may take before the arrival is
   ' counted as unread. It came 7 to 42 ms after `playing` on 22 seeks (Stick 4K, 2026-11-10).
   const ARRIVAL_READING_MS = 250
+  ' How late a resume may take effect and still be learned from, and how many resumes the lag in
+  ' use is the median of. Both are provisional: nothing has measured them.
+  const RESUME_LAG_MAX_MS = 150
+  const RESUME_LAG_SAMPLES = 5
 
   ' Activities:
   '   "none"      no player.
@@ -70,7 +74,24 @@ namespace syncPlayPlayer
       seekSlow: false,
       lastSeekMs: 0&,
       lastSeekGaveUp: false,
-      lastLandingTicks: invalid
+      lastLandingTicks: invalid,
+      ' How late a resume from the stop the node is now in takes effect, in ms: the median of
+      ' the last few resumes from a stop of the same kind, each read off the first position
+      ' reading after it. The comparison writes a resume this much early
+      ' (syncPlayConverge.lineAction). It is kept per kind of stop because the two differ: a
+      ' node stopped straight after a landing resumes later against the model than one stopped
+      ' in steady play.
+      resumeLagMs: 0&,
+      resumeLagSamples: { landing: [], steady: [] },
+      resumeLagLastSampleMs: invalid,
+      resumeLagLastKind: "",
+      ' Whether the clock still runs from a landing's first reading, and the kind of the stop
+      ' the last pause made: "landing" (no reading since the landing's) or "steady".
+      clockFromLanding: false,
+      stopKind: "",
+      resumeWrittenAtMs: 0&,
+      ' Where the node stood when the resume was written, while its first reading is awaited.
+      resumeFromTicks: invalid
     }
   end function
 
@@ -96,7 +117,10 @@ namespace syncPlayPlayer
     else if verb = "pause"
       toldPause(player, owner, nowMs)
     else if verb = "resume"
-      if player.activity = "paused" then enter(player, "resuming", nowMs)
+      if player.activity = "paused"
+        enter(player, "resuming", nowMs)
+        player.resumeWrittenAtMs = nowMs
+      end if
     else if verb = "seek"
       if player.activity = "none" or player.activity = "loading" or player.activity = "finished" then return
       player.seekTargetTicks = syncPlayTime.asLong(targetTicks)
@@ -125,6 +149,9 @@ namespace syncPlayPlayer
     player.pauseOwner = owner
     player.pauseWrites++
     player.pauseWrittenAtMs = nowMs
+    player.stopKind = "steady"
+    if player.clockFromLanding or player.activity = "arrived" then player.stopKind = "landing"
+    player.resumeLagMs = medianOf(player.resumeLagSamples[player.stopKind])
     ' Where the write stopped the node: the running clock read at the write.
     player.pauseTicks = positionAt(player, nowMs)
     enter(player, "pausing", nowMs)
@@ -150,6 +177,12 @@ namespace syncPlayPlayer
     player.lastSeekMs = 0&
     player.lastSeekGaveUp = false
     player.lastLandingTicks = invalid
+    ' A new stream resumes in its own time.
+    player.resumeLagMs = 0&
+    player.resumeLagSamples = { landing: [], steady: [] }
+    player.stopKind = ""
+    player.clockFromLanding = false
+    player.resumeLagLastSampleMs = invalid
     player.loadStartTicks = 0&
     if syncPlayTime.isWholeNumber(startTicks) then player.loadStartTicks = syncPlayTime.asLong(startTicks)
     ' The mount of a load already told is that load; any other mount is a load of its own.
@@ -218,7 +251,12 @@ namespace syncPlayPlayer
         ' A resume from a known stop starts the run there: it predicted the next notification
         ' to within 26 ms in 9 resumes (Stick 4K, 2026-11-10).
         if player.clock.kind = "stopped"
-          setClock(player, "running", player.clock.ticks, nowMs, false)
+          ' The node starts moving the learned lag after the write, so the run is reckoned from
+          ' then. The first reading says how late this resume was (reading).
+          stop& = syncPlayTime.asLong(player.clock.ticks)
+          startsAt& = syncPlayTime.asLong(player.resumeWrittenAtMs) + syncPlayTime.asLong(player.resumeLagMs)
+          setClock(player, "running", stop& + syncPlayTime.msToTicks(nowMs - startsAt&), nowMs, false)
+          player.resumeFromTicks = stop&
         else
           setClock(player, "unknown", 0&, nowMs, false)
         end if
@@ -258,7 +296,10 @@ namespace syncPlayPlayer
       end if
       enter(player, "playing", nowMs)
       setClock(player, "running", positionTicks, runsFromMs&, true)
+      player.clockFromLanding = true
     else if player.activity = "playing"
+      player.clockFromLanding = false
+      if isValid(player.resumeFromTicks) then learnResumeLag(player, positionTicks, nowMs)
       setClock(player, "running", positionTicks, nowMs, true)
     end if
     ' Any other activity: the field reads a seek's target, or the position from before a pause.
@@ -350,7 +391,38 @@ namespace syncPlayPlayer
   sub enter(player as object, activity as string, nowMs as longinteger)
     player.activity = activity
     player.sinceMs = nowMs
+    ' Only an unbroken run from a resume to its first reading says how late the resume was.
+    player.resumeFromTicks = invalid
   end sub
+
+  ' The first reading after a resume from a known stop: the time since the write, less the media
+  ' played since, is how late the resume took effect. The lag in use is the median of the last
+  ' few, so one late reading does not move it, and a sample outside the cap is dropped.
+  sub learnResumeLag(player as object, positionTicks as longinteger, nowMs as longinteger)
+    playedMs& = syncPlayTime.ticksToMs(positionTicks - syncPlayTime.asLong(player.resumeFromTicks))
+    sampleMs& = nowMs - syncPlayTime.asLong(player.resumeWrittenAtMs) - playedMs&
+    player.resumeFromTicks = invalid
+    player.resumeLagLastSampleMs = sampleMs&
+    player.resumeLagLastKind = player.stopKind
+    if sampleMs& < 0 or sampleMs& > RESUME_LAG_MAX_MS then return
+    samples = player.resumeLagSamples[player.stopKind]
+    if not isValid(samples) then return
+    samples.push(sampleMs&)
+    if samples.count() > RESUME_LAG_SAMPLES then samples.shift()
+    player.resumeLagMs = medianOf(samples)
+  end sub
+
+  ' The median of a list of ms values, or 0 for none.
+  function medianOf(samples as dynamic) as longinteger
+    if not isValid(samples) or samples.count() = 0 then return 0&
+    sorted = []
+    sorted.append(samples)
+    sorted.sort()
+    mid = sorted.count() \ 2
+    median& = syncPlayTime.asLong(sorted[mid])
+    if sorted.count() mod 2 = 0 then median& = (syncPlayTime.asLong(sorted[mid - 1]) + median&) \ 2
+    return median&
+  end function
 
   sub setClock(player as object, kind as string, ticks as longinteger, nowMs as longinteger, measured as boolean)
     player.clock = { kind: kind, ticks: ticks, atMs: nowMs, measured: measured }
@@ -373,6 +445,9 @@ namespace syncPlayPlayer
     setClock(player, "unknown", 0&, nowMs, false)
     player.pauseTicks = invalid
     player.pauseWrites = 0
+    ' A stop nothing is known of has no lag learned for it.
+    player.stopKind = ""
+    player.resumeLagMs = 0&
     if player.scrubbing and player.pauseOwner = "" then player.pauseOwner = "scrub"
   end sub
 

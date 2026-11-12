@@ -1581,6 +1581,13 @@ sub shadowPlayerFact(evt as object)
   syncPlayShadow.playerFact(m.shadow, evt, m.loadStartTicks, nowMs&)
 end sub
 
+' The player model's learned resume lag, or its last sample, for the specs: a soak's record says
+' what each resume was written against. Invalid with no model or no sample yet.
+function resumeLagForSpecs(field as string) as dynamic
+  if not isValid(m.shadow) then return invalid
+  return m.shadow.player[field]
+end function
+
 ' The pause the player reports from inside a write of this manager's is that write, not the
 ' viewer's own, so the write is bracketed.
 ' The pause the player reports from inside a write of this manager's is that write, not the
@@ -1749,6 +1756,9 @@ sub publish()
       readiesSent: m.readiesSent,
       unreachableNotices: m.unreachableNotices,
       pauseLandedMs: m.pauseLandedMs,
+      resumeLagMs: resumeLagForSpecs("resumeLagMs"),
+      resumeLagSampleMs: resumeLagForSpecs("resumeLagLastSampleMs"),
+      resumeLagKind: resumeLagForSpecs("resumeLagLastKind"),
       shadowDisagreements: shadowCount(),
       engine: engineName(),
       repeatMode: m.state.repeatMode,

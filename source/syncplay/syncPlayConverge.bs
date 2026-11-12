@@ -231,6 +231,8 @@ namespace syncPlayConverge
           resumeAt& = reach&
         end if
       end if
+      ' A resume takes effect late by a lag the player model learns, so it is written that early.
+      resumeAt& -= syncPlayTime.asLong(player.resumeLagMs)
       if nowMs >= resumeAt& then return { kind: "resume", owner: "group" }
       wake(result, resumeAt&)
       return invalid

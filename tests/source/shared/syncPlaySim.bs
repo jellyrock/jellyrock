@@ -53,6 +53,7 @@ namespace tests.syncPlaySim
     }
     ' The group stands paused on one item, and this member's player mounts for it.
     syncPlayGroup.itemChanged(sim.group, "p-1", 99000&)
+    sim.resumeLagMs = nextInt(sim, 0, 80)
     syncPlayPlayer.mounted(sim.player, 60000& * TICKS_PER_MS, sim.now)
     sim.node.busy = "load"
     sim.node.state = "buffering"
@@ -312,7 +313,8 @@ namespace tests.syncPlaySim
         push(sim, sim.now + nextInt(sim, 1500, 6000), { kind: "stallEnd", epoch: node.epoch })
         return
       end if
-      startPlaying(sim, node.posMs, nextInt(sim, 400, 500))
+      ' The picture moves a little after the node says it plays: this run's own resume lag.
+      startPlaying(sim, node.posMs - sim.resumeLagMs, nextInt(sim, 400, 500))
     else if kind = "note"
       if evt.noteEpoch <> node.noteEpoch or not node.moving then return
       syncPlayPlayer.reading(sim.player, nodePosMs(sim) * TICKS_PER_MS, sim.now)
