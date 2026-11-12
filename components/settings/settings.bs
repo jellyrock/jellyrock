@@ -605,6 +605,10 @@ sub radioSettingChanged()
     applyThemeColorOverrides(m.global.user.settings)
   end if
 
+  ' The scene keeps the backdrop mode it decided, and only Home refreshes it when shown. Settings
+  ' opens over any screen, so a backdrop choice is applied here, before Back returns to it.
+  if selectedSetting.settingName = "uiShowBackdrop" then m.top.getScene().callFunc("refreshBackdropSetting")
+
   ' Refresh menu if sibling items have visibleWhen referencing this setting
   if hasDependentVisibility(selectedSetting.settingName)
     refreshCurrentMenu()

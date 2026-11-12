@@ -14,6 +14,7 @@
  * store orchestrator after nav, so the functional test for osd stays free of
  * ffmpeg/backdrop logic.
  */
+import fs from 'node:fs';
 import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import { libraryIdFor } from './jellyfin.js';
@@ -40,6 +41,7 @@ import {
   hasChildren,
   resendIfSwallowed,
   resendUntilFocused,
+  resendUntilFocusInside,
   scrollFocus,
   waitCellsQuiet,
   waitRowsSettled,
@@ -187,6 +189,128 @@ export async function navSettings() {
     timeout: 20000,
   });
   await sleep(1000); // let the settings menu + panels paint before capture
+}
+
+/**
+ * The entry for `settingName` in settings.json, the same file the app builds its Settings
+ * menu from: `{ title, options, ... }`, or `undefined` when no entry has that name.
+ */
+export function readSettingEntry(settingName) {
+  const tree = JSON.parse(
+    fs.readFileSync(new URL('../../../settings/settings.json', import.meta.url), 'utf8'),
+  );
+  const find = (nodes) => {
+    for (const node of nodes) {
+      if (node.settingName === settingName) return node;
+      const found = node.children ? find(node.children) : undefined;
+      if (found) return found;
+    }
+    return undefined;
+  };
+  return find(tree);
+}
+
+/**
+ * The titles of the Settings menu now showing, in order.
+ *
+ * Settings swaps one list's content as the user goes into and out of a group, so the labels
+ * are what says which menu this is. Two reads (count, then titles), never mid-swap in a way
+ * that matters: every caller waits for a label that only the wanted menu holds.
+ */
+export async function settingsMenuTitles() {
+  const count = await getActiveVal('#settingsMenu.content.getChildCount()');
+  if (!(count > 0)) return [];
+  const titles = await getActiveVals(
+    [...Array(count).keys()].map((i) => `#settingsMenu.content.${i}.title`),
+  );
+  return titles.filter((t) => typeof t === 'string');
+}
+
+/**
+ * Wait until the Settings menu holds `label`. The keyPath is a function result
+ * (`getChildCount()`) and the read returns the titles beside it, so the poll is a function
+ * wait (`FN`): the menu's content is replaced by the app, never pulsed.
+ */
+export async function waitSettingsMenuHas(label, why) {
+  return waitFor('#settingsMenu.content.getChildCount()', (titles) => titles.includes(label), {
+    read: () => settingsMenuTitles(),
+    timeout: 15000,
+    interval: 300,
+    label: why,
+  });
+}
+
+/** Walk the Settings menu to the entry titled `label`. */
+export async function walkSettingsMenuTo(label) {
+  const titles = await settingsMenuTitles();
+  const target = titles.indexOf(label);
+  if (target < 0) {
+    // eslint-disable-next-line no-restricted-syntax -- a fail-fast: the menu was read and has no such entry, which no wait can change
+    throw new Error(`the Settings menu lists no "${label}" (has ${JSON.stringify(titles)})`);
+  }
+  await waitFocusInside('#settingsMenu', { label: `the settings menu before "${label}"` });
+  await scrollFocus({
+    keyPath: '#settingsMenu.itemFocused',
+    target,
+    forwardKey: ecp.Key.Down,
+    backKey: ecp.Key.Up,
+    read: getActiveVal,
+    stepped: true,
+    within: '#settingsMenu',
+    label: `the settings menu entry "${label}"`,
+  });
+}
+
+/**
+ * From the Settings top menu, open each group in `groups` (Right on each), walk to the
+ * `settingName` entry, and pick its radio option `optionId` with OK. Focus stays in the radio
+ * list; each Back from there climbs one menu. The menu labels are English, so seed `en_US`.
+ *
+ * @returns {Promise<number>} the option's index in the radio list
+ */
+export async function pickSettingsRadioOption(groups, settingName, optionId) {
+  const entry = readSettingEntry(settingName);
+  await waitFocusInside('#settingsMenu', { label: 'the settings menu' });
+  // Each Right opens the group, and a label that only the opened menu holds says it arrived.
+  const steps = [...groups, entry.title];
+  for (let i = 0; i < groups.length; i++) {
+    await walkSettingsMenuTo(groups[i]);
+    await press(ecp.Key.Right);
+    await waitSettingsMenuHas(steps[i + 1], `the ${groups[i]} group`);
+  }
+  await walkSettingsMenuTo(entry.title);
+
+  // The radio list is filled one turn after the menu focus lands: wait for all its options.
+  await waitFor('#radioSetting.content.getChildCount()', (n) => n === entry.options.length, {
+    read: getActiveVal,
+    timeout: 10000,
+    interval: 300,
+    label: `the ${settingName} options listed`,
+  });
+  await press(ecp.Key.Right);
+  await waitFocusInside('#radioSetting', {
+    label: `the ${settingName} options`,
+    action: resendUntilFocusInside(ecp.Key.Right, '#radioSetting'),
+  });
+
+  const ids = await getActiveVals(entry.options.map((_, i) => `#radioSetting.content.${i}.id`));
+  const index = ids.indexOf(optionId);
+  if (index < 0) {
+    // eslint-disable-next-line no-restricted-syntax -- a fail-fast: the list was read in full and has no such option
+    throw new Error(`the ${settingName} radio lists no "${optionId}" (has ${JSON.stringify(ids)})`);
+  }
+  await scrollFocus({
+    keyPath: '#radioSetting.itemFocused',
+    target: index,
+    forwardKey: ecp.Key.Down,
+    backKey: ecp.Key.Up,
+    read: getActiveVal,
+    stepped: true,
+    within: '#radioSetting',
+    label: `the ${optionId} option`,
+  });
+  await press(ecp.Key.Ok);
+  return index;
 }
 
 /**
