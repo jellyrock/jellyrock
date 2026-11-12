@@ -52,10 +52,12 @@ sub onTitleChanged()
 end sub
 
 ' Overrides TextButton.onRenderComplete, which sizes a button only once it is fully on screen:
-' a tab in a strip longer than its slot may show only in part. Any report from the renderer
-' sizes it, in case its label could not be measured when the title was set.
+' a tab in a strip longer than its slot may show only in part. The first report from the renderer
+' sizes a tab whose label could not be measured when the title was set. Once sized, later reports
+' change nothing: re-sizing sets isReady again, which makes the strip stop a slide and jump to its end.
 sub onRenderComplete()
   if m.top.renderTracking = "disabled" then return
+  if m.top.isReady then return
   setSizeAndCenterText()
 end sub
 

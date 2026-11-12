@@ -27,6 +27,7 @@ import {
   getVal,
   getVals,
   press,
+  sleep,
   waitFor,
   waitFocusInside,
   waitHome,
@@ -92,6 +93,34 @@ async function waitSlideEnded() {
   });
 }
 
+/**
+ * Press Right and watch the slide it starts, from the press to the animation stopping. Returns
+ * the samples and the time the slide took, so a slide cut short shows as a short time. A loop
+ * outside `waitFor`: it reads two keyPaths per tick and records every sample, where `waitFor`
+ * polls one keyPath and keeps only the last value.
+ */
+async function pressRightAndSampleSlide() {
+  const start = (await getVal('#overhang.#tabContainer.translation'))[0];
+  const samples = [];
+  const t0 = Date.now();
+  await press(ecp.Key.Right);
+  // A press that does not move the strip ends here: the slide has had its time by then
+  const deadline = t0 + 2500;
+  let moved = false;
+  while (Date.now() < deadline) {
+    const [translation, state] = await getVals([
+      '#overhang.#tabContainer.translation',
+      '#overhang.#scrollAnimation.state',
+    ]);
+    samples.push({ ms: Date.now() - t0, x: translation[0], state });
+    moved = translation[0] !== start;
+    // "stopped" alone also reads before the animation has started
+    if (moved && state === 'stopped') break;
+    await sleep(40);
+  }
+  return { start, samples, moved, ms: Date.now() - t0 };
+}
+
 let session;
 
 beforeAll(async () => {
@@ -145,9 +174,42 @@ it.skipIf(!BENCH_ENABLED)('scrolls a strip of eight tabs by the rule', async () 
   await waitFocusInside('tabBar', { label: 'focus in the tab bar' });
   await waitTabFocused(0);
 
+  // The first press that moves the strip runs slowed, and its slide must last: a slide cut
+  // short by a tab sizing again mid-way stops and jumps to its end
+  const shippedSeconds = await getVal('#overhang.#scrollAnimation.duration');
+  const slowSeconds = 1;
+  await odc.setValue({
+    base: 'scene',
+    keyPath: '#overhang.#scrollAnimation.duration',
+    value: slowSeconds,
+  });
+  let slideChecked = false;
+
   for (let i = 0; i < TABS.length; i++) {
     if (i > 0) {
-      await press(ecp.Key.Right);
+      if (!slideChecked) {
+        const slide = await pressRightAndSampleSlide();
+        if (slide.moved) {
+          record.slide = slide;
+          const startX = slide.start;
+          const endX = slide.samples[slide.samples.length - 1].x;
+          // Some sample is part-way, so the strip slid and did not jump
+          expect(
+            slide.samples.some((p) => (p.x - startX) * (p.x - endX) < 0),
+            'a sample strictly between start and end',
+          ).toBe(true);
+          // And the slide ran its length
+          expect(slide.ms, 'the slide ran its length').toBeGreaterThanOrEqual(slowSeconds * 800);
+          slideChecked = true;
+          await odc.setValue({
+            base: 'scene',
+            keyPath: '#overhang.#scrollAnimation.duration',
+            value: shippedSeconds,
+          });
+        }
+      } else {
+        await press(ecp.Key.Right);
+      }
       await waitTabFocused(i);
     }
     const strip = await stop(`focus-${i}`);
@@ -160,6 +222,9 @@ it.skipIf(!BENCH_ENABLED)('scrolls a strip of eight tabs by the rule', async () 
     expect(strip.offset).toBeLessThanOrEqual(total - strip.slotWidth);
     expect(strip.offset % 3).toBe(0);
   }
+
+  // The bench proves nothing about the slide unless a press moved the strip
+  expect(slideChecked).toBe(true);
 
   // Right from the last tab leaves the strip for the next element in the row, and the strip
   // goes back to the selected tab
