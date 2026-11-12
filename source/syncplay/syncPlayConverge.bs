@@ -21,10 +21,10 @@
 ' Every time is a LongInteger: epoch milliseconds or Jellyfin ticks.
 namespace syncPlayConverge
 
-  ' The thresholds, in one place so a soak can compare candidates. The drift bars, the lead and
-  ' the write limits are the values the manager used before the rewrite and are not yet
-  ' justified by a measurement of their own. The request limits and aheadWaitMaxMs are
-  ' provisional: nothing has measured them.
+  ' The thresholds, in one place so a soak can compare candidates. The drift bars and the write
+  ' limits are the values the manager used before the rewrite and are not yet justified by a
+  ' measurement of their own. The request limits and aheadWaitMaxMs are provisional: nothing
+  ' has measured them.
   function defaultPolicy() as object
     return {
       ' A playing member further behind the group than this catches up; further ahead than
@@ -36,7 +36,7 @@ namespace syncPlayConverge
       pointToleranceMs: syncPlayPlayback.READY_TOLERANCE_MS,
       ' How far ahead of the group a catch-up seeks, at least, and what it keeps over the last
       ' seek's time.
-      leadMs: syncPlayPlayback.CORRECTION_LEAD_MS,
+      leadMs: syncPlayPlayback.CATCH_UP_LEAD_MS,
       leadMarginMs: syncPlayPlayback.CORRECTION_LEAD_MARGIN_MS,
       ' Catch-ups in a row that did not bring the member in step, before the group is asked to
       ' wait instead, and seeks toward a waiting group's point per group command.

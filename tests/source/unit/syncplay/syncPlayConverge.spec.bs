@@ -705,8 +705,8 @@ namespace tests
       result = m.decide(player, group, 10000&)
       m.assertEqual(m.kindOf(result), "seek")
       m.assertEqual(result.action.owner, "hold")
-      ' The group at device 12000 (the 2 s lead): 67 s.
-      m.assertEqual(result.action.targetTicks, 670000000&)
+      ' The group at device 13000 (the 3 s lead): 68 s.
+      m.assertEqual(result.action.targetTicks, 680000000&)
       syncPlayConverge.applied(player, group, result.action, 10000&)
       m.assertEqual(group.catchUps, 1)
       m.assertEqual(player.activity, "seeking")
@@ -738,8 +738,8 @@ namespace tests
       syncPlayConverge.applied(player, group, seek.action, 10000&)
       syncPlayPlayer.nodeState(player, "buffering", 10080&)
       syncPlayPlayer.nodeState(player, "playing", 10600&)
-      ' Landed 20 ms past the target, 1.42 s ahead of the group at 10620.
-      syncPlayPlayer.reading(player, 670000000& + 20 * m.oneMs, 10620&)
+      ' Landed 20 ms past the target, 2.42 s ahead of the group at 10620.
+      syncPlayPlayer.reading(player, 680000000& + 20 * m.oneMs, 10620&)
       hold = m.decide(player, group, 10620&)
       m.assertEqual(m.kindOf(hold), "pause")
       m.assertEqual(hold.action.owner, "hold")
@@ -747,11 +747,11 @@ namespace tests
       syncPlayPlayer.nodeState(player, "paused", 10650&)
       waiting = m.decide(player, group, 10650&)
       m.assertEqual(m.kindOf(waiting), "")
-      ' The reading says 67.02 s for the moment the node began playing (10600), so the pause at
-      ' 10620 stopped it at 67.04 s, which the group reaches at device 12040.
-      m.assertEqual(waiting.wakeAtMs, 12040&)
-      m.assertEqual(m.kindOf(m.decide(player, group, 12020&)), "")
-      m.assertEqual(m.kindOf(m.decide(player, group, 12040&)), "resume")
+      ' The reading says 68.02 s for the moment the node began playing (10600), so the pause at
+      ' 10620 stopped it at 68.04 s, which the group reaches at device 13040.
+      m.assertEqual(waiting.wakeAtMs, 13040&)
+      m.assertEqual(m.kindOf(m.decide(player, group, 13020&)), "")
+      m.assertEqual(m.kindOf(m.decide(player, group, 13040&)), "resume")
     end function
 
     @it("a catch-up that landed behind runs once more, then asks the group to wait, once")

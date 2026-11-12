@@ -70,6 +70,11 @@ namespace syncPlayPlayback
   const CORRECTION_LEAD_MS = 2000
   ' What a lead keeps over the last seek's time, for a seek a little slower than the one before.
   const CORRECTION_LEAD_MARGIN_MS = 500
+  ' The comparison's shortest lead for a catch-up. An exact seek decodes forward from the
+  ' keyframe before its target, so it takes longer the further past that keyframe it aims, and a
+  ' seek slower than the lead lands behind the group with no hold to bring it in step. This
+  ' covers a target 10 s past its keyframe on direct play (Stick 4K, 2026-11-11).
+  const CATCH_UP_LEAD_MS = 3000
 
   ' --- where a pause stopped the node ---
   '
