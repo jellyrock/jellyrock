@@ -1,5 +1,6 @@
 import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/overlayDialog.bs"
 
 ' JRScreen has no init() on purpose. The roku-log manager is owned by JRScene.init():
@@ -218,6 +219,26 @@ end sub
 ' a screen that does overrides this and returns true.
 function onOverhangAction(_id as string) as boolean
   return false
+end function
+
+' JRScene: Star was pressed and this screen did not take the key itself: focus was in the
+' overhang row, or the key passed through. Do what Star does on this screen, and return
+' whether anything happened. The base opens the slide-out panel of a screen that has one
+' (an `options` node with a `panelList`: Home, the server list). A screen with its own Star
+' behavior overrides this with the function its onKeyEvent runs, so the key means the same
+' wherever focus was.
+function onOptionsKey() as boolean
+  if m.top.isOptionsAvailable <> true then return false
+  ' A screen can report isOptionsAvailable without owning a panel, and a panel of another
+  ' kind has no list to focus.
+  panel = nodeHelpers.findOptionsPanel(m.top)
+  if not isValid(panel) then return false
+  list = panel.findNode("panelList")
+  if not isValid(list) then return false
+  m.top.lastFocus = m.top.focusedChild
+  panel.visible = true
+  list.setFocus(true)
+  return true
 end function
 
 ' Focus the cluster icon this screen was left by (overhangReturnIcon), when the viewer is

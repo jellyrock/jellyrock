@@ -16,6 +16,7 @@ import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
 import { captureRawUI } from '../capture.js';
 import {
+  focusOverhangIcon,
   navLibraryGrid,
   navMovieDetails,
   navSettings,
@@ -144,6 +145,46 @@ it('Settings: Up enters the row, the gear there does nothing, Back from the row 
   // Back from the row leaves the screen through its own leaveScreen: one press, not two.
   await press(ecp.Key.Back);
   await waitHome();
+});
+
+// Star from the row does what Star does on the screen under it. The row sits outside the
+// screen, so the scene gets the key and hands it to the screen (JRScreen.onOptionsKey).
+it('Star from the row on a library opens its options, and Star again closes them', async () => {
+  await freshApp('overhang-cluster star library');
+  await navLibraryGrid(ctx);
+  await enterRow('the grid');
+
+  await press(ecp.Key.Option);
+  await waitFocusInside('#options', { label: 'the library options, opened from the row' });
+  expect(await getActiveVal('subtype()'), 'the app is still on the library').toBe('BaseGridView');
+
+  await press(ecp.Key.Option);
+  await waitFocusInside('#itemGrid', { label: 'the grid after Star closed the options' });
+});
+
+it('Star from the row on Settings closes Settings in one press, as it does on the screen', async () => {
+  await freshApp('overhang-cluster star settings');
+  await navSettings();
+  await waitFocusInside('#settingsMenu', { label: 'the settings menu' });
+  await press(ecp.Key.Up);
+  await waitFocused(atSyncPlayIcon, {
+    timeout: 8000,
+    interval: 250,
+    label: 'the row from Settings',
+  });
+
+  await press(ecp.Key.Option);
+  await waitHome();
+});
+
+it('Star from the row on Home opens its panel', async () => {
+  await freshApp('overhang-cluster star home');
+  await waitHome();
+  await focusOverhangIcon('settingsIcon');
+
+  await press(ecp.Key.Option);
+  await waitFocusInside('#options', { label: "Home's panel, opened from the row" });
+  expect(await getActiveVal('subtype()')).toBe('Home');
 });
 
 it('search: Up from the keyboard enters the row, and the search icon reopens the keyboard', async () => {
