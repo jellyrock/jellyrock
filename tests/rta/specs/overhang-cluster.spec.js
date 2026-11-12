@@ -193,6 +193,27 @@ it('Star right after Back from a library is dropped, and Home comes back', async
   await waitHome();
 });
 
+// The case above races a real Back, so it cannot say whether its Stars landed in the gap. This
+// one builds the gap's state with no race: the router's own close call tears the library down
+// in place, so it stays the active view with its onDestroy run and no navigation in flight.
+// The scene must call none of that screen's hooks (JRScreen.isClosed). Nothing a viewer does
+// leaves the app here, so the next case starts the app again.
+it('Star on a library that is closed but still the active view is dropped', async () => {
+  await freshApp('overhang-cluster star on a closed screen');
+  await navLibraryGrid(ctx);
+  await waitFocusInside('#itemGrid', { label: 'the library grid' });
+
+  await odc.callFunc({ base: 'global', keyPath: 'activeRoutedView', funcName: 'beforeViewClose' });
+  expect(await getActiveVal('isClosed'), 'the library reports itself closed').toBe(true);
+
+  await press(ecp.Key.Option);
+  // A read that completes is the app still running: without the check the key reached
+  // BaseGridView.toggleOptions() on released state and the app stopped in the debugger.
+  expect(await getActiveVal('subtype()'), 'the app still answers, on the same view').toBe(
+    'BaseGridView',
+  );
+});
+
 it('Star from the row on Home opens its panel', async () => {
   await freshApp('overhang-cluster star home');
   await waitHome();

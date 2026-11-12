@@ -397,7 +397,9 @@ function onKeyEvent(key as string, press as boolean) as boolean
     if isRouterNavigating() then return true
     returnFocusFromOverhangRow()
     view = getActiveView()
-    if isValid(view) and view.isSubType("JRScreen") then view.callFunc("onOptionsKey")
+    ' A closed screen has released what its hook reads (isClosed): the navigation check above
+    ' covers the close the router is still working through, this covers any other.
+    if isValid(view) and view.isSubType("JRScreen") and view.isClosed <> true then view.callFunc("onOptionsKey")
     return true
   end if
 

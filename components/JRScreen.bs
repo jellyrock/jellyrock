@@ -152,6 +152,7 @@ end sub
 ' delivering nothing, since the scope that would read the answer is gone. Its onDestroy may have
 ' abandoned it already; this catches one it kept no reference to.
 function beforeViewClose(_params = {} as object) as dynamic
+  m.top.isClosed = true
   onScreenHidden()
   onDestroy()
   abandonDialog(ownedOpenDialog())
