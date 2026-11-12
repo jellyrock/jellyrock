@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-11
+last-updated: 2026-11-12
 ---
 
 # Progress
@@ -1246,6 +1246,14 @@ An H.264 source caps the H.264 codec profile at `1920x1080` in `buildPlaybackInf
 #### `mediaNumber` loses the low digits of large values `[fid: media-number-long-precision]` `[captured 2026-11-04]`
 
 `mediaNumber` in `source/utils/misc.bs` reads a long integer through a float, so a large value loses its low digits (94848001 reads as 94848000, found 2026-11-04). It is harmless for the values it serves today, but wrong for bitrate and byte values; `reencodeCheck.bitsPerSecond` was added to avoid it. Decide whether `mediaNumber` should keep integers whole, and check its callers.
+
+#### A SyncPlay catch-up freezes about 3 s whatever the seek needs: size its lead from the file's keyframe times `[fid: syncplay-catch-up-lead-from-keyframes]` `[captured 2026-11-12]`
+
+A SyncPlay catch-up seeks ahead of the group by a fixed 3 s lead (`syncPlayPlayback.CATCH_UP_LEAD_MS`) and holds for whatever the seek did not use, so every catch-up freezes the picture for about 3 s. The player seeks exactly, so seek time depends on how far the target sits past its keyframe: on a Stick 4K it was 421 ms plus 235 ms per second past the keyframe (94 direct-play seeks, 2026-11-11), which means most seeks need about 1 s.
+
+With the file's keyframe times, `syncPlayConverge.catchUp()` could size each lead as the seek's own time plus a margin: one jump and a shorter freeze. Not done with the lead change because it needs its own design. The 12.4.0 server's API has no keyframe data (its OpenAPI description, searched 2026-11-12), so the app would read the file's own index, per container.
+
+Not checked: other server versions, transcodes (HLS segment boundaries), and what parsing an index costs on the device. Closes with a measured design, or a recorded no.
 
 ### api
 
