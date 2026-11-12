@@ -1733,6 +1733,12 @@ The stream restart after a playback error (`PlaybackErrorRetry.RESTART_STREAM`, 
 
 Decision `reload-in-place-one-path` fixed a second gear, track or version pick made while a reload loads restarting the video from 0, for every viewer, not only in a group. Its only RTA step (the two-pick step in `tests/rta/specs/syncplay-reload.spec.js`) runs inside a SyncPlay group, so it skips on any server without a push channel to the Roku, including the public demo server a plain `npm run test:rta` uses; unit tests reach only `reloadStartTicks()`. Not done in #1344 because whether the demo server can drive it is unchecked: the closed followup `reload-during-reload-stale-position` recorded the hero sitting at 300 s after a seek, and the OSD auto-hiding there. Close it with an RTA step that plays an item partway in with no group, makes two gear picks with the second landing while the first reload's node reads 0 and has not played, asserts the second reload's `content.PlayStart` is near the position before the picks, and fails once with `reloadStartTicks()` broken on purpose.
 
+#### Details-mode backdrop: no RTA test for Back from an item straight to Home `[fid: backdrop-details-home-back-untested]` `[captured 2026-11-12]`
+
+`tests/rta/specs/backdrop-mode.spec.js` checks that Back from an item clears the backdrop in the Backdrop Images `details` mode on the library grid and on search, but not on Home. The direct check was dropped in `test(backdrop): Open the details-mode item from the poster grid, not a Home Latest row`: the public demo account excludes every library from Latest (`LatestItemsExcludes`, checked 2026-11-12), so Home has no stable row that opens an item, and reaching Home through the grid is vacuous because the grid clears the backdrop first.
+
+Not now: it needs a Home row that opens an item on every run, which the shared demo server does not promise. Closes when such a row is available (for example a Continue Watching fixture the spec seeds itself) and the spec opens an item from Home, presses Back, and waits for `#imageFader.uri` to read empty.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`
