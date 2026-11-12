@@ -184,7 +184,7 @@ namespace tests
       m.assertTrue(reg.exists("displayLiveTvLanding"))
       m.assertEqual(reg.read("displayLiveTvLanding"), "guide")
       m.assertEqual(reg.read("display.lib-movies.landing"), "movies", "the saved view becomes its tab id")
-      m.assertEqual(reg.read("display.lib-movies.layout"), "presentation", "and the layout it implied")
+      m.assertEqual(reg.read("display.lib-movies.layout_movies"), "presentation", "and the layout it implied")
 
       ' AND: OLD setting names are deleted
       m.assertFalse(reg.exists("ui.row.layout"), "Old setting name should be deleted")
