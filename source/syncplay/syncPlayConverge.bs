@@ -111,6 +111,7 @@ namespace syncPlayConverge
       if isValid(action.forLoad) then group.seekForLoad = action.forLoad
     else if kind = "report"
       if action.what = "buffering" then group.heldFor = action.heldFor
+      if action.what = "buffering" and action.heldFor = "stall" then group.askedWait = false
       if action.what = "buffering" and isValid(action.forLoad) then group.bufferingForLoad = action.forLoad
       if action.what = "ready" then group.readyForLoad = player.loadCount
       syncPlayGroup.requestSent(group, "report", action.what, nowMs)
@@ -293,6 +294,7 @@ namespace syncPlayConverge
   ' arrives, its landing is read, and the rules above hold it until the group reaches it. When
   ' the budget is spent or the last seek was given up, the group is asked to wait instead: once
   ' it is answered, and again while the request fails, since a lost one leaves the member behind.
+  ' A stall of the member's own allows the ask again, since the group may never have heard it.
   ' A playing node with no known position cannot ask, so it gets one more seek per group command.
   function catchUp(player as object, group as object, ctx as object, policy as object, nowMs as longinteger, result as object) as dynamic
     recover = false

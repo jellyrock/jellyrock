@@ -808,6 +808,30 @@ namespace tests
       m.assertEqual(m.kindOf(m.decide(player, group, 10100&)), "")
     end function
 
+    @it("a member that stalled after its wait ask was answered may ask the group to wait once more")
+    function _()
+      player = m.playingAt(m.at65s - 2000 * m.oneMs, 10000&)
+      group = m.playingLine()
+      group.catchUps = 2
+      ask = m.decide(player, group, 10000&)
+      syncPlayConverge.applied(player, group, ask.action, 10000&)
+      syncPlayGroup.requestArrived(group, "ask", "seek", group.ask.id)
+      m.assertTrue(group.askedWait)
+      syncPlayConverge.applied(player, group, { kind: "report", what: "buffering", heldFor: "stall", positionTicks: m.at65s - 2000 * m.oneMs, isPlaying: false }, 10200&)
+      syncPlayGroup.requestArrived(group, "report", "buffering", group.report.id)
+      ' The node recovers and the group plays on, still ahead of it.
+      syncPlayGroup.requestSent(group, "report", "ready", 10400&)
+      syncPlayGroup.requestArrived(group, "report", "ready", group.report.id)
+      syncPlayGroup.stateChanged(group, "Waiting", "Playing", m.estimator(), 10500&)
+      syncPlayGroup.command(group, m.cmd("Unpause", 6000&, m.at60s))
+      player.lastSeekGaveUp = true
+      ' A fresh reading, still 2 s behind the line.
+      syncPlayPlayer.reading(player, m.at65s, 12000&)
+      again = m.decide(player, group, 12000&)
+      m.assertEqual(m.kindOf(again), "ask")
+      m.assertTrue(again.action.waitOnMe)
+    end function
+
     @it("a wait ask out of tries goes again every retry interval, and the decision wakes then")
     function _()
       group = m.playingLine()
