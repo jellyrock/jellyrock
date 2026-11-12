@@ -384,6 +384,7 @@ async function snapshot() {
     groupSeeks: sync?.groupseeks,
     readies: sync?.readiessent,
     unreachable: sync?.unreachablenotices,
+    pauseLandedMs: sync?.pauselandedms,
     loads: sync?.loadcount,
     itemIndex: sync?.playingitemindex,
     itemId: sync?.playingitemid,

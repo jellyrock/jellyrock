@@ -198,6 +198,8 @@ sub ensureReady()
   ' Times the viewer was told the group cannot be reached, for the specs: a soak step that tells
   ' them with no outage has found a request whose result was lost.
   m.unreachableNotices = 0
+  ' How long the last pause took to stop the node, for the specs (shadowPlayerFact).
+  m.pauseLandedMs = 0&
   ' The player and group models of the convergence rewrite. They decide when the comparison is
   ' the engine (usesComparison), and are fed beside this code in an RTA build, as a shadow whose
   ' disagreements are logged (shadowAfter). Any other build with the old engine has none.
@@ -1566,7 +1568,17 @@ function shadowCtx() as object
 end function
 
 sub shadowPlayerFact(evt as object)
-  if isValid(m.shadow) then syncPlayShadow.playerFact(m.shadow, evt, m.loadStartTicks, syncPlayTime.nowMs())
+  if not isValid(m.shadow) then return
+  nowMs& = syncPlayTime.nowMs()
+  player = m.shadow.player
+  ' How long the node took to stop after a pause was written to it. The player model takes the
+  ' stop as where the node was at the write, so this is what that estimate leaves out, and what
+  ' syncPlayPlayback.PAUSE_LANDED_MS is judged against.
+  if evt.kind = "state" and player.activity = "pausing" and syncPlayTime.isText(evt.state) and evt.state = "paused"
+    m.pauseLandedMs = nowMs& - syncPlayTime.asLong(player.pauseWrittenAtMs)
+    m.log.info("pause landed", "afterMs", m.pauseLandedMs.toStr(), "owner", player.pauseOwner)
+  end if
+  syncPlayShadow.playerFact(m.shadow, evt, m.loadStartTicks, nowMs&)
 end sub
 
 ' The pause the player reports from inside a write of this manager's is that write, not the
@@ -1736,6 +1748,7 @@ sub publish()
       groupSeeks: m.groupSeeks,
       readiesSent: m.readiesSent,
       unreachableNotices: m.unreachableNotices,
+      pauseLandedMs: m.pauseLandedMs,
       shadowDisagreements: shadowCount(),
       engine: engineName(),
       repeatMode: m.state.repeatMode,
