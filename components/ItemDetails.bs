@@ -347,7 +347,7 @@ sub onScreenShown()
   if isValid(m.top.itemContent) and isValidAndNotEmpty(m.top.itemContent.id)
     device = m.global.device
     backdropUrl = getItemBackdropUrl(m.top.itemContent, { width: device.uiResolution[0], height: device.uiResolution[1] })
-    m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
+    m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl, true, false, m.top.subtype())
   end if
 
   ' Restore focus to last focused element
@@ -1027,7 +1027,7 @@ sub dispatchDeepLinkAction()
   ' toast on mount. Photo / PhotoAlbum open a viewer, not a media player, so skip both.
   if item.type <> "Photo" and item.type <> "PhotoAlbum"
     device = m.global.device
-    m.global.sceneManager.callFunc("setBackgroundImage", getItemBackdropUrl(item, { width: device.uiResolution[0], height: device.uiResolution[1] }), false)
+    m.global.sceneManager.callFunc("setBackgroundImage", getItemBackdropUrl(item, { width: device.uiResolution[0], height: device.uiResolution[1] }), false, false, m.top.subtype())
     if isValidAndNotEmpty(item.name) then m.global.deepLinkOpeningTitle = item.name
   end if
 
@@ -3484,9 +3484,9 @@ sub onItemContentChanged()
     if backdropUrl = "" and item.type = "TvChannel" and isValid(item.currentProgram)
       backdropUrl = getItemBackdropUrl(item.currentProgram, { width: device.uiResolution[0], height: device.uiResolution[1] })
     end if
-    m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
+    m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl, true, false, m.top.subtype())
   else
-    m.global.sceneManager.callFunc("setBackgroundImage", "")
+    m.global.sceneManager.callFunc("setBackgroundImage", "", true, false, m.top.subtype())
   end if
 
   if isValid(item) and isValidAndNotEmpty(item.id)

@@ -1,0 +1,11 @@
+' Where backdrop images show, decided from the user's Backdrop Images setting
+' (resolveBackdropMode in source/utils/backdrop.bs). The values are the setting's saved ids.
+enum BackdropMode
+  ' Everywhere, the full-screen backdrop and the Movies presentation pane.
+  ENABLED = "enabled"
+  ' Only while an item is open: its details screen and the players (isItemBackdropOwner).
+  ' Browse screens show none, and the presentation pane is hidden.
+  DETAILS = "details"
+  ' Nowhere.
+  DISABLED = "disabled"
+end enum

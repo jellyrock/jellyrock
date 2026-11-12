@@ -576,14 +576,14 @@ Choose the language for all app text. 'Automatic' uses your Jellyfin server or R
 
 <a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#uiShowBackdrop">Backdrop Images</a>
 
-Control display of backdrop images throughout the app. Enable for full visual experience, disable for better performance or accessibility.
+Show backdrop images everywhere, only when an item is open, or never. Turning them off can help performance and accessibility.
 
 | Property | Value |
 | --- | --- |
 | Setting Name | `uiShowBackdrop` |
 | Type | `radio` |
 | Default | `enabled` |
-| Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Enabled</td><td><code>enabled</code></td></tr><tr><td>Disabled</td><td><code>disabled</code></td></tr></tbody></table> |
+| Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Enabled</td><td><code>enabled</code></td></tr><tr><td>Only on item details</td><td><code>details</code></td></tr><tr><td>Disabled</td><td><code>disabled</code></td></tr></tbody></table> |
 
 <h4 id="uiGeneralEpisodeImages">Episode Images Next Up</h4>
 

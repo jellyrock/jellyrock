@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-10
+last-updated: 2026-11-12
 ---
 
 # Progress
@@ -736,16 +736,6 @@ What closes it, as part of audiobook support:
 #### Rotate through several backdrops for a focused My Media tile (the shuffle part of #1134) `[fid: library-tile-backdrop-rotation]` `[captured 2026-10-21]`
 
 Issue #1134 asks for backdrops that change over time. `feat/library-backdrops` gives each My Media tile one backdrop from an item inside the library: `libraryBackdrop.query` asks for `Limit: 1`, and `HomeRows` caches that one URL per library for Home's lifetime. The Jellyfin web client takes up to 20 (`src/scripts/autoBackdrops.js`, `SortBy=IsFavoriteOrLiked,Random`) and rotates them. Not done now: rotating needs a timer on Home with a lifecycle to get right (pause off Home, stop on teardown), and a UX call on how often to change. Closes when a focused My Media tile cycles through several backdrops, or when we decide not to rotate.
-
-#### The `JRScene` first-use backdrop setting check never runs (a boolean field cannot hold invalid) `[fid: jrscene-backdrop-lazy-resolve-dead]` `[captured 2026-10-21]`
-
-`JRScene.setBackgroundImage` and `onBackgroundImageUriChanged` decide backdrop visibility "on first use" with `if m.top.shouldShowBackdrop = invalid`, and the forced clear writes `m.top.shouldShowBackdrop = invalid`. The field is a `boolean` (`JRScene.xml`, declared `value="false"`), so it never holds `invalid` and the branch never runs. Measured over ODC on a Stick 4K (2026-10-20): after a forced clear the field reads `false`, and every ordinary backdrop write is ignored until `refreshBackdropSetting` runs, which only `Home.onScreenShown` calls. Dead from the start: `e909d0311` (2025-12-08) added the field, the branch and the Home refresh together; `eac8bb9ed` only renamed it. `docs/architecture/bootstrap.md` describes the lazy resolve as real.
-
-No user-visible failure shown: on known paths Home is shown before any other backdrop writer after sign-in (the cold deep-link clobber in tech-debt `backdrop-ownership-guard` implies the deep-linked item's backdrop was showing).
-
-Options: `resolve` (recommended): track "setting decided" with an `m` flag instead of `invalid` on a boolean field, reset by the forced clear, so the documented behavior becomes true for every path; small, one intended behavior change. `remove`: delete the dead branches and the `invalid` write, leave the Home refresh as the only decider, and correct `bootstrap.md`; no behavior change. `doc`: correct `bootstrap.md` only. No unit test covers the backdrop logic in `JRScene`.
-
-Not checked: whether any real path shows a backdrop-writing screen after sign-in before Home's `onScreenShown`, such as a cold deep link straight to an item. If one exists, that screen loses its backdrop today.
 
 #### The Roku FLAC seek defect behind #662 is unreported, so its workaround has no exit `[fid: roku-flac-seek-defect-unreported]` `[captured 2026-10-21]`
 
@@ -1742,6 +1732,12 @@ The stream restart after a playback error (`PlaybackErrorRetry.RESTART_STREAM`, 
 #### The two-pick reload fix has no device step outside SyncPlay `[fid: two-pick-reload-rta-outside-syncplay]` `[captured 2026-11-09]`
 
 Decision `reload-in-place-one-path` fixed a second gear, track or version pick made while a reload loads restarting the video from 0, for every viewer, not only in a group. Its only RTA step (the two-pick step in `tests/rta/specs/syncplay-reload.spec.js`) runs inside a SyncPlay group, so it skips on any server without a push channel to the Roku, including the public demo server a plain `npm run test:rta` uses; unit tests reach only `reloadStartTicks()`. Not done in #1344 because whether the demo server can drive it is unchecked: the closed followup `reload-during-reload-stale-position` recorded the hero sitting at 300 s after a seek, and the OSD auto-hiding there. Close it with an RTA step that plays an item partway in with no group, makes two gear picks with the second landing while the first reload's node reads 0 and has not played, asserts the second reload's `content.PlayStart` is near the position before the picks, and fails once with `reloadStartTicks()` broken on purpose.
+
+#### Details-mode backdrop: no RTA test for Back from an item straight to Home `[fid: backdrop-details-home-back-untested]` `[captured 2026-11-12]`
+
+`tests/rta/specs/backdrop-mode.spec.js` checks that Back from an item clears the backdrop in the Backdrop Images `details` mode on the library grid and on search, but not on Home. The direct check was dropped in `test(backdrop): Open the details-mode item from the poster grid, not a Home Latest row`: the public demo account excludes every library from Latest (`LatestItemsExcludes`, checked 2026-11-12), so Home has no stable row that opens an item, and reaching Home through the grid is vacuous because the grid clears the backdrop first.
+
+Not now: it needs a Home row that opens an item on every run, which the shared demo server does not promise. Closes when such a row is available (for example a Continue Watching fixture the spec seeds itself) and the spec opens an item from Home, presses Back, and waits for `#imageFader.uri` to read empty.
 
 ### docs
 

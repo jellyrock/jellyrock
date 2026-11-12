@@ -159,32 +159,28 @@ sub onLoadingTextChanged()
   if m.top.isLoading then m.loadingText.text = m.top.loadingText
 end sub
 
-sub onBackgroundImageUriChanged()
-  if not isValid(m.imageFader) then return
-
-  ' Resolve backdrop setting on first use (lazy initialization)
-  if m.top.shouldShowBackdrop = invalid
+' The user's backdrop mode (BackdropMode), decided on the first write after sign-in (and after a
+' forced clear, which a sign-out makes), and again by refreshBackdropSetting.
+function currentBackdropMode() as string
+  if m.top.backdropMode = ""
     localUser = m.global.user
-    if isValid(localUser)
-      m.top.shouldShowBackdrop = resolveShowBackdrop(localUser.settings, localUser.config)
-    else
-      m.top.shouldShowBackdrop = false ' Don't show backdrops if called before login
-    end if
-    m.imageFader.visible = m.top.shouldShowBackdrop
+    ' m.global.user exists before sign-in too, holding default settings, so signed in means a
+    ' token (AuthManager.canActivate). Until then nothing is stored: a sign-in screen's write
+    ' shows nothing, and the next user's first write reads their own settings.
+    if not isValid(localUser) or not isValidAndNotEmpty(localUser.authToken) then return BackdropMode.DISABLED
+    m.top.backdropMode = resolveBackdropMode(localUser.settings, localUser.config)
+    m.imageFader.visible = m.top.backdropMode <> BackdropMode.DISABLED
   end if
-
-  ' Only update URI if backdrops are enabled (performance optimization)
-  if m.top.shouldShowBackdrop
-    m.imageFader.isAnimated = true
-    m.imageFader.uri = m.top.backgroundImageUri
-  end if
-end sub
+  return m.top.backdropMode
+end function
 
 ' Set the background image with animation control
 ' @param {string} uri - The image URI to display
 ' @param {boolean} isAnimated - Whether to animate the transition
 ' @param {boolean} forceBackdrop - Force show backdrop regardless of user setting (used for login splashscreen)
-sub setBackgroundImage(uri as string, isAnimated = true as boolean, forceBackdrop = false as boolean)
+' @param {string} owner - The writing screen's subtype. Only an item screen (isItemBackdropOwner)
+'   shows a backdrop in details mode; a write with no owner counts as a browse screen's.
+sub setBackgroundImage(uri as string, isAnimated = true as boolean, forceBackdrop = false as boolean, owner = "" as string)
   if not isValid(m.imageFader) then return
 
   ' Force backdrop mode bypasses user settings (used for login splashscreen)
@@ -196,8 +192,8 @@ sub setBackgroundImage(uri as string, isAnimated = true as boolean, forceBackdro
     ' For empty URI in force mode, clear URI and reset state for next screen
     if uri = invalid or uri = ""
       m.imageFader.uri = ""
-      ' Reset shouldShowBackdrop to invalid so next screen can properly initialize
-      m.top.shouldShowBackdrop = invalid
+      ' Undecided again, so the next user's first write reads their setting
+      m.top.backdropMode = ""
       ' Explicitly hide imageFader to ensure a clean state if next screen does not reinitialize backdrop visibility
       m.imageFader.visible = false
     else
@@ -208,26 +204,21 @@ sub setBackgroundImage(uri as string, isAnimated = true as boolean, forceBackdro
     return
   end if
 
-  ' Resolve backdrop setting on first use (lazy initialization)
-  if m.top.shouldShowBackdrop = invalid
-    localUser = m.global.user
-    if isValid(localUser)
-      m.top.shouldShowBackdrop = resolveShowBackdrop(localUser.settings, localUser.config)
-    else
-      m.top.shouldShowBackdrop = false ' Don't show backdrops if called before login
-    end if
-    m.imageFader.visible = m.top.shouldShowBackdrop
-  end if
+  mode = currentBackdropMode()
+  ' Disabled loads nothing (performance); the fader is hidden.
+  if mode = BackdropMode.DISABLED then return
 
-  ' Only update URI if backdrops are enabled (performance optimization)
-  if m.top.shouldShowBackdrop
-    ' Skip if URI has not changed - BackdropFader would deduplicate anyway, but skipping here
-    ' avoids the field assignment and unnecessary observer call entirely.
-    if m.lastBackdropUri = uri then return
-    m.lastBackdropUri = uri
-    m.imageFader.isAnimated = isAnimated
-    m.imageFader.uri = uri
-  end if
+  showBackdropUri(backdropUriFor(mode, owner, uri), isAnimated)
+end sub
+
+' Put uri on the fader, skipping a repeat of the last one.
+sub showBackdropUri(uri as string, isAnimated as boolean)
+  ' Skip if URI has not changed - BackdropFader would deduplicate anyway, but skipping here
+  ' avoids the field assignment and unnecessary observer call entirely.
+  if m.lastBackdropUri = uri then return
+  m.lastBackdropUri = uri
+  m.imageFader.isAnimated = isAnimated
+  m.imageFader.uri = uri
 end sub
 
 ' Re-evaluate and apply the backdrop visibility setting
@@ -237,12 +228,13 @@ sub refreshBackdropSetting()
 
   localUser = m.global.user
   if isValid(localUser)
-    m.top.shouldShowBackdrop = resolveShowBackdrop(localUser.settings, localUser.config)
-    m.imageFader.visible = m.top.shouldShowBackdrop
+    m.top.backdropMode = resolveBackdropMode(localUser.settings, localUser.config)
+    m.imageFader.visible = m.top.backdropMode <> BackdropMode.DISABLED
 
-    ' Clear backdrop URI if hiding to free memory
-    if not m.top.shouldShowBackdrop
-      m.top.backgroundImageUri = ""
+    ' Clear the image when hiding, to free its memory
+    if m.top.backdropMode = BackdropMode.DISABLED
+      m.lastBackdropUri = ""
+      m.imageFader.uri = ""
     end if
   end if
 end sub

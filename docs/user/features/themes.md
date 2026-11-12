@@ -31,7 +31,7 @@ A code that isn't six hex digits is ignored, and that color stays as it was.
 ## Settings
 
 - [Theme](../app-settings.md#uiTheme) and [Custom Theme Colors](../app-settings.md#uiThemeColorBackgroundPrimary).
-- [Backdrop Images](../app-settings.md#uiShowBackdrop): turn off the large background pictures for a plainer screen.
+- [Backdrop Images](../app-settings.md#uiShowBackdrop): show the large background pictures everywhere, only when an item is open, or never. **Only on item details** keeps the screen plain while you browse and shows the picture on an item's details screen and while it plays. The picture beside the movie list in the **Movies (Presentation)** view counts as a backdrop too, so it shows only when backdrops are **Enabled**.
 
 ## Troubleshooting
 

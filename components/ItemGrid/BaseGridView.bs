@@ -20,6 +20,7 @@ import "pkg:/source/GridView/TVShowPresenter.bs"
 import "pkg:/source/libraryViewFactory.bs"
 import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/backdrop.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/dialogNarration.bs"
@@ -146,6 +147,8 @@ sub init()
   ' Cache device backdrop size once for all getItemBackdropUrl() calls
   device = m.global.device
   m.backdropSize = { width: device.uiResolution[0], height: device.uiResolution[1] }
+  ' Whether the presentation pane shows its backdrop (configureBackdrop decides)
+  m.isPresentationBackdropShown = false
 
   m.log.debug("end init()")
 
@@ -245,6 +248,7 @@ sub onScreenShown()
 
   ' Clear global backdrop - we handle our own backdrops
   m.global.sceneManager.callFunc("setBackgroundImage", "")
+  reapplyPresentationBackdropSetting()
 
   ' Re-activate voice capture. The voiceBox loses its active connection to the
   ' Roku firmware while this screen is suspended ("detach" removes the node from the
@@ -620,17 +624,17 @@ end function
 sub configureBackdrop()
   if not isValid(m.presenter) then return
 
-  backdropMode = m.presenter.getBackdropMode()
+  layoutMode = m.presenter.getBackdropMode()
 
-  if backdropMode = "presentation"
+  if layoutMode = "presentation"
     ' Clear fullscreen backdrop first to avoid overlap during transition
     m.global.sceneManager.callFunc("setBackgroundImage", "")
 
-    ' Use presentation backdrop (right half of screen)
-    m.presentationBackdrop.visible = true
+    ' Use presentation backdrop (right half of screen), when the setting allows it
+    applyPresentationBackdropSetting()
 
     ' Set initial backdrop from parent item
-    m.presentationBackdrop.uri = getItemBackdropUrl(m.top.parentItem, m.backdropSize)
+    if m.isPresentationBackdropShown then m.presentationBackdrop.uri = getItemBackdropUrl(m.top.parentItem, m.backdropSize)
 
     ' Show presentation info if presenter supports it
     showInfo = m.presenter.shouldShowPresentationInfo(m.view)
@@ -641,6 +645,32 @@ sub configureBackdrop()
     m.presentationInfo.visible = false
 
     m.global.sceneManager.callFunc("setBackgroundImage", getItemBackdropUrl(m.top.parentItem, m.backdropSize))
+  end if
+end sub
+
+' Show or hide the presentation pane by the Backdrop Images setting. The pane is a backdrop too:
+' an item's artwork drawn as scenery, unlike a poster or logo. So it shows only when backdrops
+' show everywhere (in details mode this is a browse screen), and a hidden pane holds no image.
+sub applyPresentationBackdropSetting()
+  globalUser = m.global.user
+  m.isPresentationBackdropShown = isValid(globalUser) and resolveBackdropMode(globalUser.settings, globalUser.config) = BackdropMode.ENABLED
+  m.presentationBackdrop.visible = m.isPresentationBackdropShown
+  if not m.isPresentationBackdropShown then m.presentationBackdrop.uri = ""
+end sub
+
+' Settings opens over this view, so the setting may have changed while it was covered. A pane
+' shown again gets the focused item's image, or the library's when nothing is focused yet.
+sub reapplyPresentationBackdropSetting()
+  if not isValid(m.presenter) or m.presenter.getBackdropMode() <> "presentation" then return
+
+  wasShown = m.isPresentationBackdropShown
+  applyPresentationBackdropSetting()
+  if not m.isPresentationBackdropShown or wasShown then return
+
+  if isValid(m.selectedFavoriteItem)
+    m.presentationBackdrop.uri = getItemBackdropUrl(m.selectedFavoriteItem, m.backdropSize)
+  else
+    m.presentationBackdrop.uri = getItemBackdropUrl(m.top.parentItem, m.backdropSize)
   end if
 end sub
 
@@ -1278,7 +1308,7 @@ sub updateBackdropForFocusedItem()
     if backdropMode = "presentation"
       ' Clear fullscreen backdrop to prevent overlap with presentation backdrop
       m.global.sceneManager.callFunc("setBackgroundImage", "")
-      m.presentationBackdrop.uri = backdropUrl
+      if m.isPresentationBackdropShown then m.presentationBackdrop.uri = backdropUrl
     else
       m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
     end if

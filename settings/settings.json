@@ -684,7 +684,7 @@
           },
           {
             "title": "Backdrop Images",
-            "description": "Control display of backdrop images throughout the app. Enable for full visual experience, disable for better performance or accessibility.",
+            "description": "Show backdrop images everywhere, only when an item is open, or never. Turning them off can help performance and accessibility.",
             "settingName": "uiShowBackdrop",
             "type": "radio",
             "default": "enabled",
@@ -693,6 +693,11 @@
                 "title": "Enabled",
                 "id": "enabled",
                 "titleKey": "LabelEnabled"
+              },
+              {
+                "title": "Only on item details",
+                "id": "details",
+                "titleKey": "LabelOnlyOnItemDetails"
               },
               {
                 "title": "Disabled",
