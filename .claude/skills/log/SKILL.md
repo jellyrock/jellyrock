@@ -28,7 +28,7 @@ effort: low
 - For a `/log decision`: depending on the agent's routing, either a **new numbered ADR file** (`docs/adr/NNNN-*.md`, drafted from the captured content + session context), a dated line in the tracked project's decision list, or a one-line decline (written nowhere), surfaced as a **diff-and-confirm** before writing, with the proposed routing shown so the human can override it in one tap.
 - For a `/log message`: one message file in the receiving repo's mailbox, pushed to the projects home. With `--from`, the followup it came from is closed here and committed, only after the message is pushed.
 - For a `/log request`: one request file under this repo in the projects home (a second one for public targets), holding the shared change and one part per target, pushed there.
-- A standalone path-restricted commit of only the written files, made by `journal.sh commit`, unless this repo commits journal writes together with the change that prompted them, which the script knows and says.
+- A standalone path-restricted commit of only the written files, made by `journal.sh commit` (or, for a PLAN in a projects home, a push there), unless this repo commits journal writes together with the change that prompted them, which the script knows and says.
 - A one-line confirmation after the write (and after any commit), so the user has the new HEAD's short SHA or the equivalent confirmation that the entry landed.
 
 **Success criteria.**
@@ -130,11 +130,11 @@ The human supplies content; the agent does the rest:
 
 ### Step 5: Commit
 
-`journal.sh commit` makes the path-restricted commit (`-m` before `--`), stages a file the write created, and prints `committed as {{sha}} on {{branch}}`. When this repo commits journal writes together with the change that prompted them, it commits nothing and says so; pass that on.
+`journal.sh commit` makes the path-restricted commit (`-m` before `--`), stages a file the write created, and prints `committed as {{sha}} on {{branch}}`. When this repo commits journal writes together with the change that prompted them, it commits nothing and says so; pass that on. A path in a projects home (a repo of its own) is pushed there by `projects-write.sh`, and a gitignored path is left out; the output says which. In a public repo where the journal is an agent file, it commits with `agent-body.sh`'s title and no body, and says so. A decision's subject follows this repo's commit style: skim `git log --oneline -10` for it.
 
 - `followup`: `bash .claude/skills/log/journal.sh commit --intent "{{one-line intent}}"` (the script adds this repo's subject prefix).
-- `decision`, ADR: `… commit --subject "ADR NNNN: {{title}}" docs/adr/NNNN-{{slug}}.md` plus the superseded ADR and the PLAN when those changed.
-- `decision`, project: `… commit --subject "{{project-slug}}: decision — {{one-line title}}" {{project-dir}}/PLAN.md` plus `DECISIONS.md` when it changed, and no commit at all when `git check-ignore -q` says the PLAN is not tracked.
+- `decision`, ADR: `… commit --subject "{{subject naming ADR NNNN and its title, in this repo's commit style}}" docs/adr/NNNN-{{slug}}.md` plus the superseded ADR and the PLAN when those changed.
+- `decision`, project: `… commit --subject "{{subject naming the project and the decision, in this repo's commit style}}" {{project-dir}}/PLAN.md` plus `DECISIONS.md` when it changed. The script commits the PLAN here, pushes it to the projects home, or leaves a gitignored PLAN uncommitted, and says which. On its refusal (exit 1 from a projects-home push), pass on the retry command it prints and go on, as `/end-session` does.
 - `decision`, declined: nothing to commit.
 
 If it refuses for journal edits it did not write, nothing was committed: show them and leave the write uncommitted; they are the user's, so never commit them another way. If a hook refuses the commit, nothing was committed: fix what it names and commit again; never `--no-verify`. Skip the commit only when the user said "don't commit" / "leave it for me".
