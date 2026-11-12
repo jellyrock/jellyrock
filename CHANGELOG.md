@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (ui) Star from the overhang no longer crashes the app ([#1372](https://github.com/jellyrock/jellyrock/pull/1372)) by [@cewert](https://github.com/cewert)
 - (syncplay) Reload where the group is; load a mid-reload restart ([#1354](https://github.com/jellyrock/jellyrock/pull/1354)) by [@cewert](https://github.com/cewert)
 
 ### Dependencies
