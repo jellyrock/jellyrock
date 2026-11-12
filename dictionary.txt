@@ -466,6 +466,7 @@ Ogg
 onboarding
 OpenAPI
 opencode
+OpenGL
 opus
 orchestrator
 Orchestrator

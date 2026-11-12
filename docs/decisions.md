@@ -2786,6 +2786,16 @@ In the Backdrop Images `details` mode, `JRScene.setBackgroundImage` decides whic
 
 Ruled out: deciding by `m.global.activeRoutedView`, because `AudioPlayerView.init()` writes its backdrop before `JRScreen.onViewOpen` makes it active, so Now Playing would lose its backdrop when music starts from a browse screen; a mode check in every browse screen, about 20 call sites in 6 files where a new screen that forgets leaks backdrops; and a clear in `onActiveRoutedViewChanged` on reaching a browse screen, dropped because no test could fail it (measured on a Roku Ultra 2026-11-11: with it disabled, Back to the library grid, to Home with its refresh held 15 s, and to search results all still cleared). Requested in discussion 1361.
 
+## decision-id: tab-strip-one-rule-dimmed
+
+**date**: 2026-11-12
+**status**: accepted
+**related-files**: `source/utils/tabStrip.bs`, `components/ui/tabbar/JRTabBar.bs`, `components/ui/tabbar/JRTab.bs`
+
+A scrolling tab strip follows one rule (`tabStrip.window`): the active tab (focused while the bar has focus, else selected) sits first in its slot with the previous tab peeking, and the strip never scrolls past its last tab. Two alternatives were ruled out. "Selected first at rest, least movement while walking" is two rules, slides the strip a second time on OK and on Down, and needs the current offset as an input. "Least movement only" opens a default tab late in the strip at the slot's right edge. A tab the slot's edge cuts is drawn dimmed. A fade to transparent was ruled out: it needs a `MaskGroup`, which the app does not use anywhere, whose cost is unmeasured, and which Roku's `maskgroup.md` says draws unmasked on a player without OpenGL. A painted gradient would show as a band, because a library draws a backdrop behind the overhang. Revisit the fade if the dimmed tab reads badly in use.
+
+Two things seen on a Roku Stick on Roku OS 16.0.4 (2026-11-12) shape the code. A tab past its slot, or past the screen's edge, never reports `renderTracking` as `full`, so `JRTab` sizes when its title is set instead of waiting for the renderer as `TextButton` does. Setting a `clippingRect` back to an empty rectangle stops the tabs drawing, so a bar that leaves its slot takes a clip the size of the screen (`JRTabBar.clearWindow`).
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
