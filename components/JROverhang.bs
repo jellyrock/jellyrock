@@ -343,8 +343,8 @@ sub layout()
   if isValid(m.logo) then tabsX = TABS_X_WITH_LOGO
   if isValid(m.tabBar)
     ' A tab's box is the row's text box, so its caps, not the box, center on the row. The
-    ' text starts at tabsX because the box pads BOX_PADDING.
-    m.tabBar.translation = [tabsX - overhangRow.BOX_PADDING, overhangRow.TEXT_TOP]
+    ' text starts at tabsX because the tab pads TAB_PADDING.
+    m.tabBar.translation = [tabsX - overhangRow.TAB_PADDING, overhangRow.TEXT_TOP]
   end if
 
   titleX = tabsX
@@ -366,6 +366,19 @@ sub layout()
     dropdownX = leftOfCluster - triggerWidth
     m.userDropdown.translation = [dropdownX, overhangRow.ROW_TOP]
     leftOfDropdown = dropdownX - overhangRow.ELEMENT_GAP
+  end if
+
+  ' A scrolling tab strip's slot: the same span, but measured from a clock allowance that
+  ' holds still (overhangRow.tabSlotWidth), so the strip does not shift when the digits do
+  if isValid(m.tabBar)
+    clusterWidth = 0
+    if m.cluster.visible then clusterWidth = m.cluster.barWidth
+    dropdownWidth = 0
+    if m.userDropdown.visible
+      dropdownWidth = m.userDropdown.triggerWidth
+      if dropdownWidth <= 0 then dropdownWidth = DROPDOWN_PROVISIONAL_WIDTH
+    end if
+    m.tabBar.slotWidth = overhangRow.tabSlotWidth(tabsX - overhangRow.TAB_PADDING, m.clock.textWidth, not m.isClockHidden, clusterWidth, dropdownWidth)
   end if
 
   m.title.translation = [titleX, overhangRow.TEXT_TOP]
@@ -450,6 +463,7 @@ sub onTabsChanged()
   end if
 
   m.tabBar.visible = true
+  m.tabBar.mode = m.top.tabMode
   layout()
 
   ' Sync current selection before setting tabs (so the correct tab starts selected)

@@ -11,10 +11,10 @@ sub init()
   ' Upgrade font to Large to match overhang title size
   m.buttonText.font.size = constants.fontSizeLarge
 
-  ' The row's box padding at the sides and the row's height: that leaves 24 px below the
+  ' The tab's padding at the sides and the row's height: that leaves 24 px below the
   ' caps, the room the selected underline needs between the text and the focus border (the
   ' subtitle panel's perfect-match button has the same).
-  m.top.padding = overhangRow.BOX_PADDING
+  m.top.padding = overhangRow.TAB_PADDING
   m.top.minHeight = overhangRow.ROW_HEIGHT
 
   ' The glyph matches the overhang's icon buttons
@@ -43,9 +43,20 @@ sub init()
   m.top.observeField("isFocused", "onStateChanged")
 end sub
 
-' Maps tabTitle to TextButton's text field, triggering TextButton's sizing flow
+' Maps tabTitle to TextButton's text field, and sizes the tab at once. TextButton waits for
+' the renderer to report a button fully on screen, which a tab past its slot's edge never
+' is; the label measures as soon as its text is set.
 sub onTitleChanged()
   m.top.text = m.top.tabTitle
+  setSizeAndCenterText()
+end sub
+
+' Overrides TextButton.onRenderComplete, which sizes a button only once it is fully on screen:
+' a tab in a strip longer than its slot may show only in part. Any report from the renderer
+' sizes it, in case its label could not be measured when the title was set.
+sub onRenderComplete()
+  if m.top.renderTracking = "disabled" then return
+  setSizeAndCenterText()
 end sub
 
 ' Draws the glyph for the selection state: the filled one while selected, else the outlined

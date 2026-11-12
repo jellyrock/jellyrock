@@ -1066,6 +1066,7 @@ sub registerOverhangData(group as object)
     ' Set tabs BEFORE the title so onTabsChanged can hide the title before it
     ' renders with text. This prevents a visible title-to-tab transition flash.
     m.overhang.selectedTabId = group.selectedTabId
+    m.overhang.tabMode = group.tabMode
     m.overhang.tabs = group.overhangTabs
     group.observeField("overhangTabs", "updateOverhangTabs")
     m.overhang.observeField("selectedTabId", "onOverhangTabSelected")
