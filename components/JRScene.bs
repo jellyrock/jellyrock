@@ -159,15 +159,6 @@ sub onLoadingTextChanged()
   if m.top.isLoading then m.loadingText.text = m.top.loadingText
 end sub
 
-sub onBackgroundImageUriChanged()
-  if not isValid(m.imageFader) then return
-
-  ' A bare URI write names no owner, so details mode shows it only as a clear.
-  uri = backdropUriFor(currentBackdropMode(), "", m.top.backgroundImageUri)
-  m.imageFader.isAnimated = true
-  m.imageFader.uri = uri
-end sub
-
 ' The user's backdrop mode (BackdropMode), decided on the first write after sign-in (and after a
 ' forced clear, which a sign-out makes), and again by refreshBackdropSetting.
 function currentBackdropMode() as string

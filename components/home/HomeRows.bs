@@ -1558,8 +1558,8 @@ end sub
 sub fetchLibraryBackdrop(libraryId as string)
   if m.libraryBackdropPendingId <> "" then return
 
-  ' Look up only when backdrops show everywhere: otherwise the scene shows Home none, so the
-  ' answer would be dropped.
+  ' Look up only when backdrops show everywhere. In the other modes Home shows no backdrop, so
+  ' the scene would drop the answer.
   globalUser = m.global.user
   if not isValid(globalUser) or resolveBackdropMode(globalUser.settings, globalUser.config) <> BackdropMode.ENABLED then return
 

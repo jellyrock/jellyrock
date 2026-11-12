@@ -61,7 +61,6 @@
          intent is read off the active routed view's own fields (enteredUrl / selectedUserId
          / enteredUsername …) via getActiveView(), the same relay pattern Home/ItemDetails use. -->
     <field id="preLoginIntent" type="string" value="" alwaysNotify="true" />
-    <field id="backgroundImageUri" type="string" value="" alwaysNotify="true" onchange="onBackgroundImageUriChanged" />
     <function name="setBackgroundImage" />
     <function name="refreshBackdropSetting" />
     <function name="showToast" />

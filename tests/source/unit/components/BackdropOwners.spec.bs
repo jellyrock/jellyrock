@@ -1,0 +1,52 @@
+import "pkg:/source/utils/backdrop.bs"
+
+namespace tests
+
+  ' In the Backdrop Images "details" mode only an item screen's write shows, and the screen
+  ' says it is one by passing its own subtype as the owner (isItemBackdropOwner). These tests
+  ' tie the owner list to the real components, so a renamed screen or a dropped owner argument
+  ' fails here instead of silently losing its backdrop.
+  @suite("backdrop owners - the item screens")
+  class BackdropOwnersTests extends tests.BaseTestSuite
+
+    protected override sub beforeEach()
+      super.beforeEach()
+      m.global.sceneManager.setFields({ lastBackgroundImage: "<none>", lastBackgroundImageOwner: "<none>" })
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the owner list")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' VideoPlayerView and AudioPlayerView are not created here: their init() needs the scene's
+    ' overhang and the playback globals, which a unit test has no scene for, and a crash in it
+    ' hangs the runner (VideoPlayerView did, 2026-11-12). RTA's player specs mount them for real.
+    @it("names a real component for each item screen a test can create")
+    @params("ItemDetails")
+    @params("PlayerHostView")
+    function _(name)
+      node = CreateObject("roSGNode", name)
+      m.assertNotInvalid(node, "no component named " + name)
+      m.assertTrue(isItemBackdropOwner(node.subtype()))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("ItemDetails")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("passes itself as the owner when an item is shown")
+    function _()
+      itemDetails = CreateObject("roSGNode", "ItemDetails")
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "movie-001"
+      item.type = "Movie"
+      item.name = "Test Movie"
+      itemDetails.itemContent = item
+
+      m.assertEqual(m.global.sceneManager.lastBackgroundImageOwner, "ItemDetails")
+      m.assertTrue(isItemBackdropOwner(m.global.sceneManager.lastBackgroundImageOwner))
+    end function
+
+  end class
+
+end namespace
