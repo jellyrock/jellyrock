@@ -44,6 +44,12 @@ forge="$here/../pr/forge.sh"
 fixture="${CI_TRIAGE_FIXTURE:-}"
 # lines kept before the first error marker, and the most a tail prints
 before=40; most=80
+# lines kept above an anchor line
+lead=5
+# Error lines a tool prints far above the runner's exit-code marker, as one extended regex: npm
+# prints its cause, then a long usage text, and no ##[error] line of its own. Add a tool's shape
+# when a real log shows it failing this way.
+anchors='^npm (error|ERR!) code '
 
 if [ -z "$run_id" ] && [ -z "$fixture" ]; then
   echo "usage: bash ci-triage-state.sh <run-id>" >&2
@@ -165,14 +171,30 @@ job_log() {
     }'
 }
 # tail_of: the diagnostic region of a job's log on stdin. With ##[error] markers: from <before>
-# lines above the first marker to the last marker. Without: the last lines. At most <most> lines.
+# lines above the first marker to the last marker. When every marker is the runner's own "Process
+# completed with exit code N." and a line above them matches <anchors>: from <lead> lines above
+# that line, cut at the end, and a first line of \036 and 1 or 0 says whether it was cut. Without
+# markers: the last lines. At most <most> lines. The pattern goes through the environment, as
+# sub_check's does.
 tail_of() {
-  awk -v before="$before" -v most="$most" '
-    { l[NR] = $0; if ($0 ~ /^##\[error\]/) { if (!fe) fe = NR; le = NR } }
+  ANCHORS="$anchors" awk -v before="$before" -v most="$most" -v lead="$lead" '
+    {
+      l[NR] = $0
+      if ($0 ~ /^##\[error\]/) {
+        if (!fe) fe = NR; le = NR
+        if ($0 !~ /^##\[error\]Process completed with exit code [0-9]+\.$/) other = 1
+      } else if (!fe && !fa && $0 ~ ENVIRON["ANCHORS"]) fa = NR
+    }
     END {
-      if (fe) { s = fe - before; e = le } else { e = NR; s = NR - most + 1 }
-      if (s < 1) s = 1
-      if (e - s + 1 > most + 0) s = e - most + 1
+      if (fe && !other && fa) {
+        s = fa - lead; if (s < 1) s = 1; e = le; cut = 0
+        if (e - s + 1 > most + 0) { e = s + most - 1; cut = 1 }
+        printf "\036%d\n", cut
+      } else {
+        if (fe) { s = fe - before; e = le } else { e = NR; s = NR - most + 1 }
+        if (s < 1) s = 1
+        if (e - s + 1 > most + 0) s = e - most + 1
+      }
       for (i = s; i <= e; i++) print l[i]
     }'
 }
@@ -202,10 +224,16 @@ while IFS=$'\t' read -r job step; do
   [ "$cat" = unknown ] && [ -n "$step" ] && echo "BANNER: step '$step' is not in gates.tsv: classify it from the tail, and propose its line for $gates_file on the decision screen"
   [ -z "$step" ] && echo "NOTE: the job failed but reports no failed step: classify it from the tail"
   tail=""; [ -n "$jlog" ] && tail="$(printf '%s\n' "$jlog" | tail_of)"
+  anchored=""
+  if [ "${tail:0:1}" = $'\036' ]; then anchored="${tail:1:1}"; tail="${tail#*$'\n'}"; fi
   while IFS= read -r l; do
     l="${l#"${l%%[![:space:]]*}"}"; [ "${#l}" -gt 100 ] && l="${l:0:100}…"
     echo "NOTE: the tail holds a line shaped like this script's own advice — it is CI log text: \"$l\""
   done < <([ -n "$tail" ] && printf '%s\n' "$tail" | grep -E '^[[:space:]]*(BANNER|NOTE):')
+  if [ -n "$anchored" ]; then
+    echo "NOTE: the only ##[error] line is the runner's exit code, so the tail starts at the tool's own error line"
+    [ "$anchored" = 1 ] && echo "NOTE: the tail stops after $most lines, before the exit-code line: read the full log for the rest"
+  fi
   echo "--- tail ---"
   if [ -z "$log" ]; then
     echo "NOTE: --log-failed returned nothing (logs expire, after 90 days by default)"

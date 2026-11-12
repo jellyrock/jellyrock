@@ -75,7 +75,13 @@
 #                                            commit the journal as "<prefix>: <words>"
 #                                            --closes repeats: one "Closes fid:" line per fid, a repeat once
 #   commit --subject "<subject>" [--closes <fid>]… [--body-file <p>] <path>…
-#                                            commit exactly these paths with this subject
+#                                            commit exactly these paths with this subject; a path in
+#                                            another repo (a projects home) is pushed there by
+#                                            projects-write.sh, and a gitignored path is left out,
+#                                            both said in the output
+#                                            In a public repo (Public posture `public`), a commit of
+#                                            agent files only (found by agent-body.sh) takes its title
+#                                            as the whole message, with no body, and says so
 #   check                                    the format gate: every entry has a valid unique fid
 #                                            and captured date; nothing numbered outside entries;
 #                                            no title opening with a closed marker; every waits-on
@@ -689,26 +695,86 @@ case "$cmd" in
     elif [ -z "$subject" ]; then die "commit needs --intent or --subject"
     elif [ "${#paths[@]}" -eq 0 ]; then die "commit --subject needs the paths to commit"; fi
     if [ -n "$bodyf" ] && [ ! -r "$bodyf" ]; then die "commit: cannot read --body-file $bodyf"; fi
-    if [ "$COMMIT" = no ]; then
-      echo "not committed: this repo commits journal writes with the change that prompted them (journal.conf: commit=no)"; exit 0
-    fi
-    # a path that is or holds the journal: refuse if it holds edits journal.sh did not write
+    # Sort each path by the repo that holds it: this one (committed here, or left out when
+    # gitignored) or another (a projects home, pushed there by projects-write.sh).
+    top_real="$(realpath -- "$top")"; lpaths=(); htops=(); hrels=()
     for p in "${paths[@]}"; do
-      hit=0
-      while IFS= read -r -d '' n; do [ "$n" = "$FILE" ] && hit=1; done < <(git ls-files -z --full-name -- "$p")
-      [ "$hit" = 1 ] || continue
-      journal_state
-      [ "$JSTATE" = foreign ] && refuse "$FILE has edits journal.sh did not write (by hand, or already there when a write ran with --allow-dirty), which this commit would take along: nothing was committed. They are not this commit's to take: show them (git diff HEAD -- $FILE) and leave committing them to whoever made them"
-      break
+      abs="$(realpath -m -- "$p")"; dir="$abs"
+      while [ ! -d "$dir" ]; do dir="$(dirname "$dir")"; done
+      holder="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" || die "commit: $p is in no git repository"
+      holder="$(realpath -- "$holder")"
+      if [ "$holder" = "$top_real" ]; then
+        if git -C "$top" check-ignore -q -- "$abs"; then echo "not committed: $p is gitignored"; else lpaths+=("$p"); fi
+      else
+        found=-1; nh="${#htops[@]}"
+        for ((i = 0; i < nh; i++)); do [ "${htops[$i]}" = "$holder" ] && found=$i; done
+        if [ "$found" -ge 0 ]; then hrels[found]+=$'\n'"${abs#"$holder"/}"; else htops+=("$holder"); hrels+=("${abs#"$holder"/}"); fi
+      fi
     done
-    for p in "${paths[@]}"; do
-      git ls-files --error-unmatch -- "$p" >/dev/null 2>&1 || git add -- "$p" || die "commit: cannot stage $p"
-    done
-    msg=(-m "$subject"); [ -n "$bodyf" ] && msg+=(-m "$(cat "$bodyf")"); [ "${#closes[@]}" -gt 0 ] && msg+=(-m "$(printf 'Closes fid: %s\n' "${closes[@]}")")
-    if ! out="$(git commit "${msg[@]}" -- "${paths[@]}" 2>&1)"; then
-      printf '%s\n' "$out"; refuse "the commit was refused (a hook, most likely): nothing was committed"
+    pw="$here/../start-project/projects-write.sh"
+    if [ "${#htops[@]}" -gt 0 ] && [ ! -f "$pw" ]; then die "commit: $pw is missing, and a path is in another repository (a projects home)"; fi
+    localsha=""
+    if [ "${#lpaths[@]}" -gt 0 ]; then
+      if [ "$COMMIT" = no ]; then
+        echo "not committed: this repo commits journal writes with the change that prompted them (journal.conf: commit=no)"
+      else
+        # a path that is or holds the journal: refuse if it holds edits journal.sh did not write
+        for p in "${lpaths[@]}"; do
+          hit=0
+          while IFS= read -r -d '' n; do [ "$n" = "$FILE" ] && hit=1; done < <(git ls-files -z --full-name -- "$p")
+          [ "$hit" = 1 ] || continue
+          journal_state
+          [ "$JSTATE" = foreign ] && refuse "$FILE has edits journal.sh did not write (by hand, or already there when a write ran with --allow-dirty), which this commit would take along: nothing was committed. They are not this commit's to take: show them (git diff HEAD -- $FILE) and leave committing them to whoever made them"
+          break
+        done
+        for p in "${lpaths[@]}"; do
+          git ls-files --error-unmatch -- "$p" >/dev/null 2>&1 || git add -- "$p" || die "commit: cannot stage $p"
+        done
+        # In a public repo the push guard accepts a commit of agent files only with agent-body.sh's
+        # title as its whole message. With no agent-body.sh beside this skill, there is nothing to tell agent
+        # files apart, so the commit is made as usual and the guard names the amend at push.
+        keepbody=yes
+        ab="$here/../pr/agent-body.sh"
+        pub="$(awk '{ sub(/\r$/, "") }
+          /^### Public posture[ \t]*$/ { s = 1; next }
+          s && /^#/ { exit }
+          s && match($0, /`[^`]+`/) { print substr($0, RSTART + 1, RLENGTH - 2); exit }' "$top/AGENTS.md" 2>/dev/null || true)"
+        if [ "$pub" = public ] && [ -f "$ab" ]; then
+          base=HEAD; git rev-parse --verify -q HEAD >/dev/null || base=4b825dc642cb6eb9a060e54bf8d69288fbee4904
+          ns="$(cd "$top" && git diff --name-status "$base" -- "${lpaths[@]}")"
+          kind="$(cd "$top" && printf '%s\n' "$ns" | bash "$ab" kind 2>&1)" || refuse "agent-body.sh could not tell the agent files apart ($kind): nothing was committed"
+          if [ "$kind" = agent-only ]; then
+            title="$(cd "$top" && bash "$ab" title 2>&1)" || refuse "agent-body.sh could not give the title ($title): nothing was committed"
+            subject="$title"; keepbody=no
+            note="agent-only commit in a public repo: subject is \"$title\" with no body (the push guard's rule)"
+            { [ -n "$bodyf" ] || [ "${#closes[@]}" -gt 0 ]; } && note+=" (the body and the Closes fid lines were left out)"
+            echo "$note"
+          fi
+        fi
+        msg=(-m "$subject")
+        if [ "$keepbody" = yes ]; then
+          [ -n "$bodyf" ] && msg+=(-m "$(cat "$bodyf")"); [ "${#closes[@]}" -gt 0 ] && msg+=(-m "$(printf 'Closes fid: %s\n' "${closes[@]}")")
+        fi
+        if ! out="$(git commit "${msg[@]}" -- "${lpaths[@]}" 2>&1)"; then
+          printf '%s\n' "$out"; refuse "the commit was refused (a hook, most likely): nothing was committed"
+        fi
+        localsha="$(git rev-parse --short HEAD)"
+        echo "committed as $localsha on $(git rev-parse --abbrev-ref HEAD)"
+      fi
     fi
-    echo "committed as $(git rev-parse --short HEAD) on $(git rev-parse --abbrev-ref HEAD)"
+    # each projects home gets its own commit and push, from the script that owns them
+    for ((i = 0; i < ${#htops[@]}; i++)); do
+      mapfile -t rels <<<"${hrels[$i]}"
+      out="$(cd "${htops[$i]}" && bash "$pw" --subject "$subject" -- "${rels[@]}" 2>&1)"; rc=$?
+      case "$rc" in
+        0) if [[ $out == "nothing to write"* ]]; then printf '%s\n' "${out%%$'\n'*}"; else echo "pushed ${rels[*]} to the projects home"; fi
+           { grep '^NOTE:' <<<"$out" || true; } ;;
+        3|4) printf '%s\n' "$out"
+           retry="(cd ${htops[$i]} && bash $pw --subject \"$subject\" --$(printf ' %q' "${rels[@]}"))"
+           refuse "${rels[*]} is kept uncommitted in the projects home${localsha:+ (the local commit $localsha was made)}. Once the cause above is dealt with, run: $retry" ;;
+        *) printf '%s\n' "$out"; refuse "projects-write.sh exited $rc: ${rels[*]} is kept uncommitted in the projects home${localsha:+ (the local commit $localsha was made)}" ;;
+      esac
+    done
     ;;
 
   migrate)
