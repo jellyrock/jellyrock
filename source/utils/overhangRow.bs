@@ -8,8 +8,12 @@ namespace overhangRow
   const ROW_HEIGHT = 78 ' Every box in the row: a tab's caps with 24 px above and below
   const ROW_BOTTOM = 105 ' The row's bottom edge; content starts right under it (Home's row label at 104)
   const GLYPH_SIZE = 42 ' Every glyph in the row: the tabs', the cluster's, the avatar
-  const BOX_PADDING = 9 ' Inside a box at its sides: a tab, the dropdown, a glyph's slot
-  const TAB_GAP = 9 ' Between tabs: text has no air of its own
+  const BOX_PADDING = 9 ' Inside a box at its sides: the dropdown, a glyph's slot
+  ' Inside a tab at its sides: a tab has no glyph canvas to pad its text, so it takes more than
+  ' a box does, and its focus border (6 px, drawn inside the box) sits 9 px clear of the text
+  const TAB_PADDING = 15
+  const TAB_SPACING = 0 ' Between two tabs' boxes: the padding is the air, so the boxes touch
+  const TITLE_STATUS_GAP = 9 ' Between the title's text and the status after it
   const ELEMENT_GAP = 6 ' On the right (before the dropdown, before and inside the cluster): a glyph's canvas pads it
   const CLOCK_GAP = 24 ' Between an icon's box and the clock's digits (Clock.textWidth): the cluster's last icon, the OSD's group mark
   ' A label's caps sit above its box's middle (capsAboveCenter in textMetrics.bs: 3 px at the
@@ -42,6 +46,20 @@ namespace overhangRow
     if clockWidth <= 0 then clockWidth = CLOCK_PROVISIONAL_WIDTH
     edge = RIGHT_EDGE - clockWidth - CLOCK_GAP
     return edge - (edge mod 3)
+  end function
+
+  ' The width a scrolling tab strip may fill, from its left edge `barX` to the gap before
+  ' whatever sits right of it: the dropdown or the cluster (each a width, 0 when hidden), else
+  ' the clock. The clock counts as at least CLOCK_PROVISIONAL_WIDTH wide, so the strip's width
+  ' holds still while the digits change width from one minute to the next. On the grid.
+  function tabSlotWidth(barX as integer, clockWidth as integer, clockShown as boolean, clusterWidth as integer, dropdownWidth as integer) as integer
+    if clockWidth < CLOCK_PROVISIONAL_WIDTH then clockWidth = CLOCK_PROVISIONAL_WIDTH
+    edge = leftOfClock(clockWidth, clockShown)
+    if clusterWidth > 0 then edge -= clusterWidth + ELEMENT_GAP
+    if dropdownWidth > 0 then edge -= dropdownWidth + ELEMENT_GAP
+    width = edge - barX
+    if width <= 0 then return 0
+    return width - (width mod 3)
   end function
 
   ' Where Left or Right from the row element `from` ("tabs", "dropdown" or "cluster") takes
