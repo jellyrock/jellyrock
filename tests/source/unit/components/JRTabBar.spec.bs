@@ -116,19 +116,23 @@ namespace tests
       m.bar.selectedTabId = "tab7"
       container = m.sizedTabs("scrolling")
       ' From the tabs' widths, not their positions: a LayoutGroup places its children at render
+      widths = []
       total = overhangRow.TAB_SPACING * 7
       for i = 0 to 7
-        total += int(container.getChild(i).boundingRect().width)
+        widths.push(int(container.getChild(i).boundingRect().width))
+        total += widths[i]
       end for
       offset = -int(container.translation[0])
       m.assertTrue(offset > 0, "the strip moved")
       m.assertEqual(offset, total - 600, "its end sits at the slot's end")
-      dimmed = 0
+      ' The tab the rule says the left edge cuts is dimmed, and only that one
+      win = tabStrip.window(widths, overhangRow.TAB_SPACING, 600, 7, tabStrip.PEEK_WIDTH)
+      m.assertTrue(win.cutLeft >= 0, "the left edge cuts a tab")
       for i = 0 to 7
-        if container.getChild(i).opacity < 1 then dimmed++
+        expected = 1.0
+        if i = win.cutLeft then expected = tabStrip.CUT_OPACITY
+        m.assertTrue(abs(container.getChild(i).opacity - expected) < 0.001, "tab " + i.toStr() + " opacity " + container.getChild(i).opacity.toStr())
       end for
-      m.assertTrue(dimmed <= 1)
-      m.assertEqual(container.getChild(7).opacity, 1.0)
     end function
 
     @it("clips the strip to its slot once every tab is sized")
