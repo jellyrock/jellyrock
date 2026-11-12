@@ -228,6 +228,55 @@ namespace tests
       m.assertEqual(m.kindOf(m.decide(player, m.pausedGroup(), 10000&)), "halt")
     end function
 
+    ' A node that swallowed every pause write: it reads playing, with no clock, at the limit.
+    private function wedgedNode() as object
+      player = m.playingAt(m.at60s, 9000&)
+      t& = 10000&
+      for i = 1 to syncPlayPlayback.PAUSE_ATTEMPTS
+        syncPlayPlayer.told(player, "pause", "group", invalid, t&)
+        t& = t& + syncPlayPlayback.PAUSE_CONFIRM_MS
+        syncPlayPlayer.advance(player, t&)
+      end for
+      return player
+    end function
+
+    @it("a node at the pause-write limit that reads playing with no clock is sent to the point once, not halted")
+    function _()
+      player = m.wedgedNode()
+      group = m.pausedGroup()
+      m.assertEqual(player.activity, "playing")
+      m.assertEqual(player.clock.kind, "unknown")
+      m.assertEqual(player.pauseWrites, syncPlayPlayback.PAUSE_ATTEMPTS)
+      result = m.decide(player, group, 20000&)
+      m.assertEqual(m.kindOf(result), "seek")
+      m.assertEqual(result.action.targetTicks, m.at60s)
+      m.assertEqual(result.action.owner, "group")
+      m.assertTrue(result.action.recover)
+      syncPlayConverge.applied(player, group, result.action, 20000&)
+      m.assertEqual(group.recoverSeeks, 1)
+      again = m.wedgedNode()
+      m.assertEqual(m.kindOf(m.decide(again, group, 20000&)), "halt")
+    end function
+
+    @it("a node at the pause-write limit whose clock is running is halted with no seek")
+    function _()
+      player = m.playingAt(m.at60s, 10000&)
+      player.pauseWrites = syncPlayPlayback.PAUSE_ATTEMPTS
+      m.assertEqual(player.clock.kind, "running")
+      m.assertEqual(m.kindOf(m.decide(player, m.pausedGroup(), 10100&)), "halt")
+    end function
+
+    @it("a new group command makes the recover seek available again")
+    function _()
+      group = m.pausedGroup()
+      first = m.decide(m.wedgedNode(), group, 20000&)
+      syncPlayConverge.applied(m.wedgedNode(), group, first.action, 20000&)
+      m.assertEqual(m.kindOf(m.decide(m.wedgedNode(), group, 20000&)), "halt")
+      syncPlayGroup.command(group, m.cmd("Pause", 21000&, m.at60s))
+      m.assertEqual(group.recoverSeeks, 0)
+      m.assertEqual(m.kindOf(m.decide(m.wedgedNode(), group, 22000&)), "seek")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("a group waiting at a Seek's point")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

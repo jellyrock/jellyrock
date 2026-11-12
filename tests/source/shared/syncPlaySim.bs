@@ -49,7 +49,7 @@ namespace tests.syncPlaySim
       seeks: 0,
       events: 0,
       ' What the run went through, so a spec can check its faults happened at all.
-      counts: { farLandings: 0, slowSeeks: 0, slowResumes: 0, scrubs: 0, lostRequests: 0, stalls: 0, wedgedPauses: 0, silentCatchUps: 0, catchUps: 0, holds: 0, waitAsks: 0, whereAsks: 0 }
+      counts: { farLandings: 0, slowSeeks: 0, slowResumes: 0, scrubs: 0, lostRequests: 0, stalls: 0, wedgedPauses: 0, silentCatchUps: 0, recoverSeeks: 0, catchUps: 0, holds: 0, waitAsks: 0, whereAsks: 0 }
     }
     ' The group stands paused on one item, and this member's player mounts for it.
     syncPlayGroup.itemChanged(sim.group, "p-1", 99000&)
@@ -160,6 +160,7 @@ namespace tests.syncPlaySim
       sim.seeks++
       if action.catchUp = true then sim.counts.catchUps++
       if action.silent = true then sim.counts.silentCatchUps++
+      if action.recover = true then sim.counts.recoverSeeks++
       if sim.scrubbing and action.owner <> "group" then violate(sim, "a seek of the member's own was written under the viewer's scrub")
       writeSeek(sim, syncPlayTime.ticksToMs(action.targetTicks))
     else if kind = "report"
@@ -201,9 +202,10 @@ namespace tests.syncPlaySim
       return
     end if
     if node.state = "paused" then return
-    if sim.faults and node.state = "playing" and sim.server.state = "Playing" and chance(sim, 8)
+    if sim.faults and node.state = "playing" and isValid(sim.group.command) and (node.wedged or chance(sim, 8))
       ' A pause that never takes: the node reads playing, stands still and sends no position
-      ' notification, until a seek is written to it.
+      ' notification, and takes no further pause, until a seek is written to it. Only once a group
+      ' command is in force: a wait with no command names no point to seek to.
       freeze(sim)
       node.wedged = true
       sim.counts.wedgedPauses++

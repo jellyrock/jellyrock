@@ -244,6 +244,16 @@ namespace tests
       m.assertEqual(player.activity, "paused")
     end function
 
+    @it("a seek told to the node clears the pause writes counted so far")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "pause", "group", invalid, 1300&)
+      syncPlayPlayer.advance(player, 1300& + syncPlayPlayback.PAUSE_CONFIRM_MS)
+      m.assertEqual(player.pauseWrites, 1)
+      syncPlayPlayer.told(player, "seek", "group", m.at60s, 2400&)
+      m.assertEqual(player.pauseWrites, 0)
+    end function
+
     @it("a pause the node swallowed ends as playing, with the write counted")
     function _()
       player = m.playingAt60()

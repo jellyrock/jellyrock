@@ -103,6 +103,8 @@ namespace syncPlayPlayer
       player.seekWrittenAtMs = nowMs
       player.seekOwner = owner
       player.seekSlow = false
+      ' A seek starts the node afresh, so pause writes are counted from its landing.
+      player.pauseWrites = 0
       player.pauseOwner = ""
       player.pauseTicks = invalid
       enter(player, "seeking", nowMs)

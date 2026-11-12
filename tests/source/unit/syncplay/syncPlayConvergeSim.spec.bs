@@ -80,7 +80,7 @@ namespace tests
       failed = m.failures(101, 180, true)
       m.assertEqual(failed.count(), 0, failed.join(" | "))
       ' A run that met no fault proves nothing about faults.
-      for each name in ["farLandings", "slowSeeks", "slowResumes", "scrubs", "lostRequests", "stalls", "wedgedPauses", "silentCatchUps", "catchUps", "holds", "whereAsks"]
+      for each name in ["farLandings", "slowSeeks", "slowResumes", "scrubs", "lostRequests", "stalls", "wedgedPauses", "silentCatchUps", "recoverSeeks", "catchUps", "holds", "whereAsks"]
         m.assertTrue(m.totals[name] > 0, "no run went through any " + name)
       end for
     end function

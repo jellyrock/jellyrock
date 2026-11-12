@@ -107,6 +107,7 @@ namespace syncPlayConverge
         group.pickPending = false
       end if
       if action.toPoint = true then group.pointSeeks++
+      if action.recover = true then group.recoverSeeks++
     else if kind = "report"
       if action.what = "buffering" then group.heldFor = action.heldFor
       if action.what = "buffering" and isValid(action.forLoad) then group.bufferingForLoad = action.forLoad
@@ -180,7 +181,14 @@ namespace syncPlayConverge
 
     if isPlayingOn
       if activity = "stalling" and want.mode = "waiting" then return invalid
-      if player.pauseWrites >= policy.pauseWriteLimit then return { kind: "halt", reason: "the player would not stay paused" }
+      if player.pauseWrites >= policy.pauseWriteLimit
+        ' A node that reads playing, sends no reading and takes no pause is taken as not moving,
+        ' and a seek is what frees it. One that truly plays on has a running clock and is halted.
+        if activity = "playing" and player.clock.kind = "unknown" and group.recoverSeeks < 1 and isValid(want.pointTicks)
+          return { kind: "seek", owner: "group", targetTicks: syncPlayTime.asLong(want.pointTicks), recover: true, silent: true }
+        end if
+        return { kind: "halt", reason: "the player would not stay paused" }
+      end if
       if want.mode = "paused"
         owner = "group"
         if want.byViewer then owner = "viewer"

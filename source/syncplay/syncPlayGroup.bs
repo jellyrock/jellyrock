@@ -58,6 +58,8 @@ namespace syncPlayGroup
       askedWait: false,
       ' Seeks written toward the point the group waits at, since the last command.
       pointSeeks: 0,
+      ' Seeks written to free a node that reads playing and takes no pause, since the last command.
+      recoverSeeks: 0,
       ' The playlist item whose end this member asked the group to move on from.
       nextAskedFor: "",
       ' Whether the viewer was told the group cannot be reached, so it is said once.
@@ -100,6 +102,7 @@ namespace syncPlayGroup
     end if
     group.catchUps = 0
     group.pointSeeks = 0
+    group.recoverSeeks = 0
     group.whereAskedAtMs = invalid
     group.toldUnreachable = false
     ' A Seek is a new wait: this member's Buffering for it has not been sent.
@@ -122,6 +125,7 @@ namespace syncPlayGroup
     group.waitPointTicks = invalid
     group.catchUps = 0
     group.pointSeeks = 0
+    group.recoverSeeks = 0
     group.askedWait = false
     group.owesReady = false
     if playingItemId <> "" then startWait(group)
@@ -266,6 +270,7 @@ namespace syncPlayGroup
     group.viewerAsk = invalid
     group.catchUps = 0
     group.pointSeeks = 0
+    group.recoverSeeks = 0
     group.askedWait = false
     group.whereAskedAtMs = invalid
     group.toldUnreachable = false
