@@ -38,6 +38,129 @@ namespace tests
       m.assertEqual(m.bar.findNode("tabContainer").getChild(0).tabSelectedIcon, "pkg:/images/icons/heart_$$RES$$.png")
     end function
 
+    ' Eight tabs in a slot of 600, far too narrow for them. A tab sizes as its title is set,
+    ' so the bar is ready as soon as it has its tabs.
+    private function sizedTabs(mode as string) as object
+      tabs = []
+      for i = 0 to 7
+        tabs.push({ id: "tab" + i.toStr(), title: "A long tab title " + i.toStr() })
+      end for
+      m.bar.mode = mode
+      m.bar.slotWidth = 600
+      m.bar.tabs = tabs
+      return m.bar.findNode("tabContainer")
+    end function
+
+    ' A tab with no title has nothing to measure, so it stays unsized until told otherwise
+    private function oneTabUnsized() as object
+      m.bar.tabs = [{ id: "a", title: "A" }, { id: "b", title: "" }]
+      return m.bar.findNode("tabContainer").getChild(1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("readiness")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is not ready until every tab is sized")
+    function _()
+      unsized = m.oneTabUnsized()
+      m.assertFalse(m.bar.isReady)
+      unsized.isReady = true
+      m.assertTrue(m.bar.isReady)
+    end function
+
+    @it("is ready as soon as it has tabs with titles")
+    function _()
+      m.bar.tabs = [{ id: "a", title: "A" }, { id: "b", title: "B" }]
+      m.assertTrue(m.bar.isReady)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("fixed mode")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets no clip, moves nothing and dims nothing, whatever the slot width")
+    function _()
+      container = m.sizedTabs("fixed")
+      m.bar.focusedTabIndex = 7
+      clip = m.bar.findNode("tabClip").clippingRect
+      m.assertEqual(int(clip.width), 0)
+      m.assertEqual(int(container.translation[0]), 0)
+      for i = 0 to 7
+        m.assertEqual(container.getChild(i).opacity, 1.0)
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("scrolling mode")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sets no clip before every tab is sized")
+    function _()
+      m.bar.mode = "scrolling"
+      m.bar.slotWidth = 600
+      unsized = m.oneTabUnsized()
+      m.assertEqual(int(m.bar.findNode("tabClip").clippingRect.width), 0)
+      unsized.isReady = true
+      m.assertEqual(int(m.bar.findNode("tabClip").clippingRect.width), 600)
+    end function
+
+    @it("starts at the first tab when it is the selected one")
+    function _()
+      container = m.sizedTabs("scrolling")
+      m.assertEqual(int(container.translation[0]), 0)
+    end function
+
+    @it("moves the strip to its end for the last tab selected, and dims the tab its left edge cuts")
+    function _()
+      m.bar.selectedTabId = "tab7"
+      container = m.sizedTabs("scrolling")
+      ' From the tabs' widths, not their positions: a LayoutGroup places its children at render
+      widths = []
+      total = overhangRow.TAB_SPACING * 7
+      for i = 0 to 7
+        widths.push(int(container.getChild(i).boundingRect().width))
+        total += widths[i]
+      end for
+      offset = -int(container.translation[0])
+      m.assertTrue(offset > 0, "the strip moved")
+      m.assertEqual(offset, total - 600, "its end sits at the slot's end")
+      ' The tab the rule says the left edge cuts is dimmed, and only that one
+      win = tabStrip.window(widths, overhangRow.TAB_SPACING, 600, 7, tabStrip.PEEK_WIDTH)
+      m.assertTrue(win.cutLeft >= 0, "the left edge cuts a tab")
+      for i = 0 to 7
+        expected = 1.0
+        if i = win.cutLeft then expected = tabStrip.CUT_OPACITY
+        m.assertTrue(abs(container.getChild(i).opacity - expected) < 0.001, "tab " + i.toStr() + " opacity " + container.getChild(i).opacity.toStr())
+      end for
+    end function
+
+    @it("clips the strip to its slot once every tab is sized")
+    function _()
+      m.sizedTabs("scrolling")
+      clip = m.bar.findNode("tabClip").clippingRect
+      m.assertEqual(int(clip.width), 600)
+      m.assertEqual(int(clip.height), overhangRow.ROW_HEIGHT)
+    end function
+
+    ' An empty clippingRect stops the tabs drawing on a device, so a bar out of its slot
+    ' carries one as large as the screen
+    @it("widens the clip to the screen while a new set of tabs sizes")
+    function _()
+      m.sizedTabs("scrolling")
+      m.oneTabUnsized()
+      m.assertEqual(int(m.bar.findNode("tabClip").clippingRect.width), 1920)
+      m.assertFalse(m.bar.isReady)
+    end function
+
+    @it("widens the clip to the screen when the mode goes back to fixed")
+    function _()
+      container = m.sizedTabs("scrolling")
+      m.bar.mode = "fixed"
+      m.assertEqual(int(m.bar.findNode("tabClip").clippingRect.width), 1920)
+      m.assertEqual(int(container.translation[0]), 0)
+    end function
+
   end class
 
 end namespace

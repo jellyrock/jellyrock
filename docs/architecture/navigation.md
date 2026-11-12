@@ -60,6 +60,7 @@ Scene
 | `overhangTitle` | string | Title in the top bar |
 | `overhangStatus` | string | Dim text after the title: the screen's state (the search screen's submitted query while its keyboard is closed) |
 | `overhangTabs` | array | The tab bar's entries, `{ id, title, icon, selectedIcon }`: the screen's views as text buttons, each with a glyph beside its title, outlined (`icon`) until the tab is selected, then filled (`selectedIcon`) |
+| `tabMode` | string, default `fixed` | How the overhang treats `overhangTabs`: `fixed` for a small set that always fits (Home), `scrolling` for a set that can outgrow the row ([design-system.md](design-system.md#a-tab-strip-that-can-outgrow-its-slot)). Declared before `overhangTabs` and fixed for the screen's life |
 | `selectedTabId` | string, `alwaysNotify` | The selected view |
 | `isOverhangVisible` | bool, default true | Show the top bar (false during playback) |
 | `isLogoVisible` | bool, default false | Show the JellyRock logo in the top bar |
