@@ -773,6 +773,76 @@ namespace tests
       m.assertEqual(m.kindOf(m.decide(player, group, 10001&)), "")
     end function
 
+    @it("a wait ask that failed is asked again while the member is still behind")
+    function _()
+      player = m.playingAt(m.at65s - 2000 * m.oneMs, 10000&)
+      group = m.playingLine()
+      group.catchUps = 2
+      ask = m.decide(player, group, 10000&)
+      syncPlayConverge.applied(player, group, ask.action, 10000&)
+      syncPlayGroup.requestFailed(group, "ask", "seek", group.ask.id)
+      again = m.decide(player, group, 10100&)
+      m.assertEqual(m.kindOf(again), "ask")
+      m.assertEqual(again.action.what, "seek")
+      m.assertTrue(again.action.waitOnMe)
+    end function
+
+    @it("a wait ask still in flight is not asked again")
+    function _()
+      player = m.playingAt(m.at65s - 2000 * m.oneMs, 10000&)
+      group = m.playingLine()
+      group.catchUps = 2
+      ask = m.decide(player, group, 10000&)
+      syncPlayConverge.applied(player, group, ask.action, 10000&)
+      m.assertEqual(m.kindOf(m.decide(player, group, 10100&)), "")
+    end function
+
+    @it("a wait ask that was answered is not asked again")
+    function _()
+      player = m.playingAt(m.at65s - 2000 * m.oneMs, 10000&)
+      group = m.playingLine()
+      group.catchUps = 2
+      ask = m.decide(player, group, 10000&)
+      syncPlayConverge.applied(player, group, ask.action, 10000&)
+      syncPlayGroup.requestArrived(group, "ask", "seek", group.ask.id)
+      m.assertEqual(m.kindOf(m.decide(player, group, 10100&)), "")
+    end function
+
+    @it("a wait ask out of tries goes again every retry interval, and the decision wakes then")
+    function _()
+      group = m.playingLine()
+      group.catchUps = 2
+      policy = syncPlayConverge.defaultPolicy()
+      player = m.playingAt(m.at65s - 2000 * m.oneMs, 10000&)
+      sentAt = 10000&
+      for i = 1 to policy.requestTries
+        player = m.playingAt(m.at60s + (sentAt - 8000&) * m.oneMs, sentAt)
+        ask = m.decide(player, group, sentAt)
+        m.assertEqual(m.kindOf(ask), "ask")
+        syncPlayConverge.applied(player, group, ask.action, sentAt)
+        syncPlayGroup.advance(group, syncPlayTime.asLong(policy.requestLimitMs), sentAt + policy.requestLimitMs)
+        m.assertEqual(group.ask.state, "failed")
+        sentAt += 4000&
+      end for
+      sentAt -= 4000&
+      ' The viewer hears first, once.
+      lookAt = sentAt + policy.requestLimitMs
+      player = m.playingAt(m.at60s + (lookAt - 8000&) * m.oneMs, lookAt)
+      notice = m.decide(player, group, lookAt)
+      m.assertEqual(m.kindOf(notice), "notice")
+      syncPlayConverge.applied(player, group, notice.action, lookAt)
+      waiting = m.decide(player, group, lookAt)
+      m.assertEqual(m.kindOf(waiting), "")
+      m.assertEqual(waiting.wakeAtMs, sentAt + policy.retryEveryMs)
+      dueAt = sentAt + policy.retryEveryMs
+      player = m.playingAt(m.at60s + (dueAt - 8000&) * m.oneMs, dueAt - 1)
+      m.assertEqual(m.kindOf(m.decide(player, group, dueAt - 1)), "")
+      player = m.playingAt(m.at60s + (dueAt - 8000&) * m.oneMs, dueAt)
+      due = m.decide(player, group, dueAt)
+      m.assertEqual(m.kindOf(due), "ask")
+      m.assertTrue(due.action.waitOnMe)
+    end function
+
     @it("a node whose pause was never confirmed, left playing and not moving, is caught up at the silence limit")
     function _()
       player = m.playingAt(m.at65s, 9000&)

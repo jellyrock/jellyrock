@@ -235,7 +235,7 @@ namespace syncPlayConverge
         if isValid(reachAt)
           reach& = syncPlayTime.asLong(reachAt)
           if reach& - nowMs > policy.aheadWaitMaxMs or nowMs - reach& > policy.behindBarMs
-            return catchUp(player, group, ctx, policy, nowMs)
+            return catchUp(player, group, ctx, policy, nowMs, result)
           end if
           resumeAt& = reach&
         end if
@@ -251,7 +251,7 @@ namespace syncPlayConverge
     ' passes, and a seek is what frees it. A node whose readings arrive never gets here.
     silentAt& = syncPlayTime.asLong(player.clock.atMs) + policy.silentPlayingMs
     if nowMs >= silentAt&
-      silent = catchUp(player, group, ctx, policy, nowMs)
+      silent = catchUp(player, group, ctx, policy, nowMs, result)
       if isValid(silent) and silent.kind = "seek" then silent.silent = true
       return silent
     end if
@@ -270,7 +270,7 @@ namespace syncPlayConverge
       behindBar = policy.pickBarMs
     end if
     if aheadMs& > aheadBar then return { kind: "pause", owner: "hold", showOsd: false }
-    if -aheadMs& > behindBar then return catchUp(player, group, ctx, policy, nowMs)
+    if -aheadMs& > behindBar then return catchUp(player, group, ctx, policy, nowMs, result)
     if group.pickPending then return { kind: "settled" }
     ' In step on a measured reading: whatever catch-ups it took worked, so the budget is whole
     ' again. It counts catch-ups that did not bring the member in, not every one in a long film.
@@ -291,13 +291,14 @@ namespace syncPlayConverge
 
   ' One catch-up: seek ahead of the group by the time a seek takes plus a margin. The node then
   ' arrives, its landing is read, and the rules above hold it until the group reaches it. When
-  ' the budget is spent or the last seek was given up, the group is asked to wait once instead.
+  ' the budget is spent or the last seek was given up, the group is asked to wait instead: once
+  ' it is answered, and again while the request fails, since a lost one leaves the member behind.
   ' A playing node with no known position cannot ask, so it gets one more seek per group command.
-  function catchUp(player as object, group as object, ctx as object, policy as object, nowMs as longinteger) as dynamic
+  function catchUp(player as object, group as object, ctx as object, policy as object, nowMs as longinteger, result as object) as dynamic
     recover = false
     if player.lastSeekGaveUp or group.catchUps >= policy.catchUpLimit
       position = syncPlayPlayer.positionAt(player, nowMs)
-      if not group.askedWait and group.ask.state <> "flight" and isValid(position)
+      if group.ask.state <> "flight" and isValid(position) and waitIsWanted(group, policy, nowMs, result)
         return { kind: "ask", what: "seek", positionTicks: syncPlayTime.asLong(position), waitOnMe: true }
       end if
       ' A playing node that sends no position cannot ask, and would stay frozen until the next
@@ -319,6 +320,17 @@ namespace syncPlayConverge
     seek = { kind: "seek", owner: "hold", targetTicks: syncPlayTime.asLong(target), catchUp: true, byPick: group.pickPending }
     if recover then seek.recover = true
     return seek
+  end function
+
+  ' Whether the group is still to be asked to wait: it never was, or the ask failed (and was not
+  ' the viewer's own seek, which askAction sends again) and its retry is due.
+  function waitIsWanted(group as object, policy as object, nowMs as longinteger, result as object) as boolean
+    if not group.askedWait then return true
+    slot = group.ask
+    if slot.state <> "failed" or slot.what <> "seek" then return false
+    if isValid(group.viewerAsk) and group.viewerAsk.kind = "seek" then return false
+    if outOfTries(slot, policy) then return retryIsDue(slot, policy, nowMs, result)
+    return true
   end function
 
   ' --- the server's picture of this member ---
