@@ -1,13 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component name="JRTabBar" extends="Group">
   <children>
-    <!-- itemSpacings is overhangRow.TAB_GAP, set in init -->
-    <LayoutGroup id="tabContainer" layoutDirection="horz" />
+    <!-- itemSpacings is overhangRow.TAB_SPACING, set in init -->
+    <!-- The slot: clips the strip in scrolling mode (clippingRect set in applyWindow) and
+         does nothing in fixed mode -->
+    <Group id="tabClip">
+      <LayoutGroup id="tabContainer" layoutDirection="horz" />
+    </Group>
+    <!-- Slides the strip to a new offset (scrolling mode); the duration is tabStrip.SCROLL_SECONDS -->
+    <Animation id="scrollAnimation" repeat="false" easeFunction="outCubic">
+      <Vector2DFieldInterpolator id="scrollInterpolator" key="[0.0, 1.0]" fieldToInterp="tabContainer.translation" />
+    </Animation>
   </children>
   <interface>
     <!-- Input: array of { id, title, icon, selectedIcon }: icon is the outlined glyph drawn while
          a tab is not selected, selectedIcon the filled one while it is (both optional) -->
     <field id="tabs" type="array" />
+    <!-- Input: "fixed" (the default) lays the tabs out and never moves them, for a small set
+         that always fits (Home). "scrolling" clips the strip to slotWidth and keeps the active
+         tab in view (tabStrip.window), for a set that can outgrow its slot (a library). Set it
+         before tabs. -->
+    <field id="mode" type="string" value="fixed" />
+    <!-- Input: the width the strip may fill, in design pixels; scrolling mode only -->
+    <field id="slotWidth" type="integer" value="0" />
     <!-- Output: id of the currently selected (active) tab -->
     <field id="selectedTabId" type="string" alwaysNotify="true" />
     <!-- Output: signals the parent screen to take focus back (on a DOWN press) -->
@@ -17,7 +32,7 @@
     <field id="requestFocusToUserMenu" type="string" alwaysNotify="true" />
     <!-- Input/Output: externally settable focused tab index (for example, when returning from user dropdown) -->
     <field id="focusedTabIndex" type="integer" value="0" alwaysNotify="true" />
-    <!-- Output: signals when the first tab has finished rendering/sizing -->
+    <!-- Output: signals when every tab has finished rendering/sizing -->
     <field id="isReady" type="boolean" value="false" alwaysNotify="true" />
     <function name="onDestroy" />
   </interface>

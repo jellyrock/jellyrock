@@ -2874,6 +2874,16 @@ Translations get one changelog section, last above Dependencies, fed by no PR-ti
 
 Credit is the names in the `Co-authored-by` trailers of the commits that touched a translation, minus Weblate and bots. An anonymous suggestion accepted in Weblate arrives as one of those, so a line with no names credits "translators", and every line ends "on Weblate", linked, so the notes always say where to help. Re-evaluate if the count misleads: most of 3.5.0's 4,567 strings came from the other-client imports, not from Weblate.
 
+## decision-id: tab-strip-one-rule-dimmed
+
+**date**: 2026-11-12
+**status**: accepted
+**related-files**: `source/utils/tabStrip.bs`, `components/ui/tabbar/JRTabBar.bs`, `components/ui/tabbar/JRTab.bs`
+
+A scrolling tab strip follows one rule (`tabStrip.window`): the active tab (focused while the bar has focus, else selected) sits first in its slot with the previous tab peeking, and the strip never scrolls past its last tab. Two alternatives were ruled out. "Selected first at rest, least movement while walking" is two rules, slides the strip a second time on OK and on Down, and needs the current offset as an input. "Least movement only" opens a default tab late in the strip at the slot's right edge. A tab the slot's edge cuts is drawn dimmed. A fade to transparent was ruled out: it needs a `MaskGroup`, which the app does not use anywhere, whose cost is unmeasured, and which Roku's `maskgroup.md` says draws unmasked on a player without OpenGL. A painted gradient would show as a band, because a library draws a backdrop behind the overhang. Revisit the fade if the dimmed tab reads badly in use.
+
+Two things seen on a Roku Stick on Roku OS 16.0.4 (2026-11-12) shape the code. A tab past its slot, or past the screen's edge, never reports `renderTracking` as `full`, so `JRTab` sizes when its title is set instead of waiting for the renderer as `TextButton` does. Setting a `clippingRect` back to an empty rectangle stops the tabs drawing, so a bar that leaves its slot takes a clip the size of the screen (`JRTabBar.clearWindow`).
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
