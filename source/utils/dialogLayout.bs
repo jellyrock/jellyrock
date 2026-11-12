@@ -181,7 +181,8 @@ const PANEL_MAX_HEIGHT = SCREEN_HEIGHT - (PANEL_PADDING * 2) - 60
 '                  fits and RIGHT-aligned where it does not. It sits ABOVE the
 '                  anchor when it fits there, and otherwise on the side with
 '                  more room: BELOW `anchor.y + anchor.height` for a button near
-'                  the top of the screen. See placement below for both rules.
+'                  the top of the screen. `height` is what allows that: an
+'                  anchor without one always stays above. See placement below.
 '
 ' @returns {object} - { panel, title, accent, subheading, body, footer }, each
 '                     { x, y, width, height }, plus `overflows`.
@@ -267,7 +268,8 @@ function computeDialogLayout(spec as object) as object
   ' below only when what it asked for does not fit above and the band below is
   ' the larger one. A button row low on the screen (ItemDetails at y=800, the
   ' OSD at y=932) therefore never flips, and a button in the overhang row, which
-  ' has nothing above it, always does. No caller picks the direction.
+  ' has nothing above it, always does. No caller picks the direction. An anchor
+  ' with no `height` never goes below: the panel would start over its button.
   belowBody = PANEL_PADDING
   if hasFooter then belowBody += BODY_GAP + footerHeight
 
@@ -277,7 +279,7 @@ function computeDialogLayout(spec as object) as object
     roomAbove = anchorY - ANCHOR_GAP - PANEL_PADDING
     roomBelow = SCREEN_HEIGHT - PANEL_PADDING - (anchorY + anchorHeight + ANCHOR_GAP)
     wantedHeight = bodyY + bodyHeight + belowBody
-    opensBelow = wantedHeight > roomAbove and roomBelow > roomAbove
+    opensBelow = anchorHeight > 0 and wantedHeight > roomAbove and roomBelow > roomAbove
     ceiling = roomAbove
     if opensBelow then ceiling = roomBelow
     if ceiling > PANEL_MAX_HEIGHT then ceiling = PANEL_MAX_HEIGHT

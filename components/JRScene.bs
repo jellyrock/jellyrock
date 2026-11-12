@@ -991,6 +991,9 @@ sub onActiveRoutedViewChanged()
     else
       m.previousRoutedView.visible = false
     end if
+    ' A page dialog was about the screen now covered or closed. Its handler does nothing
+    ' for a close the viewer did not make, so nothing is lost by forgetting it here.
+    releasePageMenu()
     unregisterOverhangData(m.previousRoutedView)
   end if
 
@@ -1233,7 +1236,8 @@ sub openPageMenu(focusEntryId = "" as string)
   menu = pageSettings.menuRows(entries)
   anchor = m.overhang.callFunc("iconAnchor", "settings")
   if menu.ids.count() = 0 or not isValid(anchor)
-    openClusterRoute("settings")
+    ' Back from a picker asked for the menu again: with nothing to show, it only closes.
+    if focusEntryId = "" then openClusterRoute("settings")
     return
   end if
 
@@ -1253,11 +1257,18 @@ sub claimPageDialogForScreen(view as object)
   if isValid(m.pageMenuDialog) then m.pageMenuDialog.owner = view
 end sub
 
+' Forget the page dialog on show and what it was built from. They hold the screen they are
+' about, so a screen that closes under them (JRScreen.beforeViewClose abandons the dialog,
+' and no result comes) is let go at the screen swap.
+sub releasePageMenu()
+  m.pageMenuDialog = invalid
+  m.pageMenu = invalid
+end sub
+
 sub onPageMenuResult()
   dialog = m.pageMenuDialog
   menu = m.pageMenu
-  m.pageMenuDialog = invalid
-  m.pageMenu = invalid
+  releasePageMenu()
   if not isValid(dialog) or not isValid(menu) then return
 
   ' Only a user's pick acts, never a close that code made.
@@ -1283,22 +1294,15 @@ end sub
 sub onPageSettingPicked()
   dialog = m.pageMenuDialog
   picker = m.pageMenu
-  m.pageMenuDialog = invalid
-  m.pageMenu = invalid
-  if not isValid(dialog) or not isValid(dialog.result) or not isValid(picker) then return
+  releasePageMenu()
+  if not isValid(dialog) or not isValid(picker) or not isActivePageMenuView(picker.view) then return
 
-  result = dialog.result
-  if result.externallyCancelled = true or not isActivePageMenuView(picker.view) then return
-  if result.cancelled = true
+  outcome = pageSettings.pickOutcome(dialog.result, picker.entry, picker.values)
+  if outcome.action = pageSettings.PICK_REOPEN
     openPageMenu(picker.entry.id)
-    return
+  else if outcome.action = pageSettings.PICK_CHANGE
+    picker.view.callFunc("onPageSettingChanged", picker.entry.id, outcome.value)
   end if
-
-  index = result.optionIndex
-  if not isValid(index) or index < 0 or index >= picker.values.count() then return
-  picked = picker.values[index]
-  if picked = textOrEmpty(picker.entry.selected) then return
-  picker.view.callFunc("onPageSettingChanged", picker.entry.id, picked)
 end sub
 
 ' Whether the screen a page dialog was opened for is still the one on show.

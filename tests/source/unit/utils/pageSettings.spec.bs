@@ -69,7 +69,10 @@ namespace tests
       noId = { title: "Nameless", options: [{ id: "a", title: "A" }] }
       reserved = { id: pageSettings.ALL_SETTINGS, title: "Impostor", options: [{ id: "a", title: "A" }] }
 
-      menu = pageSettings.menuRows([noOptions, noId, reserved, invalid, m.layoutEntry("comfortable")])
+      badOption = { id: "bad", title: "Bad", options: [{ id: "a", title: "A" }, "b"] }
+      noOptionId = { id: "blank", title: "Blank", options: [{ title: "A" }] }
+
+      menu = pageSettings.menuRows([noOptions, noId, reserved, invalid, badOption, noOptionId, m.layoutEntry("comfortable")])
 
       m.assertEqual(menu.ids, ["layout", pageSettings.ALL_SETTINGS])
     end function
@@ -109,6 +112,64 @@ namespace tests
     @it("marks nothing when the selected id names no option")
     function _()
       m.assertEqual(pageSettings.picker(m.layoutEntry("posters")).selectedIndex, -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("pickOutcome")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reports a change for a pick other than the option in force")
+    function _()
+      entry = m.layoutEntry("comfortable")
+      outcome = pageSettings.pickOutcome({ cancelled: false, optionIndex: 0 }, entry, pageSettings.picker(entry).values)
+
+      m.assertEqual(outcome.action, pageSettings.PICK_CHANGE)
+      m.assertEqual(outcome.value, "presentation")
+    end function
+
+    @it("does nothing for a pick of the option already in force")
+    function _()
+      entry = m.layoutEntry("comfortable")
+      outcome = pageSettings.pickOutcome({ cancelled: false, optionIndex: 1 }, entry, pageSettings.picker(entry).values)
+
+      m.assertEqual(outcome.action, pageSettings.PICK_NONE)
+    end function
+
+    @it("reports a change to the option whose id is the empty string")
+    function _()
+      entry = m.defaultTabEntry("genres")
+      outcome = pageSettings.pickOutcome({ cancelled: false, optionIndex: 0 }, entry, pageSettings.picker(entry).values)
+
+      m.assertEqual(outcome.action, pageSettings.PICK_CHANGE)
+      m.assertEqual(outcome.value, "")
+    end function
+
+    @it("reopens the menu when the viewer pressed Back")
+    function _()
+      entry = m.layoutEntry("comfortable")
+      outcome = pageSettings.pickOutcome({ cancelled: true }, entry, pageSettings.picker(entry).values)
+
+      m.assertEqual(outcome.action, pageSettings.PICK_REOPEN)
+    end function
+
+    @it("does nothing for a close that code made, even with a row index on it")
+    function _()
+      entry = m.layoutEntry("comfortable")
+      result = { cancelled: true, externallyCancelled: true, optionIndex: 0 }
+      outcome = pageSettings.pickOutcome(result, entry, pageSettings.picker(entry).values)
+
+      m.assertEqual(outcome.action, pageSettings.PICK_NONE)
+    end function
+
+    @it("does nothing for a missing result or a row that is not there")
+    function _()
+      entry = m.layoutEntry("comfortable")
+      values = pageSettings.picker(entry).values
+
+      m.assertEqual(pageSettings.pickOutcome(invalid, entry, values).action, pageSettings.PICK_NONE)
+      m.assertEqual(pageSettings.pickOutcome({ cancelled: false }, entry, values).action, pageSettings.PICK_NONE)
+      m.assertEqual(pageSettings.pickOutcome({ cancelled: false, optionIndex: 5 }, entry, values).action, pageSettings.PICK_NONE)
+      m.assertEqual(pageSettings.pickOutcome({ cancelled: false, optionIndex: -1 }, entry, values).action, pageSettings.PICK_NONE)
     end function
 
   end class

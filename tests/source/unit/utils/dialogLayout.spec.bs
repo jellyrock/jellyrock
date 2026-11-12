@@ -428,17 +428,17 @@ namespace tests
     function _()
       high = computeDialogLayout({
         panelWidth: 402,
-        bodyHeight: 800,
-        anchor: { x: 1168, y: 600, width: 136 }
+        bodyHeight: 600,
+        anchor: { x: 1168, y: 400, width: 136 }
       })
 
       m.assertTrue(high.overflows)
       m.assertTrue(high.panel.y >= PANEL_PADDING)
-      m.assertTrue(high.panel.y + high.panel.height <= 600 - ANCHOR_GAP)
+      m.assertTrue(high.panel.y + high.panel.height <= 400 - ANCHOR_GAP)
     end function
 
-    ' A button in the overhang row has nothing above it. The settings icon's box
-    ' is 78px tall from y=27, three slots in from the right edge.
+    ' A button in the overhang row has nothing above it. The anchor is a box of
+    ' that row's shape, near the top right.
     @it("opens BELOW an anchor at the top, leaving ANCHOR_GAP under it")
     function _()
       layout = computeDialogLayout({
@@ -465,6 +465,19 @@ namespace tests
       m.assertTrue(layout.overflows)
       m.assertTrue(layout.panel.y >= 27 + 78 + ANCHOR_GAP)
       m.assertTrue(layout.panel.y + layout.panel.height <= 1080 - PANEL_PADDING)
+    end function
+
+    ' Without a `height` the panel has no bottom edge to start under, so it stays
+    ' above however little room that leaves.
+    @it("never opens below an anchor that passes no height")
+    function _()
+      layout = computeDialogLayout({
+        panelWidth: 402,
+        bodyHeight: 162,
+        anchor: { x: 1596, y: 300, width: 78 }
+      })
+
+      m.assertTrue(layout.panel.y + layout.panel.height <= 300 - ANCHOR_GAP)
     end function
 
     ' Above is preferred: a panel that fits there stays there even when the

@@ -5,20 +5,24 @@
  * hangs under the icon, the page's entries above All settings (JRScene.openPageMenu). A movie
  * library's Movies tab offers Layout. An entry opens a list of its options, Back there
  * returns to the menu on that entry's row, and a pick applies at once: the tab is redrawn,
- * focus goes to the grid, the choice is saved for that view, and the sort is left alone.
+ * focus goes to the grid, the choice is saved for that view, and the sort and a letter picked
+ * on the letter rail are left alone.
  * A screen with nothing to offer (a TV library, a movie library's Studios tab) still opens
  * Settings in one press.
  */
 import { beforeAll, it, expect } from 'vitest';
 import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
-import { authenticate, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
+import { authenticate, getJson, getLibraries, libraryIdFor, tokenHeader } from '../lib/jellyfin.js';
 import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
 import { navLibraryGrid, navTvLibrary, waitPageMenu, waitSettingsScreen } from '../lib/nav.js';
 import {
+  getActiveVal,
   getVal,
   press,
+  resendUntilFocusInside,
+  scrollFocus,
   waitDialogClosed,
   waitFocused,
   waitFocusInside,
@@ -188,6 +192,117 @@ it('Layout lists the layouts, Back returns to the menu, and a pick redraws the t
   expect((await dialogRows())[0]).toBe('Layout (Presentation)');
   await press(ecp.Key.Back);
   await waitDialogClosed('Back closed the menu');
+});
+
+it('picking the layout already in force closes the list and changes nothing', async (testCtx) => {
+  if (!moviesId) testCtx.skip('server has no "movies" library');
+  await launchWithMovies('page settings same pick', 'movies', 'comfortable');
+  await navLibraryGrid({ libraries });
+  await focusGear('the movie grid');
+
+  await press(ecp.Key.Ok);
+  await waitPageMenu();
+  await press(ecp.Key.Ok);
+  await waitFor('#optionList.content.0.title', (t) => t === 'Presentation', {
+    label: 'the Layout list',
+    timeout: 10000,
+  });
+  // The list opens on the layout in force: OK there is a pick that changes nothing.
+  await waitFor('#optionList.itemFocused', (n) => n === 1, {
+    label: 'focus on the layout in force',
+    timeout: 8000,
+  });
+  await press(ecp.Key.Ok);
+
+  await waitDialogClosed('the pick closed the list');
+  await waitFocused(atSettingsIcon, { timeout: 8000, interval: 250, label: 'the gear again' });
+  expect(await getVal('#presentationInfo.visible'), 'still the poster grid').toBe(false);
+  expect((await movieDisplaySettings()).layout_movies, 'nothing new saved').toBe('comfortable');
+});
+
+/**
+ * A letter of the rail that some of the library's movies start with, but not all of them, so
+ * a grid holding that letter's movies can be told from the whole library. Asked of the server:
+ * `{ letter, railIndex, count }`, or null when no letter splits the library.
+ */
+async function letterThatSplitsMovies() {
+  const base =
+    `${session.serverUrl}/Items?UserId=${session.userId}&ParentId=${moviesId}` +
+    `&IncludeItemTypes=Movie&Recursive=true&Limit=0`;
+  const headers = tokenHeader(session.token);
+  const total = (await getJson(base, headers))?.TotalRecordCount ?? 0;
+  // The rail is #, then A to Z.
+  for (let i = 0; i < 26; i++) {
+    const letter = String.fromCharCode(65 + i);
+    const count = (await getJson(`${base}&NameStartsWith=${letter}`, headers))?.TotalRecordCount;
+    if (count > 0 && count < total) return { letter, railIndex: i + 1, count };
+  }
+  return null;
+}
+
+it('a layout change keeps the letter picked on the letter rail', async (testCtx) => {
+  if (!moviesId) testCtx.skip('server has no "movies" library');
+  const split = await letterThatSplitsMovies();
+  if (!split) testCtx.skip('no letter holds some of the movies and not all');
+  const gridHoldsTheLetter = (label) =>
+    waitFor('#itemGrid.content.getChildCount()', (n) => n === split.count, {
+      label: `${label}: the ${split.count} movie(s) under ${split.letter}`,
+      timeout: 20000,
+    });
+
+  await launchWithMovies('page settings letter', 'movies', 'comfortable');
+  await navLibraryGrid({ libraries });
+
+  // Left from the first column enters the rail.
+  await waitFocusInside('#alphaMenu', {
+    label: 'the letter rail',
+    timeout: 10000,
+    action: resendUntilFocusInside(ecp.Key.Left, '#alphaMenu'),
+  });
+  await scrollFocus({
+    keyPath: '#alphaMenu.itemFocused',
+    target: split.railIndex,
+    forwardKey: ecp.Key.Down,
+    backKey: ecp.Key.Up,
+    read: getActiveVal,
+    stepped: true,
+    within: '#alphaMenu',
+    label: `the letter ${split.letter}`,
+  });
+  await press(ecp.Key.Ok);
+  await gridHoldsTheLetter('after the letter');
+
+  await waitFocusInside('#itemGrid', {
+    label: 'the grid from the rail',
+    timeout: 10000,
+    action: resendUntilFocusInside(ecp.Key.Right, '#itemGrid'),
+  });
+  await focusGear('the filtered grid');
+  await press(ecp.Key.Ok);
+  await waitPageMenu();
+  await press(ecp.Key.Ok);
+  await waitFor('#optionList.content.0.title', (t) => t === 'Presentation', {
+    label: 'the Layout list',
+    timeout: 10000,
+  });
+  await waitFor('#optionList.itemFocused', (n) => n === 1, {
+    label: 'focus on the layout in force',
+    timeout: 8000,
+  });
+  await press(ecp.Key.Up);
+  await waitFor('#optionList.itemFocused', (n) => n === 0, {
+    label: 'Presentation focused',
+    timeout: 8000,
+  });
+  await press(ecp.Key.Ok);
+  await waitDialogClosed('the pick closed the list');
+  // The redraw empties the grid before this turns true, so the count below is the reload's.
+  await waitFor('#presentationInfo.visible', (v) => v === true, {
+    label: 'the tab redrawn in presentation',
+    timeout: 20000,
+  });
+  await gridHoldsTheLetter('after the layout change');
+  await waitFocusInside('#itemGrid', { label: 'focus on the grid after the pick', timeout: 20000 });
 });
 
 it('a tab with one layout has no menu: the gear on Studios opens Settings in one press', async (testCtx) => {

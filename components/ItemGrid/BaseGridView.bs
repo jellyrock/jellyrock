@@ -523,13 +523,8 @@ sub loadInitialItems()
     hideTVGuide()
   end if
 
-  ' Alpha search
-  if m.nameStartsWith = m.top.alphaSelected
-    m.nameStartsWith = ""
-  else
-    m.nameStartsWith = m.alpha.letterSelected
-  end if
-
+  ' m.nameStartsWith is the letter in force. Only a press on the rail changes it
+  ' (onAlphaSelectedChanged), so a reload for any other reason keeps it.
   setGridQuery(buildGridQuery(m.nameStartsWith, m.voiceBox.text))
 
   ' Update title after the query is final
@@ -1527,7 +1522,7 @@ sub optionsClosed()
     ' Reset any filtering or search terms
     m.voiceBox.text = ""
     m.top.alphaSelected = ""
-    m.nameStartsWith = " "
+    m.nameStartsWith = ""
     m.filter = "All"
     m.filterOptions = {}
     m.sortField = "SortName"
@@ -1610,8 +1605,14 @@ end sub
 ' Alpha / Voice Search
 ' ============================================================================
 
+' A press on the letter rail. The same letter again turns the letter off.
 sub onAlphaSelectedChanged()
   if m.top.alphaSelected <> ""
+    if m.nameStartsWith = m.top.alphaSelected
+      m.nameStartsWith = ""
+    else
+      m.nameStartsWith = m.top.alphaSelected
+    end if
     m.loadedItems = 0
 
     m.data = CreateObject("roSGNode", "ContentNode")

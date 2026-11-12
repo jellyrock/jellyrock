@@ -20,6 +20,6 @@ A movie library can show its movies two ways: **Presentation**, which shows the 
 2. Select **Layout**. Its row shows the layout in use.
 3. Select a layout. The library is redrawn at once.
 
-JellyRock remembers the layout for that library on this Roku. Your sort and filter stay as they were.
+JellyRock remembers the layout for that tab of the library on this Roku. Your sort, your filter and a letter picked on the letter rail stay as they were.
 
 The menu lists the library's own settings first and **All settings** last. A tab that can be drawn only one way has no menu: the settings icon opens Settings directly.

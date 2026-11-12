@@ -92,7 +92,7 @@ So a narrow menu extends right on both surfaces, and a wide one (a long translat
 
 Overflow cannot be reached on either surface today (`ItemDetails` has 8 of its 8 buttons, the OSD 7 of 10; see the header of `buttonOverflow.bs`), so only the specs exercise these menus for now.
 
-**Above or below is derived too.** Above is preferred, so a menu sits over the row it belongs to. The panel goes below only when what it asked for does not fit above and the band below the anchor is the larger one. A button row low on the screen never flips; the overhang's settings icon, with nothing above it, always does (`JRScene.openPageMenu`). An anchor passes its `height` so the panel can start under it; `iconBarNav.iconAnchor()` builds the one for a cluster icon.
+**Above or below is derived too.** Above is preferred, so a menu sits over the row it belongs to. The panel goes below only when what it asked for does not fit above and the band below the anchor is the larger one. A button row low on the screen never flips; the overhang's settings icon, with nothing above it, always does (`JRScene.openPageMenu`). An anchor passes its `height` so the panel can start under it, and an anchor without one always stays above; `iconBarNav.iconAnchor()` builds the one for a cluster icon.
 
 Before adding another caller:
 
