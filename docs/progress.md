@@ -950,12 +950,6 @@ The photo viewer treats Slideshow and Random as two advance modes, and Slideshow
 
 The agreed model: Slideshow means start playing automatically (off opens the album paused on the first photo; Play already pauses and resumes), and Random means Shuffle: shuffle the album's order once, no repeats, and have the slideshow and Left/Right walk that order. Every combination then means something, and the registry keys stay as they are. Close it by changing `PhotoDetails` to that model with a spec, rewording the two descriptions in `settings/settings.json` and `docs/user/features/photos.md`, and checking album Shuffle on a device. Why not now: it changes the viewer's behavior and needs a photo-album fixture (see `slideshow-wait-untested-no-album`).
 
-#### The library layout choice must move when the options dialog is retired `[fid: layout-choice-outlives-options-dialog]` `[captured 2026-11-05]`
-
-The layout choice (presentation or poster grid, the per-library `display.<id>.layout` from ADR 0056) is reachable only through the options dialog: `optionsViewList` lists a movie library's Movies tab once per layout in `ItemGridOptions`' View menu. Retiring that dialog (tech-debt `itemgridoptions-hand-rolled-dialog`) removes the only way to switch layout unless the replacement carries it, for example the per-screen settings scope under the gear.
-
-Close it by moving the layout choice to its new home in the same change that retires `ItemGridOptions`, then deleting `source/GridView/optionsViewList.bs`, its spec and the `layouts` list the presenters return for it, if the new home reads layouts another way. Why not now: the dialog's replacement does not exist yet.
-
 #### A setting changed in Settings does not reach the screen under it unless that screen re-reads it by hand `[fid: settings-change-reaches-covered-screen]` `[captured 2026-11-12]`
 
 Settings can be opened from any screen, and a setting changed there reaches the screen under it only where that screen reads it again by hand. A theme or language change rebuilds the screen (`settings.performSettingsExit`, `JRScene.reloadRoutedHome`); any other change goes back to a screen that resumes as it was. `BaseGridView` reads `itemGridShowItemCount` and `itemGridTitles` once in `init`, so changing either from a library does nothing until the library is reopened; `reapplyPresentationBackdropSetting` in its `onScreenShown` is the one hand-wired exception. Other screens were not checked. Found 2026-11-12 while building page settings for the library screens.
