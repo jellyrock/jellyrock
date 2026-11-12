@@ -177,6 +177,22 @@ it('Star from the row on Settings closes Settings in one press, as it does on th
   await waitHome();
 });
 
+// Back closes the library at once (onDestroy), but Home becomes the active view a turn later.
+// A Star sent right behind the Back reaches the scene in that gap, from a screen already torn
+// down: the scene must drop it while the router navigates, as it drops Back.
+it('Star right after Back from a library is dropped, and Home comes back', async () => {
+  await freshApp('overhang-cluster star during back');
+  await navLibraryGrid(ctx);
+  await waitFocusInside('#itemGrid', { label: 'the library grid' });
+
+  await press(ecp.Key.Back);
+  await press(ecp.Key.Option);
+  await press(ecp.Key.Option);
+  await press(ecp.Key.Option);
+
+  await waitHome();
+});
+
 it('Star from the row on Home opens its panel', async () => {
   await freshApp('overhang-cluster star home');
   await waitHome();
