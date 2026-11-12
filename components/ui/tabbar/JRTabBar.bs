@@ -1,10 +1,22 @@
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/overhangRow.bs"
+import "pkg:/source/utils/tabStrip.bs"
+
+' The clip of a bar that has left its slot (clearWindow): the design resolution, so it cuts nothing
+const UNCLIPPED_WIDTH = 1920
+const UNCLIPPED_HEIGHT = 1080
 
 sub init()
   m.tabContainer = m.top.findNode("tabContainer")
-  m.tabContainer.itemSpacings = [overhangRow.TAB_GAP]
+  m.tabContainer.itemSpacings = [overhangRow.TAB_SPACING]
+  m.tabClip = m.top.findNode("tabClip")
+  m.scrollAnimation = m.top.findNode("scrollAnimation")
+  m.scrollAnimation.duration = tabStrip.SCROLL_SECONDS
+  m.scrollInterpolator = m.top.findNode("scrollInterpolator")
   m.focusedTabIndex = 0
+  ' The strip's scroll offset (scrolling mode), and whether the slot's clip is set
+  m.windowOffset = 0
+  m.isWindowed = false
 
   ' When the tab bar gains focus, highlight the focused tab
   m.top.observeField("focusedChild", "onFocusChanged")
@@ -16,6 +28,8 @@ sub init()
   ' rule in components/CLAUDE.md.
   m.top.observeField("tabs", "onTabsChanged")
   m.top.observeField("focusedTabIndex", "onFocusedTabIndexChanged")
+  m.top.observeField("mode", "onSlotChanged")
+  m.top.observeField("slotWidth", "onSlotChanged")
 end sub
 
 ' Rebuilds tab children when the tabs array changes.
@@ -27,6 +41,7 @@ sub onTabsChanged()
     m.tabContainer.removeChildren(m.tabContainer.getChildren(-1, 0))
     m.focusedTabIndex = 0
     m.top.isReady = false
+    clearWindow()
     return
   end if
 
@@ -34,11 +49,14 @@ sub onTabsChanged()
   ' TextButton render/sizing dance when returning to the same screen
   if tabsMatchExisting(tabs)
     syncSelectedTab()
+    applyWindow(false)
     return
   end if
 
-  ' Configuration changed: full rebuild
+  ' Configuration changed: full rebuild. The clip comes off until the new tabs are sized:
+  ' a tab sizes itself only once it is fully rendered, which a clipped one is not.
   m.top.isReady = false
+  clearWindow()
   m.tabContainer.removeChildren(m.tabContainer.getChildren(-1, 0))
 
   matched = false
@@ -63,6 +81,7 @@ sub onTabsChanged()
       matched = true
     end if
 
+    tabNode.observeField("isReady", "onTabReady")
     m.tabContainer.appendChild(tabNode)
   end for
 
@@ -79,22 +98,99 @@ sub onTabsChanged()
   ' Align the focus cursor to the selected tab
   m.focusedTabIndex = selectedIndex
 
-  ' Observe first tab's ready field to propagate sizing completion
-  firstTab = m.tabContainer.getChild(0)
-  if isValid(firstTab)
-    firstTab.observeField("isReady", "onFirstTabReady")
-  end if
-
   updateFocusedTabVisuals()
+
+  ' A tab sizes as its title is set, before it is observed above, so ask once here
+  onTabReady()
 end sub
 
-' First tab has finished rendering/sizing: signal that the tab bar is ready
-sub onFirstTabReady()
-  firstTab = m.tabContainer.getChild(0)
-  if isValid(firstTab)
-    firstTab.unobserveField("isReady")
+' A tab has finished rendering/sizing. Once every tab has, the bar is ready and the strip
+' can be placed in its slot; a tab that sizes again later places it again.
+sub onTabReady()
+  for i = 0 to m.tabContainer.getChildCount() - 1
+    if not m.tabContainer.getChild(i).isReady then return
+  end for
+  if not m.top.isReady then m.top.isReady = true
+  applyWindow(false)
+end sub
+
+' ============================================
+' SCROLLING MODE
+' ============================================
+
+sub onSlotChanged()
+  applyWindow(false)
+end sub
+
+' The tab the strip keeps in view: the focused one while the bar has focus, else the selected
+function activeTabIndex() as integer
+  if m.top.isInFocusChain() then return m.focusedTabIndex
+  for i = 0 to m.tabContainer.getChildCount() - 1
+    if m.tabContainer.getChild(i).tabId = m.top.selectedTabId then return i
+  end for
+  return 0
+end function
+
+' Scrolling mode: clips the strip to its slot, moves it to where tabStrip.window puts the
+' active tab, and dims a tab the slot's edge cuts. A focus move slides (`animate`); anything
+' else jumps. Fixed mode, or a strip not yet sized, has no clip and never moves.
+sub applyWindow(animate as boolean)
+  slotWidth = m.top.slotWidth
+  if m.top.mode <> "scrolling" or slotWidth <= 0 or not m.top.isReady
+    clearWindow()
+    return
   end if
-  m.top.isReady = true
+
+  tabCount = m.tabContainer.getChildCount()
+  widths = []
+  for i = 0 to tabCount - 1
+    widths.push(int(m.tabContainer.getChild(i).boundingRect().width))
+  end for
+  win = tabStrip.window(widths, overhangRow.TAB_SPACING, slotWidth, activeTabIndex(), tabStrip.PEEK_WIDTH)
+
+  m.tabClip.clippingRect = [0, 0, slotWidth, overhangRow.ROW_HEIGHT]
+  m.isWindowed = true
+
+  for i = 0 to tabCount - 1
+    opacity = 1.0
+    if i = win.cutLeft or i = win.cutRight then opacity = tabStrip.CUT_OPACITY
+    tabNode = m.tabContainer.getChild(i)
+    if tabNode.opacity <> opacity then tabNode.opacity = opacity
+  end for
+
+  if win.offset = m.windowOffset
+    ' A jump to where a slide is already heading ends the slide there
+    if not animate and m.scrollAnimation.state = "running" then moveStrip(win.offset)
+    return
+  end if
+  m.windowOffset = win.offset
+  if animate
+    ' From wherever the strip is now, so a press during a slide carries on from there
+    m.scrollAnimation.control = "stop"
+    m.scrollInterpolator.keyValue = [m.tabContainer.translation, [-win.offset, 0]]
+    m.scrollAnimation.control = "start"
+  else
+    moveStrip(win.offset)
+  end if
+end sub
+
+sub moveStrip(offset as integer)
+  m.scrollAnimation.control = "stop"
+  m.tabContainer.translation = [-offset, 0]
+end sub
+
+' Takes the strip out of its slot: at its start, every tab at full opacity, and a clip as large
+' as the screen. A clippingRect cannot be taken off again by setting it empty: on a device the
+' tabs then stop drawing. A bar that was never in a slot is left untouched.
+sub clearWindow()
+  if not m.isWindowed then return
+  m.isWindowed = false
+  m.windowOffset = 0
+  moveStrip(0)
+  m.tabClip.clippingRect = [0, -overhangRow.TEXT_TOP, UNCLIPPED_WIDTH, UNCLIPPED_HEIGHT]
+  for i = 0 to m.tabContainer.getChildCount() - 1
+    m.tabContainer.getChild(i).opacity = 1.0
+  end for
 end sub
 
 ' Returns true if the existing tab children match the new tabs configuration
@@ -148,6 +244,9 @@ sub onFocusChanged()
       m.tabContainer.getChild(i).isFocused = false
     end for
   end if
+
+  ' The active tab is the focused one with focus, the selected one without
+  applyWindow(true)
 end sub
 
 ' Updates the isFocused visual state on tab children
@@ -171,6 +270,7 @@ sub selectTab(index as integer)
   if isValid(selectedTab)
     m.top.selectedTabId = selectedTab.tabId
   end if
+  applyWindow(true)
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean
@@ -187,6 +287,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       ' Move focus right within tabs
       m.focusedTabIndex = m.focusedTabIndex + 1
       updateFocusedTabVisuals()
+      applyWindow(true)
     end if
     return true
   else if key = "left"
@@ -197,6 +298,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
       ' Move focus left within tabs
       m.focusedTabIndex = m.focusedTabIndex - 1
       updateFocusedTabVisuals()
+      applyWindow(true)
     end if
     return true
   else if key = "OK"
@@ -228,6 +330,7 @@ sub onFocusedTabIndexChanged()
 
   m.focusedTabIndex = newIndex
   updateFocusedTabVisuals()
+  applyWindow(true)
 end sub
 
 sub onDestroy()
@@ -236,7 +339,16 @@ sub onDestroy()
   m.top.unobserveField("tabs")
   m.top.unobserveField("focusedTabIndex")
   m.top.unobserveField("focusedChild")
+  m.top.unobserveField("mode")
+  m.top.unobserveField("slotWidth")
+  for i = 0 to m.tabContainer.getChildCount() - 1
+    m.tabContainer.getChild(i).unobserveField("isReady")
+  end for
 
+  m.scrollAnimation.control = "stop"
   m.tabContainer.removeChildren(m.tabContainer.getChildren(-1, 0))
   m.tabContainer = invalid
+  m.tabClip = invalid
+  m.scrollAnimation = invalid
+  m.scrollInterpolator = invalid
 end sub
