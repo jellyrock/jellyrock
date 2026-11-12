@@ -27,7 +27,7 @@ effort: high
 
 - A triage block: the **Recommended** pick, **Why** (the ranking rule that won, and the state behind it, cited), its route with the one command to type in its own copyable block (or "reply `ok` to plan it"), and 1-3 **Alternatives**, one line each, with a command route's command in its own block under its line. Nothing else happens until the user replies. A command's line names the folder it runs in.
 - **On a non-plan route:** only that printed command, and on a reply of `open` a new Claude Code tab with it typed in and not sent. `/focus` writes nothing.
-- **On the plan route:** a plan file at this repo's plan path with a required `**Project:** {{slug | n/a}}` line, a required `**Repo:** {{owner/name}}` line, a required `**Checkout:** {{worktree | main clone: reason}}` line and the sections `Context`, `Approach`, `Critical files`, `Verification`, `Landing & closeout` and `What this plan deliberately does NOT do`, saved without a separate approval (the user's choices are the fork questions before it, with the plan's Always ask call; after it, the push stop, or in a `gated` repo whose plan touches nothing on its Always ask list, the review, the checks and `/sonnet`'s gate), then a hand-off block, in a message of its own before anything runs: the one line to paste in a fresh session, alone in its own block, for the implementation tier `/focus` classified (`/sonnet {{plan-path}}` by default). On the default tier the run follows at once: a Sonnet sub-agent supervised to a reviewed ready-to-push message (`/sonnet`'s `## Sub-agent invocation`).
+- **On the plan route:** a plan file at this repo's plan path with a required `**Project:** {{slug | n/a}}` line, a required `**Repo:** {{owner/name}}` line, a required `**Checkout:** {{worktree | main clone: reason}}` line and the sections `Context`, `Approach`, `Critical files`, `Verification`, `Landing & closeout` and `What this plan does not do`, saved without a separate approval (the user's choices are the fork questions before it, with the plan's Always ask call; after it, the push stop, or in a `gated` repo whose plan touches nothing on its Always ask list, the review, the checks and `/sonnet`'s gate), then a hand-off block, in a message of its own before anything runs: the one line to paste in a fresh session, alone in its own block, for the implementation tier `/focus` classified (`/sonnet {{plan-path}}` by default). On the default tier the run follows at once: a Sonnet sub-agent supervised to a reviewed ready-to-push message (`/sonnet`'s `## Sub-agent invocation`).
 - A `Captures for /log` tail listing anything journal-worthy that surfaced and isn't captured yet, using the types `/log` records. Omit it when there are none.
 
 **Success criteria.**
@@ -42,7 +42,7 @@ effort: high
 - Plan content is drafted internally and never rendered to the conversation: the hand-off links the saved file. Its Approach is one recommended path, not a menu.
 - The plan's Verification uses [this repo's verification commands](../../../AGENTS.md#verification-commands), never bare runners, and states their standing gotchas when the plan touches them.
 - The implementation tier is classified here, where the full plan context lives (default `/sonnet`), and the hand-off block reflects it.
-- A plan whose change must reach production to count as done has a filled-in `Landing & closeout` naming who lands each production step; a plan with no production artifact says `n/a — no production artifact`.
+- A plan whose change must reach production to count as done has a filled-in `Landing & closeout` naming who lands each production step; a plan with no production artifact says `n/a: no production artifact`.
 
 **Failure modes to avoid.**
 
@@ -165,7 +165,7 @@ Draft the plan without rendering any of it. Conversation text in this step is on
 Draft with this structure:
 
 ```markdown
-# Plan — {{title}}
+# Plan: {{title}}
 
 **Project:** {{slug of the tracked project this plan advances | n/a}}
 
@@ -198,9 +198,9 @@ Draft with this structure:
 
 **Always ask:** {{none | the item of this repo's `## Landing` Always ask list the change touches, quoted, and how}}
 
-{{For a change that must reach production to count as done, each production step and who lands it: it lands by itself (when, and how to verify it did); the implementing session (only a routine, undoable step, the exact command approved here, run after the push); or the operator (the exact command, run right after the push; the implementing session lists it and never runs it). A followup only if the operator defers a step. A step that waits on a later event (a sync round, a merge in another repo, a release) is never left for the operator to remember. Closing a message or a request part is the supervising session's, after the work commit, with a close note saying the fix reaches the sender with the next sync. Any other such step is a followup with `--waits-on`, filed when the change lands. With no production artifact, the line after Always ask is exactly `n/a — no production artifact`.}}
+{{For a change that must reach production to count as done, each production step and who lands it: it lands by itself (when, and how to verify it did); the implementing session (only a routine, undoable step, the exact command approved here, run after the push); or the operator (the exact command, run right after the push; the implementing session lists it and never runs it). A followup only if the operator defers a step. A step that waits on a later event (a sync round, a merge in another repo, a release) is never left for the operator to remember. Closing a message or a request part is the supervising session's, after the work commit, with a close note saying the fix reaches the sender with the next sync. Any other such step is a followup with `--waits-on`, filed when the change lands. With no production artifact, the line after Always ask is exactly `n/a: no production artifact`.}}
 
-## What this plan deliberately does NOT do
+## What this plan does not do
 
 {{Two to four scope boundaries, each with its reason.}}
 ```
