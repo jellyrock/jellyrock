@@ -64,10 +64,10 @@ m.myTask.control = "RUN"
 ### Pattern 3: `SubmitSideEffect` (fire-and-forget writes)
 
 ```brighterscript
-SubmitSideEffect(GetApi().BuildMarkFavoriteRequest(itemId))
+SubmitSideEffect(favorites.request(itemId, true, m.top.getScene()))
 ```
 
-It returns at once, runs after any writes sent before it, and gives no response.
+It returns at once, runs after any writes sent before it, and gives no response. A favorite is built through `favorites.request()`, never `BuildMarkFavoriteRequest()` directly, so the grids that list favorites learn the list changed; the `no-direct-favorite-request` plugin fails the build otherwise.
 
 **Use it when** you write (POST, DELETE) and don't need the response: marking an item played or a favorite, deleting, reporting playback state.
 

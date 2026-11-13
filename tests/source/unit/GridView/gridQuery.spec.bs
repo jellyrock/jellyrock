@@ -450,6 +450,37 @@ namespace tests
       m.assertFalse(gridQuery.isPlainFavorites(invalid))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("showsFavorites()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for a query that fixes favorites on, narrowed or not")
+    function _()
+      m.assertTrue(gridQuery.showsFavorites(m.favoritesQuery()))
+
+      query = m.favoritesQuery()
+      query.filter = "Played"
+      query.nameStartsWith = "B"
+      m.assertTrue(gridQuery.showsFavorites(query), "narrowed by another filter and a letter")
+    end function
+
+    @it("is true for the Favorites filter, in any case and with stray spaces")
+    function _()
+      query = m.favoritesQuery()
+      query.isFavorite = false
+      query.filter = " favorites "
+      m.assertTrue(gridQuery.showsFavorites(query))
+    end function
+
+    @it("is false for a query that shows no favorites, and for none")
+    function _()
+      query = m.favoritesQuery()
+      query.isFavorite = false
+      m.assertFalse(gridQuery.showsFavorites(query))
+      m.assertFalse(gridQuery.showsFavorites({}), "no fields")
+      m.assertFalse(gridQuery.showsFavorites(invalid))
+    end function
+
   end class
 
 end namespace

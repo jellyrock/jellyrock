@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-12
+last-updated: 2026-11-13
 ---
 
 # Progress
@@ -962,6 +962,18 @@ A movie or TV library has a Favorites tab since the library tabs work: its conte
 
 Build it as rows per kind (albums, album artists, artists, songs), the way Home's Favorites tab is (`FavoritesRows`), not as one grid. Not done with the tabs work because it is a new surface with its own loading, not a view with a filter fixed on. To close: `MusicPresenter.getOptions()` lists a `favorites` tab, the grid view draws it as rows, the Favorites filter leaves the lists it covers, and `docs/user/features/favorites.md` says so.
 
+#### The TV guide filtered to Favorites does not refresh after a channel's favorite changes elsewhere `[fid: guide-favorites-filter-goes-stale]` `[captured 2026-11-13]`
+
+A Live TV library's guide, filtered to Favorites, keeps its old channel list after a channel is added to or removed from favorites elsewhere (for example from the player while watching it) and the viewer comes back. The favorites counter (decision `favorite-toggles-bump-version`) cannot cover it: `BaseGridView.favoritesStale()` reads `m.gridQuery`, which the guide path never builds, and a reload would do nothing anyway, because `BaseGridView.showTVGuide()` returns early when the guide already exists. Found by reading the code on 2026-11-12, not run on a device.
+
+To close: give the guide a refresh of its own channel list (`Schedule` already reloads channels when its filter changes), call it on resume when the guide's filter is Favorites and `favoritesVersion` moved, and add an RTA case that toggles a channel favorite through the server and checks the guide on return.
+
+#### Home's Favorites tab refetches on every return even when no favorite changed `[fid: home-favorites-skip-unchanged-reload]` `[captured 2026-11-13]`
+
+Home's Favorites tab reloads from the server on every return to Home (`Home.refresh()` calls `FavoritesRows.loadFavorites()`), even when no favorite changed. Since decision `favorite-toggles-bump-version`, every favorite toggle bumps `JRScene.favoritesVersion` through `favorites.request()`, so Home could skip the request when the counter has not moved since its last load, as `BaseGridView.favoritesStale()` does for the library grids. The win is one fewer request per return to Home while its Favorites tab is up; `FavoritesRows` already updates rows in place, so the viewer's place is kept either way.
+
+Not done with the library fix because Home works correctly today; this is a cost saving. To close: record the counter when `FavoritesRows` loads, skip `loadFavorites()` in `Home.refresh()` when it has not moved, and check that a favorite toggled from a details screen still shows on return to Home.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -1755,6 +1767,12 @@ Decision `reload-in-place-one-path` fixed a second gear, track or version pick m
 `tests/rta/specs/backdrop-mode.spec.js` checks that Back from an item clears the backdrop in the Backdrop Images `details` mode on the library grid and on search, but not on Home. The direct check was dropped in `test(backdrop): Open the details-mode item from the poster grid, not a Home Latest row`: the public demo account excludes every library from Latest (`LatestItemsExcludes`, checked 2026-11-12), so Home has no stable row that opens an item, and reaching Home through the grid is vacuous because the grid clears the backdrop first.
 
 Not now: it needs a Home row that opens an item on every run, which the shared demo server does not promise. Closes when such a row is available (for example a Continue Watching fixture the spec seeds itself) and the spec opens an item from Home, presses Back, and waits for `#imageFader.uri` to read empty.
+
+#### No RTA case covers the Star dialog's favorite toggle reloading a Favorites grid `[fid: star-dialog-favorite-reload-untested]` `[captured 2026-11-13]`
+
+`BaseGridView.optionsClosed()` reloads a grid that lists favorites when a favorite was toggled in the Star dialog on the same screen (decision `favorite-toggles-bump-version`), but no RTA case drives that path. The case `an item unfavorited from its details leaves the Favorites tab on Back` in `tests/rta/specs/library-tabs.spec.js` covers only the details-screen toggle.
+
+Waits on the Star dialog's heart reading the right field: `ItemGridOptions.saveFavoriteItemSelected()` reads `.favorite`, which item nodes do not have, so the dialog cannot show an item as a favorite yet. To close: on the Favorites tab, open the Star dialog on a favorite, press its heart, close the dialog, and assert the item left the grid.
 
 ### docs
 

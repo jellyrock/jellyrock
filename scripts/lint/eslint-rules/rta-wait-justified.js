@@ -122,6 +122,12 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // gate is `navSubtitlePanel`, which only runs on a fixture whose user can manage
   // subtitles (see `subtitlePanel` in tests/rta/screens.js).
   '#subtitlePanel.visible',
+  // `ItemDetails.updateFavoriteButton` sets it from the item on content load, and
+  // `ItemDetails.toggleFavorite` writes it once, after the server's answer (or reverts it on a
+  // failure). Nothing else writes it, so each state holds until the next press: terminal, not a
+  // pulse. Because the write follows the response, `false` after an unfavorite also means the
+  // server has applied it. Read against the app source 2026-11-12.
+  '#favoriteButton.isButtonSelected',
   // `JRTabBar.onTabReady` sets it true once every tab has sized, and only a tabs change that
   // rebuilds the tabs sets it false again: terminal for a given set of tabs. Read against the
   // app source 2026-11-12. `tab-strip.spec.js` waits on it after setting the tabs.

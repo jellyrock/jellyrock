@@ -20,6 +20,7 @@ import "pkg:/source/utils/appWaits.bs"
 import "pkg:/source/utils/bufferStall.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/dialogs.bs"
+import "pkg:/source/utils/favorites.bs"
 import "pkg:/source/utils/liveStreamHandoff.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/mediaSegments.bs"
@@ -3402,10 +3403,6 @@ function setFavorite(isLike as boolean) as object
   end if
   itemId = m.osd.itemData.id
   if itemId = "" then return { status: "error.generic" }
-  if isLike
-    SubmitSideEffect(GetApi().BuildMarkFavoriteRequest(itemId))
-  else
-    SubmitSideEffect(GetApi().BuildUnmarkFavoriteRequest(itemId))
-  end if
+  SubmitSideEffect(favorites.request(itemId, isLike, m.top.getScene()))
   return { status: "success" }
 end function

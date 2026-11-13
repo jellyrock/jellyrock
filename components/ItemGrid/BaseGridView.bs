@@ -50,6 +50,7 @@ sub init()
   m.showItemCount = userSettings.itemGridShowItemCount
 
   m.loadedItems = 0
+  m.lastFavoritesVersion = 0
 
   m.data = CreateObject("roSGNode", "ContentNode")
   m.itemGrid.content = m.data
@@ -245,9 +246,10 @@ sub onScreenShown()
     ' survived. If a mutation elsewhere (for example an item delete in ItemDetails) bumped
     ' the scene's content-freshness token since we last
     ' loaded, our cached grid is stale: re-fetch so deleted items don't linger as
-    ' selectable ghosts. Unchanged token = no reload, so the resume stays cheap.
+    ' selectable ghosts. A grid that shows favorites does the same when a favorite toggled
+    ' (see favoritesStale). Unchanged tokens = no reload, so the resume stays cheap.
     scene = m.top.getScene()
-    if isValid(scene) and scene.contentVersion <> m.lastContentVersion
+    if isValid(scene) and (scene.contentVersion <> m.lastContentVersion or favoritesStale())
       reloadGridItems()
     else
       ' The runway may have run short while another screen was up: a later page failed, or
@@ -457,9 +459,19 @@ sub prepareDataLoad(disableRemote = false as boolean)
   m.loadFailed.visible = false
 end sub
 
-' Full reset + reload of the grid. Used by optionsClosed (a sort or filter change), a tab
-' press, a layout change and the resume-time content-freshness check in
-' onScreenShown (a delete elsewhere invalidated our cached content).
+' Whether this grid lists favorites and a favorite toggled since it last loaded. Read on
+' resume (a toggle on a screen above it) and when the options dialog closes (the Star
+' dialog toggles on this screen).
+function favoritesStale() as boolean
+  scene = m.top.getScene()
+  if not isValid(scene) then return false
+  return gridQuery.showsFavorites(m.gridQuery) and scene.favoritesVersion <> m.lastFavoritesVersion
+end function
+
+' Full reset + reload of the grid. Used by optionsClosed (a sort or filter change, or a
+' favorite toggled in the Star dialog on a grid that shows favorites), a tab press, a
+' layout change and the resume-time check in onScreenShown (a delete, or a favorite toggle
+' on a grid that shows favorites, invalidated our cached content).
 sub reloadGridItems()
   m.loadedItems = 0
   m.data = CreateObject("roSGNode", "ContentNode")
@@ -553,7 +565,10 @@ sub loadView()
   ' Record the content-freshness token we're loading at, so a resume after a mutation
   ' elsewhere (for example a delete) can detect staleness and re-fetch.
   scene = m.top.getScene()
-  if isValid(scene) then m.lastContentVersion = scene.contentVersion
+  if isValid(scene)
+    m.lastContentVersion = scene.contentVersion
+    m.lastFavoritesVersion = scene.favoritesVersion
+  end if
   prepareDataLoad(false)
   m.top.loadState = "loading"
 
@@ -1589,6 +1604,8 @@ sub optionsClosed()
   if isValid(m.presenter)
     m.presenter.onOptionsClosed(m.options)
   end if
+
+  if favoritesStale() then reload = true
 
   if reload
     reloadGridItems()

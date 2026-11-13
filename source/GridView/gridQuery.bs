@@ -169,6 +169,18 @@ namespace gridQuery
     return textOrEmpty(query.searchTerm).trim() = ""
   end function
 
+  ' showsFavorites: whether `query` lists favorites, with or without more narrowing.
+  '
+  ' True for the Favorites tab (`isFavorite`) and for the Favorites filter. A grid that shows
+  ' favorites is stale once a favorite toggles elsewhere.
+  '
+  ' @param query - a query build() returned
+  function showsFavorites(query as dynamic) as boolean
+    if not isValid(query) then return false
+    if isBooleanTrue(query.isFavorite) then return true
+    return LCase(textOrEmpty(query.filter).trim()) = "favorites"
+  end function
+
   ' ── A category's options, its saved query, and the invariant between them ──────
   '
   ' A filter category's selectable options come in two shapes, and every site that reads

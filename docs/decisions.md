@@ -2816,6 +2816,16 @@ The TV guide's `TimeGrid` sets `vertFocusAnimationStyle` to `fixedFocus`. Its de
 
 The cost is that the guide no longer wraps between its first and last channel. Ruled out: detecting the wrap after it happens (a guide with one or two channels cannot tell a wrap from a move), and a key other than Up for reaching the tabs from the guide only.
 
+## decision-id: favorite-toggles-bump-version
+
+**date**: 2026-11-12
+**status**: accepted
+**related-files**: `source/utils/favorites.bs`, `components/JRScene.xml`, `components/ItemGrid/BaseGridView.bs`, `source/GridView/gridQuery.bs`, `scripts/bsc-plugins/no-direct-favorite-request.cjs`
+
+Every favorite toggle builds its request through `favorites.request()`, which bumps `JRScene.favoritesVersion`. A grid that lists favorites (`gridQuery.showsFavorites`: the Favorites tab or the Favorites filter) reloads on resume, and when the Star dialog closes, only when that counter moved. The `no-direct-favorite-request` plugin fails the build on a direct `BuildMarkFavoriteRequest` or `BuildUnmarkFavoriteRequest` call anywhere else, so a new toggle site cannot skip the bump. The counter moves when the request is built, not when it succeeds: a failed request costs one extra reload, which shows the server's true state.
+
+Ruled out: reloading the Favorites tab on every return, as Home does, which loses the viewer's place when nothing changed; and bumping `contentVersion`, which would send every library grid back to the top after any favorite toggle. The TV guide is not covered: a reload does nothing on a guide already built.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

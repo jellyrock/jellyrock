@@ -19,12 +19,14 @@ import {
   getJson,
   getLibraries,
   libraryIdFor,
+  setFavorite,
   tokenHeader,
 } from '../lib/jellyfin.js';
 import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
 import { failRequests } from '../lib/failRequests.js';
 import {
+  focusDetailButton,
   navLibraryByType,
   overhangSelectedTab,
   overhangTabIds,
@@ -475,4 +477,63 @@ it('the Star dialog has Sort and Filter only, and a sort picked there keeps the 
     currentView: 'studios',
     drawn: 'studios',
   });
+});
+
+/** The item ids in the open grid, in order, as the app holds them (lowercase, no dashes). */
+async function gridIds() {
+  const count = await getActiveVal('#itemGrid.content.getChildCount()');
+  expect(typeof count, 'the grid reported how many tiles it holds').toBe('number');
+  if (count === 0) return [];
+  const ids = await getActiveVals(
+    Array.from({ length: count }, (_, i) => `#itemGrid.content.${i}.id`),
+  );
+  return ids.map((id) => String(id).replace(/-/g, '').toLowerCase());
+}
+
+it('an item unfavorited from its details leaves the Favorites tab on Back', async (testCtx) => {
+  const libraryId = libraryIdFor(libraries, 'movies');
+  if (!libraryId) testCtx.skip('server has no "movies" library');
+  const headers = tokenHeader(session.token);
+  const first = (
+    await getJson(
+      `${session.serverUrl}/Items?UserId=${session.userId}&ParentId=${libraryId}` +
+        '&IncludeItemTypes=Movie&Recursive=true&SortBy=SortName&SortOrder=Ascending' +
+        '&Limit=1&Fields=UserData',
+      headers,
+    )
+  )?.Items?.[0];
+  if (!first) testCtx.skip('the movies library holds no movie');
+  const target = first.Id.replace(/-/g, '').toLowerCase();
+  const wasFavorite = first.UserData?.IsFavorite === true;
+  try {
+    if (!wasFavorite) await setFavorite(session, first.Id, true);
+    await openLibrary('library tabs unfavorite on details', 'movies', 'movies');
+    await selectLibraryTab('favorites');
+    await waitGridLoaded('the Favorites tab');
+    const before = await gridIds();
+    expect(before, 'the favorited movie is on the Favorites tab').toContain(target);
+
+    await pressGridTile(before.indexOf(target));
+    await waitFor('#favoriteButton.isButtonSelected', (v) => v === true, {
+      label: 'details open on the favorited movie',
+      timeout: 20000,
+      read: getActiveVal,
+    });
+    // The details screen's own button: ItemDetails.toggleFavorite() builds the request.
+    await focusDetailButton('favoriteButton');
+    await press(ecp.Key.Ok);
+    // The button changes only once the server has answered, so the unfavorite has landed.
+    await waitFor('#favoriteButton.isButtonSelected', (v) => v === false, {
+      label: 'the heart cleared',
+      timeout: 20000,
+      read: getActiveVal,
+    });
+    await press(ecp.Key.Back);
+    await waitFocusInside('#itemGrid', { label: 'the Favorites grid after Back', timeout: 20000 });
+    await waitGridLoaded('the Favorites tab after Back');
+    expect(await gridIds(), 'the unfavorited movie left the Favorites tab').not.toContain(target);
+    expect((await tabState()).selectedTabId, 'and the tab is still Favorites').toBe('favorites');
+  } finally {
+    await setFavorite(session, first.Id, wasFavorite);
+  }
 });

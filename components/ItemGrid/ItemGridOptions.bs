@@ -3,6 +3,7 @@ import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/GridView/gridQuery.bs"
 import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/favorites.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
 
@@ -193,12 +194,12 @@ sub toggleFavorite()
   if m.favoriteMenu.iconUri = "pkg:/images/icons/favorite_$$RES$$.png"
     m.favoriteMenu.iconUri = "pkg:/images/icons/favorite_selected_$$RES$$.png"
     m.favoriteMenu.focusedIconUri = "pkg:/images/icons/favorite_selected_$$RES$$.png"
-    req = GetApi().BuildMarkFavoriteRequest(m.selectedFavoriteItem.id)
+    req = favorites.request(m.selectedFavoriteItem.id, true, m.top.getScene())
     SubmitSideEffect(req)
   else
     m.favoriteMenu.iconUri = "pkg:/images/icons/favorite_$$RES$$.png"
     m.favoriteMenu.focusedIconUri = "pkg:/images/icons/favorite_$$RES$$.png"
-    req = GetApi().BuildUnmarkFavoriteRequest(m.selectedFavoriteItem.id)
+    req = favorites.request(m.selectedFavoriteItem.id, false, m.top.getScene())
     SubmitSideEffect(req)
   end if
   ' Make sure we set the Favorite Heart color for the appropriate child
