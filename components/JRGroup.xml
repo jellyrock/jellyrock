@@ -22,10 +22,11 @@
     <field id="overhangStatus" type="string" />
     <field id="isOptionsAvailable" value="true" type="boolean" />
     <field id="isOverhangVisible" value="true" type="boolean" />
+    <!-- A screen sets selectedTabId before overhangTabs: the scene projects the selection, the
+         mode and the tabs together whenever the tabs change (JRScene.projectOverhangTabs). -->
     <field id="overhangTabs" type="array" />
     <!-- How the overhang treats overhangTabs: "fixed" for a small set that always fits (Home),
-         "scrolling" for a set that can outgrow the row (a library). Fixed for the screen's
-         life: declare it before overhangTabs. -->
+         "scrolling" for a set that can outgrow the row (a library). -->
     <field id="tabMode" type="string" value="fixed" />
     <field id="selectedTabId" type="string" alwaysNotify="true" />
     <!-- Declarative overhang config: the JRScene overhang controller projects these onto the

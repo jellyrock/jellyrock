@@ -132,6 +132,42 @@ export function postJson(urlStr, headers, bodyObj) {
 }
 
 /**
+ * Mark (`POST`) or unmark (`DELETE`) `itemId` as a favorite of the session's user through the
+ * server API, so a spec can set the state the app then shows and put it back afterwards.
+ * Resolves on a 2xx, and throws a typed `JellyfinRequestError` otherwise.
+ *
+ * The route follows the app's own choice (`ApiClient.BuildMarkFavoriteRequest`): from 10.9
+ * (apiVersion 2, the boundary `resolveApiVersion()` draws) it is `/UserFavoriteItems/{id}`,
+ * before that the legacy `/Users/{userId}/FavoriteItems/{id}`, which 10.7 and 10.8 serve alone.
+ */
+export async function setFavorite(session, itemId, isFavorite) {
+  const info = await getJson(`${session.serverUrl}/System/Info/Public`, {});
+  const [maj, min] = String(info?.Version ?? '')
+    .split('.')
+    .map((n) => Number.parseInt(n, 10));
+  const isV2 =
+    Number.isFinite(maj) && Number.isFinite(min) && (maj > 10 || (maj === 10 && min >= 9));
+  const urlStr = isV2
+    ? `${session.serverUrl}/UserFavoriteItems/${itemId}?userId=${session.userId}`
+    : `${session.serverUrl}/Users/${session.userId}/FavoriteItems/${itemId}`;
+  const url = new URL(urlStr);
+  const mod = url.protocol === 'http:' ? http : https;
+  const method = isFavorite ? 'POST' : 'DELETE';
+  return new Promise((resolve, reject) => {
+    const req = mod.request(url, { method, headers: tokenHeader(session.token) }, (res) => {
+      res.resume();
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) resolve();
+        else
+          reject(fail(new JellyfinRequestError(method, urlStr, res.statusCode, res.statusMessage)));
+      });
+    });
+    req.on('error', (e) => reject(fail(new JellyfinRequestError(method, urlStr, null, null, e))));
+    req.end();
+  });
+}
+
+/**
  * Whether the server can push a command (a SyncPlay group update, a remote-control
  * command) to the Roku. Over http:// the app opens the session socket; over https:// Roku
  * has no socket TLS, so the app needs the companion plugin's long poll, probed at its
