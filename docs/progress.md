@@ -1768,12 +1768,6 @@ Decision `reload-in-place-one-path` fixed a second gear, track or version pick m
 
 Not now: it needs a Home row that opens an item on every run, which the shared demo server does not promise. Closes when such a row is available (for example a Continue Watching fixture the spec seeds itself) and the spec opens an item from Home, presses Back, and waits for `#imageFader.uri` to read empty.
 
-#### No RTA case reopens the Star dialog on a tile after its heart was pressed `[fid: star-dialog-reopen-untested]` `[captured 2026-11-13]`
-
-`ItemGridOptions.toggleFavorite()` writes the new state back to the item node (`m.selectedFavoriteItem.isFavorite`), so reopening the Star dialog on the same tile shows the right heart without a grid reload. No RTA case reopens the dialog: the case `the Star dialog shows a favorite's heart filled, and one press removes it from the Favorites tab` in `tests/rta/specs/library-tabs.spec.js` runs on the Favorites tab, where the item leaves the grid once the dialog closes.
-
-Not done with the Star dialog fix because it needs a different tab (Movies, where the item stays). To close: on the Movies tab, open the Star dialog on a movie that is not a favorite, press the heart, close the dialog, open it again on the same tile, and assert the heart is filled.
-
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`
