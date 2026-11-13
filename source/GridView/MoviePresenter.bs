@@ -52,17 +52,17 @@ class MoviePresenter extends GridPresenterBase
 
   override function getOptions(parentItem as object) as object
     ' The web client's tab order (Movies, Suggestions, Favorites, Collections, Genres),
-    ' with the tabs JellyRock has. Studios has no web tab, so it goes last.
+    ' with the tabs JellyRock has. Studios has no web tab, so it goes last. The tabs after
+    ' Movies are added below, for a library only.
     options = {
       views: [
         { "Title": translate(translationKeys.LabelMovies), "Name": libraryTab.MOVIES }
       ],
-      ' The Movies tab is the one that can be drawn two ways. Each Title is the whole label
-      ' the options dialog shows for that pair (see optionsViewList).
+      ' The Movies tab is the one that can be drawn two ways (the Layout page setting).
       layouts: {
         movies: [
-          { "Title": translate(translationKeys.LabelMoviesPresentation), "Name": libraryLayout.PRESENTATION },
-          { "Title": translate(translationKeys.LabelMoviesGrid), "Name": libraryLayout.COMFORTABLE }
+          { "Name": libraryLayout.PRESENTATION },
+          { "Name": libraryLayout.COMFORTABLE }
         ]
       },
       sort: [
@@ -86,20 +86,29 @@ class MoviePresenter extends GridPresenterBase
       ]
     }
 
-    ' The library itself on 12.0+ only. Below 12.0 the same request returns every
-    ' collection on the server, other libraries' included, so the view is withheld
-    ' rather than offered and wrong. See collectionsView for both rules.
-    if collectionsView.offeredFor(parentItem, m.serverVersion())
-      options.views.push({ "Title": translate(translationKeys.LabelCollections), "Name": libraryTab.COLLECTIONS })
+    ' A studio or genre folder lists its movies and nothing else: its name is the title,
+    ' and it has no tabs.
+    isLibrary = not libraryTab.isFolder(parentItem)
+    if isLibrary
+      ' The Movies tab's favorites, as the web client's Favorites tab is its movies list
+      ' with favorites fixed on (gridQuery.viewOfTab).
+      options.views.push({ "Title": translate(translationKeys.LabelFavorites), "Name": libraryTab.FAVORITES, "View": libraryTab.MOVIES, "IsFavorite": true })
+      ' The library itself on 12.0+ only. Below 12.0 the same request returns every
+      ' collection on the server, other libraries' included, so the view is withheld
+      ' rather than offered and wrong. See collectionsView for both rules.
+      if collectionsView.offeredFor(parentItem, m.serverVersion())
+        options.views.push({ "Title": translate(translationKeys.LabelCollections), "Name": libraryTab.COLLECTIONS })
+      end if
+      options.views.push({ "Title": translate(translationKeys.LabelGenres), "Name": libraryTab.GENRES })
+      options.views.push({ "Title": translate(translationKeys.LabelStudios), "Name": libraryTab.STUDIOS })
     end if
-    options.views.push({ "Title": translate(translationKeys.LabelGenres), "Name": libraryTab.GENRES })
-    options.views.push({ "Title": translate(translationKeys.LabelStudios), "Name": libraryTab.STUDIOS })
 
-    ' A genre folder lists its movies and nothing else
-    if isValid(parentItem) and parentItem.type = "Genre"
-      options.views = [
-        { "Title": translate(translationKeys.LabelMovies), "Name": libraryTab.MOVIES }
-      ]
+    ' The Favorites tab covers the Movies view's favorites, so that view's filter list
+    ' leaves the Favorites filter out (the Favorites tab draws the same view, so its list
+    ' has none either). Every list the tab does not cover keeps it: a folder's, and the
+    ' Collections view's below.
+    if isLibrary and LCase(m.currentView()) = libraryTab.MOVIES
+      options.filter = m.withoutFilter(options.filter, "Favorites")
     end if
 
     ' The Collections view lists BoxSets, not movies, so it takes its own sort and filter

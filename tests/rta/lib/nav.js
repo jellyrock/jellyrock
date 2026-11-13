@@ -115,11 +115,8 @@ export async function focusOverhangIcon(iconId) {
  *    the overhang element used last, which can be an icon to the tab bar's right, so the key is
  *    chosen from the focused node: Up while still in Home's rows, Left from anywhere else in the
  *    overhang.
- * 2. Onto the tab. The bar keeps its focused index internally (its `focusedTabIndex` field is
- *    input-only), so the index is read off the tabs' own `isFocused`. The walk re-reads after
- *    every press and presses at most once per tick; the bar updates `isFocused` inside its key
- *    handler, with no animation between, so a read never lags a press it follows.
- * 3. OK, then the incoming list in the scene and focus inside it (`onTabChanged` focuses it).
+ * 2. Onto the tab, and OK (`pressBarTab`).
+ * 3. The incoming list in the scene and focus inside it (`onTabChanged` focuses it).
  */
 export async function selectHomeTab(tabId) {
   const wantSubtype = tabId === 'favorites' ? 'FavoritesRows' : 'HomeRows';
@@ -137,6 +134,29 @@ export async function selectHomeTab(tabId) {
     label: 'overhang tab bar focused',
   });
 
+  await pressBarTab(bar, tabId);
+  await waitFor('subtype()', (v) => v === wantSubtype, {
+    read: async () => {
+      const id = await homeListId({ timeout: 1000 }).catch(() => undefined);
+      return id ? getVal(`${id}.subtype()`) : undefined;
+    },
+    timeout: 10000,
+    interval: 300,
+    label: `${wantSubtype} in the scene after selecting the "${tabId}" tab`,
+  });
+  await waitFocusInHomeContent({ label: `focus inside ${wantSubtype}` });
+}
+
+/**
+ * With focus on the tab bar `bar` (what `waitFocused` returned), walk along it to the tab
+ * `tabId` and press OK. Shared by `selectHomeTab` and `selectLibraryTab`.
+ *
+ * The bar keeps its focused index internally (its `focusedTabIndex` field is input-only), so
+ * the index is read off the tabs' own `isFocused`. The walk re-reads after every press and
+ * presses at most once per tick; the bar updates `isFocused` inside its key handler, with no
+ * animation between, so a read never lags a press it follows.
+ */
+async function pressBarTab(bar, tabId) {
   const tabs = await getVal(`${bar.keyPath}.tabs`);
   const target = Array.isArray(tabs) ? tabs.findIndex((t) => t.id === tabId) : -1;
   // eslint-disable-next-line no-restricted-syntax -- a fail-fast naming its cause, not a timeout
@@ -156,18 +176,49 @@ export async function selectHomeTab(tabId) {
     interval: 400,
     label: `tab "${tabId}" focused`,
   });
-
   await press(ecp.Key.Ok);
-  await waitFor('subtype()', (v) => v === wantSubtype, {
-    read: async () => {
-      const id = await homeListId({ timeout: 1000 }).catch(() => undefined);
-      return id ? getVal(`${id}.subtype()`) : undefined;
-    },
+}
+
+/** The ids of the tabs the overhang shows, in order; `[]` when it shows a title instead. */
+export async function overhangTabIds() {
+  const [visible, tabs] = await getVals(['#overhang.#tabBar.visible', '#overhang.#tabBar.tabs']);
+  if (visible !== true || !Array.isArray(tabs)) return [];
+  return tabs.map((t) => t.id);
+}
+
+/** The id of the one tab the overhang draws selected, or `null` when none or several are. */
+export async function overhangSelectedTab() {
+  const ids = await overhangTabIds();
+  const flags = await getVals(ids.map((_, i) => `#overhang.#tabContainer.${i}.isButtonSelected`));
+  const selected = ids.filter((_, i) => flags[i] === true);
+  return selected.length === 1 ? selected[0] : null;
+}
+
+/**
+ * On a library with tabs, with focus in its content: Up into the tab bar, along it to the
+ * tab `tabId`, OK. Returns once the screen shows that tab (`selectedTabId`, which holds
+ * until the next tab press). It does not wait for the tab's load or for focus: a caller
+ * asserts those, since where focus goes at the press is part of what a tab press does.
+ *
+ * Up reaches the bar only from the content's top (`BaseGridView.onKeyEvent`), so call it
+ * from a freshly opened or freshly loaded grid.
+ */
+export async function selectLibraryTab(tabId) {
+  const inBar = (f) => f?.node?.subtype === 'JRTabBar';
+  const bar = await waitFocused(inBar, {
     timeout: 10000,
-    interval: 300,
-    label: `${wantSubtype} in the scene after selecting the "${tabId}" tab`,
+    interval: 400,
+    action: walkFocusUntil(ecp.Key.Up, inBar),
+    label: `the tab bar, for the "${tabId}" tab`,
   });
-  await waitFocusInHomeContent({ label: `focus inside ${wantSubtype}` });
+
+  await pressBarTab(bar, tabId);
+  await waitFor('selectedTabId', (v) => v === tabId, {
+    read: getActiveVal,
+    timeout: 8000,
+    interval: 250,
+    label: `the library showing its "${tabId}" tab`,
+  });
 }
 
 /**
@@ -1131,7 +1182,7 @@ async function walkHomeRowsTo(list, { row, col }, collectionType) {
  * number chosen for other call sites, the drift that cost `waitFocusInside` six sites
  * their intervals in Phase 2.
  */
-async function waitGridLoaded(label, timeout = 20000) {
+export async function waitGridLoaded(label, timeout = 20000) {
   let state;
   await waitFor(
     'loadState',

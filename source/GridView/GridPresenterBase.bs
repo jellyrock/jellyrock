@@ -82,8 +82,10 @@ class GridPresenterBase
   ' Returns the options configuration for ItemGridOptions
   '
   ' `views` lists the library's tabs, each `Name` a libraryTab id, in the web client's
-  ' order where the web has the same tabs. `layouts` maps a tab id to the layouts that tab can be drawn in, for the options
-  ' dialog's View list (see optionsViewList); a tab with no entry has no choice.
+  ' order where the web has the same tabs. A tab is its own view unless its entry names
+  ' another (`View`) with something fixed on it (`IsFavorite`): see gridQuery.viewOfTab.
+  ' `layouts` maps a view to the layouts it can be drawn in (`[{ Name }]`), for the
+  ' Layout page setting; a view with no entry has no choice.
   '
   ' @param {object} parentItem - The library item being displayed
   ' @return {object} Options object with views, layouts, sort, filter
@@ -94,6 +96,15 @@ class GridPresenterBase
       sort: [],
       filter: []
     }
+  end function
+
+  ' `filters` without the entry named `name`, for a view whose list a tab covers.
+  protected function withoutFilter(filters as object, name as string) as object
+    kept = []
+    for each entry in filters
+      if LCase(textOrEmpty(entry.Name)) <> LCase(name) then kept.push(entry)
+    end for
+    return kept
   end function
 
   ' The layout a library draws in until one is chosen for it.
@@ -113,9 +124,8 @@ class GridPresenterBase
   '
   ' getOptions() receives the parent item but not the view, and some of its lists depend
   ' on which view is up (a Collections view sorts BoxSets, not movies), so the view is
-  ' read back off the host component. BaseGridView keeps `currentView` in step with its
-  ' own `m.view` (it sets it in loadInitialItems before SetUpOptions runs, and again in
-  ' optionsClosed before the reload), so this is the same string the load is using.
+  ' read back off the host component. BaseGridView keeps `currentView` in step with the
+  ' view on show (showTab sets it before any load), so this is the view the load is using.
   '
   ' @return {string} a libraryTab id such as "movies", or "" when unknown
   protected function currentView() as string
