@@ -1,0 +1,4 @@
+' Sets what LoadItemsTask2's helpers read off `m`, in this node's own scope.
+sub prepare(serverVersion as string)
+  m.serverVersion = serverVersion
+end sub
