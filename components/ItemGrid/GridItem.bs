@@ -1,11 +1,13 @@
 import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/logging/Logger.bs"
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/placeholderImage.bs"
 import "pkg:/source/utils/rowItemText.bs"
 import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/textureManager.bs"
+import "pkg:/source/utils/translate.bs"
 
 ' Vertical offset of the poster/placeholder from the cell top. The title label sits
 ' below the poster, inside the grid's inter-row spacing (see updateLayout).
@@ -151,13 +153,13 @@ sub renderItem()
   if isValid(itemData.folderType) then itemFolderType = LCase(itemData.folderType)
 
   if itemType = "genre" or itemFolderType = "genre"
-    ' "View All [Genre]" action tiles are navigation buttons, not media. They get a
+    ' "View All" genre tiles are navigation buttons, not media. They get a
     ' themed backdrop + in-cell label rather than going through JRPlaceholder, so they
     ' don't read as failed-to-load placeholders. Check both type and folderType: if
     ' Jellyfin returns IsFolder=false/absent the transformer leaves type="Genre" and
     ' folderType="" so we must match on type directly. MusicGenre/Studio don't match
     ' here and keep the regular poster path.
-    renderGenreTile(itemData)
+    renderGenreTile()
   else
     renderMediaItem(itemData, itemType)
   end if
@@ -227,16 +229,17 @@ sub renderLoadingCell()
   m.loadingSpinner = skeleton.showSpinner(m.top, m.loadingSpinner, m.top.width, m.top.height, POSTER_TOP_OFFSET)
 end sub
 
-' Renders a "View All [Genre]" action tile: themed backdrop + centered genre label,
-' no poster image. The below-tile item title is hidden: the tile's own centered label
-' already names the genre, and the row's genre header sits directly above it, so a third
-' copy is redundant. cachedPosterUri is cleared so texture management skips this cell.
-sub renderGenreTile(itemData as object)
+' Renders a "View All" action tile: themed backdrop + centered "View All" label, no poster
+' image. The label does not name the genre: the row's genre header sits directly above the
+' tile, and the item's title stays the genre's name because the folder it opens uses it.
+' The below-tile item title is hidden for the same reason. cachedPosterUri is cleared so
+' texture management skips this cell.
+sub renderGenreTile()
   m.itemPoster.uri = ""
   m.placeholder.visible = false
   m.itemText.visible = false
   m.genreBackdrop.visible = true
-  m.genreLabel.text = itemData.title
+  m.genreLabel.text = translate(translationKeys.LabelViewAll)
   m.genreLabel.visible = true
   m.cachedPosterUri = ""
 end sub

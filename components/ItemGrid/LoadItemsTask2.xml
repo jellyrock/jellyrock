@@ -13,6 +13,8 @@
     <field id="isRecursive" type="boolean" value="true" />
     <field id="filter" type="string" value="All" />
     <field id="filterOptions" type="assocarray" value="" />
+    <!-- Favorites only, whatever `filter` says: what a Favorites tab fixes on its view. -->
+    <field id="isFavorite" type="boolean" value="false" />
     <field id="searchTerm" type="string" value="" />
     <field id="studioIds" type="string" value="" />
     <field id="genreIds" type="string" value="" />
