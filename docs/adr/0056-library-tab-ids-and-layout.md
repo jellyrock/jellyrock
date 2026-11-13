@@ -4,7 +4,7 @@
 **Partially superseded by:** [ADR 0058](0058-library-layout-saved-per-view.md) (the layout is saved per view, not per library)
 **Date:** 2026-11-05
 
-**related-files**: `source/GridView/libraryTab.bs`, `source/GridView/optionsViewList.bs`, `source/GridView/GridPresenterBase.bs`, `components/ItemGrid/BaseGridView.bs`, `source/migrations.bs`
+**related-files**: `source/GridView/libraryTab.bs`, `source/GridView/GridPresenterBase.bs`, `components/ItemGrid/BaseGridView.bs`, `source/migrations.bs`
 
 A library's views are tabs, and each tab has a JellyRock id (`movies`, `shows`, `networks`, `studios`, `albums`, `albumartists`, `artists`, `genres`, `collections`, `channels`, `guide`, `photos`) named for what it shows. The ids are the app's own, so a tab the web client lacks (a History tab, say) is added like any other. Most match the web client's `LibraryTab` ids where the web has the same tab, because those names read well. A value read from the server's display preferences (the web's `landing-<libraryId>` default tab, its per-tab sort) is translated into these ids where it is read. A rename on the web side then changes that one table, never a setting stored on a Roku. Presenters list their tabs in the web's order where the web has the same tabs.
 

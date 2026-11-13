@@ -8,6 +8,7 @@ import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/appWaits.bs"
 import "pkg:/source/utils/audioSeek.bs"
+import "pkg:/source/utils/favorites.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/screenWaits.bs"
@@ -1282,10 +1283,6 @@ function setAudioFavorite(isLike as boolean) as object
   item = m.queueManager.callFunc("getCurrentItem")
   if not isValid(item) or not isValid(item.id) or item.id = "" then return { status: "error.generic" }
   itemId = item.id
-  if isLike
-    SubmitSideEffect(GetApi().BuildMarkFavoriteRequest(itemId))
-  else
-    SubmitSideEffect(GetApi().BuildUnmarkFavoriteRequest(itemId))
-  end if
+  SubmitSideEffect(favorites.request(itemId, isLike, m.top.getScene()))
   return { status: "success" }
 end function

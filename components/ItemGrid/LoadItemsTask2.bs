@@ -163,6 +163,11 @@ sub loadItems()
     params.append({ Filters: "IsResumable" })
   end if
 
+  ' A Favorites tab: favorites fixed on, apart from `filter`, so it combines with Played
+  ' or Unplayed (`Filters` takes one of those). Every supported server honors the
+  ' parameter alone.
+  if m.top.isFavorite then params.append({ isFavorite: true })
+
   if isValid(m.top.filterOptions)
     if m.top.filterOptions.count() > 0
       params.append(m.top.filterOptions)
@@ -494,9 +499,10 @@ sub populateGenreRow(row as dynamic, item as object, res as dynamic)
   if not isValid(genreData) then return
 
   if genreData.Items.Count() > 5
-    ' Add View All item to the start of the row: transform the genre item itself
+    ' Add View All item to the start of the row: transform the genre item itself.
+    ' Its title stays the genre's own name: the folder it opens is titled from it, and the
+    ' tile draws its own "View All" label (GridItem.renderGenreTile).
     viewAllNode = m.transformer.transformBaseItem(item, m.serverVersion)
-    viewAllNode.title = translate(translationKeys.LabelViewAll) + " " + item.name
     ' Set library context for genre navigation (genre items have no parentId from API)
     if not isValidAndNotEmpty(viewAllNode.parentId)
       viewAllNode.parentId = m.top.itemId
