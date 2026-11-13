@@ -545,9 +545,9 @@ sub onTabChanged()
   m.genreData = CreateObject("roSGNode", "ContentNode")
   m.genreList.content = m.genreData
 
-  ' Sort and filter are saved per library until piece 06 of the library screens work
-  ' saves the sort per tab and keeps filters for the session; until then a tab press
-  ' resets both, as a view change always did.
+  ' Sort and filter are saved per library until the library screens work saves the sort
+  ' per tab and keeps filters for the session; until then a tab press resets both, as a
+  ' view change always did.
   libraryId = m.top.parentItem.Id
   setLibraryDisplaySetting(libraryId, "sortField", "SortName")
   setLibraryDisplaySetting(libraryId, "sortAscending", "true")
