@@ -1,0 +1,23 @@
+import "pkg:/source/api/ApiClient.bs"
+
+' The one place a favorite toggle is built, so every toggle tells the grids that show
+' favorites. The no-direct-favorite-request BSC plugin keeps other code from building the
+' request itself.
+namespace favorites
+
+  ' The request that marks (or unmarks) an item as a favorite, for SubmitSideEffect() or
+  ' fetchAsync(). Bumps the scene's `favoritesVersion`, which BaseGridView compares on resume.
+  '
+  ' @param itemId - the item to mark or unmark
+  ' @param isFavorite - true to mark, false to unmark
+  ' @param scene - the caller's `m.top.getScene()`; invalid is allowed and skips the bump
+  ' @return the request AA, or invalid when there is no signed-in user
+  function request(itemId as string, isFavorite as boolean, scene as dynamic) as dynamic
+    ' Bumped when the request is built: one that then fails costs one extra reload, which shows the server's true state.
+    if isValid(scene) and scene.hasField("favoritesVersion") then scene.favoritesVersion = scene.favoritesVersion + 1
+
+    if isFavorite then return GetApi().BuildMarkFavoriteRequest(itemId)
+    return GetApi().BuildUnmarkFavoriteRequest(itemId)
+  end function
+
+end namespace

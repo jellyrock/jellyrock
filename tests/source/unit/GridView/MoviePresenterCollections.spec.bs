@@ -89,7 +89,7 @@ namespace tests
 
       names = m.viewNames(m.presenter.getOptions(m.library()))
 
-      m.assertEqual(names, ["movies", "collections", "genres", "studios"], "second, where the web puts it, added to the other three")
+      m.assertEqual(names, ["movies", "favorites", "collections", "genres", "studios"], "after Favorites, where the web puts it")
     end function
 
     @it("does not offer Collections on a server that ignores the scope")
@@ -102,7 +102,7 @@ namespace tests
       names = m.viewNames(m.presenter.getOptions(m.library()))
 
       m.assertFalse(inArray(names, libraryTab.COLLECTIONS))
-      m.assertEqual(names, ["movies", "genres", "studios"])
+      m.assertEqual(names, ["movies", "favorites", "genres", "studios"])
     end function
 
     @it("does not offer Collections inside a genre, which lists only its movies")
@@ -114,15 +114,13 @@ namespace tests
       m.assertEqual(names, ["movies"])
     end function
 
-    @it("does not offer Collections inside a studio, only on the library itself")
-    ' A studio folder is a library grid of its own and keeps the library's other views;
-    ' Collections is the one withheld (see collectionsView.offeredFor).
+    @it("does not offer Collections inside a studio, which lists only its movies")
     function _()
       m.attach("12.0.0")
 
       names = m.viewNames(m.presenter.getOptions({ Id: "s1", type: "Studio", parentId: "movies-lib" }))
 
-      m.assertEqual(names, ["movies", "genres", "studios"])
+      m.assertEqual(names, ["movies"])
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

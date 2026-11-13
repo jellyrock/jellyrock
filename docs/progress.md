@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-12
+last-updated: 2026-11-13
 ---
 
 # Progress
@@ -950,17 +950,29 @@ The photo viewer treats Slideshow and Random as two advance modes, and Slideshow
 
 The agreed model: Slideshow means start playing automatically (off opens the album paused on the first photo; Play already pauses and resumes), and Random means Shuffle: shuffle the album's order once, no repeats, and have the slideshow and Left/Right walk that order. Every combination then means something, and the registry keys stay as they are. Close it by changing `PhotoDetails` to that model with a spec, rewording the two descriptions in `settings/settings.json` and `docs/user/features/photos.md`, and checking album Shuffle on a device. Why not now: it changes the viewer's behavior and needs a photo-album fixture (see `slideshow-wait-untested-no-album`).
 
-#### The library layout choice must move when the options dialog is retired `[fid: layout-choice-outlives-options-dialog]` `[captured 2026-11-05]`
-
-The layout choice (presentation or poster grid, the per-library `display.<id>.layout` from ADR 0056) is reachable only through the options dialog: `optionsViewList` lists a movie library's Movies tab once per layout in `ItemGridOptions`' View menu. Retiring that dialog (tech-debt `itemgridoptions-hand-rolled-dialog`) removes the only way to switch layout unless the replacement carries it, for example the per-screen settings scope under the gear.
-
-Close it by moving the layout choice to its new home in the same change that retires `ItemGridOptions`, then deleting `source/GridView/optionsViewList.bs`, its spec and the `layouts` list the presenters return for it, if the new home reads layouts another way. Why not now: the dialog's replacement does not exist yet.
-
 #### A setting changed in Settings does not reach the screen under it unless that screen re-reads it by hand `[fid: settings-change-reaches-covered-screen]` `[captured 2026-11-12]`
 
 Settings can be opened from any screen, and a setting changed there reaches the screen under it only where that screen reads it again by hand. A theme or language change rebuilds the screen (`settings.performSettingsExit`, `JRScene.reloadRoutedHome`); any other change goes back to a screen that resumes as it was. `BaseGridView` reads `itemGridShowItemCount` and `itemGridTitles` once in `init`, so changing either from a library does nothing until the library is reopened; `reapplyPresentationBackdropSetting` in its `onScreenShown` is the one hand-wired exception. Other screens were not checked. Found 2026-11-12 while building page settings for the library screens.
 
 Agreed shape: one more `JRScreen` function beside `pageSettingsEntries` and `onPageSettingChanged`, `onSettingsChanged(names)`. `JellyfinUserSettings.onSettingChanged` already sees every setting write, so it notes which changed, and the base screen hands a screen the names changed since it was last shown; the screen applies what it cares about in place and keeps its scroll position. First measure which settings each screen type reads only at `init`. Not now because it touches every screen type and is its own pull request to `main`, apart from the library screens branch.
+
+#### A music library has no Favorites tab: build one as rows per kind `[fid: music-library-favorites-tab]` `[captured 2026-11-12]`
+
+A movie or TV library has a Favorites tab since the library tabs work: its content tab's view with favorites fixed on (decision `library-tab-view-plus-fixed`). A music library has no one content tab (Albums, Album Artists and Artists are peers), so it got no tab and keeps the Favorites filter on each of its tabs.
+
+Build it as rows per kind (albums, album artists, artists, songs), the way Home's Favorites tab is (`FavoritesRows`), not as one grid. Not done with the tabs work because it is a new surface with its own loading, not a view with a filter fixed on. To close: `MusicPresenter.getOptions()` lists a `favorites` tab, the grid view draws it as rows, the Favorites filter leaves the lists it covers, and `docs/user/features/favorites.md` says so.
+
+#### The TV guide filtered to Favorites does not refresh after a channel's favorite changes elsewhere `[fid: guide-favorites-filter-goes-stale]` `[captured 2026-11-13]`
+
+A Live TV library's guide, filtered to Favorites, keeps its old channel list after a channel is added to or removed from favorites elsewhere (for example from the player while watching it) and the viewer comes back. The favorites counter (decision `favorite-toggles-bump-version`) cannot cover it: `BaseGridView.favoritesStale()` reads `m.gridQuery`, which the guide path never builds, and a reload would do nothing anyway, because `BaseGridView.showTVGuide()` returns early when the guide already exists. Found by reading the code on 2026-11-12, not run on a device.
+
+To close: give the guide a refresh of its own channel list (`Schedule` already reloads channels when its filter changes), call it on resume when the guide's filter is Favorites and `favoritesVersion` moved, and add an RTA case that toggles a channel favorite through the server and checks the guide on return.
+
+#### Home's Favorites tab refetches on every return even when no favorite changed `[fid: home-favorites-skip-unchanged-reload]` `[captured 2026-11-13]`
+
+Home's Favorites tab reloads from the server on every return to Home (`Home.refresh()` calls `FavoritesRows.loadFavorites()`), even when no favorite changed. Since decision `favorite-toggles-bump-version`, every favorite toggle bumps `JRScene.favoritesVersion` through `favorites.request()`, so Home could skip the request when the counter has not moved since its last load, as `BaseGridView.favoritesStale()` does for the library grids. The win is one fewer request per return to Home while its Favorites tab is up; `FavoritesRows` already updates rows in place, so the viewer's place is kept either way.
+
+Not done with the library fix because Home works correctly today; this is a cost saving. To close: record the counter when `FavoritesRows` loads, skip `loadFavorites()` in `Home.refresh()` when it has not moved, and check that a favorite toggled from a details screen still shows on return to Home.
 
 ### source
 

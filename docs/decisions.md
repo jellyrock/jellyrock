@@ -2796,6 +2796,36 @@ A scrolling tab strip follows one rule (`tabStrip.window`): the active tab (focu
 
 Two things seen on a Roku Stick on Roku OS 16.0.4 (2026-11-12) shape the code. A tab past its slot, or past the screen's edge, never reports `renderTracking` as `full`, so `JRTab` sizes when its title is set instead of waiting for the renderer as `TextButton` does. Setting a `clippingRect` back to an empty rectangle stops the tabs drawing, so a bar that leaves its slot takes a clip the size of the screen (`JRTabBar.clearWindow`).
 
+## decision-id: library-tab-view-plus-fixed
+
+**date**: 2026-11-12
+**status**: accepted
+**related-files**: `source/GridView/gridQuery.bs`, `source/GridView/libraryTab.bs`, `source/GridView/MoviePresenter.bs`, `source/GridView/TVShowPresenter.bs`, `components/ItemGrid/BaseGridView.bs`, `components/ItemGrid/LoadItemsTask2.bs`
+
+A library tab is a view plus what is fixed on it. A presenter lists most tabs as their own view; the Favorites tab names its content tab's view with favorites fixed on, and `gridQuery.viewOfTab()` resolves the pair. Presenters are only ever handed a view id, so no presenter method learns a tab that is not a view, and the Favorites tab draws as its content tab does. `LoadItemsTask2` takes `isFavorite` apart from `filter`, so favorites combine with the played filters (asked of local servers 10.7.7 to 12.4.0 on 2026-11-12: the parameter filters alone and beside `Filters`). A library resolves its tab once, when it opens (`BaseGridView.openLibrary()`); after that only a tab press changes it, and a tab press does not write the saved tab. Refines [ADR 0056](adr/0056-library-tab-ids-and-layout.md).
+
+Favorites is a tab only in a movie or TV library, which have one content tab (Movies, Shows): it shows that tab's favorites, as the web client's movie Favorites tab does. Every list the tab does not cover keeps the Favorites filter: Collections, all of Music, Live TV, Photos and folders. A studio, network or genre opened inside a library has one view (`libraryTab.isFolder()`), so it shows its name, no tabs, and keeps the filter. Ruled out: a Favorites tab for Music now (it has no one content tab and needs rows per kind), and "one kind of item to favorite" as the rule, which a movie library's collections and a TV library's episodes contradict.
+
+## decision-id: guide-grid-no-vertical-wrap
+
+**date**: 2026-11-12
+**status**: accepted
+**related-files**: `components/liveTv/schedule.bs`, `components/ItemGrid/BaseGridView.bs`
+
+The TV guide's `TimeGrid` sets `vertFocusAnimationStyle` to `fixedFocus`. Its default, `fixedFocusWrap`, wraps Up on the first channel to the last inside the grid and keeps the key, so no screen code sees it and the overhang row (a Live TV library's tabs, search, settings) could not be reached from the guide. Measured on a Roku Ultra, 2026-11-12, with four channels: the focused channel went from the first to the fourth under the default, and Up reached the tab bar under `fixedFocus` and `floatingFocus`. Roku's `TimeGrid` reference names no wrap setting. `fixedFocus` keeps the focus row where the default has it.
+
+The cost is that the guide no longer wraps between its first and last channel. Ruled out: detecting the wrap after it happens (a guide with one or two channels cannot tell a wrap from a move), and a key other than Up for reaching the tabs from the guide only.
+
+## decision-id: favorite-toggles-bump-version
+
+**date**: 2026-11-12
+**status**: accepted
+**related-files**: `source/utils/favorites.bs`, `components/JRScene.xml`, `components/ItemGrid/BaseGridView.bs`, `source/GridView/gridQuery.bs`, `scripts/bsc-plugins/no-direct-favorite-request.cjs`
+
+Every favorite toggle builds its request through `favorites.request()`, which bumps `JRScene.favoritesVersion`. A grid that lists favorites (`gridQuery.showsFavorites`: the Favorites tab or the Favorites filter) reloads on resume, and when the Star dialog closes, only when that counter moved. The `no-direct-favorite-request` plugin fails the build on a direct `BuildMarkFavoriteRequest` or `BuildUnmarkFavoriteRequest` call anywhere else, so a new toggle site cannot skip the bump. The counter moves when the request is built, not when it succeeds: a failed request costs one extra reload, which shows the server's true state.
+
+Ruled out: reloading the Favorites tab on every return, as Home does, which loses the viewer's place when nothing changed; and bumping `contentVersion`, which would send every library grid back to the top after any favorite toggle. The TV guide is not covered: a reload does nothing on a guide already built.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

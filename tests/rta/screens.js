@@ -175,8 +175,9 @@ async function assertGenreRowsOwnTheirItems(ctx) {
       verified++;
       continue;
     }
-    // The optional leading child is a "View All <genre>" affordance, not an item.
-    if (title.endsWith(genre)) continue;
+    // The optional leading child is the genre's View All tile, titled with the genre
+    // alone, not an item.
+    if (title === genre) continue;
     // A plain throw on purpose: this is a fail-fast that already names its own
     // cause (the two-pass write-back crossed its slot indices) rather than a
     // timeout reporting that something did not show up. Same carve-out as the

@@ -22,6 +22,7 @@ namespace libraryTab
   const ARTISTS = "artists"
   const CHANNELS = "channels"
   const COLLECTIONS = "collections"
+  const FAVORITES = "favorites"
   const GENRES = "genres"
   const GUIDE = "guide"
   const MOVIES = "movies"
@@ -34,8 +35,9 @@ namespace libraryTab
   function ids() as object
     return [
       libraryTab.ALBUMS, libraryTab.ALBUM_ARTISTS, libraryTab.ARTISTS, libraryTab.CHANNELS,
-      libraryTab.COLLECTIONS, libraryTab.GENRES, libraryTab.GUIDE, libraryTab.MOVIES,
-      libraryTab.NETWORKS, libraryTab.PHOTOS, libraryTab.SHOWS, libraryTab.STUDIOS
+      libraryTab.COLLECTIONS, libraryTab.FAVORITES, libraryTab.GENRES, libraryTab.GUIDE,
+      libraryTab.MOVIES, libraryTab.NETWORKS, libraryTab.PHOTOS, libraryTab.SHOWS,
+      libraryTab.STUDIOS
     ]
   end function
 
@@ -52,6 +54,20 @@ namespace libraryTab
       if id = known then return true
     end for
     return false
+  end function
+
+  ' isFolder: whether `parentItem` is a studio, network or genre folder opened inside a
+  ' movie or TV library, and not the library itself.
+  '
+  ' Such a folder has one view (its movies or its shows): it shows its name as the title,
+  ' no tabs and no Favorites tab. Keyed on the folder's own shape, the ones
+  ' DeterminePresenterType names, and not on the library's type. A network arrives as a
+  ' Studio. Music keeps its own genre rule (MusicPresenter).
+  function isFolder(parentItem as dynamic) as boolean
+    if not isValid(parentItem) then return false
+    itemType = LCase(textOrEmpty(parentItem.type))
+    folderType = LCase(textOrEmpty(parentItem.folderType))
+    return itemType = "genre" or itemType = "studio" or folderType = "genre" or folderType = "studio"
   end function
 
   ' fromLegacyView: the tab and layout a view name saved before these ids stands for.
