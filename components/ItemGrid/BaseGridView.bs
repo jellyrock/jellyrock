@@ -40,6 +40,10 @@ import "pkg:/source/utils/translate.bs"
 const SLOW_LOAD_STILL_S = 8
 const SLOW_LOAD_SERVER_S = 30
 
+' The display setting that holds this Roku's default tab for a library, and the id of its
+' entry in the gear menu.
+const DEFAULT_TAB_KEY = "defaultTab"
+
 sub init()
   m.log = new log.Logger("BaseGridView")
   m.log.debug("start init()")
@@ -485,16 +489,12 @@ end sub
 ' Once per screen. After this the tab is screen state, and only a tab press changes it
 ' (onTabChanged): every later load goes through loadView, which resolves nothing.
 '
-' A saved tab could always be honored until 12.0, because every tab a presenter listed
-' existed on every server. Collections is the first that does not: the same library
-' opened against an older server has no such tab, so a saved one no longer offered falls
-' back to the default. The fallback is not written back to the registry: the saved
-' choice is still what the user picked, and it is valid again the moment the library is
-' opened against a server that offers it.
+' The tab opened on is the Roku's choice, else the web client's pick, else the library
+' type's default (resolveDefaultTab). A choice no longer offered falls through and is
+' not written back: it is valid again the moment the library offers that tab.
 sub openLibrary()
   m.offeredViews = offeredViews()
-  savedTab = getLibraryDisplaySetting(m.top.parentItem.Id, "landing", invalid)
-  showTab(gridQuery.resolveView(savedTab, m.offeredViews, getDefaultView()))
+  showTab(resolveDefaultTab(savedDefaultTab()).tab)
 
   ' The selection first, then the tabs: the scene projects both when the tabs change
   ' (JRScene.projectOverhangTabs). m.tab is already set, so onTabChanged sees nothing to
@@ -698,37 +698,29 @@ function offeredFilters() as object
   return options.filter
 end function
 
-' The tab a library opens on when none is saved, a libraryTab id. A folder or collection
-' has no tabs, so it answers "".
-'
-' Music opens on Album Artists, as it always has, although the web's own first music tab
-' is Albums. Changing which tab a library opens on belongs with reading the web's
-' `landing-<libraryId>` preference, not with renaming the ids.
+' The library type's default tab, a libraryTab id: "" for a folder or collection, which
+' has no tabs. libraryTab.defaultFor holds the defaults and why two depart from the web.
 function getDefaultView() as string
+  return libraryTab.defaultFor(getCollectionType(), m.top.presenterType)
+end function
+
+' The tab this Roku keeps for the library (the gear's Default tab), Invalid when none.
+function savedDefaultTab() as dynamic
+  return getLibraryDisplaySetting(m.top.parentItem.Id, DEFAULT_TAB_KEY, invalid)
+end function
+
+' Which tab the library opens on with `clientOverride` as the Roku's choice, and where it
+' came from: gridQuery.resolveView's { tab, source }. The web's pick is server data, read
+' at sign-in into the user config (serverLibraryLanding), never the registry.
+function resolveDefaultTab(clientOverride as dynamic) as object
   collectionType = getCollectionType()
-  if collectionType = "movies"
-    return libraryTab.MOVIES
-  else if collectionType = "music"
-    return libraryTab.ALBUM_ARTISTS
-  else if collectionType = "tvshows"
-    return libraryTab.SHOWS
+  serverTab = ""
+  landings = m.global.user.config.serverLibraryLanding
+  if type(landings) = "roAssociativeArray"
+    key = libraryTab.serverLandingKey(m.top.parentItem.Id, collectionType)
+    serverTab = libraryTab.fromServerTab(landings[key], collectionType)
   end if
-
-  ' Fallback to presenterType for genres and other items without collectionType
-  presenterType = m.top.presenterType
-  if presenterType = "movie"
-    return libraryTab.MOVIES
-  else if presenterType = "music"
-    return libraryTab.ALBUM_ARTISTS
-  else if presenterType = "tvshow"
-    return libraryTab.SHOWS
-  else if presenterType = "livetv"
-    return libraryTab.CHANNELS
-  else if presenterType = "photo"
-    return libraryTab.PHOTOS
-  end if
-
-  return ""
+  return gridQuery.resolveView(clientOverride, serverTab, m.offeredViews, getDefaultView())
 end function
 
 sub configureBackdrop()
@@ -1618,19 +1610,66 @@ end sub
 ' Page settings (the settings icon's menu)
 ' ============================================================================
 
-' JRScreen hook: Layout, when the view on show can be drawn more than one way.
+' JRScreen hook: Layout, when the view on show can be drawn more than one way, and
+' Default tab, when the library has more than one tab.
 function pageSettingsEntries() as object
   entries = []
   layouts = offeredLayouts()
   if layouts.count() > 1
     entries.push({ id: "layout", title: translate(translationKeys.LabelLayout), options: layouts, selected: m.layout })
   end if
+  if type(m.offeredViews) = "roArray" and m.offeredViews.count() > 1
+    entries.push(defaultTabEntry())
+  end if
   return entries
 end function
 
 ' JRScreen hook: the viewer picked a new option for one of those settings.
 sub onPageSettingChanged(id as string, value as string)
-  if id = "layout" then applyLayout(value)
+  if id = "layout"
+    applyLayout(value)
+  else if id = DEFAULT_TAB_KEY
+    applyDefaultTab(value)
+  end if
+end sub
+
+' The Default tab entry. Its first option ("") keeps no tab on this Roku, and is named
+' for the tab the library then opens on and where that comes from: "Web client setting
+' (Genres)" or "Default (Movies)". The offered tabs follow. The menu row names the tab in
+' force alone (valueTitle), since the first option's title would nest brackets there.
+function defaultTabEntry() as object
+  fallback = resolveDefaultTab(invalid)
+  fallbackTitle = offeredViewTitle(fallback.tab)
+  if fallback.source = gridQuery.RESOLVED_WEB
+    firstTitle = translate(translationKeys.LabelDefaultTabFromWeb, [fallbackTitle])
+  else
+    firstTitle = translate(translationKeys.LabelDefaultTabTypeDefault, [fallbackTitle])
+  end if
+
+  options = [{ id: "", title: firstTitle }]
+  for each view in m.offeredViews
+    options.push({ id: view.Name, title: view.Title })
+  end for
+
+  saved = savedDefaultTab()
+  return {
+    id: DEFAULT_TAB_KEY,
+    title: translate(translationKeys.LabelDefaultTab),
+    options: options,
+    selected: gridQuery.resolveOffered(saved, m.offeredViews, ""),
+    valueTitle: offeredViewTitle(resolveDefaultTab(saved).tab)
+  }
+end function
+
+' Keep `tabId` as this Roku's choice for the library, or "" to keep none. It applies the
+' next time the library opens: the tab on show stays.
+sub applyDefaultTab(tabId as string)
+  libraryId = m.top.parentItem.Id
+  if tabId = ""
+    deleteLibraryDisplaySetting(libraryId, DEFAULT_TAB_KEY)
+  else if gridQuery.offers(m.offeredViews, tabId)
+    setLibraryDisplaySetting(libraryId, DEFAULT_TAB_KEY, tabId)
+  end if
 end sub
 
 ' The layouts the presenter lists for the view on show, as page-setting options

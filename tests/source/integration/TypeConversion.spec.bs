@@ -298,7 +298,7 @@ namespace tests
         { name: "homeSection4", testValue: "livetv" },
         { name: "homeSection5", testValue: "none" },
         { name: "homeSection6", testValue: "none" },
-        { name: "displayLiveTvLanding", testValue: "guide" }
+        { name: "playbackAudioLanguageCustom", testValue: "fre" }
       ]
 
       for each setting in stringSettings
