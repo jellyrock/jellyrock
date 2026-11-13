@@ -1,0 +1,57 @@
+namespace tests
+
+  ' populateGenreRow() fills one Genres-view row. When the genre holds more than five items it
+  ' puts a View All node first, and that node keeps the genre's own name as its title: the folder
+  ' it opens is titled from it, and the tile draws its own "View All" (GridItem.renderGenreTile).
+  ' The suite runs inside a node that loads LoadItemsTask2's script (tests/components), and it
+  ' extends `rooibos.BaseTestSuite` because the node scope cannot see `tests.BaseTestSuite`.
+  @SGNode("LoadItemsTask2Harness")
+  @suite("LoadItemsTask2 - populateGenreRow()")
+  class LoadItemsTask2PopulateGenreRowTests extends rooibos.BaseTestSuite
+
+    protected override function beforeEach()
+      super.beforeEach()
+      ' populateGenreRow() reads `m` of the node's own scope, not this suite's `m`, so the
+      ' harness sets the server version there. init() already made the transformer.
+      m.top.callFunc("prepare", "10.11.0")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a genre with more than five items")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("adds a View All node first that keeps the genre's own name as its title")
+    function _()
+      row = CreateObject("roSGNode", "ContentNode")
+      genre = { Id: "genre-1", Name: "Action", Type: "Genre" }
+
+      ' bs:disable-next-line uninitialized-variable cannot-find-function
+      populateGenreRow(row, genre, { ok: true, json: { Items: m.buildMovies(6) } })
+
+      m.assertEqual(row.getChildCount(), 7)
+      m.assertEqual(row.getChild(0).title, "Action")
+      m.assertEqual(row.getChild(0).collectionType, "movies")
+    end function
+
+    @it("adds no View All node for a genre with five items or fewer")
+    function _()
+      row = CreateObject("roSGNode", "ContentNode")
+      genre = { Id: "genre-1", Name: "Action", Type: "Genre" }
+
+      ' bs:disable-next-line uninitialized-variable cannot-find-function
+      populateGenreRow(row, genre, { ok: true, json: { Items: m.buildMovies(5) } })
+
+      m.assertEqual(row.getChildCount(), 5)
+      m.assertEqual(row.getChild(0).title, "Movie 1")
+    end function
+
+    private function buildMovies(count as integer) as object
+      items = []
+      for i = 1 to count
+        items.push({ Id: "movie-" + i.toStr(), Name: "Movie " + i.toStr(), Type: "Movie" })
+      end for
+      return items
+    end function
+
+  end class
+end namespace
