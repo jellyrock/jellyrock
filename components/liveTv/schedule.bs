@@ -596,11 +596,13 @@ sub onProgramFocused()
   m.programDetailsSeq += 1
   m.top.watchChannel = invalid
 
-  ' Make sure we have channels (for example, filter set to favorite yet there are none)
-  if m.scheduleGrid.content.getChildCount() <= 0
+  ' Make sure we have channels (for example, filter set to favorite yet there are none).
+  ' The grid sets programFocusedDetails only once a program gains focus, so it can be invalid here.
+  focusDetails = m.scheduleGrid.programFocusedDetails
+  if m.scheduleGrid.content.getChildCount() <= 0 or not isValid(focusDetails)
     channel = invalid
   else
-    channel = m.scheduleGrid.content.GetChild(m.scheduleGrid.programFocusedDetails.focusChannelIndex)
+    channel = m.scheduleGrid.content.GetChild(focusDetails.focusChannelIndex)
   end if
 
   m.detailsPane.channel = channel
@@ -614,10 +616,10 @@ sub onProgramFocused()
     return
   end if
 
-  prog = channel.GetChild(m.scheduleGrid.programFocusedDetails.focusIndex)
+  prog = channel.GetChild(focusDetails.focusIndex)
 
   if isValid(prog) and not isValid(m.fullyLoadedProgramIds[prog.id])
-    loadProgramDetails(prog.id, m.scheduleGrid.programFocusedDetails.focusChannelIndex, m.scheduleGrid.programFocusedDetails.focusIndex)
+    loadProgramDetails(prog.id, focusDetails.focusChannelIndex, focusDetails.focusIndex)
   end if
 
   m.detailsPane.programDetails = prog
@@ -683,7 +685,9 @@ end sub
 sub onProgramSelected()
   ' If there is no program data - view the channel
   if not isValid(m.detailsPane.programDetails)
-    m.top.watchChannel = m.scheduleGrid.content.GetChild(m.scheduleGrid.programFocusedDetails.focusChannelIndex)
+    focusDetails = m.scheduleGrid.programFocusedDetails
+    if not isValid(focusDetails) then return
+    m.top.watchChannel = m.scheduleGrid.content.GetChild(focusDetails.focusChannelIndex)
     return
   end if
 
@@ -785,11 +789,13 @@ sub onRecordOperationDone(event as object)
   else
     ' This reloads only the details for the currently selected program, so that we don't have to
     ' reload the entire grid...
-    channel = m.scheduleGrid.content.GetChild(m.scheduleGrid.programFocusedDetails.focusChannelIndex)
+    focusDetails = m.scheduleGrid.programFocusedDetails
+    if not isValid(focusDetails) then return
+    channel = m.scheduleGrid.content.GetChild(focusDetails.focusChannelIndex)
     prog = invalid
-    if isValid(channel) then prog = channel.GetChild(m.scheduleGrid.programFocusedDetails.focusIndex)
+    if isValid(channel) then prog = channel.GetChild(focusDetails.focusIndex)
     ' Re-fetch unconditionally: the program's recording state has changed.
-    if isValid(prog) then loadProgramDetails(prog.id, m.scheduleGrid.programFocusedDetails.focusChannelIndex, m.scheduleGrid.programFocusedDetails.focusIndex)
+    if isValid(prog) then loadProgramDetails(prog.id, focusDetails.focusChannelIndex, focusDetails.focusIndex)
   end if
 end sub
 
