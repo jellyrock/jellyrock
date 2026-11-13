@@ -184,6 +184,18 @@ export function resolveContent(env = process.env, fallback = DEMO_CONTENT) {
   });
 }
 
+/**
+ * Whether `server` is one of your own rather than the shared public demo, whatever its
+ * path (`/stable`, `/unstable`). A spec that writes to the server's account (a display
+ * preference, say) runs only when this is true: on the demo it would change what every
+ * other visitor sees, until the demo's next reset.
+ *
+ * @param {{url: string}} server
+ */
+export function isPrivateServer(server) {
+  return new URL(server.url).hostname !== new URL(PUBLIC_DEMO_SERVER.url).hostname;
+}
+
 const server = resolveServer();
 const content = resolveContent();
 

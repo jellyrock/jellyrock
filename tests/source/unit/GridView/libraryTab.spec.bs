@@ -1,0 +1,414 @@
+import "pkg:/source/GridView/GenericPresenter.bs"
+import "pkg:/source/GridView/libraryTab.bs"
+import "pkg:/source/GridView/LiveTVPresenter.bs"
+import "pkg:/source/GridView/MoviePresenter.bs"
+import "pkg:/source/GridView/MusicPresenter.bs"
+import "pkg:/source/GridView/PhotoPresenter.bs"
+import "pkg:/source/GridView/TVShowPresenter.bs"
+
+namespace tests
+
+  ' A library view's id is a libraryTab id, and its layout is a separate
+  ' axis. These pin the legacy mapping the registry migration runs, the case rule that
+  ' keeps that mapping safe to run twice, and that every presenter lists only known ids.
+  @suite("libraryTab - view ids and the legacy mapping")
+  class LibraryTabTests extends tests.BaseTestSuite
+
+    ' A stand-in for BaseGridView carrying what a presenter reads in getOptions(): the
+    ' current view and, for the Collections gate, the server version.
+    private function host(currentView as string) as object
+      return {
+        top: { currentView: currentView },
+        global: { server: { version: "12.0.0" }, user: { id: "user-1" } }
+      }
+    end function
+
+    ' Every field a presenter reads off its parent item, as a ContentNode always has them:
+    ' MusicPresenter calls LCase() on folderType, which faults on Invalid.
+    private function item(itemType as string, collectionType = "" as string) as object
+      return { Id: "item-1", type: itemType, collectionType: collectionType, folderType: "", parentId: "" }
+    end function
+
+    private function library(collectionType as string) as object
+      return m.item("CollectionFolder", collectionType)
+    end function
+
+    ' Every presenter with the parent items that change its list, each as
+    ' { label, presenter, parentItem }. Built per test: a presenter holds state.
+    private function presenterCases() as object
+      movie = new MoviePresenter()
+      movie.onInit(m.host("movies"))
+      movieGenre = new MoviePresenter()
+      movieGenre.onInit(m.host("movies"))
+      tv = new TVShowPresenter()
+      tv.onInit(m.host("shows"))
+      music = new MusicPresenter()
+      music.onInit(m.host("albumartists"))
+      musicGenre = new MusicPresenter()
+      musicGenre.onInit(m.host("albums"))
+      liveTv = new LiveTVPresenter()
+      liveTv.onInit(m.host("channels"))
+      photo = new PhotoPresenter()
+      photo.onInit(m.host("photos"))
+      generic = new GenericPresenter()
+      generic.onInit(m.host(""))
+
+      return [
+        { label: "movies", presenter: movie, parentItem: m.library("movies") },
+        { label: "movie genre", presenter: movieGenre, parentItem: m.item("Genre") },
+        { label: "tvshows", presenter: tv, parentItem: m.library("tvshows") },
+        { label: "music", presenter: music, parentItem: m.library("music") },
+        { label: "music genre", presenter: musicGenre, parentItem: m.item("MusicGenre") },
+        { label: "livetv", presenter: liveTv, parentItem: m.library("livetv") },
+        { label: "photos", presenter: photo, parentItem: m.library("photos") },
+        { label: "folder", presenter: generic, parentItem: m.item("Folder") }
+      ]
+    end function
+
+    private function names(views as object) as object
+      out = []
+      for each view in views
+        out.push(view.Name)
+      end for
+      return out
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("fromLegacyView()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("maps every view name the presenters used to save")
+    @params("Movies", "movies", "presentation")
+    @params("MoviesGrid", "movies", "comfortable")
+    @params("Studios", "studios", "")
+    @params("Genres", "genres", "")
+    @params("Collections", "collections", "")
+    @params("Shows", "shows", "")
+    @params("Networks", "networks", "")
+    @params("AlbumArtistsGrid", "albumartists", "")
+    @params("Albums", "albums", "")
+    @params("ArtistsGrid", "artists", "")
+    @params("livetv", "channels", "")
+    @params("tvGuide", "guide", "")
+    @params("singlephoto", "photos", "")
+    @params("slideshowphoto", "photos", "")
+    @params("randomphoto", "photos", "")
+    function _(legacyName, tabId, layout)
+      m.assertEqual(libraryTab.fromLegacyView(legacyName), { tab: tabId, layout: layout })
+    end function
+
+    @it("matches a legacy name in another case")
+    @params("MOVIESGRID", "movies", "comfortable")
+    @params("artistsgrid", "artists", "")
+    @params("TVGUIDE", "guide", "")
+    @params(" Shows ", "shows", "")
+    function _(legacyName, tabId, layout)
+      m.assertEqual(libraryTab.fromLegacyView(legacyName), { tab: tabId, layout: layout })
+    end function
+
+    @it("maps a folder's default view to no tab at all")
+    @params("default")
+    @params("Default")
+    function _(legacyName)
+      m.assertEqual(libraryTab.fromLegacyView(legacyName), { tab: "", layout: "" })
+    end function
+
+    @it("leaves a tab id as it is, so a second run changes nothing")
+    ' `movies` is the case that matters: folded to lowercase, the old presentation view
+    ' `Movies` reads the same, and a second run would put every library back into
+    ' presentation. A sideloaded build runs the user migrations at every launch.
+    function _()
+      for each id in libraryTab.ids()
+        m.assertEqual(libraryTab.fromLegacyView(id), { tab: id, layout: "" }, id)
+      end for
+    end function
+
+    @it("is idempotent over its own output for every legacy name")
+    function _()
+      for each legacyName in ["Movies", "MoviesGrid", "Studios", "Genres", "Collections", "Shows", "Networks", "AlbumArtistsGrid", "Albums", "ArtistsGrid", "livetv", "tvGuide", "singlephoto", "slideshowphoto", "randomphoto"]
+        first = libraryTab.fromLegacyView(legacyName)
+        second = libraryTab.fromLegacyView(first.tab)
+        m.assertEqual(second.tab, first.tab, legacyName)
+        m.assertEqual(second.layout, "", legacyName + " implies its layout only once")
+      end for
+    end function
+
+    @it("passes a name it does not recognize through unchanged")
+    ' The migration keeps it as the default tab, and the grid's resolveView falls back from it.
+    @params("SomethingNewer")
+    @params("")
+    function _(unknownName)
+      m.assertEqual(libraryTab.fromLegacyView(unknownName), { tab: unknownName, layout: "" })
+    end function
+
+    @it("answers for a value that is not a string")
+    function _()
+      m.assertEqual(libraryTab.fromLegacyView(invalid), { tab: "", layout: "" })
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isKnown()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("knows every id the app uses")
+    function _()
+      for each id in libraryTab.ids()
+        m.assertTrue(libraryTab.isKnown(id), id)
+      end for
+    end function
+
+    @it("is exact about case, which is what tells a tab id from a legacy name")
+    @params("Movies")
+    @params("GENRES")
+    @params("tvGuide")
+    @params("")
+    function _(name)
+      m.assertFalse(libraryTab.isKnown(name))
+    end function
+
+    @it("answers false for a value that is not a string")
+    @params(invalid)
+    @params(1)
+    function _(value)
+      m.assertFalse(libraryTab.isKnown(value))
+    end function
+
+    @it("lists each id once")
+    function _()
+      seen = {}
+      for each id in libraryTab.ids()
+        m.assertFalse(seen.doesExist(id), id + " is listed twice")
+        seen[id] = true
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isFolder()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for a studio, network or genre opened inside a library")
+    ' The shapes a device showed on 2026-11-12 (a network arrives as a Studio), and the
+    ' folderType forms DeterminePresenterType also names.
+    @params({ type: "Studio", collectionType: "movies" })
+    @params({ type: "Studio", collectionType: "tvshows" })
+    @params({ type: "Genre", collectionType: "movies" })
+    @params({ type: "genre" })
+    @params({ type: "Folder", folderType: "Genre" })
+    @params({ type: "Folder", folderType: "studio" })
+    function _(parentItem)
+      m.assertTrue(libraryTab.isFolder(parentItem))
+    end function
+
+    @it("is false for a library, a collection and an item with no type")
+    @params({ type: "CollectionFolder", collectionType: "movies" })
+    @params({ type: "CollectionFolder", collectionType: "tvshows", folderType: "CollectionFolder" })
+    @params({ type: "BoxSet" })
+    @params({})
+    @params(invalid)
+    function _(parentItem)
+      m.assertFalse(libraryTab.isFolder(parentItem))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("libraryLayout")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("saves a view's layout under a key of its own, whatever the view's case")
+    function _()
+      m.assertEqual(libraryLayout.settingKey(libraryTab.MOVIES), "layout_movies")
+      m.assertEqual(libraryLayout.settingKey("Movies"), "layout_movies")
+      m.assertEqual(libraryLayout.settingKey(invalid), "layout_")
+    end function
+
+    @it("names each layout it knows, and nothing for one it does not")
+    function _()
+      m.assertEqual(libraryLayout.title(libraryLayout.COMFORTABLE), "Comfortable")
+      m.assertEqual(libraryLayout.title(libraryLayout.PRESENTATION), "Presentation")
+      m.assertEqual(libraryLayout.title("posters"), "")
+      m.assertEqual(libraryLayout.title(invalid), "")
+    end function
+
+    @it("honors a saved layout it knows")
+    @params("comfortable")
+    @params("presentation")
+    function _(saved)
+      m.assertEqual(libraryLayout.resolve(saved, libraryLayout.COMFORTABLE), saved)
+    end function
+
+    @it("falls back to the default for anything else")
+    ' A layout a newer build saved (compact, posters) must not reach a presenter that
+    ' cannot draw it.
+    @params(invalid)
+    @params("")
+    @params("compact")
+    @params("Presentation")
+    function _(saved)
+      m.assertEqual(libraryLayout.resolve(saved, libraryLayout.COMFORTABLE), libraryLayout.COMFORTABLE)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the presenters' tabs")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("lists only known tab ids, each once")
+    function _()
+      for each testCase in m.presenterCases()
+        seen = {}
+        for each view in testCase.presenter.getOptions(testCase.parentItem).views
+          m.assertTrue(libraryTab.isKnown(view.Name), testCase.label + ": " + textOrEmpty(view.Name))
+          m.assertFalse(seen.doesExist(view.Name), testCase.label + ": " + view.Name + " is listed twice")
+          seen[view.Name] = true
+        end for
+      end for
+    end function
+
+    @it("offers layouts only for a tab it lists, and only layouts it knows")
+    function _()
+      for each testCase in m.presenterCases()
+        options = testCase.presenter.getOptions(testCase.parentItem)
+        listed = m.names(options.views)
+        for each tabId in options.layouts
+          m.assertTrue(inArray(listed, tabId), testCase.label + ": layouts for unlisted tab " + tabId)
+          for each choice in options.layouts[tabId]
+            m.assertTrue(libraryLayout.isKnown(choice.Name), testCase.label + ": " + textOrEmpty(choice.Name))
+          end for
+        end for
+      end for
+    end function
+
+    @it("lists each library's tabs in the web client's order")
+    function _()
+      cases = m.presenterCases()
+      expected = {
+        "movies": ["movies", "favorites", "collections", "genres", "studios"],
+        "movie genre": ["movies"],
+        "tvshows": ["shows", "favorites", "genres", "networks", "collections"],
+        "music": ["albums", "albumartists", "artists", "genres"],
+        "music genre": ["albums"],
+        "livetv": ["channels", "guide"],
+        "photos": ["photos"],
+        "folder": []
+      }
+      for each testCase in cases
+        m.assertEqual(m.names(testCase.presenter.getOptions(testCase.parentItem).views), expected[testCase.label], testCase.label)
+      end for
+    end function
+
+    @it("offers the movie library's two layouts on its Movies tab")
+    function _()
+      presenter = new MoviePresenter()
+      presenter.onInit(m.host("movies"))
+
+      layouts = presenter.getOptions(m.library("movies")).layouts
+
+      m.assertEqual(m.names(layouts[libraryTab.MOVIES]), [libraryLayout.PRESENTATION, libraryLayout.COMFORTABLE])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("defaultFor() and isTypeDefault()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("gives each library type its own default tab")
+    @params("movies", "", "movies")
+    @params("tvshows", "", "shows")
+    @params("music", "", "albumartists")
+    @params("MUSIC", "", "albumartists")
+    @params("livetv", "livetv", "channels")
+    @params("photoalbum", "photo", "photos")
+    @params("genre", "movie", "movies")
+    @params("studio", "tvshow", "shows")
+    @params("musicgenre", "music", "albumartists")
+    @params("boxset", "generic", "")
+    @params("folder", "", "")
+    function _(collectionType, presenterType, expected)
+      m.assertEqual(libraryTab.defaultFor(collectionType, presenterType), expected)
+    end function
+
+    @it("knows every type default and nothing else")
+    function _()
+      for each tabId in ["movies", "shows", "albumartists", "channels", "photos"]
+        m.assertTrue(libraryTab.isTypeDefault(tabId), tabId)
+      end for
+      for each tabId in ["genres", "studios", "networks", "albums", "artists", "guide", "collections", "favorites", "", "Movies"]
+        m.assertFalse(libraryTab.isTypeDefault(tabId), tabId)
+      end for
+      m.assertFalse(libraryTab.isTypeDefault(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the web client's default tab")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("collects every non-empty landing pick, and nothing else")
+    ' The shape of a real usersettings CustomPrefs: the web saves its own default as "".
+    function _()
+      customPrefs = {
+        "landing-f137a2dd21bbc1b99aa5c0f6bf02a805": "genres",
+        "landing-a656b907eb3a73532e40e44b968d0225": "",
+        "landing-livetv": "guide",
+        "landing-9d7ad6afe9afa2dab1a2f6e00ad28fa6": "  ",
+        "homesection0": "smalllibrarytiles",
+        "segmentTypeAction__Intro": "AskToSkip",
+        "landing-": "movies",
+        "useEpisodeImagesInNextUpAndResume": "false"
+      }
+
+      landings = libraryTab.serverLandings(customPrefs)
+
+      m.assertEqual(landings.count(), 2)
+      m.assertEqual(landings["f137a2dd21bbc1b99aa5c0f6bf02a805"], "genres")
+      m.assertEqual(landings["livetv"], "guide")
+    end function
+
+    @it("returns an empty map for no CustomPrefs")
+    @params(invalid)
+    @params("landing-livetv")
+    @params([])
+    function _(customPrefs)
+      m.assertEqual(libraryTab.serverLandings(customPrefs), {})
+    end function
+
+    @it("keys Live TV's pick as livetv and every other library's by its id")
+    function _()
+      m.assertEqual(libraryTab.serverLandingKey("lib-tv", "livetv"), "livetv")
+      m.assertEqual(libraryTab.serverLandingKey("lib-tv", "LiveTV"), "livetv")
+      m.assertEqual(libraryTab.serverLandingKey("lib-movies", "movies"), "lib-movies")
+    end function
+
+    @it("translates each web tab id the app has a tab for")
+    @params("movies", "movies", "movies")
+    @params("favorites", "movies", "favorites")
+    @params("collections", "movies", "collections")
+    @params("genres", "movies", "genres")
+    @params("studios", "movies", "studios")
+    @params("series", "tvshows", "shows")
+    @params("studios", "tvshows", "networks")
+    @params("albums", "music", "albums")
+    @params("albumartists", "music", "albumartists")
+    @params("artists", "music", "artists")
+    @params("guide", "livetv", "guide")
+    @params("channels", "livetv", "channels")
+    @params("photos", "photos", "photos")
+    @params("Genres", "movies", "genres")
+    function _(value, collectionType, expected)
+      m.assertEqual(libraryTab.fromServerTab(value, collectionType), expected)
+    end function
+
+    @it("answers empty for a web tab the app lacks, or an id only the app uses")
+    @params("suggestions")
+    @params("upcoming")
+    @params("programs")
+    @params("recordings")
+    @params("playlists")
+    @params("episodes")
+    @params("shows")
+    @params("networks")
+    @params("")
+    @params(invalid)
+    function _(value)
+      m.assertEqual(libraryTab.fromServerTab(value, "tvshows"), "")
+    end function
+
+  end class
+
+end namespace

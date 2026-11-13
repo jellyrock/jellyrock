@@ -1,0 +1,142 @@
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+' Page settings: settings whose value belongs to the screen on show, offered from the
+' overhang's settings icon above All settings.
+'
+' A screen only declares them (JRScreen.pageSettingsEntries) and is told what was picked
+' (JRScreen.onPageSettingChanged); JRScene.openPageMenu presents the menu and the picker.
+' An entry is { id, title, options: [{ id, title }], selected, valueTitle }: titles are
+' translated text, and `selected` is the id of the option in force. `valueTitle` is
+' optional: the value the menu row shows when the selected option's own title does not
+' read well there. This file is the part of that with no node in it.
+namespace pageSettings
+
+  ' The menu row that opens the Settings screen.
+  const ALL_SETTINGS = "allSettings"
+
+  ' menuRows: the menu for a screen's entries, All settings last.
+  '
+  ' A row reads as the player's gear rows do: the entry's title with the selected option's
+  ' title after it, or the entry's `valueTitle` when it has one. The Default tab entry
+  ' uses it: its first option says where the tab comes from ("Default (Movies)"), which
+  ' would read as brackets inside brackets on the row, so the row names the tab alone. No usable entry means no menu ({ labels: [], ids: [] }), and the
+  ' settings icon opens Settings in one press.
+  '
+  ' Past about three entries the menu gets long for something hanging off an icon: move
+  ' them into one Page settings dialog behind a single row here.
+  '
+  ' @param entries - a screen's pageSettingsEntries()
+  ' @return {object} { labels: [string], ids: [string] }
+  function menuRows(entries as dynamic) as object
+    menu = { labels: [], ids: [] }
+    if type(entries) <> "roArray" then return menu
+
+    for each entry in entries
+      if pageSettings.isEntry(entry)
+        label = textOrEmpty(entry.title)
+        value = textOrEmpty(entry.valueTitle)
+        if value = "" then value = pageSettings.optionTitle(entry, entry.selected)
+        if value <> "" then label = translate(translationKeys.LabelSettingWithValue, [label, value])
+        menu.labels.push(label)
+        menu.ids.push(entry.id)
+      end if
+    end for
+    if menu.ids.count() = 0 then return menu
+
+    menu.labels.push(translate(translationKeys.LabelAllSettings))
+    menu.ids.push(pageSettings.ALL_SETTINGS)
+    return menu
+  end function
+
+  ' isEntry: whether `entry` has an id and at least one option to pick, every option an
+  ' { id, title } with a text id. The other functions here take only entries this passes.
+  function isEntry(entry as dynamic) as boolean
+    if type(entry) <> "roAssociativeArray" then return false
+    if textOrEmpty(entry.id) = "" or textOrEmpty(entry.id) = pageSettings.ALL_SETTINGS then return false
+    if type(entry.options) <> "roArray" or entry.options.count() = 0 then return false
+    for each option in entry.options
+      if type(option) <> "roAssociativeArray" or not pageSettings.isText(option.id) then return false
+    end for
+    return true
+  end function
+
+  ' isText: whether `value` is a string, the empty one included.
+  function isText(value as dynamic) as boolean
+    return type(value) = "roString" or type(value) = "String"
+  end function
+
+  ' findEntry: the entry with `id`, or invalid.
+  function findEntry(entries as dynamic, id as string) as dynamic
+    if type(entries) <> "roArray" then return invalid
+    for each entry in entries
+      if pageSettings.isEntry(entry) and entry.id = id then return entry
+    end for
+    return invalid
+  end function
+
+  ' optionTitle: the title of an entry's option `optionId`, or "" when it has none.
+  function optionTitle(entry as object, optionId as dynamic) as string
+    index = pageSettings.optionIndex(entry, optionId)
+    if index < 0 then return ""
+    return textOrEmpty(entry.options[index].title)
+  end function
+
+  ' optionIndex: where the option `optionId` sits in an entry's options, or -1.
+  ' An option's id may be "" (an option that clears the setting), so an id is compared as
+  ' text and never tested for being empty.
+  function optionIndex(entry as object, optionId as dynamic) as integer
+    if not pageSettings.isText(optionId) then return -1
+    for i = 0 to entry.options.count() - 1
+      if entry.options[i].id = optionId then return i
+    end for
+    return -1
+  end function
+
+  ' picker: what the list dialog for one entry shows.
+  '
+  ' @return {object} { labels: [string], values: [string], selectedIndex: integer }, with
+  '   selectedIndex -1 when `selected` names no option
+  function picker(entry as object) as object
+    list = { labels: [], values: [], selectedIndex: pageSettings.optionIndex(entry, entry.selected) }
+    for each option in entry.options
+      list.labels.push(textOrEmpty(option.title))
+      list.values.push(option.id)
+    end for
+    return list
+  end function
+
+  ' The picker's close did nothing the scene acts on.
+  const PICK_NONE = "none"
+  ' Back in the picker: the menu opens again on the entry's row.
+  const PICK_REOPEN = "reopen"
+  ' The viewer picked an option other than the one in force.
+  const PICK_CHANGE = "change"
+
+  ' pickOutcome: what a picker's result asks for.
+  '
+  ' Only the viewer's own answer acts: a close that code made does nothing, and neither does
+  ' picking the option already in force.
+  '
+  ' @param result - the list dialog's `result`
+  ' @param entry - the entry the picker was opened for
+  ' @param values - picker(entry).values, parallel to the rows shown
+  ' @return {object} { action: PICK_NONE | PICK_REOPEN | PICK_CHANGE, value: string }
+  function pickOutcome(result as dynamic, entry as object, values as object) as object
+    outcome = { action: pageSettings.PICK_NONE, value: "" }
+    if type(result) <> "roAssociativeArray" or result.externallyCancelled = true then return outcome
+    if result.cancelled = true
+      outcome.action = pageSettings.PICK_REOPEN
+      return outcome
+    end if
+
+    index = result.optionIndex
+    if not isValid(index) or index < 0 or index >= values.count() then return outcome
+    if pageSettings.isText(entry.selected) and values[index] = entry.selected then return outcome
+    outcome.action = pageSettings.PICK_CHANGE
+    outcome.value = values[index]
+    return outcome
+  end function
+
+end namespace

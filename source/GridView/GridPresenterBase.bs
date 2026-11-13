@@ -9,6 +9,7 @@
 '   m.presenter = new MoviePresenter()
 '   m.presenter.onInit(m)
 
+import "pkg:/source/GridView/libraryTab.bs"
 import "pkg:/source/utils/misc.bs"
 
 class GridPresenterBase
@@ -55,8 +56,10 @@ class GridPresenterBase
   ' ============================================================================
 
   ' Returns the backdrop mode for this presenter
+  ' @param {string} viewMode - Current view, a libraryTab id
+  ' @param {string} layout - Current layout, a libraryLayout value
   ' @return {string} "presentation" | "fullscreen" | "none"
-  function getBackdropMode() as string
+  function getBackdropMode(_viewMode as string, _layout as string) as string
     return "fullscreen"
   end function
 
@@ -77,14 +80,37 @@ class GridPresenterBase
   ' ============================================================================
 
   ' Returns the options configuration for ItemGridOptions
+  '
+  ' `views` lists the library's tabs, each `Name` a libraryTab id, in the web client's
+  ' order where the web has the same tabs. A tab is its own view unless its entry names
+  ' another (`View`) with something fixed on it (`IsFavorite`): see gridQuery.viewOfTab.
+  ' `layouts` maps a view to the layouts it can be drawn in (`[{ Name }]`), for the
+  ' Layout page setting; a view with no entry has no choice.
+  '
   ' @param {object} parentItem - The library item being displayed
-  ' @return {object} Options object with views, sort, filter arrays
+  ' @return {object} Options object with views, layouts, sort, filter
   function getOptions(_parentItem as object) as object
     return {
       views: [],
+      layouts: {},
       sort: [],
       filter: []
     }
+  end function
+
+  ' `filters` without the entry named `name`, for a view whose list a tab covers.
+  protected function withoutFilter(filters as object, name as string) as object
+    kept = []
+    for each entry in filters
+      if LCase(textOrEmpty(entry.Name)) <> LCase(name) then kept.push(entry)
+    end for
+    return kept
+  end function
+
+  ' The layout a library draws in until one is chosen for it.
+  ' @return {string} a libraryLayout value
+  function getDefaultLayout() as string
+    return libraryLayout.COMFORTABLE
   end function
 
   ' Called when options dialog is closed
@@ -98,11 +124,10 @@ class GridPresenterBase
   '
   ' getOptions() receives the parent item but not the view, and some of its lists depend
   ' on which view is up (a Collections view sorts BoxSets, not movies), so the view is
-  ' read back off the host component. BaseGridView keeps `currentView` in step with its
-  ' own `m.view` (it sets it in loadInitialItems before SetUpOptions runs, and again in
-  ' optionsClosed before the reload), so this is the same string the load is using.
+  ' read back off the host component. BaseGridView keeps `currentView` in step with the
+  ' view on show (showTab sets it before any load), so this is the view the load is using.
   '
-  ' @return {string} for example "MoviesGrid", or "" when unknown
+  ' @return {string} a libraryTab id such as "movies", or "" when unknown
   protected function currentView() as string
     if not isValid(m.view) then return ""
     if not isValid(m.view.top) then return ""
@@ -134,7 +159,7 @@ class GridPresenterBase
   ' @param {object} task - The query: an AA of LoadItemsTask2 input fields, not the node
   '   (BaseGridView runs each load on a new node; see gridQuery.build). Assign fields only.
   ' @param {object} parentItem - The library item being displayed
-  ' @param {string} viewMode - Current view mode (for example "Movies", "MoviesGrid")
+  ' @param {string} viewMode - Current view, a libraryTab id (for example "movies")
   sub configureLoadTask(_task as object, _parentItem as object, _viewMode as string)
     ' Override in subclass
   end sub
@@ -144,7 +169,8 @@ class GridPresenterBase
   ' ============================================================================
 
   ' Returns grid layout configuration for the specified view mode
-  ' @param {string} viewMode - Current view mode
+  ' @param {string} viewMode - Current view, a libraryTab id
+  ' @param {string} layout - Current layout, a libraryLayout value
   ' @return {object} Grid config with properties:
   '   - translation: [x, y] grid position
   '   - itemSize: [width, height] size of each grid cell
@@ -152,7 +178,7 @@ class GridPresenterBase
   '   - numRows: string number of visible rows
   '   - numColumns: string number of columns
   '   - imageDisplayMode: "scaleToZoom" | "scaleToFit"
-  function getGridConfig(_viewMode as string) as object
+  function getGridConfig(_viewMode as string, _layout as string) as object
     return {
       translation: [96, 60],
       itemSize: [264, 396],
@@ -164,14 +190,15 @@ class GridPresenterBase
   end function
 
   ' Returns whether to show presentation info panel for the view mode
-  ' @param {string} viewMode - Current view mode
+  ' @param {string} viewMode - Current view, a libraryTab id
+  ' @param {string} layout - Current layout, a libraryLayout value
   ' @return {boolean} True to show info panel
-  function shouldShowPresentationInfo(_viewMode as string) as boolean
+  function shouldShowPresentationInfo(_viewMode as string, _layout as string) as boolean
     return false
   end function
 
   ' Returns whether the view mode is the TV Guide (EPG) instead of the item grid
-  ' @param {string} viewMode - Current view mode
+  ' @param {string} viewMode - Current view, a libraryTab id
   ' @return {boolean} True to show the TV Guide
   function showsTVGuide(_viewMode as string) as boolean
     return false
@@ -184,8 +211,9 @@ class GridPresenterBase
   ' Called when an item receives focus
   ' Override to update presentation info display
   ' @param {object} item - The focused ContentNode item
-  ' @param {string} currentView - The current view mode (for example "Movies", "MoviesGrid")
-  sub onItemFocused(_item as object, _currentView as string)
+  ' @param {string} currentView - The current view, a libraryTab id
+  ' @param {string} layout - The current layout, a libraryLayout value
+  sub onItemFocused(_item as object, _currentView as string, _layout as string)
     ' Override in subclass
   end sub
 

@@ -27,7 +27,7 @@ namespace tests
       reg.flush()
 
       ' WHEN: Migration runs
-      runRegistryUserMigrations([testUserId])
+      migrateMusicPresentationViews(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' THEN: View is migrated to ArtistsGrid
       reg = CreateObject("roRegistrySection", testUserId)
@@ -45,7 +45,7 @@ namespace tests
       reg.write(`display.${libraryId}.landing`, "artistspresentation")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateMusicPresentationViews(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read(`display.${libraryId}.landing`), "ArtistsGrid", "Should migrate lowercase to ArtistsGrid")
@@ -66,7 +66,7 @@ namespace tests
       reg.write(`display.${libraryId}.landing`, "AlbumArtistsPresentation")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateMusicPresentationViews(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read(`display.${libraryId}.landing`), "AlbumArtistsGrid", "Should migrate to AlbumArtistsGrid")
@@ -83,7 +83,7 @@ namespace tests
       reg.write(`display.${libraryId}.landing`, "albumartistspresentation")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateMusicPresentationViews(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read(`display.${libraryId}.landing`), "AlbumArtistsGrid", "Should migrate lowercase to AlbumArtistsGrid")
@@ -108,7 +108,7 @@ namespace tests
       reg.write(`display.${library3}.landing`, "Albums") ' Should not change
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateMusicPresentationViews(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read(`display.${library1}.landing`), "ArtistsGrid", "Library 1 should migrate")
@@ -141,7 +141,9 @@ namespace tests
       reg3.write(`display.${libraryId}.landing`, "ArtistsGrid") ' Already grid view
       reg3.flush()
 
-      runRegistryUserMigrations([user1, user2, user3])
+      migrateMusicPresentationViews(CreateObject("roRegistrySection", user1), user1)
+      migrateMusicPresentationViews(CreateObject("roRegistrySection", user2), user2)
+      migrateMusicPresentationViews(CreateObject("roRegistrySection", user3), user3)
 
       reg1 = CreateObject("roRegistrySection", user1)
       m.assertEqual(reg1.read(`display.${libraryId}.landing`), "ArtistsGrid", "User 1 should migrate")
@@ -168,7 +170,7 @@ namespace tests
       reg.write(`display.${libraryId}.landing`, "ArtistsGrid")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateMusicPresentationViews(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read(`display.${libraryId}.landing`), "ArtistsGrid", "Should remain unchanged")
@@ -185,7 +187,7 @@ namespace tests
       reg.write(`display.${libraryId}.landing`, "AlbumArtistsGrid")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateMusicPresentationViews(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read(`display.${libraryId}.landing`), "AlbumArtistsGrid", "Should remain unchanged")
@@ -202,7 +204,7 @@ namespace tests
       reg.write(`display.${libraryId}.landing`, "Albums")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateMusicPresentationViews(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read(`display.${libraryId}.landing`), "Albums", "Should remain unchanged")
@@ -219,7 +221,7 @@ namespace tests
       reg.write(`display.${libraryId}.landing`, "Genres")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateMusicPresentationViews(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read(`display.${libraryId}.landing`), "Genres", "Should remain unchanged")
@@ -236,7 +238,7 @@ namespace tests
       reg.write(`display.${libraryId}.landing`, "Movies")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateMusicPresentationViews(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read(`display.${libraryId}.landing`), "Movies", "Movie views should not be affected")
@@ -260,7 +262,7 @@ namespace tests
       reg.write(`display.${libraryId}.filter`, "Favorites")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateMusicPresentationViews(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read(`display.${libraryId}.landing`), "ArtistsGrid", "Landing view should migrate")
@@ -285,7 +287,7 @@ namespace tests
       reg.write(`display.${libraryId}.sortField`, "SortName")
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateMusicPresentationViews(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertFalse(reg.exists(`display.${libraryId}.landing`), "Landing view should not be created")
@@ -305,7 +307,7 @@ namespace tests
       reg.write(`display.${library2}.landing`, "AlbumArtistsPresentation") ' Mixed case
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateMusicPresentationViews(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertEqual(reg.read(`display.${library1}.landing`), "ArtistsGrid", "All caps should migrate")
@@ -322,7 +324,7 @@ namespace tests
       ' No display settings at all
       reg.flush()
 
-      runRegistryUserMigrations([testUserId])
+      migrateMusicPresentationViews(CreateObject("roRegistrySection", testUserId), testUserId)
 
       ' Should complete without errors
       reg = CreateObject("roRegistrySection", testUserId)
@@ -347,8 +349,9 @@ namespace tests
       runRegistryUserMigrations([testUserId])
 
       reg = CreateObject("roRegistrySection", testUserId)
-      ' Should remain unchanged (migration didn't run)
-      m.assertEqual(reg.read(`display.${libraryId}.landing`), "ArtistsPresentation", "Should not migrate")
+      ' This block didn't run, so the name reaches the library tab migration unmapped, which
+      ' keeps a name it does not recognize as the default tab
+      m.assertEqual(reg.read(`display.${libraryId}.defaultTab`), "ArtistsPresentation", "Should not migrate")
     end function
 
     @it("runs migration for version v1.9.0")
@@ -365,7 +368,10 @@ namespace tests
       runRegistryUserMigrations([testUserId])
 
       reg = CreateObject("roRegistrySection", testUserId)
-      m.assertEqual(reg.read(`display.${libraryId}.landing`), "AlbumArtistsGrid", "Should migrate for v1.9.0")
+      ' The runner continues past this block to the library tab migration, which keeps no
+      ' default tab for music's own default and deletes the saved view
+      m.assertFalse(reg.exists(`display.${libraryId}.landing`), "Should migrate for v1.9.0")
+      m.assertFalse(reg.exists(`display.${libraryId}.defaultTab`), "Album Artists is music's own default")
     end function
 
     @it("runs migration for old version v1.5.0")
@@ -382,7 +388,8 @@ namespace tests
       runRegistryUserMigrations([testUserId])
 
       reg = CreateObject("roRegistrySection", testUserId)
-      m.assertEqual(reg.read(`display.${libraryId}.landing`), "ArtistsGrid", "Should migrate for v1.5.0")
+      ' The runner continues past this block, so the value read is the chain's end: the default tab
+      m.assertEqual(reg.read(`display.${libraryId}.defaultTab`), libraryTab.ARTISTS, "Should migrate for v1.5.0")
     end function
 
   end class

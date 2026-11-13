@@ -105,9 +105,6 @@
     <field id="homeSection8" type="string" alwaysNotify="true" />
     <field id="homeSection9" type="string" alwaysNotify="true" />
 
-    <!-- Display Settings -->
-    <field id="displayLiveTvLanding" type="string" alwaysNotify="true" />
-
     <!-- Display Settings (nested by library ID) -->
     <field id="displaySettings" type="assocarray" alwaysNotify="true" />
 

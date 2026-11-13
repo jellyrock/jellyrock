@@ -437,6 +437,62 @@ namespace tests
       m.assertTrue(high.panel.y + high.panel.height <= 400 - ANCHOR_GAP)
     end function
 
+    ' A button in the overhang row has nothing above it. The anchor is a box of
+    ' that row's shape, near the top right.
+    @it("opens BELOW an anchor at the top, leaving ANCHOR_GAP under it")
+    function _()
+      layout = computeDialogLayout({
+        panelWidth: 402,
+        bodyHeight: 162,
+        anchor: { x: 1596, y: 27, width: 78, height: 78 }
+      })
+
+      gap = layout.panel.y - (27 + 78)
+      m.assertFalse(layout.overflows)
+      m.assertTrue(gap >= ANCHOR_GAP, "gap " + gap.toStr() + " is tighter than ANCHOR_GAP")
+      m.assertTrue(gap < ANCHOR_GAP + PIXEL_GRID, "gap " + gap.toStr() + " is more than a snap wider than ANCHOR_GAP")
+      m.assertEqual(layout.panel.y mod PIXEL_GRID, 0)
+    end function
+
+    @it("bounds a panel below its anchor by the room BELOW it")
+    function _()
+      layout = computeDialogLayout({
+        panelWidth: 402,
+        bodyHeight: 2000,
+        anchor: { x: 1596, y: 27, width: 78, height: 78 }
+      })
+
+      m.assertTrue(layout.overflows)
+      m.assertTrue(layout.panel.y >= 27 + 78 + ANCHOR_GAP)
+      m.assertTrue(layout.panel.y + layout.panel.height <= 1080 - PANEL_PADDING)
+    end function
+
+    ' Without a `height` the panel has no bottom edge to start under, so it stays
+    ' above however little room that leaves.
+    @it("never opens below an anchor that passes no height")
+    function _()
+      layout = computeDialogLayout({
+        panelWidth: 402,
+        bodyHeight: 162,
+        anchor: { x: 1596, y: 300, width: 78 }
+      })
+
+      m.assertTrue(layout.panel.y + layout.panel.height <= 300 - ANCHOR_GAP)
+    end function
+
+    ' Above is preferred: a panel that fits there stays there even when the
+    ' band below is the larger one.
+    @it("stays ABOVE a mid-screen anchor when the panel fits there")
+    function _()
+      layout = computeDialogLayout({
+        panelWidth: 402,
+        bodyHeight: 120,
+        anchor: { x: 1168, y: 400, width: 136, height: 60 }
+      })
+
+      m.assertTrue(layout.panel.y + layout.panel.height <= 400 - ANCHOR_GAP)
+    end function
+
     ' An anchor low on the screen leaves more room above it than a centred panel
     ' is ever allowed to use. Without this an overflow menu would be a
     ' full-height panel that happens to be right-aligned.

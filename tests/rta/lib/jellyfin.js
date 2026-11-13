@@ -132,6 +132,42 @@ export function postJson(urlStr, headers, bodyObj) {
 }
 
 /**
+ * Mark (`POST`) or unmark (`DELETE`) `itemId` as a favorite of the session's user through the
+ * server API, so a spec can set the state the app then shows and put it back afterwards.
+ * Resolves on a 2xx, and throws a typed `JellyfinRequestError` otherwise.
+ *
+ * The route follows the app's own choice (`ApiClient.BuildMarkFavoriteRequest`): from 10.9
+ * (apiVersion 2, the boundary `resolveApiVersion()` draws) it is `/UserFavoriteItems/{id}`,
+ * before that the legacy `/Users/{userId}/FavoriteItems/{id}`, which 10.7 and 10.8 serve alone.
+ */
+export async function setFavorite(session, itemId, isFavorite) {
+  const info = await getJson(`${session.serverUrl}/System/Info/Public`, {});
+  const [maj, min] = String(info?.Version ?? '')
+    .split('.')
+    .map((n) => Number.parseInt(n, 10));
+  const isV2 =
+    Number.isFinite(maj) && Number.isFinite(min) && (maj > 10 || (maj === 10 && min >= 9));
+  const urlStr = isV2
+    ? `${session.serverUrl}/UserFavoriteItems/${itemId}?userId=${session.userId}`
+    : `${session.serverUrl}/Users/${session.userId}/FavoriteItems/${itemId}`;
+  const url = new URL(urlStr);
+  const mod = url.protocol === 'http:' ? http : https;
+  const method = isFavorite ? 'POST' : 'DELETE';
+  return new Promise((resolve, reject) => {
+    const req = mod.request(url, { method, headers: tokenHeader(session.token) }, (res) => {
+      res.resume();
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) resolve();
+        else
+          reject(fail(new JellyfinRequestError(method, urlStr, res.statusCode, res.statusMessage)));
+      });
+    });
+    req.on('error', (e) => reject(fail(new JellyfinRequestError(method, urlStr, null, null, e))));
+    req.end();
+  });
+}
+
+/**
  * Whether the server can push a command (a SyncPlay group update, a remote-control
  * command) to the Roku. Over http:// the app opens the session socket; over https:// Roku
  * has no socket TLS, so the app needs the companion plugin's long poll, probed at its
@@ -425,12 +461,41 @@ export async function firstMovie(session) {
 }
 
 /**
+ * Set (`value` a web LibraryTab id) or clear (`value` `''`, the web's own "default") the
+ * default tab the user picked for a library in the web client: `landing-<key>` in the
+ * `usersettings` display preferences (client `emby`), where `key` is the library id, or
+ * `livetv` for Live TV. Fetches the whole record and posts it back with that one key
+ * changed, as the web does, so nothing else in it moves. Returns the value it replaced
+ * (`undefined` when there was none), for the caller to put back.
+ *
+ * The app reads these preferences at sign-in, so a spec relaunches after setting one.
+ * It writes to the server's account, not the device: run it only against a server of
+ * your own (`isPrivateServer` in `config.js`), never the shared public demo.
+ */
+export async function setServerLanding(session, key, value) {
+  const query = new URLSearchParams({ userId: session.userId, client: 'emby' });
+  const urlStr = `${session.serverUrl}/DisplayPreferences/usersettings?${query}`;
+  const headers = tokenHeader(session.token);
+  const prefs = await getJson(urlStr, headers);
+  const prefKey = `landing-${key}`;
+  const customPrefs = { ...(prefs?.CustomPrefs ?? {}) };
+  const previous = customPrefs[prefKey];
+  customPrefs[prefKey] = value;
+  await postJson(
+    urlStr,
+    { ...headers, 'Content-Type': 'application/json' },
+    { ...prefs, CustomPrefs: customPrefs },
+  );
+  return previous;
+}
+
+/**
  * Fetch the user's libraries, resolved at RUNTIME so we never hardcode a library
  * GUID (those are minted when a library is created and die if it's recreated /
  * the server is rebuilt). Returns [{ name, collectionType, id }]; callers key off
  * the STABLE collectionType ("movies" | "tvshows" | "music" | "playlists" | ...)
- * and read the current id from here. Used to seed a deterministic landing view
- * (display.<id>.landing) per library.
+ * and read the current id from here. Used to seed a deterministic default tab
+ * (display.<id>.defaultTab) per library.
  */
 export async function getLibraries(session) {
   const url = `${session.serverUrl}/Users/${session.userId}/Views`;

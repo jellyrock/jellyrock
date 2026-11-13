@@ -150,7 +150,7 @@ it("Play on a song's details opens the audio player", async () => {
   const landing = await seedLibraryLanding(
     ctx.session,
     libraryIdFor(ctx.libraries, 'music'),
-    'Albums',
+    'albums',
   );
   await hardRelaunch();
   await assertSeedTookEffect(expectedServer, 'playback-start', { landing });

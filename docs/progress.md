@@ -951,6 +951,36 @@ Closes after a measurement on the real path: a capture or an ODC read of the ove
 
 A SyncPlay Buffering report takes 0.35 to 0.6 s to reach the server's handling: the anchor log line (`SyncPlayManager.anchorGroupPause`, "group paused for this member's buffering", `reportLatencyMs`) measured 345 to 577 ms over eight reloads on a Stick 4K against a local Jellyfin 12.4.0 on a wired LAN, 2026-11-09. The group plays on for that long after this member stalls or reloads before the server pauses it, and that distance is what the drift correction then closes after the `Unpause`. The report goes out through the fire-and-forget side-effect queue (`SubmitSideEffect`, `SideEffectTask`), so the time may be the queue's, the network's or the server's. Measure where it goes (a timestamp when the request leaves the task, against the anchor's arrival); if the queue holds it, give Buffering and Ready a path that sends at once. Not now: the anchor (decision `syncplay-reload-starts-where-group-is`) keeps the Ready exact whatever the latency, so this is a quality gain, not a correctness fix.
 
+#### The photo viewer's Slideshow and Random settings should mean auto-advance and shuffle, so every combination works `[fid: photo-viewer-shuffle-autoplay-model]` `[captured 2026-11-05]`
+
+The photo viewer treats Slideshow and Random as two advance modes, and Slideshow wins when both are on: `PhotoDetails.nextSlide` checks `m.slideshow` first, and Random picks a fresh random index on each tick (repeats allowed) while Left and Right still walk the album in order. The library-tab work (ADR 0056) moved the two toggles to **Settings → User Interface → Libraries → Photos** (`photosSlideshow`, `photosRandom`), where a user can turn both on, so the Random Order description now says it has no effect while Slideshow is on. Album Shuffle (`QueueManager.launchPhotoAlbum`) sets both flags, so it probably plays in order today; not checked on a device.
+
+The agreed model: Slideshow means start playing automatically (off opens the album paused on the first photo; Play already pauses and resumes), and Random means Shuffle: shuffle the album's order once, no repeats, and have the slideshow and Left/Right walk that order. Every combination then means something, and the registry keys stay as they are. Close it by changing `PhotoDetails` to that model with a spec, rewording the two descriptions in `settings/settings.json` and `docs/user/features/photos.md`, and checking album Shuffle on a device. Why not now: it changes the viewer's behavior and needs a photo-album fixture (see `slideshow-wait-untested-no-album`).
+
+#### A setting changed in Settings does not reach the screen under it unless that screen re-reads it by hand `[fid: settings-change-reaches-covered-screen]` `[captured 2026-11-12]`
+
+Settings can be opened from any screen, and a setting changed there reaches the screen under it only where that screen reads it again by hand. A theme or language change rebuilds the screen (`settings.performSettingsExit`, `JRScene.reloadRoutedHome`); any other change goes back to a screen that resumes as it was. `BaseGridView` reads `itemGridShowItemCount` and `itemGridTitles` once in `init`, so changing either from a library does nothing until the library is reopened; `reapplyPresentationBackdropSetting` in its `onScreenShown` is the one hand-wired exception. Other screens were not checked. Found 2026-11-12 while building page settings for the library screens.
+
+Agreed shape: one more `JRScreen` function beside `pageSettingsEntries` and `onPageSettingChanged`, `onSettingsChanged(names)`. `JellyfinUserSettings.onSettingChanged` already sees every setting write, so it notes which changed, and the base screen hands a screen the names changed since it was last shown; the screen applies what it cares about in place and keeps its scroll position. First measure which settings each screen type reads only at `init`. Not now because it touches every screen type and is its own pull request to `main`, apart from the library screens branch.
+
+#### A music library has no Favorites tab: build one as rows per kind `[fid: music-library-favorites-tab]` `[captured 2026-11-12]`
+
+A movie or TV library has a Favorites tab since the library tabs work: its content tab's view with favorites fixed on (decision `library-tab-view-plus-fixed`). A music library has no one content tab (Albums, Album Artists and Artists are peers), so it got no tab and keeps the Favorites filter on each of its tabs.
+
+Build it as rows per kind (albums, album artists, artists, songs), the way Home's Favorites tab is (`FavoritesRows`), not as one grid. Not done with the tabs work because it is a new surface with its own loading, not a view with a filter fixed on. To close: `MusicPresenter.getOptions()` lists a `favorites` tab, the grid view draws it as rows, the Favorites filter leaves the lists it covers, and `docs/user/features/favorites.md` says so.
+
+#### The TV guide filtered to Favorites does not refresh after a channel's favorite changes elsewhere `[fid: guide-favorites-filter-goes-stale]` `[captured 2026-11-13]`
+
+A Live TV library's guide, filtered to Favorites, keeps its old channel list after a channel is added to or removed from favorites elsewhere (for example from the player while watching it) and the viewer comes back. The favorites counter (decision `favorite-toggles-bump-version`) cannot cover it: `BaseGridView.favoritesStale()` reads `m.gridQuery`, which the guide path never builds, and a reload would do nothing anyway, because `BaseGridView.showTVGuide()` returns early when the guide already exists. Found by reading the code on 2026-11-12, not run on a device.
+
+To close: give the guide a refresh of its own channel list (`Schedule` already reloads channels when its filter changes), call it on resume when the guide's filter is Favorites and `favoritesVersion` moved, and add an RTA case that toggles a channel favorite through the server and checks the guide on return.
+
+#### Home's Favorites tab refetches on every return even when no favorite changed `[fid: home-favorites-skip-unchanged-reload]` `[captured 2026-11-13]`
+
+Home's Favorites tab reloads from the server on every return to Home (`Home.refresh()` calls `FavoritesRows.loadFavorites()`), even when no favorite changed. Since decision `favorite-toggles-bump-version`, every favorite toggle bumps `JRScene.favoritesVersion` through `favorites.request()`, so Home could skip the request when the counter has not moved since its last load, as `BaseGridView.favoritesStale()` does for the library grids. The win is one fewer request per return to Home while its Favorites tab is up; `FavoritesRows` already updates rows in place, so the viewer's place is kept either way.
+
+Not done with the library fix because Home works correctly today; this is a cost saving. To close: record the counter when `FavoritesRows` loads, skip `loadFavorites()` in `Home.refresh()` when it has not moved, and check that a favorite toggled from a details screen still shows on return to Home.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -1222,6 +1252,10 @@ An H.264 source caps the H.264 codec profile at `1920x1080` in `buildPlaybackInf
 #### `mediaNumber` loses the low digits of large values `[fid: media-number-long-precision]` `[captured 2026-11-04]`
 
 `mediaNumber` in `source/utils/misc.bs` reads a long integer through a float, so a large value loses its low digits (94848001 reads as 94848000, found 2026-11-04). It is harmless for the values it serves today, but wrong for bitrate and byte values; `reencodeCheck.bitsPerSecond` was added to avoid it. Decide whether `mediaNumber` should keep integers whole, and check its callers.
+
+#### Write a library's default tab back to the server's display preferences `[fid: library-default-tab-write-back]` `[captured 2026-11-13]`
+
+The library screens' default tab reads the web client's pick (`landing-<libraryId>`, or `landing-livetv`, in the `usersettings` display preferences, client `emby`) at sign-in, and keeps a Roku pick in the registry (`display.<libraryId>.defaultTab`, decision `library-default-tab-precedence`). Nothing is written back, so a pick made in the gear menu's Default tab entry stays on this Roku. Writing it back would make one pick follow the user across clients, but it would also change what the web opens on, so it needs a design call first: whether the Roku's pick replaces the web's or stays an override, and what the gear entry's first option then means. A write would POST the whole `DisplayPreferences` record with one key changed, as the web does. Deferred from piece 07 of the library screens work, by design.
 
 ### api
 

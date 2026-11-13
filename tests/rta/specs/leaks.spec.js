@@ -131,7 +131,7 @@ beforeAll(async () => {
 /**
  * Land on a seeded Home, run `walk`, and report the unparented-node census.
  *
- * Seeds the Movies landing as well as Home: `display.<id>.landing` is registry-persisted
+ * Seeds the Movies landing as well as Home: `display.<id>.defaultTab` is registry-persisted
  * and survives the relaunch, so without it these walks inherit whichever view another
  * spec left behind, and a Genres landing renders `#genreList`, not the `#itemGrid` the
  * walks drive. A no-op when the server has no movies library, which the walk then reports

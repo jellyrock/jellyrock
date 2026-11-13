@@ -66,17 +66,6 @@ namespace tests
       m.assertFalse(collectionsView.offeredFor(invalid, "12.0.0"))
     end function
 
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("VIEW_NAME")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("is the one spelling the presenters, the query branch and the title branch share")
-    ' Every site compares it under LCase(), so the constant's own casing is what a saved
-    ' `landing` setting carries. It must stay stable or a saved view stops restoring.
-    function _()
-      m.assertEqual(collectionsView.VIEW_NAME, "Collections")
-    end function
-
   end class
 
 end namespace

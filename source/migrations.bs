@@ -1,3 +1,4 @@
+import "pkg:/source/GridView/libraryTab.bs"
 import "pkg:/source/utils/conditional.bs"
 import "pkg:/source/utils/misc.bs"
 
@@ -29,6 +30,11 @@ const THEME_PRESET_MIGRATION_VERSION = "2.5.0"
 
 ' client version when homeSection settings were removed from registry (now server-authoritative via DisplayPreferences)
 const HOMESECTION_CLEANUP_VERSION = "2.13.0"
+
+' client version when a library's saved view became its default tab (a libraryTab id) and
+' the grid's layout (presentation or grid) became a setting of its own. The lowest version above the
+' last release (3.3.1), so the next release runs it whatever number it takes.
+const LIBRARY_TAB_MIGRATION_VERSION = "3.3.2"
 
 ' Run all necessary registry migrations on the "global" JellyRock registry section
 sub runGlobalMigrations()
@@ -128,311 +134,431 @@ sub runRegistryUserMigrations(targetSections = invalid as dynamic)
     ' SETTINGS_MIGRATION_VERSION - Rename dotted settings to camelCase
     if isValid(lastRunVersion) and not versionChecker(lastRunVersion, SETTINGS_MIGRATION_VERSION)
       m.wasMigrated = true
-
-      ' Define user setting migrations (old dotted name to new camelCase name)
-      ' Single source of truth for migration mapping
-      migrations = {
-        ' Auth settings (stored per-user for multi-user support)
-        "token": "authToken",
-        "primaryimagetag": "primaryImageTag",
-
-        ' Playback settings
-        "playback.bitrate.maxlimited": "playbackBitrateMaxLimited",
-        "playback.bitrate.limit": "playbackBitrateLimit",
-        "playback.cinemamode": "playbackCinemaMode",
-        "playback.subs.custom": "playbackSubsCustom",
-        "playback.resolution.max": "playbackResolutionMax",
-        "playback.nextupbuttonseconds": "playbackNextUpButtonSeconds",
-        "playback.playnextepisode": "playbackPlayNextEpisode",
-        "playback.preferredAudioCodec": "playbackPreferredAudioCodec",
-        "playback.subs.onlytext": "playbackSubsOnlyText",
-        "playback.mpeg2": "playbackMpeg2",
-        "playback.mpeg4": "playbackMpeg4",
-        "playback.tryDirect.h264ProfileLevel": "playbackTryDirectH264ProfileLevel",
-        "playback.tryDirect.hevcProfileLevel": "playbackTryDirectHevcProfileLevel",
-
-        ' UI settings
-        "ui.general.episodeimagesnextup": "uiGeneralEpisodeImages",
-        "ui.font.fallback": "uiFontFallback",
-        "ui.design.hideclock": "uiDesignHideClock",
-        "ui.details.maxdaysnextup": "uiDetailsMaxDaysNextUp",
-        "ui.details.enablerewatchingnextup": "uiDetailsEnableRewatchingNextUp",
-        "ui.row.layout": "uiRowLayout",
-        "ui.home.splashBackground": "uiHomeSplashBackground",
-        "ui.home.useWebSectionArrangement": "uiHomeUseWebArrangement",
-        "ui.details.hidetagline": "uiDetailsHideTagline",
-        "ui.movies.showRatings": "uiMoviesShowRatings",
-        "ui.tvshows.blurunwatched": "uiTvShowsBlurUnwatched",
-        "ui.tvshows.disableCommunityRating": "uiTvShowsDisableCommunityRating",
-        "ui.tvshows.disableUnwatchedEpisodeCount": "uiTvShowsDisableUnwatchedCount",
-
-        ' Item grid settings
-        "itemgrid.showItemCount": "itemGridShowItemCount",
-        "itemgrid.gridTitles": "itemGridTitles",
-        "itemgrid.reset": "itemGridReset",
-        "itemgrid.movieDefaultView": "itemGridMovieDefaultView",
-
-        ' Home section settings
-        "homesection0": "homeSection0",
-        "homesection1": "homeSection1",
-        "homesection2": "homeSection2",
-        "homesection3": "homeSection3",
-        "homesection4": "homeSection4",
-        "homesection5": "homeSection5",
-        "homesection6": "homeSection6",
-
-        ' Display settings
-        "display.livetv.landing": "displayLiveTvLanding"
-      }
-
-      ' Migrate each setting: read, write the new name, delete the old
-      migratedCount = 0
-      for each oldName in migrations
-        if reg.exists(oldName)
-          if migratedCount = 0
-            print `Migrating user settings to v${SETTINGS_MIGRATION_VERSION} for userid: ${section}`
-          end if
-          value = reg.read(oldName)
-          newName = migrations[oldName]
-          reg.write(newName, value)
-          reg.delete(oldName)
-          migratedCount++
-        end if
-      end for
-
-      if migratedCount > 0
-        print `Successfully migrated ${migratedCount} settings for user ${section}`
-      end if
-
-      ' Delete server policy keys that should never be in registry
-      ' These were incorrectly stored as user settings but are server-authoritative
-      serverPolicyKeys = ["liveTvCanRecord", "contentCanDelete", "livetv.canrecord", "content.candelete"]
-      deletedCount = 0
-      for each key in serverPolicyKeys
-        if reg.exists(key)
-          reg.delete(key)
-          deletedCount++
-        end if
-      end for
-
-      if deletedCount > 0
-        print `Deleted ${deletedCount} server policy keys from user ${section}`
-      end if
-
-      reg.flush()
+      renameUserSettingsToCamelCase(reg, section)
     end if
 
     ' AUDIO_CODEC_MIGRATION_VERSION - Rename and migrate audio codec preference
     if isValid(lastRunVersion) and not versionChecker(lastRunVersion, AUDIO_CODEC_MIGRATION_VERSION)
       m.wasMigrated = true
-
-      ' Rename playbackPreferredAudioCodec to playbackPreferredMultichannelCodec
-      ' and migrate deprecated values (auto, aac) to new default (eac3)
-      oldSettingName = "playbackPreferredAudioCodec"
-      newSettingName = "playbackPreferredMultichannelCodec"
-
-      if reg.exists(oldSettingName)
-        print `Migrating audio codec settings to v${AUDIO_CODEC_MIGRATION_VERSION} for userid: ${section}`
-        oldValue = reg.read(oldSettingName)
-
-        ' Migrate deprecated values (auto, aac) to eac3, otherwise preserve existing value
-        newValue = "eac3"
-        if isValid(oldValue) and oldValue <> "" and oldValue <> "auto" and oldValue <> "aac"
-          ' User has a valid preference (ac3, eac3, dts) or custom value - preserve it
-          newValue = oldValue
-        end if
-
-        reg.write(newSettingName, newValue)
-        reg.delete(oldSettingName)
-        print `Migrated ${oldSettingName}='${oldValue}' to ${newSettingName}='${newValue}'`
-        reg.flush()
-      else
-        print `No audio codec migration needed for userid: ${section} (setting not found)`
-      end if
+      migrateAudioCodecSetting(reg, section)
     end if
 
     ' EMPTY_IMAGE_TAG_CLEANUP_VERSION - Remove empty primaryImageTag entries
     if isValid(lastRunVersion) and not versionChecker(lastRunVersion, EMPTY_IMAGE_TAG_CLEANUP_VERSION)
       m.wasMigrated = true
-
-      ' Delete empty or whitespace-only primaryImageTag values
-      ' Empty tags were incorrectly stored by buggy code and prevent placeholder images from showing
-      settingName = "primaryImageTag"
-
-      if reg.exists(settingName)
-        value = reg.read(settingName)
-
-        ' Check if value is empty or whitespace-only (using same logic as isValidAndNotEmpty)
-        if not isValid(value) or value.trim() = ""
-          print `Cleaning up empty primaryImageTag for userid: ${section}`
-          reg.delete(settingName)
-          reg.flush()
-          print `Deleted empty primaryImageTag value`
-        else
-          print `No primaryImageTag cleanup needed for userid: ${section} (value is valid)`
-        end if
-      else
-        print `No primaryImageTag cleanup needed for userid: ${section} (setting not found)`
-      end if
+      removeEmptyPrimaryImageTag(reg, section)
     end if
 
     ' SPLASH_SETTING_REMOVAL_VERSION - Remove deprecated uiHomeSplashBackground setting
     if isValid(lastRunVersion) and not versionChecker(lastRunVersion, SPLASH_SETTING_REMOVAL_VERSION)
       m.wasMigrated = true
-
-      ' Delete deprecated splash background user setting
-      ' Splash now always displays on UserSelect when server has it enabled
-      settingName = "uiHomeSplashBackground"
-
-      if reg.exists(settingName)
-        print `Removing deprecated ${settingName} setting for userid: ${section}`
-        reg.delete(settingName)
-        reg.flush()
-        print `Deleted deprecated splash background setting`
-      else
-        print `No splash background setting removal needed for userid: ${section} (setting not found)`
-      end if
+      removeSplashBackgroundSetting(reg, section)
     end if
 
     ' GLOBAL_SETTINGS_CLEANUP_VERSION - Remove globalSplashScreen from user registry sections
     if isValid(lastRunVersion) and not versionChecker(lastRunVersion, GLOBAL_SETTINGS_CLEANUP_VERSION)
       m.wasMigrated = true
-
-      ' globalSplashScreen was incorrectly saved to user registry sections due to a bug in radioSettingChanged()
-      ' This setting should exist only in the global "JellyRock" or "test-global" section
-      ' Delete it from user sections to prevent confusion and ensure single source of truth
-      settingName = "globalSplashScreen"
-
-      if reg.exists(settingName)
-        print `Cleaning up incorrectly saved ${settingName} for userid: ${section}`
-        reg.delete(settingName)
-        reg.flush()
-        print `Deleted ${settingName} from user ${section}`
-      else
-        print `No global splash screen cleanup needed for userid: ${section} (setting not found)`
-      end if
+      removeGlobalSplashScreenFromUser(reg, section)
     end if
 
     ' MUSIC_VIEW_MIGRATION_VERSION - Migrate music presentation views to grid views
     if isValid(lastRunVersion) and not versionChecker(lastRunVersion, MUSIC_VIEW_MIGRATION_VERSION)
       m.wasMigrated = true
-
-      ' Iterate through all library display settings in registry
-      ' Registry keys are stored as "display.{libraryId}.landing" format
-      keyPrefix = "display."
-      keySuffix = ".landing"
-      allKeys = reg.GetKeyList()
-      migratedCount = 0
-
-      for each key in allKeys
-        ' Check if this is a library landing view setting
-        if key.left(keyPrefix.len()) = keyPrefix and key.right(keySuffix.len()) = keySuffix
-          currentValue = reg.read(key)
-
-          ' Check if value is a presentation view that needs migration
-          if isValid(currentValue) and currentValue <> ""
-            valueLower = LCase(currentValue)
-            newValue = invalid
-
-            if valueLower = "artistspresentation"
-              newValue = "ArtistsGrid"
-            else if valueLower = "albumartistspresentation"
-              newValue = "AlbumArtistsGrid"
-            end if
-
-            ' Migrate if needed
-            if isValid(newValue)
-              if migratedCount = 0
-                print `Migrating music presentation views to v${MUSIC_VIEW_MIGRATION_VERSION} for userid: ${section}`
-              end if
-              reg.write(key, newValue)
-              migratedCount++
-              print `Migrated ${key}: '${currentValue}' → '${newValue}'`
-            end if
-          end if
-        end if
-      end for
-
-      if migratedCount > 0
-        reg.flush()
-        print `Successfully migrated ${migratedCount} music view settings for user ${section}`
-      else
-        print `No music view migration needed for userid: ${section} (no presentation views found)`
-      end if
+      migrateMusicPresentationViews(reg, section)
     end if
 
     ' TV_SEASON_STRAIGHT_TO_EPISODES_REMOVAL_VERSION - Remove uiTvShowsGoStraightToEpisodes (season now uses ItemDetails)
     if isValid(lastRunVersion) and not versionChecker(lastRunVersion, TV_SEASON_STRAIGHT_TO_EPISODES_REMOVAL_VERSION)
       m.wasMigrated = true
-
-      ' Delete both forms: camelCase (used since v1.1.0) and old dotted alias
-      ' (handles users who jumped directly from v1.0.x to v2.0.0 without a v1.1.x run)
-      settingNames = ["uiTvShowsGoStraightToEpisodes", "ui.tvshows.goStraightToEpisodeListing"]
-      deletedAny = false
-      for each settingName in settingNames
-        if reg.exists(settingName)
-          print `Removing obsolete ${settingName} for userid: ${section}`
-          reg.delete(settingName)
-          deletedAny = true
-          print `Deleted ${settingName} from user ${section}`
-        end if
-      end for
-
-      if deletedAny
-        reg.flush()
-      else
-        print `No uiTvShowsGoStraightToEpisodes cleanup needed for userid: ${section} (setting not found)`
-      end if
+      removeTvSeasonStraightToEpisodes(reg, section)
     end if
 
     ' THEME_PRESET_MIGRATION_VERSION - Set uiTheme=custom for users with existing custom theme colors
     if isValid(lastRunVersion) and not versionChecker(lastRunVersion, THEME_PRESET_MIGRATION_VERSION)
       m.wasMigrated = true
-
-      ' If user already has uiTheme set, skip (idempotent)
-      if not reg.exists("uiTheme")
-        ' Check if any custom theme color settings exist in registry
-        themeColorKeys = ["uiThemeColorPrimary", "uiThemeColorSecondary", "uiThemeColorBackgroundPrimary", "uiThemeColorBackgroundSecondary", "uiThemeColorTextPrimary", "uiThemeColorTextSecondary", "uiThemeColorTextDisabled"]
-        hasCustomColors = false
-        for each colorKey in themeColorKeys
-          if reg.exists(colorKey)
-            hasCustomColors = true
-            exit for
-          end if
-        end for
-
-        if hasCustomColors
-          print `Setting uiTheme=custom for userid: ${section} (existing custom theme colors detected)`
-          reg.write("uiTheme", "custom")
-          reg.flush()
-        else
-          print `No theme preset migration needed for userid: ${section} (no custom colors found)`
-        end if
-      else
-        print `No theme preset migration needed for userid: ${section} (uiTheme already set)`
-      end if
+      migrateThemePreset(reg, section)
     end if
 
     ' HOMESECTION_CLEANUP_VERSION - Delete homeSection0-6 (now server-authoritative via DisplayPreferences)
     if isValid(lastRunVersion) and not versionChecker(lastRunVersion, HOMESECTION_CLEANUP_VERSION)
       m.wasMigrated = true
+      removeHomeSectionKeys(reg, section)
+    end if
 
-      homeSectionKeys = ["homeSection0", "homeSection1", "homeSection2", "homeSection3", "homeSection4", "homeSection5", "homeSection6"]
-      deletedAny = false
-      for each key in homeSectionKeys
-        if reg.exists(key)
-          print `Removing stale ${key} for userid: ${section}`
-          reg.delete(key)
-          deletedAny = true
+    ' LIBRARY_TAB_MIGRATION_VERSION - Turn each library's saved view into its default tab and layout
+    if isValid(lastRunVersion) and not versionChecker(lastRunVersion, LIBRARY_TAB_MIGRATION_VERSION)
+      m.wasMigrated = true
+      migrateLibraryTabs(reg, section)
+    end if
+  end for
+end sub
+
+' SETTINGS_MIGRATION_VERSION - Rename dotted user settings to camelCase and delete server policy keys
+' @param reg The user's registry section
+' @param section The section name, for log lines
+sub renameUserSettingsToCamelCase(reg as object, section as string)
+  ' Define user setting migrations (old dotted name to new camelCase name)
+  ' Single source of truth for migration mapping
+  migrations = {
+    ' Auth settings (stored per-user for multi-user support)
+    "token": "authToken",
+    "primaryimagetag": "primaryImageTag",
+
+    ' Playback settings
+    "playback.bitrate.maxlimited": "playbackBitrateMaxLimited",
+    "playback.bitrate.limit": "playbackBitrateLimit",
+    "playback.cinemamode": "playbackCinemaMode",
+    "playback.subs.custom": "playbackSubsCustom",
+    "playback.resolution.max": "playbackResolutionMax",
+    "playback.nextupbuttonseconds": "playbackNextUpButtonSeconds",
+    "playback.playnextepisode": "playbackPlayNextEpisode",
+    "playback.preferredAudioCodec": "playbackPreferredAudioCodec",
+    "playback.subs.onlytext": "playbackSubsOnlyText",
+    "playback.mpeg2": "playbackMpeg2",
+    "playback.mpeg4": "playbackMpeg4",
+    "playback.tryDirect.h264ProfileLevel": "playbackTryDirectH264ProfileLevel",
+    "playback.tryDirect.hevcProfileLevel": "playbackTryDirectHevcProfileLevel",
+
+    ' UI settings
+    "ui.general.episodeimagesnextup": "uiGeneralEpisodeImages",
+    "ui.font.fallback": "uiFontFallback",
+    "ui.design.hideclock": "uiDesignHideClock",
+    "ui.details.maxdaysnextup": "uiDetailsMaxDaysNextUp",
+    "ui.details.enablerewatchingnextup": "uiDetailsEnableRewatchingNextUp",
+    "ui.row.layout": "uiRowLayout",
+    "ui.home.splashBackground": "uiHomeSplashBackground",
+    "ui.home.useWebSectionArrangement": "uiHomeUseWebArrangement",
+    "ui.details.hidetagline": "uiDetailsHideTagline",
+    "ui.movies.showRatings": "uiMoviesShowRatings",
+    "ui.tvshows.blurunwatched": "uiTvShowsBlurUnwatched",
+    "ui.tvshows.disableCommunityRating": "uiTvShowsDisableCommunityRating",
+    "ui.tvshows.disableUnwatchedEpisodeCount": "uiTvShowsDisableUnwatchedCount",
+
+    ' Item grid settings
+    "itemgrid.showItemCount": "itemGridShowItemCount",
+    "itemgrid.gridTitles": "itemGridTitles",
+    "itemgrid.reset": "itemGridReset",
+    "itemgrid.movieDefaultView": "itemGridMovieDefaultView",
+
+    ' Home section settings
+    "homesection0": "homeSection0",
+    "homesection1": "homeSection1",
+    "homesection2": "homeSection2",
+    "homesection3": "homeSection3",
+    "homesection4": "homeSection4",
+    "homesection5": "homeSection5",
+    "homesection6": "homeSection6",
+
+    ' Display settings
+    "display.livetv.landing": "displayLiveTvLanding"
+  }
+
+  ' Migrate each setting: read, write the new name, delete the old
+  migratedCount = 0
+  for each oldName in migrations
+    if reg.exists(oldName)
+      if migratedCount = 0
+        print `Migrating user settings to v${SETTINGS_MIGRATION_VERSION} for userid: ${section}`
+      end if
+      value = reg.read(oldName)
+      newName = migrations[oldName]
+      reg.write(newName, value)
+      reg.delete(oldName)
+      migratedCount++
+    end if
+  end for
+
+  if migratedCount > 0
+    print `Successfully migrated ${migratedCount} settings for user ${section}`
+  end if
+
+  ' Delete server policy keys that should never be in registry
+  ' These were incorrectly stored as user settings but are server-authoritative
+  serverPolicyKeys = ["liveTvCanRecord", "contentCanDelete", "livetv.canrecord", "content.candelete"]
+  deletedCount = 0
+  for each key in serverPolicyKeys
+    if reg.exists(key)
+      reg.delete(key)
+      deletedCount++
+    end if
+  end for
+
+  if deletedCount > 0
+    print `Deleted ${deletedCount} server policy keys from user ${section}`
+  end if
+
+  reg.flush()
+end sub
+
+' AUDIO_CODEC_MIGRATION_VERSION - Rename the audio codec preference and replace its deprecated values
+' @param reg The user's registry section
+' @param section The section name, for log lines
+sub migrateAudioCodecSetting(reg as object, section as string)
+  ' Rename playbackPreferredAudioCodec to playbackPreferredMultichannelCodec
+  ' and migrate deprecated values (auto, aac) to new default (eac3)
+  oldSettingName = "playbackPreferredAudioCodec"
+  newSettingName = "playbackPreferredMultichannelCodec"
+
+  if reg.exists(oldSettingName)
+    print `Migrating audio codec settings to v${AUDIO_CODEC_MIGRATION_VERSION} for userid: ${section}`
+    oldValue = reg.read(oldSettingName)
+
+    ' Migrate deprecated values (auto, aac) to eac3, otherwise preserve existing value
+    newValue = "eac3"
+    if isValid(oldValue) and oldValue <> "" and oldValue <> "auto" and oldValue <> "aac"
+      ' User has a valid preference (ac3, eac3, dts) or custom value - preserve it
+      newValue = oldValue
+    end if
+
+    reg.write(newSettingName, newValue)
+    reg.delete(oldSettingName)
+    print `Migrated ${oldSettingName}='${oldValue}' to ${newSettingName}='${newValue}'`
+    reg.flush()
+  else
+    print `No audio codec migration needed for userid: ${section} (setting not found)`
+  end if
+end sub
+
+' EMPTY_IMAGE_TAG_CLEANUP_VERSION - Delete an empty or whitespace-only primaryImageTag
+' @param reg The user's registry section
+' @param section The section name, for log lines
+sub removeEmptyPrimaryImageTag(reg as object, section as string)
+  ' Delete empty or whitespace-only primaryImageTag values
+  ' Empty tags were incorrectly stored by buggy code and prevent placeholder images from showing
+  settingName = "primaryImageTag"
+
+  if reg.exists(settingName)
+    value = reg.read(settingName)
+
+    ' Check if value is empty or whitespace-only (using same logic as isValidAndNotEmpty)
+    if not isValid(value) or value.trim() = ""
+      print `Cleaning up empty primaryImageTag for userid: ${section}`
+      reg.delete(settingName)
+      reg.flush()
+      print `Deleted empty primaryImageTag value`
+    else
+      print `No primaryImageTag cleanup needed for userid: ${section} (value is valid)`
+    end if
+  else
+    print `No primaryImageTag cleanup needed for userid: ${section} (setting not found)`
+  end if
+end sub
+
+' SPLASH_SETTING_REMOVAL_VERSION - Delete the deprecated uiHomeSplashBackground setting
+' @param reg The user's registry section
+' @param section The section name, for log lines
+sub removeSplashBackgroundSetting(reg as object, section as string)
+  ' Delete deprecated splash background user setting
+  ' Splash now always displays on UserSelect when server has it enabled
+  settingName = "uiHomeSplashBackground"
+
+  if reg.exists(settingName)
+    print `Removing deprecated ${settingName} setting for userid: ${section}`
+    reg.delete(settingName)
+    reg.flush()
+    print `Deleted deprecated splash background setting`
+  else
+    print `No splash background setting removal needed for userid: ${section} (setting not found)`
+  end if
+end sub
+
+' GLOBAL_SETTINGS_CLEANUP_VERSION - Delete globalSplashScreen from a user section
+' @param reg The user's registry section
+' @param section The section name, for log lines
+sub removeGlobalSplashScreenFromUser(reg as object, section as string)
+  ' globalSplashScreen was incorrectly saved to user registry sections due to a bug in radioSettingChanged()
+  ' This setting should exist only in the global "JellyRock" or "test-global" section
+  ' Delete it from user sections to prevent confusion and ensure single source of truth
+  settingName = "globalSplashScreen"
+
+  if reg.exists(settingName)
+    print `Cleaning up incorrectly saved ${settingName} for userid: ${section}`
+    reg.delete(settingName)
+    reg.flush()
+    print `Deleted ${settingName} from user ${section}`
+  else
+    print `No global splash screen cleanup needed for userid: ${section} (setting not found)`
+  end if
+end sub
+
+' MUSIC_VIEW_MIGRATION_VERSION - Rewrite music presentation views to their grid views
+' @param reg The user's registry section
+' @param section The section name, for log lines
+sub migrateMusicPresentationViews(reg as object, section as string)
+  ' Iterate through all library display settings in registry
+  ' Registry keys are stored as "display.{libraryId}.landing" format
+  keyPrefix = "display."
+  keySuffix = ".landing"
+  allKeys = reg.GetKeyList()
+  migratedCount = 0
+
+  for each key in allKeys
+    ' Check if this is a library landing view setting
+    if key.left(keyPrefix.len()) = keyPrefix and key.right(keySuffix.len()) = keySuffix
+      currentValue = reg.read(key)
+
+      ' Check if value is a presentation view that needs migration
+      if isValid(currentValue) and currentValue <> ""
+        valueLower = LCase(currentValue)
+        newValue = invalid
+
+        if valueLower = "artistspresentation"
+          newValue = "ArtistsGrid"
+        else if valueLower = "albumartistspresentation"
+          newValue = "AlbumArtistsGrid"
         end if
-      end for
 
-      if deletedAny
-        reg.flush()
-        print `Deleted stale homeSection keys for userid: ${section}`
-      else
-        print `No homeSection cleanup needed for userid: ${section} (keys not found)`
+        ' Migrate if needed
+        if isValid(newValue)
+          if migratedCount = 0
+            print `Migrating music presentation views to v${MUSIC_VIEW_MIGRATION_VERSION} for userid: ${section}`
+          end if
+          reg.write(key, newValue)
+          migratedCount++
+          print `Migrated ${key}: '${currentValue}' → '${newValue}'`
+        end if
       end if
     end if
   end for
+
+  if migratedCount > 0
+    reg.flush()
+    print `Successfully migrated ${migratedCount} music view settings for user ${section}`
+  else
+    print `No music view migration needed for userid: ${section} (no presentation views found)`
+  end if
+end sub
+
+' TV_SEASON_STRAIGHT_TO_EPISODES_REMOVAL_VERSION - Delete uiTvShowsGoStraightToEpisodes
+' @param reg The user's registry section
+' @param section The section name, for log lines
+sub removeTvSeasonStraightToEpisodes(reg as object, section as string)
+  ' Delete both forms: camelCase (used since v1.1.0) and old dotted alias
+  ' (handles users who jumped directly from v1.0.x to v2.0.0 without a v1.1.x run)
+  settingNames = ["uiTvShowsGoStraightToEpisodes", "ui.tvshows.goStraightToEpisodeListing"]
+  deletedAny = false
+  for each settingName in settingNames
+    if reg.exists(settingName)
+      print `Removing obsolete ${settingName} for userid: ${section}`
+      reg.delete(settingName)
+      deletedAny = true
+      print `Deleted ${settingName} from user ${section}`
+    end if
+  end for
+
+  if deletedAny
+    reg.flush()
+  else
+    print `No uiTvShowsGoStraightToEpisodes cleanup needed for userid: ${section} (setting not found)`
+  end if
+end sub
+
+' THEME_PRESET_MIGRATION_VERSION - Set uiTheme to custom when custom theme colors exist
+' @param reg The user's registry section
+' @param section The section name, for log lines
+sub migrateThemePreset(reg as object, section as string)
+  ' If user already has uiTheme set, skip (idempotent)
+  if not reg.exists("uiTheme")
+    ' Check if any custom theme color settings exist in registry
+    themeColorKeys = ["uiThemeColorPrimary", "uiThemeColorSecondary", "uiThemeColorBackgroundPrimary", "uiThemeColorBackgroundSecondary", "uiThemeColorTextPrimary", "uiThemeColorTextSecondary", "uiThemeColorTextDisabled"]
+    hasCustomColors = false
+    for each colorKey in themeColorKeys
+      if reg.exists(colorKey)
+        hasCustomColors = true
+        exit for
+      end if
+    end for
+
+    if hasCustomColors
+      print `Setting uiTheme=custom for userid: ${section} (existing custom theme colors detected)`
+      reg.write("uiTheme", "custom")
+      reg.flush()
+    else
+      print `No theme preset migration needed for userid: ${section} (no custom colors found)`
+    end if
+  else
+    print `No theme preset migration needed for userid: ${section} (uiTheme already set)`
+  end if
+end sub
+
+' HOMESECTION_CLEANUP_VERSION - Delete homeSection0 to homeSection6
+' @param reg The user's registry section
+' @param section The section name, for log lines
+sub removeHomeSectionKeys(reg as object, section as string)
+  homeSectionKeys = ["homeSection0", "homeSection1", "homeSection2", "homeSection3", "homeSection4", "homeSection5", "homeSection6"]
+  deletedAny = false
+  for each key in homeSectionKeys
+    if reg.exists(key)
+      print `Removing stale ${key} for userid: ${section}`
+      reg.delete(key)
+      deletedAny = true
+    end if
+  end for
+
+  if deletedAny
+    reg.flush()
+    print `Deleted stale homeSection keys for userid: ${section}`
+  else
+    print `No homeSection cleanup needed for userid: ${section} (keys not found)`
+  end if
+end sub
+
+' LIBRARY_TAB_MIGRATION_VERSION - Turn each library's saved view into its default tab and layout
+' @param reg The user's registry section
+' @param section The section name, for log lines
+sub migrateLibraryTabs(reg as object, section as string)
+  ' Keys are "display.<libraryId>.landing", written only when the viewer picked a view in
+  ' the old Star dialog, so each is a past choice. It maps through libraryTab.fromLegacyView:
+  '  - the layout it implies is written for its tab, over any stored one (the old name is
+  '    the latest choice, for example after a downgrade and an upgrade);
+  '  - its tab becomes "display.<libraryId>.defaultTab" unless it is a library type's own
+  '    default, which says nothing about what the viewer wants. Either way `landing` wins
+  '    over a stored defaultTab, which a type default therefore deletes;
+  '  - `landing` is deleted, so a second run (every launch of a sideloaded build) finds
+  '    nothing to do.
+  keyPrefix = "display."
+  keySuffix = ".landing"
+  changedCount = 0
+
+  for each key in reg.GetKeyList()
+    if key.left(keyPrefix.len()) = keyPrefix and key.right(keySuffix.len()) = keySuffix
+      currentValue = reg.read(key)
+      mapped = libraryTab.fromLegacyView(currentValue)
+      libraryKeyPrefix = key.left(key.len() - keySuffix.len()) + "."
+
+      if mapped.layout <> ""
+        layoutKey = libraryKeyPrefix + libraryLayout.settingKey(mapped.tab)
+        if not reg.exists(layoutKey) or reg.read(layoutKey) <> mapped.layout
+          reg.write(layoutKey, mapped.layout)
+          print `Wrote ${layoutKey}: '${mapped.layout}' from '${currentValue}'`
+        end if
+      end if
+
+      defaultTabKey = libraryKeyPrefix + "defaultTab"
+      if mapped.tab <> "" and not libraryTab.isTypeDefault(mapped.tab)
+        reg.write(defaultTabKey, mapped.tab)
+        print `Wrote ${defaultTabKey}: '${mapped.tab}' from '${currentValue}'`
+      else if reg.exists(defaultTabKey)
+        reg.delete(defaultTabKey)
+        print `Removed ${defaultTabKey}: '${currentValue}' is no choice of tab`
+      end if
+
+      reg.delete(key)
+      changedCount++
+    end if
+  end for
+
+  ' A copy of the web's Live TV default tab that nothing read; the grid reads the web's
+  ' picks from the server at sign-in now.
+  if reg.exists("displayLiveTvLanding")
+    reg.delete("displayLiveTvLanding")
+    changedCount++
+  end if
+
+  if changedCount > 0
+    reg.flush()
+    print `Migrated library views to v${LIBRARY_TAB_MIGRATION_VERSION} for userid: ${section}`
+  else
+    print `No library view migration needed for userid: ${section} (no legacy views found)`
+  end if
 end sub

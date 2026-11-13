@@ -19,6 +19,7 @@ related-files:
   - scripts/bsc-plugins/print-locations.cjs
   - scripts/bsc-plugins/observe-without-on-destroy.cjs
   - scripts/bsc-plugins/no-direct-sdk.cjs
+  - scripts/bsc-plugins/no-direct-favorite-request.cjs
   - scripts/bsc-plugins/no-raw-run.cjs
   - scripts/bsc-plugins/no-namespace-const-call.cjs
   - scripts/bsc-plugins/no-task-fanout.cjs
@@ -102,7 +103,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-11-08
+last-reviewed: 2026-11-12
 ---
 
 # Build and tooling
@@ -133,7 +134,7 @@ Each build target has its own `bsconfig*.json`, and every one inherits from `bsc
 | `bsconfig-tests.json` | Every suite except the `migration`, `registry` and `measurement` tags, without code coverage. The gating build (`test:all`, CI) |
 | `bsconfig-tests-unit.json` | Unit tests only, except the `measurement` tag |
 | `bsconfig-tests-integration.json` | Integration tests only, except the `migration` and `registry` tags |
-| `bsconfig-tests-complete.json` | Every tag, with code coverage recorded (`test:complete`, the CI `complete` dispatch) |
+| `bsconfig-tests-complete.json` | Every suite except the `measurement` tag, with code coverage recorded (`test:complete`, the CI `complete` dispatch) |
 | `bsconfig-tdd-sample.json` | Extends `bsconfig-tests.json`. Copy it to the gitignored `bsconfig-tdd.json` and pick the suites to run |
 
 `bsconfig.json` is the place to read the plugin list. The prod config leaves out `brighterscript-xml-plugin`, `callfunc-interface`, `button-row-bracket`, `field-observer-wiring`, `register-once-observer` and `dead-code`. No reason is recorded; those rules still gate every PR through `validate`, which builds `bsconfig.json`.
@@ -249,6 +250,7 @@ These turn conventions from `components/CLAUDE.md` and `source/CLAUDE.md` into e
 | `observe-without-on-destroy` | warning | In a `JRScreen` codebehind, an `observeField` with no matching `unobserveField` in the file. Matching follows aliases; `releaseTask(x, "field")` counts as an unobserve | The plugin file |
 | `unobserve-before-release` | warning | An `unobserveField` in `onDestroy` that runs after a release (`m.x = invalid`) of a reference the observer's handler dereferences. The fix is to move the unobserve first, not to add a guard | [ADR 0032](../adr/0032-teardown-key-guard-injected.md), the plugin file |
 | `no-direct-sdk` | warning | A `sdk.<ns>.<fn>()` call outside `source/api/ApiClient.bs` and `source/api/sdk.bs` | [api.md](api.md) |
+| `no-direct-favorite-request` | error | A `BuildMarkFavoriteRequest()` or `BuildUnmarkFavoriteRequest()` call outside `source/utils/favorites.bs` and `source/api/ApiClient.bs`. A toggle built any other way skips the `favoritesVersion` bump, so grids showing favorites keep a stale list | The plugin file |
 | `no-raw-run` | error | A Task started without `launchTask()`: `control` written with `"RUN"`, or with a value that cannot be resolved, outside `source/utils/tasks.bs` | [ADR 0031](../adr/0031-task-thread-ceiling.md) |
 | `no-task-fanout` | error | A `launchTask()` inside a loop body, directly or one same-file helper call away, unless its argument is a stable `m.` path the loop does not rebind | [ADR 0031](../adr/0031-task-thread-ceiling.md), decisions [`task-fanout-keys-on-argument`](../decisions.md#decision-id-task-fanout-keys-on-argument) and [`task-fanout-follows-helpers`](../decisions.md#decision-id-task-fanout-follows-helpers) |
 | `no-same-node-relaunch` | error | Relaunching a Task node the same function stopped; launching `m.x` with no new node assigned first; a `replaceTask()` handler that does not open with `isCurrentTaskEvent()` | [ADR 0037](../adr/0037-task-run-replacement.md), decisions [`same-node-relaunch-gate`](../decisions.md#decision-id-same-node-relaunch-gate) and [`relaunch-gate-no-stop-shapes`](../decisions.md#decision-id-relaunch-gate-no-stop-shapes) |
@@ -309,6 +311,7 @@ Not every plugin honors every marker, and an unsupported one fails silently: the
 | `register-once-observer` | ✅ | ✅ | ✅ | `ResumeButton` carries the live suppression |
 | `duplicate-field-observer`, `ineffective-unobserve`, `undetachable-observer`, `top-unobserve-outside-ondestroy`, `top-observer-outside-init` | ✅ | ✅ | ✅ | `field-observer-wiring` reports under these five codes, so a marker naming the plugin does nothing |
 | `no-direct-sdk` | ✅ | ✅ | ❌ | |
+| `no-direct-favorite-request` | ✅ | ✅ | ❌ | A whole-file opt-out would let any toggle skip the bump |
 | `no-raw-run` | ✅ | ✅ | ❌ | A whole-file opt-out would lift the thread bound from a whole file. Suppress the line and say why |
 | `no-task-fanout` | ✅ | ✅ | ❌ | Same reason as `no-raw-run` |
 | `no-same-node-relaunch` | ✅ | ✅ | ❌ | Same reason. Only for an intended relaunch; a site awaiting migration goes in `PENDING_MIGRATIONS` |

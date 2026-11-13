@@ -1,0 +1,273 @@
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+' The ids of a library's views (its tabs): JellyRock's own vocabulary.
+'
+' A view's id is what a presenter lists as `Name`, what the grid holds as its current view
+' and what the `defaultTab` display setting stores. The ids are the app's, named for what
+' the tab shows, so a tab the web client lacks (a History tab, say) is added like any other.
+' Most match jellyfin-web's `LibraryTab` ids where the web has the same tab, because those
+' names read well, not because they must. The one value read from the server, the default
+' tab the user picked in the web client (`landing-<libraryId>`), is translated into these
+' ids where it is read (fromServerTab), so a rename on the web side changes that one table
+' and never a stored setting.
+'
+' The layout a grid draws a view in (a poster grid, the movie presentation panel) is a
+' separate axis, in libraryLayout. A view id never says how it is drawn.
+namespace libraryTab
+
+  const ALBUMS = "albums"
+  const ALBUM_ARTISTS = "albumartists"
+  const ARTISTS = "artists"
+  const CHANNELS = "channels"
+  const COLLECTIONS = "collections"
+  const FAVORITES = "favorites"
+  const GENRES = "genres"
+  const GUIDE = "guide"
+  const MOVIES = "movies"
+  const PHOTOS = "photos"
+  const NETWORKS = "networks"
+  const SHOWS = "shows"
+  const STUDIOS = "studios"
+
+  ' Every id above.
+  function ids() as object
+    return [
+      libraryTab.ALBUMS, libraryTab.ALBUM_ARTISTS, libraryTab.ARTISTS, libraryTab.CHANNELS,
+      libraryTab.COLLECTIONS, libraryTab.FAVORITES, libraryTab.GENRES, libraryTab.GUIDE,
+      libraryTab.MOVIES, libraryTab.NETWORKS, libraryTab.PHOTOS, libraryTab.SHOWS,
+      libraryTab.STUDIOS
+    ]
+  end function
+
+  ' isKnown: whether `id` is exactly one of the tab ids above.
+  '
+  ' Case-sensitive on purpose. The ids are all lowercase, and the view names the
+  ' presenters wrote before them were PascalCase (`Movies`, `Genres`), so exact case is
+  ' what tells an id already in the new vocabulary from a legacy name that folds to it.
+  ' `Movies` and `movies` mean different things: the first is the old presentation view.
+  ' Keep every new id lowercase for the same reason.
+  function isKnown(id as dynamic) as boolean
+    if type(id) <> "roString" and type(id) <> "String" then return false
+    for each known in libraryTab.ids()
+      if id = known then return true
+    end for
+    return false
+  end function
+
+  ' defaultFor: the tab a library of this type opens on when nothing picks another, ""
+  ' for a folder or collection (one view, no tabs).
+  '
+  ' The rule: a library's first screen on a TV is its full browsable content, and
+  ' recommendation pages are Home's job. Two types depart from the web client's defaults
+  ' on purpose. Music opens on Album Artists, not the web's Albums: the better way to
+  ' browse a music library on a TV (decision `library-default-tab-type-defaults`). Live
+  ' TV opens on Channels, not the web's Programs, because the app has no Programs tab.
+  '
+  ' The one home of these defaults: BaseGridView.getDefaultView() asks it, and the
+  ' registry migration reads the same list through isTypeDefault.
+  '
+  ' @param collectionType - the library's collection type, or its item type in lowercase
+  '   when it has none (BaseGridView.getCollectionType)
+  ' @param presenterType - the grid's presenter type, for an item with no collection type
+  function defaultFor(collectionType as string, presenterType as string) as string
+    kind = LCase(collectionType)
+    if kind = "movies" then return libraryTab.MOVIES
+    if kind = "music" then return libraryTab.ALBUM_ARTISTS
+    if kind = "tvshows" then return libraryTab.SHOWS
+
+    ' A genre, a studio or another item with no collection type: its presenter decides
+    presenter = LCase(presenterType)
+    if presenter = "movie" then return libraryTab.MOVIES
+    if presenter = "music" then return libraryTab.ALBUM_ARTISTS
+    if presenter = "tvshow" then return libraryTab.SHOWS
+    if presenter = "livetv" then return libraryTab.CHANNELS
+    if presenter = "photo" then return libraryTab.PHOTOS
+    return ""
+  end function
+
+  ' typeDefaults: every tab defaultFor can answer.
+  function typeDefaults() as object
+    return [libraryTab.MOVIES, libraryTab.SHOWS, libraryTab.ALBUM_ARTISTS, libraryTab.CHANNELS, libraryTab.PHOTOS]
+  end function
+
+  ' isTypeDefault: whether `tabId` is the default of some library type.
+  '
+  ' Each type default belongs to one library type only, so a tab saved for a library that
+  ' is its type's default is recognized without knowing the library's type, which the
+  ' registry migration cannot know.
+  function isTypeDefault(tabId as dynamic) as boolean
+    if type(tabId) <> "roString" and type(tabId) <> "String" then return false
+    for each known in libraryTab.typeDefaults()
+      if tabId = known then return true
+    end for
+    return false
+  end function
+
+  ' ── The web client's default tab ────────────────────────────────────────────────
+  '
+  ' jellyfin-web keeps the default tab a user picked for a library in the `usersettings`
+  ' display preferences (client `emby`), in CustomPrefs, as `landing-<id>`: the library id,
+  ' or the literal `livetv` for Live TV. Its value is one of the web's LibraryTab ids. The
+  ' web saves its own default as "" (homeScreenSettings.js), so only a non-empty value is
+  ' something the user picked, and only a pick is followed.
+
+  const SERVER_LANDING_PREFIX = "landing-"
+  const SERVER_LIVE_TV_KEY = "livetv"
+
+  ' serverLandings: the web's default-tab picks, from a display-preferences CustomPrefs.
+  '
+  ' @param customPrefs - the response's CustomPrefs, or anything else when it had none
+  ' @return {object} { <id the web keys it by>: <the web's tab id, untranslated> }, with
+  '   only non-empty values; {} for anything that is not an AA
+  function serverLandings(customPrefs as dynamic) as object
+    landings = {}
+    if type(customPrefs) <> "roAssociativeArray" then return landings
+    prefixLength = Len(libraryTab.SERVER_LANDING_PREFIX)
+    for each key in customPrefs
+      if LCase(key.left(prefixLength)) = libraryTab.SERVER_LANDING_PREFIX and key.len() > prefixLength
+        value = textOrEmpty(customPrefs[key]).trim()
+        if value <> "" then landings[key.mid(prefixLength)] = value
+      end if
+    end for
+    return landings
+  end function
+
+  ' serverLandingKey: the id the web keys a library's pick by: `livetv` for Live TV, the
+  ' library id for everything else.
+  function serverLandingKey(libraryId as string, collectionType as string) as string
+    if LCase(collectionType) = "livetv" then return libraryTab.SERVER_LIVE_TV_KEY
+    return libraryId
+  end function
+
+  ' fromServerTab: the tab a web LibraryTab id stands for in this library, "" when the app
+  ' has no such tab (Suggestions, Upcoming, Programs and the rest).
+  '
+  ' Most web ids are the app's own. Two differ: the web's `series` is `shows`, and the
+  ' web's `studios` on a TV library is that library's `networks`. Whether the library
+  ' offers the tab is not checked here: gridQuery.resolveView does that with the rest.
+  '
+  ' @param value - the web's value, as serverLandings returned it
+  ' @param collectionType - the library's collection type
+  function fromServerTab(value as dynamic, collectionType as string) as string
+    webTab = LCase(textOrEmpty(value).trim())
+    if webTab = "series" then return libraryTab.SHOWS
+    if webTab = "studios"
+      if LCase(collectionType) = "tvshows" then return libraryTab.NETWORKS
+      return libraryTab.STUDIOS
+    end if
+
+    shared = [
+      libraryTab.ALBUMS, libraryTab.ALBUM_ARTISTS, libraryTab.ARTISTS, libraryTab.CHANNELS,
+      libraryTab.COLLECTIONS, libraryTab.FAVORITES, libraryTab.GENRES, libraryTab.GUIDE,
+      libraryTab.MOVIES, libraryTab.PHOTOS
+    ]
+    for each id in shared
+      if webTab = id then return id
+    end for
+    return ""
+  end function
+
+  ' isFolder: whether `parentItem` is a studio, network or genre folder opened inside a
+  ' movie or TV library, and not the library itself.
+  '
+  ' Such a folder has one view (its movies or its shows): it shows its name as the title,
+  ' no tabs and no Favorites tab. Keyed on the folder's own shape, the ones
+  ' DeterminePresenterType names, and not on the library's type. A network arrives as a
+  ' Studio. Music keeps its own genre rule (MusicPresenter).
+  function isFolder(parentItem as dynamic) as boolean
+    if not isValid(parentItem) then return false
+    itemType = LCase(textOrEmpty(parentItem.type))
+    folderType = LCase(textOrEmpty(parentItem.folderType))
+    return itemType = "genre" or itemType = "studio" or folderType = "genre" or folderType = "studio"
+  end function
+
+  ' fromLegacyView: the tab and layout a view name saved before these ids stands for.
+  '
+  ' The registry migration's mapping, kept here so it is pure and specced. A name that is
+  ' already a tab id comes back unchanged.
+  ' A name that is neither comes back as it is, for the grid's resolveView to fall back
+  ' from. `default`, the one view of a folder or collection, maps to no tab at all.
+  '
+  ' Legacy names match case-insensitively, since an older build may have saved one in
+  ' another case, except where that would read a tab id as a legacy name (see isKnown).
+  '
+  ' @param name - a `landing` value saved before these ids
+  ' @return {object} { tab, layout }; `layout` is "" when the name implied none
+  function fromLegacyView(name as dynamic) as object
+    saved = textOrEmpty(name).trim()
+    if libraryTab.isKnown(saved) then return { tab: saved, layout: "" }
+
+    lower = LCase(saved)
+    if lower = "movies" then return { tab: libraryTab.MOVIES, layout: libraryLayout.PRESENTATION }
+    if lower = "moviesgrid" then return { tab: libraryTab.MOVIES, layout: libraryLayout.COMFORTABLE }
+    if lower = "studios" then return { tab: libraryTab.STUDIOS, layout: "" }
+    if lower = "networks" then return { tab: libraryTab.NETWORKS, layout: "" }
+    if lower = "genres" then return { tab: libraryTab.GENRES, layout: "" }
+    if lower = "collections" then return { tab: libraryTab.COLLECTIONS, layout: "" }
+    if lower = "shows" then return { tab: libraryTab.SHOWS, layout: "" }
+    if lower = "albumartistsgrid" then return { tab: libraryTab.ALBUM_ARTISTS, layout: "" }
+    if lower = "albums" then return { tab: libraryTab.ALBUMS, layout: "" }
+    if lower = "artistsgrid" then return { tab: libraryTab.ARTISTS, layout: "" }
+    if lower = "livetv" then return { tab: libraryTab.CHANNELS, layout: "" }
+    if lower = "tvguide" then return { tab: libraryTab.GUIDE, layout: "" }
+    ' The photo library listed its slideshow toggles as views. They are settings now
+    ' (photosSlideshow, photosRandom), already written when one was picked.
+    if lower = "singlephoto" or lower = "slideshowphoto" or lower = "randomphoto" then return { tab: libraryTab.PHOTOS, layout: "" }
+    if lower = "default" then return { tab: "", layout: "" }
+
+    return { tab: saved, layout: "" }
+  end function
+
+end namespace
+
+' How a grid draws a library view, separate from which view it is.
+'
+' Stored per library and view, as the display setting settingKey() names: the choice
+' belongs to the grid on show, the way jellyfin-web saves its view style per library and
+' tab. Only a movie library's Movies view offers a choice today (the presentation panel
+' or the poster grid); every other view draws its own fixed grid.
+namespace libraryLayout
+
+  ' The poster grid with titles under the posters: what every library showed by default.
+  const COMFORTABLE = "comfortable"
+
+  ' The movie presentation panel: the focused movie's details above a two-row grid.
+  const PRESENTATION = "presentation"
+
+  ' isKnown: whether `layout` is exactly one of the layouts above.
+  function isKnown(layout as dynamic) as boolean
+    if type(layout) <> "roString" and type(layout) <> "String" then return false
+    return layout = libraryLayout.COMFORTABLE or layout = libraryLayout.PRESENTATION
+  end function
+
+  ' settingKey: the display-setting key a view's layout is saved under.
+  '
+  ' One flat key per view, because only three-part registry keys load
+  ' (`display.<libraryId>.<key>`, TransformDisplaySettings).
+  function settingKey(view as dynamic) as string
+    return "layout_" + LCase(textOrEmpty(view))
+  end function
+
+  ' title: a layout's own name, for the Layout page setting; "" for one this build lacks.
+  function title(layout as dynamic) as string
+    if not libraryLayout.isKnown(layout) then return ""
+    if layout = libraryLayout.PRESENTATION then return translate(translationKeys.LabelLayoutPresentation)
+    return translate(translationKeys.LabelLayoutComfortable)
+  end function
+
+  ' resolve: the layout a load should use.
+  '
+  ' A saved layout is honored when it is one this build knows; anything else (nothing
+  ' saved, a layout from a newer build) falls back to the presenter's default, without
+  ' writing the fallback back.
+  '
+  ' @param saved - the view's stored layout setting, or Invalid when none is stored
+  ' @param defaultLayout - the presenter's getDefaultLayout()
+  function resolve(saved as dynamic, defaultLayout as string) as string
+    if libraryLayout.isKnown(saved) then return saved
+    return defaultLayout
+  end function
+
+end namespace

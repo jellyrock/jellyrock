@@ -34,6 +34,9 @@
     <!-- The tab bar's entries: { id, title, icon, selectedIcon }, projected from the active view's
          overhangTabs. Empty hides the tab bar and shows the title in its place. -->
     <field id="tabs" type="array" onChange="onTabsChanged" />
+    <!-- How the tab bar treats its tabs, projected from the active view's tabMode: "fixed"
+         (the default) or "scrolling" (JRTabBar.mode). Read when tabs is set, so set it first. -->
+    <field id="tabMode" type="string" value="fixed" />
     <field id="selectedTabId" type="string" alwaysNotify="true" />
     <!-- Whether the fixed cluster shows: JRScene sets it from the signed-in state, so the
          cluster is on every screen that shows the overhang once a user is signed in, except
@@ -55,6 +58,9 @@
     <field id="isClockVisible" value="true" type="boolean" onChange="isClockVisibleChanged" />
     <!-- The cluster icon for an entry id ("syncplay", "search", "settings"), for a screen's focus bookkeeping. -->
     <function name="getIcon" />
+    <!-- The focus box of a cluster icon in screen coordinates ({ x, y, width, height }), for a
+         menu JRScene anchors to it; invalid for an id the cluster does not show. -->
+    <function name="iconAnchor" />
     <!-- The SyncPlay icon's state from JRScene: { shown, active, badge }. Shown first in the cluster
          when the account may use SyncPlay; active (drawn in colorSecondary) while in a group; a
          badge (a colorSecondary dot) while a group exists to join. -->

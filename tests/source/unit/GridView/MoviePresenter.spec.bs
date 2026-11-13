@@ -1,3 +1,4 @@
+import "pkg:/source/GridView/libraryTab.bs"
 import "pkg:/source/GridView/MoviePresenter.bs"
 
 namespace tests
@@ -101,9 +102,9 @@ namespace tests
     @describe("onItemFocused() - the hidden-panel guard")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    ' `presentationInfo` is on screen only in the Movies presentation view:
+    ' `presentationInfo` is on screen only on the Movies tab in the presentation layout:
     ' BaseGridView.configureBackdrop() sets its visibility to exactly
-    ' shouldShowPresentationInfo(). In the grid views the panel is hidden, so populating it
+    ' shouldShowPresentationInfo(). Everywhere else the panel is hidden, so populating it
     ' wrote labels nobody could read and, worse, started a logo lookup per focus change:
     ' moving a cursor across a library asked the server for a logo it would never draw.
     '
@@ -113,26 +114,42 @@ namespace tests
     ' group above already asserts on.
 
     @it("does not start a logo lookup for a view whose panel is hidden")
-    @params("MoviesGrid")
-    @params("Studios")
-    @params("Collections")
-    function _(viewMode)
+    @params("movies", "comfortable")
+    @params("studios", "presentation")
+    @params("collections", "presentation")
+    function _(viewMode, layout)
       m.current.id = "still-the-original-node"
 
-      m.presenter.onItemFocused({ id: "movie-1", name: "A Movie" }, viewMode)
+      m.presenter.onItemFocused({ id: "movie-1", name: "A Movie" }, viewMode, layout)
 
       m.assertEqual(m.view.loadLogoTask.id, "still-the-original-node", "no lookup may be started for a hidden panel")
       m.assertEqual(m.title.text, "", "nor may anything be written into the panel")
     end function
 
     @it("turns on exactly the predicate that decides whether the panel is on screen")
-    @params("Movies", true)
-    @params("movies", true)
-    @params("MoviesGrid", false)
-    @params("Studios", false)
-    @params("Collections", false)
-    function _(viewMode, expected)
-      m.assertEqual(m.presenter.shouldShowPresentationInfo(viewMode), expected)
+    ' The layout is stored per library, so a library left in presentation still shows its
+    ' other tabs in their own grids.
+    @params("movies", "presentation", true)
+    @params("MOVIES", "presentation", true)
+    @params("movies", "comfortable", false)
+    @params("movies", "", false)
+    @params("studios", "presentation", false)
+    @params("genres", "presentation", false)
+    @params("collections", "presentation", false)
+    function _(viewMode, layout, expected)
+      m.assertEqual(m.presenter.shouldShowPresentationInfo(viewMode, layout), expected)
+    end function
+
+    @it("puts the presentation backdrop and grid behind the same predicate")
+    ' configureBackdrop and configureGrid ask three questions; if they disagree the grid
+    ' sits 650 px down against a fullscreen backdrop, or the panel draws over a full grid.
+    @params("movies", "presentation", true)
+    @params("movies", "comfortable", false)
+    @params("studios", "presentation", false)
+    function _(viewMode, layout, expected)
+      m.assertEqual(m.presenter.getBackdropMode(viewMode, layout) = "presentation", expected)
+      config = m.presenter.getGridConfig(viewMode, layout)
+      m.assertEqual(config.translation[1] = 650, expected, "the grid drops for the panel only in presentation")
     end function
 
   end class

@@ -31,6 +31,12 @@
     <!-- Star reached JRScene instead of this screen (focus was in the overhang row): do what
          Star does here. True when something happened. -->
     <function name="onOptionsKey" />
+    <!-- The settings this page offers about itself, for the settings icon's menu:
+         [{ id, title, options: [{ id, title }], selected }]. Empty (the default) leaves the
+         icon opening Settings. JRScene asks at the press and presents them. -->
+    <function name="pageSettingsEntries" />
+    <!-- The viewer picked a new option (its id) for one of those settings: save and apply it. -->
+    <function name="onPageSettingChanged" />
     <!-- Back from the overhang row: leave this screen. True when it went back (leaveScreen). -->
     <function name="leaveScreen" />
   </interface>

@@ -2786,6 +2786,64 @@ In the Backdrop Images `details` mode, `JRScene.setBackgroundImage` decides whic
 
 Ruled out: deciding by `m.global.activeRoutedView`, because `AudioPlayerView.init()` writes its backdrop before `JRScreen.onViewOpen` makes it active, so Now Playing would lose its backdrop when music starts from a browse screen; a mode check in every browse screen, about 20 call sites in 6 files where a new screen that forgets leaks backdrops; and a clear in `onActiveRoutedViewChanged` on reaching a browse screen, dropped because no test could fail it (measured on a Roku Ultra 2026-11-11: with it disabled, Back to the library grid, to Home with its refresh held 15 s, and to search results all still cleared). Requested in discussion 1361.
 
+## decision-id: tab-strip-one-rule-dimmed
+
+**date**: 2026-11-12
+**status**: accepted
+**related-files**: `source/utils/tabStrip.bs`, `components/ui/tabbar/JRTabBar.bs`, `components/ui/tabbar/JRTab.bs`
+
+A scrolling tab strip follows one rule (`tabStrip.window`): the active tab (focused while the bar has focus, else selected) sits first in its slot with the previous tab peeking, and the strip never scrolls past its last tab. Two alternatives were ruled out. "Selected first at rest, least movement while walking" is two rules, slides the strip a second time on OK and on Down, and needs the current offset as an input. "Least movement only" opens a default tab late in the strip at the slot's right edge. A tab the slot's edge cuts is drawn dimmed. A fade to transparent was ruled out: it needs a `MaskGroup`, which the app does not use anywhere, whose cost is unmeasured, and which Roku's `maskgroup.md` says draws unmasked on a player without OpenGL. A painted gradient would show as a band, because a library draws a backdrop behind the overhang. Revisit the fade if the dimmed tab reads badly in use.
+
+Two things seen on a Roku Stick on Roku OS 16.0.4 (2026-11-12) shape the code. A tab past its slot, or past the screen's edge, never reports `renderTracking` as `full`, so `JRTab` sizes when its title is set instead of waiting for the renderer as `TextButton` does. Setting a `clippingRect` back to an empty rectangle stops the tabs drawing, so a bar that leaves its slot takes a clip the size of the screen (`JRTabBar.clearWindow`).
+
+## decision-id: library-tab-view-plus-fixed
+
+**date**: 2026-11-12
+**status**: accepted
+**related-files**: `source/GridView/gridQuery.bs`, `source/GridView/libraryTab.bs`, `source/GridView/MoviePresenter.bs`, `source/GridView/TVShowPresenter.bs`, `components/ItemGrid/BaseGridView.bs`, `components/ItemGrid/LoadItemsTask2.bs`
+
+A library tab is a view plus what is fixed on it. A presenter lists most tabs as their own view; the Favorites tab names its content tab's view with favorites fixed on, and `gridQuery.viewOfTab()` resolves the pair. Presenters are only ever handed a view id, so no presenter method learns a tab that is not a view, and the Favorites tab draws as its content tab does. `LoadItemsTask2` takes `isFavorite` apart from `filter`, so favorites combine with the played filters (asked of local servers 10.7.7 to 12.4.0 on 2026-11-12: the parameter filters alone and beside `Filters`). A library resolves its tab once, when it opens (`BaseGridView.openLibrary()`); after that only a tab press changes it, and a tab press does not write the saved tab. Refines [ADR 0056](adr/0056-library-tab-ids-and-layout.md).
+
+Favorites is a tab only in a movie or TV library, which have one content tab (Movies, Shows): it shows that tab's favorites, as the web client's movie Favorites tab does. Every list the tab does not cover keeps the Favorites filter: Collections, all of Music, Live TV, Photos and folders. A studio, network or genre opened inside a library has one view (`libraryTab.isFolder()`), so it shows its name, no tabs, and keeps the filter. Ruled out: a Favorites tab for Music now (it has no one content tab and needs rows per kind), and "one kind of item to favorite" as the rule, which a movie library's collections and a TV library's episodes contradict.
+
+## decision-id: guide-grid-no-vertical-wrap
+
+**date**: 2026-11-12
+**status**: accepted
+**related-files**: `components/liveTv/schedule.bs`, `components/ItemGrid/BaseGridView.bs`
+
+The TV guide's `TimeGrid` sets `vertFocusAnimationStyle` to `fixedFocus`. Its default, `fixedFocusWrap`, wraps Up on the first channel to the last inside the grid and keeps the key, so no screen code sees it and the overhang row (a Live TV library's tabs, search, settings) could not be reached from the guide. Measured on a Roku Ultra, 2026-11-12, with four channels: the focused channel went from the first to the fourth under the default, and Up reached the tab bar under `fixedFocus` and `floatingFocus`. Roku's `TimeGrid` reference names no wrap setting. `fixedFocus` keeps the focus row where the default has it.
+
+The cost is that the guide no longer wraps between its first and last channel. Ruled out: detecting the wrap after it happens (a guide with one or two channels cannot tell a wrap from a move), and a key other than Up for reaching the tabs from the guide only.
+
+## decision-id: favorite-toggles-bump-version
+
+**date**: 2026-11-12
+**status**: accepted
+**related-files**: `source/utils/favorites.bs`, `components/JRScene.xml`, `components/ItemGrid/BaseGridView.bs`, `source/GridView/gridQuery.bs`, `scripts/bsc-plugins/no-direct-favorite-request.cjs`
+
+Every favorite toggle builds its request through `favorites.request()`, which bumps `JRScene.favoritesVersion`. A grid that lists favorites (`gridQuery.showsFavorites`: the Favorites tab or the Favorites filter) reloads on resume, and when the Star dialog closes, only when that counter moved. The `no-direct-favorite-request` plugin fails the build on a direct `BuildMarkFavoriteRequest` or `BuildUnmarkFavoriteRequest` call anywhere else, so a new toggle site cannot skip the bump. The counter moves when the request is built, not when it succeeds: a failed request costs one extra reload, which shows the server's true state.
+
+Ruled out: reloading the Favorites tab on every return, as Home does, which loses the viewer's place when nothing changed; and bumping `contentVersion`, which would send every library grid back to the top after any favorite toggle. The TV guide is not covered: a reload does nothing on a guide already built.
+
+## decision-id: library-default-tab-precedence
+
+**date**: 2026-11-13
+**status**: accepted
+**related-files**: `source/GridView/gridQuery.bs`, `source/GridView/libraryTab.bs`, `components/ItemGrid/BaseGridView.bs`, `source/utils/session.bs`, `source/migrations.bs`
+
+A library opens on the tab picked for it on this Roku (`display.<libraryId>.defaultTab`, from the gear menu's Default tab entry), else the tab the user picked for it in the web client, else the library type's default (`gridQuery.resolveView`). The web's pick is `landing-<libraryId>` (`landing-livetv` for Live TV) in the `usersettings` display preferences, read at every sign-in into `m.global.user.config.serverLibraryLanding` and never written to the registry. The web saves its own default as an empty string, so only a real pick is followed. A tab press never changes the default, as on the web. Web tab ids are translated in one place, `libraryTab.fromServerTab`.
+
+There is no app-wide toggle for the web's picks: the gear entry's first option follows the web and any tab overrides it for that library, the pattern the playback settings' Use Web Client Setting follows. Its menu row names the tab in force alone (an entry's `valueTitle`), since the first option's own title would nest brackets there. A `landing` value saved from the old Star dialog becomes `defaultTab` unless it is a type default, which says nothing about what the viewer wants, and it wins over a stored `defaultTab` as the newer choice. `displayLiveTvLanding`, a registry copy of `landing-livetv` that nothing read, is removed. Ruled out: writing the default back to the server (a followup), and remembering the last tab, which the web does not do either.
+
+## decision-id: library-default-tab-type-defaults
+
+**date**: 2026-11-13
+**status**: accepted
+**related-files**: `source/GridView/libraryTab.bs`
+
+A library's type default is everything in it to browse: Movies, Shows, Album Artists, Channels, Photos (`libraryTab.defaultFor`); recommendation pages are Home's job. Two depart from the web client's defaults. Music opens on Album Artists, not the web's Albums: the better way to browse a music library on a TV (operator's call, 2026-11-13). Live TV opens on Channels, not the web's Programs, which the app has no tab for. A user who wants the web's tab picks it in the web client or in the gear menu.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

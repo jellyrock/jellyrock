@@ -20,6 +20,7 @@ import {
   navLibraryGrid,
   navMovieDetails,
   navSettings,
+  openSettingsFromGear,
   openSearchKeyboard,
   submitSearchFromKeyboard,
   waitSearchResults,
@@ -34,6 +35,7 @@ import {
   waitFocusInside,
   waitFor,
   waitHome,
+  enterOverhangRow,
   walkFocusUntil,
 } from '../lib/steps.js';
 
@@ -57,8 +59,9 @@ async function freshApp(label) {
   await assertSeedTookEffect(expectedServer, label);
 }
 
-/** Up until the row's first icon holds focus: a screen with no tabs enters the row there. The
- * first icon is SyncPlay, since the test account may use it. */
+/** Up until the row's first icon holds focus: a screen with no tabs enters the row there (a
+ * library has tabs and enters at its tab bar: enterOverhangRow). The first icon is SyncPlay,
+ * since the test account may use it. */
 async function enterRow(label) {
   await waitFocused(atSyncPlayIcon, {
     timeout: 15000,
@@ -72,14 +75,14 @@ async function enterRow(label) {
 const walkRowTo = (iconId, label) => walkOverhangRowTo(iconId, { label: `${iconId} on ${label}` });
 const walkToGear = (label) => walkRowTo('settingsIcon', label);
 
-/** Right to the gear, OK, Settings up, Back: the gear holds focus again on the screen left. */
-async function roundTripThroughSettings(label) {
+/**
+ * Right to the gear, OK, Settings up, Back: the gear holds focus again on the screen left.
+ * `pageMenu`: the screen has page settings, so the gear opens its menu and All settings is a
+ * row of it (page-settings.spec.js covers the menu itself).
+ */
+async function roundTripThroughSettings(label, { pageMenu = false } = {}) {
   await walkToGear(label);
-  await press(ecp.Key.Ok);
-  await waitFor('#versionLabel.text', (t) => typeof t === 'string' && /^v/.test(t), {
-    label: 'settings version label',
-    timeout: 20000,
-  });
+  await openSettingsFromGear({ pageMenu });
   await press(ecp.Key.Back);
   await waitFocused(atSettingsIcon, {
     timeout: 15000,
@@ -93,10 +96,10 @@ it('a library screen: Up enters the row, the gear round-trips, Down returns to t
   await navLibraryGrid(ctx);
   expect(await getVal('#overhang.#cluster.visible'), 'the cluster shows').toBe(true);
 
-  await enterRow('the grid');
+  await enterOverhangRow('the grid');
   // The row with the cluster against the clock's measured digits (JROverhang.layout).
   if (CAPTURE) await captureRawUI('overhangCluster');
-  await roundTripThroughSettings('the library');
+  await roundTripThroughSettings('the library', { pageMenu: true });
 
   await press(ecp.Key.Down);
   await waitFocusInside('#itemGrid', { label: 'the grid after Down from the row' });
@@ -152,7 +155,7 @@ it('Settings: Up enters the row, the gear there does nothing, Back from the row 
 it('Star from the row on a library opens its options, and Star again closes them', async () => {
   await freshApp('overhang-cluster star library');
   await navLibraryGrid(ctx);
-  await enterRow('the grid');
+  await enterOverhangRow('the grid');
 
   await press(ecp.Key.Option);
   await waitFocusInside('#options', { label: 'the library options, opened from the row' });
@@ -263,13 +266,9 @@ it('a theme reload from Settings opened on a library returns to the library, wit
   const subtype = await getActiveVal('subtype()');
   const path = await getActiveVal('route.path');
 
-  await enterRow('the grid');
+  await enterOverhangRow('the grid');
   await walkToGear('the library');
-  await press(ecp.Key.Ok);
-  await waitFor('#versionLabel.text', (t) => typeof t === 'string' && /^v/.test(t), {
-    label: 'settings version label',
-    timeout: 20000,
-  });
+  await openSettingsFromGear({ pageMenu: true });
 
   await reloadAsSettingsDoes();
   await waitFor('subtype()', (v) => v === subtype, {
@@ -287,7 +286,7 @@ it('a theme reload from Settings opened on a library returns to the library, wit
 it('each screen keeps its own icon: library, search icon, search, gear, then Back to each', async () => {
   await freshApp('overhang-cluster nested');
   await navLibraryGrid(ctx);
-  await enterRow('the grid');
+  await enterOverhangRow('the grid');
   await walkRowTo('searchIcon', 'the library');
   await press(ecp.Key.Ok);
   await waitFor('subtype()', (v) => v === 'SearchScreen', {

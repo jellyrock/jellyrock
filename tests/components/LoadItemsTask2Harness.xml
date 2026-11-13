@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  LoadItemsTask2Harness (test builds only): a Task that loads LoadItemsTask2's script, so
+  LoadItemsTask2.spec.bs can run its helpers inside a component scope with @SGNode. The task is
+  never run: nothing sets `control`, so `loadItems()` and its server calls never start.
+  The helpers read `m` of this node's own scope, which the spec's `m` is not: `prepare` sets it.
+-->
+<component name="LoadItemsTask2Harness" extends="Task">
+  <interface>
+    <function name="prepare" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/components/ItemGrid/LoadItemsTask2.bs" />
+  <script type="text/brightscript" uri="pkg:/components/tests/LoadItemsTask2Harness.bs" />
+</component>

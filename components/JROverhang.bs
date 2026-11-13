@@ -4,6 +4,7 @@ import "pkg:/source/enums/HomeAction.bs"
 import "pkg:/source/syncplay/syncPlayMenu.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/iconBarNav.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/overhangRow.bs"
 import "pkg:/source/utils/pixelGrid.bs"
@@ -184,6 +185,16 @@ function getIcon(id as string) as object
   return m.cluster.callFunc("getIcon", id)
 end function
 
+' Where a menu opened from the cluster icon `id` hangs: the icon's focus box in screen
+' coordinates, or invalid when the cluster has no such icon. The overhang sits at the
+' screen's origin while it shows, so the cluster's own translation is the screen's.
+function iconAnchor(id as string) as dynamic
+  index = iconBarNav.indexOf(clusterEntries(m.clusterHasSyncPlay, false), id)
+  if index < 0 then return invalid
+  origin = m.cluster.translation
+  return iconBarNav.iconAnchor(int(origin[0]), int(origin[1]), index)
+end function
+
 ' The cluster's entries: SyncPlay first when the account may use it, then Search and Settings,
 ' which keep their place at the right whatever sits before them.
 function clusterEntries(withSyncPlay as boolean, syncPlayActive as boolean, syncPlayBadge = false as boolean, syncPlayDisabled = false as boolean) as object
@@ -343,8 +354,8 @@ sub layout()
   if isValid(m.logo) then tabsX = TABS_X_WITH_LOGO
   if isValid(m.tabBar)
     ' A tab's box is the row's text box, so its caps, not the box, center on the row. The
-    ' text starts at tabsX because the box pads BOX_PADDING.
-    m.tabBar.translation = [tabsX - overhangRow.BOX_PADDING, overhangRow.TEXT_TOP]
+    ' text starts at tabsX because the tab pads TAB_PADDING.
+    m.tabBar.translation = [tabsX - overhangRow.TAB_PADDING, overhangRow.TEXT_TOP]
   end if
 
   titleX = tabsX
@@ -368,6 +379,19 @@ sub layout()
     leftOfDropdown = dropdownX - overhangRow.ELEMENT_GAP
   end if
 
+  ' A scrolling tab strip's slot: the same span, but measured from a clock allowance that
+  ' holds still (overhangRow.tabSlotWidth), so the strip does not shift when the digits do
+  if isValid(m.tabBar)
+    clusterWidth = 0
+    if m.cluster.visible then clusterWidth = m.cluster.barWidth
+    dropdownWidth = 0
+    if m.userDropdown.visible
+      dropdownWidth = m.userDropdown.triggerWidth
+      if dropdownWidth <= 0 then dropdownWidth = DROPDOWN_PROVISIONAL_WIDTH
+    end if
+    m.tabBar.slotWidth = overhangRow.tabSlotWidth(tabsX - overhangRow.TAB_PADDING, m.clock.textWidth, not m.isClockHidden, clusterWidth, dropdownWidth)
+  end if
+
   m.title.translation = [titleX, overhangRow.TEXT_TOP]
   titleWidth = leftOfDropdown - titleX
   if titleWidth < TITLE_MIN_WIDTH then titleWidth = TITLE_MIN_WIDTH
@@ -379,7 +403,7 @@ sub layout()
   m.status.visible = false
   if m.status.text <> "" and m.title.visible
     textWidth = snapToGrid(-int(-m.titleMeasure.localBoundingRect().width))
-    statusX = titleX + textWidth + overhangRow.TAB_GAP
+    statusX = titleX + textWidth + overhangRow.TITLE_STATUS_GAP
     statusWidth = leftOfDropdown - statusX
     if textWidth > 0 and statusWidth >= TITLE_MIN_WIDTH
       m.status.translation = [statusX, overhangRow.TEXT_TOP]
@@ -450,6 +474,7 @@ sub onTabsChanged()
   end if
 
   m.tabBar.visible = true
+  m.tabBar.mode = m.top.tabMode
   layout()
 
   ' Sync current selection before setting tabs (so the correct tab starts selected)

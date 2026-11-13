@@ -79,6 +79,10 @@ import { calleeName, walkAst } from './_shared.js';
  */
 const VERIFIED_SETTLE_KEYPATHS = new Set([
   '#buttons.buttonFocused',
+  // `ItemGridOptions.saveFavoriteItemSelected` sets it when the dialog opens and
+  // `ItemGridOptions.toggleFavorite` sets it from the new state; nothing else writes it, so the
+  // value holds until the next press. Terminal, not a pulse. Read against the app source 2026-11-12.
+  '#options.#favoriteMenu.iconUri',
   // Not an app field: the title of the picker's content node, which `sign-in-waits.spec.js`
   // sets as a marker over ODC. `SetServerScreen.onScanForServersComplete` replaces the content
   // with a fresh node whose title is empty, and nothing writes the old node again, so "the
@@ -122,6 +126,22 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // gate is `navSubtitlePanel`, which only runs on a fixture whose user can manage
   // subtitles (see `subtitlePanel` in tests/rta/screens.js).
   '#subtitlePanel.visible',
+  // `ItemDetails.updateFavoriteButton` sets it from the item on content load, and
+  // `ItemDetails.toggleFavorite` writes it once, after the server's answer (or reverts it on a
+  // failure). Nothing else writes it, so each state holds until the next press: terminal, not a
+  // pulse. Because the write follows the response, `false` after an unfavorite also means the
+  // server has applied it. Read against the app source 2026-11-12.
+  '#favoriteButton.isButtonSelected',
+  // `JRTabBar.onTabReady` sets it true once every tab has sized, and only a tabs change that
+  // rebuilds the tabs sets it false again: terminal for a given set of tabs. Read against the
+  // app source 2026-11-12. `tab-strip.spec.js` waits on it after setting the tabs.
+  '#overhang.#tabBar.isReady',
+  // The Animation that slides a scrolling tab strip. `JRTabBar.applyWindow` starts it in the
+  // same handler that moves focus, and `stopped` then holds until the next key: terminal.
+  // It also reads `stopped` before any slide, so `tab-strip.spec.js` waits on it only after
+  // it has seen the focus change that would have started one. Read against the app source
+  // 2026-11-12.
+  '#overhang.#scrollAnimation.state',
   // `JROverhangIconBar` writes the cluster icon's `isActive` when it builds the entry and in
   // `updateEntry`, both from `JRScene.applySyncPlayIcon` on each inGroup change and screen
   // change: terminal, held until the membership changes again. `syncplay-menu.spec.js` waits
@@ -319,6 +339,12 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // a pulse. Read against the app source 2026-10-23.
   '#optionList.content.0.title',
   '#optionList.itemFocused',
+  // `BaseGridView.configureBackdrop` sets it on each load to whether the view on show draws
+  // the presentation panel, and only an empty or a failed load clears it after that: held
+  // until the layout, the view or the content changes, so a poll cannot miss it. Read
+  // against the app source 2026-11-12 (`configureBackdrop` and the two clears in the load
+  // handlers).
+  '#presentationInfo.visible',
   '#osd.visible',
   '#quickConnectCode.text',
   '#scrollContent.translation',
@@ -358,6 +384,15 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   'audioPlayer.state',
   'itemId',
   'loadState',
+  // A screen's selected tab, read off the active view. BaseGridView and Home write it only
+  // through a tab press (the overhang proxies the bar's selection) and once when a library
+  // opens, so it holds until the next tab press. Read 2026-11-12 against JRScene's
+  // onOverhangTabSelected and BaseGridView.openLibrary.
+  'selectedTabId',
+  // The library a grid screen shows, read off the active view. BaseGridView.loadLibraryFromRoute
+  // sets `parentItem` once, when the screen opens, so the id holds for the screen's life and
+  // changes only when another screen becomes the active one. Read 2026-11-12.
+  'parentItem.id',
   // Roku's `Video.position`, read off the player by id. While the video plays it only
   // climbs, so a `>= target` predicate stays true once true. Read 2026-10-02 against the
   // one gate using it (playback-notifications.spec.js, which seeks before it waits). A

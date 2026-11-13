@@ -19,7 +19,9 @@ namespace gridQuery
   ' LoadItemsTask2 node. Built from scratch every time, so nothing a presenter set for one
   ' view carries into the next.
   '
-  ' @param state - { nameStartsWith, searchTerm, sortField, sortAscending, filter, filterOptions }
+  ' @param state - { nameStartsWith, searchTerm, sortField, sortAscending, filter,
+  '   filterOptions, isFavorite }; `isFavorite` is what a Favorites tab fixes on, apart
+  '   from `filter`, so the two combine
   ' @param parentItem - the library (or folder) the grid shows
   ' @param view - the current view mode, passed to the presenter
   ' @param presenter - the grid's presenter, or invalid
@@ -35,6 +37,7 @@ namespace gridQuery
       ' separate options with the category's own delimiter; the language categories then
       ' need flattening to the comma list the server takes. See languageFilters.toWire.
       filterOptions: languageFilters.toWire(state.filterOptions),
+      isFavorite: isBooleanTrue(state.isFavorite),
       ' Presenters can override any of these
       itemId: parentItem.Id,
       isRecursive: true,
@@ -49,64 +52,147 @@ namespace gridQuery
     return query
   end function
 
-  ' ── The saved view, and what the presenter currently offers ───────────────────
+  ' ── A saved choice, and what the presenter currently offers ───────────────────
   '
-  ' A library's chosen view persists per library id in the `landing` display setting,
-  ' and until 12.0 every view a presenter listed was available on every server, so a
-  ' saved name could always be honored. The Collections view breaks that: it is offered
-  ' only on 12.0+, so a name saved against one server can be missing when the SAME
-  ' library is opened against an older one (a downgrade, a restored backup). Honoring it
-  ' anyway does not fail loudly: the presenter falls through to its default query branch
-  ' while the layout is still chosen for the named view, which on a movie library means
-  ' the presentation grid's 650px offset with the info panel hidden: a grid pushed down
-  ' the screen against dead space.
+  ' Until 12.0 every view a presenter listed was available on every server, so a saved
+  ' tab could always be honored. The Collections view breaks that: it is offered only on
+  ' 12.0+, so a tab saved against one server can be missing when the SAME library is
+  ' opened against an older one (a downgrade, a restored backup). Honoring it anyway does
+  ' not fail loudly: the presenter falls through to its default query branch while the
+  ' layout is still chosen for the named view, which on a movie library means the
+  ' presentation grid's 650px offset with the info panel hidden: a grid pushed down the
+  ' screen against dead space. A tab picked in the web client can name a tab this
+  ' library lacks for the same reason, or one the app has but not here (Favorites on a
+  ' music library).
 
-  ' offersView: whether `viewName` is one of the views the presenter is listing.
+  ' offers: whether `name` is one of the entries a presenter is listing.
   '
-  ' Case-insensitive, matching how BaseGridView.SetUpOptions already compares a view name
-  ' to the saved one. A presenter's `Name` and the saved string must agree under the same
-  ' rule in both places or a view could restore here and fail to tick there.
+  ' Case-insensitive, matching how BaseGridView.SetUpOptions compares a name to the saved
+  ' one. A presenter's `Name` and the saved string must agree under the same rule in both
+  ' places or a choice could restore here and fail to tick there.
   '
-  ' @param views - a presenter's `getOptions().views`
-  ' @param viewName - the name to look for
-  function offersView(views as dynamic, viewName as dynamic) as boolean
-    if type(views) <> "roArray" then return false
+  ' @param offered - a list of `{ Name }`: a presenter's views, or one of its filter lists
+  ' @param name - the name to look for
+  function offers(offered as dynamic, name as dynamic) as boolean
+    if type(offered) <> "roArray" then return false
 
-    wanted = LCase(textOrEmpty(viewName).trim())
+    wanted = LCase(textOrEmpty(name).trim())
     if wanted = "" then return false
 
-    for each view in views
-      if isValid(view)
-        if LCase(textOrEmpty(view.Name).trim()) = wanted then return true
+    for each entry in offered
+      if isValid(entry)
+        if LCase(textOrEmpty(entry.Name).trim()) = wanted then return true
       end if
     end for
     return false
   end function
 
-  ' resolveView: which view a load should actually use.
+  ' resolveOffered: a saved choice, honored only while it is still offered.
   '
-  ' `savedView` is Invalid when the library has never had one chosen, which is the common
-  ' case and is answered with the default exactly as before. A saved name is honored
-  ' unless the presenter has stopped offering it.
-  '
-  ' The empty default is not a missing view. getDefaultView() returns "" for the Live TV,
-  ' Photos and Generic presenters, whose grids run with no named view at all, and "" is
-  ' in no presenter's list, so a rule of "reset anything not offered" would reset those on
-  ' every load. Only a non-empty saved name is checked.
+  ' The one rule for every saved name that a list can stop offering: the view, a plain
+  ' filter, a sort. Nothing saved answers with the fallback, and so does a saved name the
+  ' list no longer holds.
   '
   ' The caller does not write the fallback back to the registry: the saved choice is still
-  ' what the user picked, and it becomes valid again the moment the library is opened
-  ' against a server that supports it.
+  ' what the user picked, and it is valid again the moment the list offers it.
   '
-  ' @param savedView - the stored `landing` setting, or Invalid when none is stored
+  ' @param saved - the stored name, or Invalid when none is stored
+  ' @param offered - a list of `{ Name }`
+  ' @param fallback - what to use instead
+  function resolveOffered(saved as dynamic, offered as dynamic, fallback as dynamic) as string
+    name = textOrEmpty(saved).trim()
+    if name = "" then return textOrEmpty(fallback)
+    if gridQuery.offers(offered, name) then return name
+    return textOrEmpty(fallback)
+  end function
+
+  ' resolveView: which tab a library opens on, and where that choice came from.
+  '
+  ' The tab picked on this Roku (the `defaultTab` display setting) while the library
+  ' offers it; else the tab picked in the web client while offered; else the library
+  ' type's default. Each saved choice goes through resolveOffered, so one the library no
+  ' longer offers falls through without being forgotten.
+  '
+  ' The empty default is not a missing view. getDefaultView() returns "" for a folder or
+  ' collection (the Generic presenter), whose grid runs with no named view at all, and ""
+  ' is in no presenter's list. Only a non-empty saved name is checked.
+  '
+  ' @param clientOverride - the stored `defaultTab` setting, or Invalid when none is stored
+  ' @param serverTab - the web's pick for this library, already a libraryTab id
+  '   (libraryTab.fromServerTab), or "" when there is none
   ' @param offeredViews - the presenter's `getOptions().views`
   ' @param defaultView - what getDefaultView() answered for this library
-  ' @return {string} the view to load
-  function resolveView(savedView as dynamic, offeredViews as dynamic, defaultView as dynamic) as string
-    saved = textOrEmpty(savedView).trim()
-    if saved = "" then return textOrEmpty(defaultView)
-    if gridQuery.offersView(offeredViews, saved) then return saved
-    return textOrEmpty(defaultView)
+  ' @return {object} { tab, source }, `source` one of RESOLVED_ROKU, RESOLVED_WEB and
+  '   RESOLVED_DEFAULT
+  function resolveView(clientOverride as dynamic, serverTab as dynamic, offeredViews as dynamic, defaultView as dynamic) as object
+    picked = gridQuery.resolveOffered(clientOverride, offeredViews, "")
+    if picked <> "" then return { tab: picked, source: gridQuery.RESOLVED_ROKU }
+    picked = gridQuery.resolveOffered(serverTab, offeredViews, "")
+    if picked <> "" then return { tab: picked, source: gridQuery.RESOLVED_WEB }
+    return { tab: textOrEmpty(defaultView), source: gridQuery.RESOLVED_DEFAULT }
+  end function
+
+  ' Where resolveView's tab came from.
+  const RESOLVED_ROKU = "roku"
+  const RESOLVED_WEB = "web"
+  const RESOLVED_DEFAULT = "default"
+
+  ' viewOfTab: the view a tab shows, and what is fixed on it.
+  '
+  ' A tab is a view plus what is fixed on it. Most tabs are their own view. A presenter
+  ' lists a Favorites tab as `{ Name: libraryTab.FAVORITES, View: <its content tab>,
+  ' IsFavorite: true }`: the content tab's view with favorites fixed on. So presenters are
+  ' only ever handed a view id, and no presenter method learns a tab that is not a view.
+  '
+  ' An id the presenter does not list is its own view with nothing fixed, which is what a
+  ' folder or collection needs: it lists no tabs and runs with the empty view.
+  '
+  ' @param offeredViews - the presenter's `getOptions().views`
+  ' @param tabId - a libraryTab id
+  ' @return {object} { view, isFavorite }
+  function viewOfTab(offeredViews as dynamic, tabId as dynamic) as object
+    id = textOrEmpty(tabId).trim()
+    if type(offeredViews) = "roArray"
+      for each entry in offeredViews
+        if isValid(entry)
+          if LCase(textOrEmpty(entry.Name).trim()) = LCase(id) and id <> ""
+            view = textOrEmpty(entry.View).trim()
+            if view = "" then view = textOrEmpty(entry.Name).trim()
+            return { view: view, isFavorite: isBooleanTrue(entry.IsFavorite) }
+          end if
+        end if
+      end for
+    end if
+    return { view: id, isFavorite: false }
+  end function
+
+  ' isPlainFavorites: whether `query` asks for favorites and narrows them no further.
+  '
+  ' An empty result of such a query means the library has no favorites, which the grid
+  ' says in its own words. With a filter, a letter or a search in force, an empty result
+  ' says only that nothing matched.
+  '
+  ' @param query - a query build() returned
+  function isPlainFavorites(query as dynamic) as boolean
+    if not isValid(query) or not isBooleanTrue(query.isFavorite) then return false
+    if LCase(textOrEmpty(query.filter).trim()) <> "all" then return false
+    if isValid(query.filterOptions)
+      if query.filterOptions.count() > 0 then return false
+    end if
+    if textOrEmpty(query.nameStartsWith).trim() <> "" then return false
+    return textOrEmpty(query.searchTerm).trim() = ""
+  end function
+
+  ' showsFavorites: whether `query` lists favorites, with or without more narrowing.
+  '
+  ' True for the Favorites tab (`isFavorite`) and for the Favorites filter. A grid that shows
+  ' favorites is stale once a favorite toggles elsewhere.
+  '
+  ' @param query - a query build() returned
+  function showsFavorites(query as dynamic) as boolean
+    if not isValid(query) then return false
+    if isBooleanTrue(query.isFavorite) then return true
+    return LCase(textOrEmpty(query.filter).trim()) = "favorites"
   end function
 
   ' ── A category's options, its saved query, and the invariant between them ──────

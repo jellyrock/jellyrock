@@ -7,7 +7,7 @@ related-files:
   - source/utils/session.bs
   - components/data/jellyfin/JellyfinUserSettings.xml
   - components/data/jellyfin/JellyfinUserSettings.bs
-last-reviewed: 2026-10-10
+last-reviewed: 2026-11-13
 ---
 
 # Settings
@@ -18,9 +18,13 @@ How `settings/settings.json` defines every setting, how settings reach `m.global
 
 1. **Global settings** apply to every user on the Roku and live in the registry section `JellyRock`: `globalRememberMe`, `globalSplashScreen` and `globalTranslationLocale`. Most are read after sign-in. `globalTranslationLocale`, the language of the sign-in screens and the twin of the per-user `translationLocale`, is read at startup before anyone signs in: `getSetting()` needs no signed-in user, which is what lets it translate the server and user selection screens (see [`translations.md`](translations.md)).
 2. **User settings** belong to one Jellyfin user and live in a registry section named by that user's ID: theme colors, the bitrate limit, subtitle preferences.
-3. **Server config** comes from Jellyfin at sign-in and is never written to the registry. It lives in `m.global.user.config` and `m.global.user.policy`. The order of Home's sections is server data too: one `homeSection<N>` field per slot, `homeSlots.SLOT_COUNT` slots to match the web client, filled from Jellyfin's `DisplayPreferences` API. A migration removes old per-user `homeSection*` keys ([`migrations.md`](migrations.md)).
+3. **Server config** comes from Jellyfin at sign-in and is never written to the registry. It lives in `m.global.user.config` and `m.global.user.policy`. The order of Home's sections is server data too: one `homeSection<N>` field per slot, `homeSlots.SLOT_COUNT` slots to match the web client, filled from Jellyfin's `DisplayPreferences` API. A migration removes old per-user `homeSection*` keys ([`migrations.md`](migrations.md)). So is the default tab a user picked for each library in the web client (`landing-<libraryId>`, or `landing-livetv` for Live TV, in the same response): `libraryTab.serverLandings()` collects the picks into `m.global.user.config.serverLibraryLanding` at every sign-in, and the grid translates one into its own tab ids when a library opens.
 
 Defaults for the first two live only in `settings/settings.json`. Server config has no defaults: the server decides.
+
+### Page settings are not in `settings.json`
+
+A setting whose value belongs to one screen (how one library view is drawn) is a page setting. It is offered on that screen only, from the overhang's settings icon ([navigation.md](navigation.md#the-overhang-row-up-down-and-the-cluster)), and never in the Settings screen, which has no library to apply it to. An app-wide setting lives in Settings only, so no setting has two homes. A library's page settings are display settings: per-user registry keys named `display.<libraryId>.<key>`, held in `m.global.user.settings.displaySettings` and written through `setLibraryDisplaySetting()`. A key that is per view carries the view inside its third part (`layout_<view>`, from `libraryLayout.settingKey()`), because only three-part `display.` keys load. Removing a library from `displaySettings` deletes every key under its prefix, and `deleteLibraryDisplaySetting()` deletes one. A library's Default tab entry is one: `display.<libraryId>.defaultTab` holds the tab picked on this Roku, which wins over the web client's pick (`gridQuery.resolveView()`).
 
 ## `settings/settings.json`, the one definition
 

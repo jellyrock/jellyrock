@@ -19,12 +19,13 @@ related-files:
   - components/ui/dropdown/JRDropdown.xml
   - components/ui/dropdown/JRDropdown.bs
   - source/utils/overhangRow.bs
+  - source/utils/tabStrip.bs
   - source/utils/buttonOverflow.bs
   - source/utils/pixelGrid.bs
   - source/utils/textMetrics.bs
   - source/utils/iconBarNav.bs
   - resources/icons/icons.json
-last-reviewed: 2026-11-07
+last-reviewed: 2026-11-12
 ---
 
 # Design system
@@ -59,14 +60,29 @@ One row, the same elements in the same order on every screen that shows them (`J
 |---|---|---|
 | Icon button (`JROverhangIcon`) | a 78 pixel square focus box around the 42 pixel glyph; the row lays out by 60 pixel slots 6 apart, so the box overhangs its slot by 9 and overlaps its invisible neighbors | The focus ring is the 6 pixel border; the resting glyph is `colorTextSecondary`, focused `colorTextPrimary`, disabled `colorTextDisabled` in both states |
 | SyncPlay icon (the cluster's first entry) | the same box; an 18 pixel badge (`overhangRow.BADGE_SIZE`) on the glyph's top-right | One icon is the membership's state and its control. In a group, the filled `groups` glyph is drawn in `colorSecondary`, focused or not; its outlined variant differs from the filled one only by two small holes, which nobody tells apart at ten feet. Outside a group, while a group exists to join, a `colorSecondary` dot sits on the white glyph (`JROverhangIcon.hasBadge`), as the jellyfin-web toolbar marks it. The two states differ in shape (a tinted glyph or a dot), not in color alone, so they hold in any theme. An account whose SyncPlay access is None never sees it: Search and Settings keep their place at the right. Neither does anyone until the server's push channel to the Roku is known; without one (an HTTPS server with no companion plugin) the icon is shown disabled (`isDisabled`, a gray glyph) with no dot, and a press explains that the plugin is needed. A press opens a dialog, never a route |
-| Tab (`JRTab`) | the Large font in a 78 pixel box, 9 pixels at the sides, a 42 pixel glyph, a 6 pixel icon gutter | The glyph is outlined until the tab is selected, then filled; the 6 pixel underline under glyph and text is `colorSecondary` |
+| Tab (`JRTab`) | the Large font in a 78 pixel box, 15 pixels at the sides (`TAB_PADDING`, so the focus border sits 9 pixels clear of the text), a 42 pixel glyph, a 6 pixel icon gutter | The glyph is outlined until the tab is selected, then filled; the 6 pixel underline under glyph and text is `colorSecondary` |
 | User dropdown (`JRDropdown`) | a 42 pixel avatar, the name, a 24 pixel chevron, 9 pixels apart, in a 78 pixel box with 9 pixels at the sides | The box hugs its content, the name's width rounded up onto the grid; a name past 300 pixels is cut with an ellipsis. The name drops 3 pixels in its box, as a text box does (below) |
 | Logo | 180 by 39 at y 51 | Its capitals and baseline sit on the tab text's |
 | Text box (tabs, the title, the clock) | the row's 78 pixels, 3 pixels below the row's top (y 30 to 108) | A label centers its line box, and caps and digits sit about 7% of the font size above that box's middle, so text in this box centers on the row's line. The title takes the same box as a tab's text, so it sits where the tabs' text does |
-| Status (`JROverhang` `status`) | the Large font in secondary color, a tab gap after the title's text, taking what the slot has left | A screen's state next to its name, never a control: the search screen's submitted query while its keyboard is closed. Scrolls when long; hidden when the title alone fills the slot |
+| Status (`JROverhang` `status`) | the Large font in secondary color, 9 pixels (`TITLE_STATUS_GAP`) after the title's text, taking what the slot has left | A screen's state next to its name, never a control: the search screen's submitted query while its keyboard is closed. Scrolls when long; hidden when the title alone fills the slot |
 | Clock | right-aligned at x 1824 in a 150 pixel slot, in the text box (`Clock`'s `boxY` and `boxHeight`, whose defaults are the video player's) | Everything else is placed from the slot's left edge |
-| Box gap | 9 pixels between tabs, 6 pixels on the right (before the dropdown, before and inside the cluster) | Text has no air of its own, a glyph's canvas does, so two numbers give one visible rhythm; the row's elements line up from the right edge in, so the cluster sits at the same place on every screen |
+| Box gap | none between tabs, whose boxes touch (`TAB_SPACING`), 6 pixels on the right (before the dropdown, before and inside the cluster) | A tab's padding is its air, and a glyph's canvas pads the glyph, so the two give one visible rhythm; the row's elements line up from the right edge in, so the cluster sits at the same place on every screen |
 | Row | boxes 78 tall from design y 27 to 105, every static element's ink centered on y 66 (a focus ring may sit above or below that line); content starts at 104 (Home's row label) and near 125 (a grid's tiles) | There is no room for a second row: measured on a Stick 4K (2026-10-25), content starts right under the row's bottom edge. Put a screen's own status text on the screen |
+
+### A tab strip that can outgrow its slot
+
+`JRTabBar` has two modes, and a screen declares one with its tabs (`tabMode`).
+
+- **Fixed** is the default, and Home's: a small set that fits in every language. The tabs are laid out and never move.
+- **Scrolling** is for a set that long translations or more views can push past the row. The strip is clipped to its slot, the span from its left edge to the gap before the cluster.
+
+A scrolling strip follows one rule. The **active tab** is the focused tab while the bar has focus, and the selected tab otherwise. It sits at the start of the slot with a little of the tab before it showing, and the strip never scrolls past its last tab. So a strip that fits never moves. On one that does not, each Left or Right press moves the strip one tab until it reaches an end, and the strip returns to the selected tab when focus leaves the bar. Right from the last tab and Left from the first leave the strip for the cluster, as in fixed mode.
+
+A tab the slot's edge cuts is drawn dimmed, which tells the viewer more tabs lie that way. There is no fade: the overhang sits over a backdrop, so a painted gradient would show as a band, and a fade to transparent needs a `MaskGroup`, which a player without OpenGL draws unmasked.
+
+Only a focus move slides the strip. A new set of tabs, a new screen and a change in the slot's width place it at once. The slot's width counts the clock as at least `CLOCK_PROVISIONAL_WIDTH` wide (`overhangRow.tabSlotWidth`), so the strip holds still while the digits change width.
+
+The rule is one pure function, `tabStrip.window` in `source/utils/tabStrip.bs`, with the peek width, the cut tab's opacity and the slide's length beside it.
 
 Left and Right walk the row as one and wrap at both ends; Down returns to the screen; Up from a screen's top enters the row at the element used last on that visit, else the first shown (the selected tab on Home, the first cluster icon elsewhere). The cluster shows on every screen once a user is signed in, except a player, which has no now-playing control to come back to; the dropdown shows on Home only. A screen's own controls stay on the screen: the search screen's query box lives in its keyboard overlay, and while the keyboard is closed the overhang shows the submitted query as dim status text after the title, as a grid's title shows "Filtered by".
 
@@ -85,6 +101,6 @@ Left and Right walk the row as one and wrap at both ends; Down returns to the sc
 
 ## Where the numbers are enforced
 
-The row's shared numbers live in one file, `source/utils/overhangRow.bs`: three chosen (the row's height, the glyph size, the padding inside a box), the three gaps (between tabs, between the right-hand elements, and before the clock's digits, which the group mark in the player's OSD keeps too) and the text drop, and the rest derived from them. The components read it; `leftOfClock()` places whatever ends at the clock, and `CLOCK_PROVISIONAL_WIDTH` stands in for its digits until it reports their width; what only one component uses stays there (`LOGO_Y` in `JROverhang.bs`, the avatar, chevron and part gap in `JRDropdown`). Change a number there and this page, not the other way round. Where a label's caps sit in its box is one function, `capsAboveCenter` in `source/utils/textMetrics.bs`, which `TextButton`'s icon and the name in the user dropdown use; `textMetrics.spec.bs` fails if the row's text drop stops matching it.
+The row's shared numbers live in one file, `source/utils/overhangRow.bs`: three chosen (the row's height, the glyph size, the padding inside a box), a tab's own padding and spacing, the gaps (after the title, between the right-hand elements, and before the clock's digits, which the group mark in the player's OSD keeps too) and the text drop, and the rest derived from them. The components read it; `leftOfClock()` places whatever ends at the clock, and `CLOCK_PROVISIONAL_WIDTH` stands in for its digits until it reports their width; what only one component uses stays there (`LOGO_Y` in `JROverhang.bs`, the avatar, chevron and part gap in `JRDropdown`). Change a number there and this page, not the other way round. Where a label's caps sit in its box is one function, `capsAboveCenter` in `source/utils/textMetrics.bs`, which `TextButton`'s icon and the name in the user dropdown use; `textMetrics.spec.bs` fails if the row's text drop stops matching it.
 
-Two checks hold it, and one measurement. The Rooibos spec `JROverhangLayout.spec.bs` fails on any box the overhang places off the grid, or off the row's edges. On hardware, `RTA_BENCH=1 npm run test:rta -- overhang-ink` writes where each element's ink sits on Home and on Settings, and each box's position, to `out/rta-captures/*.ink.json` (through `tests/rta/lib/ink.js`); it gates nothing, so judge a layout change by diffing the tables of two runs. The RTA specs `search-navigation`, `overhang-clock` and `home-failure` walk the row.
+Two checks hold it, and one measurement. The Rooibos spec `JROverhangLayout.spec.bs` fails on any box the overhang places off the grid, or off the row's edges. On hardware, `RTA_BENCH=1 npm run test:rta -- overhang-ink` writes where each element's ink sits on Home and on Settings, and each box's position, to `out/rta-captures/*.ink.json` (through `tests/rta/lib/ink.js`); it gates nothing, so judge a layout change by diffing the tables of two runs. The RTA specs `search-navigation`, `overhang-clock` and `home-failure` walk the row. `tabStrip.spec.bs` holds the scrolling rule and `overhangRowTabSlot.spec.bs` the slot's width; `RTA_BENCH=1 npm run test:rta -- tab-strip` walks a strip of eight tabs on hardware and fails if the focused tab is ever cut, the strip scrolls past its end, or Right from the last tab stays in the strip.

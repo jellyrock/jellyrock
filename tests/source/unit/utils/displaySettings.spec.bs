@@ -187,6 +187,35 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("deleteLibraryDisplaySetting")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("removes one setting and keeps the library's others")
+    function _()
+      setLibraryDisplaySetting("test-lib-one", "defaultTab", "genres")
+      setLibraryDisplaySetting("test-lib-one", "sortField", "DateCreated")
+
+      deleteLibraryDisplaySetting("test-lib-one", "defaultTab")
+
+      result = getLibraryDisplaySettings("test-lib-one")
+      m.assertFalse(result.DoesExist("defaultTab"))
+      m.assertEqual(result.sortField, "DateCreated")
+    end function
+
+    @it("does nothing for a setting or a library that is not there")
+    function _()
+      setLibraryDisplaySetting("test-lib-two", "sortField", "DateCreated")
+      before = m.global.user.settings.displaySettings
+
+      deleteLibraryDisplaySetting("test-lib-two", "defaultTab")
+      deleteLibraryDisplaySetting("test-lib-missing", "defaultTab")
+      deleteLibraryDisplaySetting("", "defaultTab")
+      deleteLibraryDisplaySetting("test-lib-two", invalid)
+
+      m.assertEqual(m.global.user.settings.displaySettings, before)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Cross-library isolation")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
