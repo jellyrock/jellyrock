@@ -86,7 +86,7 @@ it('resuming a suspended grid does not manufacture cell appearances', async (tes
   const moviesId = libraryIdFor(ctx.libraries, MOVIES_GRID.collectionType);
   if (!moviesId) testCtx.skip('server has no "movies" library');
 
-  // Seed the landing view, do not inherit it. `display.<id>.landing` is registry-PERSISTED
+  // Seed the landing view, do not inherit it. `display.<id>.defaultTab` is registry-PERSISTED
   // and survives a relaunch, so the Movies library opens on whatever view ran last, and
   // `genre-skeleton.spec.js` leaves it on `Genres`, which is a RowList with no `#itemGrid`
   // in it at all. Without this the walk below times out waiting for focus that can never

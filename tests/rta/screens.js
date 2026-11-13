@@ -231,7 +231,7 @@ const vw = (name, nav, collectionType, landing, assert) => ({
 
 /**
  * The deterministic Movies landing view that every `#itemGrid` walk needs seeded, since
- * `display.<id>.landing` is registry-persisted and survives a relaunch. Exported because
+ * `display.<id>.defaultTab` is registry-persisted and survives a relaunch. Exported because
  * `specs/leaks.spec.js` drives the same walks outside this registry and must seed the
  * same view. One definition, so the two cannot drift into testing different screens.
  */
@@ -465,7 +465,7 @@ export const SCREENS = [
   { name: 'gridScroll', state: 'home', nav: navGridScroll, view: MOVIES_GRID },
 
   // --- Library grids: one screen per VIEW per library type --------------------
-  // The landing view is seeded deterministically (display.<id>.landing) so the
+  // The landing view is seeded deterministically (display.<id>.defaultTab) so the
   // capture never depends on whatever view is stickily persisted on the device.
   // `view.collectionType` is stable; the library id is resolved at runtime.
   // (Movies "Presentation" view == the store `libraryGrid`, so it isn't duplicated.)
