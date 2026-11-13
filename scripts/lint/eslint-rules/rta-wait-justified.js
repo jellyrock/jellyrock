@@ -79,6 +79,10 @@ import { calleeName, walkAst } from './_shared.js';
  */
 const VERIFIED_SETTLE_KEYPATHS = new Set([
   '#buttons.buttonFocused',
+  // `ItemGridOptions.saveFavoriteItemSelected` sets it when the dialog opens and
+  // `ItemGridOptions.toggleFavorite` sets it from the new state; nothing else writes it, so the
+  // value holds until the next press. Terminal, not a pulse. Read against the app source 2026-11-12.
+  '#options.#favoriteMenu.iconUri',
   // Not an app field: the title of the picker's content node, which `sign-in-waits.spec.js`
   // sets as a marker over ODC. `SetServerScreen.onScanForServersComplete` replaces the content
   // with a fresh node whose title is empty, and nothing writes the old node again, so "the

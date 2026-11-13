@@ -27,6 +27,7 @@ import { hardRelaunch } from '../lib/driver.js';
 import { failRequests } from '../lib/failRequests.js';
 import {
   focusDetailButton,
+  focusGridTile,
   navLibraryByType,
   overhangSelectedTab,
   overhangTabIds,
@@ -533,6 +534,68 @@ it('an item unfavorited from its details leaves the Favorites tab on Back', asyn
     await waitGridLoaded('the Favorites tab after Back');
     expect(await gridIds(), 'the unfavorited movie left the Favorites tab').not.toContain(target);
     expect((await tabState()).selectedTabId, 'and the tab is still Favorites').toBe('favorites');
+  } finally {
+    await setFavorite(session, first.Id, wasFavorite);
+  }
+});
+
+it("the Star dialog shows a favorite's heart filled, and one press removes it from the Favorites tab", async (testCtx) => {
+  const libraryId = libraryIdFor(libraries, 'movies');
+  if (!libraryId) testCtx.skip('server has no "movies" library');
+  const headers = tokenHeader(session.token);
+  const itemUrl = (id) => `${session.serverUrl}/Users/${session.userId}/Items/${id}`;
+  const first = (
+    await getJson(
+      `${session.serverUrl}/Items?UserId=${session.userId}&ParentId=${libraryId}` +
+        '&IncludeItemTypes=Movie&Recursive=true&SortBy=SortName&SortOrder=Ascending' +
+        '&Limit=1&Fields=UserData',
+      headers,
+    )
+  )?.Items?.[0];
+  if (!first) testCtx.skip('the movies library holds no movie');
+  const target = first.Id.replace(/-/g, '').toLowerCase();
+  const wasFavorite = first.UserData?.IsFavorite === true;
+  const FILLED = 'pkg:/images/icons/favorite_selected_$$RES$$.png';
+  const EMPTY = 'pkg:/images/icons/favorite_$$RES$$.png';
+  try {
+    if (!wasFavorite) await setFavorite(session, first.Id, true);
+    await openLibrary('library tabs star dialog favorite', 'movies', 'movies');
+    await selectLibraryTab('favorites');
+    await waitGridLoaded('the Favorites tab');
+    const before = await gridIds();
+    expect(before, 'the favorited movie is on the Favorites tab').toContain(target);
+
+    await focusGridTile(before.indexOf(target));
+    await press(ecp.Key.Option);
+    await waitFocusInside('#options', { label: 'the options dialog', timeout: 8000 });
+    expect(
+      await getActiveVal('#options.#favoriteMenu.iconUri'),
+      'the dialog shows the favorite with a filled heart',
+    ).toBe(FILLED);
+
+    // A press that lands on the already-selected button hands focus to the heart: ItemGridOptions.buttonFocusChanged().
+    await waitFocusInside('#favoriteMenu', {
+      label: 'the heart button',
+      timeout: 8000,
+      action: resendUntilFocusInside(ecp.Key.Right, '#favoriteMenu'),
+    });
+    await press(ecp.Key.Ok);
+    // ItemGridOptions.toggleFavorite() sets the icon from the new state and never writes it again.
+    await waitFor('#options.#favoriteMenu.iconUri', (v) => v === EMPTY, {
+      label: 'the heart emptied',
+      timeout: 8000,
+      read: getActiveVal,
+    });
+
+    await press(ecp.Key.Option);
+    await waitFocusInside('#itemGrid', {
+      label: 'the grid after the dialog closed',
+      timeout: 20000,
+    });
+    await waitGridLoaded('the Favorites tab after the dialog closed');
+    expect(await gridIds(), 'the removed movie left the Favorites tab').not.toContain(target);
+    const after = await getJson(itemUrl(first.Id), headers);
+    expect(after?.UserData?.IsFavorite, 'the server no longer has it as a favorite').toBe(false);
   } finally {
     await setFavorite(session, first.Id, wasFavorite);
   }

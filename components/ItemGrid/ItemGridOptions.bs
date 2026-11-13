@@ -191,17 +191,18 @@ end sub
 sub toggleFavorite()
   if not isValid(m.selectedFavoriteItem) then return
 
-  if m.favoriteMenu.iconUri = "pkg:/images/icons/favorite_$$RES$$.png"
+  ' The direction comes from the item, not the icon, and the item keeps the new state for the next open.
+  newState = not isBooleanTrue(m.selectedFavoriteItem.isFavorite)
+  if newState
     m.favoriteMenu.iconUri = "pkg:/images/icons/favorite_selected_$$RES$$.png"
     m.favoriteMenu.focusedIconUri = "pkg:/images/icons/favorite_selected_$$RES$$.png"
-    req = favorites.request(m.selectedFavoriteItem.id, true, m.top.getScene())
-    SubmitSideEffect(req)
   else
     m.favoriteMenu.iconUri = "pkg:/images/icons/favorite_$$RES$$.png"
     m.favoriteMenu.focusedIconUri = "pkg:/images/icons/favorite_$$RES$$.png"
-    req = favorites.request(m.selectedFavoriteItem.id, false, m.top.getScene())
-    SubmitSideEffect(req)
   end if
+  req = favorites.request(m.selectedFavoriteItem.id, newState, m.top.getScene())
+  SubmitSideEffect(req)
+  m.selectedFavoriteItem.isFavorite = newState
   ' Make sure we set the Favorite Heart color for the appropriate child
   setHeartColor("#cc3333")
 end sub
@@ -224,7 +225,7 @@ sub saveFavoriteItemSelected(msg)
   m.selectedFavoriteItem = data
   ' Favorite button
   if isValid(m.selectedFavoriteItem)
-    if m.selectedFavoriteItem.favorite = true
+    if isBooleanTrue(m.selectedFavoriteItem.isFavorite)
       m.favoriteMenu.iconUri = "pkg:/images/icons/favorite_selected_$$RES$$.png"
       m.favoriteMenu.focusedIconUri = "pkg:/images/icons/favorite_selected_$$RES$$.png"
       ' Make sure we set the Favorite Heart color for the appropriate child

@@ -1768,11 +1768,11 @@ Decision `reload-in-place-one-path` fixed a second gear, track or version pick m
 
 Not now: it needs a Home row that opens an item on every run, which the shared demo server does not promise. Closes when such a row is available (for example a Continue Watching fixture the spec seeds itself) and the spec opens an item from Home, presses Back, and waits for `#imageFader.uri` to read empty.
 
-#### No RTA case covers the Star dialog's favorite toggle reloading a Favorites grid `[fid: star-dialog-favorite-reload-untested]` `[captured 2026-11-13]`
+#### No RTA case reopens the Star dialog on a tile after its heart was pressed `[fid: star-dialog-reopen-untested]` `[captured 2026-11-13]`
 
-`BaseGridView.optionsClosed()` reloads a grid that lists favorites when a favorite was toggled in the Star dialog on the same screen (decision `favorite-toggles-bump-version`), but no RTA case drives that path. The case `an item unfavorited from its details leaves the Favorites tab on Back` in `tests/rta/specs/library-tabs.spec.js` covers only the details-screen toggle.
+`ItemGridOptions.toggleFavorite()` writes the new state back to the item node (`m.selectedFavoriteItem.isFavorite`), so reopening the Star dialog on the same tile shows the right heart without a grid reload. No RTA case reopens the dialog: the case `the Star dialog shows a favorite's heart filled, and one press removes it from the Favorites tab` in `tests/rta/specs/library-tabs.spec.js` runs on the Favorites tab, where the item leaves the grid once the dialog closes.
 
-Waits on the Star dialog's heart reading the right field: `ItemGridOptions.saveFavoriteItemSelected()` reads `.favorite`, which item nodes do not have, so the dialog cannot show an item as a favorite yet. To close: on the Favorites tab, open the Star dialog on a favorite, press its heart, close the dialog, and assert the item left the grid.
+Not done with the Star dialog fix because it needs a different tab (Movies, where the item stays). To close: on the Movies tab, open the Star dialog on a movie that is not a favorite, press the heart, close the dialog, open it again on the same tile, and assert the heart is filled.
 
 ### docs
 
