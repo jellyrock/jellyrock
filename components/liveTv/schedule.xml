@@ -21,5 +21,6 @@
     <!-- The routed screen hosting the guide, which owns its loading wait (screenWaits) -->
     <field id="hostScreen" type="node" />
     <function name="startLoading" />
+    <function name="isAtTop" />
   </interface>
 </component>

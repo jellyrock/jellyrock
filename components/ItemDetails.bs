@@ -13,6 +13,7 @@ import "pkg:/source/utils/appWaits.bs"
 import "pkg:/source/utils/buttonOverflow.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/dialogs.bs"
+import "pkg:/source/utils/favorites.bs"
 import "pkg:/source/utils/infoRowFit.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/liveTv.bs"
@@ -1165,11 +1166,7 @@ sub toggleFavorite()
 
   ' Read the desired state from the button (writing itemContent would trigger a full rebuild).
   newState = not favoriteButton.isButtonSelected
-  if newState
-    req = GetApi().BuildMarkFavoriteRequest(item.id)
-  else
-    req = GetApi().BuildUnmarkFavoriteRequest(item.id)
-  end if
+  req = favorites.request(item.id, newState, m.top.getScene())
   favoriteButton.isLoading = true
 
   ' Carry the button + intended state through the promise context (no closures in BS).
