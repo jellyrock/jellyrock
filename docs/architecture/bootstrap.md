@@ -118,6 +118,7 @@ The app has one scene for its whole life, `components/JRScene.xml`, which extend
 | `userMenuAction` | string | Set from the overhang's user dropdown (relayed by `JRScene.onOverhangUserMenuAction`) and from Home's options panel; `main.bs` passes it to `handleMenuAction()`. |
 | `preLoginIntent` | string | A sign-in screen sets it; `main.bs` passes it to `handlePreLoginIntent()`. |
 | `contentVersion` | int | Bumped when a view changes server content (an item delete). A grid suspended under it reloads on resume when the number differs. |
+| `favoritesVersion` | int | Bumped by every favorite toggle, through `favorites.request()`. A grid that lists favorites (the Favorites tab, or the Favorites filter) reloads on resume, and when the options dialog closes, when the number differs. |
 | `testToast` | string | Shows a test toast when set from the console (see [`debug-tools.md`](debug-tools.md)). |
 
 Its `callFunc` functions:
