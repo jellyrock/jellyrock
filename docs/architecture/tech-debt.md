@@ -94,15 +94,13 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 - **issue**: Rooibos runs `setup()` and `teardown()` once per `@describe` group, and `beforeEach()` and `afterEach()` once per test. A suite that builds a node in `setup()` and then mutates it lets each test inherit the last one's leftovers, so it passes on declaration order rather than isolation. The visible failure is the benign direction. The hazard is a test that never sets a field it depends on and passes on a neighbor's value, until someone reorders or deletes the neighbor. Of #786's 23 files on 2026-10-11, 20 still build in `setup()` (one is converted, two were deleted), and 7 files not on the list build there too.
 - **direction**: Move construction and mutated state to `beforeEach()` (chaining `super.beforeEach()`) and cleanup to `afterEach()`; leave immutable per-suite fixtures in `setup()`. Audit rather than rewrite blind: a suite where every test sets every field it reads is already order-independent. The cheap check is to reverse the test order and re-run. Split by the epic's groups, one PR each. Prevention is already in [`tests/CLAUDE.md`](../../tests/CLAUDE.md).
 
+### Medium
+
 #### `homerows-spec-asserts-nothing`
 
-- **area**: the test bsconfig plugin lists ([`bsconfig-tests-unit.json`](../../bsconfig-tests-unit.json)), [`components/home/HomeRows.bs`](../../components/home/HomeRows.bs) (`buildSectionPlan`)
-- **issue**: Two gaps are left from a suite that verified nothing. Its assertions were `m.assertTrue(true)`, and every test called an undeclared `callFunc`, which runs nothing and raises nothing ([`components/CLAUDE.md`](../../components/CLAUDE.md)). The assertions, the `<interface>` declaration and the per-test build are fixed. What is left: no test bsconfig loads the `callfunc-interface` plugin, and [`bsconfig.json`](../../bsconfig.json) does not include `tests/`, so the test build still cannot catch an undeclared `callFunc` in a spec. The #1010 caption teardown fix found the same class elsewhere. And `buildSectionPlan()` has no direct test: [`homeSlots.spec.bs`](../../tests/source/unit/utils/homeSlots.spec.bs) covers the slot count, the settings fields, `user.SaveUserHomeSections()` and `user.hasHomeSectionData()`.
-- **direction**:
-  - Add `callfunc-interface` to the test plugin lists, so an undeclared `callFunc` in a spec fails the build. That plugin list is the duplication [`bsconfig-files-duplicated`](#bsconfig-files-duplicated) tracks.
-  - Add a plan-level case for `buildSectionPlan()` once the seam exists, or extract the plan builder into `source/` as a pure function.
-
-### Medium
+- **area**: [`components/home/HomeRows.bs`](../../components/home/HomeRows.bs) (`buildSectionPlan`)
+- **issue**: A suite once verified nothing: its assertions were `m.assertTrue(true)`, and every test called an undeclared `callFunc`, which runs nothing and raises nothing ([`components/CLAUDE.md`](../../components/CLAUDE.md)). The assertions, the `<interface>` declaration and the per-test build are fixed. The test configs now load `callfunc-interface` through `bsconfig-tests-base.json`, and `npm run validate` checks `bsconfig-tests.json`, so an undeclared `callFunc` in a spec fails the build. What is left: `buildSectionPlan()` has no direct test. [`homeSlots.spec.bs`](../../tests/source/unit/utils/homeSlots.spec.bs) covers the slot count, the settings fields, `user.SaveUserHomeSections()` and `user.hasHomeSectionData()`.
+- **direction**: Add a plan-level case for `buildSectionPlan()` once the seam exists, or extract the plan builder into `source/` as a pure function.
 
 #### `homerows-geometry-invariant-ungated`
 
@@ -474,9 +472,9 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 #### `bsconfig-files-duplicated`
 
-- **area**: the repository root: `bsconfig-base.json` and the eight `bsconfig*.json` that inherit from it; the five test-runner configs carry what remains
-- **issue**: BSC's `extends` merges shallowly. A child that sets `files`, `plugins`, `diagnosticFilters` or `rooibos` replaces the parent's value, so it cannot inherit an array and change one entry. Only `compilerOptions` merges key by key. `bsconfig-base.json` holds `compilerOptions`, every `diagnosticFilters` entry and `outDir`, and [`bsconfig-inheritance.test.js`](../../tests/scripts/unit/lint/bsconfig-inheritance.test.js) stops children from redefining them. What remains duplicated is the shallow-merge case: the `files` arrays and `rooibos` blocks of the five test-runner configs, and the three-entry test `plugins` list in the four runnable ones. `bsconfig-tdd-sample.json` extends `bsconfig-tests.json` to inherit that list. [`build-and-tooling.md`](build-and-tooling.md) explains the merge rule.
-- **direction**: A `bsconfig-tests-base.json` could hold the test `plugins` list, but `files` and `rooibos` would still be restated, so it saves three lines per config. That is not worth a second inheritance level unless the plugin list starts to drift. A real fix needs BSC to merge arrays or support `files` additions upstream.
+- **area**: the repository root: `bsconfig-base.json` and the `bsconfig*.json` that inherit from it; the five test-runner configs carry what remains
+- **issue**: BSC's `extends` merges shallowly. A child that sets `files`, `plugins`, `diagnosticFilters` or `rooibos` replaces the parent's value, so it cannot inherit an array and change one entry. Only `compilerOptions` merges key by key. `bsconfig-base.json` holds `compilerOptions`, every `diagnosticFilters` entry and `outDir`, and [`bsconfig-inheritance.test.js`](../../tests/scripts/unit/lint/bsconfig-inheritance.test.js) stops children from redefining them. What remains duplicated is the shallow-merge case: the `files` arrays and `rooibos` blocks of the five test-runner configs. The test `plugins` list lives once in `bsconfig-tests-base.json`, which the four runnable test configs extend; one that set its own `plugins` would replace the list, and `bsconfig-inheritance.test.js` fails on that. `bsconfig-tdd-sample.json` extends `bsconfig-tests.json`. [`build-and-tooling.md`](build-and-tooling.md) explains the merge rule.
+- **direction**: The plugin list is shared. The `files` arrays and `rooibos` blocks can be shared only if BSC merges arrays or supports `files` additions upstream. Revisit when that lands, or if the `files` arrays start to drift.
 
 #### `mixed-esm-cjs-scripts`
 

@@ -4515,11 +4515,7 @@ end sub
 
 ' focusButtonGroupChild: Focus the button at the current buttonFocused index directly
 sub focusButtonGroupChild()
-  focusIndex = m.buttonGrp.buttonFocused
-  if focusIndex < 0 or focusIndex >= m.buttonGrp.getChildCount()
-    return
-  end if
-  m.buttonGrp.getChild(focusIndex).setFocus(true)
+  focusRowButton(m.buttonGrp)
 end sub
 
 ' setupButtons: Build the complete button set for the given item type.

@@ -22,6 +22,8 @@ Every suite extends `tests.BaseTestSuite`, which extends `rooibos.BaseTestSuite`
 
 The one exception: a suite that runs inside a component scope (`@SGNode`) extends `rooibos.BaseTestSuite`, because that scope cannot see `tests.BaseTestSuite`. Such a suite tests code that needs none of the `m.global` setup (`WebSocketClient.spec.bs`).
 
+**That limit covers the whole node tree, not only your code.** Rooibos creates the node, running `init()` for it and every child, before any suite hook can set up `m.global`. `@SGNode("ItemDetails")` run alone crashed on creation with `&hec` in a child `JRLabel` reading `m.global.constants`, and left the Roku hung (observed 2026-11-13 on a Streaming Stick 4K). For a function in such a component, move the logic into a `source/` helper and test it from an ordinary suite, as `focusRowButton()` in `buttonOverflow.bs` is.
+
 ### One `@suite` per file
 
 **Put exactly one `@suite` class in a `.spec.bs` file.** Breaking this breaks the runner, not only the tidiness. A file with two or more suites builds and validates cleanly, then crashes the Rooibos runner on the device (`&hec` in `TestRunner.brs`), because the generated `.brs` gives only the last class a `getTestSuiteData()`; Rooibos prints `ERROR RETRIEVING TEST SUITE DATA` right before (observed 2026-09-22 on a Roku Ultra). The crash leaves the Roku hung until an ECP `Home` key press.
