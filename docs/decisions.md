@@ -2826,6 +2826,24 @@ Every favorite toggle builds its request through `favorites.request()`, which bu
 
 Ruled out: reloading the Favorites tab on every return, as Home does, which loses the viewer's place when nothing changed; and bumping `contentVersion`, which would send every library grid back to the top after any favorite toggle. The TV guide is not covered: a reload does nothing on a guide already built.
 
+## decision-id: library-default-tab-precedence
+
+**date**: 2026-11-13
+**status**: accepted
+**related-files**: `source/GridView/gridQuery.bs`, `source/GridView/libraryTab.bs`, `components/ItemGrid/BaseGridView.bs`, `source/utils/session.bs`, `source/migrations.bs`
+
+A library opens on the tab picked for it on this Roku (`display.<libraryId>.defaultTab`, from the gear menu's Default tab entry), else the tab the user picked for it in the web client, else the library type's default (`gridQuery.resolveView`). The web's pick is `landing-<libraryId>` (`landing-livetv` for Live TV) in the `usersettings` display preferences, read at every sign-in into `m.global.user.config.serverLibraryLanding` and never written to the registry. The web saves its own default as an empty string, so only a real pick is followed. A tab press never changes the default, as on the web. Web tab ids are translated in one place, `libraryTab.fromServerTab`.
+
+There is no app-wide toggle for the web's picks: the gear entry's first option follows the web and any tab overrides it for that library, the pattern the playback settings' Use Web Client Setting follows. Its menu row names the tab in force alone (an entry's `valueTitle`), since the first option's own title would nest brackets there. A `landing` value saved from the old Star dialog becomes `defaultTab` unless it is a type default, which says nothing about what the viewer wants, and it wins over a stored `defaultTab` as the newer choice. `displayLiveTvLanding`, a registry copy of `landing-livetv` that nothing read, is removed. Ruled out: writing the default back to the server (a followup), and remembering the last tab, which the web does not do either.
+
+## decision-id: library-default-tab-type-defaults
+
+**date**: 2026-11-13
+**status**: accepted
+**related-files**: `source/GridView/libraryTab.bs`
+
+A library's type default is everything in it to browse: Movies, Shows, Album Artists, Channels, Photos (`libraryTab.defaultFor`); recommendation pages are Home's job. Two depart from the web client's defaults. Music opens on Album Artists, not the web's Albums: the better way to browse a music library on a TV (operator's call, 2026-11-13). Live TV opens on Channels, not the web's Programs, which the app has no tab for. A user who wants the web's tab picks it in the web client or in the gear menu.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

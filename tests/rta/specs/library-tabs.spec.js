@@ -22,7 +22,7 @@ import {
   setFavorite,
   tokenHeader,
 } from '../lib/jellyfin.js';
-import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.js';
+import { seedHome, seedLibraryLanding, assertSeedTookEffect, heldDefaultTab } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
 import { failRequests } from '../lib/failRequests.js';
 import {
@@ -156,7 +156,7 @@ it('a tab press shows the tab with focus on the content, and later loads keep th
     currentView: 'studios',
     drawn: 'studios',
   });
-  expect((await displaySettings(libraryId)).landing, 'a tab press does not save the tab').toBe(
+  expect(await heldDefaultTab(libraryId), 'a tab press does not change the default tab').toBe(
     'movies',
   );
 

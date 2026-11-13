@@ -10,7 +10,7 @@ related-files:
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
   - source/utils/playKind.bs
-last-reviewed: 2026-11-12
+last-reviewed: 2026-11-13
 ---
 
 # The user journey
@@ -133,9 +133,9 @@ Picking an item calls `routeForItem()` and navigates in `BaseGridView.onLibraryS
 
 Like every route, `/library/:id` uses `suspendMode: "show"`. Opening an item leaves the grid in the outlet, hidden, with its focus, and Back shows it again with the cursor where the user left it. On that return it checks `m.scene.contentVersion` and loads again if an item was deleted meanwhile, so a deleted item does not stay in the grid. A grid that lists favorites (the Favorites tab, or the Favorites filter) also loads again when `m.scene.favoritesVersion` moved, so an item removed from favorites on its details screen leaves it.
 
-Backing out of the library destroys the grid ([ADR 0029](../adr/0029-destroy-routed-screens-on-pop.md)). Opening it again loads from the start, with a spinner and the first tile focused. The view, layout, sort and filter choice survives, because it lives in the registry (`getLibraryDisplaySetting`). A saved view applies only while the presenter still offers it (`gridQuery.resolveView`), since the same library on an older server may not have it. The fallback stays in memory only, so the saved choice comes back when the server offers it again.
+Backing out of the library destroys the grid ([ADR 0029](../adr/0029-destroy-routed-screens-on-pop.md)). Opening it again loads from the start, with a spinner and the first tile focused. It opens on its default tab, not the last one shown: the tab picked on this Roku (the `defaultTab` display setting, from the settings icon's page menu), else the tab picked in the web client, else the library type's own (`gridQuery.resolveView`). A saved tab applies only while the presenter still offers it, since the same library on an older server may not have it; the fallback stays in memory only, so the saved choice comes back when the server offers it again. The layout, sort and filter survive too, because they live in the registry (`getLibraryDisplaySetting`).
 
-A view is a tab, named by a JellyRock id (`movies`, `shows`, `networks`; `source/GridView/libraryTab.bs`). The ids are the app's own, so a tab the web client lacks is added like any other; most match the web client's ids where it has the same tab. A value read from the server's display preferences (the web's default tab, its per-tab sort) is translated into these ids where it is read, so a rename on the web side never changes a stored setting. How a tab is drawn is a second axis, the `layout` setting (`libraryLayout`): a movie library's Movies tab draws as the presentation panel or the poster grid, and the presenters take the layout as a parameter beside the view. The layout is saved per library and view (`libraryLayout.settingKey`), so a pick changes only the tab on show, and it is chosen from the settings icon's page menu ([navigation.md](navigation.md#the-overhang-row-up-down-and-the-cluster)).
+A view is a tab, named by a JellyRock id (`movies`, `shows`, `networks`; `source/GridView/libraryTab.bs`). The ids are the app's own, so a tab the web client lacks is added like any other; most match the web client's ids where it has the same tab. The one value read from the server's display preferences, the web's default tab, is translated into these ids where it is read (`libraryTab.fromServerTab`), so a rename on the web side never changes a stored setting. How a tab is drawn is a second axis, the `layout` setting (`libraryLayout`): a movie library's Movies tab draws as the presentation panel or the poster grid, and the presenters take the layout as a parameter beside the view. The layout is saved per library and view (`libraryLayout.settingKey`), so a pick changes only the tab on show, and it is chosen from the settings icon's page menu ([navigation.md](navigation.md#the-overhang-row-up-down-and-the-cluster)).
 
 ### Loading pages
 

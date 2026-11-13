@@ -43,6 +43,28 @@ namespace tests
       m.assertEqual(menu.labels[0], "Default tab (Use web client setting)")
     end function
 
+    @it("shows an entry's valueTitle in place of the selected option's title")
+    ' The Default tab entry: its first option reads "Default (Movies)", and the row names
+    ' the tab alone rather than nest one bracket inside another.
+    function _()
+      entry = m.defaultTabEntry("")
+      entry.valueTitle = "Movies"
+
+      menu = pageSettings.menuRows([entry])
+
+      m.assertEqual(menu.labels[0], "Default tab (Movies)")
+    end function
+
+    @it("falls back to the selected option's title when valueTitle is empty")
+    @params("")
+    @params(invalid)
+    function _(valueTitle)
+      entry = m.layoutEntry("comfortable")
+      entry.valueTitle = valueTitle
+
+      m.assertEqual(pageSettings.menuRows([entry]).labels[0], "Layout (Comfortable)")
+    end function
+
     @it("shows the title alone when the selected id names no option")
     @params("posters")
     @params(invalid)

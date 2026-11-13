@@ -44,6 +44,10 @@
     <field id="segmentActionRecap" type="string" />
     <field id="segmentActionUnknown" type="string" />
 
+    <!-- Default tab per library, picked in the web client (DisplayPreferences CustomPrefs
+         `landing-<id>`): { <library id, or "livetv">: <web tab id> }, libraryTab.serverLandings -->
+    <field id="serverLibraryLanding" type="assocarray" />
+
     <!-- View Organization -->
     <field id="orderedViews" type="array" />
     <field id="latestItemsExcludes" type="array" />

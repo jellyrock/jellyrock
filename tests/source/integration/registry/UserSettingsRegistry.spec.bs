@@ -83,10 +83,10 @@ namespace tests
 
       m.global.user.id = testUserId
 
-      setUserSetting("displayLiveTvLanding", "")
+      setUserSetting("playbackAudioLanguageCustom", "")
 
       reg = CreateObject("roRegistrySection", testUserId)
-      value = reg.read("displayLiveTvLanding")
+      value = reg.read("playbackAudioLanguageCustom")
       m.assertTrue(type(value) = "roString" or type(value) = "String")
       m.assertEqual(value, "")
 
@@ -231,7 +231,7 @@ namespace tests
         uiGeneralEpisodeImages: "always",
         itemGridTitles: "showalways",
         itemGridMovieDefaultView: "moviesgrid",
-        displayLiveTvLanding: "guide"
+        playbackAudioLanguageCustom: "fre"
       }
 
       for each key in stringSettings
@@ -364,7 +364,7 @@ namespace tests
       setUserSetting("itemGridTitles", "showalways")
       setUserSetting("itemGridMovieDefaultView", "moviesgrid")
       setUserSetting("uiFontFallback", true)
-      setUserSetting("displayLiveTvLanding", "guide")
+      setUserSetting("playbackAudioLanguageCustom", "fre")
       setUserSetting("uiHomeUseWebArrangement", false)
 
       ' Verify user settings exist in user registry section
@@ -375,7 +375,7 @@ namespace tests
       m.assertTrue(reg.exists("itemGridTitles"))
       m.assertTrue(reg.exists("itemGridMovieDefaultView"))
       m.assertTrue(reg.exists("uiFontFallback"))
-      m.assertTrue(reg.exists("displayLiveTvLanding"))
+      m.assertTrue(reg.exists("playbackAudioLanguageCustom"))
       m.assertTrue(reg.exists("uiHomeUseWebArrangement"))
 
       ' Verify count (7 user settings, not 8)
