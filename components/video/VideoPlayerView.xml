@@ -70,6 +70,7 @@
     <function name="showLiveStreamStalledError" />
     <function name="liveProgressMs" />
     <function name="reportStallStop" />
+    <function name="reloadAtCurrentPosition" />
   </interface>
 
   <children>

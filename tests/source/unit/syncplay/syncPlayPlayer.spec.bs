@@ -678,6 +678,25 @@ namespace tests
       m.assertTrue(syncPlayPlayer.takeSlowEdge(player))
     end function
 
+    @it("a seek's full buffer is noted once, and forgotten by its landing or a new seek")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.bufferFull(player, 1500&)
+      m.assertInvalid(player.bufferFullAtMs)
+      syncPlayPlayer.told(player, "seek", "group", m.at60s, 2000&)
+      syncPlayPlayer.nodeState(player, "buffering", 2100&)
+      syncPlayPlayer.bufferFull(player, 2600&)
+      syncPlayPlayer.bufferFull(player, 3600&)
+      m.assertEqual(player.bufferFullAtMs, 2600&)
+      syncPlayPlayer.told(player, "seek", "group", m.at60s, 4000&)
+      m.assertInvalid(player.bufferFullAtMs)
+      syncPlayPlayer.nodeState(player, "buffering", 4100&)
+      syncPlayPlayer.bufferFull(player, 4500&)
+      syncPlayPlayer.nodeState(player, "playing", 5000&)
+      syncPlayPlayer.reading(player, m.at60s, 5010&)
+      m.assertInvalid(player.bufferFullAtMs)
+    end function
+
     @it("a seek still buffering at its budget stays in flight, marked slow, until it lands")
     function _()
       player = m.playingAt60()

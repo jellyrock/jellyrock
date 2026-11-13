@@ -518,6 +518,72 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a seek that never lands")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a seek left at a full buffer past the limit gets one recovery seek, then one reload, then nothing")
+    function _()
+      policy = syncPlayConverge.defaultPolicy()
+      group = m.seekGroup()
+      group.saidBuffering = true
+      player = m.playingAt(m.at60s, 9000&)
+      syncPlayPlayer.told(player, "seek", "group", m.at100s, 9100&)
+      syncPlayPlayer.nodeState(player, "buffering", 9200&)
+      ' While it seeks, the comparison looks again each poll, to hear of the buffer.
+      early = m.decide(player, group, 9300&)
+      m.assertEqual(m.kindOf(early), "")
+      m.assertEqual(early.wakeAtMs, 9300& + policy.stuckPollMs)
+      syncPlayPlayer.bufferFull(player, 10000&)
+      m.assertEqual(m.kindOf(m.decide(player, group, 9999& + policy.stuckFullBufferMs)), "")
+      stuckAt& = 10000& + policy.stuckFullBufferMs
+      recover = m.decide(player, group, stuckAt&)
+      m.assertEqual(m.kindOf(recover), "seek")
+      m.assertEqual(recover.action.targetTicks, m.at100s)
+      m.assertEqual(recover.action.owner, "group")
+      m.assertTrue(recover.action.recover)
+      m.assertTrue(recover.action.stuck)
+      syncPlayConverge.applied(player, group, recover.action, stuckAt&)
+      m.assertEqual(player.activity, "seeking")
+      m.assertInvalid(player.bufferFullAtMs)
+      ' The recovery seek sticks the same way: the stream is loaded again, once.
+      syncPlayPlayer.nodeState(player, "buffering", stuckAt& + 100)
+      syncPlayPlayer.bufferFull(player, stuckAt& + 1000)
+      again& = stuckAt& + 1000 + policy.stuckFullBufferMs
+      reload = m.decide(player, group, again&)
+      m.assertEqual(m.kindOf(reload), "reload")
+      syncPlayConverge.applied(player, group, reload.action, again&)
+      m.assertEqual(m.kindOf(m.decide(player, group, again& + 5000)), "")
+    end function
+
+    @it("a seek that is slow to fill its buffer, or whose node is not buffering, is left alone")
+    function _()
+      policy = syncPlayConverge.defaultPolicy()
+      group = m.seekGroup()
+      group.saidBuffering = true
+      filling = m.playingAt(m.at60s, 9000&)
+      syncPlayPlayer.told(filling, "seek", "group", m.at100s, 9100&)
+      syncPlayPlayer.nodeState(filling, "buffering", 9200&)
+      m.assertEqual(m.kindOf(m.decide(filling, group, 9100& + 3 * policy.stuckFullBufferMs)), "")
+      ' A full buffer was seen, but the node has left `buffering` since.
+      paused = m.playingAt(m.at60s, 9000&)
+      syncPlayPlayer.told(paused, "seek", "group", m.at100s, 9100&)
+      syncPlayPlayer.nodeState(paused, "buffering", 9200&)
+      syncPlayPlayer.bufferFull(paused, 10000&)
+      paused.nodeState = ""
+      m.assertEqual(m.kindOf(m.decide(paused, group, 10000& + 2 * policy.stuckFullBufferMs)), "")
+    end function
+
+    @it("a group command makes the stuck-seek budget whole")
+    function _()
+      group = m.seekGroup()
+      group.recoverSeeks = 1
+      group.stuckReloads = 1
+      syncPlayGroup.command(group, m.cmd("Seek", 9500&, m.at100s))
+      m.assertEqual(group.recoverSeeks, 0)
+      m.assertEqual(group.stuckReloads, 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("this member's own load and stall")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

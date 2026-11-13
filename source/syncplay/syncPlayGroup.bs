@@ -60,6 +60,8 @@ namespace syncPlayGroup
       catchUps: 0,
       ' Holds written in a row with no reading in step between, and whether the viewer's log
       ' was told the budget ran out.
+      ' Reloads written for a seek that stuck again after its recovery seek.
+      stuckReloads: 0,
       holds: 0,
       holdsSpentTold: false,
       askedWait: false,
@@ -118,6 +120,7 @@ namespace syncPlayGroup
     ' again has not, and allows no second seek there.
     if cmd.command = "Unpause" or cmd.command = "Stop" then group.pointSoughtTicks = invalid
     group.recoverSeeks = 0
+    group.stuckReloads = 0
     group.whereAskedAtMs = invalid
     group.toldUnreachable = false
     ' A Seek is a new wait: this member's Buffering for it has not been sent.
@@ -143,6 +146,7 @@ namespace syncPlayGroup
     group.holdsSpentTold = false
     group.pointSoughtTicks = invalid
     group.recoverSeeks = 0
+    group.stuckReloads = 0
     group.askedWait = false
     group.owesReady = false
     if playingItemId <> "" then startWait(group)
@@ -292,6 +296,7 @@ namespace syncPlayGroup
     group.holdsSpentTold = false
     group.pointSoughtTicks = invalid
     group.recoverSeeks = 0
+    group.stuckReloads = 0
     group.askedWait = false
     group.whereAskedAtMs = invalid
     group.toldUnreachable = false

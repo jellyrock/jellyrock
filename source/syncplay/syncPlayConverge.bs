@@ -6,8 +6,9 @@
 ' The rules, in order:
 '   1. A stopped group stops the player; a load the queue layer owes is performed.
 '   2. A node in flight (loading, seeking, arrived, pausing, resuming) is never written to,
-'      and a node the viewer is scrubbing only to bring it to where the group stands. The one
-'      exception is the first frame of a load from the item's start, paused for its Ready.
+'      and a node the viewer is scrubbing only to bring it to where the group stands. The two
+'      exceptions: the first frame of a load from the item's start is paused for its Ready, and
+'      a seek stuck at a full buffer is written again, then its stream loaded again.
 '   3. A group standing still (paused, or waiting at a point) holds the node paused, at the point
 '      when the server waits for this member's Ready there.
 '   4. A group playing along a line: a paused node resumes as the line reaches it; a playing
@@ -47,6 +48,12 @@ namespace syncPlayConverge
       ' two while the player model learns that the node runs on past its stops (it takes two
       ' samples, syncPlayPlayer.lagInUse), one written with that, and one to spare.
       holdLimit: 4,
+      ' How long a seek may sit at a full buffer, still buffering, before it is taken as stuck,
+      ' and how often the comparison looks again while a seek is in flight. On the soak's two
+      ' movies a seek that landed sat there 1.44 s at most (237 seeks); on a 100 Mbps file up to
+      ' 6.3 s (8 seeks); a stuck one for 20 s or more (Stick 4K, 2026-11-13).
+      stuckFullBufferMs: 15000,
+      stuckPollMs: 1000,
       pauseWriteLimit: syncPlayPlayback.PAUSE_ATTEMPTS,
       ' The longest a paused member ahead of the group waits for it before seeking back instead.
       aheadWaitMaxMs: 5000,
@@ -89,6 +96,9 @@ namespace syncPlayConverge
     want = syncPlayGroup.wants(group, ctx.estimator, nowMs)
     wake(result, syncPlayPlayer.nextDeadlineMs(player))
     wake(result, syncPlayGroup.nextDeadlineMs(group, syncPlayTime.asLong(policy.requestLimitMs)))
+    ' A seek in flight is looked at again each poll: the manager says when its buffer is full,
+    ' and a seek left there past the limit is stuck (stuckSeekAction).
+    if player.activity = "seeking" then wake(result, nowMs + syncPlayTime.asLong(policy.stuckPollMs))
     action = nodeAction(player, group, want, ctx, policy, nowMs, result)
     if not isValid(action) then action = reportAction(player, group, want, ctx, policy, nowMs, result)
     if not isValid(action) then action = askAction(player, group, ctx, policy, nowMs, result)
@@ -147,6 +157,8 @@ namespace syncPlayConverge
       group.holdsSpentTold = false
     else if kind = "holdsSpent"
       group.holdsSpentTold = true
+    else if kind = "reload"
+      group.stuckReloads++
     end if
   end sub
 
@@ -161,8 +173,10 @@ namespace syncPlayConverge
     end if
     if ctx.loadOwed = true then return { kind: "load", startTicks: invalid }
     if activity = "none" or activity = "finished" then return invalid
-    ' The one write to a node in flight: a first frame held for its Ready, before any reading.
+    ' The writes to a node in flight: a first frame held for its Ready, before any reading, and
+    ' the recovery of a seek that never lands.
     if activity = "arrived" and holdsFirstFrame(player, group, want) then return { kind: "pause", owner: "wait", showOsd: false }
+    if activity = "seeking" and seekIsStuck(player, policy, nowMs) then return stuckSeekAction(player, group, policy)
     if syncPlayPlayer.isInFlight(player) then return invalid
     if want.mode = "unknown"
       ' A load whose Ready the server waits for holds at its first frame, as in any wait, even
@@ -489,6 +503,27 @@ namespace syncPlayConverge
     cmd = group.command
     if not isValid(cmd) or not syncPlayGroup.commandIsCurrent(group, cmd) then return false
     return cmd.command = "Pause" or cmd.command = "Seek"
+  end function
+
+  ' Whether the seek in flight is stuck: the node still buffers, and its buffer has been full
+  ' for longer than any seek that lands takes to play from there.
+  function seekIsStuck(player as object, policy as object, nowMs as longinteger) as boolean
+    if player.nodeState <> "buffering" or not isValid(player.bufferFullAtMs) then return false
+    return nowMs - syncPlayTime.asLong(player.bufferFullAtMs) >= policy.stuckFullBufferMs
+  end function
+
+  ' What frees a stuck seek: the same seek written again, once per group command (it freed a
+  ' node wedged on purpose 3 of 3 times, Stick 4K, 2026-11-13); when that sticks too, the stream
+  ' loaded again, once; after both, nothing, and the player's own buffer check ends it.
+  function stuckSeekAction(player as object, group as object, policy as object) as dynamic
+    target& = syncPlayTime.asLong(player.seekTargetTicks)
+    if group.recoverSeeks < 1
+      owner = player.seekOwner
+      if owner = "" then owner = "group"
+      return { kind: "seek", owner: owner, targetTicks: target&, recover: true, stuck: true, toPoint: soughtPoint(group, target&, policy) }
+    end if
+    if group.stuckReloads < 1 then return { kind: "reload" }
+    return invalid
   end function
 
   ' Whether a load's first frame is paused at once, with no reading waited for: the server waits

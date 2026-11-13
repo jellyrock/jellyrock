@@ -1657,14 +1657,19 @@ end function
 
 ' The buffering percentage on the mounted player's node, or invalid when there is none.
 function playerBufferPercent() as dynamic
+  node = playerNode()
+  if not isValid(node) then return invalid
+  status = node.bufferingStatus
+  if isValid(status) then return status.percentage
+  return invalid
+end function
+
+' The mounted player's own node, or invalid when there is none.
+function playerNode() as dynamic
   host = playerHost()
   if not isValid(host) then return invalid
   for each child in host.getChildren(-1, 0)
-    if child.subtype() = "VideoPlayerView"
-      status = child.bufferingStatus
-      if isValid(status) then return status.percentage
-      return invalid
-    end if
+    if child.subtype() = "VideoPlayerView" then return child
   end for
   return invalid
 end function
@@ -2104,6 +2109,12 @@ sub converge()
       m.log.warn("seek still buffering past its limit", "state", m.playerState, "bufferPercent", playerBufferPercent(), "isTranscoded", m.playerIsTranscoded, "targetTicks", syncPlayTime.asLong(player.seekTargetTicks).toStr())
     end if
     syncPlayGroup.advance(group, syncPlayTime.asLong(policy.requestLimitMs), nowMs&)
+    ' A seek in flight: the player model is told when its buffer is first seen full, which is
+    ' what a seek that never lands is told from (syncPlayConverge.seekIsStuck).
+    if player.activity = "seeking" and not isValid(player.bufferFullAtMs) and m.playerState = "buffering"
+      bufferPercent = playerBufferPercent()
+      if isValid(bufferPercent) and bufferPercent >= 100 then syncPlayPlayer.bufferFull(player, nowMs&)
+    end if
     result = syncPlayConverge.decide(player, group, shadowCtx(), policy, nowMs&)
     if isValid(result.action)
       hasActed = true
@@ -2159,6 +2170,7 @@ sub carryOut(action as object)
     drift = publishedDriftMs()
     if isValid(drift) then driftText = syncPlayTime.asLong(drift).toStr()
     byPick = group.pickPending
+    if action.stuck = true then m.log.warn("seek stuck at a full buffer, writing it again", "targetTicks", syncPlayTime.asLong(action.targetTicks).toStr(), "isTranscoded", m.playerIsTranscoded, "owner", action.owner)
     if action.silent = true then m.log.info("playing node sent no reading", "activity", player.activity, "clock", player.clock.kind)
     syncPlayConverge.applied(player, group, action, nowMs&)
     if not isValid(host)
@@ -2187,6 +2199,13 @@ sub carryOut(action as object)
   else if kind = "report" or kind = "ask"
     syncPlayConverge.applied(player, group, action, nowMs&)
     if not sendRequest(kind, action, group[kind].id) then syncPlayGroup.requestFailed(group, kind, action.what, group[kind].id)
+  else if kind = "reload"
+    ' The recovery seek stuck as well: the stream is loaded again in place, at the group's point
+    ' (the player's reload asks syncPlayHooks.reloadStart for it).
+    syncPlayConverge.applied(player, group, action, nowMs&)
+    node = playerNode()
+    m.log.warn("seek stuck again after its recovery seek, loading the stream again", "hasPlayer", isValid(node))
+    if isValid(node) then node.callFunc("reloadAtCurrentPosition")
   else if kind = "halt"
     haltFollowing(action.reason)
   else

@@ -81,6 +81,8 @@ namespace syncPlayPlayer
       seekOwner: "",
       seekSlow: false,
       slowTold: false,
+      ' When the seek in flight was first seen at a full buffer, or invalid.
+      bufferFullAtMs: invalid,
       lastSeekMs: 0&,
       lastSeekGaveUp: false,
       lastLandingTicks: invalid,
@@ -137,6 +139,7 @@ namespace syncPlayPlayer
       player.seekOwner = owner
       player.seekSlow = false
       player.slowTold = false
+      player.bufferFullAtMs = invalid
       ' A seek written under the bar answers the scrub, and the node closes the bar by itself.
       if player.scrubbing
         player.scrubbing = false
@@ -199,6 +202,7 @@ namespace syncPlayPlayer
     player.pauseTicks = invalid
     player.seekSlow = false
     player.slowTold = false
+    player.bufferFullAtMs = invalid
     player.lastSeekMs = 0&
     player.lastSeekGaveUp = false
     player.lastLandingTicks = invalid
@@ -340,6 +344,12 @@ namespace syncPlayPlayer
       end if
     end if
     ' Any other activity: the field reads a seek's target, or the position from before a pause.
+  end sub
+
+  ' The seek in flight was seen at a full buffer: kept the first time, as when that began. A
+  ' seek that lands plays within seconds of it, and one that never does stays there for good.
+  sub bufferFull(player as object, nowMs as longinteger)
+    if player.activity = "seeking" and not isValid(player.bufferFullAtMs) then player.bufferFullAtMs = nowMs
   end sub
 
   ' True once per seek, the first time it is asked after the seek turned slow.
@@ -489,6 +499,7 @@ namespace syncPlayPlayer
   end sub
 
   sub arrive(player as object, origin as string, nowMs as longinteger)
+    player.bufferFullAtMs = invalid
     player.arrivedFrom = origin
     enter(player, "arrived", nowMs)
   end sub
@@ -540,6 +551,7 @@ namespace syncPlayPlayer
     player.lastSeekGaveUp = gaveUp or player.seekSlow
     player.seekSlow = false
     player.slowTold = false
+    player.bufferFullAtMs = invalid
     player.lastLandingTicks = landingTicks
   end sub
 
