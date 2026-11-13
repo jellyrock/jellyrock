@@ -250,6 +250,47 @@ namespace tests
       m.assertEqual(syncPlayPlayer.positionAt(player, 1330&), m.at60s + 3000000&)
     end function
 
+    @it("a load paused at its first frame takes the reading that arrives as the pause lands for its stop")
+    function _()
+      player = syncPlayPlayer.newPlayer()
+      syncPlayPlayer.mounted(player, 0&, 100&)
+      syncPlayPlayer.nodeState(player, "playing", 900&)
+      syncPlayPlayer.told(player, "pause", "wait", invalid, 901&)
+      m.assertInvalid(player.pauseTicks)
+      ' The first frame's own reading: the node was there when the pause was written.
+      syncPlayPlayer.reading(player, 830000&, 910&)
+      syncPlayPlayer.nodeState(player, "paused", 925&)
+      m.assertEqual(player.activity, "paused")
+      m.assertEqual(player.clock.kind, "stopped")
+      m.assertEqual(syncPlayPlayer.positionAt(player, 5000&), 830000&)
+    end function
+
+    @it("that reading is taken when it comes a moment after the paused state, and only once")
+    function _()
+      player = syncPlayPlayer.newPlayer()
+      syncPlayPlayer.mounted(player, 0&, 100&)
+      syncPlayPlayer.nodeState(player, "playing", 900&)
+      syncPlayPlayer.told(player, "pause", "wait", invalid, 901&)
+      syncPlayPlayer.nodeState(player, "paused", 915&)
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 920&))
+      syncPlayPlayer.reading(player, 330000&, 938&)
+      m.assertEqual(syncPlayPlayer.positionAt(player, 5000&), 330000&)
+      ' A later reading on a paused node is the field read stale, as on any pause.
+      syncPlayPlayer.reading(player, 990000&, 1500&)
+      m.assertEqual(syncPlayPlayer.positionAt(player, 5000&), 330000&)
+    end function
+
+    @it("a first-frame reading that comes too long after the pause is not taken")
+    function _()
+      player = syncPlayPlayer.newPlayer()
+      syncPlayPlayer.mounted(player, 0&, 100&)
+      syncPlayPlayer.nodeState(player, "playing", 900&)
+      syncPlayPlayer.told(player, "pause", "wait", invalid, 901&)
+      syncPlayPlayer.nodeState(player, "paused", 915&)
+      syncPlayPlayer.reading(player, 330000&, 902& + syncPlayPlayback.PAUSE_LANDED_MS)
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 5000&))
+    end function
+
     @it("a second pause while the first lands, or on a paused node, only changes whose pause it is")
     function _()
       player = m.playingAt60()

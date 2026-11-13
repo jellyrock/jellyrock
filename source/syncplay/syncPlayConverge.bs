@@ -6,7 +6,8 @@
 ' The rules, in order:
 '   1. A stopped group stops the player; a load the queue layer owes is performed.
 '   2. A node in flight (loading, seeking, arrived, pausing, resuming) is never written to,
-'      and a node the viewer is scrubbing only to bring it to where the group stands.
+'      and a node the viewer is scrubbing only to bring it to where the group stands. The one
+'      exception is the first frame of a load from the item's start, paused for its Ready.
 '   3. A group standing still (paused, or waiting at a point) holds the node paused, at the point
 '      when the server waits for this member's Ready there.
 '   4. A group playing along a line: a paused node resumes as the line reaches it; a playing
@@ -150,6 +151,8 @@ namespace syncPlayConverge
     end if
     if ctx.loadOwed = true then return { kind: "load", startTicks: invalid }
     if activity = "none" or activity = "finished" then return invalid
+    ' The one write to a node in flight: a first frame held for its Ready, before any reading.
+    if activity = "arrived" and holdsFirstFrame(player, group, want) then return { kind: "pause", owner: "wait", showOsd: false }
     if syncPlayPlayer.isInFlight(player) then return invalid
     if want.mode = "unknown"
       ' A load whose Ready the server waits for holds at its first frame, as in any wait, even
@@ -463,6 +466,20 @@ namespace syncPlayConverge
     cmd = group.command
     if not isValid(cmd) or not syncPlayGroup.commandIsCurrent(group, cmd) then return false
     return cmd.command = "Pause" or cmd.command = "Seek"
+  end function
+
+  ' Whether a load's first frame is paused at once, with no reading waited for: the server waits
+  ' for this load's Ready, the load started at the item's start, and nothing sends the node
+  ' elsewhere. A fresh stream's first reading can come later than the arrival limit, and a node
+  ' left playing until then resumes ahead of the group by what it played. A load that starts
+  ' partway in is left to its reading: it can land short, and the seek that sends it on is
+  ' written to a playing node.
+  function holdsFirstFrame(player as object, group as object, want as object) as boolean
+    if player.arrivedFrom <> "load" or player.scrubbing then return false
+    if not syncPlayPlayback.loadStartsAtItemStart(syncPlayTime.asLong(player.loadStartTicks)) then return false
+    if not want.owesReady or group.readyForLoad = player.loadCount or group.playingItemId = "" then return false
+    if want.mode = "unknown" then return true
+    return want.mode = "waiting" and want.heldFor = "load" and not standsAtCommand(group)
   end function
 
   ' Whether this member's own load, held for its Ready, read a position further below the point

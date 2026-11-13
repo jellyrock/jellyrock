@@ -64,7 +64,9 @@ namespace tests
       m.manager.callFunc("playerEvent", { kind: "mounted" })
       m.assertEqual(m.manager.sync.trackerPhase, "loading")
       m.manager.callFunc("playerEvent", { kind: "state", state: "playing", position: 0 })
-      m.assertEqual(m.manager.sync.trackerPhase, "landing")
+      ' A load from the item's start that the group waits on is paused at its first frame, with
+      ' no reading waited for, so the model leaves "landing" at once.
+      m.assertEqual(m.manager.sync.trackerPhase, "ready")
       m.manager.callFunc("playerEvent", { kind: "position", position: 0.5 })
       m.assertTrue(m.manager.following)
     end function

@@ -63,6 +63,8 @@ namespace syncPlayPlayer
       pauseWrites: 0,
       pauseWrittenAtMs: 0&,
       pauseTicks: invalid,
+      ' A pause was written at a load's first frame, and that frame's reading has not come.
+      awaitsFirstFrameReading: false,
       arrivedFrom: "",
       loadStartTicks: 0&,
       ' Counts the loads: one per stream this player started on. The server is told of each
@@ -159,6 +161,9 @@ namespace syncPlayPlayer
     player.pauseOwner = owner
     player.pauseWrites++
     player.pauseWrittenAtMs = nowMs
+    ' A load paused at its first frame has no reading yet: the one that arrives as the pause
+    ' lands says where the node stood (reading).
+    player.awaitsFirstFrameReading = activity = "arrived" and player.arrivedFrom = "load"
     player.stopKind = "steady"
     if player.clockFromLanding or player.activity = "arrived" then player.stopKind = "landing"
     player.resumeLagMs = medianOf(player.resumeLagSamples[player.stopKind])
@@ -319,6 +324,17 @@ namespace syncPlayPlayer
       player.clockFromLanding = false
       if isValid(player.resumeFromTicks) then learnResumeLag(player, positionTicks, nowMs)
       setClock(player, "running", positionTicks, nowMs, true)
+    else if player.awaitsFirstFrameReading and (player.activity = "pausing" or player.activity = "paused")
+      ' The first frame's own reading, a moment behind the pause written at that frame: it is
+      ' where the node stopped. Taken once, and only while the pause is still landing.
+      player.awaitsFirstFrameReading = false
+      if nowMs - syncPlayTime.asLong(player.pauseWrittenAtMs) <= syncPlayPlayback.PAUSE_LANDED_MS
+        if player.activity = "pausing"
+          player.pauseTicks = positionTicks
+        else
+          setClock(player, "stopped", positionTicks, nowMs, false)
+        end if
+      end if
     end if
     ' Any other activity: the field reads a seek's target, or the position from before a pause.
   end sub
