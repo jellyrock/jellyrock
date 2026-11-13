@@ -22,6 +22,7 @@
     "./scripts/bsc-plugins/auto-destroyed-guard.cjs",
     "./scripts/bsc-plugins/unobserve-before-release.cjs",
     "./scripts/bsc-plugins/no-direct-sdk.cjs",
+    "./scripts/bsc-plugins/no-direct-favorite-request.cjs",
     "./scripts/bsc-plugins/no-raw-run.cjs",
     "./scripts/bsc-plugins/no-task-fanout.cjs",
     "./scripts/bsc-plugins/no-same-node-relaunch.cjs",

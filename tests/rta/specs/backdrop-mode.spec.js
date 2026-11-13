@@ -39,7 +39,7 @@ import {
   waitFocused,
   waitFocusInside,
   waitHome,
-  walkFocusUntil,
+  enterOverhangRow,
   walkOverhangRowTo,
 } from '../lib/steps.js';
 
@@ -162,16 +162,9 @@ it('shows the presentation pane and the Home backdrop when enabled', async (test
   expect(await getActiveVal('#presentationBackdrop.visible')).toBe(true);
 });
 
-const inOverhangRow = (f) => f?.node?.subtype === 'JROverhangIcon';
-
 /** From the library grid: Up into the overhang row, along it to the gear, and OK. */
 async function openSettingsFromGrid() {
-  await waitFocused(inOverhangRow, {
-    timeout: 15000,
-    interval: 350,
-    action: walkFocusUntil(ecp.Key.Up, inOverhangRow),
-    label: 'the overhang row from the grid',
-  });
+  await enterOverhangRow('the grid');
   await walkOverhangRowTo('settingsIcon', { label: 'the gear from the grid' });
   // A movie library's Movies tab has a page setting (Layout), so its gear opens a menu.
   await openSettingsFromGear({ pageMenu: true });
