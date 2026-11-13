@@ -61,10 +61,12 @@ namespace syncPlayConverge
 
   ' @param player - the syncPlayPlayer model
   ' @param group - the syncPlayGroup model
-  ' @param ctx - { following, estimator, loadOwed, isLastItem, durationSeconds, isTranscoded }:
-  '   whether this member follows, the clock estimator, whether the queue layer owes a load,
-  '   whether the playing item is the playlist's last, the item's length in seconds (0 while
-  '   unknown), and whether the stream is a transcode (invalid while nothing has said)
+  ' @param ctx - { following, estimator, loadOwed, loadPending, isLastItem, durationSeconds,
+  '   isTranscoded }: whether this member follows, the clock estimator, whether the queue layer
+  '   owes a load this comparison is to ask for, whether it owes one it performs itself and has
+  '   not yet (the node, if any, is still on the item before), whether the playing item is the
+  '   playlist's last, the item's length in seconds (0 while unknown), and whether the stream is
+  '   a transcode (invalid while nothing has said)
   ' @param policy - defaultPolicy, or a candidate
   ' @returns an AA with `action`, at most one (an AA with `kind`, or invalid), and `wakeAtMs`,
   '   the device-clock time to compare again when no event comes first (or invalid)
@@ -378,6 +380,10 @@ namespace syncPlayConverge
     end if
 
     if group.owesReady
+      ' A Ready names the group's item and a place on it. Until the queue layer performs that
+      ' item's load, the node is still on the item before: the server would take its position
+      ' for one on the new item and answer with a Seek to where the group stands.
+      if ctx.loadPending = true then return invalid
       if activity = "paused"
         return { kind: "report", what: "ready", positionTicks: readyTicks(player, want, policy, nowMs), isPlaying: false }
       end if

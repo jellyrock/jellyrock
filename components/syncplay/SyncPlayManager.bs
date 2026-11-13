@@ -1568,7 +1568,7 @@ end sub
 ' What the comparison is told beside the two models. When it decides, the queue layer still
 ' performs each load itself, as its item arrives, so no load is ever asked of the comparison.
 function shadowCtx() as object
-  return { following: isFollowing(), estimator: m.estimator, loadOwed: isValid(m.owedLoad) and not usesComparison(), isLastItem: syncPlayQueue.isLastItem(m.state), durationSeconds: m.playerDurationSeconds, isTranscoded: m.playerIsTranscoded }
+  return { following: isFollowing(), estimator: m.estimator, loadOwed: isValid(m.owedLoad) and not usesComparison(), loadPending: isValid(m.owedLoad), isLastItem: syncPlayQueue.isLastItem(m.state), durationSeconds: m.playerDurationSeconds, isTranscoded: m.playerIsTranscoded }
 end function
 
 sub shadowPlayerFact(evt as object)

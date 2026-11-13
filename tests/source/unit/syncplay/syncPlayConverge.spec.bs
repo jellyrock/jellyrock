@@ -694,6 +694,41 @@ namespace tests
       m.assertTrue(ready.action.isPlaying)
     end function
 
+    @it("a node still on the item before sends no Ready for the new item until its load is performed")
+    function _()
+      player = m.playingAt(m.at65s, 10000&)
+      group = m.playingLine()
+      group.readyForLoad = player.loadCount
+      group.bufferingForLoad = player.loadCount
+      ' The group steps to its next item: the queue layer owes the load and fetches the item first.
+      syncPlayGroup.itemChanged(group, "p-2", 10000&)
+      pending = m.ctx()
+      pending.loadPending = true
+      policy = syncPlayConverge.defaultPolicy()
+      m.assertEqual(m.kindOf(syncPlayConverge.decide(player, group, pending, policy, 10000&)), "")
+      ' Nor from a node the group had paused there.
+      paused = m.pausedAt(m.at65s, "group")
+      m.assertEqual(m.kindOf(syncPlayConverge.decide(paused, group, pending, policy, 10000&)), "")
+      ' The load is performed: the server hears of it, and its first frame owes the Ready.
+      syncPlayPlayer.told(player, "load", "group", 0&, 10400&)
+      buffering = m.decide(player, group, 10400&)
+      m.assertEqual(m.kindOf(buffering), "report")
+      m.assertEqual(buffering.action.what, "buffering")
+      m.assertEqual(buffering.action.heldFor, "load")
+    end function
+
+    @it("a restart that owes no load is answered by the node already on the item")
+    function _()
+      player = m.playingAt(m.at65s, 10000&)
+      group = m.playingLine()
+      group.readyForLoad = player.loadCount
+      group.bufferingForLoad = player.loadCount
+      syncPlayGroup.itemChanged(group, "p-1", 10000&)
+      ready = m.decide(player, group, 10000&)
+      m.assertEqual(m.kindOf(ready), "report")
+      m.assertEqual(ready.action.what, "ready")
+    end function
+
     @it("a stall past the bar tells the server once, and the node that recovers reports Ready as it plays")
     function _()
       player = m.playingAt(m.at65s, 10000&)
