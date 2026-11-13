@@ -115,11 +115,8 @@ export async function focusOverhangIcon(iconId) {
  *    the overhang element used last, which can be an icon to the tab bar's right, so the key is
  *    chosen from the focused node: Up while still in Home's rows, Left from anywhere else in the
  *    overhang.
- * 2. Onto the tab. The bar keeps its focused index internally (its `focusedTabIndex` field is
- *    input-only), so the index is read off the tabs' own `isFocused`. The walk re-reads after
- *    every press and presses at most once per tick; the bar updates `isFocused` inside its key
- *    handler, with no animation between, so a read never lags a press it follows.
- * 3. OK, then the incoming list in the scene and focus inside it (`onTabChanged` focuses it).
+ * 2. Onto the tab, and OK (`pressBarTab`).
+ * 3. The incoming list in the scene and focus inside it (`onTabChanged` focuses it).
  */
 export async function selectHomeTab(tabId) {
   const wantSubtype = tabId === 'favorites' ? 'FavoritesRows' : 'HomeRows';
@@ -137,6 +134,29 @@ export async function selectHomeTab(tabId) {
     label: 'overhang tab bar focused',
   });
 
+  await pressBarTab(bar, tabId);
+  await waitFor('subtype()', (v) => v === wantSubtype, {
+    read: async () => {
+      const id = await homeListId({ timeout: 1000 }).catch(() => undefined);
+      return id ? getVal(`${id}.subtype()`) : undefined;
+    },
+    timeout: 10000,
+    interval: 300,
+    label: `${wantSubtype} in the scene after selecting the "${tabId}" tab`,
+  });
+  await waitFocusInHomeContent({ label: `focus inside ${wantSubtype}` });
+}
+
+/**
+ * With focus on the tab bar `bar` (what `waitFocused` returned), walk along it to the tab
+ * `tabId` and press OK. Shared by `selectHomeTab` and `selectLibraryTab`.
+ *
+ * The bar keeps its focused index internally (its `focusedTabIndex` field is input-only), so
+ * the index is read off the tabs' own `isFocused`. The walk re-reads after every press and
+ * presses at most once per tick; the bar updates `isFocused` inside its key handler, with no
+ * animation between, so a read never lags a press it follows.
+ */
+async function pressBarTab(bar, tabId) {
   const tabs = await getVal(`${bar.keyPath}.tabs`);
   const target = Array.isArray(tabs) ? tabs.findIndex((t) => t.id === tabId) : -1;
   // eslint-disable-next-line no-restricted-syntax -- a fail-fast naming its cause, not a timeout
@@ -156,18 +176,7 @@ export async function selectHomeTab(tabId) {
     interval: 400,
     label: `tab "${tabId}" focused`,
   });
-
   await press(ecp.Key.Ok);
-  await waitFor('subtype()', (v) => v === wantSubtype, {
-    read: async () => {
-      const id = await homeListId({ timeout: 1000 }).catch(() => undefined);
-      return id ? getVal(`${id}.subtype()`) : undefined;
-    },
-    timeout: 10000,
-    interval: 300,
-    label: `${wantSubtype} in the scene after selecting the "${tabId}" tab`,
-  });
-  await waitFocusInHomeContent({ label: `focus inside ${wantSubtype}` });
 }
 
 /** The ids of the tabs the overhang shows, in order; `[]` when it shows a title instead. */
@@ -192,8 +201,7 @@ export async function overhangSelectedTab() {
  * asserts those, since where focus goes at the press is part of what a tab press does.
  *
  * Up reaches the bar only from the content's top (`BaseGridView.onKeyEvent`), so call it
- * from a freshly opened or freshly loaded grid. The walk along the bar reads the tabs' own
- * `isFocused`, as `selectHomeTab` does and for its reason.
+ * from a freshly opened or freshly loaded grid.
  */
 export async function selectLibraryTab(tabId) {
   const inBar = (f) => f?.node?.subtype === 'JRTabBar';
@@ -204,27 +212,7 @@ export async function selectLibraryTab(tabId) {
     label: `the tab bar, for the "${tabId}" tab`,
   });
 
-  const tabs = await getVal(`${bar.keyPath}.tabs`);
-  const target = Array.isArray(tabs) ? tabs.findIndex((t) => t.id === tabId) : -1;
-  // eslint-disable-next-line no-restricted-syntax -- a fail-fast naming its cause, not a timeout
-  if (target < 0) throw new Error(`tab bar has no "${tabId}" tab (tabs=${JSON.stringify(tabs)})`);
-  const focusedTab = async () => {
-    const flags = await getVals(tabs.map((_, i) => `${bar.keyPath}.#tabContainer.${i}.isFocused`));
-    return flags.indexOf(true);
-  };
-  await waitFor('focusedTab()', (i) => i === target, {
-    read: focusedTab,
-    action: async () => {
-      const i = await focusedTab();
-      if (i < 0 || i === target) return;
-      await press(i < target ? ecp.Key.Right : ecp.Key.Left);
-    },
-    timeout: 8000,
-    interval: 400,
-    label: `tab "${tabId}" focused`,
-  });
-
-  await press(ecp.Key.Ok);
+  await pressBarTab(bar, tabId);
   await waitFor('selectedTabId', (v) => v === tabId, {
     read: getActiveVal,
     timeout: 8000,
