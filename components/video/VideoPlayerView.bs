@@ -2636,6 +2636,7 @@ sub bufferCheck()
       host = m.top.getParent()
       if isValid(host) then host.callFunc("onLiveStreamStalled")
     else
+      m.log.warn("buffer check stopped a stalled stream", "bufferPercent", percentage, "followsSyncPlay", syncPlayHooks.following())
       ' If buffering has stopped Display dialog
       showPlaybackErrorDialog(translate(translationKeys.ErrorThereWasAnErrorRetrievingThe))
 

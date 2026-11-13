@@ -1655,6 +1655,20 @@ function shadowCount() as integer
   return 0
 end function
 
+' The buffering percentage on the mounted player's node, or invalid when there is none.
+function playerBufferPercent() as dynamic
+  host = playerHost()
+  if not isValid(host) then return invalid
+  for each child in host.getChildren(-1, 0)
+    if child.subtype() = "VideoPlayerView"
+      status = child.bufferingStatus
+      if isValid(status) then return status.percentage
+      return invalid
+    end if
+  end for
+  return invalid
+end function
+
 ' The routed play host, when the viewer is on the play route.
 function playerHost() as dynamic
   view = m.global.activeRoutedView
@@ -2086,6 +2100,9 @@ sub converge()
     m.convergeAgain = false
     nowMs& = syncPlayTime.nowMs()
     syncPlayPlayer.advance(player, nowMs&)
+    if syncPlayPlayer.takeSlowEdge(player)
+      m.log.warn("seek still buffering past its limit", "state", m.playerState, "bufferPercent", playerBufferPercent(), "isTranscoded", m.playerIsTranscoded, "targetTicks", syncPlayTime.asLong(player.seekTargetTicks).toStr())
+    end if
     syncPlayGroup.advance(group, syncPlayTime.asLong(policy.requestLimitMs), nowMs&)
     result = syncPlayConverge.decide(player, group, shadowCtx(), policy, nowMs&)
     if isValid(result.action)

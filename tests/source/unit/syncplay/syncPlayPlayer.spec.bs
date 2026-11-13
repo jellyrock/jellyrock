@@ -590,6 +590,23 @@ namespace tests
       m.assertEqual(player.activity, "arrived")
     end function
 
+    @it("a seek turning slow reports its edge once, and a new seek can report again")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "seek", "hold", 1000000000&, 1100&)
+      syncPlayPlayer.nodeState(player, "buffering", 1180&)
+      syncPlayPlayer.advance(player, 1099& + syncPlayPlayback.SEEK_SETTLE_MS)
+      m.assertFalse(syncPlayPlayer.takeSlowEdge(player))
+      syncPlayPlayer.advance(player, 1100& + syncPlayPlayback.SEEK_SETTLE_MS)
+      m.assertTrue(syncPlayPlayer.takeSlowEdge(player))
+      syncPlayPlayer.advance(player, 1200& + syncPlayPlayback.SEEK_SETTLE_MS)
+      m.assertFalse(syncPlayPlayer.takeSlowEdge(player))
+      syncPlayPlayer.told(player, "seek", "hold", 2000000000&, 20000&)
+      syncPlayPlayer.nodeState(player, "buffering", 20080&)
+      syncPlayPlayer.advance(player, 20000& + syncPlayPlayback.SEEK_SETTLE_MS)
+      m.assertTrue(syncPlayPlayer.takeSlowEdge(player))
+    end function
+
     @it("a seek still buffering at its budget stays in flight, marked slow, until it lands")
     function _()
       player = m.playingAt60()

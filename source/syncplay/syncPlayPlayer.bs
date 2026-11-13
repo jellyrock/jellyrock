@@ -75,6 +75,7 @@ namespace syncPlayPlayer
       seekWrittenAtMs: 0&,
       seekOwner: "",
       seekSlow: false,
+      slowTold: false,
       lastSeekMs: 0&,
       lastSeekGaveUp: false,
       lastLandingTicks: invalid,
@@ -130,6 +131,7 @@ namespace syncPlayPlayer
       player.seekWrittenAtMs = nowMs
       player.seekOwner = owner
       player.seekSlow = false
+      player.slowTold = false
       ' A seek written under the bar answers the scrub, and the node closes the bar by itself.
       if player.scrubbing
         player.scrubbing = false
@@ -188,6 +190,7 @@ namespace syncPlayPlayer
     player.pauseWrites = 0
     player.pauseTicks = invalid
     player.seekSlow = false
+    player.slowTold = false
     player.lastSeekMs = 0&
     player.lastSeekGaveUp = false
     player.lastLandingTicks = invalid
@@ -319,6 +322,13 @@ namespace syncPlayPlayer
     end if
     ' Any other activity: the field reads a seek's target, or the position from before a pause.
   end sub
+
+  ' True once per seek, the first time it is asked after the seek turned slow.
+  function takeSlowEdge(player as object) as boolean
+    if not player.seekSlow or player.slowTold then return false
+    player.slowTold = true
+    return true
+  end function
 
   ' Time passed: end an activity that outlasted its limit.
   sub advance(player as object, nowMs as longinteger)
@@ -494,6 +504,7 @@ namespace syncPlayPlayer
     ' next one would be as slow.
     player.lastSeekGaveUp = gaveUp or player.seekSlow
     player.seekSlow = false
+    player.slowTold = false
     player.lastLandingTicks = landingTicks
   end sub
 

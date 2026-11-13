@@ -87,6 +87,23 @@ namespace tests
       m.assertFalse(m.manager.following)
     end function
 
+    ' The seek budget runs on the real clock (syncPlayTime.nowMs), so this case waits it out.
+    @it("a seek still buffering past its limit takes the slow-seek log path and the manager carries on")
+    function _()
+      m.followGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "state", state: "playing", position: 0, isTranscoded: true })
+      m.manager.callFunc("playerEvent", { kind: "position", position: 1 })
+      m.manager.callFunc("playerEvent", { kind: "localSeek", position: 60 })
+      m.manager.callFunc("playerEvent", { kind: "state", state: "buffering", position: 60 })
+      m.assertEqual(m.manager.sync.trackerPhase, "seeking")
+      sleep(syncPlayPlayback.SEEK_SETTLE_MS + 200)
+      result = m.manager.callFunc("playerEvent", { kind: "state", state: "buffering", position: 60 })
+      m.assertTrue(result.following)
+      m.assertEqual(m.manager.sync.trackerPhase, "seeking")
+      m.assertTrue(m.manager.callFunc("seekInFlight"))
+    end function
+
     @it("the viewer's pause with no way to ask the group is left to the player, as outside a group")
     function _()
       m.followGroupItem()
