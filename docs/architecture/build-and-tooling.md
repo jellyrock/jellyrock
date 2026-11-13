@@ -20,6 +20,7 @@ related-files:
   - scripts/bsc-plugins/observe-without-on-destroy.cjs
   - scripts/bsc-plugins/no-direct-sdk.cjs
   - scripts/bsc-plugins/no-raw-run.cjs
+  - scripts/bsc-plugins/no-namespace-const-call.cjs
   - scripts/bsc-plugins/no-task-fanout.cjs
   - scripts/bsc-plugins/no-same-node-relaunch.cjs
   - scripts/bsc-plugins/no-hand-rolled-dialog.cjs
@@ -239,6 +240,7 @@ These turn conventions from `components/CLAUDE.md` and `source/CLAUDE.md` into e
 | `no-raw-run` | error | A Task started without `launchTask()`: `control` written with `"RUN"`, or with a value that cannot be resolved, outside `source/utils/tasks.bs` | [ADR 0031](../adr/0031-task-thread-ceiling.md) |
 | `no-task-fanout` | error | A `launchTask()` inside a loop body, directly or one same-file helper call away, unless its argument is a stable `m.` path the loop does not rebind | [ADR 0031](../adr/0031-task-thread-ceiling.md), decisions [`task-fanout-keys-on-argument`](../decisions.md#decision-id-task-fanout-keys-on-argument) and [`task-fanout-follows-helpers`](../decisions.md#decision-id-task-fanout-follows-helpers) |
 | `no-same-node-relaunch` | error | Relaunching a Task node the same function stopped; launching `m.x` with no new node assigned first; a `replaceTask()` handler that does not open with `isCurrentTaskEvent()` | [ADR 0037](../adr/0037-task-run-replacement.md), decisions [`same-node-relaunch-gate`](../decisions.md#decision-id-same-node-relaunch-gate) and [`relaunch-gate-no-stop-shapes`](../decisions.md#decision-id-relaunch-gate-no-stop-shapes) |
+| `no-namespace-const-call` | error | A method call on a namespaced const or an enum member (`ns.PREFIX.len()`). BrighterScript replaces it with its value only when it ends the expression, so the call compiles to `ns_PREFIX_len()`, which does not exist. Wrap it: `Len(ns.PREFIX)` | The plugin file |
 | `no-hand-rolled-dialog` | error | A dialog built outside the `JRDialog` family: a full-screen translucent `Rectangle`, or an `appendChild` or `insertChild` onto the scene | [dialogs.md](dialogs.md), decision [`one-overlay-dialog-supersedes`](../decisions.md#decision-id-one-overlay-dialog-supersedes) |
 | `screen-lifecycle-entry` | error | A `callFunc` of a screen's `onScreenShown`, `onScreenHidden` or `hideCovered` outside `JRScreen.bs`, which skips its focus and dialog guards. `JRScene`'s swap may call `hideCovered`, and a screen may forward a hook to a nested screen from its own hook of the same name | [navigation.md](navigation.md#focus-management), the plugin file |
 | `callfunc-interface` | error | A `callFunc("x")` where `x` is defined in one of our codebehinds but declared in no component `<interface>`, a call that does nothing. `m.top.callFunc` is checked against its own component | The plugin file |
@@ -299,6 +301,7 @@ Not every plugin honors every marker, and an unsupported one fails silently: the
 | `no-task-fanout` | ✅ | ✅ | ❌ | Same reason as `no-raw-run` |
 | `no-same-node-relaunch` | ✅ | ✅ | ❌ | Same reason. Only for an intended relaunch; a site awaiting migration goes in `PENDING_MIGRATIONS` |
 | `no-hand-rolled-dialog` | ✅ | ✅ | ❌ | Same reason. Also matches inside a multi-line XML comment (`ItemGridOptions` is the live case) |
+| `no-namespace-const-call` | ✅ | ✅ | ✅ | Built on the program factory, which honors a whole-file marker. Prefer the line markers |
 | `jrscreen-on-destroy` | ❌ | ❌ | ✅ | The diagnostic lands on the XML component declaration |
 | `auto-abandon-promises` | ❌ | ❌ | ✅ | |
 | `button-row-bracket` | ❌ | ❌ | ✅ | The rule is about a whole function, so a line has nowhere to sit |

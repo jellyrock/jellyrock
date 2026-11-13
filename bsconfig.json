@@ -26,6 +26,7 @@
     "./scripts/bsc-plugins/no-task-fanout.cjs",
     "./scripts/bsc-plugins/no-same-node-relaunch.cjs",
     "./scripts/bsc-plugins/no-hand-rolled-dialog.cjs",
+    "./scripts/bsc-plugins/no-namespace-const-call.cjs",
     "./scripts/bsc-plugins/screen-lifecycle-entry.cjs",
     "./scripts/bsc-plugins/callfunc-interface.cjs",
     "./scripts/bsc-plugins/button-row-bracket.cjs",
