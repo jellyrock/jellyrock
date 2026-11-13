@@ -44,8 +44,9 @@ namespace syncPlayConverge
       ' wait instead.
       catchUpLimit: 2,
       ' Holds in a row that did not bring a member ahead in step, before it is left to play on:
-      ' one with nothing learned of this stream, one with a first sample, one to spare.
-      holdLimit: 3,
+      ' two while the player model learns that the node runs on past its stops (it takes two
+      ' samples, syncPlayPlayer.lagInUse), one written with that, and one to spare.
+      holdLimit: 4,
       pauseWriteLimit: syncPlayPlayback.PAUSE_ATTEMPTS,
       ' The longest a paused member ahead of the group waits for it before seeking back instead.
       aheadWaitMaxMs: 5000,

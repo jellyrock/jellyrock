@@ -448,13 +448,13 @@ namespace tests
       m.pauseAt(player, 10000&)
       m.resumeCycle(player, 11000&, 400&)
       m.assertEqual(player.resumeLagMs, 40&)
-      ' A sample below zero is a node that ran on past where it was taken to stop: it counts.
+      ' A sample below zero among ones above it is one resume's noise: it moves nothing.
       m.pauseAt(player, 13000&)
       m.resumeCycle(player, 14000&, -20&)
-      m.assertEqual(player.resumeLagMs, 30&)
+      m.assertEqual(player.resumeLagMs, 40&)
       m.pauseAt(player, 16000&)
       m.resumeCycle(player, 17000&, 35&)
-      m.assertEqual(player.resumeLagMs, 32&)
+      m.assertEqual(player.resumeLagMs, 35&)
       for i = 0 to 4
         m.pauseAt(player, 20000& + i * 3000)
         m.resumeCycle(player, 21000& + i * 3000, 60&)
@@ -462,21 +462,33 @@ namespace tests
       m.assertEqual(player.resumeLagMs, 60&)
     end function
 
-    @it("a node that runs on past its stop is learned as a lag below zero, inside a band")
+    @it("a lag below zero is used only once two samples in a row say the node runs on")
     function _()
       player = m.pausedAfter300()
-      ' 500 ms after the write the node has played 680 ms: it stood 180 ms past the stop taken.
+      ' The first stop is a landing's; the ones after are in steady play, with samples of their own.
       m.resumeCycle(player, 2000&, -180&)
-      m.assertEqual(player.resumeLagMs, -180&)
-      ' Further below than any device has measured is not a sample. This second stop is one in
-      ' steady play, which keeps samples of its own.
+      m.assertEqual(player.resumeLagMs, 0&)
       m.pauseAt(player, 4000&)
-      m.resumeCycle(player, 5000&, syncPlayPlayer.RESUME_LAG_MIN_MS - 1)
-      m.assertEqual(player.resumeLagSamples.steady.count(), 0)
-      m.assertEqual(player.resumeLagSamples.landing.count(), 1)
+      m.resumeCycle(player, 5000&, -200&)
+      m.assertEqual(player.resumeLagMs, 0&)
+      ' Two below zero and none above: the device runs on past its stops, by their median.
       m.pauseAt(player, 7000&)
-      m.resumeCycle(player, 8000&, -200&)
-      m.assertEqual(player.resumeLagMs, -200&)
+      m.resumeCycle(player, 8000&, -160&)
+      m.assertEqual(player.resumeLagMs, -180&)
+      ' One above zero among them and the device is no longer taken to run on.
+      m.pauseAt(player, 10000&)
+      m.resumeCycle(player, 11000&, 40&)
+      m.assertEqual(player.resumeLagMs, 40&)
+    end function
+
+    @it("a sample further below zero than any device has measured is not kept")
+    function _()
+      player = m.pausedAfter300()
+      m.resumeCycle(player, 2000&, syncPlayPlayer.RESUME_LAG_MIN_MS - 1)
+      m.assertEqual(player.resumeLagSamples.landing.count(), 0)
+      m.pauseAt(player, 4000&)
+      m.resumeCycle(player, 5000&, syncPlayPlayer.RESUME_LAG_MIN_MS)
+      m.assertEqual(player.resumeLagSamples.steady.count(), 1)
     end function
 
     @it("a stop straight after a landing and a stop in steady play each keep a lag of their own")

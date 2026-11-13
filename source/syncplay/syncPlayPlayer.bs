@@ -169,7 +169,7 @@ namespace syncPlayPlayer
     player.awaitsFirstFrameReading = activity = "arrived" and player.arrivedFrom = "load"
     player.stopKind = "steady"
     if player.clockFromLanding or player.activity = "arrived" then player.stopKind = "landing"
-    player.resumeLagMs = medianOf(player.resumeLagSamples[player.stopKind])
+    player.resumeLagMs = lagInUse(player.resumeLagSamples[player.stopKind])
     ' Where the write stopped the node: the running clock read at the write.
     player.pauseTicks = positionAt(player, nowMs)
     enter(player, "pausing", nowMs)
@@ -454,8 +454,23 @@ namespace syncPlayPlayer
     if not isValid(samples) then return
     samples.push(sampleMs&)
     if samples.count() > RESUME_LAG_SAMPLES then samples.shift()
-    player.resumeLagMs = medianOf(samples)
+    player.resumeLagMs = lagInUse(samples)
   end sub
+
+  ' The lag a resume is written by, from the samples kept for one kind of stop. A device whose
+  ' node runs on past its stops says so every time (61 of 61 resumes on a low-end Stick), so a
+  ' lag below zero is used only once at least two samples are kept and all are below zero: their
+  ' median. On any other device a sample below zero is one resume's noise (about one in five on
+  ' a Stick 4K), and the lag is the median of the samples at or above zero, 0 with none.
+  function lagInUse(samples as dynamic) as longinteger
+    if not isValid(samples) or samples.count() = 0 then return 0&
+    late = []
+    for each sample in samples
+      if syncPlayTime.asLong(sample) >= 0 then late.push(sample)
+    end for
+    if late.count() = 0 and samples.count() >= 2 then return medianOf(samples)
+    return medianOf(late)
+  end function
 
   ' The median of a list of ms values, or 0 for none.
   function medianOf(samples as dynamic) as longinteger
