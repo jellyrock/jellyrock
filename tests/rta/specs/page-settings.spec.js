@@ -18,6 +18,7 @@ import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.
 import { hardRelaunch } from '../lib/driver.js';
 import { navLibraryGrid, navTvLibrary, waitPageMenu, waitSettingsScreen } from '../lib/nav.js';
 import {
+  enterOverhangRow,
   getActiveVal,
   getVal,
   press,
@@ -28,12 +29,10 @@ import {
   waitFocusInside,
   waitFor,
   waitHome,
-  walkFocusUntil,
   walkOverhangRowTo,
 } from '../lib/steps.js';
 
 const LOCALE = RTA_CONFIG.languages[0];
-const inOverhangRow = (f) => f?.node?.subtype === 'JROverhangIcon';
 const atSettingsIcon = (f) => f?.node?.id === 'settingsIcon';
 // A sort the grid does not default to, so a reset to the default would show.
 const SEEDED_SORT = 'DateCreated';
@@ -63,12 +62,7 @@ async function launchWithMovies(label, view, layout) {
 
 /** From a library's content: Up into the overhang row, then along it to the gear. */
 async function focusGear(label) {
-  await waitFocused(inOverhangRow, {
-    timeout: 15000,
-    interval: 350,
-    action: walkFocusUntil(ecp.Key.Up, inOverhangRow),
-    label: `the overhang row from ${label}`,
-  });
+  await enterOverhangRow(label);
   await walkOverhangRowTo('settingsIcon', { label: `the gear on ${label}` });
 }
 

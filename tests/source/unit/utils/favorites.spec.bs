@@ -1,0 +1,69 @@
+import "pkg:/source/api/ApiClient.bs"
+import "pkg:/source/utils/favorites.bs"
+
+namespace tests
+
+  @suite("favorites - a favorite toggle tells the grids that show favorites")
+  class FavoritesTests extends tests.BaseTestSuite
+
+    private scene as object
+
+    protected override sub beforeEach()
+      super.beforeEach()
+      m.global.user.id = "test-user-123"
+      m.global.server.serverUrl = "http://jellyfin.test:8096"
+      m.global.server.apiVersion = 2
+      ' Stands in for JRScene: a node with the one field the helper bumps.
+      m.scene = CreateObject("roSGNode", "Node")
+      m.scene.addField("favoritesVersion", "integer", false)
+      m.scene.favoritesVersion = 0
+    end sub
+
+    protected override sub afterEach()
+      m.scene = invalid
+      super.afterEach()
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("request()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("builds a POST to mark a favorite and bumps the token by one")
+    function _()
+      req = favorites.request("item-1", true, m.scene)
+
+      m.assertEqual(req.method, "POST")
+      m.assertTrue(req.url.inStr("UserFavoriteItems/item-1") >= 0, "the favorite endpoint for the item")
+      m.assertEqual(m.scene.favoritesVersion, 1)
+    end function
+
+    @it("builds a DELETE to unmark a favorite and bumps the token by one")
+    function _()
+      req = favorites.request("item-1", false, m.scene)
+
+      m.assertEqual(req.method, "DELETE")
+      m.assertTrue(req.url.inStr("UserFavoriteItems/item-1") >= 0, "the favorite endpoint for the item")
+      m.assertEqual(m.scene.favoritesVersion, 1)
+    end function
+
+    @it("bumps once per call")
+    function _()
+      favorites.request("item-1", true, m.scene)
+      favorites.request("item-1", false, m.scene)
+      favorites.request("item-2", true, m.scene)
+
+      m.assertEqual(m.scene.favoritesVersion, 3)
+    end function
+
+    @it("still builds the request when there is no scene, or one without the field")
+    function _()
+      m.assertEqual(favorites.request("item-1", true, invalid).method, "POST")
+      m.assertEqual(favorites.request("item-1", false, invalid).method, "DELETE")
+
+      bare = CreateObject("roSGNode", "Node")
+      m.assertEqual(favorites.request("item-1", true, bare).method, "POST")
+    end function
+
+  end class
+
+end namespace

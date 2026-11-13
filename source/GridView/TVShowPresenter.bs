@@ -34,19 +34,25 @@ class TVShowPresenter extends GridPresenterBase
     }
 
     ' The web client's tab order (Shows, Suggestions, Upcoming, Genres, Networks,
-    ' Episodes), with the tabs JellyRock has.
+    ' Episodes), with the tabs JellyRock has. A network or genre folder lists its shows
+    ' and nothing else: its name is the title, and it has no tabs.
     options.views = [
-      { "Title": translate(translationKeys.LabelShows), "Name": libraryTab.SHOWS },
-      { "Title": translate(translationKeys.LabelGenres), "Name": libraryTab.GENRES },
-      { "Title": translate(translationKeys.LabelNetworks), "Name": libraryTab.NETWORKS }
+      { "Title": translate(translationKeys.LabelShows), "Name": libraryTab.SHOWS }
     ]
-
-    ' The library itself on 12.0+ only; see collectionsView for both rules. A TV library
-    ' gets the view for the same reason a movie library does: the server scopes BoxSets by
-    ' library and a collection can hold series. The web's TV library has no Collections
-    ' tab, so it goes last.
-    if collectionsView.offeredFor(parentItem, m.serverVersion())
-      options.views.push({ "Title": translate(translationKeys.LabelCollections), "Name": libraryTab.COLLECTIONS })
+    isLibrary = not libraryTab.isFolder(parentItem)
+    if isLibrary
+      ' The Shows tab's favorites (gridQuery.viewOfTab). The web's TV library has no
+      ' Favorites tab, so its place is ours: after the content tab, as in a movie library.
+      options.views.push({ "Title": translate(translationKeys.LabelFavorites), "Name": libraryTab.FAVORITES, "View": libraryTab.SHOWS, "IsFavorite": true })
+      options.views.push({ "Title": translate(translationKeys.LabelGenres), "Name": libraryTab.GENRES })
+      options.views.push({ "Title": translate(translationKeys.LabelNetworks), "Name": libraryTab.NETWORKS })
+      ' The library itself on 12.0+ only; see collectionsView for both rules. A TV library
+      ' gets the view for the same reason a movie library does: the server scopes BoxSets
+      ' by library and a collection can hold series. The web's TV library has no
+      ' Collections tab, so it goes last.
+      if collectionsView.offeredFor(parentItem, m.serverVersion())
+        options.views.push({ "Title": translate(translationKeys.LabelCollections), "Name": libraryTab.COLLECTIONS })
+      end if
     end if
 
     ' Sort options vary by view - get current view from presenter's view reference
@@ -93,6 +99,9 @@ class TVShowPresenter extends GridPresenterBase
         { "Title": translate(translationKeys.LabelPlayed), "Name": "Played" },
         { "Title": translate(translationKeys.LabelUnplayed), "Name": "Unplayed" }
       ]
+      ' The Favorites tab covers the Shows view's favorites, so that view's list leaves
+      ' the Favorites filter out. A folder's list and the Networks view's keep it.
+      if isLibrary and viewLower = libraryTab.SHOWS then options.filter = m.withoutFilter(options.filter, "Favorites")
     end if
 
     ' Future: Could use parentItem to customize options for specific series types

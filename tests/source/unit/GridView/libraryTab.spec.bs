@@ -183,6 +183,33 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isFolder()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for a studio, network or genre opened inside a library")
+    ' The shapes a device showed on 2026-11-12 (a network arrives as a Studio), and the
+    ' folderType forms DeterminePresenterType also names.
+    @params({ type: "Studio", collectionType: "movies" })
+    @params({ type: "Studio", collectionType: "tvshows" })
+    @params({ type: "Genre", collectionType: "movies" })
+    @params({ type: "genre" })
+    @params({ type: "Folder", folderType: "Genre" })
+    @params({ type: "Folder", folderType: "studio" })
+    function _(parentItem)
+      m.assertTrue(libraryTab.isFolder(parentItem))
+    end function
+
+    @it("is false for a library, a collection and an item with no type")
+    @params({ type: "CollectionFolder", collectionType: "movies" })
+    @params({ type: "CollectionFolder", collectionType: "tvshows", folderType: "CollectionFolder" })
+    @params({ type: "BoxSet" })
+    @params({})
+    @params(invalid)
+    function _(parentItem)
+      m.assertFalse(libraryTab.isFolder(parentItem))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("libraryLayout")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -253,9 +280,9 @@ namespace tests
     function _()
       cases = m.presenterCases()
       expected = {
-        "movies": ["movies", "collections", "genres", "studios"],
+        "movies": ["movies", "favorites", "collections", "genres", "studios"],
         "movie genre": ["movies"],
-        "tvshows": ["shows", "genres", "networks", "collections"],
+        "tvshows": ["shows", "favorites", "genres", "networks", "collections"],
         "music": ["albums", "albumartists", "artists", "genres"],
         "music genre": ["albums"],
         "livetv": ["channels", "guide"],

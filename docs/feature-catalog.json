@@ -11,7 +11,7 @@
     {
       "slug": "browse-a-library",
       "title": "Browse a library",
-      "pitch": "Choose how each library tab is drawn, from the settings icon on the library itself.",
+      "pitch": "Move between a library's tabs at the top of the screen, and choose how each one is drawn.",
       "since": "unreleased",
       "sinceDate": null,
       "server": "10.7.0",

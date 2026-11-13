@@ -16,5 +16,6 @@ Mark movies, shows, music, channels, people and more as favorites, and find them
 ## Find your favorites
 
 - **On Home**, select the **Favorites** tab at the top of the screen. Your favorites are grouped in rows by type: movies, shows, episodes, people, artists, albums, songs, channels, photos and the rest.
-- **In a library**, press the options button (**\***) and filter it to your favorites.
+- **In a movie or TV library**, select the **Favorites** tab at the top of the screen. It shows that library's favorite movies or shows. See [Browse a library](browse-a-library.md).
+- **In any other library, or on another tab**, press the options button (**\***) and filter it to your favorites.
 - **In the Live TV guide**, the same filter shows only your favorite channels. See [Live TV and recordings](live-tv.md).
