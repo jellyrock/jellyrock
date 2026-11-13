@@ -1280,6 +1280,10 @@ Each rename needs a registry migration (`/new-migration`), because settings are 
 
 Afterward, run `npm run update-translations -- --rename Old=New` so each `SettingDesc` key matches its setting's new name. Then tighten the key-name rule in `docs/dev/translations.md` and `locale/CLAUDE.md` back to "`SettingDesc` plus the `settingName` without its area prefix". The rename-key PR (`refactor/translation-key-names`) loosened that rule, because the names it would derive from were about to change. Related: `in-app-settings-copy` (the description wording itself).
 
+#### Write a library's default tab back to the server's display preferences `[fid: library-default-tab-write-back]` `[captured 2026-11-13]`
+
+The library screens' default tab reads the web client's pick (`landing-<libraryId>`, or `landing-livetv`, in the `usersettings` display preferences, client `emby`) at sign-in, and keeps a Roku pick in the registry (`display.<libraryId>.defaultTab`, decision `library-default-tab-precedence`). Nothing is written back, so a pick made in the gear menu's Default tab entry stays on this Roku. Writing it back would make one pick follow the user across clients, but it would also change what the web opens on, so it needs a design call first: whether the Roku's pick replaces the web's or stays an override, and what the gear entry's first option then means. A write would POST the whole `DisplayPreferences` record with one key changed, as the web does. Deferred from piece 07 of the library screens work, by design.
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`

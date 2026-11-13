@@ -461,12 +461,41 @@ export async function firstMovie(session) {
 }
 
 /**
+ * Set (`value` a web LibraryTab id) or clear (`value` `''`, the web's own "default") the
+ * default tab the user picked for a library in the web client: `landing-<key>` in the
+ * `usersettings` display preferences (client `emby`), where `key` is the library id, or
+ * `livetv` for Live TV. Fetches the whole record and posts it back with that one key
+ * changed, as the web does, so nothing else in it moves. Returns the value it replaced
+ * (`undefined` when there was none), for the caller to put back.
+ *
+ * The app reads these preferences at sign-in, so a spec relaunches after setting one.
+ * It writes to the server's account, not the device: run it only against a server of
+ * your own (`isPrivateServer` in `config.js`), never the shared public demo.
+ */
+export async function setServerLanding(session, key, value) {
+  const query = new URLSearchParams({ userId: session.userId, client: 'emby' });
+  const urlStr = `${session.serverUrl}/DisplayPreferences/usersettings?${query}`;
+  const headers = tokenHeader(session.token);
+  const prefs = await getJson(urlStr, headers);
+  const prefKey = `landing-${key}`;
+  const customPrefs = { ...(prefs?.CustomPrefs ?? {}) };
+  const previous = customPrefs[prefKey];
+  customPrefs[prefKey] = value;
+  await postJson(
+    urlStr,
+    { ...headers, 'Content-Type': 'application/json' },
+    { ...prefs, CustomPrefs: customPrefs },
+  );
+  return previous;
+}
+
+/**
  * Fetch the user's libraries, resolved at RUNTIME so we never hardcode a library
  * GUID (those are minted when a library is created and die if it's recreated /
  * the server is rebuilt). Returns [{ name, collectionType, id }]; callers key off
  * the STABLE collectionType ("movies" | "tvshows" | "music" | "playlists" | ...)
- * and read the current id from here. Used to seed a deterministic landing view
- * (display.<id>.landing) per library.
+ * and read the current id from here. Used to seed a deterministic default tab
+ * (display.<id>.defaultTab) per library.
  */
 export async function getLibraries(session) {
   const url = `${session.serverUrl}/Users/${session.userId}/Views`;

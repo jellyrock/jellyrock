@@ -1,8 +1,9 @@
 namespace tests
 
   ' LIBRARY_TAB_MIGRATION_VERSION: each library's saved view (`display.<id>.landing`)
-  ' becomes its libraryTab id, and the two movie views become one tab plus that view's
-  ' layout, `display.<id>.layout_movies`. Run against real `test-` registry sections.
+  ' becomes its default tab (`display.<id>.defaultTab`) unless it is a library type's own
+  ' default, the two movie views also imply that view's layout (`display.<id>.layout_movies`),
+  ' and `landing` is deleted. Run against real `test-` registry sections.
   @suite("Library Tab Migration - v3.3.2 Migration")
   @tags("migration")
   class LibraryTabMigrationTests extends tests.BaseTestSuite
@@ -64,9 +65,15 @@ namespace tests
       migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
+      typeDefaults = { movies: true, shows: true, albumartists: true, channels: true, photos: true }
       for each libraryId in legacy
         expected = legacy[libraryId]
-        m.assertEqual(reg.read(`display.${libraryId}.landing`), expected[1], `${expected[0]} becomes its tab id`)
+        m.assertFalse(reg.exists(`display.${libraryId}.landing`), `${expected[0]}: landing is deleted`)
+        if typeDefaults.DoesExist(expected[1])
+          m.assertFalse(reg.exists(`display.${libraryId}.defaultTab`), `${expected[0]} is a type default: no default tab`)
+        else
+          m.assertEqual(reg.read(`display.${libraryId}.defaultTab`), expected[1], `${expected[0]} becomes the default tab`)
+        end if
         if expected[2] = ""
           m.assertFalse(reg.exists(`display.${libraryId}.layout_${expected[1]}`), `${expected[0]} implies no layout`)
         else
@@ -87,10 +94,11 @@ namespace tests
 
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertFalse(reg.exists("display.lib-folder.landing"))
+      m.assertFalse(reg.exists("display.lib-folder.defaultTab"))
       m.assertEqual(reg.read("display.lib-folder.sortField"), "SortName", "the folder's other settings stay")
     end function
 
-    @it("leaves a value it does not recognize alone")
+    @it("keeps a value it does not recognize as the default tab")
     ' The grid's resolveView falls back from it at load, without overwriting it.
     function _()
       testUserId = "test-library-tab-003"
@@ -101,7 +109,8 @@ namespace tests
       migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
-      m.assertEqual(reg.read("display.lib-1.landing"), "SomethingNewer")
+      m.assertFalse(reg.exists("display.lib-1.landing"))
+      m.assertEqual(reg.read("display.lib-1.defaultTab"), "SomethingNewer")
       m.assertFalse(reg.exists("display.lib-1.layout_movies"))
     end function
 
@@ -137,6 +146,8 @@ namespace tests
       reg.write("display.lib-a.landing", "Movies")
       reg.write("display.lib-b.landing", "Shows")
       reg.write("display.lib-c.landing", "default")
+      reg.write("display.lib-d.landing", "Genres")
+      reg.write("displayLiveTvLanding", "guide")
       reg.flush()
 
       migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
@@ -160,7 +171,8 @@ namespace tests
       migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
-      m.assertEqual(reg.read("display.lib-1.landing"), "movies")
+      m.assertFalse(reg.exists("display.lib-1.landing"))
+      m.assertFalse(reg.exists("display.lib-1.defaultTab"))
       m.assertEqual(reg.read("display.lib-1.layout_movies"), "comfortable")
     end function
 
@@ -177,8 +189,57 @@ namespace tests
       migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
 
       reg = CreateObject("roRegistrySection", testUserId)
-      m.assertEqual(reg.read("display.lib-1.landing"), "movies")
+      m.assertFalse(reg.exists("display.lib-1.landing"))
       m.assertEqual(reg.read("display.lib-1.layout_movies"), "presentation")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the default tab")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("lets a saved view win over a stored default tab")
+    ' A downgrade, a view picked in the old Star dialog, then an upgrade: `landing` is
+    ' the newer choice.
+    function _()
+      testUserId = "test-library-tab-013"
+      reg = m.userSection(testUserId)
+      reg.write("display.lib-1.landing", "Studios")
+      reg.write("display.lib-1.defaultTab", "genres")
+      reg.write("display.lib-2.landing", "MoviesGrid")
+      reg.write("display.lib-2.defaultTab", "genres")
+      reg.flush()
+
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertEqual(reg.read("display.lib-1.defaultTab"), "studios")
+      m.assertFalse(reg.exists("display.lib-2.defaultTab"), "a type default picked last clears the choice")
+    end function
+
+    @it("keeps a stored default tab when no view is saved")
+    function _()
+      testUserId = "test-library-tab-014"
+      reg = m.userSection(testUserId)
+      reg.write("display.lib-1.defaultTab", "genres")
+      reg.flush()
+
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertEqual(reg.read("display.lib-1.defaultTab"), "genres")
+    end function
+
+    @it("deletes the unused copy of the web's Live TV default tab")
+    function _()
+      testUserId = "test-library-tab-015"
+      reg = m.userSection(testUserId)
+      reg.write("displayLiveTvLanding", "guide")
+      reg.flush()
+
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertFalse(reg.exists("displayLiveTvLanding"))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -213,7 +274,7 @@ namespace tests
       runRegistryUserMigrations([testUserId])
 
       reg = CreateObject("roRegistrySection", testUserId)
-      m.assertEqual(reg.read("display.lib-1.landing"), "movies")
+      m.assertFalse(reg.exists("display.lib-1.landing"))
       m.assertEqual(reg.read("display.lib-1.layout_movies"), "comfortable")
     end function
 
@@ -230,8 +291,9 @@ namespace tests
       runRegistryUserMigrations([testUserId])
 
       reg = CreateObject("roRegistrySection", testUserId)
-      m.assertEqual(reg.read("display.lib-1.landing"), "artists")
-      m.assertEqual(reg.read("display.lib-2.landing"), "albumartists")
+      m.assertEqual(reg.read("display.lib-1.defaultTab"), "artists")
+      m.assertFalse(reg.exists("display.lib-2.defaultTab"), "Album Artists is music's own default")
+      m.assertFalse(reg.exists("display.lib-1.landing"))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -256,8 +318,8 @@ namespace tests
       reg2 = CreateObject("roRegistrySection", secondUser)
       m.assertEqual(reg1.read("display.lib-shared.layout_movies"), "presentation")
       m.assertEqual(reg2.read("display.lib-shared.layout_movies"), "comfortable")
-      m.assertEqual(reg1.read("display.lib-shared.landing"), "movies")
-      m.assertEqual(reg2.read("display.lib-shared.landing"), "movies")
+      m.assertFalse(reg1.exists("display.lib-shared.landing"))
+      m.assertFalse(reg2.exists("display.lib-shared.landing"))
     end function
 
   end class

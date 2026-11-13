@@ -49,11 +49,11 @@ describe('planRestore', () => {
   });
 
   it('nulls a key the run added to a section that already existed', () => {
-    // seedLibraryLanding writes display.<libraryId>.landing into a user section.
+    // seedLibraryLanding writes display.<libraryId>.defaultTab into a user section.
     const saved = { user1: { authToken: 'abc' } };
-    const live = { user1: { authToken: 'abc', 'display.lib1.landing': 'Shows' } };
+    const live = { user1: { authToken: 'abc', 'display.lib1.defaultTab': 'genres' } };
     const { writes } = planRestore(saved, live);
-    expect(writes).toEqual({ user1: { 'display.lib1.landing': null } });
+    expect(writes).toEqual({ user1: { 'display.lib1.defaultTab': null } });
   });
 
   it('restores a changed value and a key the run deleted', () => {
