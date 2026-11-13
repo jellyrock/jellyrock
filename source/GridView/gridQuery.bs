@@ -52,17 +52,18 @@ namespace gridQuery
     return query
   end function
 
-  ' ── The saved view, and what the presenter currently offers ───────────────────
+  ' ── A saved choice, and what the presenter currently offers ───────────────────
   '
-  ' A library's chosen view persists per library id in the `landing` display setting,
-  ' and until 12.0 every view a presenter listed was available on every server, so a
-  ' saved name could always be honored. The Collections view breaks that: it is offered
-  ' only on 12.0+, so a name saved against one server can be missing when the SAME
-  ' library is opened against an older one (a downgrade, a restored backup). Honoring it
-  ' anyway does not fail loudly: the presenter falls through to its default query branch
-  ' while the layout is still chosen for the named view, which on a movie library means
-  ' the presentation grid's 650px offset with the info panel hidden: a grid pushed down
-  ' the screen against dead space.
+  ' Until 12.0 every view a presenter listed was available on every server, so a saved
+  ' tab could always be honored. The Collections view breaks that: it is offered only on
+  ' 12.0+, so a tab saved against one server can be missing when the SAME library is
+  ' opened against an older one (a downgrade, a restored backup). Honoring it anyway does
+  ' not fail loudly: the presenter falls through to its default query branch while the
+  ' layout is still chosen for the named view, which on a movie library means the
+  ' presentation grid's 650px offset with the info panel hidden: a grid pushed down the
+  ' screen against dead space. A tab picked in the web client can name a tab this
+  ' library lacks for the same reason, or one the app has but not here (Favorites on a
+  ' music library).
 
   ' offers: whether `name` is one of the entries a presenter is listing.
   '
@@ -105,23 +106,36 @@ namespace gridQuery
     return textOrEmpty(fallback)
   end function
 
-  ' resolveView: which view a library opens on.
+  ' resolveView: which tab a library opens on, and where that choice came from.
   '
-  ' `savedView` is Invalid when the library has never had one chosen, which is the common
-  ' case and is answered with the default. A saved name is honored unless the presenter
-  ' has stopped offering it (resolveOffered).
+  ' The tab picked on this Roku (the `defaultTab` display setting) while the library
+  ' offers it; else the tab picked in the web client while offered; else the library
+  ' type's default. Each saved choice goes through resolveOffered, so one the library no
+  ' longer offers falls through without being forgotten.
   '
   ' The empty default is not a missing view. getDefaultView() returns "" for a folder or
   ' collection (the Generic presenter), whose grid runs with no named view at all, and ""
   ' is in no presenter's list. Only a non-empty saved name is checked.
   '
-  ' @param savedView - the stored `landing` setting, or Invalid when none is stored
+  ' @param clientOverride - the stored `defaultTab` setting, or Invalid when none is stored
+  ' @param serverTab - the web's pick for this library, already a libraryTab id
+  '   (libraryTab.fromServerTab), or "" when there is none
   ' @param offeredViews - the presenter's `getOptions().views`
   ' @param defaultView - what getDefaultView() answered for this library
-  ' @return {string} the tab to open on
-  function resolveView(savedView as dynamic, offeredViews as dynamic, defaultView as dynamic) as string
-    return gridQuery.resolveOffered(savedView, offeredViews, defaultView)
+  ' @return {object} { tab, source }, `source` one of RESOLVED_ROKU, RESOLVED_WEB and
+  '   RESOLVED_DEFAULT
+  function resolveView(clientOverride as dynamic, serverTab as dynamic, offeredViews as dynamic, defaultView as dynamic) as object
+    picked = gridQuery.resolveOffered(clientOverride, offeredViews, "")
+    if picked <> "" then return { tab: picked, source: gridQuery.RESOLVED_ROKU }
+    picked = gridQuery.resolveOffered(serverTab, offeredViews, "")
+    if picked <> "" then return { tab: picked, source: gridQuery.RESOLVED_WEB }
+    return { tab: textOrEmpty(defaultView), source: gridQuery.RESOLVED_DEFAULT }
   end function
+
+  ' Where resolveView's tab came from.
+  const RESOLVED_ROKU = "roku"
+  const RESOLVED_WEB = "web"
+  const RESOLVED_DEFAULT = "default"
 
   ' viewOfTab: the view a tab shows, and what is fixed on it.
   '
