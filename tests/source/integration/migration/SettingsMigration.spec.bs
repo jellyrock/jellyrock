@@ -180,11 +180,12 @@ namespace tests
       m.assertFalse(reg.exists("homeSection5"), "homeSection5 should be deleted in v2.13.0")
       m.assertFalse(reg.exists("homeSection6"), "homeSection6 should be deleted in v2.13.0")
 
-      ' Verify display settings migrated correctly
-      m.assertTrue(reg.exists("displayLiveTvLanding"))
-      m.assertEqual(reg.read("displayLiveTvLanding"), "guide")
-      m.assertEqual(reg.read("display.lib-movies.landing"), "movies", "the saved view becomes its tab id")
-      m.assertEqual(reg.read("display.lib-movies.layout_movies"), "presentation", "and the layout it implied")
+      ' Verify display settings migrated correctly. v1.1.0 renames display.livetv.landing to
+      ' displayLiveTvLanding, which the library tab migration then deletes: nothing read it.
+      m.assertFalse(reg.exists("displayLiveTvLanding"))
+      m.assertFalse(reg.exists("display.lib-movies.landing"), "the saved view is gone")
+      m.assertFalse(reg.exists("display.lib-movies.defaultTab"), "Movies is the type's own default: no choice to keep")
+      m.assertEqual(reg.read("display.lib-movies.layout_movies"), "presentation", "the layout it implied stays")
 
       ' AND: OLD setting names are deleted
       m.assertFalse(reg.exists("ui.row.layout"), "Old setting name should be deleted")

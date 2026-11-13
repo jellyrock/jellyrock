@@ -243,8 +243,9 @@ function onOptionsKey() as boolean
 end function
 
 ' JRScene: the settings this page offers about itself, for the settings icon's menu. Each is
-' { id, title, options: [{ id, title }], selected }, with translated titles and `selected`
-' the id of the option in force (source/utils/pageSettings.bs). The base offers none, and
+' { id, title, options: [{ id, title }], selected, valueTitle }, with translated titles,
+' `selected` the id of the option in force and an optional `valueTitle` for the menu row
+' (source/utils/pageSettings.bs). The base offers none, and
 ' the icon then opens Settings in one press. A screen only declares: the scene shows the
 ' menu and the picker.
 function pageSettingsEntries() as object

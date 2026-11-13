@@ -289,7 +289,7 @@ export function planRestore(saved, live) {
     }
     // `null` deletes the key (see RTA_OnDeviceComponentTask.brs). This is what
     // removes keys the run added to a section the user already had, for example a
-    // `display.<libraryId>.landing` seeded onto a real user.
+    // `display.<libraryId>.defaultTab` seeded onto a real user.
     for (const key of Object.keys(current)) {
       if (!(key in keys)) patch[key] = null;
     }

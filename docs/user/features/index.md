@@ -6,7 +6,7 @@ What JellyRock does, one page per feature. Each page says what the feature needs
 
 | Feature | What you get | Jellyfin server | Server plugin |
 | --- | --- | --- | --- |
-| [Browse a library](browse-a-library.md) | Move between a library's tabs at the top of the screen, and choose how each one is drawn. | 10.7.0 or later | None |
+| [Browse a library](browse-a-library.md) | Move between a library's tabs at the top of the screen, choose how each one is drawn, and pick the tab it opens on. | 10.7.0 or later | None |
 | [Cast from another Jellyfin app](cast-to-jellyrock.md) | Cast from a Jellyfin app on your phone or browser to your Roku, then pause, seek and skip from there. | 10.7.0 or later (HTTPS: 10.11.0 or later) | None (HTTPS: JellyRock Companion) |
 | [Color themes](themes.md) | Pick a color theme for JellyRock, or set every color yourself. | 10.7.0 or later | None |
 | [Connect to your servers](servers.md) | Find Jellyfin servers on your network or type an address, and switch between the ones you've saved. | 10.7.0 or later | None |
