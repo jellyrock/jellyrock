@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-13: refactor: Gate namespaced constant access and spec code at build time
 - 2026-11-12: fix(ui): Star from the overhang no longer crashes the app
 - 2026-11-12: feat(ui): Item-details-only backdrops; Movies pane obeys the setting
 - 2026-11-10: chore(tooling): Report dead code a short string prefix hid
@@ -71,10 +72,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-31: fix(home): Show episode images in Favorites tab
 - 2026-10-31: fix: Correct the canceled-recording toast
 - 2026-10-30: fix(playback): Turn subtitles off when None is picked
-- 2026-10-29: fix(playback): Confirm pauses and keep paused and long plays reported
-- 2026-10-29: docs: Feature pages, a generated catalog, and checked store text
-- 2026-10-29: chore(screenshots): Recapture the new overhang, search and Home for the store
-- 2026-10-29: feat(syncplay): Send controls to the group and resume from the menu
 
 ## Open followups
 
