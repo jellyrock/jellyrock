@@ -309,40 +309,48 @@ namespace tests
     @describe("resolveView()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("keeps a saved view the presenter still offers")
+    @it("opens on the Roku's choice while it is offered, whatever the web picked")
     function _()
-      views = [{ Name: "Movies" }, { Name: "MoviesGrid" }, { Name: "Collections" }]
-      m.assertEqual(gridQuery.resolveView("Collections", views, "MoviesGrid"), "Collections")
+      views = [{ Name: "movies" }, { Name: "genres" }, { Name: "studios" }]
+      m.assertEqual(gridQuery.resolveView("studios", "genres", views, "movies"), { tab: "studios", source: "roku" })
     end function
 
-    @it("falls back when the saved view is no longer offered")
-    ' The case this exists for: Collections is saved against a 12.0 server, and the same
-    ' library is later opened against an older one that does not offer it.
-    function _()
-      views = [{ Name: "Movies" }, { Name: "MoviesGrid" }]
-      m.assertEqual(gridQuery.resolveView("Collections", views, "MoviesGrid"), "MoviesGrid")
-    end function
-
-    @it("uses the default when nothing was ever saved")
+    @it("opens on the web's pick when the Roku has no choice")
     @params(invalid)
     @params("")
     @params("   ")
-    function _(savedView)
-      m.assertEqual(gridQuery.resolveView(savedView, [{ Name: "Movies" }], "MoviesGrid"), "MoviesGrid")
+    function _(clientOverride)
+      views = [{ Name: "movies" }, { Name: "genres" }]
+      m.assertEqual(gridQuery.resolveView(clientOverride, "genres", views, "movies"), { tab: "genres", source: "web" })
+    end function
+
+    @it("falls through a Roku choice the library no longer offers")
+    ' The case resolveOffered exists for: Collections chosen against a 12.0 server, and
+    ' the same library later opened against an older one.
+    function _()
+      views = [{ Name: "movies" }, { Name: "genres" }]
+      m.assertEqual(gridQuery.resolveView("collections", "genres", views, "movies"), { tab: "genres", source: "web" })
+      m.assertEqual(gridQuery.resolveView("collections", "", views, "movies"), { tab: "movies", source: "default" })
+    end function
+
+    @it("falls through a web pick the library does not offer")
+    ' Favorites picked for a music library, which has no Favorites tab.
+    function _()
+      views = [{ Name: "albumartists" }, { Name: "albums" }]
+      m.assertEqual(gridQuery.resolveView(invalid, "favorites", views, "albumartists"), { tab: "albumartists", source: "default" })
+    end function
+
+    @it("uses the type's default when nothing is picked anywhere")
+    function _()
+      m.assertEqual(gridQuery.resolveView(invalid, "", [{ Name: "movies" }], "movies"), { tab: "movies", source: "default" })
     end function
 
     @it("returns an empty default untouched for a grid that runs without a named view")
     ' A folder or collection gets "" from getDefaultView() and offers no tabs, and "" is in
     ' no presenter's views list, so a rule of "reset anything not offered" would reset it
-    ' on every load. Only a non-empty SAVED name is checked.
+    ' on every load. Only a non-empty saved name is checked.
     function _()
-      m.assertEqual(gridQuery.resolveView(invalid, [], ""), "")
-    end function
-
-    @it("keeps a saved view whatever the default is")
-    function _()
-      views = [{ Name: "channels" }, { Name: "guide" }]
-      m.assertEqual(gridQuery.resolveView("guide", views, "channels"), "guide")
+      m.assertEqual(gridQuery.resolveView(invalid, "", [], ""), { tab: "", source: "default" })
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

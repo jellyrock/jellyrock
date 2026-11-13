@@ -9,6 +9,7 @@ import "pkg:/source/constants/homeSlots.bs"
 import "pkg:/source/constants/timeouts.bs"
 import "pkg:/source/data/SessionDataTransformer.bs"
 import "pkg:/source/enums/MediaSegmentType.bs"
+import "pkg:/source/GridView/libraryTab.bs"
 import "pkg:/source/migrations.bs"
 import "pkg:/source/utils/globals.bs"
 import "pkg:/source/utils/misc.bs"
@@ -601,6 +602,12 @@ namespace user
 
     jsonResponse = GetApi().GetDisplayPreferences("usersettings", { userId: id, client: "emby" })
 
+    ' The default tab picked per library in the web client. Written every time, {} when the
+    ' request or its CustomPrefs failed, so a switched user never inherits the last map.
+    serverLandings = {}
+    if isValid(jsonResponse) then serverLandings = libraryTab.serverLandings(jsonResponse.CustomPrefs)
+    m.global.user.config.serverLibraryLanding = serverLandings
+
     if isValid(jsonResponse)
       userNode = m.global.user
 
@@ -633,12 +640,6 @@ namespace user
         else
           print "LoadUserPreferences: uiHomeUseWebArrangement is false, using defaults"
           user.SaveUserHomeSections(user.getDefaultHomeSections())
-        end if
-
-        if isValid(jsonResponse.CustomPrefs["landing-livetv"])
-          setUserSetting("displayLiveTvLanding", jsonResponse.CustomPrefs["landing-livetv"])
-        else
-          unsetUserSetting("displayLiveTvLanding")
         end if
 
         ' Extract media segment action preferences from CustomPrefs
