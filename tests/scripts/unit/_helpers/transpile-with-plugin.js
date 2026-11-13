@@ -38,16 +38,16 @@ import { Program } from 'brighterscript';
  *                                       constructor. Use this to pass plugin
  *                                       config (for example `{rokuLog: {strip: true}}`).
  *                                       An `outDir` here replaces the temp one.
- *                                       `validate: true` runs `program.validate()`
- *                                       before transpiling, as a real build does.
- *                                       Pass it when the output depends on how
- *                                       names resolve: unvalidated, BrighterScript
- *                                       replaces a local that shares a namespaced
- *                                       const's name with the const's value.
+ *                                       It validates before transpiling, as a real
+ *                                       build does: unvalidated, BrighterScript
+ *                                       resolves names differently (it replaces a
+ *                                       local that shares a namespaced const's
+ *                                       name with the const's value). Pass
+ *                                       `validate: false` only to test that path.
  * @returns {Promise<Record<string,string>>} Map of pkgPath to transpiled code.
  */
 export async function transpileWithPlugin(pluginFactory, files, options = {}) {
-  const { validate = false, ...programOptions } = options;
+  const { validate = true, ...programOptions } = options;
   const tempOutDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jellyrock-plugin-out-'));
   try {
     const program = new Program({

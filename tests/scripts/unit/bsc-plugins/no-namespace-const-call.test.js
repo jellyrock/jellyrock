@@ -13,9 +13,7 @@
 // - the plugin flags a shape exactly when the table says it compiles broken;
 // - BrighterScript really compiles each shape to the output the table records.
 // The second check is the canary for retiring the plugin. When a BrighterScript
-// upgrade compiles a broken shape correctly, it fails and says so. It validates
-// before transpiling, as a real build does: unvalidated, BrighterScript replaces
-// a local named like a namespaced const with the const's value.
+// upgrade compiles a broken shape correctly, it fails and says so.
 
 import { describe, it, expect } from 'vitest';
 import { runPluginOnSource, runPluginOnEdits, diagnosticsByCode } from '../_helpers/run-plugin.js';
@@ -64,7 +62,7 @@ function findings(shape) {
 }
 
 async function compiled(shape) {
-  const out = await transpileWithPlugin(plugin, filesFor(shape), { validate: true });
+  const out = await transpileWithPlugin(plugin, filesFor(shape));
   return out['source/use.bs'];
 }
 

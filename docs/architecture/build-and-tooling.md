@@ -126,9 +126,10 @@ Each build target has its own `bsconfig*.json`, and every one inherits from `bsc
 | File | Purpose |
 |---|---|
 | `bsconfig-base.json` | Not a build target. The settings every config shares: `compilerOptions` (`autoImportComponentScript`, `sourceMap: true`), every `diagnosticFilters` entry, and `outDir` |
-| `bsconfig.json` | Dev build, and the project `npm run validate`, the editor and CI check. Every plugin, logs kept, source maps on |
+| `bsconfig.json` | Dev build, and the project the editor and CI check. `npm run validate` checks it, then `bsconfig-tests.json` (`validate:tests`). Every plugin, logs kept, source maps on |
 | `bsconfig-prod.json` | Production build. Logs and comments stripped, no file paths in log lines, no source maps, release branding copied to `images/branding`. Leaves out Markdown, the test probes (`components/testing/`) and the translation seed (`locale/seed/`), which Roku's analyzer flags as extraneous; `release-package-contents.test.js` fails if any non-runtime file comes back. Runs fewer plugins than the dev build (below) |
 | `bsconfig-analysis.json` | `bsconfig-prod.json` plus source maps, built to `build-analysis/` (`npm run build:analysis`). `/crash-report` derives the same config from each tag's own prod config |
+| `bsconfig-tests-base.json` | Not a build target. The plugin list every test config shares, so a gate added for test code reaches all four |
 | `bsconfig-tests.json` | Every suite except the `migration`, `registry` and `measurement` tags, without code coverage. The gating build (`test:all`, CI) |
 | `bsconfig-tests-unit.json` | Unit tests only, except the `measurement` tag |
 | `bsconfig-tests-integration.json` | Integration tests only, except the `migration` and `registry` tags |
@@ -137,17 +138,26 @@ Each build target has its own `bsconfig*.json`, and every one inherits from `bsc
 
 `bsconfig.json` is the place to read the plugin list. The prod config leaves out `brighterscript-xml-plugin`, `callfunc-interface`, `button-row-bracket`, `field-observer-wiring`, `register-once-observer` and `dead-code`. No reason is recorded; those rules still gate every PR through `validate`, which builds `bsconfig.json`.
 
-The four test configs load `rooibos-roku`, bslint, `translation-keys`, `strip-vendor-prints` and `no-namespace-const-call`. That last one guards against a compiler fault, not an app convention, so a spec needs it as much as app code does: the shape builds clean and crashes on the device. The other convention gates are not loaded there, and no reason is recorded for each.
+The test configs take their plugins from `bsconfig-tests-base.json`: `rooibos-roku`, bslint, `translation-keys`, `strip-vendor-prints`, `no-namespace-const-call` and `callfunc-interface`. The last two catch a spec that builds clean and then does nothing or crashes on the device, so test code needs them as much as app code does. Because `npm run validate` also checks `bsconfig-tests.json`, a spec error fails pre-push and CI without a device.
+
+The other plugins stay out of the test configs, each for a reason:
+
+- The transforms (`roku-log`, `auto-abandon-promises`, `auto-destroyed-guard`) are left out on purpose ([async.md](async.md)).
+- `dead-code` reads test code only as a consumer: run on a test build, a use from a test would keep app code alive ([ADR 0047](../adr/0047-dead-code-gate.md)).
+- `no-hand-rolled-dialog` and `screen-lifecycle-entry` skip `tests/` themselves, since specs drive screens and the scene directly.
+- The Task rules and `print-locations` police app code: specs reproduce a fan-out on purpose, and measurement specs print their results.
+- The component rules (`jrscreen-on-destroy`, the observer rules, `button-row-bracket`) are about app components, and `tests/components/` holds one harness.
 
 ### How the configs compose
 
-Each config names its parent with `extends`. `bsconfig-analysis.json` extends the prod config, `bsconfig-tdd-sample.json` extends `bsconfig-tests.json`, and the rest extend the base.
+Each config names its parent with `extends`. `bsconfig-analysis.json` extends the prod config, `bsconfig-tdd-sample.json` extends `bsconfig-tests.json`, the four test configs extend `bsconfig-tests-base.json`, and the rest extend the base. A test config never sets its own `plugins`, since that would replace the shared list.
 
 BrighterScript merges `extends` shallowly. Only `compilerOptions` merges key by key, so the prod config can set `compilerOptions.sourceMap: false` and keep the other options. Any other key a child sets replaces the parent's value. A child `diagnosticFilters` array would drop every filter in the base, so all filters live in the base, test-only ones included.
 
 [`bsconfig-inheritance.test.js`](../../tests/scripts/unit/lint/bsconfig-inheritance.test.js) enforces the shape:
 
 - every config reaches the base;
+- every test config takes its plugins from `bsconfig-tests-base.json` and sets none of its own;
 - no child redefines `diagnosticFilters`;
 - no config uses a deprecated top-level compiler option;
 - every file a device-test config inherits from triggers the device unit tests;
@@ -245,7 +255,7 @@ These turn conventions from `components/CLAUDE.md` and `source/CLAUDE.md` into e
 | `no-namespace-const-call` | error | A member access after a namespaced const or enum member written with its namespace (`ns.PREFIX.len()`, `ns.CFG.width`). BrighterScript reads the chain as one name, so it compiles to `ns_PREFIX_len()` or `ns_CFG_width`, which do not exist. Put the value in parentheses: `(ns.PREFIX).len()`. Also runs in the test configs | The plugin file |
 | `no-hand-rolled-dialog` | error | A dialog built outside the `JRDialog` family: a full-screen translucent `Rectangle`, or an `appendChild` or `insertChild` onto the scene | [dialogs.md](dialogs.md), decision [`one-overlay-dialog-supersedes`](../decisions.md#decision-id-one-overlay-dialog-supersedes) |
 | `screen-lifecycle-entry` | error | A `callFunc` of a screen's `onScreenShown`, `onScreenHidden` or `hideCovered` outside `JRScreen.bs`, which skips its focus and dialog guards. `JRScene`'s swap may call `hideCovered`, and a screen may forward a hook to a nested screen from its own hook of the same name | [navigation.md](navigation.md#focus-management), the plugin file |
-| `callfunc-interface` | error | A `callFunc("x")` where `x` is defined in one of our codebehinds but declared in no component `<interface>`, a call that does nothing. `m.top.callFunc` is checked against its own component | The plugin file |
+| `callfunc-interface` | error | A `callFunc("x")` where `x` is defined in one of our codebehinds but declared in no component `<interface>`, a call that does nothing. `m.top.callFunc` is checked against its own component. Also runs in the test configs | The plugin file |
 | `button-row-bracket` | error | A function that mutates an overflow-managed button row without calling both `unsplitButtons()` and `applyOverflow()` | Tech debt [`button-row-model`](tech-debt.md#button-row-model), which deletes it |
 | `field-observer-wiring` | error | Five ways an interface field's wiring goes wrong: wired by both XML `onChange` and `m.top.observeField()`; an unobserve that detaches nothing; an `onChange` in a component that has `onDestroy`; an `m.top` unobserve outside `onDestroy()`; an `m.top` observe outside `init()` | [ADR 0034](../adr/0034-component-observers-init-to-ondestroy.md) |
 | `register-once-observer` | error | A member observed once, in `init()`, then unobserved anywhere but `onDestroy()`. Nothing re-registers it, so its handler never runs again | [ADR 0034](../adr/0034-component-observers-init-to-ondestroy.md), decision [`register-once-observer-gate`](../decisions.md#decision-id-register-once-observer-gate) |
