@@ -885,6 +885,37 @@ namespace tests
       m.assertFalse(result.action.showOsd)
     end function
 
+    @it("holds that do not bring the member in are spent after a few, said once, and whole again in step")
+    function _()
+      group = m.playingLine()
+      policy = syncPlayConverge.defaultPolicy()
+      ahead = m.playingAt(m.at65s + 200 * m.oneMs, 10000&)
+      for i = 1 to policy.holdLimit
+        hold = m.decide(ahead, group, 10000&)
+        m.assertEqual(m.kindOf(hold), "pause")
+        syncPlayConverge.applied(m.playingAt(m.at65s + 200 * m.oneMs, 10000&), group, hold.action, 10000&)
+      end for
+      ' The budget is spent: said once, then the member plays on where it is.
+      spent = m.decide(ahead, group, 10000&)
+      m.assertEqual(m.kindOf(spent), "holdsSpent")
+      syncPlayConverge.applied(ahead, group, spent.action, 10000&)
+      m.assertEqual(m.kindOf(m.decide(ahead, group, 10000&)), "")
+      ' A reading in step makes the budget whole.
+      inStep = m.decide(m.playingAt(m.at65s, 10000&), group, 10000&)
+      m.assertEqual(m.kindOf(inStep), "inStep")
+      syncPlayConverge.applied(ahead, group, inStep.action, 10000&)
+      m.assertEqual(m.kindOf(m.decide(ahead, group, 10000&)), "pause")
+    end function
+
+    @it("a group command makes the hold budget whole")
+    function _()
+      group = m.playingLine()
+      group.holds = syncPlayConverge.defaultPolicy().holdLimit
+      syncPlayGroup.command(group, m.cmd("Unpause", 6000&, m.at60s))
+      m.assertEqual(group.holds, 0)
+      m.assertEqual(m.kindOf(m.decide(m.playingAt(m.at65s + 200 * m.oneMs, 10000&), group, 10000&)), "pause")
+    end function
+
     @it("a node behind past the bar catches up: one seek ahead of the group by the lead")
     function _()
       player = m.playingAt(m.at65s - 500 * m.oneMs, 10000&)
@@ -1222,6 +1253,29 @@ namespace tests
       m.assertEqual(waiting.wakeAtMs, 10260&)
       m.assertEqual(m.kindOf(m.decide(player, m.playingLine(), 10259&)), "")
       m.assertEqual(m.kindOf(m.decide(player, m.playingLine(), 10260&)), "resume")
+    end function
+
+    @it("a resume is written later when the node runs on past its stop")
+    function _()
+      player = m.pausedAt(m.at65s + 300 * m.oneMs, "group")
+      player.resumeLagMs = -180&
+      waiting = m.decide(player, m.playingLine(), 10000&)
+      m.assertEqual(m.kindOf(waiting), "")
+      m.assertEqual(waiting.wakeAtMs, 10480&)
+      m.assertEqual(m.kindOf(m.decide(player, m.playingLine(), 10479&)), "")
+      m.assertEqual(m.kindOf(m.decide(player, m.playingLine(), 10480&)), "resume")
+    end function
+
+    @it("a node waiting past the line for its run-on is not taken for one behind")
+    function _()
+      ' It runs on 450 ms past its stop, so its resume waits 450 ms after the line reaches the
+      ' stop: past the behind bar by the model's stop alone, and still no catch-up.
+      player = m.pausedAt(m.at65s, "hold")
+      player.resumeLagMs = -450&
+      waiting = m.decide(player, m.playingLine(), 10420&)
+      m.assertEqual(m.kindOf(waiting), "")
+      m.assertEqual(waiting.wakeAtMs, 10450&)
+      m.assertEqual(m.kindOf(m.decide(player, m.playingLine(), 10450&)), "resume")
     end function
 
     @it("a node a little behind resumes now")

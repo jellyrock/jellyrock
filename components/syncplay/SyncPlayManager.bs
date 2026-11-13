@@ -2196,6 +2196,7 @@ sub carryOut(action as object)
       settledDrift = publishedDriftMs()
       if isValid(settledDrift) then m.log.info("time offset pick found the member in step", "driftMs", syncPlayTime.asLong(settledDrift).toStr())
     end if
+    if kind = "holdsSpent" then m.log.warn("holds did not bring the member in step, it plays on ahead", "aheadMs", syncPlayTime.asLong(action.aheadMs).toStr(), "holds", group.holds, "resumeLagMs", syncPlayTime.asLong(player.resumeLagMs).toStr())
     syncPlayConverge.applied(player, group, action, nowMs&)
     if kind = "notice"
       m.log.warn("the group cannot be reached", "report", group.report.what, "ask", group.ask.what)

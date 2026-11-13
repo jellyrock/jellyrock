@@ -18,8 +18,11 @@ namespace syncPlayPlayer
   ' How long after `playing` the first position notification may take before the arrival is
   ' counted as unread. It came 7 to 42 ms after `playing` on 22 seeks (Stick 4K, 2026-11-10).
   const ARRIVAL_READING_MS = 250
-  ' How late a resume may take effect and still be learned from, and how many resumes the lag in
-  ' use is the median of. Both are provisional: nothing has measured them.
+  ' The band a resume's sample must fall in to be learned from, and how many resumes the lag in
+  ' use is the median of. A sample is how late the resume took effect, less how far the node ran
+  ' on past the stop the model took, so it can be below zero. Across 900 resumes on a Stick 4K it
+  ' ran from -141 to 91 ms, and across 61 on a low-end Stick from -388 to -31 ms (2026-11-13).
+  const RESUME_LAG_MIN_MS = -500
   const RESUME_LAG_MAX_MS = 150
   const RESUME_LAG_SAMPLES = 5
 
@@ -437,7 +440,8 @@ namespace syncPlayPlayer
   end sub
 
   ' The first reading after a resume from a known stop: the time since the write, less the media
-  ' played since, is how late the resume took effect. The lag in use is the median of the last
+  ' played since, is how late the resume took effect. It is below zero when the node ran on past
+  ' the stop the model took, which a pause's own `paused` state does not show. The lag in use is the median of the last
   ' few, so one late reading does not move it, and a sample outside the cap is dropped.
   sub learnResumeLag(player as object, positionTicks as longinteger, nowMs as longinteger)
     playedMs& = syncPlayTime.ticksToMs(positionTicks - syncPlayTime.asLong(player.resumeFromTicks))
@@ -445,7 +449,7 @@ namespace syncPlayPlayer
     player.resumeFromTicks = invalid
     player.resumeLagLastSampleMs = sampleMs&
     player.resumeLagLastKind = player.stopKind
-    if sampleMs& < 0 or sampleMs& > RESUME_LAG_MAX_MS then return
+    if sampleMs& < RESUME_LAG_MIN_MS or sampleMs& > RESUME_LAG_MAX_MS then return
     samples = player.resumeLagSamples[player.stopKind]
     if not isValid(samples) then return
     samples.push(sampleMs&)

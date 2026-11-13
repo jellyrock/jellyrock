@@ -12,6 +12,7 @@
 '      when the server waits for this member's Ready there.
 '   4. A group playing along a line: a paused node resumes as the line reaches it; a playing
 '      node past a bar holds (ahead) or catches up (behind), as does one that sends no readings.
+'      Each has a budget, so neither is written for good to a node it does not bring in.
 '   5. The server's picture of this member is closed with one report at a time: Buffering for a
 '      load, a group seek or a stall, Ready when it is over.
 '   6. A request that failed goes again for as long as it is wanted; after a few tries the
@@ -42,6 +43,9 @@ namespace syncPlayConverge
       ' Catch-ups in a row that did not bring the member in step, before the group is asked to
       ' wait instead.
       catchUpLimit: 2,
+      ' Holds in a row that did not bring a member ahead in step, before it is left to play on:
+      ' one with nothing learned of this stream, one with a first sample, one to spare.
+      holdLimit: 3,
       pauseWriteLimit: syncPlayPlayback.PAUSE_ATTEMPTS,
       ' The longest a paused member ahead of the group waits for it before seeking back instead.
       aheadWaitMaxMs: 5000,
@@ -102,6 +106,7 @@ namespace syncPlayConverge
     else if kind = "pause"
       syncPlayPlayer.told(player, "pause", action.owner, invalid, nowMs)
       if action.owner = "hold" then group.pickPending = false
+      if action.owner = "hold" then group.holds++
     else if kind = "resume"
       syncPlayPlayer.told(player, "resume", action.owner, invalid, nowMs)
       group.pointSoughtTicks = invalid
@@ -137,6 +142,10 @@ namespace syncPlayConverge
       group.pickPending = false
     else if kind = "inStep"
       group.catchUps = 0
+      group.holds = 0
+      group.holdsSpentTold = false
+    else if kind = "holdsSpent"
+      group.holdsSpentTold = true
     end if
   end sub
 
@@ -253,15 +262,21 @@ namespace syncPlayConverge
         ' a lead or a lag back.
         reachAt = syncPlayGroup.reachesAtMs(group, estimator, syncPlayTime.asLong(position))
         if isValid(reachAt)
-          reach& = syncPlayTime.asLong(reachAt)
+          ' Judged at the time the resume is to be written, lag and all: a node that runs on
+          ' past its stop waits past the line's arrival for it, and is not behind meanwhile.
+          reach& = syncPlayTime.asLong(reachAt) - syncPlayTime.asLong(player.resumeLagMs)
           if reach& - nowMs > policy.aheadWaitMaxMs or nowMs - reach& > policy.behindBarMs
             return catchUp(player, group, ctx, policy, nowMs, result)
           end if
           resumeAt& = reach&
+        else
+          resumeAt& -= syncPlayTime.asLong(player.resumeLagMs)
         end if
+      else
+        resumeAt& -= syncPlayTime.asLong(player.resumeLagMs)
       end if
-      ' A resume takes effect late by a lag the player model learns, so it is written that early.
-      resumeAt& -= syncPlayTime.asLong(player.resumeLagMs)
+      ' A resume takes effect late by a lag the player model learns, so it is written that early;
+      ' for a node that runs on past its stop the lag is below zero, and it is written later.
       if nowMs >= resumeAt& then return { kind: "resume", owner: "group" }
       wake(result, resumeAt&)
       return invalid
@@ -289,12 +304,19 @@ namespace syncPlayConverge
       aheadBar = policy.pickBarMs
       behindBar = policy.pickBarMs
     end if
-    if aheadMs& > aheadBar then return { kind: "pause", owner: "hold", showOsd: false }
+    if aheadMs& > aheadBar
+      if group.holds < policy.holdLimit then return { kind: "pause", owner: "hold", showOsd: false }
+      ' Holds that leave the member as far ahead are not written for good: it plays on where
+      ' it is, which is said once, until a reading in step or a group command.
+      if not group.holdsSpentTold then return { kind: "holdsSpent", aheadMs: aheadMs& }
+      return invalid
+    end if
     if -aheadMs& > behindBar then return catchUp(player, group, ctx, policy, nowMs, result)
     if group.pickPending then return { kind: "settled" }
-    ' In step on a measured reading: whatever catch-ups it took worked, so the budget is whole
-    ' again. It counts catch-ups that did not bring the member in, not every one in a long film.
-    if group.catchUps > 0 then return { kind: "inStep" }
+    ' In step on a measured reading: whatever catch-ups or holds it took worked, so each budget
+    ' is whole again. They count the ones that did not bring the member in, not every one in a
+    ' long film.
+    if group.catchUps > 0 or group.holds > 0 then return { kind: "inStep" }
     return invalid
   end function
 

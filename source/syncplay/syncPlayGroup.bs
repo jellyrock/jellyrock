@@ -58,6 +58,10 @@ namespace syncPlayGroup
       ' Catch-ups written since the member was last found in step (or the last command), and
       ' whether this member asked the group to wait on it since the last Pause.
       catchUps: 0,
+      ' Holds written in a row with no reading in step between, and whether the viewer's log
+      ' was told the budget ran out.
+      holds: 0,
+      holdsSpentTold: false,
       askedWait: false,
       ' The point the node was last sent to for a waiting group, in ticks, until the node or the
       ' group moves on from it. One seek goes toward a point: a second to the same place has
@@ -108,6 +112,8 @@ namespace syncPlayGroup
       group.ask.tries = 0
     end if
     group.catchUps = 0
+    group.holds = 0
+    group.holdsSpentTold = false
     ' A group that plays on or stops has left the point. A Pause or a Seek naming the point
     ' again has not, and allows no second seek there.
     if cmd.command = "Unpause" or cmd.command = "Stop" then group.pointSoughtTicks = invalid
@@ -133,6 +139,8 @@ namespace syncPlayGroup
     group.saidBuffering = false
     group.waitPointTicks = invalid
     group.catchUps = 0
+    group.holds = 0
+    group.holdsSpentTold = false
     group.pointSoughtTicks = invalid
     group.recoverSeeks = 0
     group.askedWait = false
@@ -189,6 +197,8 @@ namespace syncPlayGroup
   sub offsetPicked(group as object)
     group.pickPending = true
     group.catchUps = 0
+    group.holds = 0
+    group.holdsSpentTold = false
   end sub
 
   ' The number the next request sent gets. A caller that sends before it tells the model reads
@@ -278,6 +288,8 @@ namespace syncPlayGroup
     group.waitPointTicks = invalid
     group.viewerAsk = invalid
     group.catchUps = 0
+    group.holds = 0
+    group.holdsSpentTold = false
     group.pointSoughtTicks = invalid
     group.recoverSeeks = 0
     group.askedWait = false

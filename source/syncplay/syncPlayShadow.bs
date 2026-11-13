@@ -157,7 +157,7 @@ namespace syncPlayShadow
   sub afterEvent(shadow as object, ctx as object, nowMs as longinteger)
     want = wanted(shadow, ctx, nowMs)
     ' Some asks touch only the models, so they are carried out here and are no disagreement.
-    if isValid(want) and (want.kind = "settled" or want.kind = "notice" or want.kind = "inStep")
+    if isValid(want) and (want.kind = "settled" or want.kind = "notice" or want.kind = "inStep" or want.kind = "holdsSpent")
       syncPlayConverge.applied(shadow.player, shadow.group, want, nowMs)
       want = invalid
     end if
