@@ -349,8 +349,9 @@ namespace tests
       runRegistryUserMigrations([testUserId])
 
       reg = CreateObject("roRegistrySection", testUserId)
-      ' Should remain unchanged (this block didn't run, and no later block maps this name)
-      m.assertEqual(reg.read(`display.${libraryId}.landing`), "ArtistsPresentation", "Should not migrate")
+      ' This block didn't run, so the name reaches the library tab migration unmapped, which
+      ' keeps a name it does not recognize as the default tab
+      m.assertEqual(reg.read(`display.${libraryId}.defaultTab`), "ArtistsPresentation", "Should not migrate")
     end function
 
     @it("runs migration for version v1.9.0")
@@ -367,8 +368,10 @@ namespace tests
       runRegistryUserMigrations([testUserId])
 
       reg = CreateObject("roRegistrySection", testUserId)
-      ' The runner continues past this block, so the value read is the chain's end: the library tab id
-      m.assertEqual(reg.read(`display.${libraryId}.landing`), libraryTab.ALBUM_ARTISTS, "Should migrate for v1.9.0")
+      ' The runner continues past this block to the library tab migration, which keeps no
+      ' default tab for music's own default and deletes the saved view
+      m.assertFalse(reg.exists(`display.${libraryId}.landing`), "Should migrate for v1.9.0")
+      m.assertFalse(reg.exists(`display.${libraryId}.defaultTab`), "Album Artists is music's own default")
     end function
 
     @it("runs migration for old version v1.5.0")
@@ -385,8 +388,8 @@ namespace tests
       runRegistryUserMigrations([testUserId])
 
       reg = CreateObject("roRegistrySection", testUserId)
-      ' The runner continues past this block, so the value read is the chain's end: the library tab id
-      m.assertEqual(reg.read(`display.${libraryId}.landing`), libraryTab.ARTISTS, "Should migrate for v1.5.0")
+      ' The runner continues past this block, so the value read is the chain's end: the default tab
+      m.assertEqual(reg.read(`display.${libraryId}.defaultTab`), libraryTab.ARTISTS, "Should migrate for v1.5.0")
     end function
 
   end class

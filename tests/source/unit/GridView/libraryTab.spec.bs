@@ -134,7 +134,7 @@ namespace tests
     end function
 
     @it("passes a name it does not recognize through unchanged")
-    ' The migration leaves it alone, and the grid's resolveView falls back from it.
+    ' The migration keeps it as the default tab, and the grid's resolveView falls back from it.
     @params("SomethingNewer")
     @params("")
     function _(unknownName)
@@ -302,6 +302,111 @@ namespace tests
       layouts = presenter.getOptions(m.library("movies")).layouts
 
       m.assertEqual(m.names(layouts[libraryTab.MOVIES]), [libraryLayout.PRESENTATION, libraryLayout.COMFORTABLE])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("defaultFor() and isTypeDefault()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("gives each library type its own default tab")
+    @params("movies", "", "movies")
+    @params("tvshows", "", "shows")
+    @params("music", "", "albumartists")
+    @params("MUSIC", "", "albumartists")
+    @params("livetv", "livetv", "channels")
+    @params("photoalbum", "photo", "photos")
+    @params("genre", "movie", "movies")
+    @params("studio", "tvshow", "shows")
+    @params("musicgenre", "music", "albumartists")
+    @params("boxset", "generic", "")
+    @params("folder", "", "")
+    function _(collectionType, presenterType, expected)
+      m.assertEqual(libraryTab.defaultFor(collectionType, presenterType), expected)
+    end function
+
+    @it("knows every type default and nothing else")
+    function _()
+      for each tabId in ["movies", "shows", "albumartists", "channels", "photos"]
+        m.assertTrue(libraryTab.isTypeDefault(tabId), tabId)
+      end for
+      for each tabId in ["genres", "studios", "networks", "albums", "artists", "guide", "collections", "favorites", "", "Movies"]
+        m.assertFalse(libraryTab.isTypeDefault(tabId), tabId)
+      end for
+      m.assertFalse(libraryTab.isTypeDefault(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the web client's default tab")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("collects every non-empty landing pick, and nothing else")
+    ' The shape of a real usersettings CustomPrefs: the web saves its own default as "".
+    function _()
+      customPrefs = {
+        "landing-f137a2dd21bbc1b99aa5c0f6bf02a805": "genres",
+        "landing-a656b907eb3a73532e40e44b968d0225": "",
+        "landing-livetv": "guide",
+        "landing-9d7ad6afe9afa2dab1a2f6e00ad28fa6": "  ",
+        "homesection0": "smalllibrarytiles",
+        "segmentTypeAction__Intro": "AskToSkip",
+        "landing-": "movies",
+        "useEpisodeImagesInNextUpAndResume": "false"
+      }
+
+      landings = libraryTab.serverLandings(customPrefs)
+
+      m.assertEqual(landings.count(), 2)
+      m.assertEqual(landings["f137a2dd21bbc1b99aa5c0f6bf02a805"], "genres")
+      m.assertEqual(landings["livetv"], "guide")
+    end function
+
+    @it("returns an empty map for no CustomPrefs")
+    @params(invalid)
+    @params("landing-livetv")
+    @params([])
+    function _(customPrefs)
+      m.assertEqual(libraryTab.serverLandings(customPrefs), {})
+    end function
+
+    @it("keys Live TV's pick as livetv and every other library's by its id")
+    function _()
+      m.assertEqual(libraryTab.serverLandingKey("lib-tv", "livetv"), "livetv")
+      m.assertEqual(libraryTab.serverLandingKey("lib-tv", "LiveTV"), "livetv")
+      m.assertEqual(libraryTab.serverLandingKey("lib-movies", "movies"), "lib-movies")
+    end function
+
+    @it("translates each web tab id the app has a tab for")
+    @params("movies", "movies", "movies")
+    @params("favorites", "movies", "favorites")
+    @params("collections", "movies", "collections")
+    @params("genres", "movies", "genres")
+    @params("studios", "movies", "studios")
+    @params("series", "tvshows", "shows")
+    @params("studios", "tvshows", "networks")
+    @params("albums", "music", "albums")
+    @params("albumartists", "music", "albumartists")
+    @params("artists", "music", "artists")
+    @params("guide", "livetv", "guide")
+    @params("channels", "livetv", "channels")
+    @params("photos", "photos", "photos")
+    @params("Genres", "movies", "genres")
+    function _(value, collectionType, expected)
+      m.assertEqual(libraryTab.fromServerTab(value, collectionType), expected)
+    end function
+
+    @it("answers empty for a web tab the app lacks, or an id only the app uses")
+    @params("suggestions")
+    @params("upcoming")
+    @params("programs")
+    @params("recordings")
+    @params("playlists")
+    @params("episodes")
+    @params("shows")
+    @params("networks")
+    @params("")
+    @params(invalid)
+    function _(value)
+      m.assertEqual(libraryTab.fromServerTab(value, "tvshows"), "")
     end function
 
   end class

@@ -15,7 +15,13 @@
  * files and pass or fail per machine. Passing `env` in keeps this deterministic.
  */
 import { describe, expect, it } from 'vitest';
-import { DEMO_CONTENT, PUBLIC_DEMO_SERVER, resolveContent, resolveServer } from './config.js';
+import {
+  DEMO_CONTENT,
+  PUBLIC_DEMO_SERVER,
+  isPrivateServer,
+  resolveContent,
+  resolveServer,
+} from './config.js';
 
 describe('resolveServer', () => {
   it('falls back to the public demo when nothing is set', () => {
@@ -169,5 +175,16 @@ describe('resolveContent', () => {
 
   it('returns a frozen object', () => {
     expect(Object.isFrozen(resolveContent({}))).toBe(true);
+  });
+});
+
+describe('isPrivateServer', () => {
+  it('is false for the public demo, on any of its paths', () => {
+    expect(isPrivateServer(PUBLIC_DEMO_SERVER)).toBe(false);
+    expect(isPrivateServer({ url: 'https://demo.jellyfin.org/unstable' })).toBe(false);
+  });
+
+  it('is true for a server of your own', () => {
+    expect(isPrivateServer({ url: 'http://jellyfin.local:8096' })).toBe(true);
   });
 });

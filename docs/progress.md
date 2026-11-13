@@ -1306,6 +1306,10 @@ The measurement came from outside the app: a throwaway script joined the group a
 
 The likely place is the resume a landing ends with (the `landing` kind of resume lag in `syncPlayPlayer.learnResumeLag`), which is not confirmed. Not checked: other devices after a Seek, a transcode, a server over HTTPS, and whether a viewer notices an offset this size. Start by making the outside measurement a kept tool, then measure before changing anything. Closes with a tighter landing shown by that measurement, or a recorded no.
 
+#### Write a library's default tab back to the server's display preferences `[fid: library-default-tab-write-back]` `[captured 2026-11-13]`
+
+The library screens' default tab reads the web client's pick (`landing-<libraryId>`, or `landing-livetv`, in the `usersettings` display preferences, client `emby`) at sign-in, and keeps a Roku pick in the registry (`display.<libraryId>.defaultTab`, decision `library-default-tab-precedence`). Nothing is written back, so a pick made in the gear menu's Default tab entry stays on this Roku. Writing it back would make one pick follow the user across clients, but it would also change what the web opens on, so it needs a design call first: whether the Roku's pick replaces the web's or stays an override, and what the gear entry's first option then means. A write would POST the whole `DisplayPreferences` record with one key changed, as the web does. Deferred from piece 07 of the library screens work, by design.
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`

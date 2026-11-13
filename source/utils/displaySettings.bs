@@ -31,7 +31,7 @@ end function
 
 ' Get all display settings for a library
 ' Returns: AA with all settings, or empty {} if library not found
-' Example: { sortField: "DateCreated", filter: "Favorites", landing: "Movies" }
+' Example: { sortField: "DateCreated", filter: "Favorites", defaultTab: "genres" }
 function getLibraryDisplaySettings(libraryId as dynamic) as object
   if not isValid(libraryId) or libraryId = ""
     return {}
@@ -122,6 +122,34 @@ sub setLibraryDisplaySetting(libraryId as dynamic, key as dynamic, value as dyna
   displaySettings[libraryId][key] = value
 
   ' Reassign NEW reference to content node (triggers onChange observer which syncs to registry)
+  localUser.settings.displaySettings = displaySettings
+end sub
+
+' Delete one display setting for a library (updates node + removes it from the registry)
+' A library left with no settings keeps an empty entry, which writes nothing.
+sub deleteLibraryDisplaySetting(libraryId as dynamic, key as dynamic)
+  if not isValid(libraryId) or libraryId = "" or not isValid(key) or key = ""
+    return
+  end if
+
+  ' Get local reference to minimize rendezvous
+  localUser = m.global.user
+
+  if not isValid(localUser) or not isValid(localUser.settings)
+    return
+  end if
+
+  oldDisplaySettings = localUser.settings.displaySettings
+  if not isValid(oldDisplaySettings) or not oldDisplaySettings.DoesExist(libraryId)
+    return
+  end if
+  if type(oldDisplaySettings[libraryId]) <> "roAssociativeArray" or not oldDisplaySettings[libraryId].DoesExist(key)
+    return
+  end if
+
+  ' A new AA reference, so the observer that syncs the registry sees the change
+  displaySettings = deepCopyDisplaySettings(oldDisplaySettings)
+  displaySettings[libraryId].Delete(key)
   localUser.settings.displaySettings = displaySettings
 end sub
 

@@ -3,20 +3,28 @@
  *
  * A screen only declares them (JRScreen.pageSettingsEntries); the scene presents a menu that
  * hangs under the icon, the page's entries above All settings (JRScene.openPageMenu). A movie
- * library's Movies tab offers Layout. An entry opens a list of its options, Back there
+ * library's Movies tab offers Layout, and every library with tabs offers Default tab
+ * (default-tab.spec.js covers that entry). An entry opens a list of its options, Back there
  * returns to the menu on that entry's row, and a pick applies at once: the tab is redrawn,
  * focus goes to the grid, the choice is saved for that view, and the sort and a letter picked
  * on the letter rail are left alone.
- * A screen with nothing to offer (a TV library, a movie library's Studios tab) still opens
- * Settings in one press.
+ * A screen with nothing to offer (a network opened from a TV library, which has one view and
+ * one layout) still opens Settings in one press.
  */
 import { beforeAll, it, expect } from 'vitest';
 import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import { authenticate, getJson, getLibraries, libraryIdFor, tokenHeader } from '../lib/jellyfin.js';
-import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.js';
+import { seedHome, seedLibraryLanding, assertSeedTookEffect, heldDefaultTab } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
-import { navLibraryGrid, navTvLibrary, waitPageMenu, waitSettingsScreen } from '../lib/nav.js';
+import {
+  navLibraryGrid,
+  navTvLibrary,
+  pressGridTile,
+  waitGridLoaded,
+  waitPageMenu,
+  waitSettingsScreen,
+} from '../lib/nav.js';
 import {
   enterOverhangRow,
   getActiveVal,
@@ -81,7 +89,7 @@ async function movieDisplaySettings() {
   return all?.[moviesId] ?? {};
 }
 
-it('the gear on a movie library opens a menu under it: Layout, then All settings', async (testCtx) => {
+it('the gear on a movie library opens a menu under it: Layout, Default tab, then All settings', async (testCtx) => {
   if (!moviesId) testCtx.skip('server has no "movies" library');
   await launchWithMovies('page settings menu', 'movies', 'comfortable');
   await navLibraryGrid({ libraries });
@@ -89,8 +97,9 @@ it('the gear on a movie library opens a menu under it: Layout, then All settings
 
   await press(ecp.Key.Ok);
   await waitPageMenu();
-  expect(await dialogRows(), 'the entry with its value, then All settings').toEqual([
+  expect(await dialogRows(), 'each entry with its value, then All settings').toEqual([
     'Layout (Comfortable)',
+    'Default tab (Movies)',
     'All settings',
   ]);
   expect(await getVal('#optionList.itemFocused'), 'focus opens on the first entry').toBe(0);
@@ -168,7 +177,7 @@ it('Layout lists the layouts, Back returns to the menu, and a pick redraws the t
   const saved = await movieDisplaySettings();
   expect(saved.layout_movies, 'saved for the Movies view').toBe('presentation');
   expect(saved.sortField, 'a layout change is not a view change: the sort stays').toBe(SEEDED_SORT);
-  expect(saved.landing, 'and so does the saved view').toBe('movies');
+  expect(await heldDefaultTab(moviesId), 'and so does the default tab').toBe('movies');
 
   // Leave and come back: the library opens as it was left.
   await press(ecp.Key.Back);
@@ -299,27 +308,31 @@ it('a layout change keeps the letter picked on the letter rail', async (testCtx)
   await waitFocusInside('#itemGrid', { label: 'focus on the grid after the pick', timeout: 20000 });
 });
 
-it('a tab with one layout has no menu: the gear on Studios opens Settings in one press', async (testCtx) => {
-  if (!moviesId) testCtx.skip('server has no "movies" library');
-  await launchWithMovies('page settings studios', 'studios');
-  await navLibraryGrid({ libraries });
-  await focusGear('the Studios grid');
+it('a screen with no page settings opens Settings in one press: a network in a TV library', async (testCtx) => {
+  const tvId = libraryIdFor(libraries, 'tvshows');
+  if (!tvId) testCtx.skip('server has no "tvshows" library');
+  const expectedServer = await seedHome(session, LOCALE);
+  const landing = await seedLibraryLanding(session, tvId, 'networks');
+  await hardRelaunch();
+  await assertSeedTookEffect(expectedServer, 'page settings network', { landing });
+  await waitHome();
+  await navTvLibrary({ libraries });
+  if ((await getActiveVal('#itemGrid.content.getChildCount()')) < 1)
+    testCtx.skip('the TV library lists no networks');
+
+  // A network folder has one view, no tabs and no layouts to choose from.
+  await pressGridTile(0);
+  await waitFor('parentItem.id', (id) => typeof id === 'string' && id !== '' && id !== tvId, {
+    label: 'the network opened',
+    timeout: 20000,
+    read: getActiveVal,
+  });
+  await waitGridLoaded('the network');
+  await waitFocusInside('#itemGrid', { label: 'focus on the network grid', timeout: 20000 });
+  await focusGear('the network grid');
 
   await press(ecp.Key.Ok);
   await waitSettingsScreen();
   await press(ecp.Key.Back);
   await waitFocused(atSettingsIcon, { timeout: 15000, interval: 250, label: 'the gear again' });
-});
-
-it('a library with no page settings opens Settings in one press', async (testCtx) => {
-  if (!libraryIdFor(libraries, 'tvshows')) testCtx.skip('server has no "tvshows" library');
-  const expectedServer = await seedHome(session, LOCALE);
-  await hardRelaunch();
-  await assertSeedTookEffect(expectedServer, 'page settings tv');
-  await waitHome();
-  await navTvLibrary({ libraries });
-  await focusGear('the shows grid');
-
-  await press(ecp.Key.Ok);
-  await waitSettingsScreen();
 });
