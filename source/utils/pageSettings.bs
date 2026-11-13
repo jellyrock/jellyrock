@@ -7,9 +7,10 @@ import "pkg:/source/utils/translate.bs"
 '
 ' A screen only declares them (JRScreen.pageSettingsEntries) and is told what was picked
 ' (JRScreen.onPageSettingChanged); JRScene.openPageMenu presents the menu and the picker.
-' An entry is { id, title, options: [{ id, title }], selected }: titles are translated text,
-' and `selected` is the id of the option in force. This file is the part of that with no
-' node in it.
+' An entry is { id, title, options: [{ id, title }], selected, valueTitle }: titles are
+' translated text, and `selected` is the id of the option in force. `valueTitle` is
+' optional: the value the menu row shows when the selected option's own title does not
+' read well there. This file is the part of that with no node in it.
 namespace pageSettings
 
   ' The menu row that opens the Settings screen.
@@ -18,7 +19,9 @@ namespace pageSettings
   ' menuRows: the menu for a screen's entries, All settings last.
   '
   ' A row reads as the player's gear rows do: the entry's title with the selected option's
-  ' title after it. No usable entry means no menu ({ labels: [], ids: [] }), and the
+  ' title after it, or the entry's `valueTitle` when it has one. The Default tab entry
+  ' uses it: its first option says where the tab comes from ("Default (Movies)"), which
+  ' would read as brackets inside brackets on the row, so the row names the tab alone. No usable entry means no menu ({ labels: [], ids: [] }), and the
   ' settings icon opens Settings in one press.
   '
   ' Past about three entries the menu gets long for something hanging off an icon: move
@@ -33,7 +36,8 @@ namespace pageSettings
     for each entry in entries
       if pageSettings.isEntry(entry)
         label = textOrEmpty(entry.title)
-        value = pageSettings.optionTitle(entry, entry.selected)
+        value = textOrEmpty(entry.valueTitle)
+        if value = "" then value = pageSettings.optionTitle(entry, entry.selected)
         if value <> "" then label = translate(translationKeys.LabelSettingWithValue, [label, value])
         menu.labels.push(label)
         menu.ids.push(entry.id)
