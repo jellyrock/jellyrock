@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - (ui) Item-details-only backdrops; Movies pane obeys the setting ([#1365](https://github.com/jellyrock/jellyrock/pull/1365)) by [@cewert](https://github.com/cewert)
 
+### Changed
+
+- Gate namespaced constant access and spec code at build time ([#1376](https://github.com/jellyrock/jellyrock/pull/1376)) by [@cewert](https://github.com/cewert)
+
 ### Fixed
 
 - (ui) Star from the overhang no longer crashes the app ([#1372](https://github.com/jellyrock/jellyrock/pull/1372)) by [@cewert](https://github.com/cewert)
