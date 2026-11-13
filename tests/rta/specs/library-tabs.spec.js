@@ -13,7 +13,14 @@
 import { beforeAll, it, expect } from 'vitest';
 import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
-import { authenticate, getJson, getLibraries, libraryIdFor, tokenHeader } from '../lib/jellyfin.js';
+import {
+  authenticate,
+  genreItemNames,
+  getJson,
+  getLibraries,
+  libraryIdFor,
+  tokenHeader,
+} from '../lib/jellyfin.js';
 import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
 import { failRequests } from '../lib/failRequests.js';
@@ -303,6 +310,74 @@ for (const [collectionType, folderTab, what] of [
       currentView: folderTab,
       drawn: folderTab,
     });
+  });
+}
+
+for (const [collectionType, itemType] of [
+  ['movies', 'Movie'],
+  ['tvshows', 'Series'],
+]) {
+  it(`a ${collectionType} genre opened from its View All tile is titled with the genre alone`, async (testCtx) => {
+    const libraryId = libraryIdFor(libraries, collectionType);
+    if (!libraryId) testCtx.skip(`server has no "${collectionType}" library`);
+    // A row gets a View All tile only when its genre holds more than five items.
+    const byGenre = await genreItemNames(session, libraryId, itemType);
+    const big = [...byGenre].filter(([, names]) => names.size > 5).map(([genre]) => genre);
+    if (big.length < 1) {
+      throw new Error(
+        `no ${collectionType} genre holds more than 5 items (${byGenre.size} genre(s)), so no row has a View All tile`,
+      );
+    }
+    await openLibrary(`library tabs genre folder ${collectionType}`, collectionType, 'genres');
+    await waitGridLoaded('the Genres tab');
+    await waitFocusInside('#genreList', { label: 'focus in the genre rows', timeout: 20000 });
+
+    // The row to open: the first whose genre is big enough, found by what the app drew.
+    const rowCount = await getActiveVal('#genreList.content.getChildCount()');
+    expect(rowCount >= 1, `the Genres tab drew rows (${rowCount})`).toBe(true);
+    const rowTitles = await getActiveVals(
+      Array.from({ length: rowCount }, (_, r) => `#genreList.content.${r}.title`),
+    );
+    const row = rowTitles.findIndex((t) => big.includes(t));
+    if (row < 0) {
+      throw new Error(`no drawn genre row is one of the big genres (${JSON.stringify(rowTitles)})`);
+    }
+    const genre = rowTitles[row];
+
+    await scrollFocus({
+      keyPath: '#genreList.rowItemFocused',
+      target: row,
+      forwardKey: ecp.Key.Down,
+      backKey: ecp.Key.Up,
+      select: (v) => (Array.isArray(v) ? v[0] : undefined),
+      read: getActiveVal,
+      label: `the "${genre}" genre row`,
+    });
+    // The tile is the row's first cell: its node title is what the folder will be named.
+    const [tileTitle, tileType] = await getActiveVals([
+      `#genreList.content.${row}.0.title`,
+      `#genreList.content.${row}.0.type`,
+    ]);
+    expect(tileType, 'the first cell is the View All tile').toBe('Genre');
+    expect(tileTitle, 'the tile keeps the genre name as its title').toBe(genre);
+
+    await press(ecp.Key.Ok);
+    await waitFor(
+      'parentItem.id',
+      (id) => typeof id === 'string' && id !== '' && id !== libraryId,
+      { label: 'the genre folder opened', timeout: 20000, read: getActiveVal },
+    );
+    await waitGridLoaded('the genre folder');
+    expect(await getActiveVal('parentItem.title'), 'the folder is named for the genre').toBe(genre);
+    const [titleVisible, title] = await getVals([
+      '#overhang.#title.visible',
+      '#overhang.#title.text',
+    ]);
+    expect(titleVisible, 'the title shows').toBe(true);
+    expect(title.startsWith(genre), `the title starts with the genre (${title})`).toBe(true);
+    expect(title.startsWith('View All'), `the title is not the tile's wording (${title})`).toBe(
+      false,
+    );
   });
 }
 
