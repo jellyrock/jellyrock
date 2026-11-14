@@ -100,6 +100,11 @@ namespace syncPlayPlayer
       ' the last pause made: "landing" (no reading since the landing's) or "steady".
       clockFromLanding: false,
       stopKind: "",
+      ' The stream's path and length, as the player last said them: whether it is a transcode
+      ' (invalid until it has said) and its length in seconds (0 while unknown). A new stream
+      ' forgets both (mounted).
+      isTranscoded: invalid,
+      durationSeconds: 0,
       resumeWrittenAtMs: 0&,
       ' Where the node stood when the resume was written, while its first reading is awaited.
       resumeFromTicks: invalid
@@ -212,6 +217,8 @@ namespace syncPlayPlayer
     player.stopKind = ""
     player.clockFromLanding = false
     player.resumeLagLastSampleMs = invalid
+    player.isTranscoded = invalid
+    player.durationSeconds = 0
     player.loadStartTicks = 0&
     if syncPlayTime.isWholeNumber(startTicks) then player.loadStartTicks = syncPlayTime.asLong(startTicks)
     ' The mount of a load already told is that load; any other mount is a load of its own.
@@ -228,6 +235,12 @@ namespace syncPlayPlayer
     ' A retry before the first frame is the same load: the server has its Buffering already.
     player.loadTold = player.activity = "loading"
     mounted(player, startTicks, nowMs)
+  end sub
+
+  ' What the player says of its stream: each fact is kept only when it is given.
+  sub streamFacts(player as object, isTranscoded as dynamic, durationSeconds as dynamic)
+    if isValid(isTranscoded) then player.isTranscoded = isTranscoded
+    if isValid(durationSeconds) then player.durationSeconds = durationSeconds
   end sub
 
   ' The player left.

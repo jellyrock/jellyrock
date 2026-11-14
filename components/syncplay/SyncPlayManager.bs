@@ -106,10 +106,6 @@ sub ensureReady()
   ' Whether the follow under way is a Resume with Group the viewer chose, so a load that fails
   ' before it runs says so (haltFollowing); false once the load runs.
   m.resumeAsked = false
-  ' The playing item's length in the Video node's seconds; 0 while unknown.
-  m.playerDurationSeconds = 0
-  ' Whether the playing stream is a transcode; invalid until the player has said.
-  m.playerIsTranscoded = invalid
   ' Whether a load this member performed for a queue frame has not yet reported its Ready: a second
   ' step of the same item meets it still loading (syncPlayQueue.restartAbsorbed). Ended by that
   ' Ready, a halt, a leave, or the player leaving.
@@ -864,7 +860,7 @@ end sub
 ' What the comparison is told beside the two models. The queue layer performs each load itself,
 ' as its item arrives, so no load is ever asked of the comparison (loadOwed).
 function comparisonCtx() as object
-  return { following: isFollowing(), estimator: m.estimator, loadOwed: false, loadPending: isValid(m.owedLoad), isLastItem: syncPlayQueue.isLastItem(m.state), durationSeconds: m.playerDurationSeconds, isTranscoded: m.playerIsTranscoded }
+  return { following: isFollowing(), estimator: m.estimator, loadOwed: false, loadPending: isValid(m.owedLoad), isLastItem: syncPlayQueue.isLastItem(m.state), durationSeconds: m.comparison.player.durationSeconds, isTranscoded: m.comparison.player.isTranscoded }
 end function
 
 ' The player model takes what the player reported.
@@ -1171,8 +1167,6 @@ function playerEvent(evt as object) as object
   end if
   refreshExtraOffset()
   endUnansweredRefollow()
-  if isValid(evt.duration) then m.playerDurationSeconds = evt.duration
-  if isValid(evt.isTranscoded) then m.playerIsTranscoded = evt.isTranscoded
   if kind = "state" and syncPlayTime.isText(evt.state) then m.playerState = evt.state
   if kind = "mounted"
     m.expectingRemount = false
@@ -1254,7 +1248,7 @@ sub converge()
     nowMs& = syncPlayTime.nowMs()
     syncPlayPlayer.advance(player, nowMs&)
     if syncPlayPlayer.takeSlowEdge(player)
-      m.log.warn("seek still buffering past its limit", "state", m.playerState, "bufferPercent", playerBufferPercent(), "isTranscoded", m.playerIsTranscoded, "targetTicks", syncPlayTime.asLong(player.seekTargetTicks).toStr())
+      m.log.warn("seek still buffering past its limit", "state", m.playerState, "bufferPercent", playerBufferPercent(), "isTranscoded", player.isTranscoded, "targetTicks", syncPlayTime.asLong(player.seekTargetTicks).toStr())
     end if
     syncPlayGroup.advance(group, syncPlayTime.asLong(policy.requestLimitMs), nowMs&)
     ' A seek in flight: the player model is told when its buffer is first seen full, which is
@@ -1318,7 +1312,7 @@ sub carryOut(action as object)
     drift = publishedDriftMs()
     if isValid(drift) then driftText = syncPlayTime.asLong(drift).toStr()
     byPick = group.pickPending
-    if action.stuck = true then m.log.warn("seek stuck at a full buffer, writing it again", "targetTicks", syncPlayTime.asLong(action.targetTicks).toStr(), "isTranscoded", m.playerIsTranscoded, "owner", action.owner)
+    if action.stuck = true then m.log.warn("seek stuck at a full buffer, writing it again", "targetTicks", syncPlayTime.asLong(action.targetTicks).toStr(), "isTranscoded", player.isTranscoded, "owner", action.owner)
     if action.silent = true then m.log.info("playing node sent no reading", "activity", player.activity, "clock", player.clock.kind)
     syncPlayConverge.applied(player, group, action, nowMs&)
     if not isValid(host)
@@ -1345,7 +1339,7 @@ sub carryOut(action as object)
       host.callFunc("exitPlayback")
     end if
   else if kind = "report" or kind = "ask"
-    if action.landing = true then m.log.info("seek landed short of the group's point, asking the group to come here", "positionTicks", syncPlayTime.asLong(action.positionTicks).toStr(), "isTranscoded", m.playerIsTranscoded)
+    if action.landing = true then m.log.info("seek landed short of the group's point, asking the group to come here", "positionTicks", syncPlayTime.asLong(action.positionTicks).toStr(), "isTranscoded", player.isTranscoded)
     syncPlayConverge.applied(player, group, action, nowMs&)
     if not sendRequest(kind, action, group[kind].id) then syncPlayGroup.requestFailed(group, kind, action.what, group[kind].id)
   else if kind = "reload"

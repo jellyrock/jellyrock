@@ -114,6 +114,7 @@ namespace syncPlayConverge
     else if kind = "localSeek"
       syncPlayPlayer.told(player, "seek", "viewer", positionTicks&, nowMs)
     end if
+    syncPlayPlayer.streamFacts(player, evt.isTranscoded, evt.duration)
   end sub
 
   ' --- what the group said ---

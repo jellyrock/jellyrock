@@ -1716,6 +1716,18 @@ namespace tests
       m.assertEqual(viewer.player.pauseOwner, "viewer")
     end function
 
+    @it("a position event's path and length reach the player model, and a mount clears them")
+    function _()
+      comparison = syncPlayConverge.newComparison()
+      syncPlayConverge.playerFact(comparison, { kind: "mounted" }, 0&, 100&)
+      syncPlayConverge.playerFact(comparison, { kind: "position", position: 65, isTranscoded: true, duration: 5400 }, 0&, 1000&)
+      m.assertTrue(comparison.player.isTranscoded)
+      m.assertEqual(comparison.player.durationSeconds, 5400)
+      syncPlayConverge.playerFact(comparison, { kind: "mounted" }, 0&, 2000&)
+      m.assertInvalid(comparison.player.isTranscoded)
+      m.assertEqual(comparison.player.durationSeconds, 0)
+    end function
+
     @it("a join or a leave forgets the last membership's item, and keeps the group state it was told")
     function _()
       comparison = syncPlayConverge.newComparison()

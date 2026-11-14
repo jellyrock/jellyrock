@@ -136,6 +136,26 @@ namespace tests
       m.assertInvalid(syncPlayPlayer.positionAt(player, 2000&))
     end function
 
+    @it("a mount forgets the last stream's path and length")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.streamFacts(player, true, 5400)
+      m.assertTrue(player.isTranscoded)
+      m.assertEqual(player.durationSeconds, 5400)
+      syncPlayPlayer.mounted(player, 0&, 2000&)
+      m.assertInvalid(player.isTranscoded)
+      m.assertEqual(player.durationSeconds, 0)
+    end function
+
+    @it("a reload in place forgets the old stream's path and length")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.streamFacts(player, false, 5400)
+      syncPlayPlayer.reloaded(player, m.at60s, 2000&)
+      m.assertInvalid(player.isTranscoded)
+      m.assertEqual(player.durationSeconds, 0)
+    end function
+
     @it("a reload with no player is nothing")
     function _()
       player = syncPlayPlayer.newPlayer()
