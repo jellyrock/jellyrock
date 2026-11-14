@@ -1,12 +1,7 @@
-' The SyncPlay coordinator's decisions, pure: no node, no Timer, no HTTP. SyncPlayManager holds
-' the clocks and the player, asks these functions what to do, and does it.
-'
-' Five concerns live here:
-'   - the pause position: where a pause stopped the node, which the node itself cannot say.
-'   - scheduleCommand: when (on the device clock) a server command applies, and at what position.
-'   - applyPlan: the transport verbs that carry a command out on the player, in order.
-'   - the settle correction: how far this member sits from the group, and how it corrects that.
-'   - the ready tracker: when to tell the server this member is Buffering, and when it is Ready.
+' SyncPlay playback thresholds and position arithmetic, pure: no node, no Timer, no HTTP. The
+' thresholds are read by the comparison's policy (syncPlayConverge.defaultPolicy) and the player
+' model (syncPlayPlayer); the functions say where a load starts, where the group is by its last
+' command, and convert between the Video node's seconds and the wire's ticks.
 '
 ' The rules follow jellyfin-web's PlaybackCore (read at v10.11.0, unchanged since 10.7.0) where
 ' the server's expectations make them the only correct ones, and depart from it where a device
@@ -21,7 +16,7 @@ namespace syncPlayPlayback
   ' An Unpause seeks first only when the player is further off than this (web's minDelaySkipToSync).
   const SKIP_TO_SYNC_MIN_MS = 400
   ' The longest a position notification can be older than the pause write and still anchor
-  ' pausedPositionTicks: one notification interval (500 ms of media) plus headroom for a late one.
+  ' the pause's position estimate: one notification interval (500 ms of media) plus headroom for a late one.
   const PAUSE_ESTIMATE_MAX_AGE_MS = 1000
   ' A seek counts as landed once a position notification is within this of the target: the
   ' server's own tolerance on a Ready report (Group.MaxPlaybackOffset).
@@ -47,27 +42,15 @@ namespace syncPlayPlayback
   ' The most pause writes the manager makes for one group command.
   const PAUSE_ATTEMPTS = 3
   ' After an Unpause, once the node plays, a member further ahead of the group than this holds
-  ' (settleCorrectionDue). A hold costs a freeze as long as the drift, so it is worth doing small.
+  ' (the comparison's aheadBarMs). A hold costs a freeze as long as the drift, so it is worth doing small.
   ' A member behind has to seek, which froze the picture for 2.1 to 2.6 s (Stick 4K, 2026-10-31),
   ' so that side waits for SKIP_TO_SYNC_MIN_MS, the bar web sets for a skip.
   const SETTLE_CORRECTION_MS = 150
-  ' Position notifications to let pass after `playing` before the drift is read: the node's
-  ' position field lags real playback by up to one notification interval.
-  const SETTLE_POSITIONS = 2
   ' The bar, either way, for a check a time offset pick armed: the viewer asked for a shift, so a
   ' small one is worth making. Half the gear's step (playbackSettingsMenu.TIME_OFFSET_STEP_MS, a unit
   ' test pins the two), so it sits halfway between the drift reading's own noise and one step: every
   ' step corrects, and noise alone never does. Normal drift keeps the bars above, so jitter never seeks.
   const PICK_CORRECTION_MS = 50
-  ' How far ahead of the group a correction seeks before it pauses and waits for the group to
-  ' arrive. A plain seek to the group's position lands behind by the seek's own latency (a
-  ' transcode resumed 364 and 667 ms late on a 2026-10-31 Stick 4K run, the drift it was meant
-  ' to fix), so the correction uses the protocol's own shape: seek past the group, pause there,
-  ' resume when the group reaches it. A seek can take longer (a correction's outlasted this on
-  ' direct play and left the member 1.9 s behind, Stick 4K, 2026-10-31), so the lead grows to
-  ' what the last seek on this node took (correctionLeadMs). This is the shortest it gets; a seek
-  ' the tracker gave up stops the next seek-correction instead (trackPlayerEvent's seekGaveUp).
-  const CORRECTION_LEAD_MS = 2000
   ' What a lead keeps over the last seek's time, for a seek a little slower than the one before.
   const CORRECTION_LEAD_MARGIN_MS = 500
   ' The comparison's shortest lead for a catch-up. An exact seek decodes forward from the
@@ -76,262 +59,11 @@ namespace syncPlayPlayback
   ' covers a target 10 s past its keyframe on direct play (Stick 4K, 2026-11-11).
   const CATCH_UP_LEAD_MS = 3000
 
-  ' --- where a pause stopped the node ---
-  '
-  ' The Video node's position moves only on a position notification, every half second, and reads
-  ' stale while paused, so the manager reckons it. The state below holds one anchor (a position
-  ' the node was at, at a device-clock time, in its current unbroken run of playing) and the
-  ' estimate of where the last pause stopped the node. A notification gives a measured anchor. A
-  ' resume from a known pause gives a reckoned one, which predicted the next notification to within
-  ' 26 ms in 9 resumes (Stick 4K, 2026-11-10), so a pause that comes before that notification is
-  ' still estimated. Any other state change ends the run and the anchor with it.
+  ' --- positions ---
 
-  ' Where a pause stopped the node, in ticks, whether the group's Pause wrote it or the viewer's
-  ' own did: the anchor run forward by the time from it to the pause write. 7 rounds on a Stick 4K
-  ' (2026-11-10) predicted the drift seen after the Unpause to within 12 ms. Invalid when an input
-  ' is missing, the anchor is newer than the write, or older than PAUSE_ESTIMATE_MAX_AGE_MS.
-  ' @param notifiedTicks - the anchor's position (newPausePosition)
-  ' @param notifiedAtMs - the device clock at the anchor
-  ' @param pausedAtMs - the device clock when the pause was written
-  function pausedPositionTicks(notifiedTicks as dynamic, notifiedAtMs as dynamic, pausedAtMs as dynamic) as dynamic
-    if not syncPlayTime.isWholeNumber(notifiedTicks) or not syncPlayTime.isWholeNumber(notifiedAtMs) or not syncPlayTime.isWholeNumber(pausedAtMs) then return invalid
-    ageMs& = syncPlayTime.asLong(pausedAtMs) - syncPlayTime.asLong(notifiedAtMs)
-    if ageMs& < 0 or ageMs& > PAUSE_ESTIMATE_MAX_AGE_MS then return invalid
-    return syncPlayTime.asLong(notifiedTicks) + syncPlayTime.msToTicks(ageMs&)
-  end function
-
-  ' @returns the state the functions below share: anchorTicks and anchorAtMs, estimate
-  '   ({ ticks, writtenAtMs, landed } or invalid) and resumeTicks (the position a resume in flight
-  '   starts from, or invalid)
-  function newPausePosition() as object
-    return { anchorTicks: invalid, anchorAtMs: invalid, estimate: invalid, resumeTicks: invalid }
-  end function
-
-  ' A position notification while the node plays in a settled tracker: a measured anchor.
-  sub notePausePosition(pp as object, positionTicks as longinteger, nowMs as longinteger)
-    pp.anchorTicks = positionTicks
-    pp.anchorAtMs = nowMs
-  end sub
-
-  ' The player wrote the node's pause at nowMs, for the group or for the viewer. The estimate is
-  ' the anchor run forward to the write (pausedPositionTicks), and counts once the `paused` state
-  ' lands (notePauseState).
-  ' @param canEstimate - the node plays in a settled tracker with no correction under way
-  sub notePauseWritten(pp as object, canEstimate as boolean, nowMs as longinteger)
-    ' A second write before the first has landed (the group's Pause coming back while the viewer's
-    ' own pause is still landing) changes nothing: the first write is the one that stopped the node.
-    if isValid(pp.estimate) and pp.estimate.landed <> true then return
-    pp.estimate = invalid
-    pp.resumeTicks = invalid
-    if not canEstimate then return
-    ticks = pausedPositionTicks(pp.anchorTicks, pp.anchorAtMs, nowMs)
-    if isValid(ticks) then pp.estimate = { ticks: ticks, writtenAtMs: nowMs, landed: false }
-  end sub
-
-  ' A state event from the node. `paused` within PAUSE_LANDED_MS of the write confirms the
-  ' estimate, and later than that leaves none. `playing` after a resume from a known pause anchors
-  ' the run at that position (noteResumed); `playing` any other way forgets the estimate. Every
-  ' state change ends the run the old anchor described, so a stall is never counted as played.
-  sub notePauseState(pp as object, playerState as string, nowMs as longinteger)
-    pp.anchorTicks = invalid
-    pp.anchorAtMs = invalid
-    if playerState = "paused"
-      pp.resumeTicks = invalid
-      if isValid(pp.estimate) and pp.estimate.landed <> true
-        if nowMs - syncPlayTime.asLong(pp.estimate.writtenAtMs) > PAUSE_LANDED_MS
-          pp.estimate = invalid
-        else
-          pp.estimate.landed = true
-        end if
-      end if
-    else if playerState = "playing"
-      if syncPlayTime.isWholeNumber(pp.resumeTicks)
-        pp.anchorTicks = syncPlayTime.asLong(pp.resumeTicks)
-        pp.anchorAtMs = nowMs
-      end if
-      pp.resumeTicks = invalid
-      pp.estimate = invalid
-    end if
-  end sub
-
-  ' A group Pause applies. The viewer's own pause writes the node's pause before the group's Pause
-  ' comes back, so that Pause finds the node paused and writes none: the estimate the viewer's pause
-  ' made stands once it has landed. Any other finding (a node still playing, which the Pause then
-  ' pauses and estimates anew, a buffering node, a node held for a correction) leaves none.
-  ' @param playerState - the Video node's `state` when the Pause applies
-  ' @param heldForCorrection - the node is paused for a drift correction
-  sub carryPause(pp as object, playerState as string, heldForCorrection as boolean)
-    if playerState = "paused" and not heldForCorrection and isValid(landedPauseTicks(pp)) then return
-    pp.estimate = invalid
-  end sub
-
-  ' An Unpause resumed the node from its landed estimate with no seek: the run that starts at the
-  ' node's `playing` state starts from that position (notePauseState).
-  sub noteResumed(pp as object)
-    pp.resumeTicks = landedPauseTicks(pp)
-    pp.estimate = invalid
-  end sub
-
-  ' Nothing is known any more: a seek, a mount, a reload, a correction or a pause written again.
-  sub dropPausePosition(pp as object)
-    pp.anchorTicks = invalid
-    pp.anchorAtMs = invalid
-    pp.estimate = invalid
-    pp.resumeTicks = invalid
-  end sub
-
-  ' Where the last pause stopped the node, in ticks, once its `paused` state landed; else invalid.
-  function landedPauseTicks(pp as object) as dynamic
-    if isValid(pp.estimate) and pp.estimate.landed = true then return pp.estimate.ticks
-    return invalid
-  end function
-
-  ' --- scheduling ---
-
-  ' How many ms an Unpause's resume shifts for the lead the pause left, positive when the member
-  ' stopped ahead of the Unpause's position (resume later by the lead), negative when behind
-  ' (resume earlier). A seek on a paused node resumes it, so nothing else takes the lead back.
-  ' Zero with no estimate, and past SKIP_TO_SYNC_MIN_MS, where the Unpause seeks (applyPlan).
-  ' @param pausedTicks - landedPauseTicks, or invalid
-  ' @param planPositionTicks - the Unpause plan's position
-  function resumeShiftMs(pausedTicks as dynamic, planPositionTicks as dynamic) as longinteger
-    if not syncPlayTime.isWholeNumber(pausedTicks) or not syncPlayTime.isWholeNumber(planPositionTicks) then return 0&
-    leadMs& = syncPlayTime.ticksToMs(syncPlayTime.asLong(pausedTicks) - syncPlayTime.asLong(planPositionTicks))
-    if Abs(leadMs&) > SKIP_TO_SYNC_MIN_MS then return 0&
-    return leadMs&
-  end function
-
-  ' When and how a parsed, accepted SyncPlayCommand applies.
-  ' @param estimator - the syncPlayOffset estimator (hasEstimate must be true)
-  ' @param command - a syncPlayMessage "syncplaycommand" AA
-  ' @param nowMs - the device clock now
-  ' @param shiftMs - resumeShiftMs: moves a future Unpause's delay, never below 0. The position stays
-  '   the server's, since the drift reading runs it forward from its When.
-  ' @returns an AA with action, delayMs, positionTicks, shiftMs (the shift applied, less than asked
-  '   when the delay stops at 0), askedShiftMs (the shift asked for) and applyAtMs (the command's own time on the device clock, with
-  '   no shift): delayMs is 0 when `When` has passed. An Unpause
-  '   whose When has passed carries the position the group is at now, estimated forward from the
-  '   command's own position (web's estimateCurrentTicks); every other command keeps its ticks.
-  function scheduleCommand(estimator as object, command as object, nowMs as longinteger, shiftMs = 0& as longinteger) as object
-    applyAtMs& = syncPlayOffset.deviceTimeForServerMs(estimator, command.whenMs)
-    delay& = applyAtMs& - nowMs
-    if delay& < 0 then delay& = 0&
-    positionTicks& = syncPlayTime.asLong(command.positionTicks)
-    if command.command = "Unpause" and delay& = 0
-      serverNow& = syncPlayOffset.serverNowMs(estimator, nowMs)
-      positionTicks& = positionTicks& + syncPlayTime.msToTicks(serverNow& - command.whenMs)
-    end if
-    appliedShiftMs& = 0&
-    if command.command = "Unpause" and delay& > 0 and shiftMs <> 0
-      shifted& = delay& + shiftMs
-      if shifted& < 0 then shifted& = 0&
-      appliedShiftMs& = shifted& - delay&
-      delay& = shifted&
-    end if
-    return { action: command.command, delayMs: delay&, positionTicks: positionTicks&, shiftMs: appliedShiftMs&, askedShiftMs: shiftMs, applyAtMs: applyAtMs& }
-  end function
-
-  ' Gives a waiting plan a new shift, counted from the command's own time: the manager does this
-  ' whenever the pause's estimate lands or is dropped while an Unpause waits, so the resume time
-  ' always rests on the estimate the seek check will read. A plan whose own time has passed takes
-  ' no shift.
-  ' @param shiftMs - resumeShiftMs for the estimate now, 0 with none
-  sub reshiftPlan(plan as object, shiftMs as longinteger, nowMs as longinteger)
-    delay& = syncPlayTime.asLong(plan.applyAtMs) - nowMs
-    if delay& < 0 then delay& = 0&
-    appliedShiftMs& = 0&
-    if delay& > 0 and shiftMs <> 0
-      shifted& = delay& + shiftMs
-      if shifted& < 0 then shifted& = 0&
-      appliedShiftMs& = shifted& - delay&
-      delay& = shifted&
-    end if
-    plan.delayMs = delay&
-    plan.shiftMs = appliedShiftMs&
-    plan.askedShiftMs = shiftMs
-  end sub
-
-  ' The transport verbs (PlayerHostView.handleTransport's evt shapes) that carry a plan out, in
-  ' order. A seek step carries two flags for the ready tracker: `report` says the server waits on
-  ' this seek (a Seek command: Buffering, then Ready once it lands), and `thenPause` says to pause
-  ' once it lands, which is how a Seek leaves the player for the Unpause that follows (web's
-  ' scheduleSeek). The seek inside an Unpause is a local correction the server already accounts
-  ' for, so it is silent.
-  '
-  ' Three rules the Stick 4K taught. A `seek` on a paused Video node resumes it (2026-10-23), so a
-  ' Pause only pauses (the next Unpause carries the position and corrects it), a Seek sends
-  ' no `resume` of its own, and an Unpause that seeks sends no `resume` either. A `resume` (a
-  ' control `play`) written to a node that is still buffering from a seek leaves it buffering for
-  ' good (2026-10-23), and a buffering node plays by itself once it has buffered, so an Unpause
-  ' sends `resume` only to a paused node. And a `pause` written to a buffering node lands `paused`
-  ' at once and stays there (measured 2026-10-24, direct play, a seek to 150 s, two runs): the
-  ' wedge of 2026-10-23 came from a `play` or `resume` written while buffering, so a Pause
-  ' pauses a buffering node too. A load is the exception: its first-frame pause (the tracker's
-  ' `pauseFirst`) owns that, and a pause during a load was never measured. A seek in flight is
-  ' the other: a `pause` written there can leave the node buffering for good (the node can still
-  ' read `playing` right after the seek write), so a Pause writes nothing and the seek's landing
-  ' pauses instead, with the OSD up (the manager calls `pauseAfterSeek`).
-  ' @param plan - from scheduleCommand
-  ' @param playerState - the Video node's `state`
-  ' @param playerPositionTicks - the player's last known position
-  ' @param trackerPhase - the ready tracker's phase, to tell a load from a stall
-  ' @param heldForCorrection - the node is paused for a drift correction, so a group Pause is news
-  '   to the viewer though it needs no pause of its own
-  ' @param pausedEstimateTicks - where the last pause stopped the node (landedPauseTicks), or
-  '   invalid. An Unpause's seek check reads it in place of the node's last position, which lags
-  '   a pause by up to a notification interval.
-  function applyPlan(plan as object, playerState as string, playerPositionTicks as longinteger, trackerPhase = "" as string, heldForCorrection = false as boolean, pausedEstimateTicks = invalid as dynamic) as object
-    steps = []
-    target = { command: "seekto", position: ticksToSeconds(plan.positionTicks), report: false, thenPause: false }
-    if plan.action = "Unpause"
-      ' A load's first frame pauses and reports Ready, and the server answers that Ready with the
-      ' group's position. A server from 12.1 stops waiting after 30 s and sends this before the
-      ' first frame: a seek written here chased the load, and left a member 23 s behind on a slow
-      ' file (Stick 4K, 2026-10-31).
-      if trackerPhase = "loading" then return steps
-      seekFromTicks = playerPositionTicks
-      if syncPlayTime.isWholeNumber(pausedEstimateTicks) then seekFromTicks = syncPlayTime.asLong(pausedEstimateTicks)
-      needsSeek = Abs(seekFromTicks - plan.positionTicks) > syncPlayTime.msToTicks(SKIP_TO_SYNC_MIN_MS)
-      if needsSeek then steps.push(target)
-      if playerState = "paused" and not needsSeek then steps.push({ command: "resume" })
-    else if plan.action = "Pause"
-      if pauseWaitsForSeek(trackerPhase)
-        ' The seek's landing pauses.
-      else if playerState = "playing" or (playerState = "buffering" and trackerPhase <> "loading") or heldForCorrection
-        steps.push({ command: "pause", showOsd: true })
-      end if
-    else if plan.action = "Seek"
-      target.report = true
-      target.thenPause = true
-      steps.push(target)
-    else if plan.action = "Stop"
-      steps.push({ command: "stop" })
-    end if
-    return steps
-  end function
-
-  ' Whether a seek is in flight, so a Pause is left to the seek's landing (pauseAfterSeek) and
-  ' writes nothing of its own, and a Seek waits for it (the tracker's "holdSeek").
+  ' Whether a seek is in flight, by the phase the manager publishes (SyncPlayManager.trackerPhase).
   function pauseWaitsForSeek(trackerPhase as string) as boolean
     return trackerPhase = "seeking" or trackerPhase = "landing"
-  end function
-
-  ' Whether a drift correction wrote a pause it no longer owns the resume of: the watchdog ended
-  ' the correction, or an Unpause dropped it, before the node reported `paused`, so the node stays
-  ' paused while the group plays. Never true for a buffering node, which a resume would wedge.
-  ' @param pauseOwed - a correction wrote a pause and nothing has resumed or replaced it
-  ' @param correctionActive - a correction is under way, so its own timer resumes the node
-  function owesCorrectionResume(pauseOwed as boolean, correctionActive as boolean, groupPaused as boolean, playerState as string) as boolean
-    return pauseOwed and not correctionActive and not groupPaused and playerState = "paused"
-  end function
-
-  ' Whether the player owes the group a pause: the group is paused and the node plays on. The
-  ' load and seek phases pause by themselves (pauseFirst, thenPause), so only a settled phase
-  ' counts.
-  function owesPause(groupPaused as boolean, playerState as string, trackerPhase as string) as boolean
-    if not groupPaused then return false
-    if trackerPhase <> "ready" and trackerPhase <> "stalling" and trackerPhase <> "rebuffering" then return false
-    return playerState = "playing" or playerState = "buffering"
   end function
 
   ' Where a new playlist starts for this member: the last Unpause estimated forward when it is
@@ -351,75 +83,11 @@ namespace syncPlayPlayback
     return syncPlayTime.asLong(update.startPositionTicks)
   end function
 
-  ' --- the settle correction ---
-
-  ' The command that says where the group is now, or invalid when none does. A new item's load runs
-  ' under the last item's Unpause, so only a command for the playing item counts. A Buffering this
-  ' member reported ends it too: the group waits for this member, and a server from 12.1 answers
-  ' its recovery with an Unpause to the others alone, so the last Unpause would run on through a
-  ' wait this member never hears of. The next command it schedules says where the group is again.
-  ' A command older than the queue update that last changed the playing item is the last item's
-  ' too (acceptsCommand drops one on arrival; this covers one already in force when a same-item
-  ' restart lands, which sends no command of its own).
-  ' @param queueChangedAtMs - the LastUpdate of the update that last changed the playing item
-  function clockReference(lastCommand as dynamic, playingItemId as string, reportedBuffering as boolean, queueChangedAtMs as longinteger) as dynamic
-    if reportedBuffering or not isValid(lastCommand) or lastCommand.playlistItemId <> playingItemId then return invalid
-    if syncPlayTime.isWholeNumber(lastCommand.emittedAtMs) and syncPlayTime.asLong(lastCommand.emittedAtMs) < queueChangedAtMs then return invalid
-    return lastCommand
-  end function
-
-  ' Where the server paused the group for this member's Buffering: the group's clock run forward
-  ' to the moment the server handled the report, taken as the arrival of its Waiting state update
-  ' less half the measured round trip. The server pauses the group at its own clock when it
-  ' handles the report (WaitingGroupState), later than the estimate made when the report was
-  ' decided, by the report's own latency: 0.3 to 0.6 s in the 2026-11-09 runs, enough for a Ready
-  ' at the earlier estimate to draw a corrective Seek. Invalid when no command names the group's
-  ' clock (then the Ready keeps the load's start).
-  ' @param lastCommand - the last group command applied or scheduled, or invalid
-  ' @param playingItemId - the group's playing playlist id
-  ' @param queueChangedAtMs - as clockReference
-  ' @param estimator - the clock estimator (delayMs is the measured round trip)
-  ' @param nowMs - the device clock when the Waiting update arrived
-  ' The Unpause the server sent the other members when this member's own Ready ended the wait
-  ' and it was already playing: the server sends it to every member but this one
-  ' (WaitingGroupState, ReadyGroupRequest, the recovering branch), so without this the clock
-  ' reference stays off until the next command, which can be the rest of the film. The server
-  ' builds that Unpause from numbers this member has: the group's paused position (the anchor)
-  ' and the Ready's own, with When = the Ready's time plus how far behind the group the Ready
-  ' was. A Ready at or past the anchor resumes the group at once. Any real command replaces it.
-  ' @param anchorTicks - where the group paused (groupPauseAnchorTicks)
-  ' @param lastReady - { whenMs, positionTicks, isPlaying } of the Ready this member last sent
-  ' @param playlistItemId - the group's playing playlist id
-  ' @param groupId - the group
-  function reconstructedUnpause(anchorTicks as longinteger, lastReady as object, playlistItemId as string, groupId as string) as object
-    whenMs& = syncPlayTime.asLong(lastReady.whenMs)
-    behindMs& = syncPlayTime.ticksToMs(anchorTicks - syncPlayTime.asLong(lastReady.positionTicks))
-    if behindMs& > 0 then whenMs& = whenMs& + behindMs&
-    return { kind: "syncplaycommand", command: "Unpause", whenMs: whenMs&, emittedAtMs: syncPlayTime.asLong(lastReady.whenMs), positionTicks: anchorTicks, playlistItemId: playlistItemId, groupId: groupId, reconstructed: true }
-  end function
-
-  function groupPauseAnchorTicks(lastCommand as dynamic, playingItemId as string, queueChangedAtMs as longinteger, estimator as object, nowMs as longinteger) as dynamic
-    reference = clockReference(lastCommand, playingItemId, false, queueChangedAtMs)
-    if not isValid(reference) then return invalid
-    handledAtMs& = nowMs - estimator.delayMs \ 2
-    return groupPositionTicks(reference, estimator, handledAtMs&)
-  end function
-
-  ' How far this member sits from the group, in ms, positive when it is behind: the last
-  ' Unpause's position run forward on the measured clock, minus the player's position (web's
-  ' playbackDiffMillis). Invalid while no Unpause is in force or its When has not come.
-  function driftMs(lastCommand as dynamic, estimator as object, nowMs as longinteger, playerPositionTicks as longinteger) as dynamic
-    if not isValid(lastCommand) or lastCommand.command <> "Unpause" then return invalid
-    estimated = unpauseRunForwardMs(lastCommand, estimator, nowMs)
-    if not isValid(estimated) then return invalid
-    return estimated - syncPlayTime.ticksToMs(playerPositionTicks)
-  end function
-
   ' Where the group is now, in ticks, for a member that has to say so without a position of its own
   ' it can trust (a reload in place, whose node reads 0 and whose last reading lags): a Pause or a
   ' Seek holds its position, and an Unpause runs its position forward on the measured server clock
   ' from its When. invalid with no command, or one that names no position.
-  ' @param reference - the command that says where the group is (clockReference), or invalid
+  ' @param reference - the command that says where the group is, or invalid
   function groupPositionTicks(reference as dynamic, estimator as object, nowMs as longinteger) as dynamic
     if not isValid(reference) then return invalid
     lastCommand = reference
@@ -440,102 +108,6 @@ namespace syncPlayPlayback
     return syncPlayTime.ticksToMs(syncPlayTime.asLong(lastCommand.positionTicks)) + (serverNow& - whenMs&)
   end function
 
-  ' The check an Unpause arms: once the node plays and SETTLE_POSITIONS notifications have come,
-  ' a drift past its threshold is corrected, and then the check is spent until the next
-  ' Unpause. A correction gets one reading after it (retrySettleCheck), so the most an Unpause can
-  ' cost is two.
-  function newSettleCheck() as object
-    return { armed: false, positions: 0, retried: false, byPick: false }
-  end function
-
-  ' @param byPick - the viewer's time offset pick armed it, not an Unpause: a seek it starts is told
-  '   to the viewer (takePickNotice), since nothing they pressed looks like a jump
-  sub armSettleCheck(check as object, byPick = false as boolean)
-    check.armed = true
-    check.positions = 0
-    check.retried = false
-    check.byPick = byPick
-  end sub
-
-  ' Whether the correction the check is about to start is one a time offset pick caused, and so is
-  ' told to the viewer. True once per arming.
-  function takePickNotice(check as object) as boolean
-    pick = check.byPick = true
-    check.byPick = false
-    return pick
-  end function
-
-  ' A load starts over: the Unpause that armed this was for the item before it.
-  sub disarmSettleCheck(check as object)
-    check.armed = false
-    check.positions = 0
-    check.byPick = false
-  end sub
-
-  ' A correction ended, well or badly: read the drift once more. A correction can land off (late,
-  ' or at the wrong spot on a transcode), and nothing else would look again before the next
-  ' Unpause. Once per arming, so a node that never lands cannot seek for good.
-  sub retrySettleCheck(check as object)
-    if check.retried then return
-    check.retried = true
-    check.armed = true
-    check.positions = 0
-  end sub
-
-  ' Feed one position notification. True when a correction is due now (correctionPlan says
-  ' where to seek and when to resume): past SETTLE_CORRECTION_MS ahead of the group, past
-  ' SKIP_TO_SYNC_MIN_MS behind it. Nothing is counted while the group is paused, the node is not playing, or the tracker is not settled: the drift means
-  ' nothing there, and web gates its correction on the same three. An unknown drift counts for
-  ' nothing either, so a reading that comes too early cannot spend the check.
-  function settleCorrectionDue(check as object, drift as dynamic, playerState as string, trackerPhase as string, groupPaused as boolean) as boolean
-    if not check.armed then return false
-    if groupPaused or playerState <> "playing" or trackerPhase <> "ready" then return false
-    if not isValid(drift) then return false
-    check.positions++
-    if check.positions < SETTLE_POSITIONS then return false
-    check.armed = false
-    if check.byPick = true then return Abs(drift) > PICK_CORRECTION_MS
-    if drift >= 0 then return drift > SKIP_TO_SYNC_MIN_MS
-    return Abs(drift) > SETTLE_CORRECTION_MS
-  end function
-
-  ' The correction for a drift the check found. Behind the group: seek to the group's position
-  ' plus the lead and pause once the node is there (the tracker's thenPause). Ahead of it: pause
-  ' where it is, since waiting needs no seek and so no jump or rebuffer. Either way the node
-  ' resumes on the device clock at the moment the group's own clock reaches that position.
-  ' @param drift - from driftMs
-  ' @param playerPositionTicks - the player's position the drift was read against
-  ' @param lastCommand - the Unpause in force
-  ' @param leadMs - how far past the group a seek goes (correctionLeadMs)
-  ' @returns an AA with seek, targetTicks and resumeAtMs, the resume moment on the device clock
-  function correctionPlan(drift as longinteger, playerPositionTicks as longinteger, lastCommand as object, estimator as object, leadMs as longinteger) as object
-    seek = drift >= 0
-    targetTicks& = playerPositionTicks
-    if seek then targetTicks& = playerPositionTicks + syncPlayTime.msToTicks(drift) + syncPlayTime.msToTicks(leadMs)
-    commandMs& = syncPlayTime.ticksToMs(syncPlayTime.asLong(lastCommand.positionTicks))
-    reachesServerMs& = syncPlayTime.asLong(lastCommand.whenMs) + (syncPlayTime.ticksToMs(targetTicks&) - commandMs&)
-    return { seek: seek, targetTicks: targetTicks&, resumeAtMs: syncPlayOffset.deviceTimeForServerMs(estimator, reachesServerMs&) }
-  end function
-
-  ' How far past the group a correction's seek goes: long enough to land before the group arrives,
-  ' judged by the last seek on this node. The manager does not ask for a seek after one the tracker
-  ' gave up (its lastSeekGaveUp), so the time of a given-up seek does not set a lead.
-  ' @param lastSeekMs - how long the last seek took; 0 while none has landed on this player
-  function correctionLeadMs(lastSeekMs as longinteger) as longinteger
-    leadMs& = lastSeekMs + CORRECTION_LEAD_MARGIN_MS
-    if leadMs& < CORRECTION_LEAD_MS then return CORRECTION_LEAD_MS
-    return leadMs&
-  end function
-
-  ' Whether a group Seek asks for where this node already is: within the ready tolerance, playing
-  ' and tracked ready. The Seek this member posts to make the group wait on it (the manager's
-  ' waitOnMe) comes back this way after the round trip, and a seek written for it would cost the
-  ' slow node the very freeze the wait avoids: the node pauses and reports Ready where it is.
-  function seekIsWhereWeAre(targetTicks as longinteger, playerPositionTicks as longinteger, playerState as string, trackerPhase as string) as boolean
-    if playerState <> "playing" or trackerPhase <> "ready" then return false
-    return Abs(playerPositionTicks - targetTicks) <= syncPlayTime.msToTicks(READY_TOLERANCE_MS)
-  end function
-
   ' Whether a load starts at the item's start, as a restart's does: within the Ready tolerance of
   ' 0 (Roku starts at the keyframe at or before the asked position). A reload in place or a late
   ' join's mount starts partway in.
@@ -544,12 +116,12 @@ namespace syncPlayPlayback
   end function
 
   ' Whether the load a same-item restart would be absorbed into starts at the item's start
-  ' (syncPlayQueue.restartAbsorbed's loadFromStart). Three loads can be in flight: the tracker's,
-  ' once a player mounted (a reload in place moves its start partway in); a launch's, between
+  ' (syncPlayQueue.restartAbsorbed's loadFromStart). Three loads can be in flight: the player's,
+  ' once it mounted (a reload in place moves its start partway in); a launch's, between
   ' playQueue and its player's mount, at the start the manager gave it; and one only owed, not yet
   ' performed, which starts where the group is, 0 after a restart.
-  ' @param trackerPhase - the ready tracker's phase
-  ' @param trackerLoadStartTicks - where the tracker's load started
+  ' @param trackerPhase - what the player is doing (SyncPlayManager.trackerPhase)
+  ' @param trackerLoadStartTicks - where the player's load started
   ' @param loadAwaitsReady - a load was performed and its player has not reported Ready
   ' @param loadStartTicks - the start the manager gave that load
   function restartLoadFromStart(trackerPhase as string, trackerLoadStartTicks as longinteger, loadAwaitsReady as boolean, loadStartTicks as longinteger) as boolean
@@ -558,16 +130,6 @@ namespace syncPlayPlayback
     return true
   end function
 
-  ' Move the resume to where the node stopped: a seek lands off its target (up to 36 ms in the logs
-  ' of a 2026-10-31 Stick 4K run), and resuming on the target's moment carries that error into the
-  ' group. A paused position further off than the landing tolerance is not one to trust, so the
-  ' plan's own moment stands. Safe to call again: the plan then holds the position it moved to.
-  sub landCorrection(plan as object, pausedTicks as longinteger)
-    if Abs(pausedTicks - plan.targetTicks) > syncPlayTime.msToTicks(READY_TOLERANCE_MS) then return
-    plan.resumeAtMs = plan.resumeAtMs + syncPlayTime.ticksToMs(pausedTicks - plan.targetTicks)
-    plan.targetTicks = pausedTicks
-  end sub
-
   ' Whether a seek would run off the item. The player turns a target at or past the end into a seek
   ' 30 s short of it (voiceTransport.computeSeekStatus), so the correction skips it; the item is
   ' about to end anyway.
@@ -575,246 +137,6 @@ namespace syncPlayPlayback
   function seekPastEnd(targetTicks as longinteger, durationSeconds as dynamic) as boolean
     if not isValid(durationSeconds) or durationSeconds <= 0 then return false
     return ticksToSeconds(targetTicks) >= durationSeconds
-  end function
-
-  ' Milliseconds until the correction's resume, 0 when the moment has passed (a seek slower than
-  ' the lead: the resume goes out as the node pauses, and the check reads the drift again).
-  function correctionResumeDelayMs(plan as object, nowMs as longinteger) as longinteger
-    delay& = syncPlayTime.asLong(plan.resumeAtMs) - nowMs
-    if delay& < 0 then return 0&
-    return delay&
-  end function
-
-  ' --- the ready tracker ---
-
-  ' Phases: "idle" (no player, or nothing owed), "loading" (a player mounted, no first frame yet),
-  ' "seeking" (a seek is out, waiting for a position near the target), "landing" (the position
-  ' is there but the node is still buffering: the seek's pause and the Ready wait for `playing`,
-  ' which confirms the position before the pause),
-  ' "ready" (the server has this member's position), "stalling" (buffering after ready, not yet
-  ' long enough to report), "rebuffering" (a stall the server was told about).
-  '
-  ' `heldSeek` is a seek that came in while another was in flight ({ targetTicks, report,
-  ' thenPause }, or invalid). The node never runs two seeks at once, because two overlapping
-  ' ones can leave it buffering for good: the newest wins, and it goes out as the seek in flight
-  ' ends (the result's `nextSeek`).
-  function newReadyTracker() as object
-    return { phase: "idle", targetTicks: 0&, lastPositionTicks: 0&, lastState: "", reportSeek: false, thenPause: false, showOsd: false, loadStartTicks: 0&, heldSeek: invalid }
-  end function
-
-  ' Feed one player or coordinator event; get back what to send and what to wait for.
-  ' @param tracker - from newReadyTracker, mutated in place
-  ' @param evt - { kind: "mounted" | "reloaded" | "seek" | "holdSeek" | "state" | "position" | "timeout" | "groupPaused" | "unmounted",
-  '   state (for "state"), positionTicks (for "seek", "state" and "position"), for "mounted" the
-  '   `startTicks` the load was asked to start at (absent when it starts at the beginning), for
-  '   "reloaded" (the player loading its stream again in place) the `startTicks` it reloads from, and for
-  '   "seek" the plan step's `report` and `thenPause` }. A silent seek (report false) still enters
-  '   the seeking phase, so the buffering and playing it causes are not taken for a stall.
-  '   "holdSeek" carries `targetTicks` (not `positionTicks`, which every event copies into the
-  '   tracker's last position), `report` and `thenPause`: a seek due while one is in flight.
-  ' @returns an AA with report ("", "buffering" or "ready"), waitMs, pauseFirst, showOsd, nextSeek,
-  '   seekGaveUp and positionTicks:
-  '   `waitMs` above 0 asks for a one-shot timer that feeds back { kind: "timeout" }; `pauseFirst`
-  '   says to pause the player before the Ready goes out (a load's first frame: web pauses at
-  '   playbackstart and reports Ready, and the server's Unpause then starts everyone together);
-  '   `showOsd` says that pause is a group Pause that waited for the seek (pauseAfterSeek), so
-  '   it shows the OSD as the Play key does;
-  '   `nextSeek` is the held seek ({ targetTicks, report, thenPause }) to write now that the one in
-  '   flight is over, or invalid. The phase stays "seeking" and nothing else is reported, so the
-  '   caller writes it and feeds it back as a "seek" event;
-  '   `positionTicks` is the position to put in the report, or -1 to use the player's own. A load
-  '   that started partway in has a Video node still reading 0 at its first `playing` (a probe on
-  '   2026-10-23 read 0.0 while buffering and 349.0 right after), and a Ready at 0 makes the server
-  '   send a corrective Seek, so that first Ready carries the start instead;
-  '   `seekGaveUp` says the tracker gave the seek in flight up at this event: the landing budget ran
-  '   out with the node still buffering (a stall it reports), or without it ever reaching `playing`.
-  '   A seek that lands and settles on its own is never given up, however long it took.
-  function trackPlayerEvent(tracker as object, evt as object) as object
-    result = { report: "", waitMs: 0, pauseFirst: false, showOsd: false, positionTicks: -1&, nextSeek: invalid, seekGaveUp: false }
-    if not isValid(evt) or not syncPlayTime.isText(evt.kind) then return result
-    kind = evt.kind
-    if syncPlayTime.isWholeNumber(evt.positionTicks) then tracker.lastPositionTicks = syncPlayTime.asLong(evt.positionTicks)
-
-    if kind = "mounted"
-      tracker.phase = "loading"
-      tracker.heldSeek = invalid
-      tracker.loadStartTicks = 0&
-      if syncPlayTime.isWholeNumber(evt.startTicks) then tracker.loadStartTicks = syncPlayTime.asLong(evt.startTicks)
-      result.report = "buffering"
-    else if kind = "seek"
-      tracker.phase = "seeking"
-      tracker.targetTicks = syncPlayTime.asLong(evt.positionTicks)
-      tracker.reportSeek = evt.report = true
-      tracker.thenPause = evt.thenPause = true
-      ' The node's position can reach the target before it reports buffering, so the state
-      ' from before the seek says nothing: forget it and wait for the node's next state.
-      tracker.lastState = ""
-      if tracker.reportSeek then result.report = "buffering"
-      result.waitMs = SEEK_SETTLE_MS
-    else if kind = "holdSeek"
-      held = { targetTicks: syncPlayTime.asLong(evt.targetTicks), report: evt.report = true, thenPause: evt.thenPause = true }
-      if Abs(held.targetTicks - tracker.targetTicks) <= syncPlayTime.msToTicks(READY_TOLERANCE_MS)
-        ' The seek in flight already goes there: it takes on what this one asked for.
-        tracker.reportSeek = tracker.reportSeek or held.report
-        tracker.thenPause = held.thenPause
-        tracker.heldSeek = invalid
-      else
-        tracker.heldSeek = held
-      end if
-    else if kind = "state"
-      state = ""
-      if syncPlayTime.isText(evt.state) then state = evt.state
-      tracker.lastState = state
-      if tracker.phase = "landing"
-        if state = "playing" or state = "paused" then seekSettled(tracker, result, state = "playing")
-      else if state = "playing" and tracker.phase = "loading"
-        tracker.phase = "ready"
-        result.report = "ready"
-        result.pauseFirst = true
-        if tracker.loadStartTicks - tracker.lastPositionTicks > syncPlayTime.msToTicks(READY_TOLERANCE_MS) then result.positionTicks = tracker.loadStartTicks
-      else if state = "buffering" and tracker.phase = "ready"
-        tracker.phase = "stalling"
-        result.waitMs = STALL_MS
-      else if (state = "playing" or state = "paused") and tracker.phase = "stalling"
-        tracker.phase = "ready"
-      else if state = "playing" and tracker.phase = "rebuffering"
-        tracker.phase = "ready"
-        result.report = "ready"
-      end if
-    else if kind = "position"
-      if tracker.phase = "seeking" and Abs(tracker.lastPositionTicks - tracker.targetTicks) <= syncPlayTime.msToTicks(READY_TOLERANCE_MS)
-        seekLanded(tracker, result)
-      end if
-    else if kind = "timeout"
-      if tracker.phase = "seeking"
-        seekLanded(tracker, result)
-      else if tracker.phase = "landing"
-        if releaseHeldSeek(tracker, result) then return result
-        if tracker.lastState = "buffering" and not tracker.reportSeek
-          ' A silent seek this slow is a stall: the group waits, as for any other, rather than
-          ' play on while this member falls behind in silence. The Ready that ends it goes out at
-          ' the next `playing`, and any Pause by then is the group's own (owesPause).
-          tracker.phase = "rebuffering"
-          tracker.thenPause = false
-          tracker.showOsd = false
-          result.report = "buffering"
-          result.seekGaveUp = true
-        else
-          ' The node never reached playing: report what there is, and pause nothing.
-          seekSettled(tracker, result, false)
-          result.seekGaveUp = true
-        end if
-      else if tracker.phase = "stalling"
-        tracker.phase = "rebuffering"
-        result.report = "buffering"
-      end if
-    else if kind = "reloaded"
-      if tracker.phase = "idle" then return result
-      startTicks = 0&
-      if syncPlayTime.isWholeNumber(evt.startTicks) then startTicks = syncPlayTime.asLong(evt.startTicks)
-      if tracker.phase = "loading"
-        ' A retry before the first frame: the load starts over from here, and the server has its
-        ' Buffering already.
-        tracker.loadStartTicks = startTicks
-        return result
-      end if
-      ' The stream the tracker followed is gone, a seek in flight on it included. The reload is a
-      ' load: Buffering now, so the group waits from the start of it, and the first frame pauses
-      ' and reports Ready at the reload's start.
-      tracker.phase = "loading"
-      tracker.loadStartTicks = startTicks
-      tracker.heldSeek = invalid
-      tracker.reportSeek = false
-      tracker.thenPause = false
-      tracker.showOsd = false
-      tracker.lastState = ""
-      result.report = "buffering"
-    else if kind = "groupPaused"
-      ' The server paused the group for this member's Buffering at this position
-      ' (groupPauseAnchorTicks): a load still in flight reports its Ready there, where the server
-      ' expects it, instead of at the estimate made when the load was decided.
-      if tracker.phase = "loading" and syncPlayTime.isWholeNumber(evt.positionTicks) then tracker.loadStartTicks = syncPlayTime.asLong(evt.positionTicks)
-    else if kind = "unmounted"
-      tracker.phase = "idle"
-      tracker.heldSeek = invalid
-    end if
-    return result
-  end function
-
-  ' The seek's position is there, which the node can report before it reports `buffering`, so
-  ' every seek waits (the landing phase) for the node's state: `playing` confirms the position
-  ' before any pause, and `paused` needs no pause. Settling here would take the buffering still to
-  ' come for a stall, and a stall report pauses the whole group.
-  sub seekLanded(tracker as object, result as object)
-    if tracker.lastState <> "playing" and tracker.lastState <> "paused"
-      tracker.phase = "landing"
-      result.waitMs = SEEK_SETTLE_MS
-      return
-    end if
-    seekSettled(tracker, result, tracker.lastState = "playing")
-  end sub
-
-  ' The pause a seek's landing owes no longer stands: a correction was given up, or an Unpause came
-  ' first. Nothing would resume the node if it paused.
-  sub abandonSeekPause(tracker as object)
-    tracker.thenPause = false
-    tracker.showOsd = false
-  end sub
-
-  ' The seek in flight is over and a newer one was held: it goes next, in its place. The phase stays
-  ' "seeking", with no report, pause or Ready, so the group sees one seek that ends where the newest does.
-  ' @returns true when a held seek was released into result.nextSeek
-  function releaseHeldSeek(tracker as object, result as object) as boolean
-    if not isValid(tracker.heldSeek) then return false
-    result.nextSeek = tracker.heldSeek
-    ' A Ready owed for the seek this replaces goes out at the held one's landing, silent or not.
-    result.nextSeek.report = result.nextSeek.report or tracker.reportSeek
-    tracker.heldSeek = invalid
-    tracker.phase = "seeking"
-    return true
-  end function
-
-  ' A held seek no longer stands: an Unpause says where the group is now.
-  sub dropHeldSeek(tracker as object)
-    tracker.heldSeek = invalid
-  end sub
-
-  ' A group Pause came in while a seek was in flight: the seek's landing pauses the node, with
-  ' the OSD up, in place of a pause written to a node that is still seeking.
-  sub pauseAfterSeek(tracker as object)
-    tracker.thenPause = true
-    tracker.showOsd = true
-    ' A seek held behind the one in flight would overwrite the pause when it is released.
-    if isValid(tracker.heldSeek) then tracker.heldSeek.thenPause = true
-  end sub
-
-  ' Ready again: reported, and preceded by a pause, when the step asked for them.
-  sub seekSettled(tracker as object, result as object, pauseNow as boolean)
-    if releaseHeldSeek(tracker, result) then return
-    tracker.phase = "ready"
-    if tracker.reportSeek then result.report = "ready"
-    result.pauseFirst = tracker.thenPause and pauseNow
-    result.showOsd = tracker.showOsd
-    tracker.reportSeek = false
-    tracker.thenPause = false
-    tracker.showOsd = false
-  end sub
-
-  ' Whether a seek that was in flight is over, the tracker having moved from `before` to `now`.
-  function seekEnded(before as string, now as string) as boolean
-    return pauseWaitsForSeek(before) and (now = "ready" or now = "rebuffering")
-  end function
-
-  ' Whether the viewer should take this member as paused, which the node's state alone does not say.
-  ' A drift correction's hold is not the viewer's pause, and a pause waiting on a seek's landing is
-  ' theirs though the node still plays. Their controls ask this, so a press means what they see.
-  ' @param nodeState - the Video node's `state`
-  ' @param correcting - a drift correction is under way
-  ' @param pauseWaiting - a pause waits on a seek's landing (the tracker's `showOsd`)
-  function pausedForViewer(nodeState as string, correcting as boolean, pauseWaiting as boolean) as boolean
-    if pauseWaiting then return true
-    if correcting then return false
-    return nodeState = "paused"
   end function
 
   ' --- units ---

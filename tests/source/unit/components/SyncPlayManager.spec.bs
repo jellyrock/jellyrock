@@ -7,8 +7,10 @@ namespace tests
 
   ' The coordinator node driven by frames on `frame`, as remoteDispatch writes them, and by
   ' playerEvent() as the host calls it. No player and no server: what is asserted is the state
-  ' the node publishes and the gates it applies before anything reaches a player.
-  @suite("SyncPlayManager - frames, published state, held commands and the halt")
+  ' the node publishes, the gates it applies before anything reaches a player, and the wiring
+  ' around the comparison (the models fed, the halt, the viewer's pause). The decisions themselves
+  ' are syncPlayConverge.spec.bs's and the simulator's.
+  @suite("SyncPlayManager - frames, published state, plays handed to the group and the halt")
   class SyncPlayManagerTests extends tests.BaseTestSuite
 
     private manager as object
@@ -33,9 +35,6 @@ namespace tests
       m.previousQueue = m.global.queueManager
       m.global.queueManager = CreateObject("roSGNode", "QueueManager")
       m.manager = CreateObject("roSGNode", "SyncPlayManager")
-      ' These cases are the manager's own engine's (its commands, tracker and corrections), and go
-      ' with it. The comparison's are SyncPlayManagerComparison.spec.bs and the pure specs.
-      m.manager.engine = "manager"
       m.isCapturingPosts = false
       m.previousTimeOffset = m.global.user.settings.playbackSyncPlayTimeOffsetMs
     end function
@@ -278,12 +277,15 @@ namespace tests
     @describe("Commands")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("a command before the clock offset is known is held, not applied")
+    @it("a command before the clock offset is known is taken by the group model at once")
     function _()
       m.joinGroup()
       m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }], PlayingItemIndex: 0, StartPositionTicks: 0 })
       m.manager.frame = m.command("Pause")
-      m.assertInvalid(m.manager.sync.lastCommand)
+      ' The group model knows nothing can be placed on the device clock before the first estimate
+      ' (syncPlayGroup.spec: "nothing is known before any command, or with no clock estimate").
+      m.assertEqual(m.manager.sync.lastCommand.command, "Pause")
+      m.assertFalse(m.manager.sync.hasEstimate)
     end function
 
     @it("the join sequence the 12.2 server sends (GroupJoined, a Stop, then the new queue) makes the queue's item the playing one")
@@ -330,25 +332,12 @@ namespace tests
       m.assertTrue(ret.following)
     end function
 
-    @it("a mount of the group's item while following starts the ready tracker")
+    @it("a mount of the group's item while following is a load, then ready at its first frame")
     function _()
       m.joinGroup()
       m.playGroupItem()
       m.manager.callFunc("playerEvent", { kind: "mounted" })
       m.assertEqual(m.manager.sync.trackerPhase, "loading")
-      m.manager.callFunc("playerEvent", { kind: "state", state: "playing", position: 12.5 })
-      m.assertEqual(m.manager.sync.trackerPhase, "ready")
-    end function
-
-    @it("a phase change that sends no report still reaches the published phase")
-    function _()
-      m.joinGroup()
-      m.playGroupItem()
-      m.manager.callFunc("playerEvent", { kind: "mounted" })
-      m.manager.callFunc("playerEvent", { kind: "state", state: "playing", position: 12.5 })
-      m.assertEqual(m.manager.sync.trackerPhase, "ready")
-      m.manager.callFunc("playerEvent", { kind: "state", state: "buffering", position: 12.5 })
-      m.assertEqual(m.manager.sync.trackerPhase, "stalling")
       m.manager.callFunc("playerEvent", { kind: "state", state: "playing", position: 12.5 })
       m.assertEqual(m.manager.sync.trackerPhase, "ready")
     end function
@@ -360,7 +349,6 @@ namespace tests
       ret = m.manager.callFunc("playerEvent", { kind: "mounted" })
       m.assertFalse(ret.following)
       m.assertTrue(m.manager.inGroup)
-      m.assertEqual(m.manager.sync.trackerPhase, "idle")
     end function
 
     @it("a mount while the group plays nothing halts too")
@@ -371,37 +359,14 @@ namespace tests
       m.assertFalse(m.manager.following)
     end function
 
-    ' A member past the first frame of the group's item, with a server so its reports post.
-    private function memberPastFirstFrame() as object
+    ' A member past the first frame of the group's item. No server: a report would start a request
+    ' no pool answers here.
+    private sub memberPastFirstFrame()
       m.joinGroup()
       m.playGroupItem()
-      m.enableServer()
-      posts = m.capturePosts()
       m.manager.callFunc("playerEvent", { kind: "mounted" })
       m.manager.callFunc("playerEvent", { kind: "state", state: "playing", position: 0.5 })
-      return posts
-    end function
-
-    private function reportsPosition(req as object, positionTicks as longinteger) as boolean
-      return req.body.instr(chr(34) + "PositionTicks" + chr(34) + ":" + positionTicks.toStr()) >= 0
-    end function
-
-    @it("a reload with no group clock reports Buffering at once and Ready at its start, though the node reads 0")
-    function _()
-      posts = m.memberPastFirstFrame()
-      ' No command since the mount: nothing says where the group is, so the reload's start does.
-      m.manager.callFunc("playerEvent", { kind: "reloaded", startSeconds: 58.5 })
-      buffering = m.lastPost(posts)
-      m.assertTrue(buffering.url.instr("/SyncPlay/Buffering") >= 0, "Buffering goes out at the reload")
-      m.assertTrue(m.reportsPosition(buffering, 585000000&), buffering.body)
-      m.assertEqual(m.manager.sync.trackerPhase, "loading")
-      m.manager.callFunc("playerEvent", { kind: "state", state: "stopped", position: 0 })
-      m.manager.callFunc("playerEvent", { kind: "state", state: "buffering", position: 0 })
-      m.manager.callFunc("playerEvent", { kind: "state", state: "playing", position: 0 })
-      ready = m.lastPost(posts)
-      m.assertTrue(ready.url.instr("/SyncPlay/Ready") >= 0, "Ready goes out at the reloaded stream's first frame")
-      m.assertTrue(m.reportsPosition(ready, 585000000&), ready.body)
-    end function
+    end sub
 
     @it("reloadStart: with no group clock a reload starts where the player would, and so does a halted member's")
     function _()
@@ -1133,33 +1098,6 @@ namespace tests
       m.assertEqual(posts.getChildCount(), 2)
     end function
 
-    @it("pause and unpause while following post Pause and Unpause with no body")
-    function _()
-      m.joinGroup()
-      m.playGroupItem()
-      m.enableServer()
-      posts = m.capturePosts()
-      m.assertTrue(m.manager.callFunc("control", { kind: "pause" }))
-      m.assertTrue(m.lastPost(posts).url.instr("/SyncPlay/Pause") >= 0)
-      m.assertTrue(m.manager.callFunc("control", { kind: "unpause" }))
-      m.assertTrue(m.lastPost(posts).url.instr("/SyncPlay/Unpause") >= 0)
-      m.assertEqual(posts.getChildCount(), 2)
-    end function
-
-    @it("a seek while following posts Seek with the position in ticks, as a LongInteger")
-    function _()
-      m.joinGroup()
-      m.playGroupItem()
-      m.enableServer()
-      posts = m.capturePosts()
-      m.assertTrue(m.manager.callFunc("control", { kind: "seek", position: 90.5 }))
-      last = m.lastPost(posts)
-      m.assertTrue(last.url.instr("/SyncPlay/Seek") >= 0)
-      m.assertEqual(last.body, FormatJson({ "PositionTicks": 905000000& }))
-      m.assertFalse(m.manager.callFunc("control", { kind: "seek" }))
-      m.assertEqual(posts.getChildCount(), 1)
-    end function
-
     @it("nothing is posted while halted")
     function _()
       m.haltWithServer()
@@ -1419,6 +1357,70 @@ namespace tests
       if reason = "SetCurrentItem" then return 0
       if reason = "Queue" then return 1
       return 2
+    end function
+
+    ' The member in a group that plays p1, with p1 as the local queue's current item.
+    private sub followGroupItem()
+      m.manager.frame = m.update("GroupJoined", { GroupId: "g1", GroupName: "Movie night", State: "Idle", Participants: ["ann"], LastUpdatedAt: "2026-10-23T20:47:20.500Z" })
+      m.manager.frame = m.update("PlayQueue", { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: [{ ItemId: "i1", PlaylistItemId: "p1" }], PlayingItemIndex: 0, StartPositionTicks: 0, IsPlaying: true, ShuffleMode: "Sorted", RepeatMode: "RepeatNone" })
+      m.global.queueManager.callFunc("set", [{ id: "i1", type: "Movie", syncPlayPlaylistItemId: "p1" }])
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("The comparison's wiring")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the tracker phase follows the player model")
+    function _()
+      m.followGroupItem()
+      m.assertEqual(m.manager.sync.trackerPhase, "idle")
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.assertEqual(m.manager.sync.trackerPhase, "loading")
+      m.manager.callFunc("playerEvent", { kind: "state", state: "playing", position: 0 })
+      ' A load from the item's start that the group waits on is paused at its first frame, with
+      ' no reading waited for, so the model leaves "landing" at once.
+      m.assertEqual(m.manager.sync.trackerPhase, "ready")
+      m.manager.callFunc("playerEvent", { kind: "position", position: 0.5 })
+      m.assertTrue(m.manager.following)
+    end function
+
+    @it("a player the viewer leaves halts the member, and one for another item halts at its mount")
+    function _()
+      m.followGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.assertTrue(m.manager.following)
+      m.manager.callFunc("playerEvent", { kind: "unmounted" })
+      m.assertFalse(m.manager.following)
+      m.assertTrue(m.manager.inGroup)
+    end function
+
+    ' The seek budget runs on the real clock (syncPlayTime.nowMs), so this case waits it out.
+    @it("a seek still buffering past its limit takes the slow-seek log path and the manager carries on")
+    function _()
+      m.followGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.manager.callFunc("playerEvent", { kind: "state", state: "playing", position: 0, isTranscoded: true })
+      m.manager.callFunc("playerEvent", { kind: "position", position: 1 })
+      m.manager.callFunc("playerEvent", { kind: "localSeek", position: 60 })
+      m.manager.callFunc("playerEvent", { kind: "state", state: "buffering", position: 60 })
+      m.assertEqual(m.manager.sync.trackerPhase, "seeking")
+      sleep(syncPlayPlayback.SEEK_SETTLE_MS + 200)
+      result = m.manager.callFunc("playerEvent", { kind: "state", state: "buffering", position: 60 })
+      m.assertTrue(result.following)
+      m.assertEqual(m.manager.sync.trackerPhase, "seeking")
+      m.assertTrue(m.manager.callFunc("seekInFlight"))
+    end function
+
+    @it("the viewer's pause with no way to ask the group is left to the player, as outside a group")
+    function _()
+      m.followGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.assertTrue(m.manager.callFunc("viewerPause"))
+    end function
+
+    @it("outside a group the viewer's pause is the player's own")
+    function _()
+      m.assertTrue(m.manager.callFunc("viewerPause"))
     end function
 
   end class

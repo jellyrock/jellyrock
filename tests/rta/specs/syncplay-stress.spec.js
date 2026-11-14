@@ -567,13 +567,9 @@ describe.skipIf(ROUNDS <= 0)('SyncPlay stress', () => {
         testCtx.skip(
           'the server has no command channel to this Roku (https without the companion plugin)',
         );
-      const engine = await getGlobalVal('syncPlayManager.sync.engine');
-      // The manager's own engine sends a Ready as a write nobody reads, so a lost one is never
-      // sent again: the step would only repeat that known gap, which the comparison closes. It
-      // runs there as the plain member Seek it is built on, so one seed gives both engines the
-      // same order of steps.
-      const drivenAs = (name) =>
-        name === 'lost-ready' && engine !== 'comparison' ? 'member-seek' : name;
+      // Every record names the engine, as the records did while the old engine ran as the soak's
+      // control: the saved records and their readers key on it.
+      const engine = 'comparison';
       // Named for its start time too: a second run of one seed must never replace the first's
       // record.
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -652,7 +648,7 @@ describe.skipIf(ROUNDS <= 0)('SyncPlay stress', () => {
           'the member at rest with the group before the first step',
         ).toBe('ok');
         for (let index = 0; index < ROUNDS && !hasStopped; index++) {
-          const name = drivenAs(nextStep(random, state));
+          const name = nextStep(random, state);
           const expected = MIX_STEPS[name].to;
           if (state === 'playing') {
             const position = (await playerPosition()) ?? 0;

@@ -86,6 +86,58 @@ namespace syncPlayConverge
     }
   end function
 
+  ' --- what the player reported ---
+
+  ' @param evt - a SyncPlayManager.playerEvent AA
+  ' @param loadStartTicks - where the load now starting was asked to start
+  sub playerFact(comparison as object, evt as object, loadStartTicks as longinteger, nowMs as longinteger)
+    player = comparison.player
+    kind = evt.kind
+    positionTicks& = 0&
+    if isValid(evt.position) then positionTicks& = syncPlayPlayback.secondsToTicks(evt.position)
+    ' Known before the state it comes with: a pause that arrives with the bar up is the scrub's.
+    if isValid(evt.scrubbing) then syncPlayPlayer.scrub(player, evt.scrubbing = true)
+    if kind = "mounted"
+      syncPlayPlayer.mounted(player, loadStartTicks, nowMs)
+    else if kind = "reloaded"
+      syncPlayPlayer.reloaded(player, syncPlayPlayback.secondsToTicks(evt.startSeconds), nowMs)
+    else if kind = "state"
+      if syncPlayTime.isText(evt.state) then syncPlayPlayer.nodeState(player, evt.state, nowMs)
+    else if kind = "position"
+      syncPlayPlayer.reading(player, positionTicks&, nowMs)
+    else if kind = "finished"
+      syncPlayPlayer.finished(player, nowMs)
+    else if kind = "unmounted"
+      syncPlayPlayer.unmounted(player, nowMs)
+    else if kind = "pauseWritten"
+      if not comparison.ownWrite then syncPlayPlayer.told(player, "pause", "viewer", invalid, nowMs)
+    else if kind = "localSeek"
+      syncPlayPlayer.told(player, "seek", "viewer", positionTicks&, nowMs)
+    end if
+  end sub
+
+  ' --- what the group said ---
+
+  sub groupStateChanged(comparison as object, current as string, estimator as object, nowMs as longinteger)
+    previous = comparison.groupState
+    comparison.groupState = current
+    if previous <> current then syncPlayGroup.stateChanged(comparison.group, previous, current, estimator, nowMs)
+  end sub
+
+  ' @param startsItem - the update starts this member on an item (syncPlayQueue.changesPlayingItem)
+  sub itemChanged(comparison as object, playingItemId as string, changedAtMs as longinteger, startsItem = false as boolean)
+    group = comparison.group
+    if startsItem then syncPlayGroup.playbackStarted(group)
+    if group.playingItemId = playingItemId and syncPlayTime.asLong(group.queueChangedAtMs) = changedAtMs then return
+    syncPlayGroup.itemChanged(group, playingItemId, changedAtMs)
+  end sub
+
+  ' A join or a leave: nothing of the last membership's playback carries over.
+  sub membershipChanged(comparison as object, groupState as string)
+    syncPlayGroup.reset(comparison.group)
+    comparison.groupState = groupState
+  end sub
+
   ' @param player - the syncPlayPlayer model
   ' @param group - the syncPlayGroup model
   ' @param ctx - { following, estimator, loadOwed, loadPending, isLastItem, durationSeconds,

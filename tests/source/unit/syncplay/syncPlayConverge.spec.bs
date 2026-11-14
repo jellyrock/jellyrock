@@ -1694,6 +1694,38 @@ namespace tests
       m.assertEqual(m.kindOf(m.decide(player, group, 10100&)), "")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("what the comparison is told")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the pause the player reports from inside the manager's own write is not the viewer's")
+    function _()
+      own = syncPlayConverge.newComparison()
+      syncPlayConverge.playerFact(own, { kind: "mounted" }, 0&, 100&)
+      syncPlayConverge.playerFact(own, { kind: "state", state: "playing" }, 0&, 900&)
+      syncPlayConverge.playerFact(own, { kind: "position", position: 65 }, 0&, 10000&)
+      syncPlayPlayer.told(own.player, "pause", "group", invalid, 10000&)
+      own.ownWrite = true
+      syncPlayConverge.playerFact(own, { kind: "pauseWritten" }, 0&, 10001&)
+      m.assertEqual(own.player.pauseOwner, "group")
+      viewer = syncPlayConverge.newComparison()
+      syncPlayConverge.playerFact(viewer, { kind: "mounted" }, 0&, 100&)
+      syncPlayConverge.playerFact(viewer, { kind: "state", state: "playing" }, 0&, 900&)
+      syncPlayConverge.playerFact(viewer, { kind: "position", position: 65 }, 0&, 10000&)
+      syncPlayConverge.playerFact(viewer, { kind: "pauseWritten" }, 0&, 10001&)
+      m.assertEqual(viewer.player.pauseOwner, "viewer")
+    end function
+
+    @it("a join or a leave forgets the last membership's item, and keeps the group state it was told")
+    function _()
+      comparison = syncPlayConverge.newComparison()
+      syncPlayConverge.itemChanged(comparison, "p-1", 1000&)
+      m.assertEqual(comparison.group.playingItemId, "p-1")
+      syncPlayConverge.membershipChanged(comparison, "Idle")
+      m.assertEqual(comparison.group.playingItemId, "")
+      m.assertEqual(comparison.groupState, "Idle")
+    end function
+
   end class
 
 end namespace

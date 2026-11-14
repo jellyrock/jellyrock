@@ -82,8 +82,6 @@ const setOffset = (value) =>
 const player = () => readPlayer(heroId);
 const playerState = () => player()('state');
 const playerPosition = () => player()('position');
-const setPlayerControl = (value) =>
-  odc.setValue({ base: 'scene', keyPath: `#${heroId}.control`, value });
 const waitLastCommand = (name) =>
   waitFor('syncPlayManager.sync.lastCommand.command', (v) => v === name, {
     read: getGlobalVal,
@@ -237,14 +235,6 @@ afterEach(async () => {
   await setOffset(0).catch(() => {});
 });
 
-/**
- * Skips a case that checks something only the manager's own engine does, when the comparison
- * decides this run (`SyncPlayManager.usesComparison()`, published as `sync.engine`).
- */
-const skipUnderComparison = async (testCtx, why) => {
-  if ((await getGlobalVal('syncPlayManager.sync.engine')) === 'comparison') testCtx.skip(why);
-};
-
 const skipWithoutPush = (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(
@@ -264,9 +254,9 @@ it('a group pause leaves the drift unknown, and a member ahead of the group land
   });
   await syncPlay(member, 'Unpause');
   await waitLastCommand('Unpause');
-  // The offset stays until the node plays, so it resumes early by the offset whichever engine
-  // decides: the comparison places the resume on the clock again at every event, and would
-  // resume on time if the offset were taken back before then.
+  // The offset stays until the node plays, so it resumes early by the offset: the comparison
+  // places the resume on the clock again at every event, and would resume on time if the offset
+  // were taken back before then.
   await waitPlaying();
   const correctionsBefore = await getGlobalVal('syncPlayManager.sync.correctionsDone');
   await setOffset(0);
@@ -340,92 +330,6 @@ it('pause rounds leave this member in step, with no correction', async (testCtx)
   expect(Math.abs(drift), 'the drift after the rounds').toBeLessThan(PAUSE_ROUND_DRIFT_MS);
 });
 
-it("a waiting Unpause gives up its shift when the pause's position is dropped", async (testCtx) => {
-  skipWithoutPush(testCtx);
-  // The comparison stores no shift: it works the resume moment out from the node's known position
-  // each time, which the pause rounds above cover. This case goes with the manager's own engine.
-  await skipUnderComparison(testCtx, 'the comparison keeps no resume shift to give up');
-  const changes = () => getGlobalVal('syncPlayManager.sync.resumeShiftChanges');
-  // The drop has to land while the Unpause waits for its time, about a second, and a pause that
-  // left no lead has no shift to give up: another round rather than a failure on either.
-  for (let attempt = 0; attempt < 5; attempt++) {
-    await syncPlay(member, 'Pause');
-    await waitPaused();
-    const before = await changes();
-    expect(typeof before, 'the shift changes count is published').toBe('number');
-    await syncPlay(member, 'Unpause');
-    const t0 = Date.now();
-    while (Date.now() - t0 < 3000) {
-      if ((await getGlobalVal('syncPlayManager.sync.lastCommand.command')) === 'Unpause') break;
-    }
-    // A pause written to a node already paused has no position to estimate, so it drops the one
-    // the group's Pause left.
-    await managerCall('playerEvent', { kind: 'pauseWritten' });
-    await waitPlaying();
-    if ((await changes()) > before) {
-      expect(
-        await getGlobalVal('syncPlayManager.sync.resumeShiftMs'),
-        'the Unpause applied unshifted',
-      ).toBe(0);
-      return;
-    }
-  }
-  throw new Error('no waiting Unpause had a shift to give up in five rounds');
-});
-
-it("a member's own stall recovery keeps its place, with the drift unknown until the group's next command", async (testCtx) => {
-  skipWithoutPush(testCtx);
-  // The stall here is staged: the node is paused by hand and the manager is told it buffers. The
-  // comparison's player model sees that pause and resumes the node before the staged report, so
-  // the case cannot run under it. A stall under the comparison is covered by its unit table and
-  // its simulator; a real stall on a device is still to be measured.
-  await skipUnderComparison(testCtx, 'the staged stall is a pause the comparison undoes');
-  // Twice the group's highest ping decides the server's recovery branch. A real client's ping sends
-  // the Unpause to the others alone, so this member's last command stays the one before the stall.
-  await syncPlay(member, 'Ping', { Ping: 20 });
-  const lastEmitted = () => getGlobalVal('syncPlayManager.sync.lastCommand.emittedAtMs');
-  const commandBeforeStall = await lastEmitted();
-  // The node stops moving, and the manager hears the buffering the host would pass on.
-  await setPlayerControl('pause');
-  const frozenAt = await playerPosition();
-  await managerCall('playerEvent', { kind: 'state', state: 'buffering', position: frozenAt });
-  await waitFor('syncPlayManager.sync.trackerPhase', (v) => v === 'rebuffering', {
-    read: getGlobalVal,
-    timeout: 5000,
-    label: 'the stall reported to the server',
-  });
-  // The group waits while the stall lasts: long enough that a wrong reading is seconds off.
-  const stalled = Date.now();
-  while (Date.now() - stalled < 3000) await playerPosition();
-  await setPlayerControl('resume');
-  await waitPlaying();
-  // Two notifications decide a correction: this outlasts them, the seek and its hold.
-  const positions = [];
-  const recovered = Date.now();
-  while (Date.now() - recovered < 6000) positions.push(await playerPosition());
-  const longestStep = Math.max(...positions.slice(1).map((p, i) => p - positions[i]));
-  expect(longestStep, 'no jump after the recovery').toBeLessThan(2);
-  // A server before 12.1 answers with a corrective Seek, a command that says where the group is.
-  const heardNoCommand = (await lastEmitted()) === commandBeforeStall;
-  const drift = await getGlobalVal('syncPlayManager.sync.playbackDiffMs');
-  if (heardNoCommand)
-    expect([undefined, null], 'no drift to read until the next command').toContain(drift);
-  // The server computes the group's position into its Pause, so that is the group's own word.
-  await syncPlay(member, 'Pause');
-  await waitLastCommand('Pause');
-  const groupAt =
-    Number(await getGlobalVal('syncPlayManager.sync.lastCommand.positionTicks')) / 10_000_000;
-  await waitPaused();
-  expect(
-    Math.abs((await playerPosition()) - groupAt),
-    "this member's distance from the group, in seconds",
-  ).toBeLessThan(1);
-  await syncPlay(member, 'Unpause');
-  await waitLastCommand('Unpause');
-  await waitPlaying();
-  await waitDriftInside();
-});
-
 it("the viewer's Play key during a correction's seek pauses the group at the landing, and a second press plays on", async (testCtx) => {
   skipWithoutPush(testCtx);
   // Three rounds: the press can land while the node still reads `playing` or once it buffers.
@@ -489,7 +393,7 @@ it('a resume that seeks reports no stall, so the group does not wait', async (te
   };
   await setOffset(RESUME_SEEKS_OFFSET_MS);
   // Sampled from the offset on: the comparison judges the drift at every reading and seeks at
-  // once, where the manager's own engine waits for the next resume.
+  // once.
   await sampleFor(5000);
   for (let round = 0; round < 4; round++) {
     await syncPlay(member, 'Pause');

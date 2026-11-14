@@ -848,9 +848,9 @@ end sub
 sub reloadInPlace(startTicks as dynamic, audioIndex as integer, subtitleIndex as integer)
   if isValid(startTicks) then m.global.queueManager.callFunc("setCurrentStartingPoint", startTicks, true)
   ' A group hears of it before the stop, so its Buffering goes out now and the stop's own states
-  ' reach a tracker that is already loading. Before the first frame the tracker is still loading
-  ' from the start the load began with, and the server holds its Buffering, so there is nothing to
-  ' tell (syncPlayPlayback.trackPlayerEvent).
+  ' reach a player model that is already loading. Before the first frame the model is still
+  ' loading from the start the load began with, and the server holds its Buffering, so there is
+  ' nothing to tell (syncPlayPlayer.reloaded).
   if m.hasStreamPlayed and isValid(startTicks) then syncPlayHooks.notify({ kind: "reloaded", startSeconds: startTicks / 10000000# })
   m.hasStreamPlayed = false
   ' A stop can surface as `finished`: PlayerHostView must not advance or exit on it.
@@ -3211,7 +3211,7 @@ function handleTransport(evt as object) as object
       return { status: "success" }
     end if
     ' A SyncPlay group's pause is this viewer's pause too, so it shows the OSD as the Play key
-    ' does (syncPlayPlayback.applyPlan marks the verb), even on a node already paused for the group.
+    ' does (the comparison's pause action marks the verb), even on a node already paused for the group.
     if evt.showOsd = true then showPausedOsd()
     if m.top.state = "paused" then return { status: "error.redundant" }
     writeGroupTimedPause()

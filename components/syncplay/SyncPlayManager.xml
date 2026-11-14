@@ -2,9 +2,9 @@
 <!--
   SyncPlayManager: the SyncPlay coordinator, one instance on m.global.syncPlayManager, created
   by setGlobalNodes(). Render-thread owned, so the player, the host and the queue are cheap to
-  reach and a Timer fires where the command is applied. It holds the membership state
-  (syncPlayState), the clock-offset estimate (syncPlayOffset) and the ready tracker
-  (syncPlayPlayback); frames arrive on `frame` from remoteDispatch.dispatchSyncPlay on the main
+  reach and a Timer fires where an action is carried out. It holds the membership state
+  (syncPlayState), the clock-offset estimate (syncPlayOffset) and the comparison's two models
+  (syncPlayConverge); frames arrive on `frame` from remoteDispatch.dispatchSyncPlay on the main
   thread, and player events arrive through playerEvent() from PlayerHostView and VideoPlayerView.
 -->
 <component name="SyncPlayManager" extends="Node">
@@ -27,8 +27,8 @@
     <field id="groupState" type="string" value="" />
     <!-- { offsetMs, delayMs, hasEstimate, lastCommand, trackerPhase, playingItemId, playingItemIndex,
          playlistCount, loadNotice, playbackDiffMs (how far behind the group this member sits, ms, invalid
-         until an Unpause is in force; refreshed at each position notification in RTA builds only, otherwise whenever something else publishes), extraOffsetMs (the
-         viewer's time offset setting), loadCount (the loads performed for queue frames, a monotonic count), correctionsDone (the drift corrections that ran to their resume, a monotonic count), groupSeeks (the Seek commands the group sent while this member followed, a monotonic count), readiesSent (the Ready reports this member sent, a monotonic count), repeatMode and shuffleMode (the group's, in the server's words,
+         unless the node plays with a measured position and the group plays; refreshed after every event in RTA builds only, otherwise whenever something else publishes), extraOffsetMs (the
+         viewer's time offset setting), loadCount (the loads performed for queue frames, a monotonic count), correctionsDone (the corrections of this member's own that ended, a monotonic count), groupSeeks (the Seek commands the group sent while this member followed, a monotonic count), readiesSent (the Ready reports this member sent, a monotonic count), repeatMode and shuffleMode (the group's, in the server's words,
          from the last queue update) } -->
     <field id="sync" type="assocarray" />
     <!-- Something the viewer is told: { kind, groupName, userName }; a confirmPlay notice also
@@ -38,9 +38,6 @@
          (GroupDoesNotExist, LibraryAccessDenied, CreateGroupDenied, JoinGroupDenied). JRScene
          turns it into a toast; the manager holds no translation. alwaysNotify: two notices of
          one kind in a row are two. -->
-    <!-- "comparison" or "manager" picks the engine for this node (usesComparison): an RTA run and
-         a unit spec set it; empty leaves the build's own. Set before joining a group. -->
-    <field id="engine" type="string" value="" />
     <field id="notice" type="assocarray" alwaysNotify="true" />
 
     <!-- POST /SyncPlay/Join { GroupId }: the GroupJoined frame confirms it. -->
@@ -102,18 +99,8 @@
     <function name="seekInFlight" />
   </interface>
   <children>
-    <!-- The one scheduled command: a new command replaces a pending one. -->
-    <Timer id="commandTimer" repeat="false" />
     <!-- The next time-sync burst while in a group. -->
     <Timer id="syncTimer" repeat="false" />
-    <!-- The seek-settle budget: Ready goes out with the position in hand when it fires. -->
-    <Timer id="readyTimer" repeat="false" />
-    <!-- Confirms a pause took while the group is paused: re-pauses a player that plays on. -->
-    <Timer id="pauseTimer" repeat="false" />
-    <!-- A drift correction's resume: fires when the group reaches where the member paused, after
-         a seek ahead when it was behind (syncPlayPlayback.correctionPlan). Until the node reports
-         `paused`, it ends a correction whose pause never lands. -->
-    <Timer id="correctionTimer" repeat="false" />
     <!-- The comparison's one timer: the next moment it has something to decide (converge). -->
     <Timer id="convergeTimer" repeat="false" />
   </children>
