@@ -285,10 +285,10 @@ namespace syncPlayConverge
           end if
           resumeAt& = reach&
         else
-          resumeAt& -= syncPlayTime.asLong(player.resumeLagMs)
+          resumeAt& -= lateLagMs(player)
         end if
       else
-        resumeAt& -= syncPlayTime.asLong(player.resumeLagMs)
+        resumeAt& -= lateLagMs(player)
       end if
       ' A resume takes effect late by a lag the player model learns, so it is written that early;
       ' for a node that runs on past its stop the lag is below zero, and it is written later.
@@ -333,6 +333,15 @@ namespace syncPlayConverge
     ' long film.
     if group.catchUps > 0 or group.holds > 0 then return { kind: "inStep" }
     return invalid
+  end function
+
+  ' The learned lag for a resume with no known stop behind it: never below zero. A lag below
+  ' zero says the node stood past the stop the model took, which only moves a resume timed
+  ' from that stop. Applied to "now", it would put the resume off again at every look, for good.
+  function lateLagMs(player as object) as longinteger
+    lag& = syncPlayTime.asLong(player.resumeLagMs)
+    if lag& < 0 then return 0&
+    return lag&
   end function
 
   ' Where to seek a node that reads playing and takes no pause: the point the group stands at,

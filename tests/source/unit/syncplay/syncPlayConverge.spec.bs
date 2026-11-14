@@ -1344,6 +1344,24 @@ namespace tests
       m.assertEqual(m.kindOf(m.decide(player, m.playingLine(), 10450&)), "resume")
     end function
 
+    @it("a node paused where the model does not know resumes on time, whatever lag was learned")
+    function _()
+      ' No stop is known, so a lag below zero (a node that runs on past its stop) says nothing:
+      ' the resume is never put off by it.
+      player = m.pausedAt(m.at65s, "wait")
+      syncPlayPlayer.nodeState(player, "playing", 9940&)
+      syncPlayPlayer.nodeState(player, "paused", 9950&)
+      m.assertInvalid(syncPlayPlayer.positionAt(player, 10000&))
+      player.resumeLagMs = -180&
+      m.assertEqual(m.kindOf(m.decide(player, m.playingLine(), 10000&)), "resume")
+      ' And for a group about to play: at the Unpause's time, not after it.
+      soon = m.groupWith(m.cmd("Unpause", 11500&, m.at60s))
+      waiting = m.decide(player, soon, 10000&)
+      m.assertEqual(m.kindOf(waiting), "")
+      m.assertEqual(waiting.wakeAtMs, 10500&)
+      m.assertEqual(m.kindOf(m.decide(player, soon, 10500&)), "resume")
+    end function
+
     @it("a node a little behind resumes now")
     function _()
       m.assertEqual(m.kindOf(m.decide(m.pausedAt(m.at65s - 200 * m.oneMs, "group"), m.playingLine(), 10000&)), "resume")
