@@ -5,6 +5,8 @@
  *   npm run translations:seed -- --write               apply it to locale/custom/
  *   npm run translations:seed -- suggest [--key K…]    candidate source keys for unmapped keys
  *   npm run translations:seed -- suggest --rank [--limit N]   the same, ranked by cells each would fill
+ *     add --show fr,de,…   to print each candidate's own translations in those locales
+ *   npm run translations:seed -- context --source S --key K…   where source S's code uses key K
  *
  * ## Why a reviewed map, not English-text matching
  *
@@ -299,27 +301,32 @@ function sparsePatterns(source) {
  * Refuses when the tag no longer points at the pinned commit: a moved tag is a
  * different input, and the map was reviewed against the old one.
  */
+/** Refuse a source whose `ref` no longer points at its pinned commit. */
+function verifyPin(source) {
+  const remote = git([
+    'ls-remote',
+    source.repo,
+    `refs/tags/${source.ref}`,
+    `refs/tags/${source.ref}^{}`,
+    `refs/heads/${source.ref}`,
+  ]);
+  const shas = remote
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => line.split('\t')[0]);
+  if (!shas.includes(source.commit)) {
+    throw new SeedConfigError(
+      `${source.id}: ${source.ref} does not point at the pinned commit ${source.commit} ` +
+        `(remote has ${shas.join(', ') || 'nothing'}). Re-pin it in ${SOURCES_REL} and re-review.`,
+    );
+  }
+}
+
 export function fetchSource(source, cacheDir) {
   const dir = path.join(cacheDir, `${source.id}-${source.commit.slice(0, 12)}`);
   const marker = path.join(dir, '.seed-complete');
   if (!existsSync(marker)) {
-    const remote = git([
-      'ls-remote',
-      source.repo,
-      `refs/tags/${source.ref}`,
-      `refs/tags/${source.ref}^{}`,
-      `refs/heads/${source.ref}`,
-    ]);
-    const shas = remote
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => line.split('\t')[0]);
-    if (!shas.includes(source.commit)) {
-      throw new SeedConfigError(
-        `${source.id}: ${source.ref} does not point at the pinned commit ${source.commit} ` +
-          `(remote has ${shas.join(', ') || 'nothing'}). Re-pin it in ${SOURCES_REL} and re-review.`,
-      );
-    }
+    verifyPin(source);
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
     git(['init', '-q', dir]);
@@ -333,6 +340,55 @@ export function fetchSource(source, cacheDir) {
 }
 
 /** Throw unless the LICENSE file says what the config claims. */
+/**
+ * A full shallow checkout of a source at its pinned commit, for reading its code.
+ * The seed cache holds only string files, but whether a source key means what a
+ * JellyRock key means sometimes shows only where the source uses it. Kept apart
+ * from the seed cache, and fetched only when `context` asks.
+ */
+export function fetchSourceCode(source, cacheDir) {
+  const dir = path.join(cacheDir, `${source.id}-${source.commit.slice(0, 12)}-code`);
+  const marker = path.join(dir, '.seed-complete');
+  if (!existsSync(marker)) {
+    verifyPin(source);
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    git(['init', '-q', dir]);
+    git(['-C', dir, 'remote', 'add', 'origin', source.repo]);
+    git(['-C', dir, 'fetch', '-q', '--depth', '1', 'origin', source.commit]);
+    git(['-C', dir, 'checkout', '-q', 'FETCH_HEAD']);
+    writeFileSync(marker, `${source.commit}\n`);
+  }
+  return dir;
+}
+
+/**
+ * Where a source's code uses `key`: `git grep` for the key as a whole word,
+ * outside the source's string files. At most `max` lines, each `path:line: text`
+ * with the text trimmed. An empty result means the key appears nowhere else, which
+ * is itself worth reporting (a key built at runtime, or an unused one).
+ */
+export function findKeyUsages(dir, source, key, { max = 8 } = {}) {
+  const exclude = [source.english, source.translations.replace('{locale}', '*')].map(
+    (p) => `:(exclude,glob)${p}`,
+  );
+  let out;
+  try {
+    out = git(['-C', dir, 'grep', '-n', '-I', '-F', '-w', '-e', key, '--', '.', ...exclude]);
+  } catch (e) {
+    if (e.status === 1) return []; // git grep exits 1 on no match
+    throw e;
+  }
+  return out
+    .split('\n')
+    .filter(Boolean)
+    .slice(0, max)
+    .map((line) => {
+      const [file, n, ...text] = line.split(':');
+      return `${file}:${n}: ${text.join(':').trim().slice(0, 160)}`;
+    });
+}
+
 export function verifyLicense(source, dir) {
   const file = path.join(dir, source.licenseFile);
   if (!existsSync(file))
@@ -826,6 +882,25 @@ function formatRanking(ranked, { results, limit }) {
   );
 }
 
+/**
+ * Each candidate's own translations in `show` locales, for judging its meaning:
+ * web's MediaInfoChannels was caught by its French value ("Chaînes", TV channels).
+ */
+export function candidateValues(results, sources, show) {
+  const byId = Object.fromEntries(sources.map((src) => [src.id, src]));
+  return results.map((r) => ({
+    ...r,
+    candidates: r.candidates.map((c) => ({
+      ...c,
+      values: Object.fromEntries(
+        show
+          .map((l) => [l, byId[c.source]?.loaded.translations[l]?.[c.key]])
+          .filter(([, v]) => v !== undefined),
+      ),
+    })),
+  }));
+}
+
 function formatSuggestions(results) {
   const lines = [
     '# Candidates by normalized English. Review MEANING and SHAPE in context before accepting.',
@@ -849,6 +924,9 @@ function formatSuggestions(results) {
       lines.push(
         `${prefix}${c.source}: { key: ${JSON.stringify(c.key)}, en: ${JSON.stringify(c.en)} }  # fills ${c.fills}`,
       );
+      const shown = Object.entries(c.values ?? {});
+      if (shown.length)
+        lines.push(`  #     ${shown.map(([l, v]) => `${l}: ${JSON.stringify(v)}`).join('  ')}`);
     }
     lines.push('');
   }
@@ -865,6 +943,7 @@ function parseArgs(argv) {
     keys: [],
     rank: false,
     limit: null,
+    show: [],
     summaryFile: null,
     localeDir: null,
     sources: null,
@@ -877,10 +956,12 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === 'suggest') args.mode = 'suggest';
+    else if (a === 'context') args.mode = 'context';
     else if (a === '--write') args.write = true;
     else if (a === '--verbose') args.verbose = true;
     else if (a === '--key') args.keys.push(value(++i, a));
     else if (a === '--rank') args.rank = true;
+    else if (a === '--show') args.show.push(...value(++i, a).split(','));
     else if (a === '--limit') {
       args.limit = Number(value(++i, a));
       if (!Number.isInteger(args.limit) || args.limit < 1)
@@ -919,12 +1000,31 @@ function main(argv) {
   let args;
   try {
     args = parseArgs(argv);
+    if (args.mode === 'context') {
+      if (args.sources?.length !== 1 || !args.keys.length)
+        throw new SeedConfigError('context needs one --source and at least one --key');
+      const sourcesConfig = parseSources(readFileSync(path.join(rootDir, SOURCES_REL), 'utf8'));
+      const source = sourcesConfig.find((s) => s.id === args.sources[0]);
+      if (!source) throw new SeedConfigError(`unknown source "${args.sources[0]}"`);
+      const dir = fetchSourceCode(source, path.join(rootDir, CACHE_REL));
+      for (const key of args.keys) {
+        const usages = findKeyUsages(dir, source, key);
+        console.log(`${source.id}@${source.ref} ${key}:`);
+        console.log(
+          usages.length
+            ? usages.map((u) => `  ${u}`).join('\n')
+            : '  (no use outside the string files)',
+        );
+      }
+      return;
+    }
     const { keymap, locales, sources, ledger, localeDir } = loadEverything({
       localeDir: args.localeDir,
       only: args.sources,
     });
     if (args.mode === 'suggest') {
-      const results = suggest({ locales, sources, keymap, keys: args.keys });
+      const found = suggest({ locales, sources, keymap, keys: args.keys });
+      const results = args.show.length ? candidateValues(found, sources, args.show) : found;
       if (args.rank) {
         const ranked = rankSuggestions({ results, locales, sources, keymap, ledger });
         console.log(formatRanking(ranked, { results, limit: args.limit }));
@@ -933,7 +1033,8 @@ function main(argv) {
       }
       return;
     }
-    if (args.rank || args.limit) throw new SeedConfigError('--rank and --limit go with suggest');
+    if (args.rank || args.limit || args.show.length)
+      throw new SeedConfigError('--rank, --limit and --show go with suggest');
     const plan = planSeed({ locales, sources, keymap, ledger });
     console.log(formatReport({ plan, locales, sources, verbose: args.verbose }));
     if (args.summaryFile)

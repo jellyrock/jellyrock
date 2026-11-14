@@ -21,11 +21,16 @@ import {
   rejectReason,
   SeedConfigError,
   serializeLedger,
+  candidateValues,
+  fetchSourceCode,
+  findKeyUsages,
   rankSuggestions,
   suggest,
   verifyLicense,
 } from '../../../scripts/translations-seed.js';
 import { spawnScript } from './_helpers/spawn-script.js';
+import { gitSafeEnv } from './_helpers/git-env.js';
+import { execFileSync } from 'node:child_process';
 
 const SHA = 'a'.repeat(40);
 
@@ -496,6 +501,90 @@ describe('rankSuggestions', () => {
       ['LabelHello', 2],
       ['LabelActor', 1],
     ]);
+  });
+});
+
+describe('candidateValues', () => {
+  it("adds each candidate's own translations in the asked locales, skipping missing ones", () => {
+    const results = [
+      {
+        key: 'LabelActor',
+        en: 'Actor',
+        candidates: [{ source: 'web', key: 'Actor', en: 'Actor', fills: 2 }],
+      },
+    ];
+    const [r] = candidateValues(results, [web], ['fr', 'nl', 'de']);
+    expect(r.candidates[0].values).toEqual({ fr: 'Acteur', de: 'Schauspieler' });
+  });
+});
+
+describe('source code context', () => {
+  // A local repository stands in for a source: a strings file, its translations,
+  // and code that uses the keys.
+  function fakeSourceRepo() {
+    const repo = mkdtempSync(join(tmpdir(), 'jellyrock-seed-src-'));
+    const run = (...args) =>
+      execFileSync('git', args, { cwd: repo, env: gitSafeEnv(), encoding: 'utf8' }).trim();
+    run('init', '-q', '--initial-branch=main');
+    run('config', 'user.name', 'Test');
+    run('config', 'user.email', 'test@example.com');
+    run('config', 'commit.gpgsign', 'false');
+    mkdirSync(join(repo, 'strings'), { recursive: true });
+    mkdirSync(join(repo, 'src'), { recursive: true });
+    writeFileSync(join(repo, 'strings/en.json'), '{"AddedOn": "Added {0}", "AddedOnLong": "x"}\n');
+    writeFileSync(join(repo, 'strings/fr.json'), '{"AddedOn": "Ajouté le {0}"}\n');
+    writeFileSync(
+      join(repo, 'src/info.js'),
+      "show(translate('AddedOn', date));\nshow(translate('AddedOnLong'));\n",
+    );
+    run('add', '-A');
+    run('commit', '-q', '-m', 'init');
+    run('tag', 'v1');
+    return { repo, commit: run('rev-parse', 'HEAD') };
+  }
+
+  it('finds where the code uses a key, as a whole word, outside the string files', () => {
+    const { repo, commit } = fakeSourceRepo();
+    const cache = mkdtempSync(join(tmpdir(), 'jellyrock-seed-cache-'));
+    try {
+      const cfg = {
+        id: 'fake',
+        repo,
+        ref: 'v1',
+        commit,
+        english: 'strings/en.json',
+        translations: 'strings/{locale}.json',
+      };
+      const dir = fetchSourceCode(cfg, cache);
+      expect(findKeyUsages(dir, cfg, 'AddedOn')).toEqual([
+        "src/info.js:1: show(translate('AddedOn', date));",
+      ]);
+      expect(findKeyUsages(dir, cfg, 'NotUsed')).toEqual([]);
+      // A second call reuses the checkout instead of fetching again.
+      expect(fetchSourceCode(cfg, cache)).toBe(dir);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+      rmSync(cache, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses a source whose ref has moved off its pinned commit', () => {
+    const { repo } = fakeSourceRepo();
+    const cache = mkdtempSync(join(tmpdir(), 'jellyrock-seed-cache-'));
+    try {
+      const cfg = {
+        id: 'fake',
+        repo,
+        ref: 'v1',
+        commit: 'b'.repeat(40),
+        english: 'strings/en.json',
+        translations: 'strings/{locale}.json',
+      };
+      expect(() => fetchSourceCode(cfg, cache)).toThrow(/does not point at the pinned commit/);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+      rmSync(cache, { recursive: true, force: true });
+    }
   });
 });
 

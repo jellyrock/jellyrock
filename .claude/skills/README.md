@@ -59,6 +59,7 @@ Each runs end to end in the main conversation on opus, with the user in the loop
 | [`/new-migration`](new-migration/SKILL.md) | sonnet | [`docs/dev/registry-migrations.md`](../../docs/dev/registry-migrations.md) |
 | [`/new-api-version`](new-api-version/SKILL.md) | sonnet | [`docs/dev/jellyfin-server-versioning.md`](../../docs/dev/jellyfin-server-versioning.md#add-an-api-tier): a new API tier, after `/server-upgrade` finds a breaking shift |
 | [`/translation-add`](translation-add/SKILL.md) | sonnet | [`locale/CLAUDE.md`](../../locale/CLAUDE.md) and [`docs/dev/translations.md`](../../docs/dev/translations.md) |
+| [`/translation-import`](translation-import/SKILL.md) | opus | [`docs/dev/translations.md`](../../docs/dev/translations.md#map-a-key) and [`locale/seed/keymap.yml`](../../locale/seed/keymap.yml) |
 
 ## Agents
 
