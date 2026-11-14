@@ -506,7 +506,7 @@ namespace syncPlayConverge
       if activity = "paused"
         ' A node its seeks left short of the group's point asks the group to come to where it
         ' stands, and holds its Ready while that ask is answered.
-        landing = landingAsk(player, group, want, ctx, policy, nowMs, result)
+        landing = landingAsk(player, group, want, ctx, policy, nowMs)
         if isValid(landing) then return landing
         if awaitsLandingAnswer(group, policy, nowMs, result) then return invalid
         return { kind: "report", what: "ready", positionTicks: readyTicks(player, want, policy, nowMs), isPlaying: false }
@@ -543,7 +543,7 @@ namespace syncPlayConverge
   ' stands: the server sends every member a Seek there, and this node is already at it. One ask
   ' per wait, made whole when the group plays again, so two members whose sync frames differ
   ' cannot pull the group back in turns while it waits, and the next seek gets an ask of its own.
-  function landingAsk(player as object, group as object, want as object, ctx as object, policy as object, nowMs as longinteger, result as object) as dynamic
+  function landingAsk(player as object, group as object, want as object, ctx as object, policy as object, nowMs as longinteger) as dynamic
     if group.landingAsked or group.ask.state = "flight" then return invalid
     if not isValid(want.pointTicks) or not standsAtCommand(group) then return invalid
     point& = syncPlayTime.asLong(want.pointTicks)
