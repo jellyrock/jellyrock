@@ -1419,6 +1419,8 @@ Options: `remote` (the operator presses Up and Play on the Ultra's own remote du
 
 Not checked: whether the physical remote works during playback on the Ultra; whether playback specs outside SyncPlay fail the same way there; whether it is the OS version or the model; whether the same specs still pass on the Stick 4K today.
 
+**The low-end Stick too, 2026-11-13, outside any group.** In plain playback of a direct-play movie, ECP Right, Right, Fwd, Left and OK each did nothing: no scrub bar, no OSD, the node stayed `playing`, and the Back after each did not leave the player (a throwaway probe; its spec is in the SyncPlay project's spikes). So the second shape is not the Ultra's alone, and not specific to SyncPlay. The same keys reached the player on the Stick 4K the same day. Still not checked: the physical remote on either device.
+
 #### Exercise `scripts/capture-screenshots.js` and `tests/rta/demos/run.mjs` on hardware against the new `lib/registry.js` snapshot/restore. `[fid: capture-screenshots-demos-registry-hardware]` `[captured 2026-08-10]`
 
 Both were migrated off the removed `snapshotSession`/`restoreSession` pair and their imports verified statically, but neither was RUN this session — a screenshot matrix is ~15 min × 5 locales and the demo runner needs an operator at its stop gate. They keep the in-process `armRestoreOnInterrupt` path, which is correct for main-process scripts (nothing else installs an exiting SIGINT handler there) but is now the only interrupt path not proven end-to-end; `scripts/rta-run.js`'s parent-owned path was verified on `.178` 2026-08-10.
