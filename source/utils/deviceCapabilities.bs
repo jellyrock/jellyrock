@@ -1041,6 +1041,8 @@ function getCodecProfiles(caps = invalid as dynamic) as object
   ' Roku's player can't switch audio inside an MP4, MOV or M4V: it lists no tracks and ignores
   ' audioTrack. Declaring a secondary track unplayable makes the server remux a pick that is not
   ' the file's first track, so the stream carries it. MKV switches natively and stays out.
+  ' Jellyfin 10.8.9 and later count the first embedded track as primary. Older servers count the
+  ' first track flagged default, so a file whose default is a later track still direct-plays it.
   codecProfiles.push({
     "Type": "VideoAudio",
     "Container": getMp4FamilyContainers(),

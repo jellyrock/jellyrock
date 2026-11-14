@@ -810,7 +810,7 @@ sub onAudioIndexChange()
 
   ' Transcoded, an MP4-family file, or stream not direct-playable: must reload
   if isTrackPickAgainstOldVersion() then return
-  m.log.info("Audio change requires reload", "isTranscoded", m.top.isTranscoded)
+  m.log.info("Audio change requires reload", "isTranscoded", m.top.isTranscoded, "container", playedContainer)
 
   reloadAtCurrentPosition()
 end sub

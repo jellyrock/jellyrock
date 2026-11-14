@@ -383,8 +383,9 @@ function streamsOfType(streams as dynamic, streamType as string) as object
   return found
 end function
 
-' The first stream that is in the file itself, or invalid. Jellyfin counts a file's first audio
-' track the same way (MediaSourceInfo.IsSecondaryAudio skips external streams).
+' The first stream that is in the file itself, or invalid. Roku plays this track in an MP4-family
+' file on every server version. Jellyfin 10.8.9 and later count a file's first audio track the
+' same way (MediaSourceInfo.IsSecondaryAudio skips external streams).
 function firstEmbeddedStream(streams as object) as dynamic
   for each stream in streams
     if not isBooleanTrue(stream.IsExternal) then return stream
