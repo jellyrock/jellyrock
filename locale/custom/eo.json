@@ -215,14 +215,14 @@
   "LanguageVi": "vjetnama",
   "LanguageZh": "ĉina",
   "LanguageZu": "zulua",
-  "MessageDirectedBy1": "Reĝisorita de {0}",
-  "MessageDisc1": "Diskedo {0}",
-  "MessageEndsAt1": "Finiĝas je {0}",
-  "MessageMoreFrom1": "Pli de {0}",
+  "MessageDirectedBy": "Reĝisorita de {0}",
+  "MessageDisc": "Diskedo {0}",
+  "MessageEndsAt": "Finiĝas je {0}",
+  "MessageMoreFrom": "Pli de {0}",
   "MessageSearchNoResults": "Neniuj rezultoj.",
-  "MessageSetTheMaximumAmountOfDays": "Starigi la maksimuman kvanton da tagoj, kiam serio devas resti en la listo de \"Sekva Plue\" sen spekti ĝin.",
   "MessageSyncPlayCreateGroupDenied": "Permeso necesa por krei grupon.",
   "MessageSyncPlayLibraryAccessDenied": "Aliro al ĉi tiu enhavo estas limigita.",
   "MessageSyncPlayUserJoined": "{0} aliĝis al la grupo.",
-  "MessageSyncPlayUserLeft": "{0} forlasis la grupon."
+  "MessageSyncPlayUserLeft": "{0} forlasis la grupon.",
+  "SettingDescMaxDaysNextUp": "Starigi la maksimuman kvanton da tagoj, kiam serio devas resti en la listo de \"Sekva Plue\" sen spekti ĝin."
 }

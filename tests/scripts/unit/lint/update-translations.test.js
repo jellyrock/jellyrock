@@ -6,8 +6,11 @@
 // mode) the post-run state of mutated files.
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { gitSafeEnv } from '../_helpers/git-env.js';
 import { spawnScript } from '../_helpers/spawn-script.js';
 import { createLocaleFixture } from '../_helpers/temp-locale-fixture.js';
 
@@ -28,6 +31,60 @@ function readJson(dir, relPath) {
 
 function readText(dir, relPath) {
   return readFileSync(join(dir, relPath), 'utf8');
+}
+
+const git = (cwd, ...args) =>
+  execFileSync('git', args, { cwd, encoding: 'utf8', env: gitSafeEnv() }).trim();
+
+const tempDirs = [];
+afterEach(() => {
+  for (const d of tempDirs.splice(0)) rmSync(d, { recursive: true, force: true });
+});
+
+function tempDir() {
+  const d = mkdtempSync(join(tmpdir(), 'jellyrock-weblate-'));
+  tempDirs.push(d);
+  return d;
+}
+
+function identify(dir, name) {
+  git(dir, 'config', 'user.name', name);
+  git(dir, 'config', 'user.email', 'test@example.com');
+  git(dir, 'config', 'commit.gpgsign', 'false');
+}
+
+/**
+ * Make the fixture a checkout whose origin's weblate branch holds release v1.0.0 of
+ * its files, as release prep's push-back leaves it. `weblateEdits` ({ locale: { key:
+ * value } }) are then committed to weblate, as translators working since the release.
+ */
+function releaseToWeblate(dir, weblateEdits = {}) {
+  const origin = tempDir();
+  git(origin, 'init', '--quiet', '--bare');
+  git(dir, 'init', '--quiet', '--initial-branch=main');
+  identify(dir, 'Test');
+  git(dir, 'add', '-A');
+  git(dir, 'commit', '--quiet', '-m', 'release', '-m', 'Translations-Release: 1.0.0');
+  git(dir, 'tag', 'v1.0.0');
+  git(dir, 'remote', 'add', 'origin', origin);
+  git(dir, 'push', '--quiet', 'origin', 'HEAD:refs/heads/weblate');
+  if (Object.keys(weblateEdits).length === 0) return;
+  const w = tempDir();
+  git(w, 'clone', '--quiet', '--branch', 'weblate', origin, '.');
+  identify(w, 'Weblate');
+  for (const [locale, edits] of Object.entries(weblateEdits)) {
+    const file = join(w, `locale/custom/${locale}.json`);
+    let current = {};
+    try {
+      current = JSON.parse(readFileSync(file, 'utf8'));
+    } catch {
+      // a locale Weblate starts translating after the release
+    }
+    writeFileSync(file, JSON.stringify({ ...current, ...edits }, null, 2) + '\n');
+  }
+  git(w, 'add', '-A');
+  git(w, 'commit', '--quiet', '-m', 'Translated using Weblate');
+  git(w, 'push', '--quiet', 'origin', 'weblate');
 }
 
 describe('update-translations.cjs', () => {
@@ -237,6 +294,194 @@ describe('update-translations.cjs', () => {
       expect(second.exitCode).toBe(0);
       expect(readText(fixture.dir, 'locale/custom/en_US.json')).toBe(enUsAfterFirst);
       expect(readText(fixture.dir, 'locale/languages.json')).toBe(langsAfterFirst);
+    });
+  });
+
+  // --------------------------------------------------------------------
+  // --rename
+  // --------------------------------------------------------------------
+
+  describe('--rename', () => {
+    const RENAME_SOURCE = {
+      'source/main.bs':
+        'sub init()\n  translate(translationKeys.Hello)\n  translate(translationKeys.World)\n  translate(translationKeys.World2)\nend sub\n',
+      'tests/source/unit/main.spec.bs': 'm.assertEqual(x, translate(translationKeys.World))\n',
+      'docs/note.md': 'The World key is shown on the home screen.\n',
+      'locale/seed/keymap.yml':
+        'World:\n  en: World\n  from:\n    web: { key: World, en: World }\n',
+      'locale/seed/seeded.json': { fr: { World: 'web@abc' } },
+      'settings/settings.json': [{ titleKey: 'World', descriptionKey: 'World2' }],
+    };
+    const RENAME_EN_US = { Hello: 'Hello', World: 'World', World2: 'Second world' };
+
+    function renameFixture(overrides = {}) {
+      return createLocaleFixture({
+        en_US: RENAME_EN_US,
+        locales: { fr: { Hello: 'Bonjour', World: 'Monde' }, de: { Hello: 'Hallo' } },
+        languagesJson: [
+          { code: '', name: 'Automatic', nativeName: 'Automatic' },
+          { code: 'de', name: 'German', nativeName: 'Deutsch' },
+          { code: 'fr', name: 'French', nativeName: 'Français' },
+        ],
+        sources: RENAME_SOURCE,
+        ...overrides,
+      });
+    }
+
+    it('renames a key everywhere it lives and keeps its translations', () => {
+      fixture = renameFixture();
+      // Weblate work on a key that is not renamed does not block.
+      releaseToWeblate(fixture.dir, { fr: { Hello: 'Salut' } });
+      const { exitCode, stdout } = spawnScript(SCRIPT, ['--fix', '--rename', 'World=LabelWorld'], {
+        cwd: fixture.dir,
+      });
+      expect(exitCode).toBe(0);
+      expect(stdout).toMatch(/no unreleased work on these keys since v1\.0\.0/);
+      expect(stdout).toMatch(/Renamed.* World → LabelWorld \(1 translation\(s\) kept\)/);
+
+      // en_US stays sorted, and the translation moved in fr.
+      expect(readText(fixture.dir, 'locale/custom/en_US.json')).toBe(
+        JSON.stringify({ Hello: 'Hello', LabelWorld: 'World', World2: 'Second world' }, null, 2) +
+          '\n',
+      );
+      expect(readJson(fixture.dir, 'locale/custom/fr.json')).toEqual({
+        Hello: 'Bonjour',
+        LabelWorld: 'Monde',
+      });
+      expect(readJson(fixture.dir, 'locale/seed/seeded.json')).toEqual({
+        fr: { LabelWorld: 'web@abc' },
+      });
+      expect(readText(fixture.dir, 'locale/seed/keymap.yml')).toMatch(/^LabelWorld:\n/);
+      // The source key inside the entry is another project's name: left alone.
+      expect(readText(fixture.dir, 'locale/seed/keymap.yml')).toMatch(/key: World,/);
+      expect(readJson(fixture.dir, 'settings/settings.json')).toEqual([
+        { titleKey: 'LabelWorld', descriptionKey: 'World2' },
+      ]);
+      expect(readText(fixture.dir, 'source/main.bs')).toMatch(/translationKeys\.LabelWorld\)/);
+      expect(readText(fixture.dir, 'tests/source/unit/main.spec.bs')).toMatch(
+        /translationKeys\.LabelWorld\)/,
+      );
+      // A longer key that starts with the old name is a different key.
+      expect(readText(fixture.dir, 'source/main.bs')).toMatch(/translationKeys\.World2\)/);
+      // Prose is reported for a person, never rewritten.
+      expect(stdout).toMatch(/Still mentioned[\s\S]*docs\/note\.md:1 World/);
+      expect(readText(fixture.dir, 'docs/note.md')).toMatch(/The World key/);
+    });
+
+    it('refuses the whole batch when one pair is invalid, and writes nothing', () => {
+      fixture = renameFixture();
+      const before = readText(fixture.dir, 'locale/custom/fr.json');
+      const { exitCode, stdout } = spawnScript(
+        SCRIPT,
+        ['--fix', '--rename', 'World=LabelWorld', '--rename', 'Hello=World2'],
+        { cwd: fixture.dir },
+      );
+      expect(exitCode).toBe(1);
+      expect(stdout).toMatch(/World2 is already in en_US\.json/);
+      expect(stdout).toMatch(/Nothing was renamed/);
+      expect(readText(fixture.dir, 'locale/custom/fr.json')).toBe(before);
+      expect(readText(fixture.dir, 'source/main.bs')).toMatch(/translationKeys\.World\)/);
+    });
+
+    it('refuses a new name a locale file already holds as an orphan', () => {
+      fixture = renameFixture({
+        locales: { fr: { Hello: 'Bonjour', LabelWorld: 'stale' } },
+      });
+      const { exitCode, stdout } = spawnScript(SCRIPT, ['--fix', '--rename', 'World=LabelWorld'], {
+        cwd: fixture.dir,
+      });
+      expect(exitCode).toBe(1);
+      expect(stdout).toMatch(/fr\.json already has LabelWorld/);
+    });
+
+    it('refuses an unknown key, a malformed pair and a plural key', () => {
+      fixture = renameFixture();
+      const { exitCode, stdout } = spawnScript(
+        SCRIPT,
+        ['--fix', '--rename', 'Nope=LabelNope', '--rename', 'World', '--rename', 'Hello=HelloOne'],
+        { cwd: fixture.dir },
+      );
+      expect(exitCode).toBe(1);
+      expect(stdout).toMatch(/Nope is not in en_US\.json/);
+      expect(stdout).toMatch(/"World": expected OldKey=NewKey/);
+      expect(stdout).toMatch(/plural keys are not supported/);
+    });
+
+    it('refuses when Weblate changed or added a translation of an old key since the release', () => {
+      fixture = renameFixture();
+      releaseToWeblate(fixture.dir, { fr: { World: 'Monde (Weblate)' }, de: { World: 'Welt' } });
+      const before = readText(fixture.dir, 'locale/custom/fr.json');
+      const { exitCode, stdout } = spawnScript(SCRIPT, ['--fix', '--rename', 'World=LabelWorld'], {
+        cwd: fixture.dir,
+      });
+      expect(exitCode).toBe(1);
+      expect(stdout).toMatch(/Weblate changed these since release v1\.0\.0/);
+      expect(stdout).toMatch(/de World: undefined → "Welt"/);
+      expect(stdout).toMatch(/fr World: "Monde" → "Monde \(Weblate\)"/);
+      expect(stdout).toMatch(/Nothing was renamed/);
+      expect(readText(fixture.dir, 'locale/custom/fr.json')).toBe(before);
+      expect(readText(fixture.dir, 'source/main.bs')).toMatch(/translationKeys\.World\)/);
+    });
+
+    it('refuses when Weblate cannot be read, unless told to skip the check', () => {
+      fixture = renameFixture(); // not a git checkout: no weblate branch to read
+      const refused = spawnScript(SCRIPT, ['--fix', '--rename', 'World=LabelWorld'], {
+        cwd: fixture.dir,
+      });
+      expect(refused.exitCode).toBe(1);
+      expect(refused.stdout).toMatch(/could not fetch origin\/weblate/);
+      expect(readJson(fixture.dir, 'locale/custom/fr.json')).toHaveProperty('World');
+
+      const skipped = spawnScript(
+        SCRIPT,
+        ['--fix', '--rename', 'World=LabelWorld', '--skip-weblate-check'],
+        { cwd: fixture.dir },
+      );
+      expect(skipped.exitCode).toBe(0);
+      expect(skipped.stdout).toMatch(/Weblate was not checked/);
+      expect(readJson(fixture.dir, 'locale/custom/fr.json')).toHaveProperty('LabelWorld');
+    });
+
+    it('refuses a new name the seed keymap or ledger already holds', () => {
+      fixture = renameFixture({
+        sources: {
+          ...RENAME_SOURCE,
+          'locale/seed/keymap.yml': 'LabelWorld:\n  en: World\n',
+          'locale/seed/seeded.json': { de: { LabelHello: 'web@abc' } },
+        },
+      });
+      const { exitCode, stdout } = spawnScript(
+        SCRIPT,
+        ['--fix', '--rename', 'World=LabelWorld', '--rename', 'Hello=LabelHello'],
+        { cwd: fixture.dir },
+      );
+      expect(exitCode).toBe(1);
+      expect(stdout).toMatch(/keymap\.yml already has an entry for LabelWorld/);
+      expect(stdout).toMatch(/seeded\.json already records LabelHello \(de\)/);
+    });
+
+    it('refuses to rename in check mode, and writes nothing', () => {
+      fixture = renameFixture();
+      const before = readText(fixture.dir, 'locale/custom/en_US.json');
+      const { exitCode, stdout } = spawnScript(SCRIPT, ['--rename', 'World=LabelWorld'], {
+        cwd: fixture.dir,
+      });
+      expect(exitCode).toBe(1);
+      expect(stdout).toMatch(/--rename writes files/);
+      expect(readText(fixture.dir, 'locale/custom/en_US.json')).toBe(before);
+    });
+
+    it('accepts --rename=Old=New and reports mentions under dot-folders', () => {
+      fixture = renameFixture({
+        sources: { ...RENAME_SOURCE, '.claude/skills/x/SKILL.md': 'Use World here.\n' },
+      });
+      releaseToWeblate(fixture.dir);
+      const { exitCode, stdout } = spawnScript(SCRIPT, ['--fix', '--rename=World=LabelWorld'], {
+        cwd: fixture.dir,
+      });
+      expect(exitCode).toBe(0);
+      expect(stdout).toMatch(/Renamed.* World → LabelWorld/);
+      expect(stdout).toMatch(/\.claude\/skills\/x\/SKILL\.md:1 World/);
     });
   });
 });

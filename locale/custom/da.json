@@ -237,14 +237,14 @@
   "LanguageVi": "vietnamesisk",
   "LanguageZh": "kinesisk",
   "LanguageZu": "zulu",
-  "MessageDirectedBy1": "Instrueret af {0}",
-  "MessageDisc1": "Disk {0}",
-  "MessageEndsAt1": "Slutter {0}",
-  "MessageMoreFrom1": "Mere fra {0}",
+  "MessageDirectedBy": "Instrueret af {0}",
+  "MessageDisc": "Disk {0}",
+  "MessageEndsAt": "Slutter {0}",
+  "MessageMoreFrom": "Mere fra {0}",
   "MessageSearchNoResults": "Ingen resultater.",
-  "MessageSetTheMaximumAmountOfDays": "Indstil maks. dage, et program forbliver i køen uden at blive set.",
   "MessageSyncPlayCreateGroupDenied": "Rettigheder påkrævet for at oprette en gruppe.",
   "MessageSyncPlayLibraryAccessDenied": "Adgang til dette indhold er begrænset.",
   "MessageSyncPlayUserJoined": "{0} deltager i gruppen.",
-  "MessageSyncPlayUserLeft": "{0} har forladt gruppen."
+  "MessageSyncPlayUserLeft": "{0} har forladt gruppen.",
+  "SettingDescMaxDaysNextUp": "Indstil maks. dage, et program forbliver i køen uden at blive set."
 }

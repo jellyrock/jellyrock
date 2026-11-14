@@ -132,6 +132,6 @@
   "LanguageVi": "เวียดนาม",
   "LanguageZh": "จีน",
   "LanguageZu": "ซูลู",
-  "MessageDisc1": "แผ่นที่ {0}",
-  "MessageEndsAt1": "จบเมื่อ {0}"
+  "MessageDisc": "แผ่นที่ {0}",
+  "MessageEndsAt": "จบเมื่อ {0}"
 }

@@ -1322,7 +1322,7 @@ sub onVideoContentLoaded(event as object)
     if isValidAndNotEmpty(taskErrorMsg)
       showPlaybackErrorDialog(taskErrorMsg)
     else
-      showPlaybackErrorDialog(translate(translationKeys.ErrorThereWasAnErrorRetrievingThe))
+      showPlaybackErrorDialog(translate(translationKeys.ErrorItemDataFailed))
     end if
     return
   end if
@@ -2618,7 +2618,7 @@ sub bufferCheck()
       if isValid(host) then host.callFunc("onLiveStreamStalled")
     else
       ' If buffering has stopped Display dialog
-      showPlaybackErrorDialog(translate(translationKeys.ErrorThereWasAnErrorRetrievingThe))
+      showPlaybackErrorDialog(translate(translationKeys.ErrorItemDataFailed))
 
       ' Stop playback and exit player
       m.top.control = "stop"
@@ -2657,7 +2657,7 @@ sub playingProgressCheck()
   else
     m.log.warn("Node playing with a frozen position", "position", int(positionNow))
     m.playingProgressTimer.control = "stop"
-    showPlaybackErrorDialog(translate(translationKeys.ErrorThereWasAnErrorRetrievingThe))
+    showPlaybackErrorDialog(translate(translationKeys.ErrorItemDataFailed))
     m.top.control = "stop"
   end if
 end sub

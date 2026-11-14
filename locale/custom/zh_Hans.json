@@ -244,14 +244,14 @@
   "LanguageVi": "越南语",
   "LanguageZh": "中文",
   "LanguageZu": "祖鲁语",
-  "MessageDirectedBy1": "导演 {0}",
-  "MessageDisc1": "盘 {0}",
-  "MessageEndsAt1": "结束于 {0}",
-  "MessageMoreFrom1": "更多来自 {0}",
+  "MessageDirectedBy": "导演 {0}",
+  "MessageDisc": "盘 {0}",
+  "MessageEndsAt": "结束于 {0}",
+  "MessageMoreFrom": "更多来自 {0}",
   "MessageSearchNoResults": "没有结果。",
-  "MessageSetTheMaximumAmountOfDays": "设置节目在不观看的情况下应保留在“接下来”列表中的最大天数。",
   "MessageSyncPlayCreateGroupDenied": "需要权限以创建群组。",
   "MessageSyncPlayLibraryAccessDenied": "对此内容的访问受到限制。",
   "MessageSyncPlayUserJoined": "{0}已加入该群组。",
-  "MessageSyncPlayUserLeft": "{0}已离开群组。"
+  "MessageSyncPlayUserLeft": "{0}已离开群组。",
+  "SettingDescMaxDaysNextUp": "设置节目在不观看的情况下应保留在“接下来”列表中的最大天数。"
 }

@@ -10,7 +10,7 @@
         "type": "bool",
         "default": "false",
         "titleKey": "MessageRememberMe",
-        "descriptionKey": "MessageRememberTheCurrentlyLoggedInUser"
+        "descriptionKey": "SettingDescRememberMe"
       },
       {
         "title": "Splash Screen Image",
@@ -31,7 +31,7 @@
           }
         ],
         "titleKey": "LabelSplashScreenImage",
-        "descriptionKey": "MessageControlWhetherTheServerSSplash"
+        "descriptionKey": "SettingDescSplashScreen"
       },
       {
         "title": "Sign-in Screen Language",
@@ -44,7 +44,7 @@
       }
     ],
     "titleKey": "LabelGlobal",
-    "descriptionKey": "MessageGlobalSettingsThatAffectEveryoneThat"
+    "descriptionKey": "SettingDescGlobal"
   },
   {
     "title": "Playback",
@@ -61,7 +61,7 @@
             "type": "bool",
             "default": "false",
             "titleKey": "LabelEnableLimit",
-            "descriptionKey": "LabelEnableOrDisableTheMaximumBitrate"
+            "descriptionKey": "SettingDescBitrateMaxLimited"
           },
           {
             "title": "Maximum Bitrate",
@@ -83,7 +83,7 @@
         "type": "bool",
         "default": "false",
         "titleKey": "LabelCinemaMode",
-        "descriptionKey": "MessageBringTheTheaterExperienceStraightTo"
+        "descriptionKey": "SettingDescCinemaMode"
       },
       {
         "title": "Custom Subtitles",
@@ -92,7 +92,7 @@
         "type": "bool",
         "default": "true",
         "titleKey": "LabelCustomSubtitles",
-        "descriptionKey": "MessageUseCustomSubtitleRenderingForExternal"
+        "descriptionKey": "SettingDescSubsCustom"
       },
       {
         "title": "Decode Multichannel Audio",
@@ -131,7 +131,7 @@
               }
             ],
             "titleKey": "LabelAudioLanguagePreference",
-            "descriptionKey": "MessageOverrideTheWebClientSAudio2"
+            "descriptionKey": "SettingDescAudioLanguagePreference"
           },
           {
             "title": "Custom Audio Language Code",
@@ -144,7 +144,7 @@
               "value": "custom"
             },
             "titleKey": "LabelCustomAudioLanguageCode",
-            "descriptionKey": "MessageEnterA3LetterIso6392LanguageCode"
+            "descriptionKey": "SettingDescCustomLanguageCode"
           },
           {
             "title": "Subtitle Language Preference",
@@ -175,7 +175,7 @@
               }
             ],
             "titleKey": "LabelSubtitleLanguagePreference",
-            "descriptionKey": "MessageOverrideTheWebClientSSubtitle"
+            "descriptionKey": "SettingDescSubtitleLanguagePreference"
           },
           {
             "title": "Custom Subtitle Language Code",
@@ -188,11 +188,11 @@
               "value": "custom"
             },
             "titleKey": "LabelCustomSubtitleLanguageCode",
-            "descriptionKey": "MessageEnterA3LetterIso6392LanguageCode"
+            "descriptionKey": "SettingDescCustomLanguageCode"
           }
         ],
         "titleKey": "LabelLanguagePreferences",
-        "descriptionKey": "MessageOverrideTheWebClientSAudio"
+        "descriptionKey": "SettingDescLanguagePreferences"
       },
       {
         "title": "Maximum Resolution",
@@ -204,7 +204,7 @@
           {
             "title": "Off - Attempt to direct play all resolutions",
             "id": "off",
-            "titleKey": "LabelOffAttemptToDirectPlayAll"
+            "titleKey": "LabelMaxResolutionOff"
           },
           {
             "title": "Auto - Use TV resolution",
@@ -243,7 +243,7 @@
           }
         ],
         "titleKey": "LabelMaximumResolution",
-        "descriptionKey": "MessageConfigureTheMaximumResolutionWhenTranscoding"
+        "descriptionKey": "SettingDescResolutionMax"
       },
       {
         "title": "Media Segments",
@@ -446,7 +446,7 @@
         "type": "integer",
         "default": "10",
         "titleKey": "LabelInstantReplayDuration",
-        "descriptionKey": "MessageHowManySecondsTheInstantReplay"
+        "descriptionKey": "SettingDescInstantReplaySeconds"
       },
       {
         "title": "Next Episode Button Time",
@@ -455,7 +455,7 @@
         "type": "integer",
         "default": "30",
         "titleKey": "LabelNextEpisodeButtonTime",
-        "descriptionKey": "MessageSetHowManySecondsBeforeThe"
+        "descriptionKey": "SettingDescNextUpButtonSeconds"
       },
       {
         "title": "Play Default Audio Track",
@@ -481,7 +481,7 @@
           }
         ],
         "titleKey": "LabelPlayDefaultAudioTrack",
-        "descriptionKey": "MessageOverrideWebClientAudioPreferenceWhen"
+        "descriptionKey": "SettingDescPlayDefaultAudioTrack"
       },
       {
         "title": "Play Next Episode Automatically",
@@ -507,7 +507,7 @@
           }
         ],
         "titleKey": "LabelPlayNextEpisodeAutomatically",
-        "descriptionKey": "MessageWhenFinishedPlayingASingleEpisode"
+        "descriptionKey": "SettingDescPlayNextEpisode"
       },
       {
         "title": "Preferred Surround Audio Codec",
@@ -533,7 +533,7 @@
           }
         ],
         "titleKey": "LabelPreferredSurroundAudioCodec",
-        "descriptionKey": "MessageWhenTranscodingMultichannelAudioPreferThis"
+        "descriptionKey": "SettingDescPreferredMultichannelCodec"
       },
       {
         "title": "Preserve DoVi",
@@ -542,7 +542,7 @@
         "type": "bool",
         "default": "true",
         "titleKey": "LabelPreserveDovi",
-        "descriptionKey": "MessagePreserveDolbyVisionContentWhenPossible"
+        "descriptionKey": "SettingDescPreserveDovi"
       },
       {
         "title": "Still Watching Prompt",
@@ -578,7 +578,7 @@
           }
         ],
         "titleKey": "LabelStillWatchingPrompt",
-        "descriptionKey": "MessageAskIfYoureStillWatchingWhen"
+        "descriptionKey": "SettingDescStillWatching"
       },
       {
         "title": "SyncPlay Time Offset",
@@ -598,7 +598,7 @@
         "type": "bool",
         "default": "false",
         "titleKey": "LabelTextSubtitlesOnly",
-        "descriptionKey": "LabelOnlyDisplayTextSubtitlesToMinimize"
+        "descriptionKey": "SettingDescSubsOnlyText"
       },
       {
         "title": "Video Codec Support",
@@ -620,7 +620,7 @@
             "type": "bool",
             "default": "false",
             "titleKey": "LabelMpeg2",
-            "descriptionKey": "MessageDirectPlayMpeg2Video"
+            "descriptionKey": "SettingDescMpeg2"
           },
           {
             "title": "MPEG-4",
@@ -629,11 +629,11 @@
             "type": "bool",
             "default": "true",
             "titleKey": "LabelMpeg4",
-            "descriptionKey": "MessageSupportDirectPlayOfMpeg4Content"
+            "descriptionKey": "SettingDescMpeg4"
           }
         ],
         "titleKey": "LabelVideoCodecSupport",
-        "descriptionKey": "MessageEnableOrDisableDirectPlaySupport"
+        "descriptionKey": "SettingDescVideoCodecSupport"
       },
       {
         "title": "Video Profile Level Support",
@@ -646,7 +646,7 @@
             "type": "bool",
             "default": "false",
             "titleKey": "LabelH264",
-            "descriptionKey": "MessageAttemptDirectPlayForH264Media"
+            "descriptionKey": "SettingDescTryDirectH264ProfileLevel"
           },
           {
             "title": "HEVC",
@@ -655,15 +655,15 @@
             "type": "bool",
             "default": "false",
             "titleKey": "LabelHevc",
-            "descriptionKey": "MessageAttemptDirectPlayForHevcMedia"
+            "descriptionKey": "SettingDescTryDirectHevcProfileLevel"
           }
         ],
         "titleKey": "LabelVideoProfileLevelSupport",
-        "descriptionKey": "LabelAttemptDirectPlayOfPotentiallyUnsupported"
+        "descriptionKey": "SettingDescVideoProfileLevelSupport"
       }
     ],
     "titleKey": "LabelPlayback",
-    "descriptionKey": "MessageSettingsRelatingToPlaybackAndSupported"
+    "descriptionKey": "SettingDescPlayback"
   },
   {
     "title": "User Interface",
@@ -732,7 +732,7 @@
               }
             ],
             "titleKey": "LabelEpisodeImagesNextUp",
-            "descriptionKey": "MessageWhatTypeOfImagesToUse"
+            "descriptionKey": "SettingDescEpisodeImages"
           },
           {
             "title": "Fallback Fonts",
@@ -741,7 +741,7 @@
             "type": "bool",
             "default": "false",
             "titleKey": "LabelFallbackFonts",
-            "descriptionKey": "MessageReplaceRokuSSystemFontWith"
+            "descriptionKey": "SettingDescFontFallback"
           },
           {
             "title": "Hide Clock",
@@ -750,7 +750,7 @@
             "type": "bool",
             "default": "false",
             "titleKey": "LabelHideClock",
-            "descriptionKey": "MessageHideAllClocksInJellyrockJellyrock"
+            "descriptionKey": "SettingDescHideClock"
           },
           {
             "title": "Home Row Size",
@@ -770,7 +770,7 @@
             "type": "integer",
             "default": "0",
             "titleKey": "LabelMaxDaysNextUp",
-            "descriptionKey": "MessageSetTheMaximumAmountOfDays"
+            "descriptionKey": "SettingDescMaxDaysNextUp"
           },
           {
             "title": "Rewatching Next Up",
@@ -779,7 +779,7 @@
             "type": "bool",
             "default": "false",
             "titleKey": "LabelRewatchingNextUp",
-            "descriptionKey": "LabelShowAlreadyWatchedEpisodesInNext"
+            "descriptionKey": "SettingDescRewatchingNextUp"
           },
           {
             "title": "Row Layout",
@@ -800,7 +800,7 @@
               }
             ],
             "titleKey": "LabelRowLayout",
-            "descriptionKey": "LabelChooseHowRowsAreDisplayedThroughout"
+            "descriptionKey": "SettingDescRowLayout"
           },
           {
             "title": "Theme",
@@ -1025,12 +1025,12 @@
             "settingName": "uiHomeUseWebArrangement",
             "type": "bool",
             "default": "true",
-            "titleKey": "LabelUseWebClientSHomeSection",
-            "descriptionKey": "MessageMakeTheArrangementOfTheRoku"
+            "titleKey": "SettingHomeUseWebArrangement",
+            "descriptionKey": "SettingDescHomeUseWebArrangement"
           }
         ],
         "titleKey": "LabelGeneral",
-        "descriptionKey": "MessageSettingsRelatingToTheAppearanceOf4"
+        "descriptionKey": "SettingDescUserInterfaceGeneral"
       },
       {
         "title": "Libraries",
@@ -1051,7 +1051,7 @@
                     "type": "bool",
                     "default": "false",
                     "titleKey": "LabelItemCount",
-                    "descriptionKey": "MessageShowItemCountInTheLibrary"
+                    "descriptionKey": "SettingDescShowItemCount"
                   },
                   {
                     "title": "Item Titles",
@@ -1081,7 +1081,7 @@
                   }
                 ],
                 "titleKey": "LabelGridViewSettings",
-                "descriptionKey": "LabelSettingsThatApplyWhenGridViews"
+                "descriptionKey": "SettingDescGridView"
               },
               {
                 "title": "Hide Taglines",
@@ -1099,11 +1099,11 @@
                 "type": "bool",
                 "default": "true",
                 "titleKey": "LabelReturnToTop",
-                "descriptionKey": "MessageUseTheReplayButtonToSlowly"
+                "descriptionKey": "SettingDescGridReset"
               }
             ],
             "titleKey": "LabelGeneral",
-            "descriptionKey": "MessageSettingsRelatingToTheAppearanceOf"
+            "descriptionKey": "SettingDescLibrariesGeneral"
           },
           {
             "title": "Movies",
@@ -1116,7 +1116,7 @@
                 "type": "bool",
                 "default": "true",
                 "titleKey": "LabelCommunityAndCriticalRatings",
-                "descriptionKey": "LabelRatingsForHowGoodAMovie"
+                "descriptionKey": "SettingDescMoviesShowRatings"
               },
               {
                 "title": "Default View",
@@ -1141,7 +1141,7 @@
               }
             ],
             "titleKey": "LabelMovies",
-            "descriptionKey": "MessageSettingsRelatingToTheAppearanceOf2"
+            "descriptionKey": "SettingDescMovies"
           },
           {
             "title": "TV Shows",
@@ -1163,7 +1163,7 @@
                 "type": "bool",
                 "default": "false",
                 "titleKey": "LabelDisableCommunityRatingForEpisodes",
-                "descriptionKey": "MessageHideTheStarAndCommunityRating"
+                "descriptionKey": "SettingDescTvShowsHideCommunityRating"
               },
               {
                 "title": "Disable Unwatched Episode Count",
@@ -1172,18 +1172,18 @@
                 "type": "bool",
                 "default": "false",
                 "titleKey": "LabelDisableUnwatchedEpisodeCount",
-                "descriptionKey": "MessageIfEnabledTheNumberOfUnwatched"
+                "descriptionKey": "SettingDescTvShowsHideUnwatchedCount"
               }
             ],
             "titleKey": "LabelTvShows",
-            "descriptionKey": "MessageSettingsRelatingToTheAppearanceOf3"
+            "descriptionKey": "SettingDescTvShows"
           }
         ],
         "titleKey": "LabelLibraries",
-        "descriptionKey": "LabelSettingsRelatingToTheAppearanceOf"
+        "descriptionKey": "SettingDescLibraries"
       }
     ],
     "titleKey": "LabelUserInterface",
-    "descriptionKey": "LabelSettingsRelatingToHowTheApplication"
+    "descriptionKey": "SettingDescUserInterface"
   }
 ]

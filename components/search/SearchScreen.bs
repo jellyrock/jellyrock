@@ -99,7 +99,7 @@ sub init()
     ]
   end if
 
-  m.searchHelpText.text = translate(translationKeys.MessageYouCanSearchForTitlesPeople)
+  m.searchHelpText.text = translate(translationKeys.MessageSearchHelp)
 
   ' Search-failure state. The button centers itself under the message once it has measured
   ' its label. Only a submitted search reports its outcome (see showSearchOutcome).
@@ -646,7 +646,7 @@ sub onQueryChanged()
       m.searchSelect.query = ""
       m.searchSelect.content = invalid
     end if
-    showHelpText(translate(translationKeys.MessageYouCanSearchForTitlesPeople))
+    showHelpText(translate(translationKeys.MessageSearchHelp))
     showResultCount("")
     showSearchStatus("")
     renderRecentSuggestions()
@@ -825,7 +825,7 @@ sub onSuggestionRemoveRequested()
   m.log.info("remove confirm for a saved search", "length", Len(term))
 
   title = translate(translationKeys.LabelRemove)
-  msg = translate(translationKeys.MessageAreYouSureYouWantToRemoveTerm, [term])
+  msg = translate(translationKeys.MessageConfirmRemoveRecentSearch, [term])
   m.removeDialog = showConfirmDialog(title, msg, "onRemoveDialogResponse", translate(translationKeys.ButtonRemove), translate(translationKeys.ButtonCancel))
 end sub
 
@@ -1038,7 +1038,7 @@ sub onFullSearchResults(event as object)
   else if outcome.show = searchOutcome.SHOW_EMPTY
     ' A live search that found nothing says so on screen, below the keyboard, but is not
     ' announced: the decision rules out speaking mid-word, not the text.
-    showHelpText(translate(translationKeys.MessageNoResultsFor1, [results.query]))
+    showHelpText(translate(translationKeys.MessageNoResultsFor, [results.query]))
   end if
 
   if total = 0 then return
@@ -1102,7 +1102,7 @@ sub showSearchOutcome(outcome as object)
     end if
   else if outcome.show = searchOutcome.SHOW_EMPTY
     if not m.top.isExpanded
-      showHelpText(translate(translationKeys.MessageNoResultsFor1, [m.top.query]))
+      showHelpText(translate(translationKeys.MessageNoResultsFor, [m.top.query]))
       if m.isShown then narrateStatus(m.searchHelpText.text)
     end if
   else if outcome.toastKey <> "" and m.isShown

@@ -1026,7 +1026,7 @@ sub showExitConfirmation()
   ' guard is a line and the failure mode is two dialogs sharing one node id.
   if isValid(m.exitDialog) then return
 
-  m.exitDialog = showConfirmDialog(translate(translationKeys.LabelExitJellyrock), translate(translationKeys.MessageAreYouSureYouWantTo), "onExitConfirmResult", translate(translationKeys.ButtonExit), translate(translationKeys.ButtonCancel))
+  m.exitDialog = showConfirmDialog(translate(translationKeys.LabelExitJellyrock), translate(translationKeys.MessageConfirmExit), "onExitConfirmResult", translate(translationKeys.ButtonExit), translate(translationKeys.ButtonCancel))
 end sub
 
 ' Exit prompt answered. `exit` is observed by main.bs on its message port; setting

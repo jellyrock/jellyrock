@@ -221,14 +221,14 @@
   "LanguageVi": "вьетнам тілі",
   "LanguageZh": "қытай тілі",
   "LanguageZu": "зулу тілі",
-  "MessageDirectedBy1": "Qoiuşı {0}",
-  "MessageDisc1": "{0}-diskı",
-  "MessageEndsAt1": "Soñy {0} kezınde",
-  "MessageMoreFrom1": "{0} arqyly köbırek",
+  "MessageDirectedBy": "Qoiuşı {0}",
+  "MessageDisc": "{0}-diskı",
+  "MessageEndsAt": "Soñy {0} kezınde",
+  "MessageMoreFrom": "{0} arqyly köbırek",
   "MessageSearchNoResults": "Nätije joq.",
-  "MessageSetTheMaximumAmountOfDays": "Körsetımdı körmei-aq \"Kelesı\" tızımınde qalatyn künderdıñ eñ köp sanyn ornatu.",
   "MessageSyncPlayCreateGroupDenied": "Top qūruğa rūqsat qajet.",
   "MessageSyncPlayLibraryAccessDenied": "Būl mazmūnğa qoljetіmdılık şektelgen.",
   "MessageSyncPlayUserJoined": "{0} topqa qosyldy.",
-  "MessageSyncPlayUserLeft": "{0} toptan şyqty."
+  "MessageSyncPlayUserLeft": "{0} toptan şyqty.",
+  "SettingDescMaxDaysNextUp": "Körsetımdı körmei-aq \"Kelesı\" tızımınde qalatyn künderdıñ eñ köp sanyn ornatu."
 }

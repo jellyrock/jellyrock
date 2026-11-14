@@ -20,7 +20,7 @@ related-files:
   - scripts/lib/translation-formats.cjs
   - .github/workflows/jellyrock-bot.yml
   - .github/workflows/release-management.yml
-last-reviewed: 2026-10-10
+last-reviewed: 2026-11-14
 ---
 
 # Translations (i18n)
@@ -287,7 +287,7 @@ The file is never written to disk (`program.setFile`). In the editor's language 
 - **Key prefixes.** The convention is not enforced.
 - **Completeness.** A locale file holds only the keys translated into it, and a missing key falls back to `en_US` at runtime. The script reports average coverage across the locale files and fails nothing on it.
 
-`npm run update-translations` runs it with `--fix`: it removes `en_US` keys no code uses, sorts `en_US.json`, and adds missing locales to `languages.json`. A key in a locale file that `en_US.json` no longer has is a warning.
+`npm run update-translations` runs it with `--fix`: it removes `en_US` keys no code uses, sorts `en_US.json`, and adds missing locales to `languages.json`. A key in a locale file that `en_US.json` no longer has is a warning. With `--rename Old=New` it first renames a key everywhere it lives (see [Renaming a key](#renaming-a-key)).
 
 ## Weblate sync
 
@@ -329,6 +329,14 @@ Keys no longer in `en_US.json` are dropped, as the Weblate Cleanup add-on does. 
 The ancestor is the newest push-back commit on `weblate` (step 5) whose release shipped (tag `vX.Y.Z` exists) or is the release in progress. An abandoned release doesn't count: its push-back reached `weblate` but never `main`, so `main` would look as if it had deleted everything that release merged. With no such commit (the first release on this scheme, or a re-cut `weblate` branch), the merge falls back to a two-way union with Weblate winning, warns, and deletions start syncing from the next release.
 
 A three-way merge is the only kind that tells "deleted here" from "added there", which is what lets a change on either side survive. [ADR 0048](../adr/0048-translation-seeding-and-weblate-merge.md) has the history: release prep used to overwrite `main`'s locale files with the copies from Weblate.
+
+### Renaming a key
+
+`npm run update-translations -- --rename Old=New` renames the key in every locale file on `main`, not only in `en_US.json`. That is what keeps the translations. To the merge, `main` deleted `Old` and added `New` in each locale, and Weblate changed neither, so `main`'s change wins on both keys. That holds whether or not the cleanup in Weblate already dropped `Old` after the bot pushed the new `en_US.json`. Renaming in `en_US.json` alone would drop `Old` as a key `en_US.json` no longer has, and nothing would bring its translations back. `tests/scripts/unit/translations-merge.test.js` runs both cases through a release.
+
+Weblate work on `Old` since the last release is the one thing the merge cannot carry: it sits only on `weblate`, under a key `main` dropped. So the rename mode checks first. It fetches `weblate`, finds the last release with `findAncestor()` (the merge's own ancestor lookup), and refuses if any locale's `Old` differs from that release. The window it cannot see is from the rename to the moment the merged `en_US.json` reaches Weblate.
+
+Between the rename and the next release, Weblate shows `New` as untranslated. A translation someone adds there in that window wins at release prep, as any change made on both sides does, and the merge lists it.
 
 ### Removing a translation
 

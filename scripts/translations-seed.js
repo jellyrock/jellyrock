@@ -56,6 +56,7 @@ const { git: gitIn } = require('./lib/git-safe.cjs');
 const {
   baseChain,
   readLocaleDir,
+  serializeLedger,
   writeLocaleFile,
   SOURCE_LOCALE,
 } = require('./lib/locale-files.cjs');
@@ -701,15 +702,8 @@ export function nextLedger({ ledger, plan, sources, locales }) {
   return next;
 }
 
-/** The ledger's on-disk form: locales and keys sorted, 2-space, trailing newline. */
-export function serializeLedger(ledger) {
-  const sorted = {};
-  for (const locale of Object.keys(ledger).sort()) {
-    sorted[locale] = {};
-    for (const key of Object.keys(ledger[locale]).sort()) sorted[locale][key] = ledger[locale][key];
-  }
-  return JSON.stringify(sorted, null, 2) + '\n';
-}
+/** The ledger's on-disk form, from `locale-files.cjs`, which the key rename shares. */
+export { serializeLedger };
 
 export function readLedger(root = rootDir) {
   const file = path.join(root, LEDGER_REL);

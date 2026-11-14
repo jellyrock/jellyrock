@@ -258,8 +258,8 @@ end function
 function creditRowKinds() as object
   if isValid(m.creditRowKindsCache) then return m.creditRowKindsCache
   m.creditRowKindsCache = [
-    { kind: "creator", messageKey: translationKeys.MessageCreatedBy1 },
-    { kind: "director", messageKey: translationKeys.MessageDirectedBy1 }
+    { kind: "creator", messageKey: translationKeys.MessageCreatedBy },
+    { kind: "director", messageKey: translationKeys.MessageDirectedBy }
   ]
   return m.creditRowKindsCache
 end function

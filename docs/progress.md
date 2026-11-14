@@ -1224,6 +1224,14 @@ An H.264 source caps the H.264 codec profile at `1920x1080` in `buildPlaybackInf
 
 `mediaNumber` in `source/utils/misc.bs` reads a long integer through a float, so a large value loses its low digits (94848001 reads as 94848000, found 2026-11-04). It is harmless for the values it serves today, but wrong for bitrate and byte values; `reencodeCheck.bitsPerSecond` was added to avoid it. Decide whether `mediaNumber` should keep integers whole, and check its callers.
 
+#### Rename negatively worded settings to positive names, with migrations `[fid: positive-setting-names]` `[captured 2026-11-14]`
+
+Four settings are named in the negative: `uiDesignHideClock`, `uiDetailsHideTagline`, `uiTvShowsDisableCommunityRating` and `uiTvShowsDisableUnwatchedCount`. The user turns a setting on or off, so a "Disable" or "Hide" name reads as a double negative. Rename them to positive names in the house style, and check the other `settingName` values against the same rule.
+
+Each rename needs a registry migration (`/new-migration`), because settings are saved under `settingName`. A flip to positive wording must also invert the stored boolean, so test each one on a device.
+
+Afterward, run `npm run update-translations -- --rename Old=New` so each `SettingDesc` key matches its setting's new name. Then tighten the key-name rule in `docs/dev/translations.md` and `locale/CLAUDE.md` back to "`SettingDesc` plus the `settingName` without its area prefix". The rename-key PR (`refactor/translation-key-names`) loosened that rule, because the names it would derive from were about to change. Related: `in-app-settings-copy` (the description wording itself).
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`
@@ -1783,7 +1791,7 @@ The setting text on the TV comes from `locale/custom/en_US.json` (each entry's `
 To close it, as its own project:
 
 - Add rules for TV text to `docs/dev/writing-style.md` (length, casing, tone), building on the casing convention in `locale/CLAUDE.md`.
-- Rewrite the setting descriptions in `en_US.json`. Change values, never keys: a renamed key drops its translations. Settings are saved under `settingName`, so a wording change needs no registry migration.
+- Rewrite the setting descriptions in `en_US.json`. Change values, not keys; to rename a key, use `npm run update-translations -- --rename Old=New`, which keeps its translations. Settings are saved under `settingName`, so a wording change needs no registry migration.
 - Have `scripts/generate/settings-docs.cjs` read the English text from `en_US.json` through `descriptionKey`, so the docs show what the TV shows, and drop the duplicate `description` fields.
 - Check the new text on a Roku for fit, and confirm what Weblate does to existing translations when an English value changes.
 

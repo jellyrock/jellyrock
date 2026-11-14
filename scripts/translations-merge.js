@@ -41,54 +41,19 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const require = createRequire(import.meta.url);
-const { mergeLocales, writeLocaleFile, SOURCE_LOCALE } = require('./lib/locale-files.cjs');
+const {
+  LOCALE_DIR,
+  RELEASE_TRAILER,
+  findAncestor,
+  mergeLocales,
+  readLocaleTree,
+  writeLocaleFile,
+  SOURCE_LOCALE,
+} = require('./lib/locale-files.cjs');
 const { git } = require('./lib/git-safe.cjs');
 
-export const LOCALE_DIR = 'locale/custom';
-export const RELEASE_TRAILER = 'Translations-Release';
-
-/** Every locale file at `ref`, as `{ locale: { key: value } }`, en_US included. */
-export function readLocaleTree(cwd, ref) {
-  const locales = {};
-  const names = git(cwd, ['ls-tree', '--name-only', `${ref}:${LOCALE_DIR}`])
-    .split('\n')
-    .filter((name) => name.endsWith('.json'));
-  for (const name of names) {
-    locales[name.slice(0, -'.json'.length)] = JSON.parse(
-      git(cwd, ['show', `${ref}:${LOCALE_DIR}/${name}`]),
-    );
-  }
-  return locales;
-}
-
-function tagExists(cwd, tag) {
-  try {
-    git(cwd, ['rev-parse', '--quiet', '--verify', `refs/tags/${tag}^{commit}`]);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * The last state the weblate branch and main agreed on: the newest push-back commit
- * on `weblateRef` for a release that shipped, or for `version` itself. Null if none.
- *
- * @returns {{ sha: string, version: string } | null}
- */
-export function findAncestor(cwd, weblateRef, version) {
-  const log = git(cwd, [
-    'log',
-    '--format=%H%x09%(trailers:key=Translations-Release,valueonly,separator=%x2C)',
-    weblateRef,
-  ]);
-  for (const line of log.split('\n')) {
-    const [sha, released] = line.split('\t');
-    if (!released) continue;
-    if (released === version || tagExists(cwd, `v${released}`)) return { sha, version: released };
-  }
-  return null;
-}
+// Shared with the key rename's Weblate check (update-translations.cjs).
+export { LOCALE_DIR, RELEASE_TRAILER, findAncestor, readLocaleTree };
 
 function readEnKeys(cwd, ref) {
   return Object.keys(JSON.parse(git(cwd, ['show', `${ref}:${LOCALE_DIR}/${SOURCE_LOCALE}.json`])));

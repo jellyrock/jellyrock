@@ -225,7 +225,7 @@ end sub
 
 ' Called when reset button is selected in HexKeyboard
 sub onHexResetRequested()
-  m.resetConfirmDialog = showConfirmDialog(translate(translationKeys.LabelResetSetting), translate(translationKeys.MessageAreYouSureThisWillReset), "onResetDialogResponse", translate(translationKeys.ButtonReset), translate(translationKeys.ButtonCancel))
+  m.resetConfirmDialog = showConfirmDialog(translate(translationKeys.LabelResetSetting), translate(translationKeys.MessageConfirmResetSetting), "onResetDialogResponse", translate(translationKeys.ButtonReset), translate(translationKeys.ButtonCancel))
 end sub
 
 ' Handle user response from reset confirmation dialog
@@ -284,7 +284,7 @@ sub onAlphaKeyGridSubmit()
   end if
 
   if not isValidCode
-    showAlertDialog(translate(translationKeys.ErrorInvalidLanguageCode), translate(translationKeys.MessagePleaseEnterExactly3LettersEG))
+    showAlertDialog(translate(translationKeys.ErrorInvalidLanguageCode), translate(translationKeys.ErrorLanguageCodeLength))
     return
   end if
 
@@ -302,7 +302,7 @@ end sub
 
 ' Called when reset button is selected in AlphaKeyboard
 sub onAlphaResetRequested()
-  m.resetConfirmDialog = showConfirmDialog(translate(translationKeys.LabelResetSetting), translate(translationKeys.MessageAreYouSureThisWillReset), "onAlphaResetDialogResponse", translate(translationKeys.ButtonReset), translate(translationKeys.ButtonCancel))
+  m.resetConfirmDialog = showConfirmDialog(translate(translationKeys.LabelResetSetting), translate(translationKeys.MessageConfirmResetSetting), "onAlphaResetDialogResponse", translate(translationKeys.ButtonReset), translate(translationKeys.ButtonCancel))
 end sub
 
 ' Handle user response from alpha reset confirmation dialog
@@ -373,7 +373,7 @@ sub LoadMenu(configSection)
       title: "Reset User Settings",
       description: "Reset all settings to their default values. Your login session will not be affected.",
       titleKey: translationKeys.LabelResetUserSettings,
-      descriptionKey: translationKeys.SettingResetAllSettingsToTheirDefault,
+      descriptionKey: translationKeys.SettingDescResetAllSettings,
       type: "action",
       actionId: "resetUserSettings"
     }
@@ -668,7 +668,7 @@ sub refreshCurrentMenu()
       title: "Reset User Settings",
       description: "Reset all settings to their default values. Your login session will not be affected.",
       titleKey: translationKeys.LabelResetUserSettings,
-      descriptionKey: translationKeys.SettingResetAllSettingsToTheirDefault,
+      descriptionKey: translationKeys.SettingDescResetAllSettings,
       type: "action",
       actionId: "resetUserSettings"
     }
@@ -692,7 +692,7 @@ end sub
 
 ' Show confirmation dialog before resetting all user settings
 sub confirmResetUserSettings()
-  m.resetConfirmDialog = showConfirmDialog(translate(translationKeys.LabelResetUserSettings), translate(translationKeys.MessageAreYouSureYouWantTo2), "onResetUserSettingsResponse", translate(translationKeys.ButtonReset), translate(translationKeys.ButtonCancel))
+  m.resetConfirmDialog = showConfirmDialog(translate(translationKeys.LabelResetUserSettings), translate(translationKeys.MessageConfirmResetAllSettings), "onResetUserSettingsResponse", translate(translationKeys.ButtonReset), translate(translationKeys.ButtonCancel))
 end sub
 
 ' Handle user response from reset user settings confirmation dialog

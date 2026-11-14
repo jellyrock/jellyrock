@@ -404,7 +404,7 @@ end sub
 ' is holding a live session either way, so a cancel is a legitimate "no", not a
 ' failure.
 sub askToSaveQuickConnectCredentials()
-  m.saveCredentialsDialog = showConfirmDialog(translate(translationKeys.ButtonQuickConnect), translate(translationKeys.MessageQuickConnectAuthenticatedSaveCredentials), "onSaveQuickConnectCredentialsResult")
+  m.saveCredentialsDialog = showConfirmDialog(translate(translationKeys.ButtonQuickConnect), translate(translationKeys.MessageQuickConnectSaveCredentials), "onSaveQuickConnectCredentialsResult")
 end sub
 
 sub onSaveQuickConnectCredentialsResult()

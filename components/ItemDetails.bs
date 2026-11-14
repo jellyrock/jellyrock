@@ -639,10 +639,10 @@ sub onWatchedButtonPressed(item as object)
     ' Read current state from the button: writing itemContent triggers a full rebuild.
     isCurrentlyWatched = isValid(watchedButton) and watchedButton.isButtonSelected
     if isCurrentlyWatched
-      confirmMsg = translate(translationKeys.MessageMarkAllEpisodesInThisSeries)
+      confirmMsg = translate(translationKeys.MessageConfirmMarkSeriesUnwatched)
       confirmBtn = translate(translationKeys.ButtonMarkUnwatched)
     else
-      confirmMsg = translate(translationKeys.MessageMarkAllEpisodesInThisSeries2)
+      confirmMsg = translate(translationKeys.MessageConfirmMarkSeriesWatched)
       confirmBtn = translate(translationKeys.ButtonMarkWatched)
     end if
     m.watchedConfirmDialog = showConfirmDialog(translate(translationKeys.LabelWatched), confirmMsg, "onWatchedConfirmResponse", confirmBtn, translate(translationKeys.ButtonCancel))
@@ -762,7 +762,7 @@ end function
 sub onDeleteButtonPressed(item as object)
   if not (isValid(item) and isValidAndNotEmpty(item.id)) then return
   m.pendingDeleteItemId = item.id
-  m.deleteConfirmDialog = showConfirmDialog(translate(translationKeys.ButtonDelete), translate(translationKeys.ErrorAreYouSureYouWantTo), "onDeleteConfirmResponse", translate(translationKeys.ButtonDelete), translate(translationKeys.ButtonCancel))
+  m.deleteConfirmDialog = showConfirmDialog(translate(translationKeys.ButtonDelete), translate(translationKeys.MessageConfirmDeleteItem), "onDeleteConfirmResponse", translate(translationKeys.ButtonDelete), translate(translationKeys.ButtonCancel))
 end sub
 
 sub onDeleteConfirmResponse()
@@ -2401,7 +2401,7 @@ sub populateDescriptionGroup()
     if isValidAndNotEmpty(item.overview)
       m.itemDescription.text = item.overview
     else
-      m.itemDescription.text = translate(translationKeys.MessageBiographicalInformationForThisPersonIs)
+      m.itemDescription.text = translate(translationKeys.MessageNoBiography)
     end if
     m.itemDescription.tagline = ""
     m.itemDescription.maxLines = 8
@@ -3078,14 +3078,14 @@ end sub
 sub populateInfoGroupAudio(item as object, userSettings as object)
   if item.indexNumber > 0
     trackNode = createInfoLabel("trackNumber")
-    trackNode.text = translate(translationKeys.MessageTrack1, [stri(item.indexNumber).trim()])
+    trackNode.text = translate(translationKeys.MessageTrack, [stri(item.indexNumber).trim()])
     displayInfoNode(trackNode)
   end if
 
   ' Only show disc number when there is more than one disc in the album
   if item.parentIndexNumber > 1
     discNode = createInfoLabel("discNumber")
-    discNode.text = translate(translationKeys.MessageDisc1, [stri(item.parentIndexNumber).trim()])
+    discNode.text = translate(translationKeys.MessageDisc, [stri(item.parentIndexNumber).trim()])
     displayInfoNode(discNode)
   end if
 
@@ -3936,7 +3936,7 @@ end function
 ' formatDisambiguatedTime() owns the contextual am/pm rule and is shared with the playback OSD's
 ' own "Ends at", so one end time reads the same way on both screens.
 function formatEndsAtText(date as object) as string
-  return translate(translationKeys.MessageEndsAt1, [formatDisambiguatedTime(date)])
+  return translate(translationKeys.MessageEndsAt, [formatDisambiguatedTime(date)])
 end function
 
 ' createEndsAtNode: Build an "Ends at" label and store it on m.endsAtNode for dynamic clock

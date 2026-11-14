@@ -1847,7 +1847,7 @@ sub updateTitle()
   ' Add item count if enabled
   actInt = m.itemGrid.itemFocused + 1
   if m.showItemCount and m.totalRecordCount > 0 and lowerView <> "genres"
-    m.top.overhangTitle += " (" + translate(translationKeys.Message1Of2, [actInt.toStr(), m.totalRecordCount.toStr()]) + ")"
+    m.top.overhangTitle += " (" + translate(translationKeys.LabelPositionOfTotal, [actInt.toStr(), m.totalRecordCount.toStr()]) + ")"
   end if
 end sub
 

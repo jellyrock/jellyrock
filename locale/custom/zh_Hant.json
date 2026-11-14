@@ -242,14 +242,14 @@
   "LanguageVi": "越南文",
   "LanguageZh": "中文",
   "LanguageZu": "祖魯文",
-  "MessageDirectedBy1": "由 {0} 執導",
-  "MessageDisc1": "光碟#{0}",
-  "MessageEndsAt1": "於 {0} 結束",
-  "MessageMoreFrom1": "更多來自 {0}",
+  "MessageDirectedBy": "由 {0} 執導",
+  "MessageDisc": "光碟#{0}",
+  "MessageEndsAt": "於 {0} 結束",
+  "MessageMoreFrom": "更多來自 {0}",
   "MessageSearchNoResults": "沒有結果。",
-  "MessageSetTheMaximumAmountOfDays": "設定一個節目在未被觀看的情況下應保留在「接下來」列表中的最大天數。",
   "MessageSyncPlayCreateGroupDenied": "需要建立群組之權限。",
   "MessageSyncPlayLibraryAccessDenied": "存取受限。",
   "MessageSyncPlayUserJoined": "{0}加入群組。",
-  "MessageSyncPlayUserLeft": "{0}離開了群組。"
+  "MessageSyncPlayUserLeft": "{0}離開了群組。",
+  "SettingDescMaxDaysNextUp": "設定一個節目在未被觀看的情況下應保留在「接下來」列表中的最大天數。"
 }

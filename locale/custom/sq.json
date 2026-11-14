@@ -156,6 +156,6 @@
   "LanguageVi": "vietnamisht",
   "LanguageZh": "kinezisht",
   "LanguageZu": "zuluisht",
-  "MessageEndsAt1": "Përfundon në {0}",
-  "MessageSetTheMaximumAmountOfDays": "Vendos shumën maksimale të ditëve që një serial duhet të qëndroj në listën 'Në vazhdim' pa e parë."
+  "MessageEndsAt": "Përfundon në {0}",
+  "SettingDescMaxDaysNextUp": "Vendos shumën maksimale të ditëve që një serial duhet të qëndroj në listën 'Në vazhdim' pa e parë."
 }

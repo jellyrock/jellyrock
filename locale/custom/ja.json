@@ -235,14 +235,14 @@
   "LanguageVi": "ベトナム語",
   "LanguageZh": "中国語",
   "LanguageZu": "ズールー語",
-  "MessageDirectedBy1": "{0} 監督",
-  "MessageDisc1": "ディスク {0}",
-  "MessageEndsAt1": "{0}に終了",
-  "MessageMoreFrom1": "もっと詳しく {0}",
+  "MessageDirectedBy": "{0} 監督",
+  "MessageDisc": "ディスク {0}",
+  "MessageEndsAt": "{0}に終了",
+  "MessageMoreFrom": "もっと詳しく {0}",
   "MessageSearchNoResults": "結果がありません。",
-  "MessageSetTheMaximumAmountOfDays": "視聴されないまま「まずは…」に表示を続ける最大日数を設定します。",
   "MessageSyncPlayCreateGroupDenied": "グループ作成の権限が必要です。",
   "MessageSyncPlayLibraryAccessDenied": "このコンテンツへのアクセスは制限されています。",
   "MessageSyncPlayUserJoined": "{0} がグループに加わりました。",
-  "MessageSyncPlayUserLeft": "{0} がグループから退出しました。"
+  "MessageSyncPlayUserLeft": "{0} がグループから退出しました。",
+  "SettingDescMaxDaysNextUp": "視聴されないまま「まずは…」に表示を続ける最大日数を設定します。"
 }

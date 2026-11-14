@@ -76,7 +76,7 @@
           <LabelPrimaryMedium id="resultsHeading" translation="[0, 0]" />
           <!-- "3 of 47", right-aligned on the heading's own line. A MarkupList has
                no counter of its own (showRowCounter is a RowList field), so this
-               is hand-built, but the STRING is the app's existing Message1Of2, the
+               is hand-built, but the STRING is the app's existing LabelPositionOfTotal, the
                same one the grid overhang and the audio player use, so a position
                readout means the same thing wherever it appears. On the heading
                line rather than below the list: it costs no row, and the question

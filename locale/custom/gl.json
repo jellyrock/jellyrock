@@ -201,10 +201,10 @@
   "LanguageVi": "vietnamita",
   "LanguageZh": "chinés",
   "LanguageZu": "zulú",
-  "MessageDisc1": "Disco {0}",
-  "MessageEndsAt1": "Termina ás {0}",
-  "MessageMoreFrom1": "Máis de {0}",
-  "MessageSetTheMaximumAmountOfDays": "Establece o número máximo de días que un programa aparecerá na lista 'A seguir' sen velo.",
+  "MessageDisc": "Disco {0}",
+  "MessageEndsAt": "Termina ás {0}",
+  "MessageMoreFrom": "Máis de {0}",
   "MessageSyncPlayUserJoined": "{0} xuntouse ao grupo.",
-  "MessageSyncPlayUserLeft": "{0} abandonou o grupo."
+  "MessageSyncPlayUserLeft": "{0} abandonou o grupo.",
+  "SettingDescMaxDaysNextUp": "Establece o número máximo de días que un programa aparecerá na lista 'A seguir' sen velo."
 }

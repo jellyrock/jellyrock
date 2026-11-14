@@ -412,7 +412,7 @@ LabelPersonRoleAs:
     jellyfin-web: { key: PersonRole, en: "as {0}" }
     jellyfin-roku: { key: "as %1", en: "as %1" }
 
-MessageDirectedBy1:
+MessageDirectedBy:
   en: "Directed by {0}"
   from:
     jellyfin-web: { key: RecommendationDirectedBy, en: "Directed by {0}" }

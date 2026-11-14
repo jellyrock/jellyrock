@@ -238,13 +238,13 @@
   "LanguageVi": "Vítneaimis",
   "LanguageZh": "Sínis",
   "LanguageZu": "Súlúis",
-  "MessageDirectedBy1": "Arna stiúradh ag {0}",
-  "MessageDisc1": "Diosca {0}",
-  "MessageEndsAt1": "Críoch ag {0}",
-  "MessageMoreFrom1": "Tuilleadh ó {0}",
-  "MessageSetTheMaximumAmountOfDays": "Socraigh an t-uasmhéid laethanta ba chóir do thaispeántas fanacht ar an liosta 'Next Up' gan féachaint air.",
+  "MessageDirectedBy": "Arna stiúradh ag {0}",
+  "MessageDisc": "Diosca {0}",
+  "MessageEndsAt": "Críoch ag {0}",
+  "MessageMoreFrom": "Tuilleadh ó {0}",
   "MessageSyncPlayCreateGroupDenied": "Cead ag teastáil chun grúpa a chruthú.",
   "MessageSyncPlayLibraryAccessDenied": "Tá rochtain ar an ábhar seo srianta.",
   "MessageSyncPlayUserJoined": "Tá {0} tagtha isteach sa ghrúpa.",
-  "MessageSyncPlayUserLeft": "D'fhág {0} an grúpa."
+  "MessageSyncPlayUserLeft": "D'fhág {0} an grúpa.",
+  "SettingDescMaxDaysNextUp": "Socraigh an t-uasmhéid laethanta ba chóir do thaispeántas fanacht ar an liosta 'Next Up' gan féachaint air."
 }

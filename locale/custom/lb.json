@@ -218,11 +218,11 @@
   "LanguageUz": "Usbekesch",
   "LanguageVi": "Vietnamesesch",
   "LanguageZh": "Chinesesch",
-  "MessageDirectedBy1": "Réaliséiert vum {0}",
-  "MessageMoreFrom1": "Méi vu {0}",
-  "MessageSetTheMaximumAmountOfDays": "Hëllef zum Max Deeg für Next Up",
+  "MessageDirectedBy": "Réaliséiert vum {0}",
+  "MessageMoreFrom": "Méi vu {0}",
   "MessageSyncPlayCreateGroupDenied": "Erstellung vun der SyncPlay-Gruppe verweigert",
   "MessageSyncPlayLibraryAccessDenied": "Zougang zur SyncPlay-Bibliothéik verweigert",
   "MessageSyncPlayUserJoined": "{0} ass der Grupp bäigetrueden",
-  "MessageSyncPlayUserLeft": "{0} huet d'Grupp verlossen"
+  "MessageSyncPlayUserLeft": "{0} huet d'Grupp verlossen",
+  "SettingDescMaxDaysNextUp": "Hëllef zum Max Deeg für Next Up"
 }
