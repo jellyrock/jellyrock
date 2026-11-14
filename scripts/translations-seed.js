@@ -76,10 +76,8 @@ export const LEDGER_REL = path.join('locale', 'seed', 'seeded.json');
 
 /**
  * Licenses whose text may be copied into GPL-2.0-only JellyRock, each with phrases
- * its LICENSE file must contain. GPL-3.0 and Apache-2.0 are absent on purpose: both
- * are incompatible with GPL-2.0-only. MIT, BSD and ISC are compatible but absent until
- * a source needs one, because each needs its notice shipped in the package (see
- * docs/architecture/translations.md, "Seeding from other Jellyfin clients").
+ * its LICENSE file must contain. GPL-3.0 is absent on purpose: it is incompatible
+ * with GPL-2.0-only.
  */
 export const LICENSE_ALLOWLIST = Object.freeze({
   'GPL-2.0-only': ['GNU GENERAL PUBLIC LICENSE', 'Version 2, June 1991'],

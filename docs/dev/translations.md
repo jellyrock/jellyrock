@@ -75,7 +75,7 @@ Rename a key with the rename mode, never by editing `en_US.json` alone:
 npm run update-translations -- --rename OldKey=NewKey [--rename Old2=New2 …]
 ```
 
-It renames the key in `en_US.json` and in every locale file, so its translations move with it. It also renames the key in the seed map (`keymap.yml`) and ledger, in `settings/settings.json`, and in every `translationKeys.OldKey` in code and tests. If any pair is wrong (an unknown key, a name already taken, a plural key), it renames nothing. It then lists other files that still mention the old name, such as docs and comments, for you to fix by hand.
+It renames the key in `en_US.json` and in every locale file, so its translations move with it. It also renames the key in the seed map (`keymap.yml`) and ledger, in `settings/settings.json`, and in every `translationKeys.OldKey` in code and tests. If any pair is wrong (an unknown key, a plural key, or a new name a locale file, the seed map or the ledger already holds), it renames nothing. It runs only in fix mode: `npm run lint:translations` refuses `--rename`. It then lists other files that still mention the old name, such as docs and comments, for you to fix by hand.
 
 Release prep carries the rename to Weblate with no step of your own: `main` deleted the old key and added the new one, and the three-way merge takes `main`'s change (see [Weblate sync](../architecture/translations.md#weblate-sync)). Until then Weblate shows the new key as untranslated. If a translator translates it in that window, their translation wins at release prep, and the merge log lists it.
 

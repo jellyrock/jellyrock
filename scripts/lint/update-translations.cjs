@@ -40,10 +40,12 @@ const SETTINGS_JSON_PATH = path.join(ROOT_DIR, 'settings/settings.json');
 const KEYMAP_PATH = path.join(ROOT_DIR, 'locale/seed/keymap.yml');
 const LEDGER_PATH = path.join(ROOT_DIR, 'locale/seed/seeded.json');
 
-/** `--rename Old=New` pairs, in the order given. */
-const RENAMES = process.argv.flatMap((arg, i, argv) =>
-  arg === '--rename' ? [argv[i + 1] ?? ''] : [],
-);
+/** `--rename Old=New` (or `--rename=Old=New`) pairs, in the order given. */
+const RENAMES = process.argv.flatMap((arg, i, argv) => {
+  if (arg === '--rename') return [argv[i + 1] ?? ''];
+  if (arg.startsWith('--rename=')) return [arg.slice('--rename='.length)];
+  return [];
+});
 
 // Code that names keys as `translationKeys.X`, tests included: a stale name there
 // fails the build.
@@ -59,6 +61,7 @@ const RENAME_CODE_PATTERNS = [
 // are reported, not rewritten: a mention in prose needs a reader's judgment.
 const MENTION_PATTERNS = ['**/*.{md,bs,brs,xml,js,cjs,mjs,json,yml,yaml}'];
 const MENTION_IGNORE = [
+  '.git/**',
   '**/node_modules/**',
   '**/roku_modules/**',
   'build/**',
@@ -368,11 +371,17 @@ function checkPluralCompleteness(keys) {
 
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/** Top-level entry names in keymap.yml: an unindented `Key:` line. */
+function keymapKeys(text) {
+  return new Set([...text.matchAll(/^([A-Za-z]\w*):(?=\s|$)/gm)].map((m) => m[1]));
+}
+
 /**
- * Validate every `Old=New` pair against en_US.json and the locale files. Returns
- * the parsed pairs and a list of problems; any problem cancels the whole batch.
+ * Validate every `Old=New` pair against en_US.json, the locale files, the seed keymap
+ * and the seed ledger. Returns the parsed pairs and a list of problems; any problem
+ * cancels the whole batch.
  */
-function planRenames(specs, locales) {
+function planRenames(specs, locales, { keymap = new Set(), ledger = {} } = {}) {
   const problems = [];
   const pairs = [];
   const enUs = locales[SOURCE_LOCALE];
@@ -409,6 +418,12 @@ function planRenames(specs, locales) {
       if (to in translations)
         problems.push(`--rename: ${locale}.json already has ${to} (an orphaned key)`);
   }
+  for (const { to } of pairs) {
+    if (keymap.has(to)) problems.push(`--rename: keymap.yml already has an entry for ${to}`);
+    const ledgerLocales = Object.keys(ledger).filter((locale) => to in ledger[locale]);
+    if (ledgerLocales.length > 0)
+      problems.push(`--rename: seeded.json already records ${to} (${ledgerLocales.join(', ')})`);
+  }
   return { pairs, problems };
 }
 
@@ -424,7 +439,11 @@ function renameIn(object, from, to) {
 async function applyRenames(specs) {
   console.log(c('\n[Rename]', 'cyan'));
   const locales = readLocaleDir(LOCALE_DIR);
-  const { pairs, problems } = planRenames(specs, locales);
+  const ledger = fs.existsSync(LEDGER_PATH) ? JSON.parse(fs.readFileSync(LEDGER_PATH, 'utf8')) : {};
+  const keymap = fs.existsSync(KEYMAP_PATH)
+    ? keymapKeys(fs.readFileSync(KEYMAP_PATH, 'utf8'))
+    : new Set();
+  const { pairs, problems } = planRenames(specs, locales, { keymap, ledger });
   if (problems.length > 0) {
     problems.forEach((p) => console.log(c(`  ERROR: ${p}`, 'red')));
     console.log(c('  Nothing was renamed.', 'red'));
@@ -447,7 +466,6 @@ async function applyRenames(specs) {
   // Seed ledger: a cell it filled under the old name stays recorded, so a
   // translation someone removed is not refilled under the new one.
   if (fs.existsSync(LEDGER_PATH)) {
-    const ledger = JSON.parse(fs.readFileSync(LEDGER_PATH, 'utf8'));
     for (const keys of Object.values(ledger))
       for (const { from, to } of pairs) renameIn(keys, from, to);
     const next = serializeLedger(ledger);
@@ -496,7 +514,12 @@ async function applyRenames(specs) {
   // Leftover mentions, for a person to judge.
   const mentions = [];
   const mentionRegex = new RegExp(`\\b(${pairs.map((p) => escapeRegex(p.from)).join('|')})\\b`);
-  for (const file of await fg(MENTION_PATTERNS, { cwd: ROOT_DIR, ignore: MENTION_IGNORE })) {
+  // `dot: true`: skills under .claude/ and workflows under .github/ name keys too.
+  for (const file of await fg(MENTION_PATTERNS, {
+    cwd: ROOT_DIR,
+    ignore: MENTION_IGNORE,
+    dot: true,
+  })) {
     const text = fs.readFileSync(path.join(ROOT_DIR, file), 'utf8');
     text.split('\n').forEach((line, i) => {
       const hit = mentionRegex.exec(line);
@@ -520,7 +543,16 @@ async function main() {
   console.log(c('\nTranslation Check', 'bold'));
   console.log(c('=================', 'blue'));
 
-  if (RENAMES.length > 0) await applyRenames(RENAMES);
+  if (RENAMES.length > 0) {
+    // A check run must never write: renaming is a fix.
+    if (!FIX_MODE) {
+      console.log(
+        c('  ERROR: --rename writes files; run it through npm run update-translations.', 'red'),
+      );
+      process.exit(1);
+    }
+    await applyRenames(RENAMES);
+  }
 
   // ----------------------------------------------------------
   // Load en_US.json

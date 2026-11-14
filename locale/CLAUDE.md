@@ -14,7 +14,7 @@ Translation files for the custom JSON i18n system. [docs/architecture/translatio
 
 - **A new key can be born translated.** Run `npm run translations:seed -- suggest --key <Key>`. If another client already has the string, add a reviewed entry to [`seed/keymap.yml`](seed/keymap.yml), and release prep fills it every release. How-to: [`docs/dev/translations.md`](../docs/dev/translations.md#seeding-translations-from-other-jellyfin-clients).
 - **Never map on English text alone.** Check the source key's meaning and shape, and read the dry run's values. Both have caught real errors (see the comments in `keymap.yml`).
-- **Only `GPL-2.0` or `MPL-2.0` sources** go in [`seed/sources.yml`](seed/sources.yml) today. JellyRock is `GPL-2.0-only`, so a `GPL-3.0` or `Apache-2.0` project can never be added. `MIT`, `BSD` and `ISC` are compatible but not on the allowlist yet: [why, and what adding one takes](../docs/architecture/translations.md#seeding-from-other-jellyfin-clients). The seeder refuses any license not on the allowlist.
+- **Only `GPL-2.0` or `MPL-2.0` sources** go in [`seed/sources.yml`](seed/sources.yml). JellyRock is `GPL-2.0-only`, so a `GPL-3.0` project can never be added. The seeder refuses any other license.
 
 ## Key names
 

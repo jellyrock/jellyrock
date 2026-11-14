@@ -338,13 +338,54 @@ describe('update-translations.cjs', () => {
       fixture = renameFixture();
       const { exitCode, stdout } = spawnScript(
         SCRIPT,
-        ['--rename', 'Nope=LabelNope', '--rename', 'World', '--rename', 'Hello=HelloOne'],
+        ['--fix', '--rename', 'Nope=LabelNope', '--rename', 'World', '--rename', 'Hello=HelloOne'],
         { cwd: fixture.dir },
       );
       expect(exitCode).toBe(1);
       expect(stdout).toMatch(/Nope is not in en_US\.json/);
       expect(stdout).toMatch(/"World": expected OldKey=NewKey/);
       expect(stdout).toMatch(/plural keys are not supported/);
+    });
+
+    it('refuses a new name the seed keymap or ledger already holds', () => {
+      fixture = renameFixture({
+        sources: {
+          ...RENAME_SOURCE,
+          'locale/seed/keymap.yml': 'LabelWorld:\n  en: World\n',
+          'locale/seed/seeded.json': { de: { LabelHello: 'web@abc' } },
+        },
+      });
+      const { exitCode, stdout } = spawnScript(
+        SCRIPT,
+        ['--fix', '--rename', 'World=LabelWorld', '--rename', 'Hello=LabelHello'],
+        { cwd: fixture.dir },
+      );
+      expect(exitCode).toBe(1);
+      expect(stdout).toMatch(/keymap\.yml already has an entry for LabelWorld/);
+      expect(stdout).toMatch(/seeded\.json already records LabelHello \(de\)/);
+    });
+
+    it('refuses to rename in check mode, and writes nothing', () => {
+      fixture = renameFixture();
+      const before = readText(fixture.dir, 'locale/custom/en_US.json');
+      const { exitCode, stdout } = spawnScript(SCRIPT, ['--rename', 'World=LabelWorld'], {
+        cwd: fixture.dir,
+      });
+      expect(exitCode).toBe(1);
+      expect(stdout).toMatch(/--rename writes files/);
+      expect(readText(fixture.dir, 'locale/custom/en_US.json')).toBe(before);
+    });
+
+    it('accepts --rename=Old=New and reports mentions under dot-folders', () => {
+      fixture = renameFixture({
+        sources: { ...RENAME_SOURCE, '.claude/skills/x/SKILL.md': 'Use World here.\n' },
+      });
+      const { exitCode, stdout } = spawnScript(SCRIPT, ['--fix', '--rename=World=LabelWorld'], {
+        cwd: fixture.dir,
+      });
+      expect(exitCode).toBe(0);
+      expect(stdout).toMatch(/Renamed.* World → LabelWorld/);
+      expect(stdout).toMatch(/\.claude\/skills\/x\/SKILL\.md:1 World/);
     });
   });
 });
