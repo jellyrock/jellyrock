@@ -2786,6 +2786,16 @@ In the Backdrop Images `details` mode, `JRScene.setBackgroundImage` decides whic
 
 Ruled out: deciding by `m.global.activeRoutedView`, because `AudioPlayerView.init()` writes its backdrop before `JRScreen.onViewOpen` makes it active, so Now Playing would lose its backdrop when music starts from a browse screen; a mode check in every browse screen, about 20 call sites in 6 files where a new screen that forgets leaks backdrops; and a clear in `onActiveRoutedViewChanged` on reaching a browse screen, dropped because no test could fail it (measured on a Roku Ultra 2026-11-11: with it disabled, Back to the library grid, to Home with its refresh held 15 s, and to search results all still cleared). Requested in discussion 1361.
 
+## decision-id: mp4-secondary-audio-remux
+
+**date**: 2026-11-13
+**status**: accepted
+**related-files**: `source/utils/deviceCapabilities.bs`, `source/utils/streamSelection.bs`, `components/video/VideoPlayerView.bs`
+
+Roku's player can't switch audio inside an `mp4`, `mov` or `m4v` file: it lists no `availableAudioTracks` and ignores `audioTrack`. So a pick that wasn't the file's first audio track played the first one (#1381). `getCodecProfiles()` now declares a `VideoAudio` profile for that container family, with no codec, holding `IsSecondaryAudio` `Equals` `false` (`IsRequired` false). jellyfin-web declares the same condition when its player can't switch tracks. Jellyfin's own rule then decides (`SecondaryAudioNotSupported`), and the server sends the video and the picked track as HLS. On a Roku Ultra against Jellyfin 12.4 (2026-11-13), that job was a remux with video and audio copied. `canSwitchAudioNatively()` reloads a pick from **Audio** when Roku lists no tracks. MKV switches natively and stays out of the condition. Streaming formats are tracked separately (followup `muxed-hls-audio-tracks-unselectable`).
+
+Ruled out: having JellyRock force a transcode when the container is `mp4` and the pick isn't the first track. That re-implements Jellyfin's rule on the client and turns off direct play wholesale, so the server may re-encode where a copy does. Also ruled out: declaring the condition for every container as jellyfin-web does, which would remux MKV picks for nothing. To re-evaluate: fragmented `mp4` and `m4v` files have not been played on a device with this rule.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

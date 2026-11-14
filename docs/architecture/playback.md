@@ -63,7 +63,7 @@ related-files:
   - source/syncplay/syncPlayQueue.bs
   - source/syncplay/syncPlayHooks.bs
   - source/syncplay/syncPlayState.bs
-last-reviewed: 2026-11-09
+last-reviewed: 2026-11-13
 ---
 
 # Video and audio playback
@@ -589,6 +589,7 @@ The profile rules for audio live in `source/utils/deviceCapabilities.bs` and `so
 - **Only what Roku documents is direct-played, and `dts` and `truehd` are never transcode targets** (decision [`audio-profile-documented-and-reported`](../decisions.md#decision-id-audio-profile-documented-and-reported)). Roku's `CanDecodeAudio` and a soundbar's EDID can both say yes to a format the player then fails on, so the profile takes what Roku's media spec lists and the device reports. TrueHD, DTS-HD and `DTS:X` are never direct-played as such; DTS is direct-played up to `DTS_MAX_DIRECT_PLAY_CHANNELS` (6). Neither is offered as a transcode target, because the server copies a source codec it finds on that list, and DTS copied into HLS plays silent on Roku (#821, #892), so the server converts both to `eac3` or `ac3`.
 - **A default track this Roku cannot play gives way to one it can.** With **Play default audio track** on, `findBestAudioStreamIndex()` takes the track the file flags default, but when that track is not direct-playable here (TrueHD, for one), `playableAlternativeToDefault()` picks a same-language track of the same kind that is (audio description for audio description, never commentary), as long as it has no fewer channels than the viewer would get from the default. The server would convert the default anyway, and the playable track lets the video direct-play or copy. A converted default arrives as at most 5.1 (`SURROUND_TRANSCODE_MAX_CHANNELS`), because the server's `eac3` and `ac3` encoders stop there, so a 7.1 default gives way to a 5.1 track even on a 7.1 system.
 - **A track switch during playback** asks the profile's own question (`isStreamDirectPlayable()`: `getActualCodecSupport()`, the same refusals, the Decode Multichannel Audio cap and the AAC profile rule), so a switch stays native only where the server would have direct-played the track, and otherwise reloads.
+- **A track that isn't the first in an `mp4`, `mov` or `m4v` file arrives through a remux.** Roku's player can't switch audio inside these containers: it lists no tracks and ignores `audioTrack`. So `getCodecProfiles()` declares `IsSecondaryAudio` false for them, and the server copies the video and the picked track into HLS. `canSwitchAudioNatively()` reloads a pick when Roku lists no tracks. MKV switches natively and stays out.
 
 ### Dolby Vision
 

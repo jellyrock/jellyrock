@@ -593,6 +593,35 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("canSwitchAudioNatively()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is false when Roku lists no audio tracks, as in an MP4")
+    function _()
+      streams = [{ index: 1, channels: 2, codec: "aac" }, { index: 2, channels: 2, codec: "aac" }]
+      m.assertFalse(canSwitchAudioNatively(false, [], 2, streams))
+      m.assertFalse(canSwitchAudioNatively(false, invalid, 2, streams))
+    end function
+
+    @it("is false when the playback is transcoded")
+    function _()
+      streams = [{ index: 1, channels: 2, codec: "aac" }, { index: 2, channels: 2, codec: "aac" }]
+      m.assertFalse(canSwitchAudioNatively(true, [{ Track: "1" }, { Track: "2" }], 2, streams))
+    end function
+
+    @it("is false when the picked stream is not direct-playable")
+    function _()
+      streams = [{ index: 1, channels: 2, codec: "aac" }, { index: 2, channels: 8, codec: "truehd" }]
+      m.assertFalse(canSwitchAudioNatively(false, [{ Track: "1" }, { Track: "2" }], 2, streams))
+    end function
+
+    @it("is true for a listed track list and a direct-playable stream")
+    function _()
+      streams = [{ index: 1, channels: 2, codec: "aac" }, { index: 2, channels: 2, codec: "aac" }]
+      m.assertTrue(canSwitchAudioNatively(false, [{ Track: "1" }, { Track: "2" }], 2, streams))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("languagesMatch() — mixed ISO 639 forms")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

@@ -1234,6 +1234,40 @@ namespace tests
       m.assertEqual(m.capFor("off", 2160).count, 0, "off must not constrain anything")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getCodecProfiles() - secondary audio in containers Roku cannot switch")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    private function secondaryAudioProfiles() as object
+      found = []
+      for each profile in getCodecProfiles()
+        if profile.Type <> "VideoAudio" or not isValid(profile.Conditions) then continue for
+        for each condition in profile.Conditions
+          if condition.Property = "IsSecondaryAudio" then found.push(profile)
+        end for
+      end for
+      return found
+    end function
+
+    @it("declares IsSecondaryAudio false on one VideoAudio profile for the MP4 family")
+    function _()
+      found = m.secondaryAudioProfiles()
+      m.assertEqual(found.count(), 1)
+      if found.count() = 1
+        m.assertEqual(found[0].Container, "mp4,mov,m4v")
+        m.assertFalse(found[0].doesExist("Codec"), "no Codec, so it matches every audio codec")
+        m.assertEqual(found[0].Conditions.count(), 1)
+        m.assertEqual(found[0].Conditions[0], { "Condition": "Equals", "Property": "IsSecondaryAudio", "Value": "false", "IsRequired": false })
+      end if
+    end function
+
+    @it("leaves mkv out, since Roku switches its tracks natively")
+    function _()
+      for each profile in m.secondaryAudioProfiles()
+        m.assertFalse(isValid(profile.Container) and inStr(1, profile.Container, "mkv") > 0, "mkv must not carry IsSecondaryAudio")
+      end for
+    end function
+
   end class
 
 end namespace

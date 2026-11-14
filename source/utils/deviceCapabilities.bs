@@ -350,6 +350,10 @@ function getSupportedPassthruCodecs(di as object, channelCount as integer) as ob
   return supportedCodecs
 end function
 
+function getMp4FamilyContainers() as string
+  return "mp4,mov,m4v"
+end function
+
 function GetDirectPlayProfiles() as object
   ' ONE rendezvous to get user settings
   globalUserSettings = m.global.user.settings
@@ -461,7 +465,7 @@ function GetDirectPlayProfiles() as object
       containerString = container
 
       if container = "mp4"
-        containerString = "mp4,mov,m4v"
+        containerString = getMp4FamilyContainers()
       else if container = "mkv"
         containerString = "mkv,webm"
       end if
@@ -1017,6 +1021,22 @@ function getCodecProfiles(caps = invalid as dynamic) as object
       end for
     end if
   end for
+
+  ' Roku's player can't switch audio inside an MP4, MOV or M4V: it lists no tracks and ignores
+  ' audioTrack. Declaring a secondary track unplayable makes the server remux a pick that is not
+  ' the file's first track, so the stream carries it. MKV switches natively and stays out.
+  codecProfiles.push({
+    "Type": "VideoAudio",
+    "Container": getMp4FamilyContainers(),
+    "Conditions": [
+      {
+        "Condition": "Equals",
+        "Property": "IsSecondaryAudio",
+        "Value": "false",
+        "IsRequired": false
+      }
+    ]
+  })
 
   ' check device for codec profile and level support
   ' AVC / h264

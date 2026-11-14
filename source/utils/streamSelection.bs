@@ -317,6 +317,24 @@ function isSelectedAudioStreamDirectPlayable(jellyfinAudioIndex as integer, audi
   return isStreamDirectPlayable(selected, getDeviceAudioCapabilities())
 end function
 
+' canSwitchAudioNatively: Whether a pick from the Audio menu can go to Roku's own track switch
+' instead of a reload.
+'
+' The player lists availableAudioTracks only for a container it can switch inside (MKV). It lists
+' none for MP4, MOV and MPEG-TS and ignores audioTrack there, so an empty list means the server
+' must send a stream that carries the pick.
+'
+' @param {boolean} isTranscoded - true when the server is transcoding this playback
+' @param {dynamic} availableAudioTracks - the video node's availableAudioTracks
+' @param {integer} jellyfinAudioIndex - Jellyfin index of the chosen audio stream
+' @param {dynamic} audioStreams - Array of audio MediaStream objects (for example fullAudioData)
+' @returns {boolean} - true if setting audioTrack will switch the track
+function canSwitchAudioNatively(isTranscoded as boolean, availableAudioTracks as dynamic, jellyfinAudioIndex as integer, audioStreams as dynamic) as boolean
+  if isTranscoded then return false
+  if not isValidAndNotEmpty(availableAudioTracks) then return false
+  return isSelectedAudioStreamDirectPlayable(jellyfinAudioIndex, audioStreams)
+end function
+
 ' isCommentaryAudioStream: Determine whether a stream is a commentary/secondary track.
 '
 ' Detection: case-insensitive substring match for "commentary" in the stream Title.
