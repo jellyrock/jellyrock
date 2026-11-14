@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- (translations) Rename 75 keys by role, keeping translations ([#1385](https://github.com/jellyrock/jellyrock/pull/1385)) by [@cewert](https://github.com/cewert)
 - Gate namespaced constant access and spec code at build time ([#1376](https://github.com/jellyrock/jellyrock/pull/1376)) by [@cewert](https://github.com/cewert)
 
 ### Fixed
