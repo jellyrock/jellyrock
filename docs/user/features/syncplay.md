@@ -69,3 +69,4 @@ While you follow a group, the gear in the player's controls has three more rows 
 - **"Permission required to create a group."** Your account can join groups but not start them. Join one, or ask your admin for permission to create groups.
 - **"That group no longer exists."** The group ended before you joined. Open the **SyncPlay** icon again to see the groups there are now.
 - **Your Roku sounds a little behind everyone else, every time.** Your TV or sound system may be adding a delay. Raise **SyncPlay Time Offset** in **Settings → Playback** in small steps (try 100) until the sound lines up.
+- **A seek ends a few seconds before where you aimed.** Some Roku devices can only start playing from certain points in a video. When one is in the group, JellyRock moves the whole group back to the nearest point that device can start from, so everyone stays in step.
