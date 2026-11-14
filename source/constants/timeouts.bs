@@ -63,6 +63,17 @@ namespace timeouts
   ' 0.16-0.82 s per playlist GET, so 3 s is ~3.7x the slowest seen anywhere.
   const UPSTREAM_PREFLIGHT_MS = 3000
 
+  ' Wait for the read of the start of an MKV file that finds its stored track numbers
+  ' (LoadVideoContentTask.startMkvTrackRead), counted from when the read starts, so a read that
+  ' finished during the PlaybackInfo request adds no wait. The header must arrive before playback
+  ' starts, so a read that is late is cancelled and the load goes on without the numbers.
+  const MKV_TRACK_READ_MS = 1500
+
+  ' Bytes read from the start of an MKV file to reach its Tracks element. Large enough to hold the
+  ' header of every sample file checked, with headroom; a Tracks element that ends past it
+  ' parses as invalid and the load goes on without the numbers.
+  const MKV_TRACK_READ_BYTES = 65536
+
   ' Wait for the server's own HLS master playlist when a transcode of a source above 1080p reads the
   ' codec and size it declared (LoadVideoContentTask.capH264Resolution). The server builds the playlist from
   ' the request alone, without starting the transcode, so it answers like any API call. A playlist

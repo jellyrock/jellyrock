@@ -41,6 +41,8 @@ related-files:
   - source/utils/quickplayLibrary.bs
   - source/utils/nodeHelpers.bs
   - source/utils/streamSelection.bs
+  - source/utils/mkvTracks.bs
+  - source/utils/rokuAudioTrack.bs
   - source/utils/probedStreams.bs
   - source/utils/streamOrigin.bs
   - source/utils/stillWatching.bs
@@ -63,7 +65,7 @@ related-files:
   - source/syncplay/syncPlayQueue.bs
   - source/syncplay/syncPlayHooks.bs
   - source/syncplay/syncPlayState.bs
-last-reviewed: 2026-11-09
+last-reviewed: 2026-11-13
 ---
 
 # Video and audio playback
@@ -588,6 +590,7 @@ The profile rules for audio live in `source/utils/deviceCapabilities.bs` and `so
 - **A multichannel source that must be transcoded is steered to surround.** `resolveMultichannelSurroundTarget()` puts `eac3` or `ac3` first in the transcode codec list, so the server does not mix down to stereo AAC. For a stereo source, `optimizeAudioCodecListForSource()` strips the surround codecs (`surroundCodecs`) from the list.
 - **Only what Roku documents is direct-played, and `dts` and `truehd` are never transcode targets** (decision [`audio-profile-documented-and-reported`](../decisions.md#decision-id-audio-profile-documented-and-reported)). Roku's `CanDecodeAudio` and a soundbar's EDID can both say yes to a format the player then fails on, so the profile takes what Roku's media spec lists and the device reports. TrueHD, DTS-HD and `DTS:X` are never direct-played as such; DTS is direct-played up to `DTS_MAX_DIRECT_PLAY_CHANNELS` (6). Neither is offered as a transcode target, because the server copies a source codec it finds on that list, and DTS copied into HLS plays silent on Roku (#821, #892), so the server converts both to `eac3` or `ac3`.
 - **A default track this Roku cannot play gives way to one it can.** With **Play default audio track** on, `findBestAudioStreamIndex()` takes the track the file flags default, but when that track is not direct-playable here (TrueHD, for one), `playableAlternativeToDefault()` picks a same-language track of the same kind that is (audio description for audio description, never commentary), as long as it has no fewer channels than the viewer would get from the default. The server would convert the default anyway, and the playable track lets the video direct-play or copy. A converted default arrives as at most 5.1 (`SURROUND_TRANSCODE_MAX_CHANNELS`), because the server's `eac3` and `ac3` encoders stop there, so a 7.1 default gives way to a 5.1 track even on a 7.1 system.
+- **The pick reaches Roku by the track number stored in the MKV.** Roku names an MKV audio track by the number in the file's header, and its list leaves out tracks it can't play. Jellyfin never sends that number and moves sidecar streams. So `LoadVideoContentTask` reads the start of an MKV alongside `PlaybackInfo` (`startMkvTrackRead()`), and `audioStreamsWithRokuTracks()` attaches each audio stream's Roku id to `fullAudioData`, which `getRokuAudioTrackPosition()` returns. Without the header it falls back to the stream's position among the embedded streams. Why, and what was ruled out: [ADR 0059](../adr/0059-roku-audio-track-ids-from-mkv-header.md).
 - **A track switch during playback** asks the profile's own question (`isStreamDirectPlayable()`: `getActualCodecSupport()`, the same refusals, the Decode Multichannel Audio cap and the AAC profile rule), so a switch stays native only where the server would have direct-played the track, and otherwise reloads.
 
 ### Dolby Vision

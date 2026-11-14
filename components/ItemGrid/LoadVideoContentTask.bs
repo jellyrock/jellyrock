@@ -20,10 +20,12 @@ import "pkg:/source/utils/hlsMaster.bs"
 import "pkg:/source/utils/liveStreamHandoff.bs"
 import "pkg:/source/utils/liveTv.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/mkvTracks.bs"
 import "pkg:/source/utils/nodeHelpers.bs"
 import "pkg:/source/utils/playbackCaps.bs"
 import "pkg:/source/utils/probedStreams.bs"
 import "pkg:/source/utils/reencodeCheck.bs"
+import "pkg:/source/utils/rokuAudioTrack.bs"
 import "pkg:/source/utils/serverCapabilities.bs"
 import "pkg:/source/utils/session.bs"
 import "pkg:/source/utils/streamSelection.bs"
@@ -473,8 +475,12 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   ' at sign-in. A live load uses whatever that read stored: its open call must not wait on another
   ' request.
   if not isLive then readServerEncodingPolicy()
+  ' An MKV file read directly from Jellyfin is read here, over the PlaybackInfo request, for the track
+  ' numbers stored in its header.
+  mkvRead = startMkvTrackRead(playedSource, isLive, forceTranscoding, video.id)
   res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, openLimitMs, pickedCaps, disallowVideoCopy)
   setPlaybackInfoAnswer(invalid, meta, mediaSourceId)
+  mkvEntries = collectMkvTrackEntries(mkvRead)
   if isValid(res) and res.ok then setPlaybackInfoAnswer(res.json, meta, mediaSourceId)
 
   if isLive
@@ -635,7 +641,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     return
   end if
 
-  addAudioStreamsToVideo(video, meta, mediaSourceId)
+  addAudioStreamsToVideo(video, meta, mediaSourceId, mkvEntries)
 
   audioIndexList = []
   for each audioTrackEntry in video.fullAudioData
@@ -763,7 +769,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   end if
 
   setCertificateAuthority(video.content)
-  ' Convert Jellyfin audio stream index to Roku Track identifier (Index + 1 for MKV)
+  ' The Roku track id of the picked stream, worked out in addAudioStreamsToVideo()
   video.audioTrack = getRokuAudioTrackPosition(audioStreamIdx, video.fullAudioData)
 end sub
 
@@ -954,6 +960,95 @@ function upstreamManifestAnswers(url as dynamic, format as string) as boolean
   return answers
 end function
 
+' startMkvTrackRead: start reading the first bytes of an MKV file from Jellyfin, without waiting.
+'
+' Raw roUrlTransfer, because the API pool only carries text and JSON. It runs on this Task thread
+' and collectMkvTrackEntries() ends it. The URL and the Authorization header are never logged.
+'
+' @param {dynamic} source - the played MediaSource AA
+' @param {boolean} isLive - true for a live item
+' @param {boolean} forceTranscoding - true when this load asks the server not to direct play
+' @param {dynamic} itemId - the item's id
+' @return {dynamic} the read's state for collectMkvTrackEntries(), or invalid when none was started
+function startMkvTrackRead(source as dynamic, isLive as boolean, forceTranscoding as boolean, itemId as dynamic) as dynamic
+  if not shouldReadMkvTracks(source, isLive, forceTranscoding) then return invalid
+  id = textOrEmpty(itemId)
+  if id = ""
+    m.log.warn("MKV track read", "outcome", "noid", "tracks", 0, "ms", 0, "itemId", id)
+    return invalid
+  end if
+
+  url = buildURL(Substitute("Videos/{0}/stream", id), { Static: "true", MediaSourceId: textOrEmpty(source.Id) })
+  if not isValidAndNotEmpty(url)
+    m.log.warn("MKV track read", "outcome", "nourl", "tracks", 0, "ms", 0, "itemId", id)
+    return invalid
+  end if
+
+  ' A file of its own per read: a load abandoned with Back keeps running, so two loads of one item can overlap.
+  file = "tmp:/mkvtracks-" + CreateObject("roDeviceInfo").GetRandomUUID() + ".bin"
+  req = CreateObject("roUrlTransfer")
+  port = CreateObject("roMessagePort")
+  req.setMessagePort(port)
+  req.setUrl(url)
+  if LCase(Left(url, 8)) = "https://" then req.setCertificatesFile("common:/certs/ca-bundle.crt")
+  req.AddHeader("Authorization", buildAuthHeader())
+  req.AddHeader("Range", "bytes=0-" + (timeouts.MKV_TRACK_READ_BYTES - 1).toStr())
+
+  timer = CreateObject("roTimespan")
+  timer.mark()
+  if not req.AsyncGetToFile(file)
+    m.log.warn("MKV track read", "outcome", "nostart", "tracks", 0, "ms", 0, "itemId", id)
+    return invalid
+  end if
+  return { req: req, port: port, file: file, timer: timer, itemId: id }
+end function
+
+' collectMkvTrackEntries: wait for what remains of the read's time, counted from its start, and parse it.
+'
+' @param {dynamic} read - what startMkvTrackRead() returned, or invalid
+' @return {dynamic} the track entries stored in the file (mkvTrackEntries()), or invalid on any failure
+function collectMkvTrackEntries(read as dynamic) as dynamic
+  if not isValid(read) then return invalid
+
+  remaining = timeouts.MKV_TRACK_READ_MS - read.timer.TotalMilliseconds()
+  ' A read that finished during PlaybackInfo has its answer queued: take it without waiting.
+  msg = read.port.GetMessage()
+  while not isValid(msg) and remaining > 0
+    msg = wait(remaining, read.port)
+    remaining = timeouts.MKV_TRACK_READ_MS - read.timer.TotalMilliseconds()
+  end while
+
+  outcome = "timeout"
+  entries = invalid
+  if type(msg) = "roUrlEvent"
+    code = msg.GetResponseCode()
+    ' Only 206 is a ranged answer. A 200 means the server ignored the Range header and sent the whole file.
+    if code = 206
+      outcome = "readfail"
+      bytes = CreateObject("roByteArray")
+      if bytes.ReadFile(read.file)
+        outcome = "unparsed"
+        entries = mkvTrackEntries(bytes)
+        if isValid(entries) then outcome = "ok"
+      end if
+    else
+      outcome = "status " + code.toStr()
+    end if
+  else
+    read.req.AsyncCancel()
+  end if
+  DeleteFile(read.file)
+
+  count = 0
+  if isValid(entries) then count = entries.Count()
+  if outcome = "ok"
+    m.log.info("MKV track read", "outcome", outcome, "tracks", count, "ms", read.timer.TotalMilliseconds(), "itemId", read.itemId)
+  else
+    m.log.warn("MKV track read", "outcome", outcome, "tracks", count, "ms", read.timer.TotalMilliseconds(), "itemId", read.itemId)
+  end if
+  return entries
+end function
+
 ' fetchManifestText: GET a manifest URL from this Task thread and return what came back.
 '
 ' Raw roUrlTransfer with no Jellyfin auth header: an upstream URL is not Jellyfin's, and the
@@ -1099,7 +1194,8 @@ end sub
 ' @param {object} video - video AA receiving the fullAudioData field
 ' @param {dynamic} meta - item metadata (from ItemMetaData) holding mediaSourcesData
 ' @param {dynamic} mediaSourceId - chosen MediaSource ID (matches one entry under meta.mediaSourcesData.mediaSources)
-sub addAudioStreamsToVideo(video as object, meta as dynamic, mediaSourceId as dynamic)
+' @param {dynamic} [mkvEntries=invalid] - the track entries read from the MKV header (mkvTrackEntries()), or invalid
+sub addAudioStreamsToVideo(video as object, meta as dynamic, mediaSourceId as dynamic, mkvEntries = invalid as dynamic)
   mediaStreams = invalid
 
   if isValid(meta) and isValid(meta.mediaSourcesData)
@@ -1112,16 +1208,11 @@ sub addAudioStreamsToVideo(video as object, meta as dynamic, mediaSourceId as dy
     mediaStreams = m.playbackInfo.MediaSources[0].MediaStreams
   end if
 
-  audioStreams = []
-  if isValid(mediaStreams)
-    for i = 0 to mediaStreams.Count() - 1
-      if LCase(mediaStreams[i].Type) = "audio"
-        audioStreams.push(mediaStreams[i])
-      end if
-    end for
+  ' Each entry carries the Roku track id it plays under (rokuTrackId).
+  video.fullAudioData = audioStreamsWithRokuTracks(mediaStreams, mkvEntries)
+  if isValid(mkvEntries) and not anyAudioFromHeader(video.fullAudioData)
+    m.log.warn("MKV header not used", "headerAudio", headerAudioCount(mkvEntries), "jellyfinEmbeddedAudio", embeddedAudioCount(video.fullAudioData), "itemId", video.id)
   end if
-
-  video.fullAudioData = audioStreams
 end sub
 
 sub addSubtitlesToVideo(video, meta)
