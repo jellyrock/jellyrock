@@ -477,7 +477,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   if not isLive then readServerEncodingPolicy()
   ' An MKV file read directly from Jellyfin is read here, over the PlaybackInfo request, for the track
   ' numbers stored in its header.
-  mkvRead = startMkvTrackRead(playedSource, isLive, video.id)
+  mkvRead = startMkvTrackRead(playedSource, isLive, forceTranscoding, video.id)
   res = ItemPostPlaybackInfoResponse(video.id, mediaSourceId, audioStreamIdx, subtitleIdx, playbackPosition, meta, bypassDoviPreservation, forceTranscoding, openLimitMs, pickedCaps, disallowVideoCopy)
   setPlaybackInfoAnswer(invalid, meta, mediaSourceId)
   mkvEntries = collectMkvTrackEntries(mkvRead)
@@ -769,7 +769,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
   end if
 
   setCertificateAuthority(video.content)
-  ' Convert Jellyfin audio stream index to Roku Track identifier (Index + 1 for MKV)
+  ' The Roku track id of the picked stream, worked out in addAudioStreamsToVideo()
   video.audioTrack = getRokuAudioTrackPosition(audioStreamIdx, video.fullAudioData)
 end sub
 
@@ -967,10 +967,11 @@ end function
 '
 ' @param {dynamic} source - the played MediaSource AA
 ' @param {boolean} isLive - true for a live item
+' @param {boolean} forceTranscoding - true when this load asks the server not to direct play
 ' @param {dynamic} itemId - the item's id
 ' @return {dynamic} the read's state for collectMkvTrackEntries(), or invalid when none was started
-function startMkvTrackRead(source as dynamic, isLive as boolean, itemId as dynamic) as dynamic
-  if not shouldReadMkvTracks(source, isLive) then return invalid
+function startMkvTrackRead(source as dynamic, isLive as boolean, forceTranscoding as boolean, itemId as dynamic) as dynamic
+  if not shouldReadMkvTracks(source, isLive, forceTranscoding) then return invalid
   id = textOrEmpty(itemId)
   if id = ""
     m.log.warn("MKV track read", "outcome", "noid", "tracks", 0, "ms", 0, "itemId", id)
@@ -983,7 +984,8 @@ function startMkvTrackRead(source as dynamic, isLive as boolean, itemId as dynam
     return invalid
   end if
 
-  file = "tmp:/mkvtracks-" + id + ".bin"
+  ' A file of its own per read: a load abandoned with Back keeps running, so two loads of one item can overlap.
+  file = "tmp:/mkvtracks-" + CreateObject("roDeviceInfo").GetRandomUUID() + ".bin"
   req = CreateObject("roUrlTransfer")
   port = CreateObject("roMessagePort")
   req.setMessagePort(port)

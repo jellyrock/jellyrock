@@ -86,37 +86,42 @@ namespace tests
 
     @it("reads an MKV file source")
     function _()
-      m.assertTrue(shouldReadMkvTracks({ Protocol: "File", Container: "mkv" }, false))
+      m.assertTrue(shouldReadMkvTracks({ Protocol: "File", Container: "mkv" }, false, false))
     end function
 
     @it("reads a source whose Container lists mkv among several names")
     function _()
-      m.assertTrue(shouldReadMkvTracks({ Protocol: "file", Container: "MKV,webm" }, false))
+      m.assertTrue(shouldReadMkvTracks({ Protocol: "file", Container: "MKV,webm" }, false, false))
     end function
 
     @it("does not read an mp4 source")
     function _()
-      m.assertFalse(shouldReadMkvTracks({ Protocol: "File", Container: "mp4" }, false))
+      m.assertFalse(shouldReadMkvTracks({ Protocol: "File", Container: "mp4" }, false, false))
     end function
 
     @it("does not read a live item")
     function _()
-      m.assertFalse(shouldReadMkvTracks({ Protocol: "File", Container: "mkv" }, true))
+      m.assertFalse(shouldReadMkvTracks({ Protocol: "File", Container: "mkv" }, true, false))
+    end function
+
+    @it("does not read for a forced transcode, which never direct plays")
+    function _()
+      m.assertFalse(shouldReadMkvTracks({ Protocol: "File", Container: "mkv" }, false, true))
     end function
 
     @it("does not read a source that is not a file")
     function _()
-      m.assertFalse(shouldReadMkvTracks({ Protocol: "Http", Container: "mkv" }, false))
+      m.assertFalse(shouldReadMkvTracks({ Protocol: "Http", Container: "mkv" }, false, false))
     end function
 
     @it("does not read a source with no Container")
     function _()
-      m.assertFalse(shouldReadMkvTracks({ Protocol: "File" }, false))
+      m.assertFalse(shouldReadMkvTracks({ Protocol: "File" }, false, false))
     end function
 
     @it("does not read when there is no source")
     function _()
-      m.assertFalse(shouldReadMkvTracks(invalid, false))
+      m.assertFalse(shouldReadMkvTracks(invalid, false, false))
     end function
 
   end class

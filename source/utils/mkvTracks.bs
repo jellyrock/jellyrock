@@ -133,9 +133,10 @@ end function
 '
 ' @param {dynamic} source - the played MediaSource AA, or invalid
 ' @param {boolean} isLive - true for a live item
-' @returns {boolean} true for a "file" protocol source whose Container names mkv, and not for live
-function shouldReadMkvTracks(source as dynamic, isLive as boolean) as boolean
-  if isLive or not isValid(source) then return false
+' @param {boolean} forceTranscoding - true when the load asks the server not to direct play, so no track id is used
+' @returns {boolean} true for a "file" protocol source whose Container names mkv, and not for live or a forced transcode
+function shouldReadMkvTracks(source as dynamic, isLive as boolean, forceTranscoding as boolean) as boolean
+  if isLive or forceTranscoding or not isValid(source) then return false
   if LCase(textOrEmpty(source.Protocol)) <> "file" then return false
   ' Jellyfin may list several names in Container ("mov,mp4,m4a"), so test each one.
   for each name in LCase(textOrEmpty(source.Container)).split(",")

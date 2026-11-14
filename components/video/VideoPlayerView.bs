@@ -1523,8 +1523,8 @@ sub onVideoContentLoaded(event as object)
       m.top.audioTrack = ""
       m.log.debug("Transcoded stream: reset audioTrack for auto-select", "jellyfinIndex", m.top.audioIndex)
     else
-      ' Direct play: map Jellyfin index to Roku Track identifier.
-      ' Pass availableAudioTracks for language-based matching when available (for example, audio change reload).
+      ' Direct play: the Roku track id of the picked stream (getRokuAudioTrackPosition()). Roku's list
+      ' matters only for an id worked out without the MKV header.
       m.top.audioTrack = getRokuAudioTrackPosition(m.top.audioIndex, m.top.fullAudioData, m.top.availableAudioTracks)
       m.log.debug("Direct play: mapped audioTrack", "jellyfinIndex", m.top.audioIndex, "rokuTrack", m.top.audioTrack)
     end if
@@ -2137,9 +2137,9 @@ sub onState()
   ' dialog owns what happens next, see the `error` branch below.
   if not m.isContentLoaded or m.hasPlaybackFailed then return
 
-  ' On first play, verify audioTrack matches the intended Jellyfin selection using
-  ' Roku's availableAudioTracks (now populated). The Index + 1 fallback set during
-  ' onVideoContentLoaded may be wrong for non-standard MKV track numbering.
+  ' On first play, check audioTrack against Roku's availableAudioTracks (now populated). An id worked
+  ' out without the MKV header is wrong when the file stores its track numbers out of order, and the
+  ' list is what corrects it (getRokuAudioTrackPosition()).
   if m.top.state = "playing" and not m.isPlayReported
     if isValid(m.top.availableAudioTracks) and isValid(m.top.audioIndex) and not m.top.isTranscoded
       correctedTrack = getRokuAudioTrackPosition(m.top.audioIndex, m.top.fullAudioData, m.top.availableAudioTracks)
