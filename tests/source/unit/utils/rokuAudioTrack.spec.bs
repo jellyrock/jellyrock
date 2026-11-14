@@ -1,0 +1,167 @@
+import "pkg:/source/utils/rokuAudioTrack.bs"
+
+namespace tests
+
+  @suite("rokuAudioTrack.bs - the Roku track id of each audio stream")
+  class RokuAudioTrackTests extends tests.BaseTestSuite
+
+    private function stream(index as integer, kind as string, language = "eng" as string, external = false as boolean) as object
+      return { Index: index, Type: kind, Language: language, IsExternal: external }
+    end function
+
+    ' Roku's availableAudioTracks list, from the Track ids in list order.
+    private function rokuList(ids as object) as object
+      list = []
+      for each id in ids
+        list.push({ track: id, language: "eng" })
+      end for
+      return list
+    end function
+
+    ' The id the player writes to audioTrack for a Jellyfin audio index: what LoadVideoContentTask builds,
+    ' then what getRokuAudioTrackPosition() reads back.
+    private function trackFor(streams as object, header as dynamic, rokuIds as dynamic, jellyfinIndex as integer) as string
+      available = invalid
+      if rokuIds <> invalid then available = m.rokuList(rokuIds)
+      return getRokuAudioTrackPosition(jellyfinIndex, audioStreamsWithRokuTracks(streams, header), available)
+    end function
+
+    private function entry(number as integer, kind as integer) as object
+      return { number: number, type: kind }
+    end function
+
+    @describe("the layout of issue 1377")
+
+    @it("picks the AC3 5.1 when the Roku leaves TrueHD out and no header was read")
+    function _()
+      streams = [m.stream(0, "Video"), m.stream(1, "Audio"), m.stream(2, "Audio"), m.stream(3, "Audio")]
+      m.assertEqual(m.trackFor(streams, invalid, ["3", "4"], 2), "3")
+      m.assertEqual(m.trackFor(streams, invalid, ["3", "4"], 3), "4")
+    end function
+
+    @it("maps every audio stream from the header")
+    function _()
+      streams = [m.stream(0, "Video"), m.stream(1, "Audio"), m.stream(2, "Audio"), m.stream(3, "Audio")]
+      header = [m.entry(1, 1), m.entry(2, 2), m.entry(3, 2), m.entry(4, 2)]
+      m.assertEqual(m.trackFor(streams, header, ["3", "4"], 1), "2")
+      m.assertEqual(m.trackFor(streams, header, ["3", "4"], 2), "3")
+      m.assertEqual(m.trackFor(streams, header, ["3", "4"], 3), "4")
+    end function
+
+    @describe("numbers stored out of order")
+
+    @it("uses the stored numbers when the Roku leaves tracks out")
+    function _()
+      streams = [m.stream(0, "Video"), m.stream(1, "Audio"), m.stream(2, "Audio"), m.stream(3, "Audio"), m.stream(4, "Audio"), m.stream(5, "Audio")]
+      header = [m.entry(1, 1), m.entry(2, 2), m.entry(5, 2), m.entry(3, 2), m.entry(4, 2), m.entry(6, 2)]
+      roku = ["5", "4", "6"]
+      m.assertEqual(m.trackFor(streams, header, roku, 1), "2")
+      m.assertEqual(m.trackFor(streams, header, roku, 2), "5")
+      m.assertEqual(m.trackFor(streams, header, roku, 3), "3")
+      m.assertEqual(m.trackFor(streams, header, roku, 4), "4")
+      m.assertEqual(m.trackFor(streams, header, roku, 5), "6")
+    end function
+
+    @it("reads the list in order when no header was read and nothing is left out")
+    function _()
+      streams = [m.stream(0, "Video"), m.stream(1, "Audio"), m.stream(2, "Audio"), m.stream(3, "Audio")]
+      roku = ["4", "2", "3"]
+      m.assertEqual(m.trackFor(streams, invalid, roku, 1), "4")
+      m.assertEqual(m.trackFor(streams, invalid, roku, 2), "2")
+      m.assertEqual(m.trackFor(streams, invalid, roku, 3), "3")
+    end function
+
+    @it("keeps the position-based id when the list is out of order but a track is left out")
+    function _()
+      streams = [m.stream(0, "Video"), m.stream(1, "Audio"), m.stream(2, "Audio"), m.stream(3, "Audio")]
+      m.assertEqual(m.trackFor(streams, invalid, ["4", "2"], 1), "2")
+      m.assertEqual(m.trackFor(streams, invalid, ["4", "2"], 3), "4")
+    end function
+
+    @describe("a sidecar file")
+
+    @it("maps from the header when Jellyfin 10.8 and later list the sidecar first")
+    function _()
+      streams = [m.stream(0, "Subtitle", "eng", true), m.stream(1, "Video"), m.stream(2, "Audio"), m.stream(3, "Audio"), m.stream(4, "Audio"), m.stream(5, "Audio")]
+      header = [m.entry(1, 1), m.entry(2, 2), m.entry(5, 2), m.entry(3, 2), m.entry(4, 2)]
+      m.assertEqual(m.trackFor(streams, header, invalid, 2), "2")
+      m.assertEqual(m.trackFor(streams, header, invalid, 3), "5")
+      m.assertEqual(m.trackFor(streams, header, invalid, 4), "3")
+      m.assertEqual(m.trackFor(streams, header, invalid, 5), "4")
+    end function
+
+    @it("maps from the header when Jellyfin 10.7 lists the sidecar last")
+    function _()
+      streams = [m.stream(0, "Video"), m.stream(1, "Audio"), m.stream(2, "Audio"), m.stream(3, "Audio"), m.stream(4, "Audio"), m.stream(5, "Subtitle", "eng", true)]
+      header = [m.entry(1, 1), m.entry(2, 2), m.entry(5, 2), m.entry(3, 2), m.entry(4, 2)]
+      m.assertEqual(m.trackFor(streams, header, invalid, 1), "2")
+      m.assertEqual(m.trackFor(streams, header, invalid, 2), "5")
+      m.assertEqual(m.trackFor(streams, header, invalid, 3), "3")
+      m.assertEqual(m.trackFor(streams, header, invalid, 4), "4")
+    end function
+
+    @it("counts only embedded streams when no header was read")
+    function _()
+      streams = [m.stream(0, "Subtitle", "eng", true), m.stream(1, "Video"), m.stream(2, "Audio"), m.stream(3, "Audio")]
+      m.assertEqual(m.trackFor(streams, invalid, invalid, 2), "2")
+      m.assertEqual(m.trackFor(streams, invalid, invalid, 3), "3")
+    end function
+
+    @it("gives an external audio stream no id")
+    function _()
+      streams = [m.stream(0, "Video"), m.stream(1, "Audio"), m.stream(2, "Audio", "eng", true)]
+      header = [m.entry(1, 1), m.entry(2, 2)]
+      audio = audioStreamsWithRokuTracks(streams, header)
+      m.assertEqual(audio.count(), 2)
+      m.assertEqual(audio[0].rokuTrackId, "2")
+      m.assertTrue(audio[0].rokuTrackFromHeader)
+      m.assertInvalid(audio[1].rokuTrackId)
+      ' With no id, the lookup keeps its old Index + 1 answer.
+      m.assertEqual(getRokuAudioTrackPosition(2, audio), "3")
+    end function
+
+    @describe("subtitles between audio tracks")
+
+    @it("skips the subtitle entries of the header")
+    function _()
+      streams = [m.stream(0, "Video"), m.stream(1, "Subtitle"), m.stream(2, "Audio"), m.stream(3, "Subtitle"), m.stream(4, "Audio")]
+      header = [m.entry(1, 1), m.entry(5, 17), m.entry(2, 2), m.entry(3, 17), m.entry(4, 2)]
+      m.assertEqual(m.trackFor(streams, header, ["2", "4"], 2), "2")
+      m.assertEqual(m.trackFor(streams, header, ["2", "4"], 4), "4")
+    end function
+
+    @describe("a header that does not fit")
+
+    @it("falls back to position + 1 when the header lists fewer audio entries")
+    function _()
+      streams = [m.stream(0, "Video"), m.stream(1, "Audio"), m.stream(2, "Audio")]
+      header = [m.entry(1, 1), m.entry(7, 2)]
+      audio = audioStreamsWithRokuTracks(streams, header)
+      m.assertEqual(audio[0].rokuTrackId, "2")
+      m.assertEqual(audio[1].rokuTrackId, "3")
+      m.assertFalse(audio[0].rokuTrackFromHeader)
+    end function
+
+    @it("counts header audio entries, embedded audio streams and whether the header was used")
+    function _()
+      streams = [m.stream(0, "Video"), m.stream(1, "Audio"), m.stream(2, "Audio", "eng", true), m.stream(3, "Audio")]
+      header = [m.entry(1, 1), m.entry(2, 2), m.entry(3, 17), m.entry(4, 2)]
+      used = audioStreamsWithRokuTracks(streams, header)
+      m.assertEqual(headerAudioCount(header), 2)
+      m.assertEqual(embeddedAudioCount(used), 2)
+      m.assertTrue(anyAudioFromHeader(used))
+      unused = audioStreamsWithRokuTracks(streams, [m.entry(1, 1), m.entry(2, 2)])
+      m.assertFalse(anyAudioFromHeader(unused))
+      m.assertFalse(anyAudioFromHeader(invalid))
+      m.assertEqual(headerAudioCount(invalid), 0)
+    end function
+
+    @it("does not change the streams it was given")
+    function _()
+      streams = [m.stream(0, "Video"), m.stream(1, "Audio")]
+      audioStreamsWithRokuTracks(streams, invalid)
+      m.assertFalse(streams[1].doesExist("rokuTrackId"))
+    end function
+
+  end class
+end namespace
