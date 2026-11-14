@@ -789,21 +789,19 @@ sub onSubtitleChange()
 end sub
 
 ' Event handler for when audioIndex changes.
-' For direct play: switches audio track directly using Roku's availableAudioTracks
-' (no stop/reload needed since all tracks are in the container).
-' For transcoded, or when the newly-selected stream exceeds the device's audio
-' capability (for example, switching from stereo back to an 8ch track on a stereo Roku),
-' must reload so the server transcodes the new selection.
+' For direct play: sets the Roku audio track, no reload.
+' For transcoded, an MP4-family file (Roku can't switch inside one), or a newly-selected stream
+' the device can't decode (for example switching from stereo back to an 8ch track on a stereo
+' Roku), must reload so the server sends a stream that carries the pick (audioPickNeedsReload).
 sub onAudioIndexChange()
   if m.isApplyingOwnSelection then return
 
   m.log.info("Audio index changed by user", "newIndex", m.top.audioIndex, "isTranscoded", m.top.isTranscoded, "position", m.top.position, "currentAudioTrack", m.top.audioTrack)
 
-  ' Direct play: all audio tracks are in the container, so switch the Roku track,
-  ' but only if the newly-selected stream is actually decodable by the device.
-  ' Roku's native audioTrack switch can't make an undecodable track playable, so
-  ' picking, for example, an 8ch track on a stereo device must go through the reload path.
-  if not m.top.isTranscoded and isValid(m.top.availableAudioTracks) and isSelectedAudioStreamDirectPlayable(m.top.audioIndex, m.top.fullAudioData)
+  playedSource = mediaSourceForId(m.top.fullVideoSourceData, m.loadedMediaSourceId)
+  playedContainer = invalid
+  if isValid(playedSource) then playedContainer = playedSource.Container
+  if not audioPickNeedsReload(m.top.isTranscoded, m.top.availableAudioTracks, playedContainer, m.top.audioIndex, m.top.fullAudioData)
     newTrack = getRokuAudioTrackPosition(m.top.audioIndex, m.top.fullAudioData, m.top.availableAudioTracks)
     m.log.info("Direct play audio switch", "jellyfinIndex", m.top.audioIndex, "rokuTrack", newTrack)
     m.top.audioTrack = newTrack
@@ -811,9 +809,9 @@ sub onAudioIndexChange()
     return
   end if
 
-  ' Transcoded, availableAudioTracks not available, or stream not direct-playable: must reload
+  ' Transcoded, an MP4-family file, or stream not direct-playable: must reload
   if isTrackPickAgainstOldVersion() then return
-  m.log.info("Audio change requires reload", "isTranscoded", m.top.isTranscoded)
+  m.log.info("Audio change requires reload", "isTranscoded", m.top.isTranscoded, "container", playedContainer)
 
   reloadAtCurrentPosition()
 end sub

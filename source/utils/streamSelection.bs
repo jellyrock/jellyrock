@@ -317,6 +317,27 @@ function isSelectedAudioStreamDirectPlayable(jellyfinAudioIndex as integer, audi
   return isStreamDirectPlayable(selected, getDeviceAudioCapabilities())
 end function
 
+' audioPickNeedsReload: Whether a pick from the Audio menu must reload the stream instead of
+' going to Roku's own track switch.
+'
+' Roku lists no tracks in an MP4-family file and ignores audioTrack there, and the device profile
+' makes the server remux a pick that is not the file's first track (getCodecProfiles), so that
+' pick reloads. Roku lists none for audio muxed into one HLS variant either, but there the server
+' would answer with the same stream, so a reload would only restart playback.
+'
+' @param {boolean} isTranscoded - true when the server is transcoding this playback
+' @param {dynamic} availableAudioTracks - the video node's availableAudioTracks
+' @param {dynamic} container - the played MediaSource's Container
+' @param {integer} jellyfinAudioIndex - Jellyfin index of the chosen audio stream
+' @param {dynamic} audioStreams - Array of audio MediaStream objects (for example fullAudioData)
+' @returns {boolean}
+function audioPickNeedsReload(isTranscoded as boolean, availableAudioTracks as dynamic, container as dynamic, jellyfinAudioIndex as integer, audioStreams as dynamic) as boolean
+  if isTranscoded then return true
+  if not isValid(availableAudioTracks) then return true
+  if availableAudioTracks.count() = 0 and isMp4FamilyContainer(container) then return true
+  return not isSelectedAudioStreamDirectPlayable(jellyfinAudioIndex, audioStreams)
+end function
+
 ' isCommentaryAudioStream: Determine whether a stream is a commentary/secondary track.
 '
 ' Detection: case-insensitive substring match for "commentary" in the stream Title.

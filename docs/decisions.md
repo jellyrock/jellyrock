@@ -2043,6 +2043,8 @@ When the device plays a stream itself and Roku lists none of its audio tracks, a
 
 Ruled out: reloading through the server's stream so the pick plays. The track list is known only after playback starts, so it would restart the play and load the server, and it assumes which muxed track Roku plays by default, which is unmeasured. Also ruled out: leaving the pick in the report, which names a track nobody may be hearing. Making the pick selectable is followup `muxed-hls-audio-tracks-unselectable`.
 
+Partly superseded 2026-11-13 by `mp4-secondary-audio-remux`: a direct-played `mp4`, `mov` or `m4v` file names its first embedded audio track, which Roku plays, instead of "Unknown".
+
 ## decision-id: adr-0009-tracker-partly-superseded
 
 **date**: 2026-10-13
@@ -2785,6 +2787,18 @@ Ruled out: a fixed slot in both bars (`slot`), and leaving the overhang's old fi
 In the Backdrop Images `details` mode, `JRScene.setBackgroundImage` decides which writes show from an `owner` the writer declares, its own subtype. `isItemBackdropOwner()` holds the one list of item screens (`ItemDetails`, `PlayerHostView`, `VideoPlayerView`, `AudioPlayerView`), and `backdropUriFor()` turns any other write into a clear. So Back from an item clears through the browse screen's own write as it is shown again: a new browse screen must write its backdrop, or `""`, when shown again.
 
 Ruled out: deciding by `m.global.activeRoutedView`, because `AudioPlayerView.init()` writes its backdrop before `JRScreen.onViewOpen` makes it active, so Now Playing would lose its backdrop when music starts from a browse screen; a mode check in every browse screen, about 20 call sites in 6 files where a new screen that forgets leaks backdrops; and a clear in `onActiveRoutedViewChanged` on reaching a browse screen, dropped because no test could fail it (measured on a Roku Ultra 2026-11-11: with it disabled, Back to the library grid, to Home with its refresh held 15 s, and to search results all still cleared). Requested in discussion 1361.
+
+## decision-id: mp4-secondary-audio-remux
+
+**date**: 2026-11-13
+**status**: accepted
+**related-files**: `source/utils/deviceCapabilities.bs`, `source/utils/streamSelection.bs`, `components/video/VideoPlayerView.bs`
+
+Roku's player can't switch audio inside an `mp4`, `mov` or `m4v` file: it lists no `availableAudioTracks` and ignores `audioTrack`. So a pick that wasn't the file's first audio track played the first one (#1381). `getCodecProfiles()` now declares a `VideoAudio` profile for that container family, with no codec, holding `IsSecondaryAudio` `Equals` `false` (`IsRequired` false). jellyfin-web declares the same condition when its player can't switch tracks. Jellyfin's own rule then decides (`SecondaryAudioNotSupported`), and the server sends the video and the picked track as HLS. On a Roku Ultra against Jellyfin 12.4 (2026-11-13), that job was a remux with video and audio copied. `audioPickNeedsReload()` reloads a pick from **Audio** in a direct-played `mp4`, `mov` or `m4v` file (`isMp4FamilyContainer()` matches any name in the server's list, such as `mov,mp4,m4a,3gp,3g2,mj2`). Playback Info names that file's first embedded audio track, the one Roku plays. MKV switches natively and stays out of the condition. Audio muxed into one HLS variant lists no tracks either, but a pick there doesn't reload: the server would send the same stream (decision `playback-report-unlisted-audio-tracks`, followup `muxed-hls-audio-tracks-unselectable`).
+
+Known limits, read from server source and not run on a device. Jellyfin 10.7.0 to 10.8.8 treat the first track flagged default as primary, not the first track (`MediaSourceInfo.IsSecondaryAudio`; 10.8.9 and later skip to the first embedded track). On those servers, an `mp4` file whose default is a later track still direct-plays a pick of that track, and Roku plays track 1. Picking it from **Audio** reloads into the same direct play, and picking track 1 goes through a remux. Files with no default flag, or the flag on track 1, behave as on newer servers. This is accepted: which track plays is no worse than before. With **Try direct play** for H.264 or HEVC level on, an over-level `mp4` file with a pick that isn't the first track gets `VideoLevelNotSupported` and `SecondaryAudioNotSupported` together. So `triesDirectPlayOverLevel()` skips it, and the server re-encodes the video to carry the picked track. A user with remuxing, video transcoding and audio transcoding all disabled gets no `TranscodingUrl` (`MediaInfoHelper`). That user's pick that isn't the first track, automatic or from **Audio**, ends in the generic playback error instead of playing the wrong track. The message that names the permission belongs to followup `user-access-policy-ux-audit`.
+
+Ruled out: having JellyRock force a transcode when the container is `mp4` and the pick isn't the first track. That re-implements Jellyfin's rule on the client and turns off direct play wholesale, so the server may re-encode where a copy does. Also ruled out: declaring the condition for every container as jellyfin-web does, which would remux MKV picks for nothing. Also ruled out: reloading on any empty track list, which restarts an HLS stream with muxed audio, or a live channel, and still plays the same track. To re-evaluate: fragmented `mp4` and `m4v` files have not been played on a device with this rule.
 
 ## Migrated to ADRs
 
