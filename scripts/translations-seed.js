@@ -4,6 +4,7 @@
  *   npm run translations:seed                          dry run: what would be filled, and why not
  *   npm run translations:seed -- --write               apply it to locale/custom/
  *   npm run translations:seed -- suggest [--key K…]    candidate source keys for unmapped keys
+ *   npm run translations:seed -- suggest --rank [--limit N]   the same, ranked by cells each would fill
  *
  * ## Why a reviewed map, not English-text matching
  *
@@ -772,6 +773,59 @@ export function suggest({ locales, sources, keymap, keys }) {
   return out;
 }
 
+/**
+ * Rank `suggest()` results by the cells each key would really fill: each source's
+ * best candidate (most raw matches) becomes a trial keymap entry, and `planSeed()`
+ * decides, with every refusal it applies to a reviewed entry (same as English, same
+ * as the base locale, placeholders, markup, the ledger). Raw candidate counts
+ * overstate the payoff, because they count regional cells the seeder would never
+ * write. A trial entry is not a review: a key's rank says what mapping it could be
+ * worth, not that its candidate is right.
+ */
+export function rankSuggestions({ results, locales, sources, keymap, ledger = {} }) {
+  const trial = {};
+  for (const r of results) {
+    if (!r.candidates.length) continue;
+    const from = {};
+    for (const c of [...r.candidates].sort((a, b) => b.fills - a.fills)) {
+      from[c.source] ??= { key: c.key, en: c.en };
+    }
+    trial[r.key] = { en: r.en, from, reject: keymap[r.key]?.reject };
+  }
+  const plan = planSeed({ locales, sources, keymap: trial, ledger });
+  const wouldFill = {};
+  for (const keys of Object.values(plan.fills))
+    for (const key of Object.keys(keys)) wouldFill[key] = (wouldFill[key] ?? 0) + 1;
+  return results
+    .filter((r) => r.candidates.length)
+    .map((r) => ({ ...r, wouldFill: wouldFill[r.key] ?? 0 }))
+    .sort((a, b) => b.wouldFill - a.wouldFill || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+}
+
+function formatRanking(ranked, { results, limit }) {
+  const shown = limit ? ranked.slice(0, limit) : ranked;
+  const total = ranked.reduce((sum, r) => sum + r.wouldFill, 0);
+  const noCandidate = results.filter((r) => r.en !== undefined && !r.candidates.length).length;
+  const header = [
+    `# ${ranked.length} unmapped keys have candidates; mapping all of them would fill at most ${total} cells.`,
+    `# ${noCandidate} more have no exact-text candidate (search the sources by meaning).`,
+    limit ? `# Showing the top ${shown.length} by cells filled.` : '# Ranked by cells filled.',
+    '',
+  ];
+  const body = formatSuggestions(shown)
+    .split('\n')
+    .slice(2) // formatSuggestions' own header
+    .join('\n');
+  const fills = Object.fromEntries(shown.map((r) => [r.key, r.wouldFill]));
+  return (
+    header.join('\n') +
+    '\n' +
+    body.replace(/^(\w+):$/gm, (line, key) =>
+      key in fills ? `${line}  # would fill ${fills[key]}` : line,
+    )
+  );
+}
+
 function formatSuggestions(results) {
   const lines = [
     '# Candidates by normalized English. Review MEANING and SHAPE in context before accepting.',
@@ -809,6 +863,8 @@ function parseArgs(argv) {
     write: false,
     verbose: false,
     keys: [],
+    rank: false,
+    limit: null,
     summaryFile: null,
     localeDir: null,
     sources: null,
@@ -824,7 +880,12 @@ function parseArgs(argv) {
     else if (a === '--write') args.write = true;
     else if (a === '--verbose') args.verbose = true;
     else if (a === '--key') args.keys.push(value(++i, a));
-    else if (a === '--summary-file') args.summaryFile = value(++i, a);
+    else if (a === '--rank') args.rank = true;
+    else if (a === '--limit') {
+      args.limit = Number(value(++i, a));
+      if (!Number.isInteger(args.limit) || args.limit < 1)
+        throw new SeedConfigError('--limit needs a whole number above 0');
+    } else if (a === '--summary-file') args.summaryFile = value(++i, a);
     else if (a === '--locale-dir') args.localeDir = value(++i, a);
     else if (a === '--source') (args.sources ??= []).push(value(++i, a));
     else throw new SeedConfigError(`unknown argument ${a}`);
@@ -863,9 +924,16 @@ function main(argv) {
       only: args.sources,
     });
     if (args.mode === 'suggest') {
-      console.log(formatSuggestions(suggest({ locales, sources, keymap, keys: args.keys })));
+      const results = suggest({ locales, sources, keymap, keys: args.keys });
+      if (args.rank) {
+        const ranked = rankSuggestions({ results, locales, sources, keymap, ledger });
+        console.log(formatRanking(ranked, { results, limit: args.limit }));
+      } else {
+        console.log(formatSuggestions(results));
+      }
       return;
     }
+    if (args.rank || args.limit) throw new SeedConfigError('--rank and --limit go with suggest');
     const plan = planSeed({ locales, sources, keymap, ledger });
     console.log(formatReport({ plan, locales, sources, verbose: args.verbose }));
     if (args.summaryFile)

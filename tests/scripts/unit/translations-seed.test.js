@@ -21,6 +21,7 @@ import {
   rejectReason,
   SeedConfigError,
   serializeLedger,
+  rankSuggestions,
   suggest,
   verifyLicense,
 } from '../../../scripts/translations-seed.js';
@@ -439,6 +440,62 @@ describe('suggest', () => {
       keys: ['LabelIdle'],
     });
     expect(results[0].candidates).toEqual([{ source: 'web', key: 'Idle', en: 'idle.', fills: 1 }]);
+  });
+});
+
+describe('rankSuggestions', () => {
+  // fr_CA inherits fr, so a regional copy of fr's value is refused; es's value is
+  // the English, refused too. Raw counts include both; the rank must not.
+  const rankLocales = () => ({
+    en_US: { LabelActor: 'Actor', LabelHello: 'Hello', LabelNone: 'Nothing like it' },
+    fr: {},
+    fr_CA: {},
+    de: {},
+    es: {},
+  });
+  const rankWeb = source('web', {
+    english: { Actor: 'Actor', Hello: 'Hello' },
+    translations: {
+      fr: { Actor: 'Acteur', Hello: 'Bonjour' },
+      fr_CA: { Actor: 'Acteur', Hello: 'Bonjour' },
+      de: { Hello: 'Hallo' },
+      es: { Actor: 'Actor' },
+    },
+  });
+  const rankTv = source('tv', {
+    english: { lbl_actor: 'Actor' },
+    translations: { de: { lbl_actor: 'Darsteller' } },
+  });
+
+  function rank(ledger) {
+    const locales = rankLocales();
+    const sources = [rankWeb, rankTv];
+    const results = suggest({ locales, sources, keymap: {}, keys: [] });
+    return rankSuggestions({ results, locales, sources, keymap: {}, ledger });
+  }
+
+  it('counts only the cells the seeder would write, across every source', () => {
+    const ranked = rank();
+    // LabelActor: fr from web, de from tv (web has no de). fr_CA (same as fr) and es
+    // (same as English) are refused, though web's raw count includes them.
+    expect(ranked.find((r) => r.key === 'LabelActor')).toMatchObject({ wouldFill: 2 });
+    expect(ranked.find((r) => r.key === 'LabelHello')).toMatchObject({ wouldFill: 2 });
+    const raw = ranked.find((r) => r.key === 'LabelActor').candidates;
+    expect(raw.find((c) => c.source === 'web').fills).toBe(3);
+  });
+
+  it('ranks by cells filled, then by key, and leaves out keys with no candidate', () => {
+    expect(rank().map((r) => r.key)).toEqual(['LabelActor', 'LabelHello']);
+    // A ledger entry means a cell was seeded once and then removed: never again.
+    const ledger = {
+      fr: { LabelActor: 'web@aaaaaaaaaaaa' },
+      de: { LabelActor: 'tv@aaaaaaaaaaaa' },
+    };
+    // With fr blocked, fr_CA inherits nothing, so its own copy is no longer redundant.
+    expect(rank(ledger).map((r) => [r.key, r.wouldFill])).toEqual([
+      ['LabelHello', 2],
+      ['LabelActor', 1],
+    ]);
   });
 });
 

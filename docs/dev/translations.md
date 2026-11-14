@@ -212,6 +212,7 @@ A new key starts untranslated in every language, but another Jellyfin client's c
 ```bash
 npm run translations:seed                           # dry run: per-key/per-locale coverage, refusals, casing flags
 npm run translations:seed -- suggest --key LabelX   # candidate source keys for a key, as YAML stubs
+npm run translations:seed -- suggest --rank --limit 50   # unmapped keys ranked by cells they would fill
 npm run translations:seed -- --write                # apply to locale/custom/ and record each fill in locale/seed/seeded.json
 ```
 
@@ -219,7 +220,7 @@ The first run downloads each pinned source (a shallow, partial clone) into the g
 
 ### Map a key
 
-1. `suggest --key <Key>` lists source keys with the same English text. Treat it as a starting point, not an answer.
+1. `suggest --key <Key>` lists source keys with the same English text. Treat it as a starting point, not an answer. To pick which keys to map first, `suggest --rank` orders every unmapped key by the cells it would fill, counted with the seeder's own refusals, so the highest payoff comes first. The count is what a mapping could be worth, not a sign its candidate is right.
 2. Check each candidate's **meaning** and **shape** in context. Meaning is what the source key's name says it is for: web's `MediaInfo*` keys label its media-info panel, and `PriorityIdle` is a process priority. Shape is whether it is the same kind of string: a bare label or `Codec: %1$s`, a standalone label or a word from inside a sentence. Pick the key whose context matches yours.
 3. Add the entry to `locale/seed/keymap.yml`. Copy both English strings exactly: if either side changes later, the entry stops seeding. List candidates you turned down under `reject:` with a reason, so `suggest` never offers them again.
 4. Do a dry run and **read the values**, at least in languages you can check. A source's translation can be wrong even for its own key: web's `MediaInfoChannels` reads "Chaînes" (TV channels) in French. Drop a bad cell with `exclude: { <locale>: <reason> }`. If the value was already written, also delete it from the locale file. The seed ledger (`locale/seed/seeded.json`) then keeps it from coming back, and the next release's merge removes it from Weblate too.
