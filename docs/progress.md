@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-13
+last-updated: 2026-11-14
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-14: fix(playback): Play the MKV audio track the viewer picked
 - 2026-11-13: refactor: Gate namespaced constant access and spec code at build time
 - 2026-11-12: fix(ui): Star from the overhang no longer crashes the app
 - 2026-11-12: feat(ui): Item-details-only backdrops; Movies pane obeys the setting
@@ -71,7 +72,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-10-31: update(home): Show vertical posters in TV Recently Added rows
 - 2026-10-31: fix(home): Show episode images in Favorites tab
 - 2026-10-31: fix: Correct the canceled-recording toast
-- 2026-10-30: fix(playback): Turn subtitles off when None is picked
 
 ## Open followups
 
