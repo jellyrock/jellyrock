@@ -202,14 +202,14 @@ sub ensureReady()
   m.unreachableNotices = 0
   ' How long the last pause took to stop the node, for the specs (shadowPlayerFact).
   m.pauseLandedMs = 0&
-  ' The player and group models of the convergence rewrite. They decide when the comparison is
-  ' the engine (usesComparison), and are fed beside this code in an RTA build, as a shadow whose
-  ' disagreements are logged (shadowAfter). Any other build with the old engine has none.
-  m.shadow = invalid
+  ' What the comparison works from: the player and group models. They decide when the comparison
+  ' is the engine (usesComparison), and are fed beside this code in an RTA build, as a shadow
+  ' whose disagreements are logged (shadowAfter). Any other build with the old engine has none.
+  m.comparison = invalid
   #if ENABLE_RTA
-    m.shadow = syncPlayShadow.newShadow()
+    m.comparison = syncPlayShadow.newShadow()
   #end if
-  if (DECIDE_BY_COMPARISON or m.top.engine = "comparison") and not isValid(m.shadow) then m.shadow = syncPlayShadow.newShadow()
+  if (DECIDE_BY_COMPARISON or m.top.engine = "comparison") and not isValid(m.comparison) then m.comparison = syncPlayShadow.newShadow()
   ' The comparison's loop is running (converge), and an event came in while it was.
   m.converging = false
   m.convergeAgain = false
@@ -581,7 +581,7 @@ sub followAgain()
   m.log.info("following again", "groupId", m.state.groupId)
   syncPlayState.resume(m.state)
   m.tracker = syncPlayPlayback.newReadyTracker()
-  if isValid(m.shadow) then syncPlayGroup.followedAgain(m.shadow.group)
+  if isValid(m.comparison) then syncPlayGroup.followedAgain(m.comparison.group)
   m.correctionPauseOwed = false
   post("SetIgnoreWait", syncPlayRequests.setIgnoreWait(false))
   publish()
@@ -973,7 +973,7 @@ sub onGroupUpdate(update as object)
     if hasOpenClaim() then m.owedLoad = syncPlayQueue.owedLoadForClaimedPlay(m.owedLoad, update.reason, m.state.playingItemId)
     ' A load this update owes is playback starting, whatever the update's reason: a play of the
     ' item a stopped group was on comes back as a queue that keeps that item.
-    if isValid(m.owedLoad) and isValid(m.shadow) then syncPlayGroup.playbackStarted(m.shadow.group)
+    if isValid(m.owedLoad) and isValid(m.comparison) then syncPlayGroup.playbackStarted(m.comparison.group)
   end if
   m.log.info("group update", "type", updateType, "groupId", m.state.groupId, "state", m.state.groupState)
   if usesComparison()
@@ -1572,9 +1572,9 @@ function shadowCtx() as object
 end function
 
 sub shadowPlayerFact(evt as object)
-  if not isValid(m.shadow) then return
+  if not isValid(m.comparison) then return
   nowMs& = syncPlayTime.nowMs()
-  player = m.shadow.player
+  player = m.comparison.player
   ' How long the node took to stop after a pause was written to it. The player model takes the
   ' stop as where the node was at the write, so this is what that estimate leaves out, and what
   ' syncPlayPlayback.PAUSE_LANDED_MS is judged against.
@@ -1582,14 +1582,14 @@ sub shadowPlayerFact(evt as object)
     m.pauseLandedMs = nowMs& - syncPlayTime.asLong(player.pauseWrittenAtMs)
     m.log.info("pause landed", "afterMs", m.pauseLandedMs.toStr(), "owner", player.pauseOwner)
   end if
-  syncPlayShadow.playerFact(m.shadow, evt, m.loadStartTicks, nowMs&)
+  syncPlayShadow.playerFact(m.comparison, evt, m.loadStartTicks, nowMs&)
 end sub
 
 ' The player model's learned resume lag, or its last sample, for the specs: a soak's record says
 ' what each resume was written against. Invalid with no model or no sample yet.
 function resumeLagForSpecs(field as string) as dynamic
-  if not isValid(m.shadow) then return invalid
-  return m.shadow.player[field]
+  if not isValid(m.comparison) then return invalid
+  return m.comparison.player[field]
 end function
 
 ' The pause the player reports from inside a write of this manager's is that write, not the
@@ -1598,60 +1598,60 @@ end function
 ' viewer's own, so the write is bracketed. When the comparison decides, the write is its own
 ' and the models were told by it already (carryOut).
 sub shadowWriteBegin(verb as object, owner as string)
-  if not isValid(m.shadow) then return
+  if not isValid(m.comparison) then return
   if not usesComparison()
-    syncPlayShadow.managerWrote(m.shadow, shadowCtx(), verb, owner, syncPlayTime.nowMs())
+    syncPlayShadow.managerWrote(m.comparison, shadowCtx(), verb, owner, syncPlayTime.nowMs())
   else if verb.command = "load"
     ' The queue layer performs a load under either engine; the player model is told of it here.
-    syncPlayPlayer.told(m.shadow.player, "load", owner, verb.startTicks, syncPlayTime.nowMs())
+    syncPlayPlayer.told(m.comparison.player, "load", owner, verb.startTicks, syncPlayTime.nowMs())
   end if
-  m.shadow.ownWrite = true
+  m.comparison.ownWrite = true
 end sub
 
 sub shadowWriteEnd()
-  if isValid(m.shadow) then m.shadow.ownWrite = false
+  if isValid(m.comparison) then m.comparison.ownWrite = false
 end sub
 
 sub shadowReported(what as string)
-  if isValid(m.shadow) and not usesComparison() then syncPlayShadow.managerReported(m.shadow, shadowCtx(), what, syncPlayTime.nowMs())
+  if isValid(m.comparison) and not usesComparison() then syncPlayShadow.managerReported(m.comparison, shadowCtx(), what, syncPlayTime.nowMs())
 end sub
 
 sub shadowAsked(what as string, positionTicks as dynamic, fromViewer as boolean)
-  if isValid(m.shadow) and not usesComparison() then syncPlayShadow.managerAsked(m.shadow, what, positionTicks, fromViewer, syncPlayTime.nowMs())
+  if isValid(m.comparison) and not usesComparison() then syncPlayShadow.managerAsked(m.comparison, what, positionTicks, fromViewer, syncPlayTime.nowMs())
 end sub
 
 sub shadowCommand(command as object)
-  if isValid(m.shadow) then syncPlayShadow.commandArrived(m.shadow, command)
+  if isValid(m.comparison) then syncPlayShadow.commandArrived(m.comparison, command)
 end sub
 
 ' @param startsItem - a queue update that starts this member on an item
 sub shadowGroupUpdate(updateType as string, startsItem as boolean)
-  if not isValid(m.shadow) then return
+  if not isValid(m.comparison) then return
   if updateType = "GroupJoined" or updateType = "GroupLeft" or updateType = "NotInGroup"
-    syncPlayShadow.membershipChanged(m.shadow, m.state.groupState)
+    syncPlayShadow.membershipChanged(m.comparison, m.state.groupState)
   else if updateType = "StateUpdate"
-    syncPlayShadow.groupStateChanged(m.shadow, m.state.groupState, m.estimator, syncPlayTime.nowMs())
+    syncPlayShadow.groupStateChanged(m.comparison, m.state.groupState, m.estimator, syncPlayTime.nowMs())
   else if updateType = "PlayQueue"
-    syncPlayShadow.itemChanged(m.shadow, m.state.playingItemId, m.state.playbackQueueAtMs, startsItem)
+    syncPlayShadow.itemChanged(m.comparison, m.state.playingItemId, m.state.playbackQueueAtMs, startsItem)
   end if
 end sub
 
 sub shadowOffsetPicked()
-  if isValid(m.shadow) then syncPlayShadow.offsetPicked(m.shadow)
+  if isValid(m.comparison) then syncPlayShadow.offsetPicked(m.comparison)
 end sub
 
 ' The end of an event under the old engine: ask the comparison what it still wants, and log each
 ' disagreement recorded since the last one.
 sub shadowAfter()
-  if not isValid(m.shadow) or usesComparison() then return
-  syncPlayShadow.afterEvent(m.shadow, shadowCtx(), syncPlayTime.nowMs())
-  for each entry in syncPlayShadow.takeEntries(m.shadow)
+  if not isValid(m.comparison) or usesComparison() then return
+  syncPlayShadow.afterEvent(m.comparison, shadowCtx(), syncPlayTime.nowMs())
+  for each entry in syncPlayShadow.takeEntries(m.comparison)
     m.log.info("shadow disagreement", entry.kind, "old", entry.old, "wanted", entry.wanted, "at", entry.at, entry.forMs.toStr())
   end for
 end sub
 
 function shadowCount() as integer
-  if isValid(m.shadow) then return m.shadow.count
+  if isValid(m.comparison) then return m.comparison.count
   return 0
 end function
 
@@ -1828,7 +1828,7 @@ end function
 function groupPositionNow() as dynamic
   if not isFollowing() then return invalid
   if usesComparison()
-    want = syncPlayGroup.wants(m.shadow.group, m.estimator, syncPlayTime.nowMs())
+    want = syncPlayGroup.wants(m.comparison.group, m.estimator, syncPlayTime.nowMs())
     if want.mode = "playing" then return want.positionTicks
     return want.pointTicks
   end if
@@ -1948,7 +1948,7 @@ end function
 function usesComparison() as boolean
   ' The `engine` field picks for one node: an RTA run sets it after each cold start, and a unit
   ' spec on the node it made. Nothing in the app writes it, so the constant decides there.
-  if m.top.engine = "comparison" then return isValid(m.shadow)
+  if m.top.engine = "comparison" then return isValid(m.comparison)
   if m.top.engine = "manager" then return false
   return DECIDE_BY_COMPARISON
 end function
@@ -1962,7 +1962,7 @@ end function
 ' comparison it is the player model's activity in the tracker's words.
 function trackerPhase() as string
   if not usesComparison() then return m.tracker.phase
-  activity = m.shadow.player.activity
+  activity = m.comparison.player.activity
   if activity = "none" or activity = "finished" then return "idle"
   if activity = "loading" then return "loading"
   if activity = "seeking" then return "seeking"
@@ -1974,18 +1974,18 @@ end function
 
 function trackerLoadStartTicks() as longinteger
   if not usesComparison() then return m.tracker.loadStartTicks
-  return syncPlayTime.asLong(m.shadow.player.loadStartTicks)
+  return syncPlayTime.asLong(m.comparison.player.loadStartTicks)
 end function
 
 ' How far this member sits from the group, in ms, positive when behind, or invalid when not
 ' known: under the comparison, the group's line against the player model's clock.
 function publishedDriftMs() as dynamic
   if not usesComparison() then return m.playbackDiffMs
-  player = m.shadow.player
+  player = m.comparison.player
   if player.activity <> "playing" or player.clock.measured <> true then return invalid
   nowMs& = syncPlayTime.nowMs()
   position = syncPlayPlayer.positionAt(player, nowMs&)
-  want = syncPlayGroup.wants(m.shadow.group, m.estimator, nowMs&)
+  want = syncPlayGroup.wants(m.comparison.group, m.estimator, nowMs&)
   if not isValid(position) or want.mode <> "playing" then return invalid
   return syncPlayTime.ticksToMs(syncPlayTime.asLong(want.positionTicks) - syncPlayTime.asLong(position))
 end function
@@ -1993,7 +1993,7 @@ end function
 ' Whether a correction of this member's own is under way: a catch-up's seek, or a hold.
 function correctionInFlight() as boolean
   if not usesComparison() then return isValid(m.correction)
-  player = m.shadow.player
+  player = m.comparison.player
   activity = player.activity
   if player.seekOwner = "hold" and (activity = "seeking" or activity = "arrived") then return true
   return player.pauseOwner = "hold" and (activity = "paused" or activity = "pausing" or activity = "resuming")
@@ -2002,9 +2002,9 @@ end function
 ' Whether the viewer should take this member as paused: the group is paused for them, or the node
 ' is paused for anything but a hold or a wait, neither of which is a pause anyone pressed.
 function comparePausedForViewer(nodeState as string) as boolean
-  player = m.shadow.player
+  player = m.comparison.player
   if player.pauseOwner = "hold" or player.pauseOwner = "wait" then return false
-  want = syncPlayGroup.wants(m.shadow.group, m.estimator, syncPlayTime.nowMs())
+  want = syncPlayGroup.wants(m.comparison.group, m.estimator, syncPlayTime.nowMs())
   if want.mode = "paused" and not isValid(want.startsAtMs) then return true
   return nodeState = "paused"
 end function
@@ -2035,7 +2035,7 @@ function comparePlayerEvent(evt as object) as object
     end if
   else if kind = "unmounted"
     m.playerState = ""
-    syncPlayPlayer.unmounted(m.shadow.player, syncPlayTime.nowMs())
+    syncPlayPlayer.unmounted(m.comparison.player, syncPlayTime.nowMs())
     wasExpected = m.expectingRemount
     m.expectingRemount = false
     m.log.info("player left", "expected", wasExpected, "following", isFollowing())
@@ -2062,10 +2062,10 @@ function compareViewerAsk(request as object) as boolean
   action = { kind: "ask", what: what, positionTicks: positionTicks }
   ' Sent before the model is told, so that a send that cannot go leaves the model untouched: the
   ' request's number is the one applied() gives it below.
-  if not sendRequest("ask", action, syncPlayGroup.nextRequestId(m.shadow.group)) then return false
+  if not sendRequest("ask", action, syncPlayGroup.nextRequestId(m.comparison.group)) then return false
   nowMs& = syncPlayTime.nowMs()
-  syncPlayGroup.viewerAsked(m.shadow.group, what, positionTicks, nowMs&)
-  syncPlayConverge.applied(m.shadow.player, m.shadow.group, action, nowMs&)
+  syncPlayGroup.viewerAsked(m.comparison.group, what, positionTicks, nowMs&)
+  syncPlayConverge.applied(m.comparison.player, m.comparison.group, action, nowMs&)
   converge()
   return true
 end function
@@ -2075,10 +2075,10 @@ end function
 ' to aheadWaitMaxMs and behindBarMs for a paused node, so a log of it shows what those bars cost.
 sub logUnpauseReach()
   nowMs& = syncPlayTime.nowMs()
-  player = m.shadow.player
+  player = m.comparison.player
   position = syncPlayPlayer.positionAt(player, nowMs&)
   if not isValid(position) then return
-  reachAt = syncPlayGroup.reachesAtMs(m.shadow.group, m.estimator, syncPlayTime.asLong(position))
+  reachAt = syncPlayGroup.reachesAtMs(m.comparison.group, m.estimator, syncPlayTime.asLong(position))
   if not isValid(reachAt) then return
   waitMs& = syncPlayTime.asLong(reachAt) - nowMs&
   m.log.info("unpause reaches this member", "waitMs", waitMs&.toStr(), "activity", player.activity)
@@ -2088,16 +2088,16 @@ end sub
 ' arrives while this runs (the player answers a write from inside the write) only marks that
 ' another round is owed, so the loop is never entered twice.
 sub converge()
-  if not isValid(m.shadow) then return
+  if not isValid(m.comparison) then return
   if m.converging
     m.convergeAgain = true
     return
   end if
   m.converging = true
   m.convergeTimer.control = "stop"
-  player = m.shadow.player
-  group = m.shadow.group
-  policy = m.shadow.policy
+  player = m.comparison.player
+  group = m.comparison.group
+  policy = m.comparison.policy
   wakeAtMs = invalid
   hasSettled = false
   hasActed = false
@@ -2161,8 +2161,8 @@ end sub
 sub carryOut(action as object)
   kind = action.kind
   nowMs& = syncPlayTime.nowMs()
-  player = m.shadow.player
-  group = m.shadow.group
+  player = m.comparison.player
+  group = m.comparison.group
   host = playerHost()
   if kind = "pause" or kind = "resume" or kind = "seek"
     ' The drift the comparison acted on, for the log: read before the write changes the models.
@@ -2262,7 +2262,7 @@ function sendRequest(slot as string, action as object, requestId as integer) as 
   if apiAction = "" then return false
   req = syncPlayRequest(apiAction, body)
   if not isValid(req) then return false
-  req.timeoutMs = m.shadow.policy.requestLimitMs
+  req.timeoutMs = m.comparison.policy.requestLimitMs
   m.requestCount++
   sentAtMs& = syncPlayTime.nowMs()
   m.log.info("sent", what, "positionTicks", positionTicks&.toStr(), "isPlaying", action.isPlaying = true)
@@ -2287,16 +2287,16 @@ end function
 ' @param statusCode - the HTTP status, 0 with none
 ' @param tookMs - how long the result took, for the log: what the request limit is judged against
 sub onRequestResult(slot as string, what as string, id as integer, statusCode as integer, tookMs as longinteger)
-  if not isValid(m.shadow) then return
+  if not isValid(m.comparison) then return
   hasArrived = statusCode >= 200 and statusCode < 300
   wasRefused = slot = "ask" and statusCode >= 400 and statusCode < 500
   if hasArrived or wasRefused
     if wasRefused then m.log.warn("ask refused by the server", "what", what, "status", statusCode)
     if hasArrived then m.log.info("request answered", "what", what, "tookMs", tookMs.toStr())
-    syncPlayGroup.requestArrived(m.shadow.group, slot, what, id)
+    syncPlayGroup.requestArrived(m.comparison.group, slot, what, id)
   else
     m.log.warn("request failed", "what", what, "status", statusCode, "tookMs", tookMs.toStr())
-    syncPlayGroup.requestFailed(m.shadow.group, slot, what, id)
+    syncPlayGroup.requestFailed(m.comparison.group, slot, what, id)
   end if
   converge()
 end sub

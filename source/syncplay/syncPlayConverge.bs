@@ -24,6 +24,20 @@
 ' Every time is a LongInteger: epoch milliseconds or Jellyfin ticks.
 namespace syncPlayConverge
 
+  ' What the comparison works from, kept by the manager for as long as it lives: its two sides
+  ' (the player model and the group model), its thresholds, the group state the group model was
+  ' last told, and whether a write of the manager's own is under way (the pause the player
+  ' reports back from inside one is that write, not the viewer's).
+  function newComparison() as object
+    return {
+      player: syncPlayPlayer.newPlayer(),
+      group: syncPlayGroup.newGroup(),
+      policy: defaultPolicy(),
+      groupState: "",
+      ownWrite: false
+    }
+  end function
+
   ' The thresholds, in one place so a soak can compare candidates. The drift bars and the write
   ' limits are the values the manager used before the rewrite and are not yet justified by a
   ' measurement of their own. The request limits and aheadWaitMaxMs are provisional: nothing

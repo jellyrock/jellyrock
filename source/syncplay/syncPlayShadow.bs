@@ -13,20 +13,14 @@
 ' arrived as it was sent. The rules for a failed request are not exercised here.
 namespace syncPlayShadow
 
+  ' The comparison's state (syncPlayConverge.newComparison), with the record of disagreements.
   function newShadow() as object
-    return {
-      player: syncPlayPlayer.newPlayer(),
-      group: syncPlayGroup.newGroup(),
-      policy: syncPlayConverge.defaultPolicy(),
-      groupState: "",
-      ' A write of the manager's own is under way: the pause the player reports back is that
-      ' write, not the viewer's.
-      ownWrite: false,
-      count: 0,
-      entries: [],
-      pending: "",
-      pendingSinceMs: 0&
-    }
+    shadow = syncPlayConverge.newComparison()
+    shadow.count = 0
+    shadow.entries = []
+    shadow.pending = ""
+    shadow.pendingSinceMs = 0&
+    return shadow
   end function
 
   ' --- what the player reported ---
