@@ -1268,6 +1268,27 @@ namespace tests
       end for
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isMp4FamilyContainer()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("matches any MP4-family name in a container list, in any case")
+    function _()
+      m.assertTrue(isMp4FamilyContainer("mov,mp4,m4a,3gp,3g2,mj2"), "ffprobe's list")
+      m.assertTrue(isMp4FamilyContainer("mp4"), "mp4")
+      m.assertTrue(isMp4FamilyContainer("MOV"), "upper case")
+      m.assertTrue(isMp4FamilyContainer("m4v"), "m4v")
+    end function
+
+    @it("does not match other containers or a missing one")
+    function _()
+      m.assertFalse(isMp4FamilyContainer("mkv"), "mkv")
+      m.assertFalse(isMp4FamilyContainer("mkv,webm"), "mkv,webm")
+      m.assertFalse(isMp4FamilyContainer("hls"), "hls")
+      m.assertFalse(isMp4FamilyContainer(""), "empty")
+      m.assertFalse(isMp4FamilyContainer(invalid), "invalid")
+    end function
+
   end class
 
 end namespace

@@ -593,32 +593,48 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("canSwitchAudioNatively()")
+    @describe("audioPickNeedsReload()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("is false when Roku lists no audio tracks, as in an MP4")
+    @it("reloads a direct-played MP4-family file, where Roku lists no tracks")
     function _()
       streams = [{ index: 1, channels: 2, codec: "aac" }, { index: 2, channels: 2, codec: "aac" }]
-      m.assertFalse(canSwitchAudioNatively(false, [], 2, streams))
-      m.assertFalse(canSwitchAudioNatively(false, invalid, 2, streams))
+      m.assertTrue(audioPickNeedsReload(false, [], "mov,mp4,m4a,3gp,3g2,mj2", 2, streams), "ffprobe's list")
+      m.assertTrue(audioPickNeedsReload(false, [], "mp4", 2, streams), "mp4")
+      m.assertTrue(audioPickNeedsReload(false, [], "m4v", 2, streams), "m4v")
     end function
 
-    @it("is false when the playback is transcoded")
+    @it("does not reload an empty track list outside the MP4 family, where the server would send the same stream")
+    function _()
+      ' Audio muxed into one HLS variant (followup muxed-hls-audio-tracks-unselectable): the
+      ' profile asks the server for nothing different, so a reload only restarts playback.
+      streams = [{ index: 1, channels: 2, codec: "aac" }, { index: 2, channels: 2, codec: "aac" }]
+      m.assertFalse(audioPickNeedsReload(false, [], "hls", 2, streams), "hls")
+      m.assertFalse(audioPickNeedsReload(false, [], invalid, 2, streams), "unknown container")
+    end function
+
+    @it("reloads when the node has no track list at all")
     function _()
       streams = [{ index: 1, channels: 2, codec: "aac" }, { index: 2, channels: 2, codec: "aac" }]
-      m.assertFalse(canSwitchAudioNatively(true, [{ Track: "1" }, { Track: "2" }], 2, streams))
+      m.assertTrue(audioPickNeedsReload(false, invalid, "mkv", 2, streams))
     end function
 
-    @it("is false when the picked stream is not direct-playable")
+    @it("reloads when the playback is transcoded")
+    function _()
+      streams = [{ index: 1, channels: 2, codec: "aac" }, { index: 2, channels: 2, codec: "aac" }]
+      m.assertTrue(audioPickNeedsReload(true, [{ Track: "1" }, { Track: "2" }], "mkv", 2, streams))
+    end function
+
+    @it("reloads when the picked stream is not direct-playable")
     function _()
       streams = [{ index: 1, channels: 2, codec: "aac" }, { index: 2, channels: 8, codec: "truehd" }]
-      m.assertFalse(canSwitchAudioNatively(false, [{ Track: "1" }, { Track: "2" }], 2, streams))
+      m.assertTrue(audioPickNeedsReload(false, [{ Track: "1" }, { Track: "2" }], "mkv", 2, streams))
     end function
 
-    @it("is true for a listed track list and a direct-playable stream")
+    @it("switches natively for listed tracks and a direct-playable stream")
     function _()
       streams = [{ index: 1, channels: 2, codec: "aac" }, { index: 2, channels: 2, codec: "aac" }]
-      m.assertTrue(canSwitchAudioNatively(false, [{ Track: "1" }, { Track: "2" }], 2, streams))
+      m.assertFalse(audioPickNeedsReload(false, [{ Track: "1" }, { Track: "2" }], "mkv", 2, streams))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

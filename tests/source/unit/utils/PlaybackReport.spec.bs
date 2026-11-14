@@ -531,6 +531,37 @@ namespace tests
       m.assertEqual(m.rowValue(report, "audio.codec"), "AC3")
     end function
 
+    @it("describes the first audio track of a direct-played MP4, the one Roku plays")
+    function _()
+      ' Roku lists no tracks in an MP4 and plays its first, and the server remuxes any other pick.
+      m.directPlayTwoAudio()
+      m.input.mediaSource.Container = "mov,mp4,m4a,3gp,3g2,mj2"
+      m.input.audioStreamIndex = 1
+      m.input.audioTracksUnlisted = true
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "audio.playing"), "<missing>")
+      m.assertEqual(m.rowValue(report, "audio.codec"), "AAC")
+    end function
+
+    @it("names an MP4's first audio track even when the pick is another")
+    function _()
+      m.directPlayTwoAudio()
+      m.input.mediaSource.Container = "mp4"
+      m.input.audioTracksUnlisted = true
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "audio.codec"), "AAC")
+    end function
+
+    @it("skips an external audio track when naming an MP4's first")
+    function _()
+      m.directPlayTwoAudio()
+      m.input.mediaSource.Container = "mp4"
+      m.input.mediaSource.MediaStreams[1].IsExternal = true
+      m.input.audioTracksUnlisted = true
+      report = buildPlaybackReport(m.input)
+      m.assertEqual(m.rowValue(report, "audio.codec"), "AC3")
+    end function
+
     @it("still has no audio section for a source that lists no audio")
     function _()
       m.input.mediaSource.MediaStreams = [{ Type: "Video", Index: 0, Codec: "h264" }]

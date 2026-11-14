@@ -354,6 +354,22 @@ function getMp4FamilyContainers() as string
   return "mp4,mov,m4v"
 end function
 
+' isMp4FamilyContainer: Whether a container Jellyfin reports is in the MP4 family.
+'
+' Jellyfin can report an MP4 as ffprobe's whole list ("mov,mp4,m4a,3gp,3g2,mj2"), so a match on
+' any one name counts, as it does in the server's own ContainerHelper.
+'
+' @param {dynamic} container - a MediaSource's Container
+' @returns {boolean}
+function isMp4FamilyContainer(container as dynamic) as boolean
+  if not isValidAndNotEmpty(container) then return false
+  family = getMp4FamilyContainers().Split(",")
+  for each name in LCase(container).Split(",")
+    if arrayHasValue(family, name.Trim()) then return true
+  end for
+  return false
+end function
+
 function GetDirectPlayProfiles() as object
   ' ONE rendezvous to get user settings
   globalUserSettings = m.global.user.settings

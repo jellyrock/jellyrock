@@ -788,18 +788,19 @@ sub onSubtitleChange()
 end sub
 
 ' Event handler for when audioIndex changes.
-' For direct play in a container Roku can switch (MKV): sets the Roku audio track, no reload.
-' For transcoded, a container Roku lists no tracks for (MP4, MOV, MPEG-TS), or a newly-selected
-' stream the device can't decode (for example switching from stereo back to an 8ch track on a
-' stereo Roku), must reload so the server sends a stream that carries the pick.
+' For direct play: sets the Roku audio track, no reload.
+' For transcoded, an MP4-family file (Roku can't switch inside one), or a newly-selected stream
+' the device can't decode (for example switching from stereo back to an 8ch track on a stereo
+' Roku), must reload so the server sends a stream that carries the pick (audioPickNeedsReload).
 sub onAudioIndexChange()
   if m.isApplyingOwnSelection then return
 
   m.log.info("Audio index changed by user", "newIndex", m.top.audioIndex, "isTranscoded", m.top.isTranscoded, "position", m.top.position, "currentAudioTrack", m.top.audioTrack)
 
-  ' Roku's audioTrack switch only works when it lists the tracks, and it can't make an
-  ' undecodable track playable, so every other pick goes through the reload path.
-  if canSwitchAudioNatively(m.top.isTranscoded, m.top.availableAudioTracks, m.top.audioIndex, m.top.fullAudioData)
+  playedSource = mediaSourceForId(m.top.fullVideoSourceData, m.loadedMediaSourceId)
+  playedContainer = invalid
+  if isValid(playedSource) then playedContainer = playedSource.Container
+  if not audioPickNeedsReload(m.top.isTranscoded, m.top.availableAudioTracks, playedContainer, m.top.audioIndex, m.top.fullAudioData)
     newTrack = getRokuAudioTrackPosition(m.top.audioIndex, m.top.fullAudioData, m.top.availableAudioTracks)
     m.log.info("Direct play audio switch", "jellyfinIndex", m.top.audioIndex, "rokuTrack", newTrack)
     m.top.audioTrack = newTrack
@@ -807,7 +808,7 @@ sub onAudioIndexChange()
     return
   end if
 
-  ' Transcoded, no listed tracks, or stream not direct-playable: must reload
+  ' Transcoded, an MP4-family file, or stream not direct-playable: must reload
   if isTrackPickAgainstOldVersion() then return
   m.log.info("Audio change requires reload", "isTranscoded", m.top.isTranscoded)
 

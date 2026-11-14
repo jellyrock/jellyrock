@@ -793,8 +793,8 @@ function playbackReportInputs(session as dynamic) as object
     doviPreservationBypassed: m.view.isDoviPreservationBypassed,
     videoCopyDisallowed: m.view.isVideoCopyDisallowed,
     ' True when the device plays the stream itself and Roku lists no audio tracks
-    ' (several tracks muxed into one HLS variant). The app cannot select one then,
-    ' so the report must not describe its pick as playing.
+    ' (an MP4-family file, or several tracks muxed into one HLS variant). The app
+    ' cannot select one then, so buildPlaybackReport decides which track it can name.
     audioTracksUnlisted: not isBooleanTrue(m.view.isTranscoded) and not isValidAndNotEmpty(m.view.availableAudioTracks),
     isShortcut: m.view.isShortcut
   }
