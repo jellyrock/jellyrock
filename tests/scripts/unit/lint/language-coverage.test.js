@@ -411,12 +411,12 @@ describe('language-coverage — PersonKind coverage', () => {
       enUS: {
         LanguageEnglish: 'English',
         LabelPersonKindActor: 'Actor',
-        MessageCreatedBy1: 'Created by {0}',
+        MessageCreatedBy: 'Created by {0}',
       },
       fingerprints: { 'jellyfin-12.0.json': ['Actor', 'Creator', 'Unknown'] },
       personKinds: { actor: 'translationKeys.LabelPersonKindActor' },
       unlabelledKinds: ['unknown', 'creator'],
-      creditRowKinds: [{ kind: 'creator', messageKey: 'MessageCreatedBy1' }],
+      creditRowKinds: [{ kind: 'creator', messageKey: 'MessageCreatedBy' }],
     });
     const { exitCode, stdout } = spawnScript(SCRIPT, [dir]);
     expect(exitCode).toBe(0);
@@ -428,11 +428,11 @@ describe('language-coverage — PersonKind coverage', () => {
     // "Created by" line silently renders empty, and every other check stays green.
     dir = setupTree({
       ...CLEAN_LANG,
-      enUS: { LanguageEnglish: 'English', MessageCreatedBy1: 'Created by {0}' },
+      enUS: { LanguageEnglish: 'English', MessageCreatedBy: 'Created by {0}' },
       fingerprints: { 'jellyfin-12.0.json': ['Actor', 'Unknown'] },
       personKinds: {},
       unlabelledKinds: ['unknown', 'actor'],
-      creditRowKinds: [{ kind: 'creator', messageKey: 'MessageCreatedBy1' }],
+      creditRowKinds: [{ kind: 'creator', messageKey: 'MessageCreatedBy' }],
     });
     const { exitCode, stdout } = spawnScript(SCRIPT, [dir]);
     expect(exitCode).toBe(1);
@@ -442,15 +442,15 @@ describe('language-coverage — PersonKind coverage', () => {
   it("exits 1 when a credit row's message key is not in en_US.json", () => {
     dir = setupTree({
       ...CLEAN_LANG,
-      enUS: { LanguageEnglish: 'English' }, // no MessageCreatedBy1
+      enUS: { LanguageEnglish: 'English' }, // no MessageCreatedBy
       fingerprints: { 'jellyfin-12.0.json': ['Creator', 'Unknown'] },
       personKinds: {},
       unlabelledKinds: ['unknown', 'creator'],
-      creditRowKinds: [{ kind: 'creator', messageKey: 'MessageCreatedBy1' }],
+      creditRowKinds: [{ kind: 'creator', messageKey: 'MessageCreatedBy' }],
     });
     const { exitCode, stdout } = spawnScript(SCRIPT, [dir]);
     expect(exitCode).toBe(1);
-    expect(stdout).toMatch(/key "MessageCreatedBy1" is not defined/);
+    expect(stdout).toMatch(/key "MessageCreatedBy" is not defined/);
   });
 
   it('exits 0 on a genuinely empty credit-row table', () => {

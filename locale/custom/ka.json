@@ -168,7 +168,7 @@
   "LanguageVi": "ვიეტნამური",
   "LanguageZh": "ჩინური",
   "LanguageZu": "ზულუ",
-  "MessageDirectedBy1": "რეჟისორი: {0}",
+  "MessageDirectedBy": "რეჟისორი: {0}",
   "MessageSyncPlayCreateGroupDenied": "ჯგუფის შექმნას უფლებ სჭიდება.",
   "MessageSyncPlayLibraryAccessDenied": "ამ შემცველობასთან წვდომა შეზღუდულია.",
   "MessageSyncPlayUserJoined": "{0} შემოუერთდა ჯგუფს.",

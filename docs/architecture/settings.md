@@ -33,7 +33,7 @@ A tree of categories and settings. Its top level is three categories, Global, Pl
   "type": "bool",
   "default": "false",
   "titleKey": "MessageRememberMe",
-  "descriptionKey": "MessageRememberTheCurrentlyLoggedInUser"
+  "descriptionKey": "SettingDescRememberMe"
 },
 {
   "title": "Splash Screen Image",
@@ -45,7 +45,7 @@ A tree of categories and settings. Its top level is three categories, Global, Pl
     { "title": "Disabled", "id": "disabled", "titleKey": "LabelDisabled" }
   ],
   "titleKey": "LabelSplashScreenImage",
-  "descriptionKey": "MessageControlWhetherTheServerSSplash"
+  "descriptionKey": "SettingDescSplashScreen"
 }
 ```
 

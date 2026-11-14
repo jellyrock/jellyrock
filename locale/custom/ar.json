@@ -245,14 +245,14 @@
   "LanguageVi": "الفيتنامية",
   "LanguageZh": "الصينية",
   "LanguageZu": "الزولو",
-  "MessageDirectedBy1": "إخراج {0}",
-  "MessageDisc1": "القرص {0}",
-  "MessageEndsAt1": "ينتهى عند {0}",
-  "MessageMoreFrom1": "المزيد من {0}",
+  "MessageDirectedBy": "إخراج {0}",
+  "MessageDisc": "القرص {0}",
+  "MessageEndsAt": "ينتهى عند {0}",
+  "MessageMoreFrom": "المزيد من {0}",
   "MessageSearchNoResults": "لايوجد نتائج.",
-  "MessageSetTheMaximumAmountOfDays": "يضبط الحد الأقصى لعدد الأيام التي يجب أن يبقى فيها العرض في قائمة 'التالي' دون مشاهدته.",
   "MessageSyncPlayCreateGroupDenied": "الإذن مطلوب لإنشاء مجموعة.",
   "MessageSyncPlayLibraryAccessDenied": "الوصول إلى هذا المحتوى مقيّد.",
   "MessageSyncPlayUserJoined": "{0} انضم إلى المجموعة.",
-  "MessageSyncPlayUserLeft": "{0} غادر المجموعة."
+  "MessageSyncPlayUserLeft": "{0} غادر المجموعة.",
+  "SettingDescMaxDaysNextUp": "يضبط الحد الأقصى لعدد الأيام التي يجب أن يبقى فيها العرض في قائمة 'التالي' دون مشاهدته."
 }

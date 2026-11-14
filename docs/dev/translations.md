@@ -60,10 +60,26 @@ Keys are PascalCase and start with a prefix that says what kind of text they hol
 | `Label` | UI labels and headings | `LabelCinemaMode`, `LabelEpisodeCountOne` |
 | `Message` | Longer text | `MessageRememberMe` |
 | `Error` | Error messages | `ErrorFailedToUpdateFavorite` |
-| `Setting` | Setting titles and descriptions | `SettingDescDisplayLanguage` |
+| `Setting` | Setting titles, and `SettingDesc` for setting and group descriptions | `SettingHomeRowSize`, `SettingDescCinemaMode` |
 | `Desc` | Descriptions of the custom theme color settings | `DescThemeColorPrimary` |
 | `Day` | Day names | `DayMonday` |
 | `Language` | Names of audio and subtitle languages | `LanguageAf` |
+
+After the prefix, name the key for what the string is for, not for its first words: `MessageConfirmExit`, not `MessageAreYouSureYouWantTo`. A name built from the text says nothing once the text changes, and two strings that start alike end up as `…To` and `…To2`. A setting's description is `SettingDesc` plus its `settingName` without the area prefix (`playbackCinemaMode` becomes `SettingDescCinemaMode`).
+
+## Rename a key
+
+Rename a key with the rename mode, never by editing `en_US.json` alone:
+
+```bash
+npm run update-translations -- --rename OldKey=NewKey [--rename Old2=New2 …]
+```
+
+It renames the key in `en_US.json` and in every locale file, so its translations move with it. It also renames the key in the seed map (`keymap.yml`) and ledger, in `settings/settings.json`, and in every `translationKeys.OldKey` in code and tests. If any pair is wrong (an unknown key, a name already taken, a plural key), it renames nothing. It then lists other files that still mention the old name, such as docs and comments, for you to fix by hand.
+
+Release prep carries the rename to Weblate with no step of your own: `main` deleted the old key and added the new one, and the three-way merge takes `main`'s change (see [Weblate sync](../architecture/translations.md#weblate-sync)). Until then Weblate shows the new key as untranslated. If a translator translates it in that window, their translation wins at release prep, and the merge log lists it.
+
+Plural keys are not supported yet, because code names them by their base (`translationKeys.LabelEpisodeCount`).
 
 ## Plurals
 
@@ -119,7 +135,7 @@ Give a new setting both fields:
   "type": "bool",
   "default": "false",
   "titleKey": "LabelCinemaMode",
-  "descriptionKey": "MessageBringTheTheaterExperienceStraightTo"
+  "descriptionKey": "SettingDescCinemaMode"
 }
 ```
 

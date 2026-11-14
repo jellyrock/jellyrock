@@ -511,7 +511,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     if isLive and apiResponse.noAnswer(res)
       m.top.errorMsg = translate(translationKeys.ErrorThisChannelTookTooLongToStart)
     else
-      m.top.errorMsg = translate(translationKeys.ErrorThereWasAnErrorRetrievingPlayback)
+      m.top.errorMsg = translate(translationKeys.ErrorPlaybackInfoFailed)
     end if
     video.content = invalid
     return
@@ -522,9 +522,9 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     errorCode = m.playbackInfo.ErrorCode
     m.log.error("PlaybackInfo returned error code", "errorCode", errorCode, "itemId", video.id)
     if errorCode = "NoCompatibleStream"
-      m.top.errorMsg = translate(translationKeys.LabelNoCompatibleStreamsAreAvailableFor)
+      m.top.errorMsg = translate(translationKeys.ErrorNoCompatibleStreams)
     else
-      m.top.errorMsg = translate(translationKeys.ErrorTheServerWasUnableToStart) + " (" + errorCode + ")"
+      m.top.errorMsg = translate(translationKeys.ErrorServerCouldNotStartPlayback) + " (" + errorCode + ")"
     end if
     video.content = invalid
     return
@@ -707,7 +707,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
       ' Server did not provide a transcode URL: surface a message to the user via the task field
       ' so VideoPlayerView shows one dialog (not two).
       m.log.error("Server did not provide a TranscodingUrl", "itemId", video.id)
-      m.top.errorMsg = translate(translationKeys.ErrorAnErrorWasEncounteredWhilePlaying)
+      m.top.errorMsg = translate(translationKeys.ErrorTranscodingDataMissing)
       video.content = invalid
       return
     end if
@@ -716,7 +716,7 @@ sub LoadItems_AddVideoContent(video as object, mediaSourceId as dynamic, audioSt
     transcodingUrl = buildURL(m.playbackInfo.MediaSources[0].TranscodingUrl)
     if not isValid(transcodingUrl)
       m.log.error("Failed to build transcoding URL — server URL not set", "itemId", video.id)
-      m.top.errorMsg = translate(translationKeys.ErrorAnErrorWasEncounteredWhilePlaying)
+      m.top.errorMsg = translate(translationKeys.ErrorTranscodingDataMissing)
       video.content = invalid
       return
     end if
@@ -1117,7 +1117,7 @@ sub setupVideoContentWithAuth(video, mediaSourceId, audioStreamIdx)
       ' later we will substitute the users provided URL for this case
       if not isValid(uri[4])
         m.log.error("Localhost stream has no path component", "mediaSourceId", m.playbackInfo.MediaSources[0].Id)
-        m.top.errorMsg = translate(translationKeys.ErrorAnErrorWasEncounteredWhilePlaying)
+        m.top.errorMsg = translate(translationKeys.ErrorTranscodingDataMissing)
         video.content = invalid
         return
       end if
@@ -1125,7 +1125,7 @@ sub setupVideoContentWithAuth(video, mediaSourceId, audioStreamIdx)
       localUrl = buildURL(uri[4])
       if not isValid(localUrl)
         m.log.error("Failed to build localhost stream URL — server URL not set", "mediaSourceId", m.playbackInfo.MediaSources[0].Id)
-        m.top.errorMsg = translate(translationKeys.ErrorAnErrorWasEncounteredWhilePlaying)
+        m.top.errorMsg = translate(translationKeys.ErrorTranscodingDataMissing)
         video.content = invalid
         return
       end if
@@ -1151,7 +1151,7 @@ sub setupVideoContentWithAuth(video, mediaSourceId, audioStreamIdx)
     streamUrl = buildURL(Substitute("Videos/{0}/stream", video.id), params)
     if not isValid(streamUrl)
       m.log.error("Failed to build stream URL — server URL not set", "itemId", video.id)
-      m.top.errorMsg = translate(translationKeys.ErrorAnErrorWasEncounteredWhilePlaying)
+      m.top.errorMsg = translate(translationKeys.ErrorTranscodingDataMissing)
       video.content = invalid
       return
     end if

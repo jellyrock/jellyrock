@@ -238,14 +238,14 @@
   "LanguageVi": "vietnamita",
   "LanguageZh": "chinês",
   "LanguageZu": "zulu",
-  "MessageDirectedBy1": "Realizado por {0}",
-  "MessageDisc1": "Disco {0}",
-  "MessageEndsAt1": "Termina às {0}",
-  "MessageMoreFrom1": "Mais de {0}",
+  "MessageDirectedBy": "Realizado por {0}",
+  "MessageDisc": "Disco {0}",
+  "MessageEndsAt": "Termina às {0}",
+  "MessageMoreFrom": "Mais de {0}",
   "MessageSearchNoResults": "Sem resultados.",
-  "MessageSetTheMaximumAmountOfDays": "Defina a quantidade máxima de dias que um programa deve permanecer na lista 'Próximo' sem o assistir.",
   "MessageSyncPlayCreateGroupDenied": "É necessária permissão para criar um grupo.",
   "MessageSyncPlayLibraryAccessDenied": "Conteúdo de acesso restrito.",
   "MessageSyncPlayUserJoined": "{0} juntou-se ao grupo.",
-  "MessageSyncPlayUserLeft": "{0} saiu do grupo."
+  "MessageSyncPlayUserLeft": "{0} saiu do grupo.",
+  "SettingDescMaxDaysNextUp": "Defina a quantidade máxima de dias que um programa deve permanecer na lista 'Próximo' sem o assistir."
 }

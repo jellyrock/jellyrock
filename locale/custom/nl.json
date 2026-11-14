@@ -222,14 +222,14 @@
   "LanguageVi": "Vietnamees",
   "LanguageZh": "Chinees",
   "LanguageZu": "Zoeloe",
-  "MessageDirectedBy1": "Geregisseerd door {0}",
-  "MessageDisc1": "Schijf {0}",
-  "MessageEndsAt1": "Afgelopen om {0}",
-  "MessageMoreFrom1": "Meer van {0}",
+  "MessageDirectedBy": "Geregisseerd door {0}",
+  "MessageDisc": "Schijf {0}",
+  "MessageEndsAt": "Afgelopen om {0}",
+  "MessageMoreFrom": "Meer van {0}",
   "MessageSearchNoResults": "Geen resultaten.",
-  "MessageSetTheMaximumAmountOfDays": "Stel het maximaal aantal dagen in dat een serie in de 'Als volgende'-lijst staat zonder deze te kijken.",
   "MessageSyncPlayCreateGroupDenied": "Toestemming vereist om een groep te maken.",
   "MessageSyncPlayLibraryAccessDenied": "Toegang tot deze inhoud is beperkt.",
   "MessageSyncPlayUserJoined": "{0} is lid geworden van de groep.",
-  "MessageSyncPlayUserLeft": "{0} heeft de groep verlaten."
+  "MessageSyncPlayUserLeft": "{0} heeft de groep verlaten.",
+  "SettingDescMaxDaysNextUp": "Stel het maximaal aantal dagen in dat een serie in de 'Als volgende'-lijst staat zonder deze te kijken."
 }

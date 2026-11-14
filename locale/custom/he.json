@@ -240,14 +240,14 @@
   "LanguageVi": "וייטנאמית",
   "LanguageZh": "סינית",
   "LanguageZu": "זולו",
-  "MessageDirectedBy1": "במאי {0}",
-  "MessageDisc1": "דיסק {0}",
-  "MessageEndsAt1": "מסתיים ב {0}",
-  "MessageMoreFrom1": "עוד מ{0}",
+  "MessageDirectedBy": "במאי {0}",
+  "MessageDisc": "דיסק {0}",
+  "MessageEndsAt": "מסתיים ב {0}",
+  "MessageMoreFrom": "עוד מ{0}",
   "MessageSearchNoResults": "אין תוצאות.",
-  "MessageSetTheMaximumAmountOfDays": "הגדר את מספר הימים המקסימלי שתכנית צריכה להישאר ברשימת 'הבא בתור' מבלי לצפות בה.",
   "MessageSyncPlayCreateGroupDenied": "יצירת קבוצה דורשת הרשאות.",
   "MessageSyncPlayLibraryAccessDenied": "הגישה לתוכן זה מוגבלת.",
   "MessageSyncPlayUserJoined": "{0} הצטרף/ה לקבוצה.",
-  "MessageSyncPlayUserLeft": "{0} עזב/ה את הקבוצה."
+  "MessageSyncPlayUserLeft": "{0} עזב/ה את הקבוצה.",
+  "SettingDescMaxDaysNextUp": "הגדר את מספר הימים המקסימלי שתכנית צריכה להישאר ברשימת 'הבא בתור' מבלי לצפות בה."
 }

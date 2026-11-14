@@ -139,6 +139,20 @@ function mergeLocales({ ours, theirs, ancestor = {}, enKeys }) {
   return { merged, stats, conflicts };
 }
 
+/**
+ * The canonical on-disk form of the seed ledger (`locale/seed/seeded.json`): locale,
+ * then key, both sorted. Shared by the seeder, which writes the ledger, and the key
+ * rename in `update-translations.cjs`, which renames a key inside it.
+ */
+function serializeLedger(ledger) {
+  const sorted = {};
+  for (const locale of Object.keys(ledger).sort()) {
+    sorted[locale] = {};
+    for (const key of Object.keys(ledger[locale]).sort()) sorted[locale][key] = ledger[locale][key];
+  }
+  return JSON.stringify(sorted, null, 2) + '\n';
+}
+
 module.exports = {
   SOURCE_LOCALE,
   baseChain,
@@ -146,6 +160,7 @@ module.exports = {
   localeOfFile,
   mergeLocales,
   readLocaleDir,
+  serializeLedger,
   serializeLocale,
   writeLocaleFile,
 };

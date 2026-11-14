@@ -239,13 +239,13 @@
   "LanguageVi": "vietnam",
   "LanguageZh": "kiina",
   "LanguageZu": "zulu",
-  "MessageDirectedBy1": "Ohjannut {0}",
-  "MessageDisc1": "Levy {0}",
-  "MessageEndsAt1": "Päättyy {0}",
-  "MessageMoreFrom1": "Lisää kohteesta {0}",
-  "MessageSetTheMaximumAmountOfDays": "Määritä enimmäisaika päivinä, jonka katsomaton sarja pysyy 'Seuraavaksi'-osiossa.",
+  "MessageDirectedBy": "Ohjannut {0}",
+  "MessageDisc": "Levy {0}",
+  "MessageEndsAt": "Päättyy {0}",
+  "MessageMoreFrom": "Lisää kohteesta {0}",
   "MessageSyncPlayCreateGroupDenied": "Lupa ryhmän luomiseen vaaditaan.",
   "MessageSyncPlayLibraryAccessDenied": "Pääsy sisältöön on rajattu.",
   "MessageSyncPlayUserJoined": "{0} liittyi ryhmään.",
-  "MessageSyncPlayUserLeft": "{0} poistui ryhmästä."
+  "MessageSyncPlayUserLeft": "{0} poistui ryhmästä.",
+  "SettingDescMaxDaysNextUp": "Määritä enimmäisaika päivinä, jonka katsomaton sarja pysyy 'Seuraavaksi'-osiossa."
 }

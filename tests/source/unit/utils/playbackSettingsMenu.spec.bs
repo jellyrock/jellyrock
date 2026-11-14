@@ -15,7 +15,7 @@ namespace tests
       return {
         settingName: "playbackResolutionMax",
         options: [
-          { title: "Off - Attempt to direct play all resolutions", id: "off", titleKey: "LabelOffAttemptToDirectPlayAll" },
+          { title: "Off - Attempt to direct play all resolutions", id: "off", titleKey: "LabelMaxResolutionOff" },
           { title: "Auto - Use TV resolution", id: "auto", titleKey: "LabelAutoUseTvResolution" },
           { title: "720p", id: "720", titleKey: "Label720p" }
         ]

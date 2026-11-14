@@ -240,13 +240,13 @@
   "LanguageVi": "в’етнамская",
   "LanguageZh": "кітайская",
   "LanguageZu": "зулу",
-  "MessageDirectedBy1": "Рэжысёр: {0}",
-  "MessageDisc1": "Дыск {0}",
-  "MessageEndsAt1": "Заканчваецца ў {0}",
-  "MessageMoreFrom1": "Больш ад {0}",
-  "MessageSetTheMaximumAmountOfDays": "Усталюйце максімальную колькасць дзён, на працягу якіх серыя павінна заставацца ў спісе \"Наступны\", без прагляду.",
+  "MessageDirectedBy": "Рэжысёр: {0}",
+  "MessageDisc": "Дыск {0}",
+  "MessageEndsAt": "Заканчваецца ў {0}",
+  "MessageMoreFrom": "Больш ад {0}",
   "MessageSyncPlayCreateGroupDenied": "Для стварэння групы патрабуецца дазвол.",
   "MessageSyncPlayLibraryAccessDenied": "Доступ да гэтага кантэнту абмежаваны.",
   "MessageSyncPlayUserJoined": "{0} далучыўся да групы.",
-  "MessageSyncPlayUserLeft": "{0} пакінуў групу."
+  "MessageSyncPlayUserLeft": "{0} пакінуў групу.",
+  "SettingDescMaxDaysNextUp": "Усталюйце максімальную колькасць дзён, на працягу якіх серыя павінна заставацца ў спісе \"Наступны\", без прагляду."
 }

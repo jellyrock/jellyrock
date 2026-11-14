@@ -1420,7 +1420,7 @@ end sub
 ' set?"), asked of each list's own numRows rather than a shared constant, because
 ' the two "on this item" sections are sized per render by sectionRowCounts().
 '
-' The string is Message1Of2, the app's existing "{0} of {1}", already what the
+' The string is LabelPositionOfTotal, the app's existing "{0} of {1}", already what the
 ' library grid's overhang and the audio player's track line use, so a position
 ' readout means the same thing wherever it turns up. Roku's own list counter is a
 ' RowList field (showRowCounter) and MarkupList does not have it, which is why
@@ -1442,7 +1442,7 @@ sub updateListCounter(counter as object, list as object)
   position = list.itemFocused + 1
   if position < 1 then position = 1
 
-  counter.text = translate(translationKeys.Message1Of2, [position.toStr(), total.toStr()])
+  counter.text = translate(translationKeys.LabelPositionOfTotal, [position.toStr(), total.toStr()])
   counter.visible = true
 end sub
 

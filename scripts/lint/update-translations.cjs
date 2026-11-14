@@ -6,13 +6,26 @@
 // --fix mode: auto-fixes en_US.json (remove orphans, sort) and languages.json
 // (add missing locales), then runs all checks. Exits 1 on remaining errors.
 //
+// --rename Old=New (repeatable): renames a key everywhere it lives before the
+// checks run: en_US.json, every locale file (so translators' work moves with it),
+// the seed keymap and ledger, settings.json, and `translationKeys.Old` in code and
+// tests. It refuses the whole batch if any pair is invalid, so nothing is half
+// renamed. The release merge then carries the rename to Weblate: main deleted the
+// old key and added the new one.
+//
 // npm scripts:
 //   lint:translations    runs check mode (all validation)
-//   update-translations  runs fix mode (--fix baked in)
+//   update-translations  runs fix mode (--fix baked in); add `-- --rename Old=New`
 
 const fs = require('fs');
 const path = require('path');
 const fg = require('fast-glob');
+const {
+  readLocaleDir,
+  serializeLedger,
+  writeLocaleFile,
+  SOURCE_LOCALE,
+} = require('../lib/locale-files.cjs');
 
 // ============================================================
 // Config
@@ -24,6 +37,38 @@ const EN_US_PATH = path.join(ROOT_DIR, 'locale/custom/en_US.json');
 const LOCALE_DIR = path.join(ROOT_DIR, 'locale/custom');
 const LANGUAGES_JSON_PATH = path.join(ROOT_DIR, 'locale/languages.json');
 const SETTINGS_JSON_PATH = path.join(ROOT_DIR, 'settings/settings.json');
+const KEYMAP_PATH = path.join(ROOT_DIR, 'locale/seed/keymap.yml');
+const LEDGER_PATH = path.join(ROOT_DIR, 'locale/seed/seeded.json');
+
+/** `--rename Old=New` pairs, in the order given. */
+const RENAMES = process.argv.flatMap((arg, i, argv) =>
+  arg === '--rename' ? [argv[i + 1] ?? ''] : [],
+);
+
+// Code that names keys as `translationKeys.X`, tests included: a stale name there
+// fails the build.
+const RENAME_CODE_PATTERNS = [
+  'source/**/*.bs',
+  'components/**/*.{bs,xml}',
+  'tests/**/*.{bs,js}',
+  '!**/node_modules/**',
+  '!**/roku_modules/**',
+];
+
+// Text files searched for leftover mentions after a rename (docs, comments). These
+// are reported, not rewritten: a mention in prose needs a reader's judgment.
+const MENTION_PATTERNS = ['**/*.{md,bs,brs,xml,js,cjs,mjs,json,yml,yaml}'];
+const MENTION_IGNORE = [
+  '**/node_modules/**',
+  '**/roku_modules/**',
+  'build/**',
+  'out/**',
+  'dist/**',
+  '.cache/**',
+  '.claude/worktrees/**',
+  'locale/custom/**',
+  'CHANGELOG.md',
+];
 
 const SOURCE_PATTERNS = [
   'source/**/*.bs',
@@ -318,6 +363,153 @@ function checkPluralCompleteness(keys) {
 }
 
 // ============================================================
+// Rename
+// ============================================================
+
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Validate every `Old=New` pair against en_US.json and the locale files. Returns
+ * the parsed pairs and a list of problems; any problem cancels the whole batch.
+ */
+function planRenames(specs, locales) {
+  const problems = [];
+  const pairs = [];
+  const enUs = locales[SOURCE_LOCALE];
+  for (const spec of specs) {
+    const match = /^([A-Z]\w*)=([A-Z]\w*)$/.exec(spec);
+    if (!match) {
+      problems.push(`--rename "${spec}": expected OldKey=NewKey, both PascalCase`);
+      continue;
+    }
+    const [, from, to] = match;
+    if (from === to) problems.push(`--rename ${spec}: the two names are the same`);
+    else if (!(from in enUs)) problems.push(`--rename ${spec}: ${from} is not in en_US.json`);
+    else if (to in enUs) problems.push(`--rename ${spec}: ${to} is already in en_US.json`);
+    else if (/(Zero|One|Many)$/.test(from) || /(Zero|One|Many)$/.test(to))
+      problems.push(
+        `--rename ${spec}: plural keys are not supported, because code names them by their base`,
+      );
+    pairs.push({ from, to });
+  }
+  const froms = pairs.map((p) => p.from);
+  const tos = pairs.map((p) => p.to);
+  for (const name of new Set(froms))
+    if (froms.indexOf(name) !== froms.lastIndexOf(name))
+      problems.push(`--rename: ${name} is renamed twice`);
+  for (const name of new Set(tos))
+    if (tos.indexOf(name) !== tos.lastIndexOf(name))
+      problems.push(`--rename: two keys are renamed to ${name}`);
+  for (const name of tos)
+    if (froms.includes(name))
+      problems.push(`--rename: ${name} is both an old and a new name; rename in two runs`);
+  for (const [locale, translations] of Object.entries(locales)) {
+    if (locale === SOURCE_LOCALE) continue;
+    for (const { to } of pairs)
+      if (to in translations)
+        problems.push(`--rename: ${locale}.json already has ${to} (an orphaned key)`);
+  }
+  return { pairs, problems };
+}
+
+/** Rename one key in a flat object, keeping its value. */
+function renameIn(object, from, to) {
+  if (!(from in object)) return false;
+  object[to] = object[from];
+  delete object[from];
+  return true;
+}
+
+/** Apply `--rename` pairs everywhere a key lives. Exits 1 without writing on any problem. */
+async function applyRenames(specs) {
+  console.log(c('\n[Rename]', 'cyan'));
+  const locales = readLocaleDir(LOCALE_DIR);
+  const { pairs, problems } = planRenames(specs, locales);
+  if (problems.length > 0) {
+    problems.forEach((p) => console.log(c(`  ERROR: ${p}`, 'red')));
+    console.log(c('  Nothing was renamed.', 'red'));
+    process.exit(1);
+  }
+
+  // Locale files, en_US included.
+  const translated = Object.fromEntries(pairs.map((p) => [p.from, 0]));
+  for (const [locale, translations] of Object.entries(locales)) {
+    let changed = false;
+    for (const { from, to } of pairs) {
+      if (renameIn(translations, from, to)) {
+        changed = true;
+        if (locale !== SOURCE_LOCALE) translated[from]++;
+      }
+    }
+    if (changed) writeLocaleFile(LOCALE_DIR, locale, translations);
+  }
+
+  // Seed ledger: a cell it filled under the old name stays recorded, so a
+  // translation someone removed is not refilled under the new one.
+  if (fs.existsSync(LEDGER_PATH)) {
+    const ledger = JSON.parse(fs.readFileSync(LEDGER_PATH, 'utf8'));
+    for (const keys of Object.values(ledger))
+      for (const { from, to } of pairs) renameIn(keys, from, to);
+    const next = serializeLedger(ledger);
+    if (next !== fs.readFileSync(LEDGER_PATH, 'utf8')) fs.writeFileSync(LEDGER_PATH, next);
+  }
+
+  // Text rewrites: the keymap's top-level entry, settings.json's key fields, and
+  // `translationKeys.Old` in code. Each pattern matches the whole name only.
+  const rewrite = (filePath, patterns) => {
+    const before = fs.readFileSync(filePath, 'utf8');
+    let after = before;
+    for (const [regex, replacement] of patterns) after = after.replace(regex, replacement);
+    if (after !== before) fs.writeFileSync(filePath, after);
+    return after !== before;
+  };
+  const touched = [];
+  if (fs.existsSync(KEYMAP_PATH)) {
+    const patterns = pairs.map(({ from, to }) => [
+      new RegExp(`^${escapeRegex(from)}:(?=\\s|$)`, 'gm'),
+      `${to}:`,
+    ]);
+    if (rewrite(KEYMAP_PATH, patterns)) touched.push(path.relative(ROOT_DIR, KEYMAP_PATH));
+  }
+  if (fs.existsSync(SETTINGS_JSON_PATH)) {
+    const patterns = pairs.map(({ from, to }) => [
+      new RegExp(`("(?:titleKey|descriptionKey)"\\s*:\\s*)"${escapeRegex(from)}"`, 'g'),
+      `$1"${to}"`,
+    ]);
+    if (rewrite(SETTINGS_JSON_PATH, patterns))
+      touched.push(path.relative(ROOT_DIR, SETTINGS_JSON_PATH));
+  }
+  const codePatterns = pairs.map(({ from, to }) => [
+    new RegExp(`\\btranslationKeys\\.${escapeRegex(from)}\\b`, 'g'),
+    `translationKeys.${to}`,
+  ]);
+  for (const file of await fg(RENAME_CODE_PATTERNS, { cwd: ROOT_DIR })) {
+    if (rewrite(path.join(ROOT_DIR, file), codePatterns)) touched.push(file);
+  }
+
+  for (const { from, to } of pairs)
+    console.log(
+      c('  Renamed', 'green') + ` ${from} → ${to} (${translated[from]} translation(s) kept)`,
+    );
+  if (touched.length > 0) console.log(`  Rewrote: ${touched.sort().join(', ')}`);
+
+  // Leftover mentions, for a person to judge.
+  const mentions = [];
+  const mentionRegex = new RegExp(`\\b(${pairs.map((p) => escapeRegex(p.from)).join('|')})\\b`);
+  for (const file of await fg(MENTION_PATTERNS, { cwd: ROOT_DIR, ignore: MENTION_IGNORE })) {
+    const text = fs.readFileSync(path.join(ROOT_DIR, file), 'utf8');
+    text.split('\n').forEach((line, i) => {
+      const hit = mentionRegex.exec(line);
+      if (hit) mentions.push(`${file}:${i + 1} ${hit[1]}`);
+    });
+  }
+  if (mentions.length > 0) {
+    console.log(c(`  Still mentioned (not rewritten, check by hand):`, 'yellow'));
+    mentions.sort().forEach((m) => console.log(`    ${m}`));
+  }
+}
+
+// ============================================================
 // Main
 // ============================================================
 
@@ -327,6 +519,8 @@ async function main() {
 
   console.log(c('\nTranslation Check', 'bold'));
   console.log(c('=================', 'blue'));
+
+  if (RENAMES.length > 0) await applyRenames(RENAMES);
 
   // ----------------------------------------------------------
   // Load en_US.json

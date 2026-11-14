@@ -56,6 +56,7 @@ const { git: gitIn } = require('./lib/git-safe.cjs');
 const {
   baseChain,
   readLocaleDir,
+  serializeLedger,
   writeLocaleFile,
   SOURCE_LOCALE,
 } = require('./lib/locale-files.cjs');
@@ -75,8 +76,10 @@ export const LEDGER_REL = path.join('locale', 'seed', 'seeded.json');
 
 /**
  * Licenses whose text may be copied into GPL-2.0-only JellyRock, each with phrases
- * its LICENSE file must contain. GPL-3.0 is absent on purpose: it is incompatible
- * with GPL-2.0-only.
+ * its LICENSE file must contain. GPL-3.0 and Apache-2.0 are absent on purpose: both
+ * are incompatible with GPL-2.0-only. MIT, BSD and ISC are compatible but absent until
+ * a source needs one, because each needs its notice shipped in the package (see
+ * docs/architecture/translations.md, "Seeding from other Jellyfin clients").
  */
 export const LICENSE_ALLOWLIST = Object.freeze({
   'GPL-2.0-only': ['GNU GENERAL PUBLIC LICENSE', 'Version 2, June 1991'],
@@ -701,15 +704,8 @@ export function nextLedger({ ledger, plan, sources, locales }) {
   return next;
 }
 
-/** The ledger's on-disk form: locales and keys sorted, 2-space, trailing newline. */
-export function serializeLedger(ledger) {
-  const sorted = {};
-  for (const locale of Object.keys(ledger).sort()) {
-    sorted[locale] = {};
-    for (const key of Object.keys(ledger[locale]).sort()) sorted[locale][key] = ledger[locale][key];
-  }
-  return JSON.stringify(sorted, null, 2) + '\n';
-}
+/** The ledger's on-disk form, from `locale-files.cjs`, which the key rename shares. */
+export { serializeLedger };
 
 export function readLedger(root = rootDir) {
   const file = path.join(root, LEDGER_REL);

@@ -124,7 +124,7 @@ namespace tests
       withNumber = m.findRow(extrasRows.plan("Episode", { id: "e", seriesId: "s", seasonId: "sn", parentIndexNumber: 2 }, "12.0.0"), "seasonEpisodes")
       withoutNumber = m.findRow(extrasRows.plan("Episode", { id: "e", seriesId: "s", seasonId: "sn", parentIndexNumber: 0 }, "12.0.0"), "seasonEpisodes")
 
-      m.assertEqual(withNumber.titleKey, translationKeys.MessageMoreFromSeason1)
+      m.assertEqual(withNumber.titleKey, translationKeys.MessageMoreFromSeason)
       m.assertEqual(withNumber.titleArgs, ["2"])
       m.assertEqual(withoutNumber.titleKey, translationKeys.LabelMoreEpisodes)
     end function
@@ -208,7 +208,7 @@ namespace tests
       m.assertEqual(m.shapesOf(plan), ["SQUARE", "PORTRAIT", "SQUARE"])
       m.assertEqual(tracks.itemId, "al1")
       m.assertEqual(tracks.currentId, "t3")
-      m.assertEqual(tracks.titleKey, translationKeys.MessageMoreFrom1)
+      m.assertEqual(tracks.titleKey, translationKeys.MessageMoreFrom)
       m.assertEqual(tracks.titleArgs, ["Blue"])
     end function
 

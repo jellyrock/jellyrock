@@ -196,7 +196,7 @@
   "LanguageVi": "व्हिएतनामी",
   "LanguageZh": "चीनी",
   "LanguageZu": "झुलू",
-  "MessageDirectedBy1": "{0} दिग्दर्शित",
-  "MessageDisc1": "डिस्क {0}",
-  "MessageEndsAt1": "{0} येथे संपते"
+  "MessageDirectedBy": "{0} दिग्दर्शित",
+  "MessageDisc": "डिस्क {0}",
+  "MessageEndsAt": "{0} येथे संपते"
 }

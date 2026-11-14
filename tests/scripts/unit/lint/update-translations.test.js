@@ -239,4 +239,112 @@ describe('update-translations.cjs', () => {
       expect(readText(fixture.dir, 'locale/languages.json')).toBe(langsAfterFirst);
     });
   });
+
+  // --------------------------------------------------------------------
+  // --rename
+  // --------------------------------------------------------------------
+
+  describe('--rename', () => {
+    const RENAME_SOURCE = {
+      'source/main.bs':
+        'sub init()\n  translate(translationKeys.Hello)\n  translate(translationKeys.World)\n  translate(translationKeys.World2)\nend sub\n',
+      'tests/source/unit/main.spec.bs': 'm.assertEqual(x, translate(translationKeys.World))\n',
+      'docs/note.md': 'The World key is shown on the home screen.\n',
+      'locale/seed/keymap.yml':
+        'World:\n  en: World\n  from:\n    web: { key: World, en: World }\n',
+      'locale/seed/seeded.json': { fr: { World: 'web@abc' } },
+      'settings/settings.json': [{ titleKey: 'World', descriptionKey: 'World2' }],
+    };
+    const RENAME_EN_US = { Hello: 'Hello', World: 'World', World2: 'Second world' };
+
+    function renameFixture(overrides = {}) {
+      return createLocaleFixture({
+        en_US: RENAME_EN_US,
+        locales: { fr: { Hello: 'Bonjour', World: 'Monde' }, de: { Hello: 'Hallo' } },
+        languagesJson: [
+          { code: '', name: 'Automatic', nativeName: 'Automatic' },
+          { code: 'de', name: 'German', nativeName: 'Deutsch' },
+          { code: 'fr', name: 'French', nativeName: 'Français' },
+        ],
+        sources: RENAME_SOURCE,
+        ...overrides,
+      });
+    }
+
+    it('renames a key everywhere it lives and keeps its translations', () => {
+      fixture = renameFixture();
+      const { exitCode, stdout } = spawnScript(SCRIPT, ['--fix', '--rename', 'World=LabelWorld'], {
+        cwd: fixture.dir,
+      });
+      expect(exitCode).toBe(0);
+      expect(stdout).toMatch(/Renamed.* World → LabelWorld \(1 translation\(s\) kept\)/);
+
+      // en_US stays sorted, and the translation moved in fr.
+      expect(readText(fixture.dir, 'locale/custom/en_US.json')).toBe(
+        JSON.stringify({ Hello: 'Hello', LabelWorld: 'World', World2: 'Second world' }, null, 2) +
+          '\n',
+      );
+      expect(readJson(fixture.dir, 'locale/custom/fr.json')).toEqual({
+        Hello: 'Bonjour',
+        LabelWorld: 'Monde',
+      });
+      expect(readJson(fixture.dir, 'locale/seed/seeded.json')).toEqual({
+        fr: { LabelWorld: 'web@abc' },
+      });
+      expect(readText(fixture.dir, 'locale/seed/keymap.yml')).toMatch(/^LabelWorld:\n/);
+      // The source key inside the entry is another project's name: left alone.
+      expect(readText(fixture.dir, 'locale/seed/keymap.yml')).toMatch(/key: World,/);
+      expect(readJson(fixture.dir, 'settings/settings.json')).toEqual([
+        { titleKey: 'LabelWorld', descriptionKey: 'World2' },
+      ]);
+      expect(readText(fixture.dir, 'source/main.bs')).toMatch(/translationKeys\.LabelWorld\)/);
+      expect(readText(fixture.dir, 'tests/source/unit/main.spec.bs')).toMatch(
+        /translationKeys\.LabelWorld\)/,
+      );
+      // A longer key that starts with the old name is a different key.
+      expect(readText(fixture.dir, 'source/main.bs')).toMatch(/translationKeys\.World2\)/);
+      // Prose is reported for a person, never rewritten.
+      expect(stdout).toMatch(/Still mentioned[\s\S]*docs\/note\.md:1 World/);
+      expect(readText(fixture.dir, 'docs/note.md')).toMatch(/The World key/);
+    });
+
+    it('refuses the whole batch when one pair is invalid, and writes nothing', () => {
+      fixture = renameFixture();
+      const before = readText(fixture.dir, 'locale/custom/fr.json');
+      const { exitCode, stdout } = spawnScript(
+        SCRIPT,
+        ['--fix', '--rename', 'World=LabelWorld', '--rename', 'Hello=World2'],
+        { cwd: fixture.dir },
+      );
+      expect(exitCode).toBe(1);
+      expect(stdout).toMatch(/World2 is already in en_US\.json/);
+      expect(stdout).toMatch(/Nothing was renamed/);
+      expect(readText(fixture.dir, 'locale/custom/fr.json')).toBe(before);
+      expect(readText(fixture.dir, 'source/main.bs')).toMatch(/translationKeys\.World\)/);
+    });
+
+    it('refuses a new name a locale file already holds as an orphan', () => {
+      fixture = renameFixture({
+        locales: { fr: { Hello: 'Bonjour', LabelWorld: 'stale' } },
+      });
+      const { exitCode, stdout } = spawnScript(SCRIPT, ['--fix', '--rename', 'World=LabelWorld'], {
+        cwd: fixture.dir,
+      });
+      expect(exitCode).toBe(1);
+      expect(stdout).toMatch(/fr\.json already has LabelWorld/);
+    });
+
+    it('refuses an unknown key, a malformed pair and a plural key', () => {
+      fixture = renameFixture();
+      const { exitCode, stdout } = spawnScript(
+        SCRIPT,
+        ['--rename', 'Nope=LabelNope', '--rename', 'World', '--rename', 'Hello=HelloOne'],
+        { cwd: fixture.dir },
+      );
+      expect(exitCode).toBe(1);
+      expect(stdout).toMatch(/Nope is not in en_US\.json/);
+      expect(stdout).toMatch(/"World": expected OldKey=NewKey/);
+      expect(stdout).toMatch(/plural keys are not supported/);
+    });
+  });
 });

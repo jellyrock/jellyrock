@@ -122,13 +122,13 @@
   "LanguageEn": "Ingles",
   "LanguageHt": "Haitian",
   "LanguageUk": "Ukranian",
-  "MessageDirectedBy1": "Sa direksyon ni {0}",
-  "MessageDisc1": "Disc {0}",
-  "MessageEndsAt1": "Magtatapos sa {0}",
-  "MessageMoreFrom1": "Higit pa mula sa {0}",
-  "MessageSetTheMaximumAmountOfDays": "Itakda ang maximum na dami ng mga araw na dapat manatili ang isang palabas sa listahan ng 'Ang susunod' nang hindi ito pinapanood.",
+  "MessageDirectedBy": "Sa direksyon ni {0}",
+  "MessageDisc": "Disc {0}",
+  "MessageEndsAt": "Magtatapos sa {0}",
+  "MessageMoreFrom": "Higit pa mula sa {0}",
   "MessageSyncPlayCreateGroupDenied": "Kinakailangan ang pahintulot upang gumawa ng isang pangkat.",
   "MessageSyncPlayLibraryAccessDenied": "Ang pag-access sa content na ito ay pinaghihigpitan.",
   "MessageSyncPlayUserJoined": "Si {0} ay sumali sa grupo.",
-  "MessageSyncPlayUserLeft": "Si {0} ay umalis sa grupo."
+  "MessageSyncPlayUserLeft": "Si {0} ay umalis sa grupo.",
+  "SettingDescMaxDaysNextUp": "Itakda ang maximum na dami ng mga araw na dapat manatili ang isang palabas sa listahan ng 'Ang susunod' nang hindi ito pinapanood."
 }

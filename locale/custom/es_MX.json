@@ -200,11 +200,11 @@
   "LanguageVi": "vietnamita",
   "LanguageZh": "chino",
   "LanguageZu": "zulú",
-  "MessageDirectedBy1": "Dirigido por {0}",
-  "MessageDisc1": "Disco {0}",
-  "MessageEndsAt1": "Termina a las {0}",
-  "MessageMoreFrom1": "Más de {0}",
-  "MessageSetTheMaximumAmountOfDays": "Establece la cantidad máxima de días que un programa debe permanecer en la lista \"Siguiente\" sin verlo.",
+  "MessageDirectedBy": "Dirigido por {0}",
+  "MessageDisc": "Disco {0}",
+  "MessageEndsAt": "Termina a las {0}",
+  "MessageMoreFrom": "Más de {0}",
   "MessageSyncPlayCreateGroupDenied": "Permiso requerido para crear un grupo.",
-  "MessageSyncPlayLibraryAccessDenied": "El acceso a este contenido está restringido."
+  "MessageSyncPlayLibraryAccessDenied": "El acceso a este contenido está restringido.",
+  "SettingDescMaxDaysNextUp": "Establece la cantidad máxima de días que un programa debe permanecer en la lista \"Siguiente\" sin verlo."
 }

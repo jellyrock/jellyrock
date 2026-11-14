@@ -675,7 +675,7 @@ end sub
 sub setTrackNumberDisplay()
   position = stri(m.queueManager.callFunc("getPosition") + 1).trim()
   count = stri(m.queueManager.callFunc("getCount")).trim()
-  setFieldTextValue("numberofsongs", translate(translationKeys.LabelTrack) + " " + translate(translationKeys.Message1Of2, [position, count]))
+  setFieldTextValue("numberofsongs", translate(translationKeys.LabelTrack) + " " + translate(translationKeys.LabelPositionOfTotal, [position, count]))
 end sub
 
 sub LoadNextSong()

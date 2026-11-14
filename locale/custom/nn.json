@@ -237,13 +237,13 @@
   "LanguageVi": "vietnamesisk",
   "LanguageZh": "kinesisk",
   "LanguageZu": "zulu",
-  "MessageDirectedBy1": "Regissert av {0}",
-  "MessageDisc1": "Plate {0}",
-  "MessageEndsAt1": "Slutter kl. {0}",
-  "MessageMoreFrom1": "Meir frå {0}",
-  "MessageSetTheMaximumAmountOfDays": "Set maksimalt tal på dagar ein serie skal liggje i 'Neste'-lista utan at du ser på han.",
+  "MessageDirectedBy": "Regissert av {0}",
+  "MessageDisc": "Plate {0}",
+  "MessageEndsAt": "Slutter kl. {0}",
+  "MessageMoreFrom": "Meir frå {0}",
   "MessageSyncPlayCreateGroupDenied": "Du treng løyve for å opprette ei gruppe.",
   "MessageSyncPlayLibraryAccessDenied": "Tilgang til dette innhaldet er avgrensa.",
   "MessageSyncPlayUserJoined": "{0} har blitt med i gruppa.",
-  "MessageSyncPlayUserLeft": "{0} har forlate gruppa."
+  "MessageSyncPlayUserLeft": "{0} har forlate gruppa.",
+  "SettingDescMaxDaysNextUp": "Set maksimalt tal på dagar ein serie skal liggje i 'Neste'-lista utan at du ser på han."
 }

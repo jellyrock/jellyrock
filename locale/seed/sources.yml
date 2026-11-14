@@ -11,7 +11,9 @@
 # `license` must be on the allowlist in scripts/translations-seed.js
 # (GPL-2.0-only, GPL-2.0-or-later, MPL-2.0), and the seeder checks `licenseFile` at
 # the pinned commit says the same. JellyRock is GPL-2.0-only, so GPL-3.0 projects
-# (jellyfin-vue, jellyfin-kodi, findroid) can never be added.
+# (jellyfin-vue, jellyfin-kodi, findroid) and Apache-2.0 ones can never be added.
+# MIT, BSD and ISC are compatible but need a shipped notice first; see
+# docs/architecture/translations.md, "Seeding from other Jellyfin clients".
 #
 # Not listed because they have no translations of their own (they wrap
 # jellyfin-web): jellyfin-desktop, jellyfin-tizen, jellyfin-webos.

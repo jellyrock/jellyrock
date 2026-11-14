@@ -20,7 +20,7 @@ related-files:
   - scripts/lib/translation-formats.cjs
   - .github/workflows/jellyrock-bot.yml
   - .github/workflows/release-management.yml
-last-reviewed: 2026-10-10
+last-reviewed: 2026-11-14
 ---
 
 # Translations (i18n)
@@ -287,7 +287,7 @@ The file is never written to disk (`program.setFile`). In the editor's language 
 - **Key prefixes.** The convention is not enforced.
 - **Completeness.** A locale file holds only the keys translated into it, and a missing key falls back to `en_US` at runtime. The script reports average coverage across the locale files and fails nothing on it.
 
-`npm run update-translations` runs it with `--fix`: it removes `en_US` keys no code uses, sorts `en_US.json`, and adds missing locales to `languages.json`. A key in a locale file that `en_US.json` no longer has is a warning.
+`npm run update-translations` runs it with `--fix`: it removes `en_US` keys no code uses, sorts `en_US.json`, and adds missing locales to `languages.json`. A key in a locale file that `en_US.json` no longer has is a warning. With `--rename Old=New` it first renames a key everywhere it lives (see [Renaming a key](#renaming-a-key)).
 
 ## Weblate sync
 
@@ -330,6 +330,12 @@ The ancestor is the newest push-back commit on `weblate` (step 5) whose release 
 
 A three-way merge is the only kind that tells "deleted here" from "added there", which is what lets a change on either side survive. [ADR 0048](../adr/0048-translation-seeding-and-weblate-merge.md) has the history: release prep used to overwrite `main`'s locale files with the copies from Weblate.
 
+### Renaming a key
+
+`npm run update-translations -- --rename Old=New` renames the key in every locale file on `main`, not only in `en_US.json`. That is what keeps the translations. To the merge, `main` deleted `Old` and added `New` in each locale, and Weblate changed neither, so `main`'s change wins on both keys. That holds whether or not the cleanup in Weblate already dropped `Old` after the bot pushed the new `en_US.json`. Renaming in `en_US.json` alone would drop `Old` as a key `en_US.json` no longer has, and nothing would bring its translations back. `tests/scripts/unit/translations-merge.test.js` runs both cases through a release.
+
+Between the rename and the next release, Weblate shows `New` as untranslated. A translation someone adds there in that window wins at release prep, as any change made on both sides does, and the merge lists it.
+
 ### Removing a translation
 
 Delete it, on `main` or in Weblate. The merge carries the deletion to the other side at the next release, and the seed ledger (`locale/seed/seeded.json`) stops the seeder from filling a cell it filled before. To stop one source from seeding a key in a locale, add `exclude: { <locale>: <reason> }` under that source in the key's `keymap.yml` entry. The exclusion is per source, so another source mapped for the key can still fill the cell.
@@ -346,7 +352,8 @@ With the secret unset, release prep stops at step 1 and the error gives these st
 
 - **Sources are config, not code** (`locale/seed/sources.yml`): repo, tag pinned to a commit SHA, license, file format, placeholder style, locale-code overrides. A new project is one entry, plus a parser in `scripts/lib/translation-formats.cjs` only when its file format is new.
 - **A reviewed map, never English-text matching** (`locale/seed/keymap.yml`). The same English means different things across projects: web's "Idle" is a process priority, and the audio-channel "Channels" and the Live TV "Channels" are different words in French. A source's own translation can also be wrong for its key. Each entry records the English both sides had when it was reviewed, so it stops seeding when either changes. Refused candidates are recorded with a reason.
-- **License allowlist: `GPL-2.0-only`, `GPL-2.0-or-later`, `MPL-2.0`.** JellyRock is `GPL-2.0-only`. `MPL-2.0` §1.12 names `GPL-2.0` a Secondary License, so `MPL` text may be combined unless a file is marked "Incompatible With Secondary Licenses", which the seeder refuses. `GPL-3.0` sources (`jellyfin-vue`, `jellyfin-kodi`, `findroid`) can never be added. Every run checks the LICENSE file at the pinned commit against the declared license.
+- **License allowlist: `GPL-2.0-only`, `GPL-2.0-or-later`, `MPL-2.0`.** JellyRock is `GPL-2.0-only`. `MPL-2.0` §1.12 names `GPL-2.0` a Secondary License, so `MPL` text may be combined unless a file is marked "Incompatible With Secondary Licenses", which the seeder refuses. `GPL-3.0` sources (`jellyfin-vue`, `jellyfin-kodi`, `findroid`) can never be added, and neither can `Apache-2.0`, which the FSF lists as incompatible with `GPL-2.0`. Every run checks the LICENSE file at the pinned commit against the declared license.
+- **`MIT`, `BSD-2-Clause`, `BSD-3-Clause` and `ISC` are compatible but not allowed yet.** They are absent because no source needed them, not because they were refused. Each requires its copyright and permission notice to travel with copies of the text. The `GPL` and `MPL` sources need no notice beyond JellyRock's own license, and the production build leaves `locale/seed/` out of the package. So adding one means two things: an allowlist entry with its LICENSE phrases, and a third-party notice that ships in the package. Do it when a source with that license would fill real cells. Checked 2026-11-14: `Jellify-Music/App` (`MIT`) has no translations, and `seerr-team/seerr` (`MIT`) matched 4 untranslated keys, 3 of them with a different meaning.
 - **Fill only, once per cell.** Every fill is recorded in `locale/seed/seeded.json` (locale, then key, then `source@commit`), and a recorded cell is never filled again, so a removal sticks. The ledger is also the provenance record: the seed commit's `Translation-Source:` lines do not survive a squash merge.
 - **Nothing the runtime would show anyway.** It never overwrites. It refuses a different placeholder set, new markup or line breaks, a value equal to the English, and a regional value equal to its base locale's (runtime layering already shows it, and a copy would hide later fixes to the base).
 - **No re-casing.** Title Case is an English convention, and case tests misread scripts without letter case (Georgian letters upper-case to a separate all-caps alphabet). A lowercase-first translation in a cased script is still written, and the run's report lists it for review.

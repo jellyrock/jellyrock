@@ -424,7 +424,7 @@ namespace extrasRows
     row.currentId = item.id ?? ""
     seasonNumber = item.parentIndexNumber
     if isValid(seasonNumber) and seasonNumber > 0
-      row.titleKey = translationKeys.MessageMoreFromSeason1
+      row.titleKey = translationKeys.MessageMoreFromSeason
       row.titleArgs = [stri(seasonNumber).trim()]
     end if
     return row
@@ -434,7 +434,7 @@ namespace extrasRows
     row = planRow("albumTracks", "SQUARE", translationKeys.LabelAlbumTracks, item.albumId)
     row.currentId = item.id ?? ""
     if isValidAndNotEmpty(item.albumName)
-      row.titleKey = translationKeys.MessageMoreFrom1
+      row.titleKey = translationKeys.MessageMoreFrom
       row.titleArgs = [item.albumName]
     end if
     return row

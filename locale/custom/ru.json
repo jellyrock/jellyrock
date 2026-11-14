@@ -242,14 +242,14 @@
   "LanguageVi": "вьетнамский",
   "LanguageZh": "китайский",
   "LanguageZu": "зулу",
-  "MessageDirectedBy1": "Режиссёр {0}",
-  "MessageDisc1": "Диск {0}",
-  "MessageEndsAt1": "Конец в {0}",
-  "MessageMoreFrom1": "Ещё в {0}",
+  "MessageDirectedBy": "Режиссёр {0}",
+  "MessageDisc": "Диск {0}",
+  "MessageEndsAt": "Конец в {0}",
+  "MessageMoreFrom": "Ещё в {0}",
   "MessageSearchNoResults": "Нет результатов.",
-  "MessageSetTheMaximumAmountOfDays": "Задать максимальное количество дней, в течение которых сериал должен оставаться в списке «Следующих серий» без его просмотра .",
   "MessageSyncPlayCreateGroupDenied": "Требуется разрешение для создания группы.",
   "MessageSyncPlayLibraryAccessDenied": "Доступ к данному содержанию ограничен.",
   "MessageSyncPlayUserJoined": "{0} присоединился к группе.",
-  "MessageSyncPlayUserLeft": "{0} покинул группу."
+  "MessageSyncPlayUserLeft": "{0} покинул группу.",
+  "SettingDescMaxDaysNextUp": "Задать максимальное количество дней, в течение которых сериал должен оставаться в списке «Следующих серий» без его просмотра ."
 }

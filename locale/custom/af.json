@@ -158,7 +158,7 @@
   "LanguageVi": "Viëtnamees",
   "LanguageZh": "Chinees",
   "LanguageZu": "Zoeloe",
-  "MessageDisc1": "Skyf {0}",
-  "MessageEndsAt1": "Eindig om {0}",
-  "MessageSetTheMaximumAmountOfDays": "Stel die maksimum aantal dae wat 'n program in die 'Volgende'-lys moet bly sonder om dit te kyk."
+  "MessageDisc": "Skyf {0}",
+  "MessageEndsAt": "Eindig om {0}",
+  "SettingDescMaxDaysNextUp": "Stel die maksimum aantal dae wat 'n program in die 'Volgende'-lys moet bly sonder om dit te kyk."
 }
