@@ -65,7 +65,7 @@ Keys are PascalCase and start with a prefix that says what kind of text they hol
 | `Day` | Day names | `DayMonday` |
 | `Language` | Names of audio and subtitle languages | `LanguageAf` |
 
-After the prefix, name the key for what the string is for, not for its first words: `MessageConfirmExit`, not `MessageAreYouSureYouWantTo`. A name built from the text says nothing once the text changes, and two strings that start alike end up as `…To` and `…To2`. A setting's description is `SettingDesc` plus its `settingName` without the area prefix (`playbackCinemaMode` becomes `SettingDescCinemaMode`).
+After the prefix, name the key for what the string is for, not for its first words: `MessageConfirmExit`, not `MessageAreYouSureYouWantTo`. A name built from the text says nothing once the text changes, and two strings that start alike end up as `…To` and `…To2`. A setting's description is `SettingDesc` plus a short name for the setting (`SettingDescCinemaMode`).
 
 ## Rename a key
 

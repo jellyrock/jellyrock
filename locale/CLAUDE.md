@@ -20,7 +20,7 @@ Translation files for the custom JSON i18n system. [docs/architecture/translatio
 
 Keys are PascalCase and start with a prefix that says what kind of text they hold. The prefixes and an example of each are in [`docs/dev/translations.md`](../docs/dev/translations.md#key-names). No lint checks the prefix, so pick it by what the string is.
 
-Name the rest of the key for what the string is for (`MessageConfirmExit`), never for its first words (`MessageAreYouSureYouWantTo`, then `…To2`). A setting's description is `SettingDesc` plus its `settingName` without the area prefix.
+Name the rest of the key for what the string is for (`MessageConfirmExit`), never for its first words (`MessageAreYouSureYouWantTo`, then `…To2`). A setting's description is `SettingDesc` plus a short name for the setting (`SettingDescCinemaMode`).
 
 `npm run lint:translations` fails when `en_US.json` isn't sorted alphabetically.
 
