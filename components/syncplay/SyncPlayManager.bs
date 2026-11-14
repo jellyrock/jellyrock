@@ -2197,6 +2197,7 @@ sub carryOut(action as object)
       host.callFunc("exitPlayback")
     end if
   else if kind = "report" or kind = "ask"
+    if action.landing = true then m.log.info("seek landed short of the group's point, asking the group to come here", "positionTicks", syncPlayTime.asLong(action.positionTicks).toStr(), "isTranscoded", m.playerIsTranscoded)
     syncPlayConverge.applied(player, group, action, nowMs&)
     if not sendRequest(kind, action, group[kind].id) then syncPlayGroup.requestFailed(group, kind, action.what, group[kind].id)
   else if kind = "reload"

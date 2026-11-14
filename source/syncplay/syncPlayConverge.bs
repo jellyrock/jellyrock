@@ -147,6 +147,10 @@ namespace syncPlayConverge
       syncPlayGroup.requestSent(group, "ask", action.what, nowMs)
       if action.what = "next" then group.nextAskedFor = group.playingItemId
       if action.waitOnMe = true then group.askedWait = true
+      if action.landing = true
+        group.landingAsked = true
+        group.landingAskAtMs = nowMs
+      end if
     else if kind = "notice"
       group.toldUnreachable = true
     else if kind = "settled"
@@ -434,6 +438,11 @@ namespace syncPlayConverge
       ' for one on the new item and answer with a Seek to where the group stands.
       if ctx.loadPending = true then return invalid
       if activity = "paused"
+        ' A node its seeks left short of the group's point asks the group to come to where it
+        ' stands, and holds its Ready while that ask is answered.
+        landing = landingAsk(player, group, want, ctx, policy, nowMs, result)
+        if isValid(landing) then return landing
+        if awaitsLandingAnswer(group, policy, nowMs, result) then return invalid
         return { kind: "report", what: "ready", positionTicks: readyTicks(player, want, policy, nowMs), isPlaying: false }
       end if
       ' Only a node that plays on purpose reports as it plays: one recovering from a stall, one
@@ -457,6 +466,40 @@ namespace syncPlayConverge
       wake(result, syncPlayTime.asLong(askedAt) + policy.whereEveryMs)
     end if
     return invalid
+  end function
+
+  ' A device that cannot seek exactly starts playing from the sync frame before a seek's target,
+  ' seconds short on a file whose sync frames are far apart (0.4 to 11 s on a low-end Stick,
+  ' 2026-11-13), and every seek there lands the same way. A Ready that named the point would
+  ' start this member behind by the shortfall, with catch-up seeks that land short too. So once
+  ' the seeks the comparison allows itself are spent and the node is paused further short of
+  ' the point than the server's tolerance, the member asks the group to come to where it
+  ' stands: the server sends every member a Seek there, and this node is already at it. One ask
+  ' per wait, made whole when the group plays again, so two members whose sync frames differ
+  ' cannot pull the group back in turns while it waits, and the next seek gets an ask of its own.
+  function landingAsk(player as object, group as object, want as object, ctx as object, policy as object, nowMs as longinteger, result as object) as dynamic
+    if group.landingAsked or group.ask.state = "flight" then return invalid
+    if not isValid(want.pointTicks) or not standsAtCommand(group) then return invalid
+    point& = syncPlayTime.asLong(want.pointTicks)
+    if not soughtPoint(group, point&, policy) then return invalid
+    ' A direct play is owed one more seek first (standingAction).
+    if ctx.isTranscoded = false and not group.pointRetried then return invalid
+    position = syncPlayPlayer.positionAt(player, nowMs)
+    if not isValid(position) then return invalid
+    stop& = syncPlayTime.asLong(position)
+    if point& - stop& <= syncPlayTime.msToTicks(policy.pointToleranceMs) then return invalid
+    return { kind: "ask", what: "seek", positionTicks: stop&, landing: true }
+  end function
+
+  ' Whether the group's answer to that ask is still awaited: the request arrived or is in
+  ' flight, no command has come since, and the request limit has not passed. After it, or when
+  ' the request failed, the Ready goes out naming the point, as for a member with no ask left.
+  function awaitsLandingAnswer(group as object, policy as object, nowMs as longinteger, result as object) as boolean
+    if not isValid(group.landingAskAtMs) or group.ask.state = "failed" then return false
+    until& = syncPlayTime.asLong(group.landingAskAtMs) + syncPlayTime.asLong(policy.requestLimitMs)
+    if nowMs >= until& then return false
+    wake(result, until&)
+    return true
   end function
 
   ' --- what this member asks of the group ---
@@ -591,7 +634,8 @@ namespace syncPlayConverge
   '     the group at, once known) when the node reads far below it or has no reading: a node
   '     can read 0 at its first frame;
   '   - a node still off a command's point after its seek there, or with no reading, reports
-  '     the point. The offset left is taken back when the group plays (lineAction).
+  '     the point, once it has no ask left to bring the group to it (landingAsk). The offset
+  '     left is taken back when the group plays (lineAction).
   function readyTicks(player as object, want as object, policy as object, nowMs as longinteger) as longinteger
     tolerance& = syncPlayTime.msToTicks(policy.pointToleranceMs)
     position = syncPlayPlayer.positionAt(player, nowMs)

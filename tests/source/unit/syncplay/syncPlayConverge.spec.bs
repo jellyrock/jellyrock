@@ -378,9 +378,7 @@ namespace tests
       m.assertEqual(m.kindOf(first), "seek")
       syncPlayConverge.applied(m.playingAt(m.at60s, 10000&), group, first.action, 10000&)
       result = m.decide(m.pausedAt(m.at100s - 948 * m.oneMs, "wait"), group, 10000&)
-      m.assertEqual(m.kindOf(result), "report")
-      m.assertEqual(result.action.what, "ready")
-      m.assertEqual(result.action.positionTicks, m.at100s)
+      m.assertEqual(m.kindOf(result), "ask")
     end function
 
     @it("a direct play that landed off the point is sent there once more")
@@ -423,10 +421,9 @@ namespace tests
       first = m.decide(m.playingAt(m.at60s, 10000&), group, 10000&)
       syncPlayConverge.applied(m.playingAt(m.at60s, 10000&), group, first.action, 10000&)
       syncPlayGroup.command(group, m.cmd("Seek", 9500&, m.at100s))
+      ' Short of the point still: it asks the group to come to it, and writes no second seek.
       result = m.decide(m.pausedAt(m.at100s - 948 * m.oneMs, "wait"), group, 10000&)
-      m.assertEqual(m.kindOf(result), "report")
-      m.assertEqual(result.action.what, "ready")
-      m.assertEqual(result.action.positionTicks, m.at100s)
+      m.assertEqual(m.kindOf(result), "ask")
     end function
 
     @it("once the group has played on, a Seek back to the same point is sought again")
@@ -439,15 +436,105 @@ namespace tests
       m.assertEqual(m.kindOf(m.decide(m.pausedAt(m.at60s, "group"), group, 10000&)), "seek")
     end function
 
-    @it("a node still off the point after its seek reports the point, and seeks no more")
+    @it("a node paused short of the point after its seek asks the group to come to where it stands")
     function _()
-      player = m.pausedAt(m.at100s - 948 * m.oneMs, "wait")
+      policy = syncPlayConverge.defaultPolicy()
+      stop& = m.at100s - 3000 * m.oneMs
+      player = m.pausedAt(stop&, "wait")
       group = m.seekGroup()
       group.pointSoughtTicks = m.at100s
+      ask = m.decide(player, group, 10000&)
+      m.assertEqual(m.kindOf(ask), "ask")
+      m.assertEqual(ask.action.what, "seek")
+      m.assertEqual(ask.action.positionTicks, stop&)
+      m.assertTrue(ask.action.landing)
+      syncPlayConverge.applied(player, group, ask.action, 10000&)
+      ' No Ready names a place the node is not at while the group's Seek here is on its way.
+      m.assertEqual(m.kindOf(m.decide(player, group, 10010&)), "")
+      syncPlayGroup.requestArrived(group, "ask", "seek", group.ask.id)
+      waiting = m.decide(player, group, 10100&)
+      m.assertEqual(m.kindOf(waiting), "")
+      m.assertEqual(waiting.wakeAtMs, 10000& + policy.requestLimitMs)
+      ' The group comes: the node is at the new point, writes no seek, and reports where it is.
+      syncPlayGroup.command(group, m.cmd("Seek", 11200&, stop&))
+      ready = m.decide(player, group, 10300&)
+      m.assertEqual(m.kindOf(ready), "report")
+      m.assertEqual(ready.action.what, "ready")
+      m.assertEqual(ready.action.positionTicks, stop&)
+    end function
+
+    @it("the ask is made once per wait: a member that has used it reports the point, until the group plays again")
+    function _()
+      player = m.pausedAt(m.at100s - 3000 * m.oneMs, "wait")
+      group = m.seekGroup()
+      group.pointSoughtTicks = m.at100s
+      group.landingAsked = true
       result = m.decide(player, group, 10000&)
       m.assertEqual(m.kindOf(result), "report")
       m.assertEqual(result.action.what, "ready")
       m.assertEqual(result.action.positionTicks, m.at100s)
+      ' The group plays, then seeks again: the ask is whole.
+      syncPlayGroup.command(group, m.cmd("Unpause", 10500&, m.at100s))
+      m.assertFalse(group.landingAsked)
+      syncPlayGroup.command(group, m.cmd("Seek", 12000&, m.at100s))
+      group.pointSoughtTicks = m.at100s
+      m.assertEqual(m.kindOf(m.decide(player, group, 11500&)), "ask")
+    end function
+
+    @it("the ask leaves the budget of the last-resort wait untouched")
+    function _()
+      player = m.pausedAt(m.at100s - 3000 * m.oneMs, "wait")
+      group = m.seekGroup()
+      group.pointSoughtTicks = m.at100s
+      group.askedWait = true
+      ask = m.decide(player, group, 10000&)
+      m.assertEqual(m.kindOf(ask), "ask")
+      group.askedWait = false
+      syncPlayConverge.applied(player, group, ask.action, 10000&)
+      m.assertFalse(group.askedWait)
+      m.assertTrue(group.landingAsked)
+    end function
+
+    @it("an ask the group never answers, or one that fails, falls back to a Ready that names the point")
+    function _()
+      policy = syncPlayConverge.defaultPolicy()
+      player = m.pausedAt(m.at100s - 3000 * m.oneMs, "wait")
+      group = m.seekGroup()
+      group.pointSoughtTicks = m.at100s
+      ask = m.decide(player, group, 10000&)
+      syncPlayConverge.applied(player, group, ask.action, 10000&)
+      syncPlayGroup.requestArrived(group, "ask", "seek", group.ask.id)
+      late = m.decide(player, group, 10000& + policy.requestLimitMs)
+      m.assertEqual(m.kindOf(late), "report")
+      m.assertEqual(late.action.positionTicks, m.at100s)
+      ' And a failed one at once.
+      failedGroup = m.seekGroup()
+      failedGroup.pointSoughtTicks = m.at100s
+      again = m.decide(player, failedGroup, 10000&)
+      syncPlayConverge.applied(player, failedGroup, again.action, 10000&)
+      syncPlayGroup.requestFailed(failedGroup, "ask", "seek", failedGroup.ask.id)
+      failed = m.decide(player, failedGroup, 10050&)
+      m.assertEqual(m.kindOf(failed), "report")
+      m.assertEqual(failed.action.positionTicks, m.at100s)
+    end function
+
+    @it("a direct play asks only after its one retry, and a node within the tolerance never asks")
+    function _()
+      short& = m.at100s - 3000 * m.oneMs
+      group = m.seekGroup()
+      group.pointSoughtTicks = m.at100s
+      ctx = m.ctx()
+      ctx.isTranscoded = false
+      policy = syncPlayConverge.defaultPolicy()
+      ' The retry is still owed: no ask yet (the Ready is not sent either way: the node is paused
+      ' and the retry seek is written first).
+      before = syncPlayConverge.decide(m.pausedAt(short&, "wait"), group, ctx, policy, 10000&)
+      m.assertNotEqual(m.kindOf(before), "ask")
+      group.pointRetried = true
+      after = syncPlayConverge.decide(m.pausedAt(short&, "wait"), group, ctx, policy, 10000&)
+      m.assertEqual(m.kindOf(after), "ask")
+      near = syncPlayConverge.decide(m.pausedAt(m.at100s - 300 * m.oneMs, "wait"), group, ctx, policy, 10000&)
+      m.assertEqual(m.kindOf(near), "report")
     end function
 
     @it("a seek that landed with no reading counts as at the point")
