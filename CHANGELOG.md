@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Update dotenv from v18.0.9 to v18.0.10 ([#1342](https://github.com/jellyrock/jellyrock/pull/1342)) by [@renovate[bot]](https://github.com/apps/renovate)
 - Update actions/setup-java action to v6.2.0 ([#1347](https://github.com/jellyrock/jellyrock/pull/1347)) by [@renovate[bot]](https://github.com/apps/renovate)
+- Docs lint (patch) ([#1362](https://github.com/jellyrock/jellyrock/pull/1362)) by [@renovate[bot]](https://github.com/apps/renovate)
 
 ## [3.4.0](https://github.com/jellyrock/jellyrock/compare/v3.3.1...v3.4.0) - 2026-11-09
 
