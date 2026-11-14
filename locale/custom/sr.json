@@ -242,11 +242,6 @@
   "LanguageVi": "вијетнамски",
   "LanguageZh": "кинески",
   "LanguageZu": "зулу",
-  "MessageDirectedBy1": "Режија: {0}",
-  "MessageDisc1": "Диск {0}",
-  "MessageEndsAt1": "Завршава се у {0}",
-  "MessageMoreFrom1": "Више од {0}",
-  "MessageSetTheMaximumAmountOfDays": "Подеси максимални број дана колико серија мође да остане у 'Следећим' листи без гледања.",
   "MessageSyncPlayCreateGroupDenied": "За стварање групе потребна је дозвола.",
   "MessageSyncPlayLibraryAccessDenied": "Приступ овом садржају је ограничен."
 }

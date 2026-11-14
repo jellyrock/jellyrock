@@ -231,11 +231,6 @@
   "LanguageVi": "ویتنامی",
   "LanguageZh": "چینی",
   "LanguageZu": "زولویی",
-  "MessageDirectedBy1": "کارگردانی شده توسط {0}",
-  "MessageDisc1": "دیسک {0}",
-  "MessageEndsAt1": "تمام شده در {0}",
-  "MessageMoreFrom1": "موارد بیشتر از {0}",
-  "MessageSetTheMaximumAmountOfDays": "تنظیم حداکثر روزهایی که یک نمایش بدون تماشا کردن باید در لیست 'بعدی' بماند.",
   "MessageSyncPlayLibraryAccessDenied": "دسترسی به این محتوا محدود شده است.",
   "MessageSyncPlayUserJoined": "{0} به گروه پیوست.",
   "MessageSyncPlayUserLeft": "{0} از گروه خارج شد."

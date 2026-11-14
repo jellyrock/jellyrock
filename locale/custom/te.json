@@ -238,11 +238,6 @@
   "LanguageVi": "వియత్నామీస్",
   "LanguageZh": "చైనీస్",
   "LanguageZu": "జూలూ",
-  "MessageDirectedBy1": "{0} దర్శకత్వం వహించారు",
-  "MessageDisc1": "డిస్క్ {0}",
-  "MessageEndsAt1": "{0} వద్ద ముగుస్తుంది",
-  "MessageMoreFrom1": "{0} నుండి మరిన్ని",
-  "MessageSetTheMaximumAmountOfDays": "ఒక షో చూడకుండా 'తదుపరిది' జాబితాలో గరిష్టంగా ఎన్ని రోజులు ఉండాలో సెట్ చేయండి.",
   "MessageSyncPlayCreateGroupDenied": "సమూహాన్ని సృష్టించడానికి అనుమతి అవసరం.",
   "MessageSyncPlayLibraryAccessDenied": "ఈ కంటెంట్‌కు ప్రాప్యత పరిమితం చేయబడింది."
 }
