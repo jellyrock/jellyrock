@@ -5,7 +5,7 @@ Translation files for the custom JSON i18n system. [docs/architecture/translatio
 ## Edit `en_US.json` only
 
 - `locale/custom/en_US.json` is the source of truth. Add and remove keys there, never in a non-English locale file.
-- **Rename a key with `npm run update-translations -- --rename Old=New`.** Renaming it in `en_US.json` alone strands every translation under the old name. The rename mode moves them, and release prep carries the rename to Weblate ([how-to](../docs/dev/translations.md#rename-a-key)).
+- **Rename a key with `npm run update-translations -- --rename Old=New`.** Renaming it in `en_US.json` alone strands every translation under the old name. The rename mode moves them, refuses while Weblate holds unreleased work on the old key, and release prep carries the rename to Weblate ([how-to](../docs/dev/translations.md#rename-a-key)).
 - **Only three commands write non-English files: `npm run translations:seed`, release prep's `npm run translations:merge`, and the rename mode above.** Never hand-edit one: translators own the wording in Weblate.
 - Every push to `main` sends `en_US.json` and `languages.json` to the `weblate` branch. Translations come back, and seeded ones go out to Weblate, only at release prep. That merge is three-way and per key: whichever side changed a key wins (deletions included), and Weblate wins when both did ([architecture](../docs/architecture/translations.md#weblate-sync)).
 - `npm run update-translations` fixes what it can locally: it sorts `en_US.json`, removes unused keys and adds missing locales to `languages.json`.

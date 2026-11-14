@@ -6,8 +6,11 @@
 // mode) the post-run state of mutated files.
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { gitSafeEnv } from '../_helpers/git-env.js';
 import { spawnScript } from '../_helpers/spawn-script.js';
 import { createLocaleFixture } from '../_helpers/temp-locale-fixture.js';
 
@@ -28,6 +31,60 @@ function readJson(dir, relPath) {
 
 function readText(dir, relPath) {
   return readFileSync(join(dir, relPath), 'utf8');
+}
+
+const git = (cwd, ...args) =>
+  execFileSync('git', args, { cwd, encoding: 'utf8', env: gitSafeEnv() }).trim();
+
+const tempDirs = [];
+afterEach(() => {
+  for (const d of tempDirs.splice(0)) rmSync(d, { recursive: true, force: true });
+});
+
+function tempDir() {
+  const d = mkdtempSync(join(tmpdir(), 'jellyrock-weblate-'));
+  tempDirs.push(d);
+  return d;
+}
+
+function identify(dir, name) {
+  git(dir, 'config', 'user.name', name);
+  git(dir, 'config', 'user.email', 'test@example.com');
+  git(dir, 'config', 'commit.gpgsign', 'false');
+}
+
+/**
+ * Make the fixture a checkout whose origin's weblate branch holds release v1.0.0 of
+ * its files, as release prep's push-back leaves it. `weblateEdits` ({ locale: { key:
+ * value } }) are then committed to weblate, as translators working since the release.
+ */
+function releaseToWeblate(dir, weblateEdits = {}) {
+  const origin = tempDir();
+  git(origin, 'init', '--quiet', '--bare');
+  git(dir, 'init', '--quiet', '--initial-branch=main');
+  identify(dir, 'Test');
+  git(dir, 'add', '-A');
+  git(dir, 'commit', '--quiet', '-m', 'release', '-m', 'Translations-Release: 1.0.0');
+  git(dir, 'tag', 'v1.0.0');
+  git(dir, 'remote', 'add', 'origin', origin);
+  git(dir, 'push', '--quiet', 'origin', 'HEAD:refs/heads/weblate');
+  if (Object.keys(weblateEdits).length === 0) return;
+  const w = tempDir();
+  git(w, 'clone', '--quiet', '--branch', 'weblate', origin, '.');
+  identify(w, 'Weblate');
+  for (const [locale, edits] of Object.entries(weblateEdits)) {
+    const file = join(w, `locale/custom/${locale}.json`);
+    let current = {};
+    try {
+      current = JSON.parse(readFileSync(file, 'utf8'));
+    } catch {
+      // a locale Weblate starts translating after the release
+    }
+    writeFileSync(file, JSON.stringify({ ...current, ...edits }, null, 2) + '\n');
+  }
+  git(w, 'add', '-A');
+  git(w, 'commit', '--quiet', '-m', 'Translated using Weblate');
+  git(w, 'push', '--quiet', 'origin', 'weblate');
 }
 
 describe('update-translations.cjs', () => {
@@ -273,10 +330,13 @@ describe('update-translations.cjs', () => {
 
     it('renames a key everywhere it lives and keeps its translations', () => {
       fixture = renameFixture();
+      // Weblate work on a key that is not renamed does not block.
+      releaseToWeblate(fixture.dir, { fr: { Hello: 'Salut' } });
       const { exitCode, stdout } = spawnScript(SCRIPT, ['--fix', '--rename', 'World=LabelWorld'], {
         cwd: fixture.dir,
       });
       expect(exitCode).toBe(0);
+      expect(stdout).toMatch(/no unreleased work on these keys since v1\.0\.0/);
       expect(stdout).toMatch(/Renamed.* World → LabelWorld \(1 translation\(s\) kept\)/);
 
       // en_US stays sorted, and the translation moved in fr.
@@ -347,6 +407,41 @@ describe('update-translations.cjs', () => {
       expect(stdout).toMatch(/plural keys are not supported/);
     });
 
+    it('refuses when Weblate changed or added a translation of an old key since the release', () => {
+      fixture = renameFixture();
+      releaseToWeblate(fixture.dir, { fr: { World: 'Monde (Weblate)' }, de: { World: 'Welt' } });
+      const before = readText(fixture.dir, 'locale/custom/fr.json');
+      const { exitCode, stdout } = spawnScript(SCRIPT, ['--fix', '--rename', 'World=LabelWorld'], {
+        cwd: fixture.dir,
+      });
+      expect(exitCode).toBe(1);
+      expect(stdout).toMatch(/Weblate changed these since release v1\.0\.0/);
+      expect(stdout).toMatch(/de World: undefined → "Welt"/);
+      expect(stdout).toMatch(/fr World: "Monde" → "Monde \(Weblate\)"/);
+      expect(stdout).toMatch(/Nothing was renamed/);
+      expect(readText(fixture.dir, 'locale/custom/fr.json')).toBe(before);
+      expect(readText(fixture.dir, 'source/main.bs')).toMatch(/translationKeys\.World\)/);
+    });
+
+    it('refuses when Weblate cannot be read, unless told to skip the check', () => {
+      fixture = renameFixture(); // not a git checkout: no weblate branch to read
+      const refused = spawnScript(SCRIPT, ['--fix', '--rename', 'World=LabelWorld'], {
+        cwd: fixture.dir,
+      });
+      expect(refused.exitCode).toBe(1);
+      expect(refused.stdout).toMatch(/could not fetch origin\/weblate/);
+      expect(readJson(fixture.dir, 'locale/custom/fr.json')).toHaveProperty('World');
+
+      const skipped = spawnScript(
+        SCRIPT,
+        ['--fix', '--rename', 'World=LabelWorld', '--skip-weblate-check'],
+        { cwd: fixture.dir },
+      );
+      expect(skipped.exitCode).toBe(0);
+      expect(skipped.stdout).toMatch(/Weblate was not checked/);
+      expect(readJson(fixture.dir, 'locale/custom/fr.json')).toHaveProperty('LabelWorld');
+    });
+
     it('refuses a new name the seed keymap or ledger already holds', () => {
       fixture = renameFixture({
         sources: {
@@ -380,6 +475,7 @@ describe('update-translations.cjs', () => {
       fixture = renameFixture({
         sources: { ...RENAME_SOURCE, '.claude/skills/x/SKILL.md': 'Use World here.\n' },
       });
+      releaseToWeblate(fixture.dir);
       const { exitCode, stdout } = spawnScript(SCRIPT, ['--fix', '--rename=World=LabelWorld'], {
         cwd: fixture.dir,
       });

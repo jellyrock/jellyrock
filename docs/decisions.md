@@ -2804,9 +2804,13 @@ Ruled out: having JellyRock force a transcode when the container is `mp4` and th
 
 **date**: 2026-11-14
 **status**: accepted
-**related-files**: scripts/lint/update-translations.cjs, docs/dev/translations.md
+**related-files**: scripts/lint/update-translations.cjs, scripts/lib/locale-files.cjs, docs/dev/translations.md
 
-A translation key is renamed only through `npm run update-translations -- --rename Old=New`. It moves the key in `en_US.json`, every locale file, the seed map (`keymap.yml`) and ledger, `settings.json` and `translationKeys.*` in code, so translations survive. Release prep's three-way merge then carries the rename to Weblate, because `main` deleted `Old` and added `New`. Renaming in `en_US.json` alone, the documented path until now, dropped every translation of the key. `translations-merge.test.js` runs the rename through a release with and without the cleanup in Weblate. Keys are named for what the string is for, not its first words, and a setting description is `SettingDesc` plus its `settingName` without the area prefix. First applied to 75 machine-named keys, moving 695 cells with none lost.
+A translation key is renamed only through `npm run update-translations -- --rename Old=New`. It moves the key in `en_US.json`, every locale file, the seed map (`keymap.yml`) and ledger, `settings.json` and `translationKeys.*` in code, so translations survive. Release prep's three-way merge then carries the rename to Weblate, because `main` deleted `Old` and added `New`. Renaming in `en_US.json` alone, the documented path until now, dropped every translation of the key. `translations-merge.test.js` runs the rename through a release with and without the cleanup in Weblate.
+
+The merge cannot carry Weblate work on `Old` made since the last release: it exists only on `weblate`, under a key `main` dropped. So the rename refuses while any exists. It fetches `weblate`, finds the last release with `findAncestor()` (the merge's own lookup, moved to `scripts/lib/locale-files.cjs`), and compares each old key against it. It also refuses when `weblate` cannot be read; `--skip-weblate-check` overrides both. Rejected: a committed rename record that release prep applies to the Weblate side. It closes the window from the rename to the Weblate sync too, but adds state and a new path through release prep for a rare event. The rename check costs neither.
+
+Keys are named for what the string is for, not its first words. A setting description is `SettingDesc` plus a short name for the setting; followup `positive-setting-names` renames the negatively worded settings first, then derives these from `settingName` again. First applied to 75 machine-named keys, moving 695 cells with none lost.
 
 ## Migrated to ADRs
 

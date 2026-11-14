@@ -334,6 +334,8 @@ A three-way merge is the only kind that tells "deleted here" from "added there",
 
 `npm run update-translations -- --rename Old=New` renames the key in every locale file on `main`, not only in `en_US.json`. That is what keeps the translations. To the merge, `main` deleted `Old` and added `New` in each locale, and Weblate changed neither, so `main`'s change wins on both keys. That holds whether or not the cleanup in Weblate already dropped `Old` after the bot pushed the new `en_US.json`. Renaming in `en_US.json` alone would drop `Old` as a key `en_US.json` no longer has, and nothing would bring its translations back. `tests/scripts/unit/translations-merge.test.js` runs both cases through a release.
 
+Weblate work on `Old` since the last release is the one thing the merge cannot carry: it sits only on `weblate`, under a key `main` dropped. So the rename mode checks first. It fetches `weblate`, finds the last release with `findAncestor()` (the merge's own ancestor lookup), and refuses if any locale's `Old` differs from that release. The window it cannot see is from the rename to the moment the merged `en_US.json` reaches Weblate.
+
 Between the rename and the next release, Weblate shows `New` as untranslated. A translation someone adds there in that window wins at release prep, as any change made on both sides does, and the merge lists it.
 
 ### Removing a translation

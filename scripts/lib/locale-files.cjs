@@ -1,6 +1,6 @@
 // scripts/lib/locale-files.cjs: read, write and merge `locale/custom/*.json`.
 //
-// Shared by the two scripts that write non-English locale files:
+// Shared by the scripts that write non-English locale files:
 // `scripts/translations-seed.js` (fills gaps from other Jellyfin clients) and
 // `scripts/translations-merge.js` (release prep's main ↔ weblate merge). Both must
 // write byte-for-byte what Weblate and `update-translations` write, or every run
@@ -13,8 +13,12 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { git } = require('./git-safe.cjs');
 
 const SOURCE_LOCALE = 'en_US';
+const LOCALE_DIR = 'locale/custom';
+/** The trailer each release's push-back commit on the weblate branch carries. */
+const RELEASE_TRAILER = 'Translations-Release';
 
 /** Locale code of a `locale/custom` file name, or null for anything else. */
 function localeOfFile(fileName) {
@@ -139,6 +143,50 @@ function mergeLocales({ ours, theirs, ancestor = {}, enKeys }) {
   return { merged, stats, conflicts };
 }
 
+/** Every locale file at git `ref`, as `{ locale: { key: value } }`, en_US included. */
+function readLocaleTree(cwd, ref) {
+  const locales = {};
+  const names = git(cwd, ['ls-tree', '--name-only', `${ref}:${LOCALE_DIR}`])
+    .split('\n')
+    .filter((name) => name.endsWith('.json'));
+  for (const name of names) {
+    locales[name.slice(0, -'.json'.length)] = JSON.parse(
+      git(cwd, ['show', `${ref}:${LOCALE_DIR}/${name}`]),
+    );
+  }
+  return locales;
+}
+
+function tagExists(cwd, tag) {
+  try {
+    git(cwd, ['rev-parse', '--quiet', '--verify', `refs/tags/${tag}^{commit}`]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The last state the weblate branch and main agreed on: the newest push-back commit
+ * on `weblateRef` for a release that shipped, or for `version` itself. Null if none.
+ * Release prep merges against it; the key rename checks Weblate's work since it.
+ *
+ * @returns {{ sha: string, version: string } | null}
+ */
+function findAncestor(cwd, weblateRef, version) {
+  const log = git(cwd, [
+    'log',
+    `--format=%H%x09%(trailers:key=${RELEASE_TRAILER},valueonly,separator=%x2C)`,
+    weblateRef,
+  ]);
+  for (const line of log.split('\n')) {
+    const [sha, released] = line.split('\t');
+    if (!released) continue;
+    if (released === version || tagExists(cwd, `v${released}`)) return { sha, version: released };
+  }
+  return null;
+}
+
 /**
  * The canonical on-disk form of the seed ledger (`locale/seed/seeded.json`): locale,
  * then key, both sorted. Shared by the seeder, which writes the ledger, and the key
@@ -154,12 +202,16 @@ function serializeLedger(ledger) {
 }
 
 module.exports = {
+  LOCALE_DIR,
+  RELEASE_TRAILER,
   SOURCE_LOCALE,
   baseChain,
+  findAncestor,
   inheritedValue,
   localeOfFile,
   mergeLocales,
   readLocaleDir,
+  readLocaleTree,
   serializeLedger,
   serializeLocale,
   writeLocaleFile,

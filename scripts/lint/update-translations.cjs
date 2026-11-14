@@ -10,7 +10,8 @@
 // checks run: en_US.json, every locale file (so translators' work moves with it),
 // the seed keymap and ledger, settings.json, and `translationKeys.Old` in code and
 // tests. It refuses the whole batch if any pair is invalid, so nothing is half
-// renamed. The release merge then carries the rename to Weblate: main deleted the
+// renamed, and if Weblate changed one of the old keys since the last release
+// (`--skip-weblate-check` skips that check, for offline use). The release merge then carries the rename to Weblate: main deleted the
 // old key and added the new one.
 //
 // npm scripts:
@@ -21,11 +22,14 @@ const fs = require('fs');
 const path = require('path');
 const fg = require('fast-glob');
 const {
+  findAncestor,
   readLocaleDir,
+  readLocaleTree,
   serializeLedger,
   writeLocaleFile,
   SOURCE_LOCALE,
 } = require('../lib/locale-files.cjs');
+const { git } = require('../lib/git-safe.cjs');
 
 // ============================================================
 // Config
@@ -46,6 +50,11 @@ const RENAMES = process.argv.flatMap((arg, i, argv) => {
   if (arg.startsWith('--rename=')) return [arg.slice('--rename='.length)];
   return [];
 });
+
+// Where Weblate commits translations; release prep merges from here.
+const WEBLATE_REMOTE = 'origin';
+const WEBLATE_BRANCH = 'weblate';
+const SKIP_WEBLATE_CHECK = process.argv.includes('--skip-weblate-check');
 
 // Code that names keys as `translationKeys.X`, tests included: a stale name there
 // fails the build.
@@ -427,6 +436,45 @@ function planRenames(specs, locales, { keymap = new Set(), ledger = {} } = {}) {
   return { pairs, problems };
 }
 
+/**
+ * Translations Weblate changed since the last release on keys about to be renamed.
+ * Those are not on main yet, and release prep drops a key main no longer has, so
+ * renaming now would lose them silently. Returns `{ error }` when the weblate branch
+ * or its last release cannot be read: an unchecked rename must not pass as checked.
+ */
+function unreleasedWeblateWork(pairs) {
+  const ref = `refs/remotes/${WEBLATE_REMOTE}/${WEBLATE_BRANCH}`;
+  try {
+    git(ROOT_DIR, [
+      'fetch',
+      '--quiet',
+      '--tags',
+      WEBLATE_REMOTE,
+      `+refs/heads/${WEBLATE_BRANCH}:${ref}`,
+    ]);
+  } catch (e) {
+    return {
+      error: `could not fetch ${WEBLATE_REMOTE}/${WEBLATE_BRANCH}: ${e.message.split('\n')[0]}`,
+    };
+  }
+  const ancestor = findAncestor(ROOT_DIR, ref);
+  if (!ancestor)
+    return { error: `no shipped release found on ${WEBLATE_REMOTE}/${WEBLATE_BRANCH}` };
+  const weblate = readLocaleTree(ROOT_DIR, ref);
+  const released = readLocaleTree(ROOT_DIR, ancestor.sha);
+  const changes = [];
+  for (const locale of [...new Set([...Object.keys(weblate), ...Object.keys(released)])].sort()) {
+    if (locale === SOURCE_LOCALE) continue;
+    for (const { from } of pairs) {
+      const before = released[locale]?.[from];
+      const now = weblate[locale]?.[from];
+      if (before !== now)
+        changes.push(`${locale} ${from}: ${JSON.stringify(before)} → ${JSON.stringify(now)}`);
+    }
+  }
+  return { ancestor, changes };
+}
+
 /** Rename one key in a flat object, keeping its value. */
 function renameIn(object, from, to) {
   if (!(from in object)) return false;
@@ -448,6 +496,38 @@ async function applyRenames(specs) {
     problems.forEach((p) => console.log(c(`  ERROR: ${p}`, 'red')));
     console.log(c('  Nothing was renamed.', 'red'));
     process.exit(1);
+  }
+
+  if (SKIP_WEBLATE_CHECK) {
+    console.log(
+      c('  WARNING: --skip-weblate-check: Weblate was not checked for unreleased work.', 'yellow'),
+    );
+  } else {
+    const { error, ancestor, changes } = unreleasedWeblateWork(pairs);
+    if (error) {
+      console.log(c(`  ERROR: ${error}`, 'red'));
+      console.log(
+        c('  Nothing was renamed. Pass --skip-weblate-check to rename without the check.', 'red'),
+      );
+      process.exit(1);
+    }
+    if (changes.length > 0) {
+      console.log(
+        c(
+          `  ERROR: Weblate changed these since release v${ancestor.version}, and main does not have them yet:`,
+          'red',
+        ),
+      );
+      changes.forEach((line) => console.log(`    ${line}`));
+      console.log(
+        c(
+          '  Nothing was renamed. Rename after the next release brings them to main, or pass --skip-weblate-check to lose them.',
+          'red',
+        ),
+      );
+      process.exit(1);
+    }
+    console.log(`  Weblate: no unreleased work on these keys since v${ancestor.version}.`);
   }
 
   // Locale files, en_US included.
