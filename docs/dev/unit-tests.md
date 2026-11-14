@@ -50,7 +50,7 @@ Every spec file follows four rules:
 
 - **Put the class in `namespace tests`.**
 - **Extend `tests.BaseTestSuite`**, never `rooibos.BaseTestSuite`. The base class sets up `m.global` the way the app does (see [What `BaseTestSuite` gives you](#what-basetestsuite-gives-you)).
-- **Write one `@suite` per file.** A second suite in the same file builds cleanly, then crashes the runner on the device. To split a suite, keep the base name and add the aspect: `misc.spec.bs` and `miscAudioStreams.spec.bs`.
+- **Write one `@suite` per file.** A second suite in the same file builds cleanly, then crashes the runner on the device. To split a suite, keep the base name and add the aspect: `rokuAudioTrack.spec.bs` and `rokuAudioTrackPosition.spec.bs`.
 - **Name each test with `@it`.** Rooibos renames the function, so `_()` is the convention. A `sub` works as well as a `function`.
 
 Group tests with `@describe`. The `'+++` comment lines around it are the house style, so a group stands out in a long file.

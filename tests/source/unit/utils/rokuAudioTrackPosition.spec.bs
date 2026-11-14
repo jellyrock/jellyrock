@@ -1,7 +1,9 @@
+import "pkg:/source/utils/rokuAudioTrack.bs"
+
 namespace tests
 
-  @suite("misc.bs - Audio Stream Functions")
-  class MiscAudioStreamsTests extends tests.BaseTestSuite
+  @suite("rokuAudioTrack.bs - getRokuAudioTrackPosition()")
+  class RokuAudioTrackPositionTests extends tests.BaseTestSuite
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("getRokuAudioTrackPosition() - fallback (no availableAudioTracks)")

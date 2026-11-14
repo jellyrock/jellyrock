@@ -41,6 +41,8 @@ related-files:
   - source/utils/quickplayLibrary.bs
   - source/utils/nodeHelpers.bs
   - source/utils/streamSelection.bs
+  - source/utils/mkvTracks.bs
+  - source/utils/rokuAudioTrack.bs
   - source/utils/probedStreams.bs
   - source/utils/streamOrigin.bs
   - source/utils/stillWatching.bs
