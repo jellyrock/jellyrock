@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (playback) Play and name the audio track picked in an `MP4` ([#1383](https://github.com/jellyrock/jellyrock/pull/1383)) by [@cewert](https://github.com/cewert)
 - (playback) Play the MKV audio track the viewer picked ([#1382](https://github.com/jellyrock/jellyrock/pull/1382)) by [@cewert](https://github.com/cewert)
 - (ui) Star from the overhang no longer crashes the app ([#1372](https://github.com/jellyrock/jellyrock/pull/1372)) by [@cewert](https://github.com/cewert)
 - (syncplay) Reload where the group is; load a mid-reload restart ([#1354](https://github.com/jellyrock/jellyrock/pull/1354)) by [@cewert](https://github.com/cewert)
