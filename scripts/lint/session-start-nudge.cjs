@@ -2,10 +2,11 @@
 // SessionStart. Prints a one-line advisory only when actionable journal /
 // handoff state exists; silent (exit 0, no output) when clean.
 //
-// Three checks, all offline:
+// Four checks, all offline:
 //   1. Pending handoffs in .claude/handoffs/ (count + max age)
 //   2. docs/progress.md staleness (>7d since last-updated AND commits since)
 //   3. A schema-broken journal (frontmatter parse error on progress)
+//   4. An install that no longer matches package-lock.json or patches/
 //
 // Network-dependent banners (failed CI, PR review requested) stay in
 // /focus itself: this hook is cheap and offline-tolerant by design so it
@@ -24,6 +25,7 @@ const { existsSync, readFileSync, readdirSync, statSync } = require('fs');
 const { join } = require('path');
 
 const { readFrontmatter, getLastUpdated } = require('../lib/frontmatter.cjs');
+const { checkInstall } = require('../lib/install-freshness.cjs');
 
 const REPO_ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const HANDOFFS_DIR = join(REPO_ROOT, '.claude/handoffs');
@@ -101,12 +103,23 @@ function checkSchemaBroken() {
   return broken.length > 0 ? broken : null;
 }
 
+function checkInstallStale() {
+  if (!existsSync(join(REPO_ROOT, 'package-lock.json'))) return null;
+  try {
+    const { fresh, problems } = checkInstall(REPO_ROOT);
+    return fresh ? null : { count: problems.length };
+  } catch {
+    return null;
+  }
+}
+
 function main() {
   const handoffs = checkHandoffs();
   const progressStale = checkProgressStale();
   const schemaBroken = checkSchemaBroken();
+  const installStale = checkInstallStale();
 
-  if (!handoffs && !progressStale && !schemaBroken) {
+  if (!handoffs && !progressStale && !schemaBroken && !installStale) {
     process.exit(0);
   }
 
@@ -127,6 +140,12 @@ function main() {
     );
   }
 
+  if (installStale) {
+    parts.push(
+      'installed packages differ from package-lock.json or patches/ (run `npm run check:install` to see how, then `npm ci`)',
+    );
+  }
+
   console.log('');
   console.log(
     `💡 Session start — actionable state: ${parts.join('; ')}. Consider \`/focus\` for triage, or \`/catchup\` for state-only briefing.`,
@@ -140,4 +159,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { checkHandoffs, checkProgressStale, checkSchemaBroken };
+module.exports = { checkHandoffs, checkProgressStale, checkSchemaBroken, checkInstallStale };

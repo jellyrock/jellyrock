@@ -206,6 +206,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -254,6 +255,8 @@ import {
   selectColdSamples,
   selectionRefusalFor,
 } from './measure-selection.js';
+
+const { checkInstall } = createRequire(import.meta.url)('./lib/install-freshness.cjs');
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const manifestPath = path.join(repoRoot, 'manifest');
@@ -332,6 +335,18 @@ const navCollectionType = navEntry?.view?.collectionType ?? DEFAULT_NAV_COLLECTI
 const navContext = args.library
   ? { libraries: [{ collectionType: navCollectionType, id: args.library }] }
   : undefined;
+
+// `--deploy` builds this checkout, so refuse before the device lock if the installed
+// tools differ from the lockfile or patches (the same check the test scripts run).
+if (args.deploy) {
+  const { fresh, problems } = checkInstall(repoRoot);
+  if (!fresh) {
+    console.error(
+      `${problems.join('\n')}\n[measure] Installed packages don't match package-lock.json or patches/. Run npm ci, then retry.`,
+    );
+    process.exit(1);
+  }
+}
 
 setupRtaEnv(); // throws if ROKU_IP / ROKU_PASSWORD are missing: fail before touching anything
 

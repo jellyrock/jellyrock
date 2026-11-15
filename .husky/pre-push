@@ -22,6 +22,9 @@
 #     or their scripts changed. Regenerates dictionary-sentence-final.txt.
 #
 # Check steps (read-only; non-zero exit aborts the push):
+#   - npm run check:install: always, before everything else. Fails when
+#     node_modules or the applied patches differ from package-lock.json and
+#     patches/ (fix: npm ci).
 #   - npm run validate: when *.bs / *.brs / *.xml / bsconfig*.json /
 #     .dead-code-baseline.json changed (full BSC project compile; can't be
 #     file-scoped)
@@ -149,6 +152,11 @@ HAS_GRADIENT_SOURCES=$(echo "$CHANGED" | grep -qE '^images/gradients/|^scripts/g
 HAS_API_MANIFEST_SOURCES=$(echo "$CHANGED" | grep -qE '^source/.*\.bs$|^scripts/generate/api-usage-manifest\.js$' && echo 1 || true)
 HAS_DICTIONARY=$(echo "$CHANGED" | grep -qE '^dictionary(-sentence-final)?\.txt$|^scripts/lint/dictionary-audit\.cjs$|^scripts/generate/sentence-final-dictionary\.js$' && echo 1 || true)
 HAS_MD=$(echo "$CHANGED" | grep -qE '\.md$' && echo 1 || true)
+
+# Before any step: a checkout whose installed tools differ from the lockfile
+# would run different lint tools than CI and fail or pass for the wrong reason.
+echo "📦 Checking the install matches package-lock.json and patches/..."
+npm run -s check:install
 
 # ──────────────────────────────────────────────────────────────────────────
 # Auto-fix steps (project-wide regens; combined into one commit at the end)
