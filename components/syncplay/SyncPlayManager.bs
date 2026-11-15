@@ -1423,11 +1423,15 @@ sub carryOut(action as object)
     syncPlayConverge.applied(player, group, action, nowMs&)
     if not sendRequest(kind, action, group[kind].id) then syncPlayGroup.requestFailed(group, kind, action.what, group[kind].id)
   else if kind = "reload"
-    ' The recovery seek stuck as well: the stream is loaded again in place, at the group's point
+    ' The recovery seek stuck as well, or a catch-up seek fell back: the stream is loaded again in place, at the group's point
     ' (the player's reload asks syncPlayHooks.reloadStart for it).
     syncPlayConverge.applied(player, group, action, nowMs&)
     node = playerNode()
-    m.log.warn("seek stuck again after its recovery seek, loading the stream again", "hasPlayer", isValid(node))
+    if action.fellBack = true
+      m.log.warn("catch-up seek fell back to where it started, loading the stream again", "hasPlayer", isValid(node))
+    else
+      m.log.warn("seek stuck again after its recovery seek, loading the stream again", "hasPlayer", isValid(node))
+    end if
     if isValid(node) then node.callFunc("reloadAtCurrentPosition")
   else if kind = "halt"
     haltFollowing(action.reason)

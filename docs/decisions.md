@@ -2844,6 +2844,16 @@ The receiver task runs the adopted socket client as an object on its own thread;
 
 What the old decision guarded is moot, not dropped: there is no socket Task thread to release, so its three mechanisms and `lint:socket-thread-release` went with the wrapper. Ruled out: numbering the wrapper's messages and checking its field every second (a second copy of the numbering, inside adopted code, and a crossing per second for good), and a time stamp alone (it locates, it fixes nothing). If a frame is late again with no late-frame warning, the hold is in the socket or the server, and a capture on the server side is the next step.
 
+## decision-id: syncplay-catch-up-fell-back-reloads
+
+**date**: 2026-11-15
+**status**: accepted
+**related-files**: `source/syncplay/syncPlayConverge.bs`, `source/syncplay/syncPlayPlayer.bs`, `source/syncplay/syncPlayGroup.bs`
+
+A catch-up seek that lands nearer to where it started than to its target is followed by one reload of the stream at the group's point, and a member measured in step again may ask the group to wait once more. On a transcode a few seconds old, a seek some seconds ahead came back playing from the stream's start in about 200 ms (traced 2026-11-15, Streaming Stick 4K). Both catch-ups went that way, so the member asked the group to come to it and the whole group jumped back about 13 seconds; the next time, with the ask spent, the member played on about 10.5 seconds behind. A run of `item-step, lost-seek, lost-seek` ten times failed 5 of 5 on the transcoded item before the change and passed 30 of 30 after it, with the reload written five times and no group seek.
+
+Why the node refuses that seek is not known (the server's log was not read). The reload costs that member, and the group that waits for it, some seconds: the step settled in about 19 seconds against about 11.5. Ruled out: letting the ask repeat with no reload (the group is pulled back every time), and a longer wait before the second seek (11 seconds into a stream the same seek still fell back).
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

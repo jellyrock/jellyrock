@@ -14,6 +14,7 @@
 '   4. A group playing along a line: a paused node resumes as the line reaches it; a playing
 '      node past a bar holds (ahead) or catches up (behind), as does one that sends no readings.
 '      Each has a budget, so neither is written for good to a node it does not bring in.
+'      A catch-up seek the node did not take is followed by one reload of the stream.
 '   5. The server's picture of this member is closed with one report at a time: Buffering for a
 '      load, a group seek or a stall, Ready when it is over.
 '   6. A request that failed goes again for as long as it is wanted; after a few tries the
@@ -226,10 +227,17 @@ namespace syncPlayConverge
       group.catchUps = 0
       group.holds = 0
       group.holdsSpentTold = false
+      group.catchUpReloads = 0
+      ' In step again, so the ask to wait did its work: a later time behind may ask once more.
+      group.askedWait = false
     else if kind = "holdsSpent"
       group.holdsSpentTold = true
     else if kind = "reload"
-      group.stuckReloads++
+      if action.fellBack = true
+        group.catchUpReloads++
+      else
+        group.stuckReloads++
+      end if
     end if
   end sub
 
@@ -402,7 +410,7 @@ namespace syncPlayConverge
     ' In step on a measured reading: whatever catch-ups or holds it took worked, so each budget
     ' is whole again. They count the ones that did not bring the member in, not every one in a
     ' long film.
-    if group.catchUps > 0 or group.holds > 0 then return { kind: "inStep" }
+    if group.catchUps > 0 or group.holds > 0 or group.askedWait then return { kind: "inStep" }
     return invalid
   end function
 
@@ -433,6 +441,10 @@ namespace syncPlayConverge
   ' A stall of the member's own allows the ask again, since the group may never have heard it.
   ' A playing node with no known position cannot ask, so it gets one more seek per group command.
   function catchUp(player as object, group as object, ctx as object, policy as object, nowMs as longinteger, result as object) as dynamic
+    ' The node did not take the last catch-up seek: a second one would fall back the same way, so
+    ' the stream is loaded again at the group's point, once. A transcode a few seconds old does
+    ' this: a seek some seconds ahead comes back playing from the stream's start.
+    if group.catchUps > 0 and group.catchUpReloads < 1 and catchUpFellBack(player) then return { kind: "reload", fellBack: true }
     recover = false
     if player.lastSeekGaveUp or group.catchUps >= policy.catchUpLimit
       position = syncPlayPlayer.positionAt(player, nowMs)
@@ -458,6 +470,18 @@ namespace syncPlayConverge
     seek = { kind: "seek", owner: "hold", targetTicks: syncPlayTime.asLong(target), catchUp: true, byPick: group.pickPending }
     if recover then seek.recover = true
     return seek
+  end function
+
+  ' Whether the node's last seek was a catch-up that landed nearer to where it started than to its
+  ' target. A seek lands seconds off its target at times; one that covers under half the way did
+  ' not take.
+  function catchUpFellBack(player as object) as boolean
+    if player.seekOwner <> "hold" then return false
+    if not isValid(player.lastLandingTicks) or not isValid(player.seekFromTicks) then return false
+    from& = syncPlayTime.asLong(player.seekFromTicks)
+    target& = syncPlayTime.asLong(player.seekTargetTicks)
+    if target& <= from& then return false
+    return syncPlayTime.asLong(player.lastLandingTicks) - from& < (target& - from&) \ 2
   end function
 
   ' Whether the group is still to be asked to wait: it never was, or the ask failed (and was not

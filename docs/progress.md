@@ -1839,6 +1839,14 @@ Not seen failing in `syncplay-controls.spec.js`: the four SyncPlay specs ran 49 
 
 Not done with the soak fix because it needs its own device run to show the OSD state before each scrub. Closes with the same wait for the OSD to close before the presses (a shared helper in `lib/steps.js` if both specs use it), or a recorded reason the cases cannot start with the OSD up.
 
+#### The SyncPlay simulator never lets a seek fall back to the stream's start, so the reload that answers it has no sweep `[fid: syncplay-sim-seek-never-falls-back]` `[captured 2026-11-15]`
+
+The unit simulator (`tests/source/shared/syncPlaySim.bs`) lands every seek at or near its target. On a device, a catch-up seek on a transcode a few seconds old comes back playing from the stream's start (decision `syncplay-catch-up-fell-back-reloads`, traced 2026-11-15 on a Streaming Stick 4K), and the rule that answers it (`catchUpFellBack` in `syncPlayConverge.bs`) is covered only by three direct unit cases and a device run of `item-step, lost-seek, lost-seek`.
+
+Why not now: the fix was proven on the device, and teaching the simulator a stream's start and age is its own change with its own sweep to re-baseline.
+
+Closes when the simulator can make a seek fall back to the stream's start on a young transcode, and its sweep shows the member brought in by the reload.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`

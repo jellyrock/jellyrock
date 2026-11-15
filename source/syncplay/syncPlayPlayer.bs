@@ -77,6 +77,9 @@ namespace syncPlayPlayer
       loadTold: false,
       toldUnmount: false,
       seekTargetTicks: 0&,
+      ' Where the node stood as the seek in flight, or the last one, was written; invalid when
+      ' no reading said.
+      seekFromTicks: invalid,
       seekWrittenAtMs: 0&,
       seekOwner: "",
       seekSlow: false,
@@ -140,6 +143,7 @@ namespace syncPlayPlayer
     else if verb = "seek"
       if player.activity = "none" or player.activity = "loading" or player.activity = "finished" then return
       player.seekTargetTicks = syncPlayTime.asLong(targetTicks)
+      player.seekFromTicks = positionAt(player, nowMs)
       player.seekWrittenAtMs = nowMs
       player.seekOwner = owner
       player.seekSlow = false

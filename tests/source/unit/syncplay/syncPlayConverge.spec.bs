@@ -1144,6 +1144,53 @@ namespace tests
       m.assertEqual(m.kindOf(m.decide(player, group, 10001&)), "")
     end function
 
+    @it("a catch-up seek the node did not take loads the stream again, once, in place of a second seek")
+    function _()
+      group = m.playingLine()
+      ' Ten seconds behind; its catch-up seek to past the group came back playing from where it was.
+      player = m.playingAt(m.at65s - 10000 * m.oneMs, 9000&)
+      syncPlayPlayer.told(player, "seek", "hold", m.at65s + 3000 * m.oneMs, 9100&)
+      syncPlayPlayer.nodeState(player, "buffering", 9200&)
+      syncPlayPlayer.nodeState(player, "playing", 9400&)
+      syncPlayPlayer.reading(player, m.at65s - 9900 * m.oneMs, 9410&)
+      group.catchUps = 1
+      reload = m.decide(player, group, 10000&)
+      m.assertEqual(m.kindOf(reload), "reload")
+      m.assertTrue(reload.action.fellBack)
+      syncPlayConverge.applied(player, group, reload.action, 10000&)
+      m.assertEqual(group.catchUpReloads, 1)
+      m.assertEqual(group.stuckReloads, 0)
+      ' Once: after it, the second seek and the ask are what they were.
+      m.assertEqual(m.kindOf(m.decide(player, group, 10001&)), "seek")
+    end function
+
+    @it("a catch-up seek that landed short of its target, past halfway, is followed by a second seek")
+    function _()
+      group = m.playingLine()
+      player = m.playingAt(m.at65s - 10000 * m.oneMs, 9000&)
+      syncPlayPlayer.told(player, "seek", "hold", m.at65s + 3000 * m.oneMs, 9100&)
+      syncPlayPlayer.nodeState(player, "buffering", 9200&)
+      syncPlayPlayer.nodeState(player, "playing", 9400&)
+      syncPlayPlayer.reading(player, m.at65s - 2000 * m.oneMs, 9410&)
+      group.catchUps = 1
+      m.assertEqual(m.kindOf(m.decide(player, group, 10000&)), "seek")
+    end function
+
+    @it("a reading in step after the group answered a wait ask allows the ask once more")
+    function _()
+      group = m.playingLine()
+      group.askedWait = true
+      inStep = m.playingAt(m.at65s, 10000&)
+      refill = m.decide(inStep, group, 10000&)
+      m.assertEqual(m.kindOf(refill), "inStep")
+      syncPlayConverge.applied(inStep, group, refill.action, 10000&)
+      m.assertFalse(group.askedWait)
+      m.assertEqual(m.kindOf(m.decide(inStep, group, 10001&)), "")
+      behind = m.playingAt(m.at65s - 2000 * m.oneMs, 10000&)
+      group.catchUps = 2
+      m.assertEqual(m.kindOf(m.decide(behind, group, 10000&)), "ask")
+    end function
+
     @it("a wait ask that failed is asked again while the member is still behind")
     function _()
       player = m.playingAt(m.at65s - 2000 * m.oneMs, 10000&)
