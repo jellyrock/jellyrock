@@ -38,7 +38,7 @@ Each tab keeps its own sort and its own filters, so changing one tab never chang
 - **Sort** is remembered for that tab of the library on this Roku, until you change it.
 - **Filters** last while you are signed in. They are still there when you come back from an item, from Home or from search, and they clear when you sign out, switch user or close JellyRock.
 
-Press **Replay** anywhere in a library to jump to the first item. Your sort, your filters and a letter picked on the letter rail stay as they were.
+Press **Replay** in a library to jump to the first item, from the letter rail too. Your sort, your filters and a letter picked on the letter rail stay as they were. It does nothing on the **TV Guide**.
 
 ## Choose the tab a library opens on
 
