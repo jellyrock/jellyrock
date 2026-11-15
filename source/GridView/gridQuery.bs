@@ -266,6 +266,12 @@ namespace gridQuery
     return name = LCase(gridQuery.CATEGORY_STATUS) or name = LCase(gridQuery.CATEGORY_FAVORITES)
   end function
 
+  ' isStatus: whether `name` is a status LoadItemsTask2 sends (Played, Unplayed, Resumable).
+  function isStatus(name as dynamic) as boolean
+    value = LCase(textOrEmpty(name).trim())
+    return value = "played" or value = "unplayed" or value = "resumable"
+  end function
+
   ' delimitersOf: how one server category's values are joined, in the Star panel's string
   ' (`panel`) and in the request (`wire`). The one place they are decided: a presenter
   ' declares a category's `Delimiter` from here, and the request reads it here because it
@@ -341,7 +347,9 @@ namespace gridQuery
     name = textOrEmpty(filter).trim()
     if LCase(name) = LCase(gridQuery.FAVORITES_VALUE)
       filters[gridQuery.CATEGORY_FAVORITES] = [gridQuery.FAVORITES_VALUE]
-    else if name <> "" and LCase(name) <> LCase(gridQuery.NO_FILTER)
+    else if gridQuery.isStatus(name)
+      ' Only a status: the panel also reports a category it offers with an empty list
+      ' this way, and that narrows nothing
       filters[gridQuery.CATEGORY_STATUS] = [name]
     end if
     return filters

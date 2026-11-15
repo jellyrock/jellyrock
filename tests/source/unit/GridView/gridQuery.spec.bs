@@ -230,6 +230,14 @@ namespace tests
       m.assertEqual(gridQuery.filtersFromPanel("Favorites", {}), { Favorites: ["Favorites"] })
     end function
 
+    @it("reads a category the panel reports with no values as no filter")
+    ' The panel reports a category it offers with an empty list as its plain filter name
+    function _()
+      m.assertEqual(gridQuery.filtersFromPanel("Genres", {}), {})
+      m.assertEqual(gridQuery.filtersFromPanel("Years", invalid), {})
+      m.assertEqual(gridQuery.filtersFromPanel("Resumable", {}), { Status: ["Resumable"] }, "a status still counts")
+    end function
+
     @it("splits a ticked category by its own panel delimiter")
     function _()
       filters = gridQuery.filtersFromPanel("Genres", { Genres: "Action|Science Fiction" })
