@@ -19,6 +19,7 @@
 '   optionIndex - index of the chosen option, or -1 when nothing was chosen
 '   buttonText  - label of the chosen button ("" when none)
 '   value       - entered text (keyboard dialogs only; "" otherwise)
+'   checkedIndexes - the ticked rows of a checklist, ascending ([] from every other dialog)
 '   externallyCancelled - the CANCEL came from code, not from the user
 '
 ' externallyCancelled is the one key that answers "who closed this?" rather than
@@ -78,7 +79,83 @@ function textDialogResult(cancelled as boolean, enteredText as string) as object
   return makeDialogResult(cancelled, not cancelled, -1, -1, "", value, false)
 end function
 
-function makeDialogResult(cancelled as boolean, confirmed as boolean, buttonIndex as integer, optionIndex as integer, buttonText as string, value as string, externallyCancelled = false as boolean) as object
+' Result for a checklist (JRListDialog with `multiSelect`). A tick counts when it is
+' made and Back only leaves, so there is no confirm step to report: the result says
+' what the set is now and whether it changed.
+'
+'   cancelled  - nothing changed, or code closed the dialog. A handler that reloads
+'                on a change reads this and does nothing.
+'   confirmed  - the set changed.
+'   checkedIndexes - the set at close. A close from code reports it too, as Back
+'                does, because each tick already counted; the close is still a
+'                cancel, so a handler that acts declines it on externallyCancelled.
+'
+' @param {object} initial - the ticked indexes the dialog opened with
+' @param {object} current - the ticked indexes now
+' @param {boolean} externallyCancelled - true when code closed the dialog
+function checklistDialogResult(initial as object, current as object, externallyCancelled = false as boolean) as object
+  final = normalizeCheckedIndexes(current)
+  if externallyCancelled then return makeDialogResult(true, false, -1, -1, "", "", true, final)
+
+  opened = normalizeCheckedIndexes(initial)
+  changed = not sameCheckedIndexes(opened, final)
+  return makeDialogResult(not changed, changed, -1, -1, "", "", false, final)
+end function
+
+' The set after OK on one row: the row leaves the set if it was in it, and joins it
+' if it was not. Returns a new array, ascending.
+function toggleCheckedIndex(checked as object, index as integer) as object
+  toggled = []
+  found = false
+  for each entry in normalizeCheckedIndexes(checked)
+    if entry = index
+      found = true
+    else
+      toggled.push(entry)
+    end if
+  end for
+  if not found then toggled.push(index)
+  return normalizeCheckedIndexes(toggled)
+end function
+
+' A set of ticked row indexes in its one form: integers, ascending, each once.
+' Anything that is not an integer at or above 0 is dropped, and so is an index
+' at or past `itemCount` when one is given.
+'
+' @param {dynamic} indexes - what a caller passed; invalid reads as none
+' @param {integer} itemCount - the number of rows, or -1 to skip the upper bound
+function normalizeCheckedIndexes(indexes as dynamic, itemCount = -1 as integer) as object
+  normalized = []
+  if type(indexes) <> "roArray" then return normalized
+
+  seen = {}
+  for each entry in indexes
+    entryType = LCase(type(entry))
+    if entryType = "roint" or entryType = "rointeger" or entryType = "integer"
+      index = int(entry)
+      key = index.toStr()
+      if index >= 0 and (itemCount < 0 or index < itemCount) and not seen.doesExist(key)
+        seen[key] = true
+        normalized.push(index)
+      end if
+    end if
+  end for
+
+  normalized.sort()
+  return normalized
+end function
+
+' Whether two normalized sets hold the same indexes.
+function sameCheckedIndexes(a as object, b as object) as boolean
+  if a.count() <> b.count() then return false
+  for i = 0 to a.count() - 1
+    if a[i] <> b[i] then return false
+  end for
+  return true
+end function
+
+function makeDialogResult(cancelled as boolean, confirmed as boolean, buttonIndex as integer, optionIndex as integer, buttonText as string, value as string, externallyCancelled = false as boolean, checkedIndexes = invalid as object) as object
+  if not isValid(checkedIndexes) then checkedIndexes = []
   return {
     cancelled: cancelled,
     confirmed: confirmed,
@@ -86,6 +163,7 @@ function makeDialogResult(cancelled as boolean, confirmed as boolean, buttonInde
     optionIndex: optionIndex,
     buttonText: buttonText,
     value: value,
-    externallyCancelled: externallyCancelled
+    externallyCancelled: externallyCancelled,
+    checkedIndexes: checkedIndexes
   }
 end function

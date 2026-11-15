@@ -71,4 +71,5 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0057](0057-page-settings-declared-by-screen.md) | Page settings are declared by a screen and presented by the scene | Accepted | 2026-11-12 |
 | [0058](0058-library-layout-saved-per-view.md) | A library's layout is saved per view (partially supersedes 0056) | Accepted | 2026-11-12 |
 | [0059](0059-roku-audio-track-ids-from-mkv-header.md) | A Roku audio track id comes from the MKV header, read alongside `PlaybackInfo` | Accepted | 2026-11-13 |
+| [0060](0060-ok-commits-back-leaves.md) | In a dialog, OK is the commit and Back only leaves | Accepted | 2026-11-14 |
 | [0063](0063-syncplay-compares-two-models.md) | SyncPlay keeps a Roku in step by comparing two models and taking one action at a time | Accepted | 2026-11-21 |
