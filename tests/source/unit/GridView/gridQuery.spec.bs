@@ -184,33 +184,64 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("delimitersOf()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("joins genres and parental ratings with a pipe, in the panel and the request")
+    ' Free text that may hold a comma
+    function _()
+      m.assertEqual(gridQuery.delimitersOf("Genres"), { panel: "|", wire: "|" })
+      m.assertEqual(gridQuery.delimitersOf("OfficialRatings"), { panel: "|", wire: "|" })
+    end function
+
+    @it("joins years with a comma in both")
+    function _()
+      m.assertEqual(gridQuery.delimitersOf("Years"), { panel: ",", wire: "," })
+      m.assertEqual(gridQuery.delimitersOf("years"), { panel: ",", wire: "," }, "a key read back lowercase")
+    end function
+
+    @it("separates languages with a pipe in the panel and a comma in the request")
+    ' One language's value is already a comma list of codes
+    function _()
+      expected = { panel: languageFilters.PANEL_DELIMITER, wire: languageFilters.CODE_DELIMITER }
+      m.assertEqual(gridQuery.delimitersOf(languageFilters.AUDIO_KEY), expected)
+      m.assertEqual(gridQuery.delimitersOf(LCase(languageFilters.SUBTITLE_KEY)), expected)
+    end function
+
+    @it("uses a pipe for a category it does not name")
+    function _()
+      m.assertEqual(gridQuery.delimitersOf("Studios"), { panel: "|", wire: "|" })
+      m.assertEqual(gridQuery.delimitersOf(invalid), { panel: "|", wire: "|" })
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("filtersFromPanel() / filtersToPanel()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("reads All as no filter")
     function _()
-      m.assertEqual(gridQuery.filtersFromPanel("All", {}, m.panelFilters()), {})
-      m.assertEqual(gridQuery.filtersFromPanel(invalid, invalid, invalid), {})
+      m.assertEqual(gridQuery.filtersFromPanel("All", {}), {})
+      m.assertEqual(gridQuery.filtersFromPanel(invalid, invalid), {})
     end function
 
     @it("reads a plain filter as the status, and Favorites as its own category")
     function _()
-      m.assertEqual(gridQuery.filtersFromPanel("Unplayed", {}, m.panelFilters()), { Status: ["Unplayed"] })
-      m.assertEqual(gridQuery.filtersFromPanel("Favorites", {}, m.panelFilters()), { Favorites: ["Favorites"] })
+      m.assertEqual(gridQuery.filtersFromPanel("Unplayed", {}), { Status: ["Unplayed"] })
+      m.assertEqual(gridQuery.filtersFromPanel("Favorites", {}), { Favorites: ["Favorites"] })
     end function
 
     @it("splits a ticked category by its own panel delimiter")
     function _()
-      filters = gridQuery.filtersFromPanel("Genres", { Genres: "Action|Science Fiction" }, m.panelFilters())
+      filters = gridQuery.filtersFromPanel("Genres", { Genres: "Action|Science Fiction" })
       m.assertEqual(filters, { Genres: ["Action", "Science Fiction"] })
 
-      filters = gridQuery.filtersFromPanel("Years", { Years: "1999,2001" }, m.panelFilters())
+      filters = gridQuery.filtersFromPanel("Years", { Years: "1999,2001" })
       m.assertEqual(filters, { Years: ["1999", "2001"] })
 
       ' One language's value keeps its comma: the panel separates languages with a pipe
       panelOptions = {}
       panelOptions[languageFilters.AUDIO_KEY] = "fra,fre|jpn"
-      filters = gridQuery.filtersFromPanel(languageFilters.AUDIO_KEY, panelOptions, m.panelFilters())
+      filters = gridQuery.filtersFromPanel(languageFilters.AUDIO_KEY, panelOptions)
       m.assertEqual(filters[languageFilters.AUDIO_KEY], ["fra,fre", "jpn"])
     end function
 
@@ -231,7 +262,7 @@ namespace tests
       ]
 
       for each report in reports
-        filters = gridQuery.filtersFromPanel(report.filter, report.filterOptions, offered)
+        filters = gridQuery.filtersFromPanel(report.filter, report.filterOptions)
         panel = gridQuery.filtersToPanel(filters, offered)
         m.assertEqual(panel.filter, report.filter)
         m.assertEqual(panel.filterOptions, report.filterOptions)

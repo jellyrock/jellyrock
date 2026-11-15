@@ -160,6 +160,42 @@ namespace tests
       end for
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the server categories")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("declares each category's panel delimiter from gridQuery.delimitersOf")
+    ' The request reads the same function before the lists load, so the two cannot differ
+    function _()
+      presenter = new MovieCategoriesProbe()
+      presenter.onInit(m.host(libraryTab.MOVIES))
+      presenter.useFilters({
+        Genres: ["Action"],
+        OfficialRatings: ["PG"],
+        Years: ["1999"],
+        AudioLanguages: [{ title: "Japanese", value: "jpn" }],
+        SubtitleLanguages: [{ title: "French", value: "fra,fre" }]
+      })
+
+      categories = 0
+      for each entry in presenter.getOptions(m.library("movies")).filter
+        if isValid(entry.Delimiter)
+          categories++
+          m.assertEqual(entry.Delimiter, gridQuery.delimitersOf(entry.Name).panel, entry.Name)
+        end if
+      end for
+      m.assertEqual(categories, 5, "every category is offered")
+    end function
+
+  end class
+
+  ' Sets MoviePresenter's protected filter lists, as a load would.
+  class MovieCategoriesProbe extends MoviePresenter
+
+    sub useFilters(filters as object)
+      m.apiFilters = filters
+    end sub
+
   end class
 
 end namespace

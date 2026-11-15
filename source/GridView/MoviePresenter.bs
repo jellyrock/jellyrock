@@ -9,6 +9,7 @@
 
 import "pkg:/source/GridView/collectionsView.bs"
 import "pkg:/source/GridView/GridPresenterBase.bs"
+import "pkg:/source/GridView/gridQuery.bs"
 import "pkg:/source/GridView/libraryTab.bs"
 import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/utils/languageFilters.bs"
@@ -141,23 +142,23 @@ class MoviePresenter extends GridPresenterBase
     ' Add dynamic filters from API if loaded
     if isValid(m.apiFilters)
       if isValid(m.apiFilters.Genres)
-        options.filter.push({ "Title": translate(translationKeys.LabelGenres), "Name": "Genres", "Options": m.apiFilters.Genres, "Delimiter": "|", "CheckedState": [] })
+        options.filter.push({ "Title": translate(translationKeys.LabelGenres), "Name": "Genres", "Options": m.apiFilters.Genres, "Delimiter": gridQuery.delimitersOf("Genres").panel, "CheckedState": [] })
       end if
       if isValid(m.apiFilters.OfficialRatings)
-        options.filter.push({ "Title": translate(translationKeys.LabelParentalRatings), "Name": "OfficialRatings", "Options": m.apiFilters.OfficialRatings, "Delimiter": "|", "CheckedState": [] })
+        options.filter.push({ "Title": translate(translationKeys.LabelParentalRatings), "Name": "OfficialRatings", "Options": m.apiFilters.OfficialRatings, "Delimiter": gridQuery.delimitersOf("OfficialRatings").panel, "CheckedState": [] })
       end if
       if isValid(m.apiFilters.Years)
-        options.filter.push({ "Title": translate(translationKeys.LabelYears), "Name": "Years", "Options": m.apiFilters.Years, "Delimiter": ",", "CheckedState": [] })
+        options.filter.push({ "Title": translate(translationKeys.LabelYears), "Name": "Years", "Options": m.apiFilters.Years, "Delimiter": gridQuery.delimitersOf("Years").panel, "CheckedState": [] })
       end if
 
       ' 12.0+ only, and only when the library actually has the metadata: the lists come
       ' from /Items/Filters2, which omits them entirely below 12.0 (so they arrive empty
       ' and no category is offered).
       '
-      ' PANEL_DELIMITER, not the comma the server wants: one language's value is already
-      ' several codes joined by a comma, so a comma here would make the saved query
-      ' ambiguous and the restore pass would tick nothing. The request joins the selected
-      ' values with a comma (gridQuery.wireOptions).
+      ' A pipe between languages in the panel, not the comma the server wants: one
+      ' language's value is already several codes joined by a comma, so a comma here would
+      ' make the query ambiguous and the restore pass would tick nothing. The request
+      ' flattens them to one comma list (gridQuery.delimitersOf).
       '
       ' Two categories rather than one combined "Language": the server ANDs the two
       ' parameters, so "English audio with Spanish subtitles" is a query it can answer,
@@ -166,10 +167,10 @@ class MoviePresenter extends GridPresenterBase
       ' them into one list to work around the panel would double its length and mix two
       ' concepts. See `itemgridoptions-single-active-filter` in tech-debt.md.
       if isValidAndNotEmpty(m.apiFilters[languageFilters.AUDIO_KEY])
-        options.filter.push({ "Title": translate(translationKeys.LabelAudioLanguage), "Name": languageFilters.AUDIO_KEY, "Options": m.apiFilters[languageFilters.AUDIO_KEY], "Delimiter": languageFilters.PANEL_DELIMITER, "CheckedState": [] })
+        options.filter.push({ "Title": translate(translationKeys.LabelAudioLanguage), "Name": languageFilters.AUDIO_KEY, "Options": m.apiFilters[languageFilters.AUDIO_KEY], "Delimiter": gridQuery.delimitersOf(languageFilters.AUDIO_KEY).panel, "CheckedState": [] })
       end if
       if isValidAndNotEmpty(m.apiFilters[languageFilters.SUBTITLE_KEY])
-        options.filter.push({ "Title": translate(translationKeys.LabelSubtitleLanguage), "Name": languageFilters.SUBTITLE_KEY, "Options": m.apiFilters[languageFilters.SUBTITLE_KEY], "Delimiter": languageFilters.PANEL_DELIMITER, "CheckedState": [] })
+        options.filter.push({ "Title": translate(translationKeys.LabelSubtitleLanguage), "Name": languageFilters.SUBTITLE_KEY, "Options": m.apiFilters[languageFilters.SUBTITLE_KEY], "Delimiter": gridQuery.delimitersOf(languageFilters.SUBTITLE_KEY).panel, "CheckedState": [] })
       end if
     end if
 

@@ -1574,7 +1574,7 @@ sub optionsClosed()
   panel = gridQuery.filtersToPanel(m.filters, filterList)
   if m.options.filter <> panel.filter or not AssocArrayEqual(m.options.filterOptions, panel.filterOptions)
     libraryId = m.top.parentItem.Id
-    newFilters = gridQuery.filtersFromPanel(m.options.filter, m.options.filterOptions, filterList)
+    newFilters = gridQuery.filtersFromPanel(m.options.filter, m.options.filterOptions)
     sessionFilters.clear(libraryId, m.tab)
     for each category in newFilters
       sessionFilters.setCategory(libraryId, m.tab, category, newFilters[category])

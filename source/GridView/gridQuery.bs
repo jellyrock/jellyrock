@@ -266,14 +266,21 @@ namespace gridQuery
     return name = LCase(gridQuery.CATEGORY_STATUS) or name = LCase(gridQuery.CATEGORY_FAVORITES)
   end function
 
-  ' wireDelimiter: what separates one category's values in the request.
+  ' delimitersOf: how one server category's values are joined, in the Star panel's string
+  ' (`panel`) and in the request (`wire`). The one place they are decided: a presenter
+  ' declares a category's `Delimiter` from here, and the request reads it here because it
+  ' is built before a category's list has loaded.
   '
-  ' Genres and parental ratings are free text that may hold a comma, so the server takes
-  ' them split by "|". A year is digits and a language value is already a comma list of
-  ' ISO codes, so both join into one flat comma list.
-  function wireDelimiter(category as dynamic) as string
-    if LCase(textOrEmpty(category)) = "years" or languageFilters.isLanguageKey(category) then return languageFilters.CODE_DELIMITER
-    return "|"
+  ' Genres and parental ratings are free text that may hold a comma, so they use "|", as
+  ' does a category not named here. A year is digits, so ",". One language option's value
+  ' is already a comma list of ISO codes, so the panel separates options with
+  ' PANEL_DELIMITER and the request flattens them into one comma list.
+  '
+  ' @return {object} { panel, wire }
+  function delimitersOf(category as dynamic) as object
+    if languageFilters.isLanguageKey(category) then return { panel: languageFilters.PANEL_DELIMITER, wire: languageFilters.CODE_DELIMITER }
+    if LCase(textOrEmpty(category)) = "years" then return { panel: ",", wire: "," }
+    return { panel: "|", wire: "|" }
   end function
 
   ' wireOptions: every server category as a request parameter, its values joined.
@@ -285,7 +292,7 @@ namespace gridQuery
     for each category in filters
       if not gridQuery.isBuiltInCategory(category)
         values = gridQuery.valuesOf(filters, category)
-        if values.count() > 0 then wire[category] = values.join(gridQuery.wireDelimiter(category))
+        if values.count() > 0 then wire[category] = values.join(gridQuery.delimitersOf(category).wire)
       end if
     end for
     return wire
@@ -297,20 +304,6 @@ namespace gridQuery
   ' filter, or the one category it ticked) and a `filterOptions` AA holding that
   ' category's values joined by the category's panel delimiter. These two functions are
   ' the only place the two shapes meet, and they go when the panel does.
-
-  ' panelDelimiter: what separates a category's values in the panel's joined string.
-  function panelDelimiter(category as dynamic, offeredFilters as dynamic) as string
-    if type(offeredFilters) = "roArray"
-      for each entry in offeredFilters
-        if isValid(entry)
-          if LCase(textOrEmpty(entry.Name)) = LCase(textOrEmpty(category)) and isValidAndNotEmpty(entry.Delimiter) then return entry.Delimiter
-        end if
-      end for
-    end if
-    ' A list that has not loaded its categories yet
-    if languageFilters.isLanguageKey(category) then return languageFilters.PANEL_DELIMITER
-    return gridQuery.wireDelimiter(category)
-  end function
 
   ' offeredName: a category as the presenter's list spells it, else as given.
   '
@@ -331,14 +324,13 @@ namespace gridQuery
   '
   ' @param filter - the panel's `filter`
   ' @param filterOptions - the panel's `filterOptions`
-  ' @param offeredFilters - the presenter's `getOptions().filter`
-  function filtersFromPanel(filter as dynamic, filterOptions as dynamic, offeredFilters as dynamic) as object
+  function filtersFromPanel(filter as dynamic, filterOptions as dynamic) as object
     filters = {}
 
     if type(filterOptions) = "roAssociativeArray"
       for each category in filterOptions
         values = []
-        for each value in textOrEmpty(filterOptions[category]).split(gridQuery.panelDelimiter(category, offeredFilters))
+        for each value in textOrEmpty(filterOptions[category]).split(gridQuery.delimitersOf(category).panel)
           if value.trim() <> "" then values.push(value.trim())
         end for
         if values.count() > 0 then filters[category] = values
@@ -371,7 +363,7 @@ namespace gridQuery
         values = gridQuery.valuesOf(filters, category)
         if values.count() > 0
           panel.filter = gridQuery.offeredName(category, offeredFilters)
-          panel.filterOptions[panel.filter] = values.join(gridQuery.panelDelimiter(category, offeredFilters))
+          panel.filterOptions[panel.filter] = values.join(gridQuery.delimitersOf(category).panel)
           return panel
         end if
       end if
@@ -401,17 +393,14 @@ namespace gridQuery
   ' ISO 639-2 spellings it is BOTH of them, since the server matches the literal tag on
   ' the file. Sending the label would return nothing.
   '
-  ' THE INVARIANT. A category's saved query is its checked options' values joined by the
-  ' category's delimiter, and that same string is what the registry stores. Decoding it
-  ' on restore is a plain split, which is correct only while this holds:
+  ' THE INVARIANT. A category's query is its checked options' values joined by the
+  ' category's panel delimiter, and that same string is what the Star panel reports.
+  ' Decoding it on restore is a plain split, which is correct only while this holds:
   '
   '     An option's value never contains its category's delimiter.
   '
-  ' Every category is built to satisfy it, and the delimiters were chosen for that
-  ' reason: Genres and OfficialRatings use "|" because their values are free text that
-  ' may contain commas and spaces; Years uses "," because a year is digits; the language
-  ' filters use "|" because ONE option's value is several ISO codes joined by ","
-  ' (wireOptions joins the selected values with the comma the server wants).
+  ' Every category is built to satisfy it, and delimitersOf() chooses each category's
+  ' delimiters for that reason.
   '
   ' Break it and the failure is silent and specific: the query still applies, because
   ' joining is unaffected, but the restore pass splits a value apart and matches none of
