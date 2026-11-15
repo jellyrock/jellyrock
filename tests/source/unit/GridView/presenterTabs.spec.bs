@@ -187,6 +187,19 @@ namespace tests
       m.assertEqual(categories, 5, "every category is offered")
     end function
 
+    @it("leaves out a category whose list is empty")
+    ' An entry with nothing to tick narrows nothing when picked
+    function _()
+      presenter = new MovieCategoriesProbe()
+      presenter.onInit(m.host(libraryTab.MOVIES))
+      presenter.useFilters({ Genres: [], OfficialRatings: ["PG"], Years: [], AudioLanguages: [], SubtitleLanguages: [] })
+
+      offered = m.names(presenter.getOptions(m.library("movies")).filter)
+      m.assertTrue(inArray(offered, "OfficialRatings"))
+      m.assertFalse(inArray(offered, "Genres"))
+      m.assertFalse(inArray(offered, "Years"))
+    end function
+
   end class
 
   ' Sets MoviePresenter's protected filter lists, as a load would.

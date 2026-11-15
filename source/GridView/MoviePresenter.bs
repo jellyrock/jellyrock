@@ -139,15 +139,16 @@ class MoviePresenter extends GridPresenterBase
       return options
     end if
 
-    ' Add dynamic filters from API if loaded
+    ' Add dynamic filters from API if loaded. A category with nothing to tick is left out,
+    ' since picking it would narrow nothing.
     if isValid(m.apiFilters)
-      if isValid(m.apiFilters.Genres)
+      if isValidAndNotEmpty(m.apiFilters.Genres)
         options.filter.push({ "Title": translate(translationKeys.LabelGenres), "Name": "Genres", "Options": m.apiFilters.Genres, "Delimiter": gridQuery.delimitersOf("Genres").panel, "CheckedState": [] })
       end if
-      if isValid(m.apiFilters.OfficialRatings)
+      if isValidAndNotEmpty(m.apiFilters.OfficialRatings)
         options.filter.push({ "Title": translate(translationKeys.LabelParentalRatings), "Name": "OfficialRatings", "Options": m.apiFilters.OfficialRatings, "Delimiter": gridQuery.delimitersOf("OfficialRatings").panel, "CheckedState": [] })
       end if
-      if isValid(m.apiFilters.Years)
+      if isValidAndNotEmpty(m.apiFilters.Years)
         options.filter.push({ "Title": translate(translationKeys.LabelYears), "Name": "Years", "Options": m.apiFilters.Years, "Delimiter": gridQuery.delimitersOf("Years").panel, "CheckedState": [] })
       end if
 
