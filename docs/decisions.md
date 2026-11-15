@@ -2932,6 +2932,16 @@ There is no app-wide toggle for the web's picks: the gear entry's first option f
 
 A library's type default is everything in it to browse: Movies, Shows, Album Artists, Channels, Photos (`libraryTab.defaultFor`); recommendation pages are Home's job. Two depart from the web client's defaults. Music opens on Album Artists, not the web's Albums: the better way to browse a music library on a TV (operator's call, 2026-11-13). Live TV opens on Channels, not the web's Programs, which the app has no tab for. A user who wants the web's tab picks it in the web client or in the gear menu.
 
+## decision-id: library-sort-saved-filters-session
+
+**date**: 2026-11-15
+**status**: accepted
+**related-files**: `source/utils/sessionFilters.bs`, `source/utils/displaySettings.bs`, `source/GridView/gridQuery.bs`, `components/data/jellyfin/JellyfinUser.xml`
+
+A library tab's sort is saved in the registry per library and tab, and its filters last for the signed-in session only, as the web client splits them. Losing a filter on a tab switch or a trip to details is what had to stop; losing it at a restart is understood. Filters sit on the user node and not the scene, because `user.Logout()` resets that node on every session end, so no exit path can leak one user's filters to the next. Ruled out: saving filters to the registry (a filter from last week narrows a library with little on screen saying so), and a scene field cleared by a call each sign-out path must remember.
+
+A sort saved before this is kept. The registry migration cannot know a library's type, so it parks a sort with no saved view under a key with no tab in it and the library moves it to its default tab when it opens. Ruled out: dropping it, which loses the common case, and writing it under every type's default key.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

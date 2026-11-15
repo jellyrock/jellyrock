@@ -355,6 +355,12 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // a pulse. Read against the app source 2026-10-23.
   '#optionList.content.0.title',
   '#optionList.itemFocused',
+  // Roku's MarkupGrid sets it as focus moves between cells. BaseGridView writes it only
+  // through jumpToItem and animateToItem (jumpToFirstItem, on Replay), and it then holds
+  // until the next key or the next content swap: terminal, not a pulse. The grid keeps its
+  // last value while unfocused, so gate on focus inside `#itemGrid` first. Read against
+  // the app source 2026-11-15.
+  '#itemGrid.itemFocused',
   // `BaseGridView.configureBackdrop` sets it on each load to whether the view on show draws
   // the presentation panel, and only an empty or a failed load clears it after that: held
   // until the layout, the view or the content changes, so a poll cannot miss it. Read
