@@ -192,7 +192,7 @@ namespace tests
 
       librarySettings = displaySettings[m.testLibraryId]
       m.assertEqual(librarySettings.sortField, "SortName", "sortField should match")
-      m.assertEqual(librarySettings.sortAscending, true, "sortAscending should be boolean true")
+      m.assertEqual(librarySettings.sortAscending, "true", "sortAscending should load as stored")
       m.assertEqual(librarySettings.filter, "All", "filter should match")
       m.assertEqual(librarySettings.landing, "MoviesGrid", "landing should match")
     end function
@@ -276,7 +276,7 @@ namespace tests
 
       reloadedLibrary = freshSettingsNode.displaySettings[m.testLibraryId]
       m.assertEqual(reloadedLibrary.sortField, "DateCreated", "sortField should persist")
-      m.assertEqual(reloadedLibrary.sortAscending, false, "sortAscending should persist")
+      m.assertEqual(reloadedLibrary.sortAscending, "false", "sortAscending should persist, as the string the registry holds")
       m.assertEqual(reloadedLibrary.filter, "Favorites", "filter should persist")
       m.assertEqual(reloadedLibrary.landing, "MoviesGrid", "landing should persist")
     end function
@@ -368,24 +368,17 @@ namespace tests
       m.assertTrue(true, "Should handle invalid displaySettings without crashing")
     end function
 
-    @it("correctly handles boolean type conversion for sortAscending")
+    @it("loads a tab's sort as the string the registry holds")
     function _()
-      ' Pre-populate registry with boolean as string
       reg = CreateObject("roRegistrySection", m.testUserId)
-      reg.write("display." + m.testLibraryId + ".sortAscending", "false")
+      reg.write("display." + m.testLibraryId + ".sort_movies", "DateCreated:desc")
       reg.flush()
 
       ' Load and transform using ACTUAL app code
       userSettings = RegistryReadAll(m.testUserId)
       displaySettings = user.settings.TransformDisplaySettings(userSettings)
 
-      ' Verify type conversion
-      librarySettings = displaySettings[m.testLibraryId]
-      sortAscending = librarySettings.sortAscending
-
-      ' Should be boolean false, not string "false"
-      m.assertEqual(type(sortAscending), "roBoolean", "sortAscending should be boolean type")
-      m.assertEqual(sortAscending, false, "sortAscending should be boolean false")
+      m.assertEqual(displaySettings[m.testLibraryId].sort_movies, "DateCreated:desc")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

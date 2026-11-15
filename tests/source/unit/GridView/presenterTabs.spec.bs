@@ -140,6 +140,75 @@ namespace tests
       m.assertTrue(inArray(m.names(filters), "Favorites"), currentView)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the sort list")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("offers the default sort on every tab, so a tab with no saved sort has one")
+    ' gridQuery.resolveSort falls back to DEFAULT_SORT_FIELD without asking the list.
+    @params("movie", "movies")
+    @params("tvshow", "tvshows")
+    @params("music", "music")
+    function _(kind, collectionType)
+      views = m.presenterFor(kind, "").getOptions(m.library(collectionType)).views
+      m.assertTrue(views.count() > 1)
+
+      for each entry in views
+        view = gridQuery.viewOfTab(views, entry.Name).view
+        sorts = m.presenterFor(kind, view).getOptions(m.library(collectionType)).sort
+        m.assertTrue(gridQuery.offers(sorts, gridQuery.DEFAULT_SORT_FIELD), kind + " " + view)
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the server categories")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("declares each category's panel delimiter from gridQuery.delimitersOf")
+    ' The request reads the same function before the lists load, so the two cannot differ
+    function _()
+      presenter = new MovieCategoriesProbe()
+      presenter.onInit(m.host(libraryTab.MOVIES))
+      presenter.useFilters({
+        Genres: ["Action"],
+        OfficialRatings: ["PG"],
+        Years: ["1999"],
+        AudioLanguages: [{ title: "Japanese", value: "jpn" }],
+        SubtitleLanguages: [{ title: "French", value: "fra,fre" }]
+      })
+
+      categories = 0
+      for each entry in presenter.getOptions(m.library("movies")).filter
+        if isValid(entry.Delimiter)
+          categories++
+          m.assertEqual(entry.Delimiter, gridQuery.delimitersOf(entry.Name).panel, entry.Name)
+        end if
+      end for
+      m.assertEqual(categories, 5, "every category is offered")
+    end function
+
+    @it("leaves out a category whose list is empty")
+    ' An entry with nothing to tick narrows nothing when picked
+    function _()
+      presenter = new MovieCategoriesProbe()
+      presenter.onInit(m.host(libraryTab.MOVIES))
+      presenter.useFilters({ Genres: [], OfficialRatings: ["PG"], Years: [], AudioLanguages: [], SubtitleLanguages: [] })
+
+      offered = m.names(presenter.getOptions(m.library("movies")).filter)
+      m.assertTrue(inArray(offered, "OfficialRatings"))
+      m.assertFalse(inArray(offered, "Genres"))
+      m.assertFalse(inArray(offered, "Years"))
+    end function
+
+  end class
+
+  ' Sets MoviePresenter's protected filter lists, as a load would.
+  class MovieCategoriesProbe extends MoviePresenter
+
+    sub useFilters(filters as object)
+      m.apiFilters = filters
+    end sub
+
   end class
 
 end namespace
