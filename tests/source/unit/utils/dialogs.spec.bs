@@ -138,6 +138,53 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("showChecklistDialog")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("opens a checklist on the overlay channel with the given rows ticked")
+    function _()
+      presented = showChecklistDialog("Genres", ["Action", "Comedy", "Drama"], "", [2, 0])
+
+      isOpen = isOverlayDialogOpen()
+      isMulti = presented.multiSelect
+      checked = presented.checkedIndexes
+      content = presented.findNode("content")
+      states = [content.getChild(0).isChecked, content.getChild(1).isChecked, content.getChild(2).isChecked]
+      abandonDialog(presented)
+
+      m.assertTrue(isOpen)
+      m.assertTrue(isMulti)
+      m.assertEqual(checked, [0, 2])
+      m.assertEqual(states, [true, false, true])
+    end function
+
+    ' A long list lands on what is already set.
+    @it("opens focused on the first ticked row, else the first row")
+    function _()
+      ticked = showChecklistDialog("Years", ["2021", "2022", "2023", "2024"], "", [3, 2])
+      tickedDefault = ticked.defaultIndex
+      abandonDialog(ticked)
+
+      plain = showChecklistDialog("Years", ["2021", "2022"])
+      plainDefault = plain.defaultIndex
+      plainChecked = plain.checkedIndexes
+      abandonDialog(plain)
+
+      m.assertEqual(tickedDefault, 2)
+      m.assertEqual(plainDefault, 0)
+      m.assertEqual(plainChecked, [])
+    end function
+
+    @it("drops a tick that names no row")
+    function _()
+      presented = showChecklistDialog("Genres", ["Action", "Comedy"], "", [1, 7])
+      checked = presented.checkedIndexes
+      abandonDialog(presented)
+
+      m.assertEqual(checked, [1])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("cancelOpenDialog vs abandonDialog")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
