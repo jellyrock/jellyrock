@@ -60,7 +60,7 @@ For each key, work out both sides before deciding.
 
 Then give each candidate exactly one outcome:
 
-- **map**: same meaning and same shape. Map every source whose candidate qualifies; `sources.yml` order decides which fills first, and the others cover locales it lacks.
+- **map**: same meaning and same shape. Punctuation is shape: a trailing period, a colon or an ellipsis on one side only rules a candidate out. Map every source whose candidate qualifies; `sources.yml` order decides which fills first, and the others cover locales it lacks.
 - **reject**: a different meaning or shape you can name. Record it under the key's `reject:` with that reason, so `suggest` never offers it again.
 - **leave**: still unclear after the code. Write nothing for it, and list it in the report as needing a person. Never reject a candidate you could not prove wrong.
 

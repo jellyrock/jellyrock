@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-14
+last-updated: 2026-11-15
 ---
 
 # Progress
@@ -1821,3 +1821,13 @@ The server log: the Roku sent `PreviousItem` 1.2 s after its Ready on the second
 Not checked: the Roku console for the failed run (the next run overwrote it); why the reload did not swap; whether `main` can fail the same way (5 passing runs there, too few to rule out a 1-in-25 failure).
 
 Next time it fails: read the kept `console-failed-<time>.log` beside the run's `console.log` (`.device-runs/rta/runs/<device key>/`) around the `PreviousItem` frame, and the server log for the same minute, then run /snag on what they show.
+
+### locale
+
+#### en_US.json has no punctuation rule by string role, which blocks seeding keys whose punctuation differs `[fid: punctuation-standard-by-string-role]` `[captured 2026-11-15]`
+
+`en_US.json` has no punctuation rule by string role. Setting descriptions end with a period, but toasts, badges, buttons and status phrases are mixed, and `locale/CLAUDE.md` covers casing only. Since `/translation-import` batch 1, punctuation counts as shape when mapping (`.claude/skills/translation-import/SKILL.md`, `docs/dev/translations.md`), so a key whose punctuation differs from a source's can't be seeded.
+
+The case that surfaced it: `LabelRecordingScheduled` ("Recording scheduled", the toast in `source/utils/liveTv.bs`). the web client's `RecordingScheduled` is the same toast but reads "Recording scheduled." with a period, so batch 1 left it unmapped (about 53 cells).
+
+To close: decide the punctuation for each role, write it in `locale/CLAUDE.md` beside the casing rule, then map `LabelRecordingScheduled` if its punctuation now matches. Not done now because it needs the owner's call on each role, and changing an English string means re-review for any seed map entry that matched it.
