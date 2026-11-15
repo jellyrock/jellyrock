@@ -324,8 +324,7 @@ namespace tests
     ' The ledger is a shared field on `m.global`, so every thread's launches land in
     ' it and the count is exact rather than a lower bound. The watermark still has to
     ' leave room under Roku's 100-thread cap for the threads the app does not start
-    ' through `launchTask()` at all, such as the vendored `WebSocketClient` that
-    ' `RemoteControlTask` owns is outside both this ledger and the `no-raw-run` rule.
+    ' through `launchTask()` at all.
     '
     ' Asserted rather than left in a comment because the failure is silent: raise the
     ' watermark to 95 and everything still passes, still counts, still refuses, and

@@ -37,7 +37,7 @@ tests/source/
 tests/components/            ← test-only components, mapped to components/tests in the test builds
 ```
 
-A test-only component exists for a suite that must run inside a component scope (Rooibos `@SGNode`) when the real component has side effects in `init()`. `WebSocketClientHarness` loads the vendored socket client's scripts on a plain `Node`, because the client's own component extends `Task` and starts a socket loop that a test node would inherit as a thread that never ends.
+A test-only component exists for a suite that must run inside a component scope (Rooibos `@SGNode`) when the real component has side effects in `init()`. `WebSocketClientHarness` loads the adopted socket client's scripts on a plain `Node`, because the component that uses them, `RemoteControlTask`, is a `Task` whose scope a suite cannot borrow.
 
 ### `BaseTestSuite`
 

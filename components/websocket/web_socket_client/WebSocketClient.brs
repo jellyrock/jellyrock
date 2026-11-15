@@ -12,6 +12,11 @@
 '     complete frame through _decode_frame, where upstream read 1024 bytes and decoded one frame.
 '   - run reads the socket on every pass, not only when a socket event arrives, so bytes already in
 '     the socket do not sit unread until the next event.
+'   - _send_handshake turns the socket's writable events off once the handshake is sent, so run()
+'     waits for the socket in place of returning at once on every pass.
+'   - release() closes the TCP socket at once, for the owner dropping a finished client.
+'   - The SceneGraph Task wrapper (WebSocketClientTask.brs, WebSocketClient.xml) is not adopted:
+'     RemoteControlTask runs this object on its own thread.
 
 ' Create a new WebSocketClient instance
 function WebSocketClient() as object
@@ -322,6 +327,10 @@ function WebSocketClient() as object
       return
     end if
     m._sent_handshake = true
+    ' JellyRock: the handshake is the one thing a writable event is for. Left on, the socket
+    ' raises one on every wait for as long as it is writable, so run() never waits and its
+    ' caller spins.
+    m._socket.notifyWritable(false)
   end sub
 
   ' Read socket data
@@ -790,6 +799,16 @@ function WebSocketClient() as object
   ' @param self WebSocketClient
   ' @param code integer -  status code
   ' @param reason roByteArray - reason
+  ' JellyRock addition: close the TCP socket at once, with no close frame and no event. For an
+  ' owner that is dropping a client whose connection is already over.
+  ws.release = sub()
+    if m._socket <> invalid
+      m._socket.close()
+      m._socket = invalid
+    end if
+    m._ready_state = m.STATE.CLOSED
+  end sub
+
   ws._send_close_frame = sub(code as integer, reason as dynamic)
     message = createObject("roByteArray")
     message.push(code >> 8)

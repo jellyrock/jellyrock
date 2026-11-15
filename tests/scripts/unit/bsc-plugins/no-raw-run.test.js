@@ -224,7 +224,7 @@ describe('no-raw-run', () => {
   });
 
   it('flags third-party code kept in the repo like any other', () => {
-    // WebSocketClientTask starts itself; its real line carries a bsc-disable-line.
+    // Adopted code is checked like the app's own: a Task wrapper that starts itself would be flagged.
     expect(
       check(
         `
@@ -232,7 +232,7 @@ describe('no-raw-run', () => {
           m.top.control = "RUN"
         end sub
       `,
-        'components/websocket/web_socket_client/WebSocketClientTask.brs',
+        'components/websocket/web_socket_client/SomeTaskWrapper.brs',
       ),
     ).toHaveLength(1);
   });

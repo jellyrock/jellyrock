@@ -200,7 +200,8 @@ Ruled out: **forbidding partial supersede in notes and routing it to an ADR.** C
 ## decision-id: ws-socket-thread-release
 
 **date**: 2026-07-31
-**status**: accepted
+**status**: superseded
+**superseded-by**: `syncplay-socket-runs-in-receiver`
 **related-files**: `components/vendor/BrightWebSocket/web_socket_client/WebSocketClientTask.brs`, `components/remotecontrol/RemoteControlTask.bs`, `source/api/userAuth.bs`, `scripts/lint/socket-thread-release-check.js`, `docs/architecture/remote-control.md`
 
 A Roku OS Task thread is not released by dropping the node reference, so the vendored `WebSocketClient` — one fresh node per connect attempt — leaked a thread per reconnect toward the 100-thread hard cap (the `&h29` class in #728). Three mechanisms now release it, and the node is **single-connection** as a result: reopening after close needs a fresh one. The load-bearing detail is *where* the loop's exit test sits. `m.ws.run()` both performs the CLOSED transition and posts the final `ready_state`/`on_close`/`on_error` messages to the port, so a drained-port observation taken before `run()` says nothing about what `run()` then enqueued — an exit test placed after `run()` releases the thread with the terminal events still queued, `m.top.on_close` never lands, and `RemoteControlTask.connectAndPump` blocks forever instead of reconnecting. The test therefore sits at the head of the loop body, armed by a flag set after `run()`. `SignOut` reads the published `socketNode` into a local before stopping it, because `control = "STOP"` does not join the receiver thread and re-reading the field races `closeSocket()` clearing it.
@@ -2831,6 +2832,17 @@ Keys are named for what the string is for, not its first words. A setting descri
 SyncPlay frames go from the receiver task straight to the SyncPlay manager, numbered and with the last few frames in every write, and the manager checks the field again every second while a group may be sending. Before, each frame rode `dispatchCommand` to the main thread, one write and one notification per frame, and five times a frame reached the manager about 20 seconds late (2026-11-11 to 2026-11-15, Streaming Stick 4K); in the one sighting traced end to end it arrived after the frame written behind it. Three traced runs on 2026-11-15 (9,004 frames, one with random delays at both hops) never showed it, so the hop was removed and the hand-off made not to depend on a notification at all, as the API pool does for requests.
 
 Ruled out: the straight write alone, which has nothing to catch a miss on the new hop and no line to say one happened; and a child node per frame, the API pool's own shape, which gives the same guarantee for a node made and removed per frame. Cast commands stay on the old road (followup `cast-commands-one-notification-each`). Worth checking again if a `SyncPlay frame late` warning ever names a rescue: that would show which notification is the one that goes missing.
+
+## decision-id: syncplay-socket-runs-in-receiver
+
+**date**: 2026-11-15
+**status**: accepted
+**supersedes**: `ws-socket-thread-release`
+**related-files**: `components/remotecontrol/RemoteControlTask.bs`, `components/websocket/web_socket_client/WebSocketClient.brs`, `source/api/userAuth.bs`, `scripts/lint/socket-auth-binding-check.js`
+
+The receiver task runs the adopted socket client as an object on its own thread; the client's Task wrapper and the `socketNode` field are gone. The numbered hand-off (`syncplay-frames-numbered-handoff`) did not end the late frame: a 2,000-step soak on it (2026-11-15, Streaming Stick 4K) held the group's "Playing" update about 17 seconds at steps 867 and 1989, and neither printed the late-frame warning, so both were held before the receiver had them. The one hand-off left there was the wrapper's: a node field written per message, with the receiver waiting on a port for it, the same shape as the hop already removed. Running the client in the receiver leaves no hand-off between the socket and `handleFrame`, and one thread fewer.
+
+What the old decision guarded is moot, not dropped: there is no socket Task thread to release, so its three mechanisms and `lint:socket-thread-release` went with the wrapper. Ruled out: numbering the wrapper's messages and checking its field every second (a second copy of the numbering, inside adopted code, and a crossing per second for good), and a time stamp alone (it locates, it fixes nothing). If a frame is late again with no late-frame warning, the hold is in the socket or the server, and a capture on the server side is the next step.
 
 ## Migrated to ADRs
 

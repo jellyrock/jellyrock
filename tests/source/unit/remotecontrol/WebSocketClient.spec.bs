@@ -1,12 +1,11 @@
 namespace tests
 
   ' The vendored WebSocket client's inbound path. One `_read_socket_data()` call is one pass of the
-  ' task loop, which runs every 100 ms. A pass must take all the socket holds and decode every
+  ' receiver's loop. A pass must take all the socket holds and decode every
   ' complete frame, or a large SyncPlay PlayQueue frame arrives at 1 KB per pass. The socket and the
   ' message port are stand-ins and the frames are built by hand. The suite runs inside a node that
   ' extends WebSocketClientHarness (tests/components), which loads the client's scripts, so no global
-  ' `Logger()` leaks into the source scope. Not the WebSocketClient component itself: it extends Task
-  ' and starts a socket loop in init() that would never end. The suite extends
+  ' `Logger()` leaks into the source scope. The suite extends
   ' `rooibos.BaseTestSuite`, because `tests.BaseTestSuite` sits at a different path in each test
   ' build and the node scope cannot import it by one; the client needs none of its `m.global` setup.
   @SGNode("WebSocketClientHarness")
@@ -304,6 +303,42 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the handshake")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("turns the socket's writable events off once it is sent, so a pass waits for the socket")
+    function _()
+      m.ws._handshake = "GET / HTTP/1.1"
+      m.ws._sent_handshake = false
+      m.ws._send_handshake()
+      m.assertEqual(m.socket.sentText, "GET / HTTP/1.1")
+      m.assertFalse(m.socket.writableEvents)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("release()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("closes the socket at once, with no close frame and no event")
+    function _()
+      m.ws.release()
+      m.assertTrue(m.socket.closed)
+      m.assertEqual(m.socket.sent.count(), 0)
+      m.assertEqual(m.port.messages.count(), 0)
+      m.assertEqual(m.ws.get_ready_state(), m.ws.STATE.CLOSED)
+    end function
+
+    @it("leaves nothing to read or send afterwards, and can be called twice")
+    function _()
+      m.socket.feed(m.buildFrame(1, m.textBytes("late")))
+      m.ws.release()
+      m.ws.release()
+      m.ws._read_socket_data()
+      m.assertEqual(m.textMessages().count(), 0)
+      m.assertEqual(m.ws.send(["x"]), -1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     ' Helpers
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -394,8 +429,17 @@ namespace tests
         pending: createObject("roByteArray"),
         readPos: 0,
         sent: [],
+        sentText: "",
+        writableEvents: true,
         closed: false
       }
+      socket.sendStr = function(text as string) as integer
+        m.sentText = text
+        return len(text)
+      end function
+      socket.notifyWritable = sub(enable as boolean)
+        m.writableEvents = enable
+      end sub
       socket.feed = sub(bytes as object)
         m.pending.append(bytes)
       end sub

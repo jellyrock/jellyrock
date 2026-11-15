@@ -12,10 +12,9 @@
 // /pair: the cast target resolves, but commands are delivered where the app
 // isn't listening. That was #743.
 //
-// The fix is four lines spread across two files, and NONE of them fail loudly
-// when broken: the app still builds, still connects, still passes every unit
-// test. It only silently stops receiving cast commands. This check is the only
-// automated gate on them.
+// The fix is one line that does not fail loudly when broken: the app still
+// builds, still connects, still passes every unit test. It only silently stops
+// receiving cast commands. This check is the only automated gate on it.
 //
 // WHY NO END-TO-END TEST
 // -----------------------
@@ -31,25 +30,11 @@
 //
 // WHAT IT CHECKS
 // --------------
-//   1. RemoteControlTask sets `m.ws.headers` BEFORE `m.ws.open`. The client
-//      builds its handshake string inside open(), so a header set afterwards
-//      never reaches the wire. Reordering does not fail cleanly: the task's
-//      startup seed reads m.top.headers before calling open, so whether it
-//      breaks depends on which thread wins, which means INTERMITTENT cast failures.
-//   2. WebSocketClientTask does not restore upstream's
-//      `m.top.headers = m.ws.get_headers()`, which overwrites the caller's
-//      header with the client's empty default.
-//   3. Its replacement seed (`m.ws.set_headers(m.top.headers)`) sits between
-//      the observer registration and the open() call: after, so a write that
-//      landed early is picked up; before, so it reaches the handshake.
-//   4. `m.task_port` (never assigned anywhere in the upstream component: 3 reads,
-//      0 writes on 2026-07-30) has not come back. It rebinds fields to an invalid port and is
-//      only reachable now that we call set_headers.
-//
-// 2-4 all live in the adopted BrightWebSocket code, whose local modifications are
-// documented in components/websocket/README.md. A future upstream re-sync is the
-// likeliest way they get reverted, and a large re-sync diff is where a four-line
-// semantic change hides during review.
+// RemoteControlTask calls `m.ws.set_headers(...)` BEFORE `m.ws.open(...)`. The
+// client builds its handshake string inside open(), so a header set afterwards
+// never reaches the wire. The receiver runs the client object on its own
+// thread, so there is no second file to guard: the socket Task that once sat
+// between them, and its three rules here, are gone.
 //
 // Only Node stdlib, so no npm ci needed.
 
@@ -58,13 +43,9 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const RECEIVER_REL = 'components/remotecontrol/RemoteControlTask.bs';
-export const WS_TASK_REL = 'components/websocket/web_socket_client/WebSocketClientTask.brs';
 
-// Strip whole-line BrightScript comments so a rule can't be satisfied (or
-// tripped) by prose. The banned-pattern rules especially: WebSocketClientTask
-// quotes the `get_headers` pattern in an explanatory comment.
-// Exported for socket-thread-release-check.js, which guards the other
-// critical invariant of the same two files.
+// Strip whole-line BrightScript comments so the rule can't be satisfied (or
+// tripped) by prose.
 export function stripComments(src) {
   return src
     .split('\n')
@@ -73,84 +54,35 @@ export function stripComments(src) {
 }
 
 // Index of the first match, or -1. Regex so we tolerate whitespace variation
-// (`m.ws.headers=` vs `m.ws.headers  =`) without tolerating a different target.
+// (`m.ws.open(` vs `m.ws.open (`) without tolerating a different target.
 export function indexOf(src, re) {
   const m = re.exec(src);
   return m ? m.index : -1;
 }
 
 /**
- * @param {{receiver: string, wsTask: string}} sources file contents
+ * @param {{receiver: string}} sources file contents
  * @returns {string[]} violations; empty means the invariant holds
  */
-export function check({ receiver, wsTask }) {
+export function check({ receiver }) {
   const problems = [];
   const rx = stripComments(receiver);
-  const wx = stripComments(wsTask);
 
-  // ── 1. receiver: headers before open ────────────────────────────────────────
-  const setHeaders = indexOf(rx, /m\.ws\.headers\s*=/);
-  const setOpen = indexOf(rx, /m\.ws\.open\s*=/);
+  const setHeaders = indexOf(rx, /m\.ws\.set_headers\s*\(/);
+  const setOpen = indexOf(rx, /m\.ws\.open\s*\(/);
   if (setHeaders < 0) {
     problems.push(
-      `${RECEIVER_REL}: no \`m.ws.headers = ...\` assignment. The ws:// upgrade must carry an ` +
+      `${RECEIVER_REL}: no \`m.ws.set_headers(...)\` call. The ws:// upgrade must carry an ` +
         "Authorization header, or the socket binds to the token's DeviceId instead of the " +
         'advertised one (#743).',
     );
   } else if (setOpen < 0) {
-    problems.push(
-      `${RECEIVER_REL}: no \`m.ws.open = ...\` assignment — cannot verify header ordering.`,
-    );
+    problems.push(`${RECEIVER_REL}: no \`m.ws.open(...)\` call — cannot verify header ordering.`);
   } else if (setHeaders > setOpen) {
     problems.push(
-      `${RECEIVER_REL}: \`m.ws.headers\` is set AFTER \`m.ws.open\`. The client builds its ` +
-        'handshake inside open(), so the header never reaches the wire. This fails ' +
-        'INTERMITTENTLY (it depends on which thread wins startup), so tests will not catch it. ' +
-        'Move the headers assignment above the open assignment (#743).',
-    );
-  }
-
-  // ── 2. vendored task: no upstream clobber ───────────────────────────────────
-  if (/m\.top\.headers\s*=\s*m\.ws\.get_headers\(\)/.test(wx)) {
-    problems.push(
-      `${WS_TASK_REL}: upstream's \`m.top.headers = m.ws.get_headers()\` is back. It overwrites ` +
-        "the caller's Authorization header with the client's empty default, re-splitting the " +
-        'Jellyfin session (#743). Seed the client FROM the node instead.',
-    );
-  }
-
-  // ── 3. vendored task: seed sits between observers and open ──────────────────
-  const seed = indexOf(wx, /m\.ws\.set_headers\(\s*m\.top\.headers\s*\)/);
-  const observe = indexOf(wx, /observeField\(\s*"headers"/);
-  const open = indexOf(wx, /m\.ws\.open\(/);
-  if (seed < 0) {
-    problems.push(
-      `${WS_TASK_REL}: the \`m.ws.set_headers(m.top.headers)\` startup seed is missing. Without ` +
-        'it, a caller that sets `headers` before this thread starts loses the value silently ' +
-        '(init() sets control="RUN", so that race is the common case) (#743).',
-    );
-  } else {
-    if (observe >= 0 && seed < observe) {
-      problems.push(
-        `${WS_TASK_REL}: the header seed runs BEFORE \`observeField("headers", ...)\`. Registering ` +
-          'observers first is what closes the race in both directions — an early write is picked ' +
-          'up by the seed, a later one still arrives as a field event (#743).',
-      );
-    }
-    if (open >= 0 && seed > open) {
-      problems.push(
-        `${WS_TASK_REL}: the header seed runs AFTER \`m.ws.open(...)\`. The handshake is built ` +
-          'inside open(), so headers seeded afterwards never reach the wire (#743).',
-      );
-    }
-  }
-
-  // ── 4. vendored task: the dead port typo stays dead ─────────────────────────
-  if (/m\.task_port/.test(wx)) {
-    problems.push(
-      `${WS_TASK_REL}: \`m.task_port\` is back. It is never assigned in this component, so ` +
-        'observeField() rebinds the field to an invalid port. Dead upstream, but live for us ' +
-        'because the remote-control receiver sets `headers` — use `m.port` (#743).',
+      `${RECEIVER_REL}: \`m.ws.set_headers\` is called AFTER \`m.ws.open\`. The client builds its ` +
+        'handshake inside open(), so the header never reaches the wire. Move the set_headers ' +
+        'call above the open call (#743).',
     );
   }
 
@@ -168,7 +100,6 @@ function main() {
   try {
     sources = {
       receiver: readFileSync(path.join(rootDir, RECEIVER_REL), 'utf8'),
-      wsTask: readFileSync(path.join(rootDir, WS_TASK_REL), 'utf8'),
     };
   } catch (err) {
     console.error(`socket-auth-binding: ${err.message}`);

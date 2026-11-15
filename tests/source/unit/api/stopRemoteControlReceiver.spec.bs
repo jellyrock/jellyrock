@@ -2,22 +2,16 @@ import "pkg:/source/api/userAuth.bs"
 
 namespace tests
 
-  ' StopRemoteControlReceiver(): the sign-out / server-switch teardown of the ws:// receiver and
-  ' the socket child it publishes (#666, #728). Split out of SignOut precisely so it can be tested:
-  ' the rest of SignOut writes real (non-`test-`) registry sections and reaches for the router and
-  ' the session, so a wholesale SignOut spec would violate the registry-isolation rule in
-  ' tests/CLAUDE.md. This block is pure node manipulation, so it needs none of that.
+  ' StopRemoteControlReceiver(): the sign-out / server-switch teardown of the remote-control
+  ' receiver (#666). Split out of SignOut precisely so it can be tested: the rest of SignOut writes
+  ' real (non-`test-`) registry sections and reaches for the router and the session, so a wholesale
+  ' SignOut spec would violate the registry-isolation rule in tests/CLAUDE.md.
   '
   ' Real nodes, no mocks. `createObject("roSGNode", "RemoteControlTask")` does not start its thread
   ' (RemoteControlTask.init() sets functionName but leaves control at "init"), so a suite can stand
   ' one up cheaply, and `control` reads back as "stop" after a STOP, which is what makes the effect
   ' assertable at all. Injecting into m.global mirrors what setGlobalNodes does in production, the
   ' same way replayRoute.spec.bs stands up AuthManager.
-  '
-  ' Note the AA indirection on the socketNode read-back: `socketNode` is declared `type="node"`, so
-  ' BSC types a direct read as roSGNodeNode, which has no `control` field and fails validation.
-  ' Production compiles because it reaches the child through untyped m.global. Routing through an
-  ' assocarray restores the dynamic typing the real call site has.
   @suite("StopRemoteControlReceiver — sign-out teardown")
   class StopRemoteControlReceiverTests extends tests.BaseTestSuite
 
@@ -43,63 +37,6 @@ namespace tests
       StopRemoteControlReceiver() ' must not crash the calling thread mid-sign-out
 
       m.assertInvalid(m.global.remoteControlTask)
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("the published socket child")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("STOPs the child the receiver published")
-    function _()
-      receiver = m.freshReceiver()
-      child = createObject("roSGNode", "RemoteControlTask")
-      receiver.socketNode = child
-
-      StopRemoteControlReceiver()
-
-      ' The whole point of the published handle: the external STOP above kills the receiver before
-      ' its own closeSocket() can run, so nothing else would ever release this child's thread.
-      m.assertEqual(child.control, "stop")
-    end function
-
-    @it("clears the published field so it can't name a dead node")
-    function _()
-      receiver = m.freshReceiver()
-      receiver.socketNode = createObject("roSGNode", "RemoteControlTask")
-
-      StopRemoteControlReceiver()
-
-      holder = {}
-      holder.node = receiver.socketNode
-      m.assertInvalid(holder.node)
-    end function
-
-    @it("is a no-op on the child when the receiver is between connect attempts")
-    function _()
-      ' closeSocket() clears socketNode on every reconnect, so a sign-out landing in the backoff
-      ' window finds it invalid. Dotting into it there would crash the caller.
-      receiver = m.freshReceiver()
-
-      StopRemoteControlReceiver()
-
-      m.assertEqual(receiver.control, "stop")
-      holder = {}
-      holder.node = receiver.socketNode
-      m.assertInvalid(holder.node)
-    end function
-
-    @it("STOPs the receiver before reading the child, so a live receiver can't publish a replacement")
-    function _()
-      ' Ordering matters: the parent is stopped first so a receiver still winding down
-      ' cannot spawn a socket that outlives this call. Both must end up stopped.
-      receiver = m.freshReceiver()
-      child = createObject("roSGNode", "RemoteControlTask")
-      receiver.socketNode = child
-
-      StopRemoteControlReceiver()
-
-      m.assertEqual(receiver.control, "stop")
-      m.assertEqual(child.control, "stop")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
