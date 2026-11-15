@@ -17,6 +17,8 @@ How the registry migration runner in `source/migrations.bs` works: where it runs
 
 Each migration is a block guarded by a version constant from the top of the file. A block runs when the section was last used by a version older than its constant (`versionChecker(a, b)` is true when `a` is at least `b`). The blocks sit in version order, so a user several versions behind runs every block they missed, oldest first. A block that changed something sets `m.wasMigrated`, and `Main()` then prints the registry so the console shows the result.
 
+So a constant's value decides who runs its block, and CI checks it: [`migration-versions-check.js`](../../scripts/lint/migration-versions-check.js) holds a new constant above the latest release and at or below the one it ships in, and keeps a released value fixed. What it enforces is in [registry-migrations.md](../dev/registry-migrations.md#1-add-a-version-constant).
+
 ## Two version records
 
 The runner reads a different `LastRunVersion` for each scope:
