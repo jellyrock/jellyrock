@@ -1023,6 +1023,14 @@ Why not now: the checklist has no caller yet, so no device route reaches it.
 
 Closes when the PR that adds the library Filter chip (the first caller) adds an RTA case: open the Filter, tick a row, press Back and check the result is `confirmed` with the new `checkedIndexes`; then open it again and press Back with no change, and check `cancelled`.
 
+#### The Replay key has no one rule outside playback `[fid: replay-key-one-rule-outside-playback]` `[captured 2026-11-15]`
+
+Outside playback the Replay key means "back to the start", but three ways. On Home and the Favorites rows it jumps to the first item of the focused row, sideways (`HomeRows.onKeyEvent`, `FavoritesRows.onKeyEvent`). In a library grid it jumps to item 0. On a library's Genres tab it jumps to the first row, upward. The persistence split of the library screens work made a library's Replay go to the first item from anywhere on the screen, the letter rail included (`BaseGridView.jumpToFirstItem()`), and removed the legacy branch that cleared the letter and the voice text. That settled the library and nothing else, on purpose.
+
+Decide once: which way a row list goes; whether Replay from the letter rail should move focus to the grid, as it does now; what it does on the TV guide, where it does nothing today; and whether screens without it (details, search, settings) get it. Then apply the rule everywhere and write it into `docs/architecture/design-system.md`.
+
+Why not now: it is a design choice for the operator across several screens, and the piece that surfaced it changes one.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`

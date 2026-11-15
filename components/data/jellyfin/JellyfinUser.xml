@@ -34,5 +34,9 @@
     <field id="lastRunVersion" type="string" value="" />
     <field id="fontScaleFactor" type="float" value="1.0" />
 
+    <!-- Session State: each library tab's filters (source/utils/sessionFilters.bs). Never
+         saved; user.Logout() resets it with the rest of this node. -->
+    <field id="libraryFilters" type="assocarray" />
+
   </interface>
 </component>

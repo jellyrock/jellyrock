@@ -19,9 +19,9 @@ namespace gridQuery
   ' LoadItemsTask2 node. Built from scratch every time, so nothing a presenter set for one
   ' view carries into the next.
   '
-  ' @param state - { nameStartsWith, searchTerm, sortField, sortAscending, filter,
-  '   filterOptions, isFavorite }; `isFavorite` is what a Favorites tab fixes on, apart
-  '   from `filter`, so the two combine
+  ' @param state - { nameStartsWith, searchTerm, sortField, sortAscending, filters,
+  '   isFavorite }; `filters` is the tab's filter map (see "The filter map" below), and
+  '   `isFavorite` is what a Favorites tab fixes on, apart from it, so the two combine
   ' @param parentItem - the library (or folder) the grid shows
   ' @param view - the current view mode, passed to the presenter
   ' @param presenter - the grid's presenter, or invalid
@@ -32,12 +32,12 @@ namespace gridQuery
       searchTerm: state.searchTerm,
       sortField: state.sortField,
       sortAscending: state.sortAscending,
-      filter: state.filter,
-      ' The ONE place a saved filter becomes a request. The panel and the registry
-      ' separate options with the category's own delimiter; the language categories then
-      ' need flattening to the comma list the server takes. See languageFilters.toWire.
-      filterOptions: languageFilters.toWire(state.filterOptions),
-      isFavorite: isBooleanTrue(state.isFavorite),
+      ' The one place the filter map becomes a request: the status as `filter`, the
+      ' Favorites category as `isFavorite` beside a Favorites tab's, and every other
+      ' category joined for the wire.
+      filter: gridQuery.statusOf(state.filters),
+      filterOptions: gridQuery.wireOptions(state.filters),
+      isFavorite: isBooleanTrue(state.isFavorite) or gridQuery.hasFavorites(state.filters),
       ' Presenters can override any of these
       itemId: parentItem.Id,
       isRecursive: true,
@@ -175,7 +175,7 @@ namespace gridQuery
   ' @param query - a query build() returned
   function isPlainFavorites(query as dynamic) as boolean
     if not isValid(query) or not isBooleanTrue(query.isFavorite) then return false
-    if LCase(textOrEmpty(query.filter).trim()) <> "all" then return false
+    if LCase(textOrEmpty(query.filter).trim()) <> LCase(gridQuery.NO_FILTER) then return false
     if isValid(query.filterOptions)
       if query.filterOptions.count() > 0 then return false
     end if
@@ -185,14 +185,204 @@ namespace gridQuery
 
   ' showsFavorites: whether `query` lists favorites, with or without more narrowing.
   '
-  ' True for the Favorites tab (`isFavorite`) and for the Favorites filter. A grid that shows
-  ' favorites is stale once a favorite toggles elsewhere.
+  ' True for the Favorites tab and for the Favorites filter, which both reach the query
+  ' as `isFavorite`. A grid that shows favorites is stale once a favorite toggles
+  ' elsewhere.
   '
   ' @param query - a query build() returned
   function showsFavorites(query as dynamic) as boolean
     if not isValid(query) then return false
-    if isBooleanTrue(query.isFavorite) then return true
-    return LCase(textOrEmpty(query.filter).trim()) = "favorites"
+    return isBooleanTrue(query.isFavorite)
+  end function
+
+  ' ── The sort ──────────────────────────────────────────────────────────────────
+
+  ' What every tab sorts by until a sort is saved for it. Every presenter's sort list
+  ' offers it.
+  const DEFAULT_SORT_FIELD = "SortName"
+
+  ' resolveSort: the saved sort while the tab's list still offers it, else the default.
+  '
+  ' Sort lists differ per tab, so a saved field can be missing from the list on show.
+  ' Not written back (resolveOffered).
+  '
+  ' @param saved - displaySettings.getLibrarySort's { field, ascending }, or Invalid
+  ' @param offeredSorts - the presenter's `getOptions().sort`
+  ' @return {object} { field, ascending }
+  function resolveSort(saved as dynamic, offeredSorts as dynamic) as object
+    if isValid(saved)
+      field = gridQuery.resolveOffered(saved.field, offeredSorts, "")
+      if field <> "" then return { field: field, ascending: isBooleanTrue(saved.ascending) }
+    end if
+    return { field: gridQuery.DEFAULT_SORT_FIELD, ascending: true }
+  end function
+
+  ' ── The filter map ────────────────────────────────────────────────────────────
+  '
+  ' A tab's filters are one map, `{ <category>: [values] }`, kept for the session
+  ' (sessionFilters). Categories narrow each other, and the values inside one widen it.
+  ' No filter is the empty map: "All" is never stored.
+  '
+  '   CATEGORY_STATUS     one of Played, Unplayed, Resumable (a single choice)
+  '   CATEGORY_FAVORITES  one value, FAVORITES_VALUE, where no Favorites tab covers it
+  '   a server category   under its presenter `Name` (Genres, Years), its option values
+  '
+  ' Categories are matched without regard to case: the map crosses a node field, which
+  ' does not promise to keep a key's spelling.
+  const CATEGORY_STATUS = "Status"
+  const CATEGORY_FAVORITES = "Favorites"
+  const FAVORITES_VALUE = "Favorites"
+  const NO_FILTER = "All"
+
+  ' valuesOf: one category's values, [] when the map does not hold it.
+  function valuesOf(filters as dynamic, category as string) as object
+    if type(filters) <> "roAssociativeArray" then return []
+    for each key in filters
+      if LCase(key) = LCase(category)
+        if type(filters[key]) = "roArray" then return filters[key]
+      end if
+    end for
+    return []
+  end function
+
+  ' statusOf: the status in force, as LoadItemsTask2's `filter`; NO_FILTER when none.
+  function statusOf(filters as dynamic) as string
+    values = gridQuery.valuesOf(filters, gridQuery.CATEGORY_STATUS)
+    if values.count() = 0 then return gridQuery.NO_FILTER
+    status = textOrEmpty(values[0]).trim()
+    if status = "" then return gridQuery.NO_FILTER
+    return status
+  end function
+
+  ' hasFavorites: whether the Favorites filter is on.
+  function hasFavorites(filters as dynamic) as boolean
+    return gridQuery.valuesOf(filters, gridQuery.CATEGORY_FAVORITES).count() > 0
+  end function
+
+  ' isBuiltInCategory: whether `category` is the status or Favorites, which the request
+  ' carries in fields of their own.
+  function isBuiltInCategory(category as dynamic) as boolean
+    name = LCase(textOrEmpty(category))
+    return name = LCase(gridQuery.CATEGORY_STATUS) or name = LCase(gridQuery.CATEGORY_FAVORITES)
+  end function
+
+  ' isStatus: whether `name` is a status LoadItemsTask2 sends (Played, Unplayed, Resumable).
+  function isStatus(name as dynamic) as boolean
+    value = LCase(textOrEmpty(name).trim())
+    return value = "played" or value = "unplayed" or value = "resumable"
+  end function
+
+  ' delimitersOf: how one server category's values are joined, in the Star panel's string
+  ' (`panel`) and in the request (`wire`). The one place they are decided: a presenter
+  ' declares a category's `Delimiter` from here, and the request reads it here because it
+  ' is built before a category's list has loaded.
+  '
+  ' Genres and parental ratings are free text that may hold a comma, so they use "|", as
+  ' does a category not named here. A year is digits, so ",". One language option's value
+  ' is already a comma list of ISO codes, so the panel separates options with
+  ' PANEL_DELIMITER and the request flattens them into one comma list.
+  '
+  ' @return {object} { panel, wire }
+  function delimitersOf(category as dynamic) as object
+    if languageFilters.isLanguageKey(category) then return { panel: languageFilters.PANEL_DELIMITER, wire: languageFilters.CODE_DELIMITER }
+    if LCase(textOrEmpty(category)) = "years" then return { panel: ",", wire: "," }
+    return { panel: "|", wire: "|" }
+  end function
+
+  ' wireOptions: every server category as a request parameter, its values joined.
+  '
+  ' @return {object} LoadItemsTask2's `filterOptions`, {} when no server category is set
+  function wireOptions(filters as dynamic) as object
+    wire = {}
+    if type(filters) <> "roAssociativeArray" then return wire
+    for each category in filters
+      if not gridQuery.isBuiltInCategory(category)
+        values = gridQuery.valuesOf(filters, category)
+        if values.count() > 0 then wire[category] = values.join(gridQuery.delimitersOf(category).wire)
+      end if
+    end for
+    return wire
+  end function
+
+  ' ── The Star panel's shape ────────────────────────────────────────────────────
+  '
+  ' ItemGridOptions predates the filter map. It reports one `filter` name (All, a plain
+  ' filter, or the one category it ticked) and a `filterOptions` AA holding that
+  ' category's values joined by the category's panel delimiter. These two functions are
+  ' the only place the two shapes meet, and they go when the panel does.
+
+  ' offeredName: a category as the presenter's list spells it, else as given.
+  '
+  ' An AA does not keep a key's case, so a category read back out of the map is
+  ' lowercase, while the panel reports and compares the list's own `Name`.
+  function offeredName(category as dynamic, offeredFilters as dynamic) as string
+    if type(offeredFilters) = "roArray"
+      for each entry in offeredFilters
+        if isValid(entry)
+          if LCase(textOrEmpty(entry.Name)) = LCase(textOrEmpty(category)) then return textOrEmpty(entry.Name)
+        end if
+      end for
+    end if
+    return textOrEmpty(category)
+  end function
+
+  ' filtersFromPanel: the filter map for what the panel reports.
+  '
+  ' @param filter - the panel's `filter`
+  ' @param filterOptions - the panel's `filterOptions`
+  function filtersFromPanel(filter as dynamic, filterOptions as dynamic) as object
+    filters = {}
+
+    if type(filterOptions) = "roAssociativeArray"
+      for each category in filterOptions
+        values = []
+        for each value in textOrEmpty(filterOptions[category]).split(gridQuery.delimitersOf(category).panel)
+          if value.trim() <> "" then values.push(value.trim())
+        end for
+        if values.count() > 0 then filters[category] = values
+      end for
+      if filters.count() > 0 then return filters
+    end if
+
+    name = textOrEmpty(filter).trim()
+    if LCase(name) = LCase(gridQuery.FAVORITES_VALUE)
+      filters[gridQuery.CATEGORY_FAVORITES] = [gridQuery.FAVORITES_VALUE]
+    else if gridQuery.isStatus(name)
+      ' Only a status: the panel also reports a category it offers with an empty list
+      ' this way, and that narrows nothing
+      filters[gridQuery.CATEGORY_STATUS] = [name]
+    end if
+    return filters
+  end function
+
+  ' filtersToPanel: what the panel shows for a filter map.
+  '
+  ' The panel can show one thing. The session never holds more while the panel is the
+  ' only way to set a filter; if it ever did, a server category would show first, then
+  ' the status, then Favorites.
+  '
+  ' @return {object} { filter, filterOptions }
+  function filtersToPanel(filters as dynamic, offeredFilters as dynamic) as object
+    panel = { filter: gridQuery.NO_FILTER, filterOptions: {} }
+    if type(filters) <> "roAssociativeArray" then return panel
+
+    for each category in filters
+      if not gridQuery.isBuiltInCategory(category)
+        values = gridQuery.valuesOf(filters, category)
+        if values.count() > 0
+          panel.filter = gridQuery.offeredName(category, offeredFilters)
+          panel.filterOptions[panel.filter] = values.join(gridQuery.delimitersOf(category).panel)
+          return panel
+        end if
+      end if
+    end for
+
+    if gridQuery.statusOf(filters) <> gridQuery.NO_FILTER
+      panel.filter = gridQuery.offeredName(gridQuery.statusOf(filters), offeredFilters)
+    else if gridQuery.hasFavorites(filters)
+      panel.filter = gridQuery.FAVORITES_VALUE
+    end if
+    return panel
   end function
 
   ' ── A category's options, its saved query, and the invariant between them ──────
@@ -211,17 +401,14 @@ namespace gridQuery
   ' ISO 639-2 spellings it is BOTH of them, since the server matches the literal tag on
   ' the file. Sending the label would return nothing.
   '
-  ' THE INVARIANT. A category's saved query is its checked options' values joined by the
-  ' category's delimiter, and that same string is what the registry stores. Decoding it
-  ' on restore is a plain split, which is correct only while this holds:
+  ' THE INVARIANT. A category's query is its checked options' values joined by the
+  ' category's panel delimiter, and that same string is what the Star panel reports.
+  ' Decoding it on restore is a plain split, which is correct only while this holds:
   '
   '     An option's value never contains its category's delimiter.
   '
-  ' Every category is built to satisfy it, and the delimiters were chosen for that
-  ' reason: Genres and OfficialRatings use "|" because their values are free text that
-  ' may contain commas and spaces; Years uses "," because a year is digits; the language
-  ' filters use "|" because ONE option's value is several ISO codes joined by ","
-  ' (languageFilters.toWire converts that form to the comma-only one the server wants).
+  ' Every category is built to satisfy it, and delimitersOf() chooses each category's
+  ' delimiters for that reason.
   '
   ' Break it and the failure is silent and specific: the query still applies, because
   ' joining is unaffected, but the restore pass splits a value apart and matches none of
