@@ -9,14 +9,16 @@ namespace tests
     @describe("shape")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("every builder produces the same seven keys")
+    @it("every builder produces the same eight keys")
     function _()
       results = [
         buttonDialogResult(0, 1, ["Cancel", "Delete"]),
         listDialogResult(2),
-        textDialogResult(false, "hello")
+        textDialogResult(false, "hello"),
+        checklistDialogResult([0], [0, 2])
       ]
       for each result in results
+        m.assertTrue(result.doesExist("checkedIndexes"))
         m.assertTrue(result.doesExist("cancelled"))
         m.assertTrue(result.doesExist("confirmed"))
         m.assertTrue(result.doesExist("buttonIndex"))
@@ -183,6 +185,103 @@ namespace tests
       m.assertTrue(cancelled.cancelled)
       m.assertFalse(cancelled.confirmed)
       m.assertEqual(cancelled.value, "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("checklistDialogResult")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A tick counts when it is made and Back only leaves, so leaving with a
+    ' changed set is the answer, not a cancel.
+    @it("reports a changed set as confirmed, with the set")
+    function _()
+      result = checklistDialogResult([0], [2, 0])
+      m.assertTrue(result.confirmed)
+      m.assertFalse(result.cancelled)
+      m.assertFalse(result.externallyCancelled)
+      m.assertEqual(result.checkedIndexes, [0, 2])
+      m.assertEqual(result.optionIndex, -1)
+      m.assertEqual(result.buttonIndex, -1)
+    end function
+
+    ' The caller reloads on a change, so "nothing changed" has to read as a cancel.
+    @it("reports an unchanged set as cancelled")
+    function _()
+      result = checklistDialogResult([1, 3], [3, 1])
+      m.assertTrue(result.cancelled)
+      m.assertFalse(result.confirmed)
+      m.assertEqual(result.checkedIndexes, [1, 3])
+    end function
+
+    @it("reports ticking and unticking back to the start as cancelled")
+    function _()
+      current = toggleCheckedIndex(toggleCheckedIndex([1], 4), 4)
+      m.assertTrue(checklistDialogResult([1], current).cancelled)
+    end function
+
+    @it("reports unticking everything as a change to the empty set")
+    function _()
+      result = checklistDialogResult([2], [])
+      m.assertTrue(result.confirmed)
+      m.assertEqual(result.checkedIndexes, [])
+    end function
+
+    ' A tick counts when it is made, so a close from code reports the ticks as they
+    ' stand, as Back does. It is still a cancel, so a handler that acts declines it.
+    @it("reports the ticks as they stand when code closed the dialog, cancelled")
+    function _()
+      result = checklistDialogResult([1], [1, 2, 3], true)
+      m.assertTrue(result.cancelled)
+      m.assertTrue(result.externallyCancelled)
+      m.assertFalse(result.confirmed)
+      m.assertEqual(result.checkedIndexes, [1, 2, 3])
+    end function
+
+    @it("every other builder reports no ticks")
+    function _()
+      m.assertEqual(listDialogResult(2).checkedIndexes, [])
+      m.assertEqual(buttonDialogResult(0, 1, ["Cancel", "Delete"]).checkedIndexes, [])
+      m.assertEqual(textDialogResult(false, "hello").checkedIndexes, [])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("toggleCheckedIndex and normalizeCheckedIndexes")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("adds a row that was not ticked, keeping the set ascending")
+    function _()
+      m.assertEqual(toggleCheckedIndex([1, 5], 3), [1, 3, 5])
+      m.assertEqual(toggleCheckedIndex([], 0), [0])
+    end function
+
+    @it("removes a row that was ticked")
+    function _()
+      m.assertEqual(toggleCheckedIndex([1, 3, 5], 3), [1, 5])
+      m.assertEqual(toggleCheckedIndex([0], 0), [])
+    end function
+
+    @it("returns a new array and leaves the one it was given alone")
+    function _()
+      original = [1]
+      toggled = toggleCheckedIndex(original, 2)
+      m.assertEqual(original, [1])
+      m.assertEqual(toggled, [1, 2])
+    end function
+
+    @it("sorts, drops repeats and drops what is not a row index")
+    function _()
+      m.assertEqual(normalizeCheckedIndexes([4, 1, 4, -1, "2", invalid, 0]), [0, 1, 4])
+    end function
+
+    @it("drops an index past the end when the row count is given")
+    function _()
+      m.assertEqual(normalizeCheckedIndexes([0, 2, 3, 9], 3), [0, 2])
+    end function
+
+    @it("reads anything that is not an array as no ticks")
+    function _()
+      m.assertEqual(normalizeCheckedIndexes(invalid), [])
+      m.assertEqual(normalizeCheckedIndexes("1,2"), [])
     end function
 
   end class
