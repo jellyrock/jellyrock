@@ -32,9 +32,10 @@ const THEME_PRESET_MIGRATION_VERSION = "2.5.0"
 const HOMESECTION_CLEANUP_VERSION = "2.13.0"
 
 ' client version when a library's saved view became its default tab (a libraryTab id) and
-' the grid's layout (presentation or grid) became a setting of its own. The lowest version above the
-' last release (3.3.1), so the next release runs it whatever number it takes.
-const LIBRARY_TAB_MIGRATION_VERSION = "3.3.2"
+' the grid's layout (presentation or grid) became a setting of its own. The library tabs work
+' ships in the next minor release; if `main` releases this number first, raise it to the
+' release this work ships in.
+const LIBRARY_TAB_MIGRATION_VERSION = "3.5.0"
 
 ' Run all necessary registry migrations on the "global" JellyRock registry section
 sub runGlobalMigrations()
@@ -503,6 +504,62 @@ sub removeHomeSectionKeys(reg as object, section as string)
   end if
 end sub
 
+' Part of migrateLibraryTabs: each library's saved sort becomes one key for a tab, and
+' its saved filters are deleted (filters last for the session now).
+'
+' The old keys are "display.<libraryId>.sortField" and ".sortAscending", one pair per
+' library. A view change reset the sort, so a sort saved beside a `landing` was set on
+' that view's tab: it becomes that tab's key (librarySort.settingKey). With no `landing`, or one
+' that names no tab, it was set on the library type's default tab, which only the
+' library knows: it becomes the bare key, and the library moves it when it next opens
+' (adoptLegacySort). The old sort is the latest choice, so it replaces a new key already
+' there (a downgrade and an upgrade). The old keys are deleted, so a second run finds
+' nothing to do.
+' @param reg The user's registry section
+' @return {integer} how many libraries or keys it changed
+function migrateLibrarySortAndFilters(reg as object) as integer
+  changedCount = 0
+  librariesWithSort = {}
+
+  for each key in reg.GetKeyList()
+    parts = key.split(".")
+    if parts.count() = 3 and parts[0] = "display"
+      if parts[2] = "filter" or parts[2] = "filterOptions"
+        reg.delete(key)
+        changedCount++
+      else if parts[2] = "sortField" or parts[2] = "sortAscending"
+        librariesWithSort[parts[1]] = true
+      end if
+    end if
+  end for
+
+  for each libraryId in librariesWithSort
+    libraryKeyPrefix = "display." + libraryId + "."
+
+    field = "SortName"
+    if reg.exists(libraryKeyPrefix + "sortField") then field = reg.read(libraryKeyPrefix + "sortField")
+    ascending = true
+    if reg.exists(libraryKeyPrefix + "sortAscending") then ascending = LCase(reg.read(libraryKeyPrefix + "sortAscending")) <> "false"
+
+    tabId = ""
+    if reg.exists(libraryKeyPrefix + "landing")
+      mapped = libraryTab.fromLegacyView(reg.read(libraryKeyPrefix + "landing"))
+      if libraryTab.isKnown(mapped.tab) then tabId = mapped.tab
+    end if
+
+    if field.trim() <> ""
+      sortKey = libraryKeyPrefix + librarySort.settingKey(tabId)
+      reg.write(sortKey, librarySort.format(field, ascending))
+      print `Wrote ${sortKey} from the library's saved sort`
+    end if
+    reg.delete(libraryKeyPrefix + "sortField")
+    reg.delete(libraryKeyPrefix + "sortAscending")
+    changedCount++
+  end for
+
+  return changedCount
+end function
+
 ' LIBRARY_TAB_MIGRATION_VERSION - Turn each library's saved view into its default tab and layout
 ' @param reg The user's registry section
 ' @param section The section name, for log lines
@@ -518,7 +575,8 @@ sub migrateLibraryTabs(reg as object, section as string)
   '    nothing to do.
   keyPrefix = "display."
   keySuffix = ".landing"
-  changedCount = 0
+  ' First, while `landing` still says which tab an old sort was set on
+  changedCount = migrateLibrarySortAndFilters(reg)
 
   for each key in reg.GetKeyList()
     if key.left(keyPrefix.len()) = keyPrefix and key.right(keySuffix.len()) = keySuffix

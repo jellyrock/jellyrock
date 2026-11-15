@@ -43,7 +43,7 @@ import {
 const LOCALE = RTA_CONFIG.languages[0];
 const atSettingsIcon = (f) => f?.node?.id === 'settingsIcon';
 // A sort the grid does not default to, so a reset to the default would show.
-const SEEDED_SORT = 'DateCreated';
+const SEEDED_SORT = 'DateCreated:desc';
 
 let session;
 let libraries;
@@ -61,7 +61,7 @@ async function launchWithMovies(label, view, layout) {
   const landing = await seedLibraryLanding(session, moviesId, view, { layout });
   // rta-run.js restores the whole registry after the run.
   await odc.writeRegistry({
-    values: { [session.userId]: { [`display.${moviesId}.sortField`]: SEEDED_SORT } },
+    values: { [session.userId]: { [`display.${moviesId}.sort_movies`]: SEEDED_SORT } },
   });
   await hardRelaunch();
   await assertSeedTookEffect(expectedServer, label, { landing });
@@ -176,7 +176,9 @@ it('Layout lists the layouts, Back returns to the menu, and a pick redraws the t
 
   const saved = await movieDisplaySettings();
   expect(saved.layout_movies, 'saved for the Movies view').toBe('presentation');
-  expect(saved.sortField, 'a layout change is not a view change: the sort stays').toBe(SEEDED_SORT);
+  expect(saved.sort_movies, 'a layout change is not a view change: the sort stays').toBe(
+    SEEDED_SORT,
+  );
   expect(await heldDefaultTab(moviesId), 'and so does the default tab').toBe('movies');
 
   // Leave and come back: the library opens as it was left.

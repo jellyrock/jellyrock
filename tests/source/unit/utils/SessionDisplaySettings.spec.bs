@@ -26,11 +26,11 @@ namespace tests
       m.assertNotInvalid(result)
       m.assertNotInvalid(result.lib1)
       m.assertEqual("Name", result.lib1.sortField)
-      m.assertTrue(result.lib1.sortAscending) ' Should be boolean true
+      m.assertEqual("true", result.lib1.sortAscending)
       m.assertEqual("Favorites", result.lib1.filter)
       m.assertNotInvalid(result.lib2)
       m.assertEqual("DateCreated", result.lib2.sortField)
-      m.assertFalse(result.lib2.sortAscending) ' Should be boolean false
+      m.assertEqual("false", result.lib2.sortAscending)
     end function
 
     @it("returns empty object for invalid input")
@@ -116,23 +116,19 @@ namespace tests
       m.assertEqual("Album", result.music.sortField)
     end function
 
-    @it("converts sortAscending to boolean type")
+    @it("loads a tab's sort as the string it was saved as")
+    ' Every display setting is a string. The sort's direction is inside its value
+    ' (librarySort.parse), so no key is converted on load.
     function _()
-      ' Arrange
       registryData = {
-        "display.lib1.sortAscending": "true",
-        "display.lib2.sortAscending": "false"
+        "display.lib1.sort_movies": "DateCreated:desc",
+        "display.lib2.sort": "SortName:asc"
       }
 
-      ' Act
       result = user.settings.TransformDisplaySettings(registryData)
 
-      ' Assert
-      m.assertTrue(result.lib1.sortAscending = true) ' Boolean true
-      m.assertTrue(result.lib2.sortAscending = false) ' Boolean false
-      ' Verify it's actually boolean type, not string
-      m.assertEqual("roBoolean", type(result.lib1.sortAscending))
-      m.assertEqual("roBoolean", type(result.lib2.sortAscending))
+      m.assertEqual("DateCreated:desc", result.lib1.sort_movies)
+      m.assertEqual("SortName:asc", result.lib2.sort)
     end function
 
     @it("preserves other setting values as strings")
