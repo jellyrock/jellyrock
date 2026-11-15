@@ -9,7 +9,9 @@
 '   m.presenter = new MoviePresenter()
 '   m.presenter.onInit(m)
 
+import "pkg:/source/GridView/libraryGrid.bs"
 import "pkg:/source/GridView/libraryTab.bs"
+import "pkg:/source/utils/headerStrip.bs"
 import "pkg:/source/utils/misc.bs"
 
 class GridPresenterBase
@@ -174,15 +176,17 @@ class GridPresenterBase
   ' @return {object} Grid config with properties:
   '   - translation: [x, y] grid position
   '   - itemSize: [width, height] size of each grid cell
+  '   - itemSpacing: [column gap, row gap] between cells
   '   - rowHeights: [height] array of row heights
   '   - numRows: string number of visible rows
   '   - numColumns: string number of columns
   '   - imageDisplayMode: "scaleToZoom" | "scaleToFit"
   function getGridConfig(_viewMode as string, _layout as string) as object
     return {
-      translation: [96, 60],
-      itemSize: [264, 396],
-      rowHeights: [396],
+      translation: [headerStrip.LEFT, headerStrip.CONTENT_TOP],
+      itemSize: [libraryGrid.POSTER_WIDTH, libraryGrid.POSTER_HEIGHT],
+      rowHeights: [libraryGrid.POSTER_HEIGHT],
+      itemSpacing: [libraryGrid.POSTER_COLUMN_GAP, libraryGrid.POSTER_ROW_GAP],
       numRows: "4",
       numColumns: "6",
       imageDisplayMode: "scaleToZoom"

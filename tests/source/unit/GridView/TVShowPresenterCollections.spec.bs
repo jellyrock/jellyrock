@@ -147,7 +147,7 @@ namespace tests
 
       config = m.presenter.getGridConfig(libraryTab.COLLECTIONS, libraryLayout.COMFORTABLE)
 
-      m.assertEqual(config.translation, [96, 102])
+      m.assertEqual(config.translation, [headerStrip.LEFT, headerStrip.CONTENT_TOP])
       m.assertEqual(config.numRows, "3")
       m.assertEqual(config.numColumns, "6")
     end function

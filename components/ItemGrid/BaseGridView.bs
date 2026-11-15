@@ -11,6 +11,7 @@ import "pkg:/source/constants/imageSize.bs"
 import "pkg:/source/GridView/GenericPresenter.bs"
 import "pkg:/source/GridView/gridPaging.bs"
 import "pkg:/source/GridView/gridQuery.bs"
+import "pkg:/source/GridView/itemSummary.bs"
 import "pkg:/source/GridView/libraryTab.bs"
 import "pkg:/source/GridView/LiveTVPresenter.bs"
 import "pkg:/source/GridView/MoviePresenter.bs"
@@ -25,6 +26,7 @@ import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/displaySettings.bs"
+import "pkg:/source/utils/headerStrip.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/languageFilters.bs"
 import "pkg:/source/utils/misc.bs"
@@ -197,6 +199,7 @@ sub setupNodes()
   m.genreList = m.top.findNode("genreList")
   m.presentationBackdrop = m.top.findNode("presentationBackdrop")
   m.presentationInfo = m.top.findNode("presentationInfo")
+  m.headerStrip = m.top.findNode("headerStrip")
 end sub
 
 ' ============================================================================
@@ -297,6 +300,14 @@ sub restoreScreenFocus()
   restoreGridFocus()
 end sub
 
+' JRScreen hook: Down left the overhang row. The strip is the next thing down while it
+' shows a chip; else the content.
+sub returnFocusFromOverhang()
+  if restoreOverhangIconFocus(true) then return
+  if m.headerStrip.callFunc("focusEntry") = true then return
+  restoreGridFocus()
+end sub
+
 ' Configure the library view from its route. Both in-app navigation and a deep link / cast
 ' supply the rich library node as route.context.item (the resolver passes the node
 ' it already validated), so there is no fetch here. A missing context node is therefore an
@@ -357,6 +368,7 @@ sub showTVGuide()
   m.tvGuide = CreateObject("roSGNode", "Schedule")
   m.tvGuide.observeField("watchChannel", "onTVGuideWatchChannel")
   m.tvGuide.observeField("focusedChannel", "onTVGuideFocusedChannel")
+  m.tvGuide.observeField("focusedSummary", "onTVGuideFocusedSummary")
 
   ' This screen owns the guide's loading wait. Then the current filter and search state.
   m.tvGuide.hostScreen = m.top
@@ -366,6 +378,8 @@ sub showTVGuide()
   ' Hide the grid and show the guide
   m.itemGrid.visible = false
   m.top.appendChild(m.tvGuide)
+  ' The guide draws over everything before it; the strip stays on top of the guide
+  m.top.appendChild(m.headerStrip)
   m.tvGuide.callFunc("startLoading")
   m.tvGuide.lastFocus.setFocus(true)
   m.top.lastFocus = m.tvGuide.lastFocus
@@ -378,6 +392,7 @@ sub hideTVGuide()
   m.log.debug("Hiding TV Guide")
   m.tvGuide.unobserveField("watchChannel")
   m.tvGuide.unobserveField("focusedChannel")
+  m.tvGuide.unobserveField("focusedSummary")
   ' The guide is a child of this view, not a routed screen, so nothing else will tear it down:
   ' without this its channel and program fetches keep running after it is gone.
   m.tvGuide.callFunc("onDestroy")
@@ -402,6 +417,11 @@ sub onTVGuideWatchChannel()
 
   ' Reset watchChannel to allow same channel to be selected again
   m.tvGuide.watchChannel = invalid
+end sub
+
+' The guide's focus moved: the strip names the program, as it names a grid's focused item
+sub onTVGuideFocusedSummary()
+  updateStrip(invalid)
 end sub
 
 ' Handle channel focus from TV Guide
@@ -586,6 +606,8 @@ sub loadView()
   if m.presenter.showsTVGuide(m.view)
     ' Update title before early return to ensure overhang shows correct title on first load
     updateTitle()
+    updateStripChips()
+    updateStrip(invalid)
     showTVGuide()
     stopGridSpinner()
     ' The guide is this view's finished surface; the grid never loads on this path.
@@ -602,6 +624,8 @@ sub loadView()
 
   ' Update title after the query is final
   updateTitle()
+  updateStripChips()
+  updateStrip(invalid)
 
   ' Only a Genres run writes genreSkeletons, and only before its samples are fetched: it
   ' is a head start on drawing, not a second delivery channel. `content` still carries the
@@ -795,6 +819,10 @@ sub configureGrid()
 
   if isValid(config.rowHeights)
     m.itemGrid.rowHeights = config.rowHeights
+  end if
+
+  if isValid(config.itemSpacing)
+    m.itemGrid.itemSpacing = config.itemSpacing
   end if
 
   if isValid(config.numRows)
@@ -1054,6 +1082,7 @@ sub onItemDataLoaded(msg)
   end if
 
   stopGridSpinner()
+  if isFirstPage then updateStrip(m.selectedFavoriteItem)
 
   ' The page may not have been enough: a fast scroller can still be short of runway.
   loadMoreIfShort()
@@ -1260,7 +1289,7 @@ end sub
 ' up to the tabs while it loaded), or the options dialog, where moving it loses their place
 ' and their next OK is dropped or commits the wrong entry. On the alpha menu it stays there.
 sub focusAfterLoad()
-  if not m.isShown or m.options.visible or isOverhangRowFocused() then return
+  if not m.isShown or m.options.visible or isOverhangRowFocused() or m.headerStrip.isInFocusChain() then return
   if m.top.isAlphaActive
     m.alphaMenu.setFocus(true)
   else
@@ -1303,6 +1332,7 @@ sub onItemFocused()
 
   updateTitle()
   m.selectedFavoriteItem = m.itemGrid.content.getChild(m.itemGrid.itemFocused)
+  updateStrip(m.selectedFavoriteItem)
 
   gridPaging.trackFocus(m.scrollTracker, itemInt \ m.itemGrid.numColumns, m.gridClock.totalMilliseconds())
   #if perfTiming
@@ -1477,6 +1507,8 @@ sub onGenreItemFocused()
   ' bare ContentNode does not have. Leave the current backdrop up until the row is filled.
   if skeleton.isPlaceholder(focusedItem) then return
 
+  updateStrip(focusedItem)
+
   ' Update backdrop with focused item's backdrop
   m.global.sceneManager.callFunc("setBackgroundImage", getItemBackdropUrl(focusedItem, m.backdropSize))
 end sub
@@ -1601,6 +1633,75 @@ sub optionsClosed()
   end if
 
   focusViewContent()
+end sub
+
+' ============================================================================
+' The header strip
+' ============================================================================
+
+' What the strip says about the tab on show: the focused item on the left (on the TV
+' guide, the focused program), what narrows the tab, and the place in the list.
+sub updateStrip(item as dynamic)
+  content = { title: "", metadata: [], narrowedBy: "", count: "" }
+  position = 0
+  total = 0
+
+  ' Asked of the presenter, not of m.tvGuide: a load writes the strip before it builds the guide
+  if isValid(m.presenter) and m.presenter.showsTVGuide(m.view)
+    summary = invalid
+    if isValid(m.tvGuide) then summary = m.tvGuide.focusedSummary
+    if isValid(summary)
+      content.title = textOrEmpty(summary.title)
+      if type(summary.metadata) = "roArray" then content.metadata = summary.metadata
+      position = summary.position
+      total = summary.total
+    end if
+  else
+    summary = itemSummary.line(item)
+    content.title = summary.title
+    ' The presentation panel, under the strip, writes the metadata as the details screen
+    ' does, so the strip gives the title alone there
+    if not m.presenter.shouldShowPresentationInfo(m.view, m.layout) then content.metadata = summary.metadata
+    ' The grid's position and total. The Genres row list has a counter per row instead.
+    if m.genreList.opacity <> 1
+      position = m.itemGrid.itemFocused + 1
+      total = m.totalRecordCount
+    end if
+  end if
+
+  narrowed = m.voiceBox.text.trim()
+  if narrowed = "" then narrowed = m.nameStartsWith.trim()
+  if narrowed <> "" then content.narrowedBy = translate(translationKeys.LabelFilteredBy, [narrowed])
+
+  if m.showItemCount and position > 0 and total > 0
+    content.count = translate(translationKeys.LabelPositionOfTotal, [position.toStr(), total.toStr()])
+  end if
+
+  m.headerStrip.content = content
+end sub
+
+' The chips' labels, and which of them the tab on show has a use for.
+sub updateStripChips()
+  isGuide = isValid(m.presenter) and m.presenter.showsTVGuide(m.view)
+
+  sortTitle = ""
+  for each sort in offeredSorts()
+    if LCase(textOrEmpty(sort.Name)) = LCase(m.sortField) then sortTitle = textOrEmpty(sort.Title)
+  end for
+  arrow = "↑"
+  if not m.sortAscending then arrow = "↓"
+
+  filterLabel = translate(translationKeys.LabelFilter)
+  active = sessionFilters.count(m.top.parentItem.Id, m.tab)
+  if active > 0 then filterLabel = translate(translationKeys.LabelChipWithValue, [filterLabel, active.toStr()])
+
+  m.headerStrip.chips = {
+    sortLabel: translate(translationKeys.LabelChipWithValue, [translate(translationKeys.LabelSort), sortTitle + " " + arrow]),
+    isSortShown: not isGuide and sortTitle <> "",
+    filterLabel: filterLabel,
+    ' "All" is no filter, so a list of one offers nothing
+    isFilterShown: offeredFilters().count() > 1
+  }
 end sub
 
 ' ============================================================================
@@ -1863,6 +1964,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
   ' a tab with nothing in it (no favorites yet) or still loading must not hold the viewer
   ' away from the tabs. So is the TV guide's first channel row. The alpha menu keeps Up.
   if key = "up"
+    if m.headerStrip.isInFocusChain() then return focusOverhang()
     atTop = false
     if m.itemGrid.isInFocusChain()
       atTop = m.data.getChildCount() = 0 or (m.itemGrid.itemFocused >= 0 and m.itemGrid.itemFocused < m.itemGrid.numColumns)
@@ -1875,7 +1977,13 @@ function onKeyEvent(key as string, press as boolean) as boolean
       ' The guide's own grid keeps Up while it has a row to move to
       atTop = m.tvGuide.callFunc("isAtTop") = true
     end if
-    if atTop then return focusOverhang()
+    if atTop
+      if m.headerStrip.callFunc("focusEntry") = true then return true
+      return focusOverhang()
+    end if
+  else if key = "down" and m.headerStrip.isInFocusChain()
+    focusViewContent()
+    return true
   end if
 
   ' Photos go to ItemDetails like any other item (OK, then itemSelected, then onItemSelected).
@@ -2103,6 +2211,7 @@ sub onDestroy()
   if isValid(m.tvGuide)
     m.tvGuide.unobserveField("watchChannel")
     m.tvGuide.unobserveField("focusedChannel")
+    m.tvGuide.unobserveField("focusedSummary")
     m.tvGuide.callFunc("onDestroy")
     m.tvGuide = invalid
   end if
@@ -2133,6 +2242,7 @@ sub onDestroy()
   m.genreList = invalid
   m.presentationBackdrop = invalid
   m.presentationInfo = invalid
+  m.headerStrip = invalid
   m.channelFocused = invalid
 
   ' Release content nodes

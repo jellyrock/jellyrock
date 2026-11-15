@@ -1,0 +1,211 @@
+import "pkg:/source/utils/headerStrip.bs"
+import "pkg:/source/utils/infoRowFit.bs"
+import "pkg:/source/utils/misc.bs"
+
+const CHIP_SORT = "sort"
+const CHIP_FILTER = "filter"
+' A 63/45 glyph drawn at 30 has about 21 pixels of ink, the Medium font's cap height
+const CHIP_ICON_SIZE = 30
+const CHIP_ICON_GUTTER = 9
+
+sub init()
+  m.title = m.top.findNode("title")
+  m.metadata = m.top.findNode("metadata")
+  m.narrowedBy = m.top.findNode("narrowedBy")
+  m.count = m.top.findNode("count")
+  m.chipNodes = {}
+  m.chipNodes[CHIP_SORT] = m.top.findNode("sortChip")
+  m.chipNodes[CHIP_FILTER] = m.top.findNode("filterChip")
+  m.chipNodes[CHIP_SORT].icon = "pkg:/images/icons/sort_$$RES$$.png"
+  m.chipNodes[CHIP_FILTER].icon = "pkg:/images/icons/filter_$$RES$$.png"
+
+  for each label in [m.title, m.narrowedBy, m.count]
+    label.height = headerStrip.HEIGHT
+    label.translation = [0, headerStrip.TEXT_DROP]
+  end for
+  m.metadata.itemSpacings = [headerStrip.METADATA_SPACING]
+
+  for each id in m.chipNodes
+    chip = m.chipNodes[id]
+    chip.setFields({
+      padding: headerStrip.CHIP_PADDING,
+      minHeight: headerStrip.HEIGHT,
+      iconSize: CHIP_ICON_SIZE,
+      iconGutter: CHIP_ICON_GUTTER,
+      shouldSnapToGrid: true,
+      textDrop: headerStrip.TEXT_DROP
+    })
+    ' A chip reports its size once it has measured its label, and again when the label
+    ' changes: the row is laid out from those sizes.
+    chip.observeField("isReady", "layout")
+  end for
+
+  ' The chips on show, from left to right, and the one focus last left
+  m.shown = []
+  m.lastChip = ""
+end sub
+
+sub onContentChanged()
+  content = m.top.content
+  if not isValid(content) then content = {}
+  m.title.text = textOrEmpty(content.title)
+  setMetadata(content.metadata)
+  m.narrowedBy.text = textOrEmpty(content.narrowedBy)
+  m.count.text = textOrEmpty(content.count)
+  layout()
+end sub
+
+sub onChipsChanged()
+  chips = m.top.chips
+  if not isValid(chips) then chips = {}
+
+  m.shown = []
+  applyChip(CHIP_SORT, textOrEmpty(chips.sortLabel), chips.isSortShown = true)
+  applyChip(CHIP_FILTER, textOrEmpty(chips.filterLabel), chips.isFilterShown = true)
+  layout()
+end sub
+
+sub applyChip(id as string, label as string, isShown as boolean)
+  chip = m.chipNodes[id]
+  isShown = isShown and label <> ""
+  chip.visible = isShown
+  if not isShown then return
+  m.shown.push(id)
+  if chip.text <> label then chip.text = label
+end sub
+
+' Place every part for the widths the texts measure now (headerStrip.fit). Waits while a
+' shown chip has not measured itself: its isReady calls back here.
+sub layout()
+  chipWidths = []
+  for each id in m.shown
+    width = m.chipNodes[id].localBoundingRect().width
+    if width <= 0 then return
+    chipWidths.push(int(width))
+  end for
+
+  metadataWidths = metadataItemWidths()
+  placed = headerStrip.fit({
+    title: naturalWidth(m.title),
+    metadata: metadataRowWidth(metadataWidths),
+    narrowedBy: naturalWidth(m.narrowedBy),
+    count: naturalWidth(m.count),
+    chips: chipWidths
+  }, headerStrip.WIDTH)
+
+  m.title.width = placed.titleWidth
+  fitMetadata(metadataWidths, placed.metadataWidth)
+  m.metadata.translation = [placed.metadataX, headerStrip.TEXT_DROP]
+  m.narrowedBy.width = placed.narrowedByWidth
+  m.narrowedBy.translation = [placed.narrowedByX, headerStrip.TEXT_DROP]
+  m.count.visible = placed.isCountShown
+  if placed.isCountShown
+    m.count.width = 0
+    m.count.translation = [placed.countX, headerStrip.TEXT_DROP]
+  end if
+  for i = 0 to m.shown.count() - 1
+    m.chipNodes[m.shown[i]].translation = [placed.chipXs[i], 0]
+  end for
+end sub
+
+' Rebuild the metadata line: one label per item, a bullet between two.
+sub setMetadata(items as dynamic)
+  m.metadata.removeChildrenIndex(m.metadata.getChildCount(), 0)
+  if type(items) <> "roArray" then return
+  for each item in items
+    if m.metadata.getChildCount() > 0 then m.metadata.appendChild(metadataLabel("•", true))
+    m.metadata.appendChild(metadataLabel(textOrEmpty(item), false))
+  end for
+end sub
+
+function metadataLabel(text as string, isBold as boolean) as object
+  label = CreateObject("roSGNode", "LabelSecondarySmall")
+  label.vertAlign = "center"
+  label.height = headerStrip.HEIGHT
+  label.isBold = isBold
+  label.text = text
+  return label
+end function
+
+' The width of each item of the metadata line, in order (the bullets left out).
+function metadataItemWidths() as object
+  widths = []
+  for i = 0 to m.metadata.getChildCount() - 1 step 2
+    widths.push(-int(-m.metadata.getChild(i).boundingRect().width))
+  end for
+  return widths
+end function
+
+' What sits between two items: the spacing, a bullet, the spacing.
+function metadataSeparatorWidth() as integer
+  if m.metadata.getChildCount() < 2 then return 0
+  return headerStrip.METADATA_SPACING * 2 + (-int(-m.metadata.getChild(1).boundingRect().width))
+end function
+
+' The whole line's width. Summed from the items: a LayoutGroup's own bounding box does not
+' count its children's positions until it has laid out.
+function metadataRowWidth(widths as object) as integer
+  total = 0
+  for each width in widths
+    total += width
+  end for
+  if widths.count() > 1 then total += metadataSeparatorWidth() * (widths.count() - 1)
+  return total
+end function
+
+' Cut the line to `budget` by the details screen's rule (fitTextRow): whole items in
+' order, the one that crosses the budget narrowed so it ends in an ellipsis, the rest
+' dropped.
+sub fitMetadata(widths as object, budget as integer)
+  if widths.count() = 0 then return
+  fit = fitTextRow(widths, metadataSeparatorWidth(), budget, headerStrip.METADATA_MIN_CUT)
+  if fit.keep = widths.count() and fit.cutWidth = 0 then return
+
+  if fit.cutWidth > 0 then m.metadata.getChild((fit.keep - 1) * 2).width = fit.cutWidth
+  lastKept = (fit.keep - 1) * 2
+  childCount = m.metadata.getChildCount()
+  m.metadata.removeChildrenIndex(childCount - lastKept - 1, lastKept + 1)
+end sub
+
+' A label's text width with no box around it, 0 for no text.
+function naturalWidth(label as object) as integer
+  if label.text = "" then return 0
+  label.width = 0
+  return -int(-label.localBoundingRect().width)
+end function
+
+function focusedChip() as string
+  for each id in m.shown
+    if m.chipNodes[id].isInFocusChain() then return id
+  end for
+  return ""
+end function
+
+function focusEntry() as boolean
+  id = headerStrip.entryChip(m.shown, m.lastChip)
+  if id = "" then return false
+  m.lastChip = id
+  m.chipNodes[id].setFocus(true)
+  return true
+end function
+
+' Left and Right walk the chips and stop at the ends; OK reports the chip. Up and Down
+' are the screen's.
+function onKeyEvent(key as string, press as boolean) as boolean
+  if not press then return false
+  focused = focusedChip()
+  if focused = "" then return false
+
+  if key = "left" or key = "right"
+    nextId = headerStrip.nextFocus(m.shown, focused, key)
+    if nextId <> ""
+      m.lastChip = nextId
+      m.chipNodes[nextId].setFocus(true)
+    end if
+    return true
+  else if key = "OK"
+    m.top.chipAction = focused
+    return true
+  end if
+  return false
+end function

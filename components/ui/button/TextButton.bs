@@ -64,6 +64,7 @@ sub init()
   m.top.observeField("iconSize", "onIconSizeChanged")
   m.top.observeField("iconGutter", "onSizeChanged")
   m.top.observeField("shouldSnapToGrid", "onSizeChanged")
+  m.top.observeField("textDrop", "onSizeChanged")
   m.top.observeField("showSelectedIndicator", "onSizeChanged")
   ' Named distinctly from JRTab's own isButtonSelected observer so a subclass can
   ' still react to the same field without displacing the indicator's own toggle.
@@ -247,7 +248,7 @@ sub setSizeAndCenterText()
   ' That is bw/2 + textCenterOffset(iconSpace) in all three cases, so the icon
   ' and underline arithmetic below still reads the same centre it always did.
   m.buttonText.width = buttonWidth - iconSpace
-  m.buttonText.translation = [labelLeft(iconSpace), 0]
+  m.buttonText.translation = [labelLeft(iconSpace), m.top.textDrop]
 
   layoutIcon(buttonWidth, buttonHeight, textWidth, iconSpace)
   ' The underline has to be derived from where the text ACTUALLY landed, not
@@ -370,7 +371,7 @@ sub layoutIcon(buttonWidth as float, buttonHeight as float, textWidth as float, 
 
   ' Center on the caps, not the label box: the box keeps descender room, so the caps sit
   ' above its middle (capsAboveCenter).
-  iconY = int((buttonHeight - m.top.iconSize) / 2 - capsAboveCenter(m.buttonText.font.size))
+  iconY = int((buttonHeight - m.top.iconSize) / 2 - capsAboveCenter(m.buttonText.font.size)) + m.top.textDrop
   if m.top.iconSide = "left"
     ' Sits immediately left of the centred text, one gutter away.
     textLeft = (buttonWidth / 2) + textCenterOffset(iconSpace) - (textWidth / 2)

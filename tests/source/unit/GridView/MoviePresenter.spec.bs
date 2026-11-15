@@ -73,7 +73,6 @@ namespace tests
 
       m.assertEqual(m.logo.uri, "http://server/logo-b")
       m.assertTrue(m.logo.visible)
-      m.assertTrue(m.title.visible)
     end function
 
     @it("ignores a lookup that focus has since moved past")
@@ -142,14 +141,14 @@ namespace tests
 
     @it("puts the presentation backdrop and grid behind the same predicate")
     ' configureBackdrop and configureGrid ask three questions; if they disagree the grid
-    ' sits 650 px down against a fullscreen backdrop, or the panel draws over a full grid.
+    ' sits under an empty panel against a fullscreen backdrop, or the panel draws over a full grid.
     @params("movies", "presentation", true)
     @params("movies", "comfortable", false)
     @params("studios", "presentation", false)
     function _(viewMode, layout, expected)
       m.assertEqual(m.presenter.getBackdropMode(viewMode, layout) = "presentation", expected)
       config = m.presenter.getGridConfig(viewMode, layout)
-      m.assertEqual(config.translation[1] = 650, expected, "the grid drops for the panel only in presentation")
+      m.assertEqual(config.translation[1] > headerStrip.CONTENT_TOP, expected, "the grid drops for the panel only in presentation")
     end function
 
   end class

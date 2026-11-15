@@ -119,6 +119,8 @@ export const BUDGETS = new Map([
 
   // Asynchronous teardown that no app field reports: see `retainedAfter`'s docblock.
   ['tests/rta/specs/leaks.spec.js', 1],
+  // Paint settle before each capture: posters and backdrops draw after the grid reports loaded.
+  ['tests/rta/specs/header-strip-bench.spec.js', 1],
 
   // Measurement windows: the dwell IS the quantity being measured, so gating it on a
   // signal would change what is measured.

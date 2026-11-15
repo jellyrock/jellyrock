@@ -226,3 +226,5 @@ this table automatically.
 | `checkbox_checked.svg` | `check_box` | Rounded | 500 | 1 | `24px` | 2026-11-15 |
 | `chevron_up.svg` | `keyboard_arrow_up` | Rounded | 500 | 0 | `24px` | 2026-11-15 |
 | `chevron_down.svg` | `keyboard_arrow_down` | Rounded | 500 | 0 | `24px` | 2026-11-15 |
+| `sort.svg` | `swap_vert` | Rounded | 500 | 0 | `24px` | 2026-11-15 |
+| `filter.svg` | `filter_list` | Rounded | 500 | 0 | `24px` | 2026-11-15 |
