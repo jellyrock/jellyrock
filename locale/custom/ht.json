@@ -23,6 +23,7 @@
   "LabelMovies": "Fim",
   "LabelMusicVideos": "Videyo Mizik",
   "LabelMyMedia": "Medya Pa'm",
+  "LabelNextUp": "Pwochen an",
   "LabelPersonKindActor": "Aktè",
   "LabelPersonKindAlbumArtist": "Atis Albòm",
   "LabelPersonKindArtist": "Atis",
@@ -31,5 +32,6 @@
   "LabelRemove": "Retire",
   "LabelRepeatRowAll": "Tout",
   "LabelShows": "Emisyon yo",
-  "LabelSongs": "Mizik yo"
+  "LabelSongs": "Mizik yo",
+  "LabelTvShows": "Emisyon Tele"
 }

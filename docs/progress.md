@@ -957,11 +957,21 @@ Closes after a measurement on the real path: a capture or an ODC read of the ove
 
 A SyncPlay Buffering report takes 0.35 to 0.6 s to reach the server's handling: the anchor log line (`SyncPlayManager.anchorGroupPause`, "group paused for this member's buffering", `reportLatencyMs`) measured 345 to 577 ms over eight reloads on a Stick 4K against a local Jellyfin 12.4.0 on a wired LAN, 2026-11-09. The group plays on for that long after this member stalls or reloads before the server pauses it, and that distance is what the drift correction then closes after the `Unpause`. The report goes out through the fire-and-forget side-effect queue (`SubmitSideEffect`, `SideEffectTask`), so the time may be the queue's, the network's or the server's. Measure where it goes (a timestamp when the request leaves the task, against the anchor's arrival); if the queue holds it, give Buffering and Ready a path that sends at once. Not now: the anchor (decision `syncplay-reload-starts-where-group-is`) keeps the Ready exact whatever the latency, so this is a quality gain, not a correctness fix.
 
-#### The skip-segment notification joins two translated words, so word order is wrong in many languages `[fid: skip-label-joined-to-segment-name]` `[captured 2026-11-15]`
+#### Translated labels are joined to other text in code, so word order is wrong in many languages `[fid: skip-label-joined-to-segment-name]` `[captured 2026-11-15]`
 
-`VideoPlayerView.bs` builds the media-segment notification as `translate(translationKeys.ButtonSkip) + " " + segmentLabel`. Word order then follows English in every language: German reads `Überspringen Rückblick` where it should be `Rückblick überspringen`. Found while seeding `ButtonSkip`, `LabelRecap` and `LabelPreview` in the first `/translation-import` batch.
+Code builds sentences from a translated fragment plus a value (`translate(translationKeys.X) + " " + value`, or the template-string form), so word order follows English in every language. A search for those two forms matched 37 lines with 15 keys in 9 files (2026-11-15). Examples composed from the current locale files: Spanish `LabelStarts` + day reads `Comienza el hoy` (the translator expected a date), German `LabelViewAll` + name reads `Alle anzeigen Filme`, German `ButtonSkip` + segment name reads `Überspringen Rückblick`. Found while seeding `ButtonSkip` in `/translation-import` batch 1; batch 2 found the rest.
 
-To close: give the notification one string with a placeholder (for example a `MessageSkipSegment` key, "Skip {0}") or one key per segment type, then map or translate it. Needs a device check of the segment notification, so it was not done in that PR.
+The sites: `ProgramDetails.bs` (`LabelStarted`, `LabelStarts`, `LabelEnded` + day + time; `LabelStartedAt`, `LabelStartsAt`, `LabelEndedAt` + time), `HomeRows.bs` (`LabelRecentlyAddedIn` + library name), `LoadItemsTask2.bs` (`LabelViewAll` + name), `VideoPlayerView.bs` (`ButtonSkip` + segment name, `LabelNextEpisode` + countdown), `ItemDetails.bs` (`LabelOn` + studio, `LabelAt` + air time, `LabelAdded` + date), `AudioPlayerView.bs` (`LabelTrack` + `LabelPositionOfTotal`). Number + unit (`LabelMins`) and the abbreviations (`LabelCh`, `LabelS`, `LabelE`) join the same way. The joins came with the fork; nothing has tried to fix them, and no test reaches the joined text (`videoNotifications.spec.bs` covers only the notice timing).
+
+Options:
+
+- `phrases` (recommended): turn the sentence fragments into about 11 placeholder strings ("Starts {0}, {1}", "Recently added in {0}", "Skip {0}") and update the call sites; leave number + unit and the abbreviations. About 11 strings restart untranslated until a seeding batch or Weblate fills them; needs a device pass on Live TV, Home and the OSD.
+- `all`: `phrases` plus number + unit and the abbreviations (`"{0} mins"`, `"S{0}E{1}"`): about 15 new keys, more untranslated strings for little gain where the order already holds.
+- `guard` (recommended with `phrases`): a lint check that flags these joins, with a baseline of today's count, so no new ones are added. It stops the spread but fixes nothing alone.
+
+To close: build `phrases` with `guard` in its own PR, then map or translate the new strings.
+
+Not checked: none of these strings was watched on a device (the examples are composed from the locale files); whether the seed sources offer placeholder versions that could seed the new strings; whether number + unit order (`"45 mins"`, `"Ch 5"`) holds in every language.
 
 ### source
 

@@ -22,6 +22,7 @@
   "LabelLibraries": "Lyvervaow",
   "LabelMovies": "Fylmow",
   "LabelMusicVideos": "Gwydhyow Ilow",
+  "LabelNextUp": "Nessa",
   "LabelPersonKindActor": "Gwarier",
   "LabelPersonKindAlbumArtist": "Artydh Albom",
   "LabelPersonKindAuthor": "Awtour",
@@ -30,5 +31,6 @@
   "LabelRepeatRowAll": "Oll",
   "LabelShows": "Diskwedhyansow",
   "LabelSongs": "Kanow",
+  "LabelTvShows": "Towlennow PW",
   "LanguageKw": "kernewek"
 }
