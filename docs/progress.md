@@ -1777,6 +1777,16 @@ Decision `reload-in-place-one-path` fixed a second gear, track or version pick m
 
 Not now: it needs a Home row that opens an item on every run, which the shared demo server does not promise. Closes when such a row is available (for example a Continue Watching fixture the spec seeds itself) and the spec opens an item from Home, presses Back, and waits for `#imageFader.uri` to read empty.
 
+#### Upstream watch: drop the `roku-test-automation` closed-socket patch once upstream guards it `[fid: rta-closed-socket-patch-upstream]` `[captured 2026-11-15]`
+
+Watching upstream: `roku-test-automation` releases after 2.2.2 (including the 3.0.0-alpha line) that guard `handleClientSocketEvent()` and `closeSocket()` in `device/components/RTA_OnDeviceComponentTask.brs` against a client socket already closed.
+
+Both functions call a method on `m.clientSockets[id]` without checking it, and `closeSocket()` deletes that id, so an event delivered for a socket already closed stops the app in the debugger with `runtime error &hec`. Every RTA case after it then times out. Seen once in a full `library-tabs` run on 2026-11-15, and reproduced on a device by opening and closing connections to port 9000 rapidly. 3.0.0-alpha.4 still has the unguarded code. `patches/roku-test-automation+2.2.2.patch` adds the two checks, and `tests/scripts/unit/rta-closed-socket-guard.test.js` pins them.
+
+Not reported upstream yet: a report is a public post, so it waits for the operator's yes.
+
+When it moves: if the release guards both functions, delete the patch and its test. Otherwise regenerate the patch on any version bump with `npx patch-package roku-test-automation`, since its filename pins 2.2.2. A bump the patch still applies to only warns about the mismatch. One it no longer applies to fails `npm ci` on CI, while a local install prints the error and carries on without the patch, and `rta-closed-socket-guard.test.js` then fails in `test:scripts`.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`
