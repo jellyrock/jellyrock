@@ -2,6 +2,7 @@ import "pkg:/source/GridView/GenericPresenter.bs"
 import "pkg:/source/GridView/gridQuery.bs"
 import "pkg:/source/GridView/MusicPresenter.bs"
 import "pkg:/source/GridView/TVShowPresenter.bs"
+import "pkg:/source/utils/languageFilters.bs"
 import "pkg:/source/utils/paging.bs"
 
 namespace tests
@@ -21,8 +22,7 @@ namespace tests
         searchTerm: "",
         sortField: "DateCreated",
         sortAscending: false,
-        filter: "Favorites",
-        filterOptions: { Genres: "Drama" }
+        filters: { Status: ["Played"], Genres: ["Drama"] }
       }
     end function
 
@@ -32,6 +32,20 @@ namespace tests
         { Name: "movies", Title: "Movies" },
         { Name: "favorites", Title: "Favorites", View: "movies", IsFavorite: true },
         { Name: "genres", Title: "Genres" }
+      ]
+    end function
+
+    ' A movie library's filter list as the Star panel gets it, categories included.
+    private function panelFilters() as object
+      return [
+        { Name: "All" },
+        { Name: "Favorites" },
+        { Name: "Played" },
+        { Name: "Unplayed" },
+        { Name: "Genres", Options: ["Action", "Science Fiction"], Delimiter: "|" },
+        { Name: "Years", Options: ["1999", "2001"], Delimiter: "," },
+        { Name: languageFilters.AUDIO_KEY, Options: [], Delimiter: languageFilters.PANEL_DELIMITER },
+        { Name: languageFilters.SUBTITLE_KEY, Options: [], Delimiter: languageFilters.PANEL_DELIMITER }
       ]
     end function
 
@@ -56,7 +70,7 @@ namespace tests
       m.assertEqual(query.searchTerm, "")
       m.assertEqual(query.sortField, "DateCreated")
       m.assertEqual(query.sortAscending, false)
-      m.assertEqual(query.filter, "Favorites")
+      m.assertEqual(query.filter, "Played")
       m.assertEqual(query.filterOptions, { Genres: "Drama" })
       m.assertEqual(query.itemId, "lib-1")
       m.assertEqual(query.isRecursive, true)
@@ -71,12 +85,215 @@ namespace tests
     @it("carries isFavorite beside a filter, so the two combine")
     function _()
       state = m.state()
-      state.filter = "Played"
       state.isFavorite = true
       query = gridQuery.build(state, { Id: "lib-1" }, "movies", invalid)
 
       m.assertTrue(query.isFavorite)
       m.assertEqual(query.filter, "Played")
+    end function
+
+    @it("asks for everything when the tab has no filters")
+    function _()
+      state = m.state()
+      state.filters = {}
+      query = gridQuery.build(state, { Id: "lib-1" }, "movies", invalid)
+
+      m.assertEqual(query.filter, "All")
+      m.assertEqual(query.filterOptions, {})
+      m.assertFalse(query.isFavorite)
+
+      state.Delete("filters")
+      m.assertEqual(gridQuery.build(state, { Id: "lib-1" }, "movies", invalid).filter, "All", "no map at all")
+    end function
+
+    @it("sends the Favorites filter as isFavorite, beside a status")
+    function _()
+      state = m.state()
+      state.filters = { Favorites: ["Favorites"], Status: ["Unplayed"] }
+      query = gridQuery.build(state, { Id: "lib-1" }, "albums", invalid)
+
+      m.assertTrue(query.isFavorite)
+      m.assertEqual(query.filter, "Unplayed")
+      m.assertEqual(query.filterOptions, {}, "neither is a request parameter of its own")
+    end function
+
+    @it("joins each category's values for the server, and categories combine")
+    ' Genres and ratings are free text split by a pipe; years are a comma list.
+    function _()
+      state = m.state()
+      state.filters = { Genres: ["Action", "Science Fiction"], Years: ["1999", "2001"], OfficialRatings: ["PG"] }
+      query = gridQuery.build(state, { Id: "lib-1" }, "movies", invalid)
+
+      m.assertEqual(query.filterOptions, { Genres: "Action|Science Fiction", Years: "1999,2001", OfficialRatings: "PG" })
+      m.assertEqual(query.filter, "All")
+    end function
+
+    @it("flattens the language values into the one comma list the server accepts")
+    ' One language's value is already several codes; a pipe between them returns nothing.
+    function _()
+      state = m.state()
+      state.filters = {}
+      state.filters[languageFilters.SUBTITLE_KEY] = ["fra,fre", "deu,ger"]
+      state.filters[languageFilters.AUDIO_KEY] = ["jpn"]
+      query = gridQuery.build(state, { Id: "lib-1" }, "movies", invalid)
+
+      m.assertEqual(query.filterOptions[languageFilters.SUBTITLE_KEY], "fra,fre,deu,ger")
+      m.assertEqual(query.filterOptions[languageFilters.AUDIO_KEY], "jpn")
+    end function
+
+    @it("reads a category whatever case its key comes back in")
+    ' The map crosses a node field, which does not promise to keep a key's spelling.
+    function _()
+      state = m.state()
+      state.filters = { status: ["Resumable"], favorites: ["Favorites"] }
+      query = gridQuery.build(state, { Id: "lib-1" }, "movies", invalid)
+
+      m.assertEqual(query.filter, "Resumable")
+      m.assertTrue(query.isFavorite)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resolveSort()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps a saved sort the tab's list offers")
+    function _()
+      sorts = [{ Name: "SortName" }, { Name: "DateCreated" }]
+      sort = gridQuery.resolveSort({ field: "DateCreated", ascending: false }, sorts)
+
+      m.assertEqual(sort.field, "DateCreated")
+      m.assertFalse(sort.ascending)
+    end function
+
+    @it("falls back to the title, ascending, from a sort the tab does not offer")
+    ' Sort lists differ per tab: a music Genres tab offers no Date Added.
+    function _()
+      sorts = [{ Name: "SortName" }, { Name: "Random" }]
+      sort = gridQuery.resolveSort({ field: "DateCreated", ascending: false }, sorts)
+
+      m.assertEqual(sort.field, "SortName")
+      m.assertTrue(sort.ascending)
+    end function
+
+    @it("falls back when nothing is saved")
+    function _()
+      sort = gridQuery.resolveSort(invalid, [{ Name: "SortName" }])
+
+      m.assertEqual(sort.field, "SortName")
+      m.assertTrue(sort.ascending)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("delimitersOf()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("joins genres and parental ratings with a pipe, in the panel and the request")
+    ' Free text that may hold a comma
+    function _()
+      m.assertEqual(gridQuery.delimitersOf("Genres"), { panel: "|", wire: "|" })
+      m.assertEqual(gridQuery.delimitersOf("OfficialRatings"), { panel: "|", wire: "|" })
+    end function
+
+    @it("joins years with a comma in both")
+    function _()
+      m.assertEqual(gridQuery.delimitersOf("Years"), { panel: ",", wire: "," })
+      m.assertEqual(gridQuery.delimitersOf("years"), { panel: ",", wire: "," }, "a key read back lowercase")
+    end function
+
+    @it("separates languages with a pipe in the panel and a comma in the request")
+    ' One language's value is already a comma list of codes
+    function _()
+      expected = { panel: languageFilters.PANEL_DELIMITER, wire: languageFilters.CODE_DELIMITER }
+      m.assertEqual(gridQuery.delimitersOf(languageFilters.AUDIO_KEY), expected)
+      m.assertEqual(gridQuery.delimitersOf(LCase(languageFilters.SUBTITLE_KEY)), expected)
+    end function
+
+    @it("uses a pipe for a category it does not name")
+    function _()
+      m.assertEqual(gridQuery.delimitersOf("Studios"), { panel: "|", wire: "|" })
+      m.assertEqual(gridQuery.delimitersOf(invalid), { panel: "|", wire: "|" })
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("filtersFromPanel() / filtersToPanel()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads All as no filter")
+    function _()
+      m.assertEqual(gridQuery.filtersFromPanel("All", {}), {})
+      m.assertEqual(gridQuery.filtersFromPanel(invalid, invalid), {})
+    end function
+
+    @it("reads a plain filter as the status, and Favorites as its own category")
+    function _()
+      m.assertEqual(gridQuery.filtersFromPanel("Unplayed", {}), { Status: ["Unplayed"] })
+      m.assertEqual(gridQuery.filtersFromPanel("Favorites", {}), { Favorites: ["Favorites"] })
+    end function
+
+    @it("reads a category the panel reports with no values as no filter")
+    ' The panel reports a category it offers with an empty list as its plain filter name
+    function _()
+      m.assertEqual(gridQuery.filtersFromPanel("Genres", {}), {})
+      m.assertEqual(gridQuery.filtersFromPanel("Years", invalid), {})
+      m.assertEqual(gridQuery.filtersFromPanel("Resumable", {}), { Status: ["Resumable"] }, "a status still counts")
+    end function
+
+    @it("splits a ticked category by its own panel delimiter")
+    function _()
+      filters = gridQuery.filtersFromPanel("Genres", { Genres: "Action|Science Fiction" })
+      m.assertEqual(filters, { Genres: ["Action", "Science Fiction"] })
+
+      filters = gridQuery.filtersFromPanel("Years", { Years: "1999,2001" })
+      m.assertEqual(filters, { Years: ["1999", "2001"] })
+
+      ' One language's value keeps its comma: the panel separates languages with a pipe
+      panelOptions = {}
+      panelOptions[languageFilters.AUDIO_KEY] = "fra,fre|jpn"
+      filters = gridQuery.filtersFromPanel(languageFilters.AUDIO_KEY, panelOptions)
+      m.assertEqual(filters[languageFilters.AUDIO_KEY], ["fra,fre", "jpn"])
+    end function
+
+    @it("gives the panel back exactly what it reported")
+    ' The pair is tested as a round trip: a disagreement is a filter in force that the
+    ' panel shows as changed, or as not ticked.
+    function _()
+      offered = m.panelFilters()
+      languageOptions = {}
+      languageOptions[languageFilters.SUBTITLE_KEY] = "fra,fre|deu,ger"
+      reports = [
+        { filter: "All", filterOptions: {} },
+        { filter: "Played", filterOptions: {} },
+        { filter: "Favorites", filterOptions: {} },
+        { filter: "Genres", filterOptions: { Genres: "Action|Science Fiction" } },
+        { filter: "Years", filterOptions: { Years: "1999,2001" } },
+        { filter: languageFilters.SUBTITLE_KEY, filterOptions: languageOptions }
+      ]
+
+      for each report in reports
+        filters = gridQuery.filtersFromPanel(report.filter, report.filterOptions)
+        panel = gridQuery.filtersToPanel(filters, offered)
+        m.assertEqual(panel.filter, report.filter)
+        m.assertEqual(panel.filterOptions, report.filterOptions)
+      end for
+    end function
+
+    @it("names a category as the list spells it, though the map lowercases its key")
+    ' The panel compares names exactly: "genres" for "Genres" would read as a change on
+    ' every close, and reload the grid.
+    function _()
+      filters = {}
+      filters["genres"] = ["Action"]
+      m.assertEqual(gridQuery.filtersToPanel(filters, m.panelFilters()).filter, "Genres")
+      m.assertEqual(gridQuery.filtersToPanel({ status: ["played"] }, m.panelFilters()).filter, "Played")
+    end function
+
+    @it("shows a language category by the panel's delimiter before its list has loaded")
+    function _()
+      filters = {}
+      filters[languageFilters.AUDIO_KEY] = ["fra,fre", "jpn"]
+      panel = gridQuery.filtersToPanel(filters, [{ Name: "All" }])
+
+      m.assertEqual(panel.filterOptions[languageFilters.AUDIO_KEY], "fra,fre|jpn")
     end function
 
     @it("applies what the presenter sets for the view")
@@ -472,12 +689,11 @@ namespace tests
       m.assertTrue(gridQuery.showsFavorites(query), "narrowed by another filter and a letter")
     end function
 
-    @it("is true for the Favorites filter, in any case and with stray spaces")
+    @it("is true for the Favorites filter, which build() sends as isFavorite")
     function _()
-      query = m.favoritesQuery()
-      query.isFavorite = false
-      query.filter = " favorites "
-      m.assertTrue(gridQuery.showsFavorites(query))
+      state = m.state()
+      state.filters = { Favorites: ["Favorites"] }
+      m.assertTrue(gridQuery.showsFavorites(gridQuery.build(state, { Id: "lib-1" }, "albums", invalid)))
     end function
 
     @it("is false for a query that shows no favorites, and for none")
