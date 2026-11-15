@@ -1,5 +1,5 @@
 diff --git a/node_modules/roku-test-automation/device/components/RTA_OnDeviceComponentTask.brs b/node_modules/roku-test-automation/device/components/RTA_OnDeviceComponentTask.brs
-index eae5df9..2586f8d 100644
+index eae5df9..13a1a13 100644
 --- a/node_modules/roku-test-automation/device/components/RTA_OnDeviceComponentTask.brs
 +++ b/node_modules/roku-test-automation/device/components/RTA_OnDeviceComponentTask.brs
 @@ -106,12 +106,17 @@ end sub
@@ -14,7 +14,7 @@ index eae5df9..2586f8d 100644
  sub handleClientSocketEvent(messageSocketId as String)
  	socket = m.clientSockets[messageSocketId]
 +	if socket = invalid then
-+		' An event can arrive for a socket we already closed. A partial request for it can never complete
++		' An event can arrive for a socket we already closed. A partial request for it can never complete.
 +		m.receivingRequests.delete(messageSocketId)
 +		return
 +	end if

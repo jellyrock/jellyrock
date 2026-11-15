@@ -1785,7 +1785,7 @@ Both functions call a method on `m.clientSockets[id]` without checking it, and `
 
 Not reported upstream yet: a report is a public post, so it waits for the operator's yes.
 
-When it moves: if the release guards both functions, delete the patch and its test. Any version bump needs the patch renamed or regenerated, since its filename pins 2.2.2, and `patch-package` fails the install until it is.
+When it moves: if the release guards both functions, delete the patch and its test. Otherwise regenerate the patch on any version bump with `npx patch-package roku-test-automation`, since its filename pins 2.2.2. A bump the patch still applies to only warns about the mismatch. One it no longer applies to fails `npm ci` on CI, while a local install prints the error and carries on without the patch, and `rta-closed-socket-guard.test.js` then fails in `test:scripts`.
 
 ### docs
 
