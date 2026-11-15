@@ -47,11 +47,20 @@
          at the slot's own size it shrank to about 20px. -->
     <Poster id="rowIcon" visible="false" />
 
+    <!-- A checklist's checkbox, the gutter's third occupant: an empty box, or a
+         ticked one in colorSecondary (a toggle's on-state). Drawn on every row of
+         a checklist, so it is what says a row can be ticked; it never shares the
+         slot, because a checklist marks no current option and carries no icons.
+         Sized and placed like rowIcon: the same padded icon files. -->
+    <Poster id="checkBox" visible="false" />
+
     <LabelPrimaryMedium id="rowLabel" horizAlign="left" vertAlign="center" />
   </children>
   <interface>
     <!-- The MarkupList item-component contract (matches JRRowItem's). itemContent
-         carries `title` plus the `isSelected` flag JRListDialog adds to it. -->
+         carries `title` plus the flags JRListDialog adds to it: `isSelected`, and
+         for a checklist `isCheckable` and `isChecked`. The handler also
+         runs when one of those fields changes, which is how a tick redraws. -->
     <field id="itemContent" type="node" onChange="onItemContentChanged" />
     <field id="width" type="float" value="0" onChange="onSizeChanged" />
     <field id="height" type="float" value="0" onChange="onSizeChanged" />

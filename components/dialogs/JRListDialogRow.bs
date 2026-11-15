@@ -18,6 +18,7 @@ sub init()
   m.selectedBackground = m.top.findNode("selectedBackground")
   m.checkIcon = m.top.findNode("checkIcon")
   m.rowIcon = m.top.findNode("rowIcon")
+  m.checkBox = m.top.findNode("checkBox")
   m.rowLabel = m.top.findNode("rowLabel")
   m.hasGutter = true
 
@@ -35,6 +36,11 @@ sub init()
   m.rowIcon.loadHeight = ICON_BUTTON_ICON_SIZE
   m.rowIcon.loadDisplayMode = "limitSize"
   m.rowIcon.blendColor = constants.colorTextPrimary
+  m.checkBox.width = ICON_BUTTON_ICON_SIZE
+  m.checkBox.height = ICON_BUTTON_ICON_SIZE
+  m.checkBox.loadWidth = ICON_BUTTON_ICON_SIZE
+  m.checkBox.loadHeight = ICON_BUTTON_ICON_SIZE
+  m.checkBox.loadDisplayMode = "limitSize"
   m.selectedBackground.blendColor = constants.colorBackgroundSecondary
   ' Sized 1:1 with the source bitmap so it renders crisp at native resolution,
   ' the same way the app's other inline icons are declared.
@@ -50,6 +56,8 @@ sub init()
   m.checkIcon.blendColor = constants.colorSecondary
 end sub
 
+' Runs when the list hands the row its content, and again whenever a field on that
+' content node changes: that is how a tick redraws a row that is already on screen.
 sub onItemContentChanged()
   content = m.top.itemContent
   if not isValid(content) then return
@@ -75,6 +83,16 @@ sub onItemContentChanged()
   m.rowIcon.uri = iconUri
   m.rowIcon.visible = iconUri <> "" and not isSelected
 
+  ' A checklist row draws its checkbox and nothing else in the gutter.
+  isCheckable = isValid(content.isCheckable) and content.isCheckable
+  m.checkBox.visible = isCheckable
+  if isCheckable
+    m.checkIcon.visible = false
+    m.selectedBackground.visible = false
+    m.rowIcon.visible = false
+    drawCheckedState()
+  end if
+
   ' Whether this list keeps the gutter (dialogLayout.listHasGutter), stamped on every
   ' row by JRListDialog. Absent (a row built by anything else) keeps it, as before.
   m.hasGutter = not isValid(content.hasGutter) or content.hasGutter
@@ -90,6 +108,23 @@ sub onItemContentChanged()
   ' weight for everyone else.
 
   layoutRow()
+end sub
+
+' The ticked box is colorSecondary, a toggle's on-state (design-system.md); the
+' empty one is text-colored. The two also differ in shape, so the state holds in
+' any theme.
+sub drawCheckedState()
+  content = m.top.itemContent
+  if not isValid(content) then return
+
+  constants = m.global.constants
+  if isValid(content.isChecked) and content.isChecked
+    m.checkBox.uri = constants.iconCheckboxChecked
+    m.checkBox.blendColor = constants.colorSecondary
+  else
+    m.checkBox.uri = constants.iconCheckbox
+    m.checkBox.blendColor = constants.colorTextPrimary
+  end if
 end sub
 
 sub onSizeChanged()
@@ -108,6 +143,7 @@ sub layoutRow()
   ' Centred on the slot, so the padding around the glyph overhangs it on every side.
   iconOffset = int((ICON_BUTTON_ICON_SIZE - LIST_ROW_ICON_SIZE) / 2)
   m.rowIcon.translation = [LIST_ROW_PADDING - iconOffset, int((rowHeight - ICON_BUTTON_ICON_SIZE) / 2)]
+  m.checkBox.translation = m.rowIcon.translation
 
   labelInset = listRowLabelInset(m.hasGutter)
   m.rowLabel.translation = [labelInset, 0]
