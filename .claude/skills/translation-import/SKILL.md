@@ -54,7 +54,7 @@ With `--key`, pass each key and drop `--rank --limit`. The header gives the tota
 
 For each key, work out both sides before deciding.
 
-1. **What the JellyRock string is.** Find where it shows: `grep -rn "translationKeys\.{{Key}}\b" source components` and `grep -n '"{{Key}}"' settings/settings.json`. Note its role (a button, a heading, a status phrase, a setting description) and its shape (a bare word, a phrase with `{0}`, a sentence).
+1. **What the JellyRock string is.** Find where it shows: `grep -rn "translationKeys\.{{Key}}\b" source components` and `grep -n '"{{Key}}"' settings/settings.json`. Note its role (a button, a heading, a status phrase, a setting description) and its shape (a bare word, a phrase with `{0}`, a sentence). If the code joins it to another string (`translate(…) + " " + …`), the code fixes the word order, which is wrong in languages that order words differently: the mapping can still be right, so judge it as usual and name the join in the report, since a placeholder string such as "Skip {0}" is the fix.
 2. **What each candidate is.** Read the source key's name and its values in the shown languages. A name that names another thing (`Priority…`, `MediaInfo…` against a non-media string, `…Value` for a formatted value), or values that read with another meaning, rule it out.
 3. **Unclear after both?** Read the source's code for those candidates, one call per source: `npm run translations:seed -- context --source {{id}} --key {{K1}} --key {{K2}} …`. It shows where the source uses each key at its pinned commit. "No use outside the string files" means a key built at runtime or unused: treat that as unclear, not as a match.
 
@@ -63,6 +63,8 @@ Then give each candidate exactly one outcome:
 - **map**: same meaning and same shape. Punctuation is shape: a trailing period, a colon or an ellipsis on one side only rules a candidate out. Map every source whose candidate qualifies; `sources.yml` order decides which fills first, and the others cover locales it lacks.
 - **reject**: a different meaning or shape you can name. Record it under the key's `reject:` with that reason, so `suggest` never offers it again.
 - **leave**: still unclear after the code. Write nothing for it, and list it in the report as needing a person. Never reject a candidate you could not prove wrong.
+
+**A count key is one set.** Its `Zero`, `One` and `Many` forms fill a locale only together (the seeder refuses a partial set as `plural-set-incomplete`), because `translatePlural()` falls back to English per form. Judge all three; a set whose `Zero` has no exact-text candidate fills nothing, so search the sources for one by meaning ("No songs") and list the set in the report if none fits.
 
 Casing does not decide a match. The seeder never re-cases a value and flags lowercase-first cells for Step 5.
 
@@ -77,7 +79,8 @@ npm run translations:seed > "{{scratchpad}}/dry.txt"
 ```
 
 - **Needs re-review** must list none of this batch's keys: one there means an English string was copied wrong.
-- **Casing to review:** for each flagged cell, apply the rule in the how-to (exclude it only when the base language gives a better-cased value; a lowercase word in the user's language still beats English).
+- **Casing to review:** for each flagged cell, apply the rule in the how-to (exclude it only when the base language gives a better-cased value; a lowercase word in the user's language still beats English). Lowercase count strings ("{0} álbumes") are expected, since most languages lowercase a counted noun: keep them without re-deriving the rule.
+- **`plural-set-incomplete`** refusals are expected for a count set with no `Zero` in that locale; they are not a mapping error.
 - **Not written:** a placeholder or markup refusal on many locales of one key means its shape differs after all; reconsider the mapping.
 - **Values:** recheck each mapped key's values in the languages you read (from `batch.yml`). Drop a wrong cell with `exclude: { {{locale}}: {{reason}} }` under that source.
 
