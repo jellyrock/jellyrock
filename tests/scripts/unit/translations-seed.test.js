@@ -235,6 +235,79 @@ describe('planSeed', () => {
   });
 });
 
+describe('planSeed plural sets', () => {
+  const en = {
+    LabelSongCountZero: 'No songs',
+    LabelSongCountOne: '1 song',
+    LabelSongCountMany: '{0} songs',
+  };
+  const pluralSource = (forms) =>
+    source('web', {
+      english: { Z: 'No songs', O: '1 song', M: '{0} songs' },
+      translations: { fr: forms },
+    });
+  const pluralMap = (keys) => {
+    const all = {
+      LabelSongCountZero: { en: 'No songs', from: { web: { key: 'Z', en: 'No songs' } } },
+      LabelSongCountOne: { en: '1 song', from: { web: { key: 'O', en: '1 song' } } },
+      LabelSongCountMany: { en: '{0} songs', from: { web: { key: 'M', en: '{0} songs' } } },
+    };
+    return Object.fromEntries(keys.map((k) => [k, all[k]]));
+  };
+
+  it('refuses a form when its locale would hold only part of the set', () => {
+    const capEn = {
+      LabelSongCountZero: 'No songs',
+      LabelSongCountOne: 'One song',
+      LabelSongCountMany: 'Songs: {0}',
+    };
+    const p = planSeed({
+      locales: { en_US: capEn, fr: {} },
+      sources: [
+        source('web', {
+          english: { O: 'One song', M: 'Songs: {0}' },
+          translations: { fr: { O: 'un titre', M: 'titres : {0}' } },
+        }),
+      ],
+      keymap: {
+        LabelSongCountOne: { en: 'One song', from: { web: { key: 'O', en: 'One song' } } },
+        LabelSongCountMany: { en: 'Songs: {0}', from: { web: { key: 'M', en: 'Songs: {0}' } } },
+      },
+    });
+    expect(p.fills.fr).toBeUndefined();
+    expect(p.flagged).toEqual([]);
+    for (const key of ['LabelSongCountOne', 'LabelSongCountMany'])
+      expect(p.rejections).toContainEqual({
+        key,
+        locale: 'fr',
+        source: 'web',
+        reason: 'plural-set-incomplete',
+      });
+  });
+
+  it('fills all three forms when all three map', () => {
+    const p = planSeed({
+      locales: { en_US: en, fr: {} },
+      sources: [pluralSource({ Z: 'Aucun titre', O: '1 titre', M: '{0} titres' })],
+      keymap: pluralMap(['LabelSongCountZero', 'LabelSongCountOne', 'LabelSongCountMany']),
+    });
+    expect(Object.keys(p.fills.fr).sort()).toEqual([
+      'LabelSongCountMany',
+      'LabelSongCountOne',
+      'LabelSongCountZero',
+    ]);
+  });
+
+  it('fills the forms it maps when the locale already has the rest', () => {
+    const p = planSeed({
+      locales: { en_US: en, fr: { LabelSongCountZero: 'Aucun titre' } },
+      sources: [pluralSource({ O: '1 titre', M: '{0} titres' })],
+      keymap: pluralMap(['LabelSongCountOne', 'LabelSongCountMany']),
+    });
+    expect(Object.keys(p.fills.fr).sort()).toEqual(['LabelSongCountMany', 'LabelSongCountOne']);
+  });
+});
+
 describe('rejectReason', () => {
   const check = (value, enValue = 'Bold', sourceEnglish = 'Bold') =>
     rejectReason({ value, enValue, sourceEnglish });

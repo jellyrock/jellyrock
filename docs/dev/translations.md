@@ -209,6 +209,8 @@ Translations move back from the `weblate` branch to `main` only at release prep 
 
 A new key starts untranslated in every language, but another Jellyfin client's community has often translated the same string already. `npm run translations:seed` copies those translations in. It only fills empty cells, only from a reviewed map, and only from projects whose license allows it. Release prep runs it, so mapping a key is enough for it to fill at the next release. Run it yourself to see the result in your pull request.
 
+A plural form (a `Zero`, `One` or `Many` key) is seeded only when its language ends up with all three forms, so a language never shows part of a count in English.
+
 ```bash
 npm run translations:seed                           # dry run: per-key/per-locale coverage, refusals, casing flags
 npm run translations:seed -- suggest --key LabelX   # candidate source keys for a key, as YAML stubs

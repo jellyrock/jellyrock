@@ -619,6 +619,31 @@ export function planSeed({ locales, sources, keymap, ledger = {} }) {
       }
     }
   }
+  // A plural form is seeded only when its locale ends up with all three forms:
+  // `translatePlural()` falls back to English per form, so a partial set mixes languages.
+  const PLURAL_FORMS = ['Zero', 'One', 'Many'];
+  for (const [locale, cells] of Object.entries(fills)) {
+    for (const jrKey of Object.keys(cells)) {
+      const form = PLURAL_FORMS.find((f) => jrKey.endsWith(f));
+      if (!form) continue;
+      const base = jrKey.slice(0, -form.length);
+      if (!PLURAL_FORMS.every((f) => `${base}${f}` in enUs)) continue;
+      const complete = PLURAL_FORMS.every(
+        (f) => locales[locale][`${base}${f}`] !== undefined || cells[`${base}${f}`],
+      );
+      if (complete) continue;
+      rejections.push({
+        key: jrKey,
+        locale,
+        source: cells[jrKey].source,
+        reason: 'plural-set-incomplete',
+      });
+      delete cells[jrKey];
+      const at = flagged.findIndex((f) => f.key === jrKey && f.locale === locale);
+      if (at !== -1) flagged.splice(at, 1);
+    }
+    if (!Object.keys(cells).length) delete fills[locale];
+  }
   return { fills, rejections, stale, flagged };
 }
 
