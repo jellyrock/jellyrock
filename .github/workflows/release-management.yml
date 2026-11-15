@@ -147,6 +147,16 @@ jobs:
           echo "::error::New version must be greater than the previous version."
           exit 1
 
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "lts/*"
+
+      # A registry migration added since the last release must be numbered above it, or
+      # its users skip it, and no higher than this release (docs/dev/registry-migrations.md)
+      - name: Check migration versions
+        run: node scripts/lint/migration-versions-check.js --release "${{ steps.extract_version.outputs.version }}"
+
       - name: Check if PR already exists
         id: check_pr
         env:

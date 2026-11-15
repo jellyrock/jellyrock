@@ -5,7 +5,7 @@ related-files:
   - source/utils/config.bs
   - source/main.bs
   - tests/source/integration/migration/SettingsMigration.spec.bs
-last-reviewed: 2026-10-09
+last-reviewed: 2026-11-15
 ---
 
 # Registry migrations
@@ -54,6 +54,8 @@ const HOMESECTION_CLEANUP_VERSION = "2.13.0"
 Name it for what it does, in `UPPER_SNAKE_CASE` ending in `_VERSION`: the existing ones end in `_MIGRATION_VERSION`, `_CLEANUP_VERSION` or `_REMOVAL_VERSION`.
 
 The value is the release the change ships in. `manifest` holds the last released version, and the release workflow raises it. So the constant must be above the manifest's version: a section already on the constant's version skips the block, and any user who installed the release before your change would never be migrated.
+
+If the release number isn't known yet, use the release you expect. The release workflow checks it when the release is cut: `scripts/lint/migration-versions-check.js` fails the release when a constant added or changed since the previous release is not above that release, or is above the new one, and names the value to set.
 
 ### 2. Add the block
 
