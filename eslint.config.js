@@ -61,6 +61,10 @@ export default [
       // never seen by CI. Linting them can only ever fail a push on files nobody can
       // fix by committing, which is exactly what it did.
       'docs/projects/',
+      // Local download cache. `translations:seed -- context` keeps full checkouts of other
+      // projects in the gitignored `.cache/translation-seed/`, some with their own ESLint
+      // configs. Linting them can only fail a push on files nobody commits.
+      '.cache/',
       'roku_modules/',
       '**/roku_modules/',
     ],

@@ -1,11 +1,16 @@
 {
   "ButtonCancel": "Anile",
+  "ButtonMore": "Plus",
   "ButtonOk": "OK",
+  "ButtonRemove": "Retire",
   "ButtonResume": "Kontinye",
+  "LabelAlbumArtists": "Albòm Atis",
   "LabelAlbums": "Albòm yo",
   "LabelAll": "Tout",
   "LabelArtists": "Atis yo",
+  "LabelChangeServer": "Change Sèvè",
   "LabelChannels": "Kanal yo",
+  "LabelChapter": "Chapit {0}",
   "LabelCollections": "Koleksyon yo",
   "LabelContinueWatching": "Kontinye Kade",
   "LabelDefault": "Defo",
@@ -13,6 +18,7 @@
   "LabelFavorite": "Renmen",
   "LabelFavorites": "Pi Renmen",
   "LabelFolders": "Dosye",
+  "LabelForcedSubtitle": "Fòse",
   "LabelGenres": "Jan yo",
   "LabelMovies": "Fim",
   "LabelMusicVideos": "Videyo Mizik",
@@ -22,6 +28,8 @@
   "LabelPersonKindArtist": "Atis",
   "LabelPersonKindAuthor": "Otè",
   "LabelPhotos": "Foto",
+  "LabelRemove": "Retire",
+  "LabelRepeatRowAll": "Tout",
   "LabelShows": "Emisyon yo",
   "LabelSongs": "Mizik yo"
 }
