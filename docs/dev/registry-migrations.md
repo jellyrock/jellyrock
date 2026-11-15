@@ -5,7 +5,7 @@ related-files:
   - source/utils/config.bs
   - source/main.bs
   - tests/source/integration/migration/SettingsMigration.spec.bs
-last-reviewed: 2026-11-10
+last-reviewed: 2026-11-15
 ---
 
 # Registry migrations
@@ -123,6 +123,17 @@ After a rename, only the new name exists, so nothing may read the old one:
    ```
 
    Leave what is meant to keep the old name: earlier migrations' mappings, legacy inputs in the migration specs and mocks, and the generated `docs/user/app-settings.md`.
+
+### When the migration cannot know enough
+
+A migration sees only the registry. It has no server, no library types and no screen. When the right new value depends on something only a screen knows, split the work:
+
+1. The migration does everything the registry alone decides, and parks the rest under a key the new code can read as it is.
+2. The screen finishes the move the first time it has the missing fact, in one function that changes nothing once the parked key is gone.
+
+The library sort is the example. An old per-library sort belongs to the library type's default tab, and the registry does not hold a library's type. `migrateLibrarySortAndFilters()` writes it to the bare `display.<libraryId>.sort` key, and `adoptLegacySort()` in `source/utils/displaySettings.bs` moves it to the default tab's key when the library opens. Dropping the value would have been simpler and would have lost most users' saved sort.
+
+Give the screen's half its own spec, and keep it a move that is safe to run on every open.
 
 ## Test it
 

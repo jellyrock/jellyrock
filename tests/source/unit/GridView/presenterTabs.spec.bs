@@ -140,6 +140,26 @@ namespace tests
       m.assertTrue(inArray(m.names(filters), "Favorites"), currentView)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the sort list")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("offers the default sort on every tab, so a tab with no saved sort has one")
+    ' gridQuery.resolveSort falls back to DEFAULT_SORT_FIELD without asking the list.
+    @params("movie", "movies")
+    @params("tvshow", "tvshows")
+    @params("music", "music")
+    function _(kind, collectionType)
+      views = m.presenterFor(kind, "").getOptions(m.library(collectionType)).views
+      m.assertTrue(views.count() > 1)
+
+      for each entry in views
+        view = gridQuery.viewOfTab(views, entry.Name).view
+        sorts = m.presenterFor(kind, view).getOptions(m.library(collectionType)).sort
+        m.assertTrue(gridQuery.offers(sorts, gridQuery.DEFAULT_SORT_FIELD), kind + " " + view)
+      end for
+    end function
+
   end class
 
 end namespace

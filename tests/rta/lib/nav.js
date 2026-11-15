@@ -1661,6 +1661,68 @@ export async function pressGridTile(index = 0) {
   await press(ecp.Key.Ok);
 }
 
+/**
+ * Open a library's Star panel on its Sort or Filter list, with focus on the list's first row.
+ * The panel opens on the Sort button; Right walks to Filter, and Down enters the list.
+ */
+async function openStarPanelList(buttonIndex, listId, label) {
+  await press(ecp.Key.Option);
+  await waitFocusInside('#options', { label: `the options dialog, for ${label}`, timeout: 8000 });
+  await scrollFocus({
+    keyPath: '#options.#buttons.focusedIndex',
+    target: buttonIndex,
+    forwardKey: ecp.Key.Right,
+    backKey: ecp.Key.Left,
+    read: getActiveVal,
+    stepped: true,
+    within: '#options',
+    label: `the panel's button for ${label}`,
+  });
+  await waitFocusInside(listId, {
+    label: `the list for ${label}`,
+    timeout: 8000,
+    action: resendUntilFocusInside(ecp.Key.Down, listId),
+  });
+}
+
+/** Pick row `index` of an open Star panel list, close the panel, and wait for the reload. */
+async function pickStarPanelRow(listId, index, label) {
+  await scrollFocus({
+    keyPath: `#options.${listId}.itemFocused`,
+    target: index,
+    forwardKey: ecp.Key.Down,
+    backKey: ecp.Key.Up,
+    read: getActiveVal,
+    stepped: true,
+    within: listId,
+    label,
+  });
+  await press(ecp.Key.Ok);
+  await press(ecp.Key.Option);
+  await waitFocusInside('#itemGrid', { label: `the grid after ${label}`, timeout: 20000 });
+  await waitGridLoaded(`the grid reloaded after ${label}`);
+}
+
+/**
+ * Sort the library tab on show by row `index` of its sort list. Start with focus in the
+ * grid. The Star panel is how a sort is picked until the header strip's Sort chip
+ * replaces it; specs call this, so only this body changes then.
+ */
+export async function applyLibrarySort(index) {
+  await openStarPanelList(0, '#sortMenu', 'a sort');
+  await pickStarPanelRow('#sortMenu', index, `sort ${index}`);
+}
+
+/**
+ * Filter the library tab on show by row `index` of its filter list (row 0 is All). Start
+ * with focus in the grid. For a plain filter, not a category with a checklist. The Star
+ * panel is how a filter is picked until the header strip's Filter chip replaces it.
+ */
+export async function applyLibraryFilter(index) {
+  await openStarPanelList(1, '#filterMenu', 'a filter');
+  await pickStarPanelRow('#filterMenu', index, `filter ${index}`);
+}
+
 /** grid -> focus the hero tile (Right x heroIndex) -> OK -> ItemDetails. */
 export async function navMovieDetails(ctx) {
   await navLibraryGrid(ctx);

@@ -3,7 +3,8 @@ namespace tests
   ' LIBRARY_TAB_MIGRATION_VERSION: each library's saved view (`display.<id>.landing`)
   ' becomes its default tab (`display.<id>.defaultTab`) unless it is a library type's own
   ' default, the two movie views also imply that view's layout (`display.<id>.layout_movies`),
-  ' and `landing` is deleted. Run against real `test-` registry sections.
+  ' and `landing` is deleted. Each library's saved sort becomes one key for a tab, and its
+  ' saved filters are deleted. Run against real `test-` registry sections.
   @suite("Library Tab Migration - v3.3.2 Migration")
   @tags("migration")
   class LibraryTabMigrationTests extends tests.BaseTestSuite
@@ -95,7 +96,7 @@ namespace tests
       reg = CreateObject("roRegistrySection", testUserId)
       m.assertFalse(reg.exists("display.lib-folder.landing"))
       m.assertFalse(reg.exists("display.lib-folder.defaultTab"))
-      m.assertEqual(reg.read("display.lib-folder.sortField"), "SortName", "the folder's other settings stay")
+      m.assertEqual(reg.read("display.lib-folder.sort"), "SortName:asc", "the folder keeps its sort, under the key a screen with no tab reads")
     end function
 
     @it("keeps a value it does not recognize as the default tab")
@@ -119,19 +120,148 @@ namespace tests
       testUserId = "test-library-tab-004"
       reg = m.userSection(testUserId)
       reg.write("display.lib-1.landing", "MoviesGrid")
-      reg.write("display.lib-1.sortField", "DateCreated")
-      reg.write("display.lib-1.sortAscending", "false")
-      reg.write("display.lib-1.filter", "Favorites")
-      reg.write("display.lib-1.filterOptions", "{}")
+      reg.write("display.lib-1.sort_genres", "Random:asc")
+      reg.write("display.lib-2.layout_movies", "presentation")
+      reg.write("uiTheme", "custom")
       reg.flush()
 
       migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
 
       values = m.readAll(testUserId)
-      m.assertEqual(values["display.lib-1.sortField"], "DateCreated")
-      m.assertEqual(values["display.lib-1.sortAscending"], "false")
-      m.assertEqual(values["display.lib-1.filter"], "Favorites")
-      m.assertEqual(values["display.lib-1.filterOptions"], "{}")
+      m.assertEqual(values["display.lib-1.sort_genres"], "Random:asc")
+      m.assertEqual(values["display.lib-2.layout_movies"], "presentation")
+      m.assertEqual(values["uiTheme"], "custom")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the saved sort and filters")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("moves a sort to the tab of the saved view, which is where it was set")
+    ' A view change reset the sort, so a sort beside a `landing` belongs to that view.
+    function _()
+      testUserId = "test-library-tab-020"
+      reg = m.userSection(testUserId)
+      reg.write("display.lib-1.landing", "Genres")
+      reg.write("display.lib-1.sortField", "Random")
+      reg.write("display.lib-1.sortAscending", "true")
+      reg.write("display.lib-2.landing", "MoviesGrid")
+      reg.write("display.lib-2.sortField", "DateCreated")
+      reg.write("display.lib-2.sortAscending", "false")
+      reg.flush()
+
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
+
+      values = m.readAll(testUserId)
+      m.assertEqual(values["display.lib-1.sort_genres"], "Random:asc")
+      m.assertEqual(values["display.lib-2.sort_movies"], "DateCreated:desc")
+      m.assertFalse(values.DoesExist("display.lib-1.sortField"))
+      m.assertFalse(values.DoesExist("display.lib-1.sortAscending"))
+      m.assertFalse(values.DoesExist("display.lib-2.sortField"))
+      m.assertFalse(values.DoesExist("display.lib-2.sortAscending"))
+    end function
+
+    @it("keeps a sort with no saved view under the bare key, for the library to adopt")
+    ' The common case: a library sorted and its view never changed. Only the library
+    ' knows its type's default tab (adoptLegacySort).
+    function _()
+      testUserId = "test-library-tab-021"
+      reg = m.userSection(testUserId)
+      reg.write("display.lib-1.sortField", "DateCreated")
+      reg.write("display.lib-1.sortAscending", "false")
+      reg.flush()
+
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
+
+      values = m.readAll(testUserId)
+      m.assertEqual(values["display.lib-1.sort"], "DateCreated:desc")
+      m.assertFalse(values.DoesExist("display.lib-1.sortField"))
+      m.assertFalse(values.DoesExist("display.lib-1.sortAscending"))
+    end function
+
+    @it("uses the bare key for a folder's view and for a view that names no tab")
+    @params("default")
+    @params("SomethingNewer")
+    function _(landing)
+      testUserId = "test-library-tab-022"
+      reg = m.userSection(testUserId)
+      reg.write("display.lib-1.landing", landing)
+      reg.write("display.lib-1.sortField", "IsFolder,SortName")
+      reg.write("display.lib-1.sortAscending", "true")
+      reg.flush()
+
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
+
+      m.assertEqual(m.readAll(testUserId)["display.lib-1.sort"], "IsFolder,SortName:asc")
+    end function
+
+    @it("fills in the default for whichever half of the old sort is missing")
+    function _()
+      testUserId = "test-library-tab-023"
+      reg = m.userSection(testUserId)
+      reg.write("display.lib-1.sortField", "DateCreated")
+      reg.write("display.lib-2.sortAscending", "false")
+      reg.flush()
+
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
+
+      values = m.readAll(testUserId)
+      m.assertEqual(values["display.lib-1.sort"], "DateCreated:asc")
+      m.assertEqual(values["display.lib-2.sort"], "SortName:desc")
+    end function
+
+    @it("writes the old sort over a new key already there, as the latest choice")
+    ' A downgrade and an upgrade: the old build saved its sort after the new key existed.
+    function _()
+      testUserId = "test-library-tab-024"
+      reg = m.userSection(testUserId)
+      reg.write("display.lib-1.sort", "Random:asc")
+      reg.write("display.lib-1.sortField", "DateCreated")
+      reg.write("display.lib-1.sortAscending", "false")
+      reg.flush()
+
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
+
+      m.assertEqual(m.readAll(testUserId)["display.lib-1.sort"], "DateCreated:desc")
+    end function
+
+    @it("deletes the saved filters, which last for the session now")
+    function _()
+      testUserId = "test-library-tab-025"
+      reg = m.userSection(testUserId)
+      reg.write("display.lib-1.filter", "Favorites")
+      reg.write("display.lib-1.filterOptions", "{}")
+      reg.write("display.lib-2.filter", "Genres")
+      reg.write("display.lib-2.filterOptions", FormatJson({ Genres: "Action|Drama" }))
+      reg.flush()
+
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
+
+      values = m.readAll(testUserId)
+      for each key in values
+        m.assertFalse(key.inStr(".filter") >= 0, key)
+      end for
+    end function
+
+    @it("changes nothing more on a second run")
+    function _()
+      testUserId = "test-library-tab-026"
+      reg = m.userSection(testUserId)
+      reg.write("display.lib-1.landing", "Genres")
+      reg.write("display.lib-1.sortField", "Random")
+      reg.write("display.lib-1.sortAscending", "true")
+      reg.write("display.lib-1.filter", "Played")
+      reg.write("display.lib-2.sortField", "DateCreated")
+      reg.write("display.lib-2.sortAscending", "false")
+      reg.flush()
+
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
+      afterFirst = m.readAll(testUserId)
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
+
+      m.assertEqual(m.readAll(testUserId), afterFirst)
+      m.assertEqual(afterFirst["display.lib-1.sort_genres"], "Random:asc")
+      m.assertEqual(afterFirst["display.lib-2.sort"], "DateCreated:desc")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

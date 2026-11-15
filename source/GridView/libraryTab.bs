@@ -271,3 +271,44 @@ namespace libraryLayout
   end function
 
 end namespace
+
+' A tab's sort as a display setting: its key and its stored form.
+'
+' Saved per library and tab, as jellyfin-web saves its sort. displaySettings reads and
+' writes it (getLibrarySort, setLibrarySort), and the registry migration writes the same
+' form.
+namespace librarySort
+
+  ' settingKey: the display-setting key a tab's sort is saved under.
+  '
+  ' One flat key per tab, because only three-part registry keys load
+  ' (`display.<libraryId>.<key>`, TransformDisplaySettings). A screen with the empty tab
+  ' (a collection, a plain folder) uses the bare key.
+  function settingKey(tabId as dynamic) as string
+    name = LCase(textOrEmpty(tabId).trim())
+    if name = "" then return "sort"
+    return "sort_" + name
+  end function
+
+  ' format: the stored form of a sort, "<field>:<asc|desc>". A field may hold a comma
+  ' ("IsFolder,SortName"); none holds a colon.
+  function format(field as dynamic, ascending as dynamic) as string
+    direction = "asc"
+    if not isBooleanTrue(ascending) then direction = "desc"
+    return textOrEmpty(field).trim() + ":" + direction
+  end function
+
+  ' parse: the inverse of format, split at the last colon.
+  ' @return {object} { field, ascending }, or Invalid for anything that is not a stored sort
+  function parse(value as dynamic) as dynamic
+    parts = textOrEmpty(value).trim().split(":")
+    if parts.count() < 2 then return invalid
+
+    direction = LCase(parts.pop().trim())
+    field = parts.join(":").trim()
+    if field = "" then return invalid
+    if direction <> "asc" and direction <> "desc" then return invalid
+    return { field: field, ascending: direction = "asc" }
+  end function
+
+end namespace

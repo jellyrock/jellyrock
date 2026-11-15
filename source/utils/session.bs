@@ -875,16 +875,8 @@ namespace user.settings
             displaySettings[libraryId] = {}
           end if
 
-          ' Store setting value with proper type conversion
-          rawValue = registryData[key]
-
-          ' Convert boolean fields from string to actual boolean
-          if settingKey = "sortAscending"
-            displaySettings[libraryId][settingKey] = toBoolean(rawValue)
-          else
-            ' Other fields stored as-is (strings, etc.)
-            displaySettings[libraryId][settingKey] = rawValue
-          end if
+          ' Every display setting is a string, stored as-is
+          displaySettings[libraryId][settingKey] = registryData[key]
         end if
       end if
     end for

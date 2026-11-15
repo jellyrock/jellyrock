@@ -29,6 +29,7 @@ import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/languageFilters.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/paging.bs"
+import "pkg:/source/utils/sessionFilters.bs"
 import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
@@ -94,11 +95,10 @@ sub init()
   m.voiceBox.observeField("text", "onVoiceFilter")
   m.voiceBox.hintText = translate(translationKeys.LabelUseVoiceRemoteToSearch)
 
-  ' Sort/filter defaults
-  m.sortField = "SortName"
+  ' Sort and filters, read per tab on every load (loadView)
+  m.sortField = gridQuery.DEFAULT_SORT_FIELD
   m.sortAscending = true
-  m.filter = "All"
-  m.filterOptions = {}
+  m.filters = {}
   m.favorite = "Favorite"
 
   ' Grid run state. Each run gets its own LoadItemsTask2 node (startGridRun), so the query
@@ -360,7 +360,7 @@ sub showTVGuide()
 
   ' This screen owns the guide's loading wait. Then the current filter and search state.
   m.tvGuide.hostScreen = m.top
-  m.tvGuide.filter = m.filter
+  m.tvGuide.filter = guideFilter()
   m.tvGuide.searchTerm = m.voiceBox.text
 
   ' Hide the grid and show the guide
@@ -508,6 +508,9 @@ sub openLibrary()
   end if
   m.top.overhangTabs = tabs
 
+  ' A sort saved before sorts were per tab belongs to the default tab
+  adoptLegacySort(m.top.parentItem.Id, getDefaultView())
+
   loadView()
 end sub
 
@@ -545,15 +548,7 @@ sub onTabChanged()
   m.genreData = CreateObject("roSGNode", "ContentNode")
   m.genreList.content = m.genreData
 
-  ' Sort and filter are saved per library until the library screens work saves the sort
-  ' per tab and keeps filters for the session; until then a tab press resets both, as a
-  ' view change always did.
-  libraryId = m.top.parentItem.Id
-  setLibraryDisplaySetting(libraryId, "sortField", "SortName")
-  setLibraryDisplaySetting(libraryId, "sortAscending", "true")
-  setLibraryDisplaySetting(libraryId, "filter", "All")
-  setLibraryDisplaySetting(libraryId, "filterOptions", "{}")
-
+  ' Each tab keeps its own sort and filters, which loadView reads
   reloadGridItems()
   ' At the press, not when the load lands: the viewer chose this tab's content.
   focusViewContent()
@@ -572,22 +567,14 @@ sub loadView()
   prepareDataLoad(false)
   m.top.loadState = "loading"
 
-  ' Load saved display settings
+  ' The tab's own sort, saved in the registry, and its filters, kept for the session.
+  ' A saved sort is honored only while the tab's list offers it. The filters were picked
+  ' from this session's lists, so they need no such check.
   libraryId = m.top.parentItem.Id
-  m.sortField = getLibraryDisplaySetting(libraryId, "sortField", "SortName")
-  m.filter = getLibraryDisplaySetting(libraryId, "filter", "All")
-  m.filterOptions = parseJson(getLibraryDisplaySetting(libraryId, "filterOptions", "{}"))
-  m.sortAscending = getLibraryDisplaySetting(libraryId, "sortAscending", true)
-  if not isValid(m.filterOptions) then m.filterOptions = {}
-
-  ' A saved plain filter is honored only while the view's list still offers it: a
-  ' Favorites filter saved on a tab that a Favorites tab now covers would otherwise narrow
-  ' the grid with nothing on screen saying so. Not written back (resolveOffered). A filter
-  ' category (Genres, Years) is carried by its options and is left alone: its lists
-  ' arrive after the first load, so "not offered yet" says nothing about it.
-  if m.filterOptions.count() = 0
-    m.filter = gridQuery.resolveOffered(m.filter, offeredFilters(), "All")
-  end if
+  sort = gridQuery.resolveSort(getLibrarySort(libraryId, m.tab), offeredSorts())
+  m.sortField = sort.field
+  m.sortAscending = sort.ascending
+  m.filters = sessionFilters.get(libraryId, m.tab)
 
   ' Configure backdrop based on presenter
   configureBackdrop()
@@ -635,8 +622,7 @@ function buildGridQuery(nameStartsWith as string, searchTerm as string) as objec
     searchTerm: searchTerm,
     sortField: m.sortField,
     sortAscending: m.sortAscending,
-    filter: m.filter,
-    filterOptions: m.filterOptions,
+    filters: m.filters,
     isFavorite: m.isFavoriteTab
   }, m.top.parentItem, m.view, m.presenter)
 end function
@@ -696,6 +682,20 @@ function offeredFilters() as object
   options = m.presenter.getOptions(m.top.parentItem)
   if not isValid(options) or type(options.filter) <> "roArray" then return []
   return options.filter
+end function
+
+' The sorts the presenter lists for the view on show, [] when it lists none.
+function offeredSorts() as object
+  if not isValid(m.presenter) then return []
+  options = m.presenter.getOptions(m.top.parentItem)
+  if not isValid(options) or type(options.sort) <> "roArray" then return []
+  return options.sort
+end function
+
+' What the TV guide is told to show: its favorite channels, or all of them.
+function guideFilter() as string
+  if gridQuery.hasFavorites(m.filters) then return gridQuery.FAVORITES_VALUE
+  return gridQuery.NO_FILTER
 end function
 
 ' The library type's default tab, a libraryTab id: "" for a folder or collection, which
@@ -1527,25 +1527,29 @@ sub SetUpOptions()
     end if
   end for
 
-  ' Set selected filter option
+  ' Set selected filter option, from the tab's filters in the panel's own shape
+  panel = gridQuery.filtersToPanel(m.filters, options.filter)
+  ' "All" when the panel's list lacks the name, so the panel never keeps another tab's
+  m.options.filter = gridQuery.NO_FILTER
   for each o in options.filter
-    if LCase(o.Name) = LCase(m.filter)
+    if LCase(o.Name) = LCase(panel.filter)
       o.Selected = true
       m.options.filter = o.Name
     end if
 
     ' Select selected filter options
-    if isValid(o.options) and isValid(m.filterOptions)
-      if o.options.Count() > 0 and m.filterOptions.Count() > 0
-        if LCase(o.Name) = LCase(m.filterOptions.keys()[0])
+    if isValid(o.options)
+      if o.options.Count() > 0 and panel.filterOptions.Count() > 0
+        if LCase(o.Name) = LCase(panel.filterOptions.keys()[0])
           ' Re-ticks the boxes from the saved query. The inverse of the join in
           ' ItemGridOptions.onKeyEvent, and they are tested as a round trip: a
           ' disagreement between them is a filter that applies while showing no ticks.
-          o.checkedState = gridQuery.checkedStateFor(o.options, m.filterOptions[m.filterOptions.keys()[0]], o.delimiter)
+          o.checkedState = gridQuery.checkedStateFor(o.options, panel.filterOptions[panel.filterOptions.keys()[0]], o.delimiter)
         end if
       end if
     end if
   end for
+  m.options.filterOptions = panel.filterOptions
 
   m.options.options = options
 end sub
@@ -1558,38 +1562,31 @@ sub optionsClosed()
     m.sortAscending = m.options.sortAscending
     reload = true
 
-    sortAscendingStr = "true"
-    if not m.sortAscending
-      sortAscendingStr = "false"
-    end if
-
-    libraryId = m.top.parentItem.Id
-    setLibraryDisplaySetting(libraryId, "sortField", m.sortField)
-    setLibraryDisplaySetting(libraryId, "sortAscending", sortAscendingStr)
-  end if
-
-  if m.options.filter <> m.filter
-    m.filter = m.options.filter
-    updateTitle()
-    reload = true
-    libraryId = m.top.parentItem.Id
-    setLibraryDisplaySetting(libraryId, "filter", m.options.filter)
-
-    ' Propagate filter change to TV Guide if it's active
-    if isValid(m.tvGuide)
-      m.tvGuide.filter = m.filter
-    end if
+    setLibrarySort(m.top.parentItem.Id, m.tab, m.sortField, m.sortAscending)
   end if
 
   if not isValid(m.options.filterOptions)
     m.options.filterOptions = {}
   end if
 
-  if not AssocArrayEqual(m.options.filterOptions, m.filterOptions)
-    m.filterOptions = m.options.filterOptions
-    reload = true
+  ' The panel reports its own shape; compare in it, then keep the tab's filter map
+  filterList = offeredFilters()
+  panel = gridQuery.filtersToPanel(m.filters, filterList)
+  if m.options.filter <> panel.filter or not AssocArrayEqual(m.options.filterOptions, panel.filterOptions)
     libraryId = m.top.parentItem.Id
-    setLibraryDisplaySetting(libraryId, "filterOptions", FormatJson(m.options.filterOptions))
+    newFilters = gridQuery.filtersFromPanel(m.options.filter, m.options.filterOptions, filterList)
+    sessionFilters.clear(libraryId, m.tab)
+    for each category in newFilters
+      sessionFilters.setCategory(libraryId, m.tab, category, newFilters[category])
+    end for
+    m.filters = sessionFilters.get(libraryId, m.tab)
+    updateTitle()
+    reload = true
+
+    ' Propagate filter change to TV Guide if it's active
+    if isValid(m.tvGuide)
+      m.tvGuide.filter = guideFilter()
+    end if
   end if
 
   ' Let presenter handle any custom option processing
@@ -1948,39 +1945,43 @@ function onKeyEvent(key as string, press as boolean) as boolean
     ' The dialog does not handle Replay, so it arrives here. Reloading and resetting the
     ' filters under an open dialog would rewrite the choices the user is making in it.
     return true
-  else if key = "replay" and m.itemGrid.isinFocusChain()
-    if m.resetGrid = true
-      m.itemGrid.animateToItem = 0
-    else
-      m.itemGrid.jumpToItem = 0
-    end if
-    return true
-  else if key = "replay" and m.genreList.isinFocusChain()
-    if m.resetGrid = true
-      m.genreList.animateToItem = 0
-    else
-      m.genreList.jumpToItem = 0
-    end if
-    return true
-  end if
-
-  if key = "replay"
-    ' Clear all search/filter state
-    m.voiceBox.text = ""
-    m.nameStartsWith = ""
-    m.top.alphaSelected = ""
-    m.filter = "All"
-    m.filterOptions = {}
-    m.data = CreateObject("roSGNode", "ContentNode")
-    m.itemGrid.content = m.data
-    m.flatIndexMap = {}
-    initTextureManager(m.data, invalid, invalid, invalid)
-    loadView()
+  else if key = "replay"
+    jumpToFirstItem()
     return true
   end if
 
   return false
 end function
+
+' Replay: focus the first item of what is on show, from anywhere on the screen (the
+' letter rail too). The sort, the filters, the letter and the voice text stay. The
+' Return to Top setting picks a scroll or a snap. The TV guide has no first item to go
+' to, and neither has an empty or a failed tab: focus stays where it is.
+sub jumpToFirstItem()
+  if isValid(m.tvGuide) or m.loadFailed.visible then return
+
+  content = m.itemGrid
+  items = m.data
+  if m.genreList.opacity = 1
+    content = m.genreList
+    items = m.genreData
+  end if
+  if items.getChildCount() = 0 then return
+
+  ' Focus first, as Right from the letter rail does: the list applies the jump when it
+  ' has focus
+  if not content.isInFocusChain()
+    m.top.isAlphaActive = false
+    m.alphaMenu.setFocus(false)
+    focusContent()
+  end if
+
+  if m.resetGrid = true
+    content.animateToItem = 0
+  else
+    content.jumpToItem = 0
+  end if
+end sub
 
 ' ============================================================================
 ' Overhang Title
@@ -1989,7 +1990,7 @@ end function
 sub updateTitle()
   m.top.overhangTitle = m.top.parentItem.title
 
-  if m.filter = "Favorites"
+  if gridQuery.hasFavorites(m.filters)
     m.top.overhangTitle = m.top.parentItem.title + " (" + translate(translationKeys.LabelFavorites) + ")"
   end if
 

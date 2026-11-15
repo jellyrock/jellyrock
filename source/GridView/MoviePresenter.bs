@@ -156,8 +156,8 @@ class MoviePresenter extends GridPresenterBase
       '
       ' PANEL_DELIMITER, not the comma the server wants: one language's value is already
       ' several codes joined by a comma, so a comma here would make the saved query
-      ' ambiguous and the restore pass would tick nothing. gridQuery.build() converts the
-      ' two apart via languageFilters.toWire().
+      ' ambiguous and the restore pass would tick nothing. The request joins the selected
+      ' values with a comma (gridQuery.wireOptions).
       '
       ' Two categories rather than one combined "Language": the server ANDs the two
       ' parameters, so "English audio with Spanish subtitles" is a query it can answer,
