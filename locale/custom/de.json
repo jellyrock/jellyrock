@@ -199,6 +199,7 @@
   "LabelPixelFormat": "Pixelformat",
   "LabelPlayAll": "Alle abspielen",
   "LabelPlayCount": "Anzahl der Wiedergaben",
+  "LabelPlayDefaultAudioTrack": "Standard-Audiospur wiedergeben",
   "LabelPlayNextEpisodeAutomatically": "Nächste Episode automatisch abspielen",
   "LabelPlayTrailer": "Trailer abspielen",
   "LabelPlayback": "Wiedergabe",

@@ -26,6 +26,7 @@
   "LabelDatePlayed": "ޕްލޭކުރި ތާރީޙް",
   "LabelDefault": "ޑީފޯލްޓް",
   "LabelDirectPlaying": "ޑައިރެކްޓް ޕްލޭއިންގ",
+  "LabelGenres": "ބާވަތްތައް",
   "LabelNone": "ނެތް",
   "LabelPersonKindActor": "އެކްޓަރު",
   "LabelPersonKindAlbumArtist": "އަލްބަމް އާރޓިސްޓް",
@@ -40,5 +41,6 @@
   "LabelPersonKindDirector": "ޑިރެކްޓަރު",
   "LabelRemove": "ފުހެލާ",
   "LabelRepeatRowAll": "ހުރިހާ",
+  "LabelSongs": "ލަވަތައް",
   "LabelSyncPlay": "ސިންކްޕްލޭ"
 }

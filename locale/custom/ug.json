@@ -1,6 +1,9 @@
 {
+  "ButtonCancel": "بىكار قىلىش",
   "ButtonContinueWatching": "داۋامىنى كۆرۈش",
+  "ButtonDelete": "ئۆچۈرۈش",
   "ButtonNo": "ياق",
+  "ButtonOk": "جەزىملەش",
   "ButtonPlay": "قويۇش",
   "ButtonRecord": "سىنغا ئېلىش",
   "ButtonRecordSeries": "ھەممە قىسىمنى سىنغا ئېلىش",
@@ -19,6 +22,7 @@
   "LabelContinueWatching": "داۋاملىق كۆرۈش",
   "LabelDefault": "سۈكۈتتىكى",
   "LabelDisabled": "چەكلەش",
+  "LabelEpisodes": "قىسىملىرى",
   "LabelExternalSubtitle": "سىرتقى",
   "LabelFavorite": "ياقتۇرغانلىرىم",
   "LabelFavorites": "ساقلىغۇچ",

@@ -200,6 +200,7 @@
   "LabelPixelFormat": "Format de pixel",
   "LabelPlayAll": "Tout lire",
   "LabelPlayCount": "Nombre de vues",
+  "LabelPlayDefaultAudioTrack": "Lire la piste audio par défaut",
   "LabelPlayNextEpisodeAutomatically": "Lancer automatiquement le nouvel épisode",
   "LabelPlayTrailer": "Lire la bande annonce",
   "LabelPlayback": "Lecture",
