@@ -732,6 +732,13 @@ namespace tests
       m.assertFalse(listHasGutter(-1, ["", ""]))
     end function
 
+    ' Every row of a checklist carries a checkbox.
+    @it("keeps the gutter for a checklist, whatever else is set")
+    function _()
+      m.assertTrue(listHasGutter(-1, invalid, true))
+      m.assertTrue(listHasGutter(-1, [], true))
+    end function
+
     @it("starts a label after the gutter, or at the row padding without one")
     function _()
       m.assertEqual(listRowLabelInset(true), LIST_ROW_CHECK_GUTTER)

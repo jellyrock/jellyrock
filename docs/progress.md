@@ -994,6 +994,22 @@ Home's Favorites tab reloads from the server on every return to Home (`Home.refr
 
 Not done with the library fix because Home works correctly today; this is a cost saving. To close: record the counter when `FavoritesRows` loads, skip `loadFavorites()` in `Home.refresh()` when it has not moved, and check that a favorite toggled from a details screen still shows on return to Home.
 
+#### Move the app's other lists onto the position line `[fid: position-line-across-lists]` `[captured 2026-11-15]`
+
+`ListPosition` (`components/ui/listposition/`, rule in `docs/architecture/design-system.md`, "A list that hides rows: the position line") is the one way a clipped list says it has more rows: "3 of 12" between two arrowheads lit by the rows hidden that way. Only `JRListDialog` uses it. Two older counters draw the count alone, each by hand: `SubtitlePanel.updateListCounter` and `SearchSuggestionList.updateCounter`. (Home's rows use Roku's own `showRowCounter`, which stays.) The Settings lists and `OverviewDialog`'s scrolling text have no cue at all.
+
+Why not now: each surface needs its own placement and a look on a device, and the piece that added the line was the list dialog's.
+
+Closes when each of those shows the position line (the overview dialog: the arrowheads without a count), or records why it does not. Also try a half row showing at the cut edge of a list as a second cue: it was set aside because nobody had tried Roku's `itemClippingRect` on a device.
+
+#### Back on a checklist dialog has no test: the Filter chip's PR adds an RTA case `[fid: checklist-back-untested]` `[captured 2026-11-15]`
+
+`showChecklistDialog` has no test of its main exit: Back on a checklist. No Rooibos spec can press keys on `JRListDialog` (`onKeyEvent` is not callable from a suite), so the user-close path through `resolveDialog(-1)`, which hands `checklistDialogResult()` the opening and the current ticks, is covered only by the pure result spec. The close-from-code path is pinned by the `JRListDialog` spec. Found reviewing the checklist mode (#1390).
+
+Why not now: the checklist has no caller yet, so no device route reaches it.
+
+Closes when the PR that adds the library Filter chip (the first caller) adds an RTA case: open the Filter, tick a row, press Back and check the result is `confirmed` with the new `checkedIndexes`; then open it again and press Back with no change, and check `cancelled`.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`

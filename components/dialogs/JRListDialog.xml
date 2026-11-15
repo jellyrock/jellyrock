@@ -16,8 +16,13 @@
      The decision lives in listDialogKeyAction (source/utils/dialogKeys.bs) where
      it can be tested; see that file for why it is not inline here.
 
+     With `multiSelect` it is a checklist: OK ticks the focused row or clears its tick
+     without closing, and Back leaves with the set as it stands. A tick counts when
+     it is made, so there is no Apply and no Cancel (docs/architecture/dialogs.md).
+
      Appended to the scene by dialogs.bs; per-instance `result` field, same
-     contract as JRDialog (the selection lands in result.optionIndex). -->
+     contract as JRDialog (the selection lands in result.optionIndex, a
+     checklist's ticks in result.checkedIndexes). -->
 <component name="JRListDialog" extends="JRGroup" focusable="true">
   <children>
     <JRDialogPanel id="chrome" />
@@ -29,6 +34,11 @@
     <MarkupList id="optionList" itemComponentName="JRListDialogRow">
       <ContentNode id="content" role="content" />
     </MarkupList>
+
+    <!-- "3 of 12" between two arrowheads, in the layout's footer slot, shown only
+         while the list hides rows. Read, never focused: the rows stay the only
+         focusable thing in the dialog. -->
+    <ListPosition id="position" visible="false" />
 
     <!-- Delays only the opening announcement; see narration.OPENING_DELAY in
          source/utils/dialogNarration.bs. -->
@@ -77,9 +87,19 @@
          from defaultIndex: they coincide in the normal case, and collapsing
          them made a focus fallback claim row 0 was playing. -->
     <field id="selectedIndex" type="integer" value="-1" />
+    <!-- A checklist: every row carries a checkbox, OK toggles the focused row, and
+         the dialog stays open until Back. Set BEFORE `items`. A checklist marks no
+         current option and draws no icons, so `selectedIndex` and `icons` are
+         not read. -->
+    <field id="multiSelect" type="boolean" value="false" />
+    <!-- A checklist's ticked rows. Going in (BEFORE `items`): the rows ticked when
+         it opens. From then on the dialog rewrites it on every toggle, ascending,
+         so a caller that wants to react per tick observes it; one that reacts once
+         reads result.checkedIndexes at close. -->
+    <field id="checkedIndexes" type="array" />
     <!-- Set exactly once when the dialog resolves, then the dialog closes itself.
          Shape: { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value,
-         externallyCancelled } -->
+         externallyCancelled, checkedIndexes } -->
     <field id="result" type="assocarray" alwaysNotify="true" />
     <field id="returnFocusTo" type="node" />
     <!-- The component that opened it (presentOverlayDialog). A screen that another one covers ends
