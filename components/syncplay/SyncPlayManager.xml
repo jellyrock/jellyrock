@@ -4,14 +4,16 @@
   by setGlobalNodes(). Render-thread owned, so the player, the host and the queue are cheap to
   reach and a Timer fires where an action is carried out. It holds the membership state
   (syncPlayState), the clock-offset estimate (syncPlayOffset) and the comparison's two models
-  (syncPlayConverge); frames arrive on `frame` from remoteDispatch.dispatchSyncPlay on the main
-  thread, and player events arrive through playerEvent() from PlayerHostView and VideoPlayerView.
+  (syncPlayConverge); frames arrive on `frames` straight from the receiver task
+  (RemoteControlTask.sendSyncPlayFrame), and player events arrive through playerEvent() from PlayerHostView and VideoPlayerView.
 -->
 <component name="SyncPlayManager" extends="Node">
   <interface>
-    <!-- A normalized SyncPlay frame (syncPlayMessage's "syncplaycommand" or "syncplayupdate").
-         alwaysNotify: two identical frames are two frames. -->
-    <field id="frame" type="assocarray" alwaysNotify="true" onChange="onFrame" />
+    <!-- The receiver task's last few normalized SyncPlay frames (syncPlayMessage's "syncplaycommand"
+         or "syncplayupdate"), numbered: { epoch, entries: [{ seq, sentS, sentMs, frame }] }
+         (syncPlayInbox). The manager applies each number once, so a notification that is merged
+         or lost costs nothing: the next write or inboxTimer carries the frame. -->
+    <field id="frames" type="assocarray" alwaysNotify="true" onChange="onFrames" />
 
     <!-- Published state, written together once per change. The player and the host read
          `following`; the group menu (phase D) and an ODC spec read the rest. -->
@@ -28,7 +30,7 @@
     <!-- { offsetMs, delayMs, hasEstimate, lastCommand, trackerPhase, playingItemId, playingItemIndex,
          playlistCount, loadNotice, playbackDiffMs (how far behind the group this member sits, ms, invalid
          unless the node plays with a measured position and the group plays; refreshed after every event in RTA builds only, otherwise whenever something else publishes), extraOffsetMs (the
-         viewer's time offset setting), loadCount (the loads performed for queue frames, a monotonic count), correctionsDone (the corrections of this member's own that ended, a monotonic count), groupSeeks (the Seek commands the group sent while this member followed, a monotonic count), readiesSent (the Ready reports this member sent, a monotonic count), repeatMode and shuffleMode (the group's, in the server's words,
+         viewer's time offset setting), loadCount (the loads performed for queue frames, a monotonic count), correctionsDone (the corrections of this member's own that ended, a monotonic count), groupSeeks (the Seek commands the group sent while this member followed, a monotonic count), readiesSent (the Ready reports this member sent, a monotonic count), framesRescued (the frames that did not arrive with their own notification, a monotonic count), repeatMode and shuffleMode (the group's, in the server's words,
          from the last queue update) } -->
     <field id="sync" type="assocarray" />
     <!-- Something the viewer is told: { kind, groupName, userName }; a confirmPlay notice also
@@ -103,5 +105,8 @@
     <Timer id="syncTimer" repeat="false" />
     <!-- The comparison's one timer: the next moment it has something to decide (converge). -->
     <Timer id="convergeTimer" repeat="false" />
+    <!-- Reads `frames` again while a group may be sending: a frame whose notification never came
+         is applied within a second. -->
+    <Timer id="inboxTimer" repeat="true" duration="1" />
   </children>
 </component>

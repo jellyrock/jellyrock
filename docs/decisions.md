@@ -2822,6 +2822,16 @@ The merge cannot carry Weblate work on `Old` made since the last release: it exi
 
 Keys are named for what the string is for, not its first words. A setting description is `SettingDesc` plus a short name for the setting; followup `positive-setting-names` renames the negatively worded settings first, then derives these from `settingName` again. First applied to 75 machine-named keys, moving 695 cells with none lost.
 
+## decision-id: syncplay-frames-numbered-handoff
+
+**date**: 2026-11-15
+**status**: accepted
+**related-files**: `source/syncplay/syncPlayInbox.bs`, `components/remotecontrol/RemoteControlTask.bs`, `components/syncplay/SyncPlayManager.bs`
+
+SyncPlay frames go from the receiver task straight to the SyncPlay manager, numbered and with the last few frames in every write, and the manager checks the field again every second while a group may be sending. Before, each frame rode `dispatchCommand` to the main thread, one write and one notification per frame, and five times a frame reached the manager about 20 seconds late (2026-11-11 to 2026-11-15, Streaming Stick 4K); in the one sighting traced end to end it arrived after the frame written behind it. Three traced runs on 2026-11-15 (9,004 frames, one with random delays at both hops) never showed it, so the hop was removed and the hand-off made not to depend on a notification at all, as the API pool does for requests.
+
+Ruled out: the straight write alone, which has nothing to catch a miss on the new hop and no line to say one happened; and a child node per frame, the API pool's own shape, which gives the same guarantee for a node made and removed per frame. Cast commands stay on the old road (followup `cast-commands-one-notification-each`). Worth checking again if a `SyncPlay frame late` warning ever names a rescue: that would show which notification is the one that goes missing.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

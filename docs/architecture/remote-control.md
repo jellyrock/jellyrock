@@ -11,6 +11,7 @@ related-files:
   - source/remotecontrol/remoteProtocol.bs
   - source/utils/backoff.bs
   - source/remotecontrol/remoteDispatch.bs
+  - source/syncplay/syncPlayInbox.bs
   - source/replayRoute.bs
   - source/utils/deviceCapabilities.bs
   - source/main.bs
@@ -20,7 +21,7 @@ related-files:
   - scripts/lint/socket-thread-release-check.js
   - scripts/lint/socket-auth-binding-check.js
   - docs/architecture/remote-control-longpoll-contract.md
-last-reviewed: 2026-11-08
+last-reviewed: 2026-11-15
 ---
 
 # Remote control: cast to JellyRock
@@ -63,6 +64,15 @@ The socket is I/O, so it lives on a Task thread. But the seams a command drives 
 - **`remoteDispatch.bs`** is the main-thread adapter, the one place a remote command calls the deep-link and player seams. Voice uses the same `dispatchTransport`: the `roInputEvent` branch in `main.bs` calls it, so voice and cast control the player identically.
 
 The command rides a field on the Task node, `dispatchCommand`, which the main loop observes. A Task-node field observed on a port delivers; an `m.global` field observed on a port does not (the delivery defect noted in `main.bs`). That is why the field lives on the Task.
+
+**SyncPlay frames do not take that road.** The receiver writes them straight to the SyncPlay manager's `frames` field (`RemoteControlTask.sendSyncPlayFrame`), which the manager observes on the render thread, so they never wait on the main loop. The server sends a command and a group update back to back, and on the one-field road a frame has reached the manager about 20 seconds late, after the frame written behind it (seen five times, 2026-11-11 to 2026-11-15, on a Streaming Stick 4K). So the hand-off does not count on one notification per frame, the same idea as the API pool's ([api.md](api.md#the-coalescing-problem-why-children-not-fields)):
+
+- The receiver numbers and stamps each frame and writes the last few together ([`syncPlayInbox.push`](../../source/syncplay/syncPlayInbox.bs)).
+- The manager applies each number once, in order (`syncPlayInbox.take`), whichever write brings it.
+- While a group may be sending, the manager's `inboxTimer` reads the field again every second, so a frame whose notification never came still lands.
+- A frame that arrived any way but with its own notification, or more than two seconds after its stamp, gets a `SyncPlay frame late` warning naming its number, its age and what brought it. That line is how a late frame is located.
+
+Cast commands keep the one-field road: they rarely arrive back to back, and their seams are main-thread code.
 
 ## Lifecycle
 
@@ -151,7 +161,7 @@ The advertised commands are the navigation and messaging ones JellyRock acts on:
 | `GeneralCommand{DisplayMessage}` | `message` | With `TimeoutMs`, a **toast** (`Header` and `Text`). Without it, a **dialog** that stays until the user presses OK. |
 | `Playstate{Pause, Unpause, Stop, NextTrack, PreviousTrack, Seek, Rewind, FastForward, PlayPause}` | `transport` | `getActiveView().handleTransport(evt)` on the active player |
 | `ForceKeepAlive` | `keepalive` | The receiver sends `KeepAlive` on the interval. Never reaches the main thread. |
-| `SyncPlayCommand{Unpause, Pause, Stop, Seek}` | `syncplaycommand` | Parsed by `syncPlayMessage.parseCommand` (`source/syncplay/`): the command name, `When` and `EmittedAt` in ms, the position in ticks, the playlist item and group. `remoteDispatch.dispatchSyncPlay` writes it to the SyncPlay manager node's `frame` field, or drops it with a console line while no manager exists. |
+| `SyncPlayCommand{Unpause, Pause, Stop, Seek}` | `syncplaycommand` | Parsed by `syncPlayMessage.parseCommand` (`source/syncplay/`): the command name, `When` and `EmittedAt` in ms, the position in ticks, the playlist item and group. `RemoteControlTask.sendSyncPlayFrame` writes it, numbered, to the SyncPlay manager node's `frames` field (see Threading above), or drops it with a log line while no manager exists. |
 | `SyncPlayGroupUpdate{GroupJoined, GroupLeft, UserJoined, UserLeft, StateUpdate, PlayQueue, NotInGroup, GroupDoesNotExist, LibraryAccessDenied, CreateGroupDenied, JoinGroupDenied}` | `syncplayupdate` | Parsed by `syncPlayMessage.parseGroupUpdate` into the group info, the queue or the state; the same hand-off as the command. One parser covers every server line from 10.7.0: the shapes are unchanged and enums travel as names on every line. |
 | `GeneralCommand{volume, directional, SendKey, …}`, `KeepAlive`, `Sessions`, `RefreshProgress`, `UserDataChanged`, anything unknown | `ignore` | Dropped, never an error, so a hostile, future or unknown frame cannot break the receiver |
 

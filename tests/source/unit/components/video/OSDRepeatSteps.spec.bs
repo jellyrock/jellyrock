@@ -52,10 +52,10 @@ namespace tests
     private sub followingGroupAt(index as integer, repeatMode as string, shuffleMode = "Sorted" as string)
       manager = CreateObject("roSGNode", "SyncPlayManager")
       m.global.syncPlayManager = manager
-      manager.frame = remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g1", Type: "GroupJoined", Data: { GroupId: "g1", GroupName: "Movie night", State: "Idle", Participants: ["ann"], LastUpdatedAt: "2026-10-23T20:47:20.500Z" } } })
+      syncPlayFrames.send(manager, remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g1", Type: "GroupJoined", Data: { GroupId: "g1", GroupName: "Movie night", State: "Idle", Participants: ["ann"], LastUpdatedAt: "2026-10-23T20:47:20.500Z" } } }))
       playlist = [{ ItemId: "i1", PlaylistItemId: "p1" }, { ItemId: "i2", PlaylistItemId: "p2" }]
       m.global.queueManager.callFunc("set", [{ id: "i" + (index + 1).toStr(), type: "Movie", syncPlayPlaylistItemId: "p" + (index + 1).toStr() }])
-      manager.frame = remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g1", Type: "PlayQueue", Data: { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: playlist, PlayingItemIndex: index, StartPositionTicks: 0, RepeatMode: repeatMode, ShuffleMode: shuffleMode } } })
+      syncPlayFrames.send(manager, remoteCommand.parseMessage({ MessageType: "SyncPlayGroupUpdate", Data: { GroupId: "g1", Type: "PlayQueue", Data: { Reason: "NewPlaylist", LastUpdate: "2026-10-23T20:47:25.000Z", Playlist: playlist, PlayingItemIndex: index, StartPositionTicks: 0, RepeatMode: repeatMode, ShuffleMode: shuffleMode } } }))
     end sub
 
     private sub localQueueAt(index as integer, count as integer, repeatMode as string)

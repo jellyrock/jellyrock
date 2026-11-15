@@ -1271,6 +1271,14 @@ Each rename needs a registry migration (`/new-migration`), because settings are 
 
 Afterward, run `npm run update-translations -- --rename Old=New` so each `SettingDesc` key matches its setting's new name. Then tighten the key-name rule in `docs/dev/translations.md` and `locale/CLAUDE.md` back to "`SettingDesc` plus the `settingName` without its area prefix". The rename-key PR (`refactor/translation-key-names`) loosened that rule, because the names it would derive from were about to change. Related: `in-app-settings-copy` (the description wording itself).
 
+#### Back-to-back cast commands ride one field with one notification each, the road that held SyncPlay frames `[fid: cast-commands-one-notification-each]` `[captured 2026-11-15]`
+
+Cast commands (play, navigate, transport, route, message) still travel from the receiver task to the main thread on one field, `RemoteControlTask.dispatchCommand`, with one notification per command. SyncPlay frames left that road on 2026-11-15 after a frame reached the manager about 20 seconds late, after the frame written behind it (five sightings on a Streaming Stick 4K, see "SyncPlay frames do not take that road" in `docs/architecture/remote-control.md`). Two cast commands sent back to back, such as a play and a seek, could be held the same way.
+
+Not seen with cast commands, and not tried. Why not now: the SyncPlay fix was sized to the frames that showed the fault, and a cast command's seams are main-thread code, so it cannot use the manager's road.
+
+Closes with a device run that sends cast commands back to back in a long loop and either shows none is held, or moves them to a numbered hand-off (`syncPlayInbox` is the model: the main loop would apply each number once and check the field again on a timer).
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`
@@ -1820,6 +1828,16 @@ While there: a simulator whose results never match their requests hangs the devi
 `tests/rta/specs/backdrop-mode.spec.js` checks that Back from an item clears the backdrop in the Backdrop Images `details` mode on the library grid and on search, but not on Home. The direct check was dropped in `test(backdrop): Open the details-mode item from the poster grid, not a Home Latest row`: the public demo account excludes every library from Latest (`LatestItemsExcludes`, checked 2026-11-12), so Home has no stable row that opens an item, and reaching Home through the grid is vacuous because the grid clears the backdrop first.
 
 Not now: it needs a Home row that opens an item on every run, which the shared demo server does not promise. Closes when such a row is available (for example a Continue Watching fixture the spec seeds itself) and the spec opens an item from Home, presses Back, and waits for `#imageFader.uri` to read empty.
+
+#### The SyncPlay controls spec presses Right for a scrub without waiting for the OSD to close `[fid: syncplay-controls-scrub-presses-under-osd]` `[captured 2026-11-15]`
+
+Two scrub cases in `tests/rta/specs/syncplay-controls.spec.js` send three Right presses and wait for the trick-play bar: "a trickplay scrub confirmed with OK seeks the whole group", which runs right after the Play-key pause and resume case, and "a scrub whose Seek the server never answers". Neither waits for the OSD to be down first.
+
+Why it matters: the OSD hides only once 5 s have passed since the last key press (`inactiveTimeout` in `VideoPlayerView.xml`, `inactiveCheck()` in `OSD.bs`), and while it is up the player sends Right to the OSD, so the bar does not open. The same shape ended a mix soak of `syncplay-stress.spec.js` at its `openBar()` (Stick 4K, 2026-11-15), fixed there by waiting for `#osd.visible` to read false before the presses.
+
+Not seen failing in `syncplay-controls.spec.js`: the four SyncPlay specs ran 49 passed and 1 skipped on 2026-11-15. Not checked: whether the case before each scrub leaves the OSD up, which decides whether this can fail at all.
+
+Not done with the soak fix because it needs its own device run to show the OSD state before each scrub. Closes with the same wait for the OSD to close before the presses (a shared helper in `lib/steps.js` if both specs use it), or a recorded reason the cases cannot start with the OSD up.
 
 ### docs
 

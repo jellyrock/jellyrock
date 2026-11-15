@@ -2,6 +2,7 @@ import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/remotecontrol/remoteCommand.bs"
 import "pkg:/source/remotecontrol/remoteProtocol.bs"
+import "pkg:/source/syncplay/syncPlayInbox.bs"
 import "pkg:/source/utils/backoff.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/serverCapabilities.bs"
@@ -23,6 +24,8 @@ end sub
 ' terminating this thread.
 sub runReceiver()
   serverUrl = m.global.server.serverUrl
+  ' A new run numbers its SyncPlay frames from 1 under a new name (sendSyncPlayFrame).
+  m.syncPlayOutbox = invalid
 
   ' The channel's state starts unknown for each run; the transport below settles it.
   setChannelStatus(serverCapabilities.STATUS_UNKNOWN)
@@ -227,12 +230,35 @@ sub logDroppedSyncPlayFrame(command as object)
   m.log.warn("SyncPlay frame not understood, ignored", "messageType", messageType, "subtype", remoteCommand.syncPlaySubtype(command))
 end sub
 
-' Marshal a normalized command to the main thread. Drops the bulky original 'raw' Data first (a whole
+' Marshal a normalized command to the thread that acts on it. Drops the bulky original 'raw' Data first (a whole
 ' ItemIds list for a series/album can be large): the normalized fields carry everything the main
 ' thread needs. Shared by both transports; callers gate out keepalive/ignore before calling.
+' A SyncPlay frame goes straight to the SyncPlay manager; everything else to the main thread.
 sub marshalCommand(command as object)
   command.delete("raw")
+  if command.kind = "syncplaycommand" or command.kind = "syncplayupdate"
+    sendSyncPlayFrame(command)
+    return
+  end if
   m.top.dispatchCommand = command
+end sub
+
+' Write a SyncPlay frame to the manager's `frames` field, numbered and with the frames before
+' it (syncPlayInbox), so the manager needs no notification per frame: the server sends a command
+' and a group update back to back, and a frame handed over one write at a time has reached the
+' manager seconds late. One crossing to the render thread per frame. The outbox is built here,
+' on the thread that uses it, once per run of the receiver.
+sub sendSyncPlayFrame(command as object)
+  now = CreateObject("roDateTime")
+  if not isValid(m.syncPlayOutbox)
+    m.syncPlayManager = m.global.syncPlayManager
+    m.syncPlayOutbox = syncPlayInbox.newOutbox(now.AsSeconds().toStr() + "." + now.GetMilliseconds().toStr())
+  end if
+  if not isValid(m.syncPlayManager)
+    m.log.warn("SyncPlay frame dropped: no manager", "kind", command.kind)
+    return
+  end if
+  m.syncPlayManager.frames = syncPlayInbox.push(m.syncPlayOutbox, command, now.AsSeconds(), now.GetMilliseconds())
 end sub
 
 ' Best-effort teardown of the socket child + its observers.

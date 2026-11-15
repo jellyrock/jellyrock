@@ -1,0 +1,145 @@
+import "pkg:/source/syncplay/syncPlayInbox.bs"
+
+namespace tests
+
+  ' The numbered hand-off of SyncPlay frames: whatever happens to the notifications, each frame
+  ' is taken once and in the order the receiver wrote it.
+  @suite("syncPlayInbox - numbered frames from the receiver to the manager")
+  class SyncPlayInboxTests extends tests.BaseTestSuite
+
+    private function frame(name as string) as object
+      return { kind: "syncplayupdate", updateType: name }
+    end function
+
+    private function names(taken as object) as string
+      text = ""
+      for each entry in taken.entries
+        text += entry.frame.updateType + " "
+      end for
+      return text.trim()
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("push()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("numbers frames from 1 and stamps each with the time given")
+    function _()
+      outbox = syncPlayInbox.newOutbox("run-1")
+      syncPlayInbox.push(outbox, m.frame("a"), 100, 5)
+      batch = syncPlayInbox.push(outbox, m.frame("b"), 101, 7)
+      m.assertEqual(batch.epoch, "run-1")
+      m.assertEqual(batch.entries.count(), 2)
+      m.assertEqual(batch.entries[0].seq, 1)
+      m.assertEqual(batch.entries[1].seq, 2)
+      m.assertEqual(batch.entries[1].sentS, 101)
+      m.assertEqual(batch.entries[1].sentMs, 7)
+      m.assertEqual(batch.entries[1].frame.updateType, "b")
+    end function
+
+    @it("keeps only the last few frames, oldest first")
+    function _()
+      outbox = syncPlayInbox.newOutbox("run-1")
+      batch = invalid
+      for i = 1 to syncPlayInbox.WINDOW + 2
+        batch = syncPlayInbox.push(outbox, m.frame(i.toStr()), 100, 0)
+      end for
+      m.assertEqual(batch.entries.count(), syncPlayInbox.WINDOW)
+      m.assertEqual(batch.entries[0].seq, 3)
+      m.assertEqual(batch.entries[syncPlayInbox.WINDOW - 1].seq, syncPlayInbox.WINDOW + 2)
+    end function
+
+    @it("answers a batch a later push does not change")
+    function _()
+      outbox = syncPlayInbox.newOutbox("run-1")
+      first = syncPlayInbox.push(outbox, m.frame("a"), 100, 0)
+      syncPlayInbox.push(outbox, m.frame("b"), 100, 0)
+      m.assertEqual(first.entries.count(), 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("take()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("takes each frame once when every notification arrives")
+    function _()
+      outbox = syncPlayInbox.newOutbox("run-1")
+      inbox = syncPlayInbox.newInbox()
+      m.assertEqual(m.names(syncPlayInbox.take(inbox, syncPlayInbox.push(outbox, m.frame("a"), 100, 0))), "a")
+      m.assertEqual(m.names(syncPlayInbox.take(inbox, syncPlayInbox.push(outbox, m.frame("b"), 100, 0))), "b")
+    end function
+
+    @it("takes a frame whose notification never arrived from the next write, in order")
+    function _()
+      outbox = syncPlayInbox.newOutbox("run-1")
+      inbox = syncPlayInbox.newInbox()
+      syncPlayInbox.take(inbox, syncPlayInbox.push(outbox, m.frame("a"), 100, 0))
+      syncPlayInbox.push(outbox, m.frame("b"), 100, 0) ' this write's notification is lost
+      taken = syncPlayInbox.take(inbox, syncPlayInbox.push(outbox, m.frame("c"), 100, 0))
+      m.assertEqual(m.names(taken), "b c")
+      m.assertEqual(taken.missed, 0)
+    end function
+
+    @it("takes nothing from a batch it has already taken (the repeating check, a late notification)")
+    function _()
+      outbox = syncPlayInbox.newOutbox("run-1")
+      inbox = syncPlayInbox.newInbox()
+      first = syncPlayInbox.push(outbox, m.frame("a"), 100, 0)
+      second = syncPlayInbox.push(outbox, m.frame("b"), 100, 0)
+      syncPlayInbox.take(inbox, second)
+      m.assertEqual(syncPlayInbox.take(inbox, second).entries.count(), 0)
+      ' The first write's notification arrives after the second's: nothing goes back in time.
+      m.assertEqual(syncPlayInbox.take(inbox, first).entries.count(), 0)
+    end function
+
+    @it("counts the frames lost past the window")
+    function _()
+      outbox = syncPlayInbox.newOutbox("run-1")
+      inbox = syncPlayInbox.newInbox()
+      syncPlayInbox.take(inbox, syncPlayInbox.push(outbox, m.frame("first"), 100, 0))
+      batch = invalid
+      for i = 1 to syncPlayInbox.WINDOW + 2
+        batch = syncPlayInbox.push(outbox, m.frame(i.toStr()), 100, 0)
+      end for
+      taken = syncPlayInbox.take(inbox, batch)
+      m.assertEqual(taken.entries.count(), syncPlayInbox.WINDOW)
+      m.assertEqual(taken.missed, 2)
+    end function
+
+    @it("starts counting again for a new receiver run")
+    function _()
+      inbox = syncPlayInbox.newInbox()
+      old = syncPlayInbox.newOutbox("run-1")
+      syncPlayInbox.push(old, m.frame("a"), 100, 0)
+      syncPlayInbox.take(inbox, syncPlayInbox.push(old, m.frame("b"), 100, 0))
+      fresh = syncPlayInbox.newOutbox("run-2")
+      taken = syncPlayInbox.take(inbox, syncPlayInbox.push(fresh, m.frame("c"), 200, 0))
+      m.assertEqual(m.names(taken), "c")
+      m.assertEqual(taken.missed, 0)
+    end function
+
+    @it("takes nothing from what is not a batch, and skips an entry with no number")
+    function _()
+      inbox = syncPlayInbox.newInbox()
+      m.assertEqual(syncPlayInbox.take(inbox, invalid).entries.count(), 0)
+      m.assertEqual(syncPlayInbox.take(inbox, {}).entries.count(), 0)
+      m.assertEqual(syncPlayInbox.take(inbox, { epoch: "run-1", entries: "x" }).entries.count(), 0)
+      taken = syncPlayInbox.take(inbox, { epoch: "run-1", entries: [invalid, { frame: m.frame("a") }, { seq: 1, sentS: 1, sentMs: 1, frame: m.frame("b") }] })
+      m.assertEqual(m.names(taken), "b")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("ageMs()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is the time since the stamp, across a second's edge")
+    function _()
+      entry = { seq: 1, sentS: 100, sentMs: 900, frame: {} }
+      m.assertEqual(syncPlayInbox.ageMs(entry, 100, 950), 50)
+      m.assertEqual(syncPlayInbox.ageMs(entry, 101, 100), 200)
+      m.assertEqual(syncPlayInbox.ageMs(entry, 122, 800), 21900)
+    end function
+
+  end class
+
+end namespace

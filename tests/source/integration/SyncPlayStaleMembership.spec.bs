@@ -44,7 +44,7 @@ namespace tests
     end function
 
     private sub joinGroup()
-      m.manager.frame = m.update("GroupJoined", { GroupId: "g-1", GroupName: "Movie night", State: "Idle", Participants: ["ann"], LastUpdatedAt: "2026-10-27T20:47:20.500Z" })
+      syncPlayFrames.send(m.manager, m.update("GroupJoined", { GroupId: "g-1", GroupName: "Movie night", State: "Idle", Participants: ["ann"], LastUpdatedAt: "2026-10-27T20:47:20.500Z" }))
     end sub
 
     private function remembered() as dynamic
@@ -60,14 +60,14 @@ namespace tests
       m.joinGroup()
       ' The parser stores ids dash-free (syncPlayMessage.serverId), so the registry holds "g1", not "g-1".
       m.assertEqual(m.remembered(), "g1|Movie night")
-      m.manager.frame = m.update("GroupLeft", invalid)
+      syncPlayFrames.send(m.manager, m.update("GroupLeft", invalid))
       m.assertInvalid(m.remembered())
     end function
 
     @it("NotInGroup and reset() remove them too")
     function _()
       m.joinGroup()
-      m.manager.frame = m.update("NotInGroup", invalid)
+      syncPlayFrames.send(m.manager, m.update("NotInGroup", invalid))
       m.assertInvalid(m.remembered())
       m.joinGroup()
       m.assertEqual(m.remembered(), "g1|Movie night")
@@ -85,7 +85,7 @@ namespace tests
       m.global.server.serverUrl = "http://localhost:8096"
       m.assertTrue(m.manager.callFunc("leaveStaleMembership"))
       m.assertInvalid(m.remembered())
-      m.manager.frame = m.update("GroupLeft", invalid)
+      syncPlayFrames.send(m.manager, m.update("GroupLeft", invalid))
       m.assertEqual(m.manager.notice.kind, "leftStale")
       m.assertEqual(m.manager.notice.groupName, "Movie night")
     end function
@@ -95,7 +95,7 @@ namespace tests
       registryWrite("syncPlayGroup", "g-1|Movie | night", m.userId)
       m.global.server.serverUrl = "http://localhost:8096"
       m.manager.callFunc("leaveStaleMembership")
-      m.manager.frame = m.update("GroupLeft", invalid)
+      syncPlayFrames.send(m.manager, m.update("GroupLeft", invalid))
       m.assertEqual(m.manager.notice.groupName, "Movie | night")
     end function
 
@@ -105,7 +105,7 @@ namespace tests
       m.global.server.serverUrl = "http://localhost:8096"
       m.assertTrue(m.manager.callFunc("leaveStaleMembership"))
       m.manager.notice = invalid
-      m.manager.frame = m.update("NotInGroup", invalid)
+      syncPlayFrames.send(m.manager, m.update("NotInGroup", invalid))
       m.assertInvalid(m.manager.notice)
     end function
 
@@ -123,7 +123,7 @@ namespace tests
     @it("a plain GroupLeft with nothing stale and nothing in memory says nothing")
     function _()
       m.manager.notice = invalid
-      m.manager.frame = m.update("GroupLeft", invalid)
+      syncPlayFrames.send(m.manager, m.update("GroupLeft", invalid))
       m.assertInvalid(m.manager.notice)
     end function
 
