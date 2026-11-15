@@ -138,6 +138,7 @@
   "LabelPixelFormat": "Pixelformat",
   "LabelPlayAll": "Alles spillen",
   "LabelPlayCount": "Spielzuel",
+  "LabelPlayDefaultAudioTrack": "Standard-Audiospuer benotzen",
   "LabelPlayNextEpisodeAutomatically": "Nächst Episode automatesch spillen",
   "LabelPlayback": "SyncPlay-Wiedergabe-Astellungen",
   "LabelPlaybackErrorAppVersion": "App-Versioun",

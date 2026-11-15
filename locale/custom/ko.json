@@ -151,6 +151,7 @@
   "LabelPixelFormat": "픽셀 형식",
   "LabelPlayAll": "모두 재생",
   "LabelPlayCount": "재생 횟수",
+  "LabelPlayDefaultAudioTrack": "기본 오디오 트랙 재생",
   "LabelPlayNextEpisodeAutomatically": "자동으로 다음 에피소드 재생",
   "LabelPlayback": "재생",
   "LabelPlaybackErrorAppVersion": "앱 버전",

@@ -513,6 +513,16 @@ LabelVideos:
     streamyfin: { key: "favorites.videos", en: "Videos" }
     jellyfin-roku: { key: "Videos", en: "Videos" }
 
+LabelUseVoiceRemoteToSearch:
+  en: "Use voice remote to search"
+  from:
+    jellyfin-roku: { key: "Use voice remote to search", en: "Use voice remote to search" }
+
+MessageSearchHelp:
+  en: "You can search for Titles, People, Live TV Channels and more"
+  from:
+    jellyfin-roku: { key: "You can search for Titles, People, Live TV Channels and more", en: "You can search for Titles, People, Live TV Channels and more" }
+
 # ── SyncPlay (components/JRScene.bs, source/syncplay/syncPlayMenu.bs) ─────────────
 # jellyfin-web's SyncPlay menu and toasts: the same menu rows, dialog titles and server
 # refusals JellyRock shows. Some locales translate the feature name in ButtonSyncPlay
@@ -740,6 +750,33 @@ ButtonReset:
     swiftfin: { key: "reset", en: "Reset" }
     streamyfin: { key: "library.filters.reset", en: "Reset" }
 
+ButtonCancel:
+  en: "Cancel"
+  from:
+    jellyfin-web: { key: "ButtonCancel", en: "Cancel" }
+    jellyfin-androidtv: { key: "btn_cancel", en: "Cancel" }
+    jellyfin-android:
+      key: "download_cancel"
+      en: "Cancel"
+      exclude:
+        it: "\"Cancella\" means delete"
+    streamyfin: { key: "common.cancel", en: "Cancel" }
+    jellyfin-roku: { key: "Cancel", en: "Cancel" }
+    swiftfin:
+      key: "cancel"
+      en: "Cancel"
+      exclude:
+        it: "\"Cancella\" means delete"
+
+ButtonOk:
+  en: "OK"
+  from:
+    jellyfin-web: { key: "ButtonOk", en: "OK" }
+    jellyfin-androidtv: { key: "lbl_ok", en: "Ok" }
+    streamyfin: { key: "common.ok", en: "OK" }
+    jellyfin-roku: { key: "OK", en: "OK" }
+    swiftfin: { key: "ok", en: "Ok" }
+
 # ── Home and the user menu (components/home/, components/JROverhang.bs) ───────────
 
 ButtonSignOut:
@@ -811,6 +848,42 @@ LabelHome:
       en: "Home"
       exclude:
         nl: "\"Thuis\" means at home, not the home screen"
+
+LabelContinueWatching:
+  en: "Continue Watching"
+  from:
+    jellyfin-web: { key: "HeaderContinueWatching", en: "Continue Watching" }
+    jellyfin-server: { key: "HeaderContinueWatching", en: "Continue Watching" }
+    jellyfin-androidtv: { key: "lbl_continue_watching", en: "Continue watching" }
+    jellyfin-roku: { key: "Continue Watching", en: "Continue Watching" }
+    swiftfin: { key: "continueWatching", en: "Continue Watching" }
+    streamyfin: { key: "home.continue_watching", en: "Continue watching" }
+
+LabelMyMedia:
+  en: "My Media"
+  from:
+    jellyfin-web: { key: "HeaderMyMedia", en: "My Media" }
+    jellyfin-androidtv: { key: "lbl_my_media", en: "My media" }
+    jellyfin-roku: { key: "My Media", en: "My Media" }
+
+LabelSettings:
+  en: "Settings"
+  from:
+    jellyfin-web: { key: "Settings", en: "Settings" }
+    streamyfin: { key: "home.settings.settings_title", en: "Settings" }
+    jellyfin-roku: { key: "Settings", en: "Settings" }
+    swiftfin: { key: "settings", en: "Settings" }
+
+LabelFavorites:
+  en: "Favorites"
+  from:
+    jellyfin-web: { key: "Favorites", en: "Favorites" }
+    jellyfin-server: { key: "Favorites", en: "Favorites" }
+    jellyfin-androidtv: { key: "lbl_favorites", en: "Favorites" }
+    jellyfin-roku: { key: "Favorites", en: "Favorites" }
+    jellyfin-android: { key: "media_service_car_section_favorites", en: "Favorites" }
+    swiftfin: { key: "favorites", en: "Favorites" }
+    streamyfin: { key: "tabs.favorites", en: "Favorites" }
 
 # ── Library grids: views, sort options, empty state (source/GridView/, BaseGridView.bs) ──
 # web's DateAdded names its list sort option (list.js), androidtv's its grid sort option.
@@ -927,6 +1000,185 @@ LabelPositionOfTotal:
   from:
     jellyfin-androidtv: { key: "lbl_now_playing_track", en: "%1$s of %2$s" }
     jellyfin-roku: { key: "%1 of %2", en: "%1 of %2" }
+
+LabelDefault:
+  en: "Default"
+  from:
+    jellyfin-web: { key: "Default", en: "Default" }
+    jellyfin-server: { key: "Default", en: "Default" }
+    streamyfin: { key: "home.settings.appearance.display_size_default", en: "Default" }
+    jellyfin-roku: { key: "Default", en: "Default" }
+
+LabelReturnToTop:
+  en: "Return to Top"
+  from:
+    jellyfin-roku: { key: "Return to Top", en: "Return to Top" }
+
+LabelFilter:
+  en: "Filter"
+  from:
+    jellyfin-web: { key: "Filter", en: "Filter" }
+    streamyfin: { key: "home.hero.filter", en: "Filter" }
+
+LabelGenres:
+  en: "Genres"
+  from:
+    jellyfin-web: { key: "Genres", en: "Genres" }
+    jellyfin-server: { key: "Genres", en: "Genres" }
+    jellyfin-android: { key: "media_service_car_section_genres", en: "Genres" }
+    jellyfin-androidtv: { key: "lbl_genres", en: "Genres" }
+    jellyfin-roku: { key: "Genres", en: "Genres" }
+    swiftfin: { key: "genres", en: "Genres" }
+    streamyfin: { key: "library.filters.genres", en: "Genres" }
+
+LabelRandom:
+  en: "Random"
+  from:
+    jellyfin-web: { key: "OptionRandom", en: "Random" }
+    jellyfin-androidtv: { key: "random", en: "Random" }
+    jellyfin-roku: { key: "Random", en: "Random" }
+
+LabelStudios:
+  en: "Studios"
+  from:
+    streamyfin: { key: "search.studios", en: "Studios" }
+    jellyfin-web: { key: "Studios", en: "Studios" }
+    jellyfin-roku: { key: "Studios", en: "Studios" }
+    swiftfin: { key: "studios", en: "Studios" }
+
+LabelArtists:
+  en: "Artists"
+  from:
+    jellyfin-web: { key: "Artists", en: "Artists" }
+    jellyfin-server: { key: "Artists", en: "Artists" }
+    jellyfin-androidtv: { key: "lbl_artists", en: "Artists" }
+    jellyfin-roku: { key: "Artists", en: "Artists" }
+    jellyfin-android: { key: "media_service_car_section_artists", en: "Artists" }
+    streamyfin: { key: "search.artists", en: "Artists" }
+
+LabelCollections:
+  en: "Collections"
+  from:
+    jellyfin-web: { key: "Collections", en: "Collections" }
+    jellyfin-server: { key: "Collections", en: "Collections" }
+    jellyfin-androidtv: { key: "lbl_collections", en: "Collections" }
+    jellyfin-roku: { key: "Collections", en: "Collections" }
+    streamyfin: { key: "search.collections", en: "Collections" }
+
+LabelFolders:
+  en: "Folders"
+  from:
+    jellyfin-web: { key: "Folders", en: "Folders" }
+    jellyfin-server: { key: "Folders", en: "Folders" }
+    jellyfin-roku: { key: "Folders", en: "Folders" }
+
+LabelParentalRatings:
+  en: "Parental Ratings"
+  from:
+    jellyfin-web: { key: "HeaderParentalRatings", en: "Parental Ratings" }
+    jellyfin-roku: { key: "Parental Ratings", en: "Parental Ratings" }
+
+LabelPhotoAlbums:
+  en: "Photo Albums"
+  from:
+    jellyfin-web: { key: "HeaderPhotoAlbums", en: "Photo Albums" }
+    jellyfin-androidtv: { key: "photo_albums", en: "Photo albums" }
+
+LabelPlayed:
+  en: "Played"
+  from:
+    jellyfin-web: { key: "Played", en: "Played" }
+    jellyfin-roku: { key: "Played", en: "Played" }
+
+LabelPlaylists:
+  en: "Playlists"
+  from:
+    jellyfin-web:
+      key: "Playlists"
+      en: "Playlists"
+      exclude:
+        it: "\"Scalette\" means set lists"
+    jellyfin-android: { key: "media_service_car_section_playlists", en: "Playlists" }
+    streamyfin: { key: "search.playlists", en: "Playlists" }
+    jellyfin-androidtv: { key: "lbl_playlists", en: "Playlists" }
+    jellyfin-roku: { key: "Playlists", en: "Playlists" }
+
+LabelYears:
+  en: "Years"
+  from:
+    jellyfin-web: { key: "HeaderYears", en: "Years" }
+    streamyfin: { key: "library.filters.years", en: "Years" }
+    jellyfin-roku: { key: "Years", en: "Years" }
+
+LabelMovies:
+  en: "Movies"
+  from:
+    jellyfin-web: { key: "Movies", en: "Movies" }
+    jellyfin-server: { key: "Movies", en: "Movies" }
+    jellyfin-androidtv: { key: "lbl_movies", en: "Movies" }
+    streamyfin: { key: "common.movies", en: "Movies" }
+    jellyfin-roku: { key: "Movies", en: "Movies" }
+    swiftfin: { key: "movies", en: "Movies" }
+
+LabelPhotos:
+  en: "Photos"
+  from:
+    jellyfin-web: { key: "Photos", en: "Photos" }
+    jellyfin-server: { key: "Photos", en: "Photos" }
+    jellyfin-androidtv: { key: "photos", en: "Photos" }
+
+LabelResumable:
+  en: "Resumable"
+  from:
+    jellyfin-web: { key: "OptionResumable", en: "Resumable" }
+    jellyfin-roku: { key: "Resumable", en: "Resumable" }
+
+LabelSongs:
+  en: "Songs"
+  from:
+    jellyfin-android:
+      key: "media_service_car_section_songs"
+      en: "Songs"
+      exclude:
+        pt: "\"Sons\" means sounds"
+    jellyfin-web: { key: "Songs", en: "Songs" }
+    streamyfin: { key: "search.songs", en: "Songs" }
+    jellyfin-androidtv: { key: "lbl_songs", en: "Songs" }
+    jellyfin-roku: { key: "Songs", en: "Songs" }
+
+LabelSort:
+  en: "Sort"
+  from:
+    jellyfin-web: { key: "Sort", en: "Sort" }
+
+LabelMusicVideos:
+  en: "Music Videos"
+  from:
+    jellyfin-web: { key: "MusicVideos", en: "Music Videos" }
+    jellyfin-server: { key: "MusicVideos", en: "Music Videos" }
+
+LabelUnplayed:
+  en: "Unplayed"
+  from:
+    jellyfin-web: { key: "Unplayed", en: "Unplayed" }
+    jellyfin-roku: { key: "Unplayed", en: "Unplayed" }
+
+LabelAll:
+  en: "All"
+  from:
+    jellyfin-web: { key: "All", en: "All" }
+    jellyfin-roku: { key: "All", en: "All" }
+    streamyfin: { key: "library.filters.all", en: "All" }
+  reject:
+    - { source: streamyfin, key: "home.settings.other.orientations.ALL", reason: "a screen orientation (fr \"Toutes\", feminine)" }
+
+LabelShows:
+  en: "Shows"
+  from:
+    jellyfin-web: { key: "Shows", en: "Shows" }
+    jellyfin-server: { key: "Shows", en: "Shows" }
+    streamyfin: { key: "item_card.shows", en: "Shows" }
+    jellyfin-roku: { key: "Shows", en: "Shows" }
 
 # ── Item counts (translatePlural in ItemDetails.bs, JellyfinDataTransformer.bs) ───
 # The Zero, One and Many forms of a count. Languages with more plural forms read
@@ -1173,6 +1425,123 @@ LabelNone:
     jellyfin-roku: { key: "None", en: "None" }
     swiftfin: { key: "none", en: "None" }
 
+LabelCancelSeriesRecording:
+  en: "Cancel Series Recording"
+  from:
+    jellyfin-roku: { key: "Cancel Series Recording", en: "Cancel Series Recording" }
+
+LabelEpisodes:
+  en: "Episodes"
+  from:
+    jellyfin-web: { key: "Episodes", en: "Episodes" }
+    jellyfin-androidtv: { key: "lbl_episodes", en: "Episodes" }
+    jellyfin-roku: { key: "Episodes", en: "Episodes" }
+    streamyfin: { key: "common.episodes", en: "Episodes" }
+    swiftfin: { key: "episodes", en: "Episodes" }
+
+LabelPlayTrailer:
+  en: "Play Trailer"
+  from:
+    jellyfin-roku: { key: "Play Trailer", en: "Play Trailer" }
+
+ButtonDelete:
+  en: "Delete"
+  from:
+    jellyfin-web: { key: "Delete", en: "Delete" }
+    jellyfin-androidtv: { key: "lbl_delete", en: "Delete" }
+    streamyfin: { key: "common.delete", en: "Delete" }
+
+LabelKids:
+  en: "Kids"
+  from:
+    jellyfin-androidtv: { key: "lbl_kids", en: "Kids" }
+    jellyfin-web: { key: "Kids", en: "Kids" }
+
+LabelMoreLikeThis:
+  en: "More Like This"
+  from:
+    jellyfin-web: { key: "HeaderMoreLikeThis", en: "More Like This" }
+    jellyfin-androidtv: { key: "lbl_more_like_this", en: "More like this" }
+    jellyfin-roku: { key: "More Like This", en: "More Like This" }
+    swiftfin: { key: "moreLikeThis", en: "More Like This" }
+
+LabelPremiere:
+  en: "Premiere"
+  from:
+    jellyfin-androidtv: { key: "lbl_premiere", en: "Premiere" }
+    jellyfin-web: { key: "Premiere", en: "Premiere" }
+
+LabelMovie:
+  en: "Movie"
+  from:
+    jellyfin-web: { key: "Movie", en: "Movie" }
+
+LabelOff:
+  en: "Off"
+  from:
+    jellyfin-web: { key: "Off", en: "Off" }
+
+LabelSpecialFeatures:
+  en: "Special Features"
+  from:
+    jellyfin-web: { key: "SpecialFeatures", en: "Special Features" }
+  reject:
+    - { source: jellyfin-roku, key: "Special Features", reason: "translated as software features (fr \"Fonctionnalités spéciales\", de \"Besondere Merkmale\")" }
+
+ButtonRefresh:
+  en: "Refresh"
+  from:
+    jellyfin-web: { key: "Refresh", en: "Refresh" }
+    swiftfin: { key: "refresh", en: "Refresh" }
+
+ButtonResume:
+  en: "Resume"
+  from:
+    jellyfin-web: { key: "ButtonResume", en: "Resume" }
+
+ButtonShuffle:
+  en: "Shuffle"
+  from:
+    jellyfin-web: { key: "Shuffle", en: "Shuffle" }
+    streamyfin: { key: "player.shuffle", en: "Shuffle" }
+    jellyfin-roku: { key: "Shuffle", en: "Shuffle" }
+
+LabelAppearsOn:
+  en: "Appears On"
+  from:
+    jellyfin-web: { key: "HeaderAppearsOn", en: "Appears On" }
+    jellyfin-roku: { key: "Appears On", en: "Appears On" }
+
+MessageDisc:
+  en: "Disc {0}"
+  from:
+    jellyfin-web: { key: "ValueDiscNumber", en: "Disc {0}" }
+
+MessageMoreFrom:
+  en: "More from {0}"
+  from:
+    jellyfin-web: { key: "MoreFromValue", en: "More from {0}" }
+
+LabelAlbumCountOne:
+  en: "1 Album"
+  from:
+    jellyfin-web: { key: "ValueOneAlbum", en: "1 album" }
+
+LabelViewAll:
+  en: "View All"
+  from:
+    jellyfin-roku: { key: "View All", en: "View All" }
+
+LabelNoChapterDataFound:
+  en: "No Chapter Data Found"
+  from:
+    jellyfin-roku: { key: "No Chapter Data Found", en: "No Chapter Data Found" }
+
+MessageNoBiography:
+  en: "Biographical information for this person is not currently available."
+  from:
+    jellyfin-roku: { key: "Biographical information for this person is not currently available.", en: "Biographical information for this person is not currently available." }
+
 # ── Media segments (components/video/VideoPlayerView.bs) ──────────────────────────
 # web's MediaSegmentType.* and MediaSegmentAction.Skip label the same server segment types.
 
@@ -1407,6 +1776,312 @@ LabelUserInterface:
   from:
     jellyfin-roku: { key: "User Interface", en: "User Interface" }
 
+LabelAlwaysHide:
+  en: "Always Hide"
+  from:
+    jellyfin-roku: { key: "Always Hide", en: "Always Hide" }
+
+LabelAlwaysShow:
+  en: "Always Show"
+  from:
+    jellyfin-roku: { key: "Always Show", en: "Always Show" }
+
+LabelCustom:
+  en: "Custom"
+  from:
+    jellyfin-web:
+      key: "Custom"
+      en: "Custom"
+      exclude:
+        fr: "\"Personnalisation\" is the noun customization, not the option Custom"
+    streamyfin: { key: "custom_headers.source_custom", en: "Custom" }
+
+LabelCustomSubtitles:
+  en: "Custom Subtitles"
+  from:
+    jellyfin-roku: { key: "Custom Subtitles", en: "Custom Subtitles" }
+
+LabelHideTaglines:
+  en: "Hide Taglines"
+  from:
+    jellyfin-roku: { key: "Hide Taglines", en: "Hide Taglines" }
+
+LabelPlayDefaultAudioTrack:
+  en: "Play Default Audio Track"
+  from:
+    streamyfin: { key: "home.settings.audio.play_default_audio_track", en: "Play default audio track" }
+
+LabelLibraries:
+  en: "Libraries"
+  from:
+    jellyfin-web: { key: "HeaderLibraries", en: "Libraries" }
+    jellyfin-androidtv: { key: "pref_libraries", en: "Libraries" }
+    jellyfin-roku: { key: "Libraries", en: "Libraries" }
+
+LabelPrimary:
+  en: "Primary"
+  reject:
+    - { source: jellyfin-web, key: "Primary", reason: "an image type (it \"Locandina\", poster); ours is a theme color" }
+
+LabelGeneral:
+  en: "General"
+  from:
+    jellyfin-web: { key: "General", en: "General" }
+    jellyfin-roku: { key: "General", en: "General" }
+
+LabelGlobal:
+  en: "Global"
+  from:
+    jellyfin-roku:
+      key: "Global"
+      en: "Global"
+      exclude:
+        fr: "\"Général\" collides with the General group"
+
+LabelBitrateLimit:
+  en: "Bitrate Limit"
+  from:
+    jellyfin-roku: { key: "Bitrate Limit", en: "Bitrate Limit" }
+
+LabelBlurImagesOfUnwatchedEpisodes:
+  en: "Blur images of unwatched episodes."
+  from:
+    jellyfin-roku: { key: "Blur images of unwatched episodes.", en: "Blur images of unwatched episodes." }
+
+LabelBlurUnwatchedEpisodes:
+  en: "Blur Unwatched Episodes"
+  from:
+    jellyfin-roku: { key: "Blur Unwatched Episodes", en: "Blur Unwatched Episodes" }
+
+LabelEnableLimit:
+  en: "Enable Limit"
+  from:
+    jellyfin-roku: { key: "Enable Limit", en: "Enable Limit" }
+
+LabelHidesTaglineTextOnDetailsPages:
+  en: "Hides tagline text on details pages."
+  from:
+    jellyfin-roku: { key: "Hides tagline text on details pages.", en: "Hides tagline text on details pages." }
+
+LabelMaximumBitrate:
+  en: "Maximum Bitrate"
+  from:
+    jellyfin-roku: { key: "Maximum Bitrate", en: "Maximum Bitrate" }
+
+LabelMaximumResolution:
+  en: "Maximum Resolution"
+  from:
+    jellyfin-roku: { key: "Maximum Resolution", en: "Maximum Resolution" }
+
+LabelRandomOff:
+  en: "Random Off"
+  from:
+    jellyfin-roku: { key: "Random Off", en: "Random Off" }
+
+LabelRandomOn:
+  en: "Random On"
+  from:
+    jellyfin-roku: { key: "Random On", en: "Random On" }
+
+MessageRememberMe:
+  en: "Remember Me?"
+  from:
+    jellyfin-roku: { key: "Remember Me?", en: "Remember Me?" }
+
+LabelAutoUseTvResolution:
+  en: "Auto - Use TV resolution"
+  from:
+    jellyfin-roku: { key: "Auto - Use TV resolution", en: "Auto - Use TV resolution" }
+
+LabelCommunityAndCriticalRatings:
+  en: "Community and Critical Ratings"
+  from:
+    jellyfin-roku: { key: "Community and Critical Ratings", en: "Community and Critical Ratings" }
+
+LabelConfigureTheMaximumPlaybackBitrate:
+  en: "Configure the maximum playback bitrate."
+  from:
+    jellyfin-roku: { key: "Configure the maximum playback bitrate.", en: "Configure the maximum playback bitrate." }
+
+LabelDefaultViewForMovieLibraries:
+  en: "Default view for Movie Libraries."
+  from:
+    jellyfin-roku: { key: "Default view for Movie Libraries.", en: "Default view for Movie Libraries." }
+
+LabelDisableCommunityRatingForEpisodes:
+  en: "Disable Community Rating for Episodes"
+  from:
+    jellyfin-roku: { key: "Disable Community Rating for Episodes", en: "Disable Community Rating for Episodes" }
+
+LabelDisableUnwatchedEpisodeCount:
+  en: "Disable Unwatched Episode Count"
+  from:
+    jellyfin-roku: { key: "Disable Unwatched Episode Count", en: "Disable Unwatched Episode Count" }
+
+LabelEpisodeImagesNextUp:
+  en: "Episode Images Next Up"
+  from:
+    jellyfin-roku: { key: "Episode Images Next Up", en: "Episode Images Next Up" }
+
+LabelGridViewSettings:
+  en: "Grid View Settings"
+  from:
+    jellyfin-roku: { key: "Grid View Settings", en: "Grid View Settings" }
+
+LabelMaxDaysNextUp:
+  en: "Max Days Next Up"
+  from:
+    jellyfin-roku: { key: "Max Days Next Up", en: "Max Days Next Up" }
+
+LabelNextEpisodeButtonTime:
+  en: "Next Episode Button Time"
+  from:
+    jellyfin-roku: { key: "Next Episode Button Time", en: "Next Episode Button Time" }
+
+LabelRewatchingNextUp:
+  en: "Rewatching Next Up"
+  from:
+    jellyfin-roku: { key: "Rewatching Next Up", en: "Rewatching Next Up" }
+
+LabelShowOnHover:
+  en: "Show On Hover"
+  from:
+    jellyfin-roku: { key: "Show On Hover", en: "Show On Hover" }
+
+LabelTextSubtitlesOnly:
+  en: "Text Subtitles Only"
+  from:
+    jellyfin-roku: { key: "Text Subtitles Only", en: "Text Subtitles Only" }
+
+LabelUseEpisodeImage:
+  en: "Use Episode Image"
+  from:
+    jellyfin-roku: { key: "Use Episode Image", en: "Use Episode Image" }
+
+LabelUseShowImage:
+  en: "Use Show Image"
+  from:
+    jellyfin-roku: { key: "Use Show Image", en: "Use Show Image" }
+
+LabelUseWebClientSetting:
+  en: "Use Web Client Setting"
+  from:
+    jellyfin-roku: { key: "Use Web Client Setting", en: "Use Web Client Setting" }
+
+SettingHomeUseWebArrangement:
+  en: "Use Web Client's Home Section Arrangement"
+  from:
+    jellyfin-roku: { key: "Use Web Client's Home Section Arrangement", en: "Use Web Client's Home Section Arrangement" }
+
+SettingDescMpeg4:
+  en: "Support Direct Play of MPEG-4 content. This may need to be disabled for playback of DIVX encoded video files."
+  from:
+    jellyfin-roku: { key: "Support Direct Play of MPEG-4 content. This may need to be disabled for playback of DIVX encoded video files.", en: "Support Direct Play of MPEG-4 content. This may need to be disabled for playback of DIVX encoded video files." }
+
+SettingDescShowItemCount:
+  en: "Show item count in the library and index of selected item."
+  from:
+    jellyfin-roku: { key: "Show item count in the library and index of selected item.", en: "Show item count in the library and index of selected item." }
+
+SettingDescCinemaMode:
+  en: "Bring the theater experience straight to your living room with the ability to play custom intros before the main feature."
+  from:
+    jellyfin-roku: { key: "Bring the theater experience straight to your living room with the ability to play custom intros before the main feature.", en: "Bring the theater experience straight to your living room with the ability to play custom intros before the main feature." }
+
+SettingDescGridReset:
+  en: "Use the replay button to slowly animate to the first item in the folder. (If disabled, the folder will reset to the first item immediately)."
+  from:
+    jellyfin-roku: { key: "Use the replay button to slowly animate to the first item in the folder. (If disabled, the folder will reset to the first item immediately).", en: "Use the replay button to slowly animate to the first item in the folder. (If disabled, the folder will reset to the first item immediately)." }
+
+SettingDescBitrateMaxLimited:
+  en: "Enable or disable the 'Maximum Bitrate' setting."
+  from:
+    jellyfin-roku: { key: "Enable or disable the 'Maximum Bitrate' setting.", en: "Enable or disable the 'Maximum Bitrate' setting." }
+
+SettingDescEpisodeImages:
+  en: "What type of images to use for Episodes shown in the 'Next Up' and 'Continue Watching' sections."
+  from:
+    jellyfin-roku: { key: "What type of images to use for Episodes shown in the 'Next Up' and 'Continue Watching' sections.", en: "What type of images to use for Episodes shown in the 'Next Up' and 'Continue Watching' sections." }
+
+SettingDescGlobal:
+  en: "Global settings that affect everyone that uses this Roku device."
+  from:
+    jellyfin-roku: { key: "Global settings that affect everyone that uses this Roku device.", en: "Global settings that affect everyone that uses this Roku device." }
+
+SettingDescGridView:
+  en: "Settings that apply when Grid views are enabled."
+  from:
+    jellyfin-roku: { key: "Settings that apply when Grid views are enabled.", en: "Settings that apply when Grid views are enabled." }
+
+SettingDescMovies:
+  en: "Settings relating to the appearance of pages in Movie Libraries."
+  from:
+    jellyfin-roku: { key: "Settings relating to the appearance of pages in Movie Libraries.", en: "Settings relating to the appearance of pages in Movie Libraries." }
+
+SettingDescPlayback:
+  en: "Settings relating to playback and supported codec and media types."
+  from:
+    jellyfin-roku: { key: "Settings relating to playback and supported codec and media types.", en: "Settings relating to playback and supported codec and media types." }
+
+SettingDescRewatchingNextUp:
+  en: "Show already watched episodes in 'Next Up' sections."
+  from:
+    jellyfin-roku: { key: "Show already watched episodes in 'Next Up' sections.", en: "Show already watched episodes in 'Next Up' sections." }
+
+SettingDescSubsOnlyText:
+  en: "Only display text subtitles to minimize transcoding."
+  from:
+    jellyfin-roku: { key: "Only display text subtitles to minimize transcoding.", en: "Only display text subtitles to minimize transcoding." }
+
+SettingDescTryDirectH264ProfileLevel:
+  en: "Attempt Direct Play for H.264 media with unsupported profile levels before falling back to transcoding if it fails."
+  from:
+    jellyfin-roku: { key: "Attempt Direct Play for H.264 media with unsupported profile levels before falling back to transcoding if it fails.", en: "Attempt Direct Play for H.264 media with unsupported profile levels before falling back to transcoding if it fails." }
+
+SettingDescTryDirectHevcProfileLevel:
+  en: "Attempt Direct Play for HEVC media with unsupported profile levels before falling back to transcoding if it fails."
+  from:
+    jellyfin-roku: { key: "Attempt Direct Play for HEVC media with unsupported profile levels before falling back to transcoding if it fails.", en: "Attempt Direct Play for HEVC media with unsupported profile levels before falling back to transcoding if it fails." }
+
+SettingDescTvShows:
+  en: "Settings relating to the appearance of pages in TV Libraries."
+  from:
+    jellyfin-roku: { key: "Settings relating to the appearance of pages in TV Libraries.", en: "Settings relating to the appearance of pages in TV Libraries." }
+
+SettingDescTvShowsHideCommunityRating:
+  en: "Hide the star and community rating for episodes of a TV show. This is to prevent spoilers of an upcoming good/bad episode."
+  from:
+    jellyfin-roku: { key: "Hide the star and community rating for episodes of a TV show. This is to prevent spoilers of an upcoming good/bad episode.", en: "Hide the star and community rating for episodes of a TV show. This is to prevent spoilers of an upcoming good/bad episode." }
+
+SettingDescTvShowsHideUnwatchedCount:
+  en: "If enabled, the number of unwatched episodes in a series/season will be removed."
+  from:
+    jellyfin-roku: { key: "If enabled, the number of unwatched episodes in a series/season will be removed.", en: "If enabled, the number of unwatched episodes in a series/season will be removed." }
+
+SettingDescUserInterface:
+  en: "Settings relating to how the application looks."
+  from:
+    jellyfin-roku: { key: "Settings relating to how the application looks.", en: "Settings relating to how the application looks." }
+
+SettingDescUserInterfaceGeneral:
+  en: "Settings relating to the appearance of the Home screen and the program in general."
+  from:
+    jellyfin-roku: { key: "Settings relating to the appearance of the Home screen and the program in general.", en: "Settings relating to the appearance of the Home screen and the program in general." }
+
+SettingDescNextUpButtonSeconds:
+  en: "Set how many seconds before the end of an episode the Next Episode button should appear. Set to 0 to disable."
+  from:
+    jellyfin-roku:
+      key: "Set how many seconds before the end of an episode the Next Episode button should appear. Set to 0 to disable."
+      en: "Set how many seconds before the end of an episode the Next Episode button should appear. Set to 0 to disable."
+      exclude:
+        fr: "describes an Outro skip button, a newer string than ours"
+
+SettingDescMaxDaysNextUp:
+  en: "Set the maximum amount of days a show should stay in the 'Next Up' list without watching it."
+  from:
+    jellyfin-web: { key: "LabelMaxDaysForNextUpHelp", en: "Set the maximum amount of days a show should stay in the 'Next Up' list without watching it." }
+
 # ── Subtitles: track flags, search results, downloads (mediaDisplayTitle.bs, components/subtitles/) ──
 # web's MediaInfoForced is the forced flag of a stream in its media-info panel (itemMediaInfo.js).
 
@@ -1526,6 +2201,67 @@ LabelLive:
   reject:
     - { source: streamyfin, key: "player.live", reason: "all caps (\"LIVE\"), a styled badge" }
 
+ButtonRepeat:
+  en: "Repeat"
+  from:
+    jellyfin-roku: { key: "Repeat", en: "Repeat" }
+  reject:
+    - { source: jellyfin-web, key: "Repeat", reason: "mostly the repeat-playback button (fr \"Répéter\", de \"Wiederholen\"); ours is the rerun badge on a program" }
+    - { source: jellyfin-androidtv, key: "lbl_repeat", reason: "the repeat-playback control (fr \"Répéter\"); ours is the rerun badge on a program" }
+
+LabelEnded:
+  en: "Ended"
+  reject:
+    - { source: jellyfin-web, key: "Ended", reason: "a series status (nl \"Gestopt\", discontinued); ours says when a broadcast ended" }
+    - { source: jellyfin-androidtv, key: "lbl_ended", reason: "all caps (\"ENDED\"), a styled badge" }
+
+LabelCh:
+  en: "CH"
+  from:
+    jellyfin-roku: { key: "CH", en: "CH" }
+
+DayWednesday:
+  en: "Wednesday"
+  from:
+    jellyfin-web: { key: "Wednesday", en: "Wednesday" }
+    jellyfin-roku: { key: "Wednesday", en: "Wednesday" }
+
+DayFriday:
+  en: "Friday"
+  from:
+    jellyfin-web: { key: "Friday", en: "Friday" }
+    jellyfin-roku: { key: "Friday", en: "Friday" }
+
+DayMonday:
+  en: "Monday"
+  from:
+    jellyfin-web: { key: "Monday", en: "Monday" }
+    jellyfin-roku: { key: "Monday", en: "Monday" }
+
+DaySaturday:
+  en: "Saturday"
+  from:
+    jellyfin-web: { key: "Saturday", en: "Saturday" }
+    jellyfin-roku: { key: "Saturday", en: "Saturday" }
+
+DaySunday:
+  en: "Sunday"
+  from:
+    jellyfin-web: { key: "Sunday", en: "Sunday" }
+    jellyfin-roku: { key: "Sunday", en: "Sunday" }
+
+DayThursday:
+  en: "Thursday"
+  from:
+    jellyfin-web: { key: "Thursday", en: "Thursday" }
+    jellyfin-roku: { key: "Thursday", en: "Thursday" }
+
+DayTuesday:
+  en: "Tuesday"
+  from:
+    jellyfin-web: { key: "Tuesday", en: "Tuesday" }
+    jellyfin-roku: { key: "Tuesday", en: "Tuesday" }
+
 
 # ── Login and server selection (components/config/, source/loginRouter.bs) ──────────────
 # The server picker, the login form and their errors; jellyfin-roku's strings come from the same screens.
@@ -1572,6 +2308,58 @@ LabelEnterServerAddress:
   from:
     jellyfin-roku: { key: "Enter the server name or IP address", en: "Enter the server name or IP address" }
 
+MessageSaveCredentials:
+  en: "Save Credentials?"
+  from:
+    jellyfin-roku: { key: "Save Credentials?", en: "Save Credentials?" }
+
+LabelPassword:
+  en: "Password"
+  from:
+    jellyfin-web: { key: "LabelPassword", en: "Password" }
+    streamyfin: { key: "login.password_placeholder", en: "Password" }
+    jellyfin-androidtv: { key: "input_password", en: "Password" }
+    jellyfin-roku: { key: "Password", en: "Password" }
+    swiftfin: { key: "password", en: "Password" }
+
+LabelServerPickerHint:
+  en: "Pick a Jellyfin server from the local network"
+  reject:
+    - { source: jellyfin-roku, key: "Pick a Jellyfin server from the local network", reason: "its translations end with a colon (fr \"…réseau local :\") that ours lacks" }
+
+MessageServerNotFoundIsItOnline:
+  en: "Server not found, is it online?"
+  from:
+    jellyfin-roku: { key: "Server not found, is it online?", en: "Server not found, is it online?" }
+
+ButtonQuickConnect:
+  en: "Quick Connect"
+  from:
+    jellyfin-web: { key: "QuickConnect", en: "Quick Connect" }
+    streamyfin: { key: "login.quick_connect", en: "Quick Connect" }
+    jellyfin-roku: { key: "Quick Connect", en: "Quick Connect" }
+    swiftfin: { key: "quickConnect", en: "Quick Connect" }
+
+ButtonSubmit:
+  en: "Submit"
+  from:
+    jellyfin-web: { key: "ButtonSubmit", en: "Submit" }
+    jellyfin-roku: { key: "Submit", en: "Submit" }
+
+ButtonManualLogin:
+  en: "Manual Login"
+  from:
+    jellyfin-web: { key: "ButtonManualLogin", en: "Manual Login" }
+    jellyfin-roku: { key: "Manual Login", en: "Manual Login" }
+
+ButtonSignIn:
+  en: "Sign In"
+  from:
+    jellyfin-web: { key: "ButtonSignIn", en: "Sign In" }
+    jellyfin-androidtv: { key: "action_login", en: "Sign in" }
+    jellyfin-roku: { key: "Sign In", en: "Sign In" }
+    swiftfin: { key: "signIn", en: "Sign In" }
+
 # ── Video and audio player (components/video/, components/music/) ───────────────────────
 # Track pickers, the next-episode notice and the OSD; LabelNextEpisode is joined to its countdown in code.
 
@@ -1607,3 +2395,72 @@ LabelS:
   en: "S"
   reject:
     - { source: streamyfin, key: "home.settings.media_controls.seconds_unit", reason: "the seconds unit (\"s\"; it \"secondi\"); ours abbreviates Season" }
+
+ErrorDuringPlayback:
+  en: "Error During Playback"
+  from:
+    jellyfin-roku: { key: "Error During Playback", en: "Error During Playback" }
+
+ErrorItemDataFailed:
+  en: "There was an error retrieving the data for this item from the server."
+  from:
+    jellyfin-roku: { key: "There was an error retrieving the data for this item from the server.", en: "There was an error retrieving the data for this item from the server." }
+
+LabelSlideshowOff:
+  en: "Slideshow Off"
+  from:
+    jellyfin-roku: { key: "Slideshow Off", en: "Slideshow Off" }
+
+LabelSlideshowOn:
+  en: "Slideshow On"
+  from:
+    jellyfin-roku: { key: "Slideshow On", en: "Slideshow On" }
+
+LabelSlideshowPaused:
+  en: "Slideshow Paused"
+  from:
+    jellyfin-roku: { key: "Slideshow Paused", en: "Slideshow Paused" }
+
+LabelSlideshowResumed:
+  en: "Slideshow Resumed"
+  from:
+    jellyfin-roku: { key: "Slideshow Resumed", en: "Slideshow Resumed" }
+
+LabelTrack:
+  en: "Track"
+  from:
+    jellyfin-web: { key: "Track", en: "Track" }
+  reject:
+    - { source: streamyfin, key: "common.track", reason: "an audio or subtitle track (de \"Spur\", nl \"Spoor\"); ours numbers a song" }
+
+MessageEndsAt:
+  en: "Ends at {0}"
+  from:
+    jellyfin-web: { key: "EndsAtValue", en: "Ends at {0}" }
+    jellyfin-androidtv: { key: "lbl_playback_control_ends", en: "Ends at %1$s" }
+    jellyfin-roku:
+      key: "Ends at %1"
+      en: "Ends at %1"
+      exclude:
+        es: "\"Termina en\" reads ends in"
+        de: "\"Endet bei\" reads ends near"
+
+LabelMin:
+  en: "min"
+  from:
+    jellyfin-roku:
+      key: "min"
+      en: "min"
+      exclude:
+        it: "\"minuto\" is the singular word, not the unit"
+
+LabelPlaybackInfo:
+  en: "Playback Info"
+  from:
+    jellyfin-web: { key: "LabelPlaybackInfo", en: "Playback Info" }
+    jellyfin-roku: { key: "Playback Info", en: "Playback Info" }
+
+LabelDts:
+  en: "DTS"
+  from:
+    jellyfin-androidtv: { key: "dca", en: "DTS" }
