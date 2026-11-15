@@ -1,0 +1,11 @@
+{
+  "extends": "./bsconfig-base.json",
+  "plugins": [
+    "rooibos-roku",
+    "@rokucommunity/bslint",
+    "./scripts/bsc-plugins/translation-keys.cjs",
+    "./scripts/bsc-plugins/strip-vendor-prints.cjs",
+    "./scripts/bsc-plugins/no-namespace-const-call.cjs",
+    "./scripts/bsc-plugins/callfunc-interface.cjs"
+  ]
+}

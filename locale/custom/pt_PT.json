@@ -51,6 +51,7 @@
   "LabelKids": "Crianças",
   "LabelLibraries": "Bibliotecas",
   "LabelLive": "Direto",
+  "LabelLoading": "A carregar…",
   "LabelMoreLikeThis": "Títulos semelhantes",
   "LabelMovie": "Filme",
   "LabelMovies": "Filmes",
@@ -59,6 +60,7 @@
   "LabelNews": "Notícias",
   "LabelNextEpisode": "Próximo episódio",
   "LabelNextUp": "A seguir",
+  "LabelNoItems": "Sem itens",
   "LabelNone": "Nenhum",
   "LabelOff": "Desligado",
   "LabelOnNow": "No ar",
@@ -187,9 +189,9 @@
   "LanguageVi": "vietnamita",
   "LanguageZh": "chinês",
   "LanguageZu": "zulu",
-  "MessageDirectedBy1": "Realizado por {0}",
-  "MessageDisc1": "Disco {0}",
-  "MessageEndsAt1": "Termina às {0}",
-  "MessageMoreFrom1": "Mais de {0}",
-  "MessageSetTheMaximumAmountOfDays": "Definir o número máximo de dias que um programa deve permanecer na lista 'Próximos' sem que seja visto."
+  "MessageDirectedBy": "Realizado por {0}",
+  "MessageDisc": "Disco {0}",
+  "MessageEndsAt": "Termina às {0}",
+  "MessageMoreFrom": "Mais de {0}",
+  "SettingDescMaxDaysNextUp": "Definir o número máximo de dias que um programa deve permanecer na lista 'Próximos' sem que seja visto."
 }

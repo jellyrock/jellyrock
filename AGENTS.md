@@ -54,7 +54,7 @@ decision, followup, running (replaces the one-paragraph Currently running note i
 ### Verification commands
 
 - `npm run test:scripts`: the Vitest suite (scripts, BSC plugins, lint scripts), no device. Pre-push runs it when the push range has JS, and CI on every PR.
-- `npm run validate`: the BrighterScript type check.
+- `npm run validate`: the BrighterScript type check, of the app and then of `bsconfig-tests.json` (`validate:tests`).
 - `npm run lint`: the lint chain CI runs; pre-push mirrors it, scoped to the files in the push range.
 - `bash .claude/skills/log/voice-check.sh [<file.md>…]`: the house voice of `.claude/rules/writing-style.md`, per tracked Markdown file against `.voice-baseline.tsv` (a file may only go down); lint-staged runs it on each staged `.md`, and `npm run lint` on every file. Reword a new hit, never raise the baseline; `--lower` locks in a file's gain.
 - `npm run lint:comment-voice`: the same voice for code comments, per file against `.doc-voice-baseline.json`; `npm run lint` runs it too. Lock a gain in with `node scripts/lint/comment-voice-ratchet.js --lower-voice-baseline`.

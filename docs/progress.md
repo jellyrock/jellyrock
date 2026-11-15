@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-13
+last-updated: 2026-11-15
 ---
 
 # Progress
@@ -26,6 +26,13 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-15: update(translations): Translate 41 more strings from other Jellyfin clients
+- 2026-11-14: refactor(translations): Rename 75 keys by role, keeping translations
+- 2026-11-14: fix(playback): Play and name the audio track picked in an `MP4`
+- 2026-11-14: fix(playback): Play the MKV audio track the viewer picked
+- 2026-11-13: refactor: Gate namespaced constant access and spec code at build time
+- 2026-11-12: fix(ui): Star from the overhang no longer crashes the app
+- 2026-11-12: feat(ui): Item-details-only backdrops; Movies pane obeys the setting
 - 2026-11-10: chore(tooling): Report dead code a short string prefix hid
 - 2026-11-10: ci(journal): Sync the journal only for PRs merged into `main`
 - 2026-11-09: fix(syncplay): Reload where the group is; load a mid-reload restart
@@ -65,17 +72,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-11-02: feat(syncplay): Stay in step, stop seek freezes, add a time offset
 - 2026-11-01: fix: Register Roku's memory monitor and ship only runtime files
 - 2026-11-01: ci: Make the device test run read only its own result
-- 2026-10-31: update(home): Show vertical posters in TV Recently Added rows
-- 2026-10-31: fix(home): Show episode images in Favorites tab
-- 2026-10-31: fix: Correct the canceled-recording toast
-- 2026-10-30: fix(playback): Turn subtitles off when None is picked
-- 2026-10-29: fix(playback): Confirm pauses and keep paused and long plays reported
-- 2026-10-29: docs: Feature pages, a generated catalog, and checked store text
-- 2026-10-29: chore(screenshots): Recapture the new overhang, search and Home for the store
-- 2026-10-29: feat(syncplay): Send controls to the group and resume from the menu
-- 2026-10-28: feat(syncplay): See, join and play with groups from the SyncPlay icon
-- 2026-10-28: chore(skills): Name the projects folder in project skill descriptions
-- 2026-10-27: feat(ui): Search and settings icons on every screen, and safer themes
 
 ## Open followups
 
@@ -201,6 +197,8 @@ Since #944 a launch ends early only on the NAMED mount's sample ([`scripts/measu
 
 [`scripts/lib/bsc-rule.cjs`](../scripts/lib/bsc-rule.cjs)'s `isSuppressed` always honors `bsc-disable-file`, which an error-severity gate must NOT — a whole-file opt-out would remove the thread-budget bound from every launch in the file — so `no-raw-run`, `no-task-fanout`, `no-same-node-relaunch` and `no-hand-rolled-dialog` all opt out of the shared lifecycle and copy the markers instead. **Fix shape:** either an `isSuppressed(file, code, line, { allowFileLevel: false })` option, or a `createFileRule` factory for the single-file rule class those four belong to (every finding derived from and anchored in one file, which BSC already clears per re-validate — so there is no staleness for the existing factories to prevent). Either would let `scripts/CLAUDE.md`, [`build-and-tooling.md`](architecture/build-and-tooling.md) and [`scripts-development.md`](dev/scripts-development.md) drop the carve-out added 2026-09-17, which currently documents the exception in three places instead of encoding it once. **Evidence:** four copies today, and the same review needed three doc edits to explain why the directive does not apply — then a second round to add the program-hook clause to each. Kept out of that branch because it touches three green, well-tested plugins and the branch's job was landing the relaunch gate.
 
+**Added 2026-11-13:** `no-namespace-const-call`, an error gate that needs the program scope (to tell a const from a variable), so it cannot take the single-file exception and is built on `createProgramRule`, which honors `bsc-disable-file`. The `allowFileLevel: false` option above would close that for it too; a `createFileRule` factory would not, since it is not a single-file rule. Until then its row in `build-and-tooling.md`'s marker table records the whole-file marker as honored.
+
 #### `no-same-node-relaunch` follows same-file helpers by BARE name only, so class-based code is a blind spot — measured at zero cost today, which is why it was left. `[fid: no-same-node-relaunch-class-blind-spot]` `[captured 2026-09-18]`
 
 A class reaches its own methods as `m.loadLogo()` and never bare (see [`MoviePresenter`](../source/GridView/MoviePresenter.bs), the one class in the app that calls `launchTask`), so a STOP inside a method-helper never crosses the hop. Measured 2026-09-17 before leaving it: a variant that also followed dotted `m.<name>()` calls found **the same 16 sites and no others**, so there is no present site to justify it — only a future one. **Fix shape:** closing it properly means resolving BOTH directions by scope — a bare call to free functions, `m.x()` to methods of the *enclosing class* — because the naive version lets a bare global call inherit a same-named method's STOPs, which is the same defect mirrored. Re-measure before building it; if class-based presenters grow and the count moves off zero, that is the trigger. Related: the rule also does not cross the hop in the other direction (a function that STOPs and then calls a helper which launches is missed) — both gaps are listed in the plugin header.
@@ -217,9 +215,11 @@ The registry's `requires` gates are honored by the functional suite and the scre
 
 [ADR 0039](adr/0039-list-endpoint-shape-in-pool.md) has the pool hold a list request's body to its shape, but only for builders that declare it; the "List requests" group in `ApiClient.spec.bs` pins the builders that exist and cannot see a new one. The first cut of that ADR's branch missed two of seven such readers, found only by joining the Jellyfin OpenAPI spec's array-typed 200 responses against the app's endpoints by hand (2026-09-22). **Fix shape:** have [`api-usage-manifest.js`](../scripts/generate/api-usage-manifest.js) record which builder helper each endpoint uses (it already reads `validatedReq`/`listReq` for the method), and a check join that against the spec's `type: array` 200 responses — reusing `scripts/lib/spec-fetch.cjs` rather than a second spec loader. Cost to weigh: CI needs the spec (a network fetch or the `api-watch` cache).
 
-#### `callfunc-interface` could never have caught the `captionTask` teardown bug, and still can't — and no BSC guard plugin sees spec files at all. `[fid: callfunc-interface-misses-caption-teardown]` `[captured 2026-09-23]`
+#### `callfunc-interface` could never have caught the `captionTask` teardown bug, and still can't: it checks `callFunc` targets program-wide `[fid: callfunc-interface-misses-caption-teardown]` `[captured 2026-09-23]`
 
 [`scripts/bsc-plugins/callfunc-interface.cjs`](../scripts/bsc-plugins/callfunc-interface.cjs) exists for exactly the "wrote the method, forgot the interface line" defect, but its rule is PROGRAM-WIDE: if any component declares `<function name="X" />`, no `callFunc("X")` is flagged. 11 components declare `onDestroy`, so `m.captionTask.callFunc("onDestroy")` against an interface-less `captionTask.xml` passed clean while the 100 ms caption timer survived every player exit. `onDestroy` is the most-declared name in the repo, which makes it the plugin's worst blind spot on the one call class whose failure is silent by construction. **Two halves, and neither works alone.** (1) *Receiver-awareness* — when the receiver's subtype is statically known, check THAT component's resolved interface rather than the program-wide set. Tractable: all 11 current production `callFunc("onDestroy")` receivers resolve, from either `CreateObject("roSGNode", "<literal>")` or `m.top.findNode("<id>")` against the same component's `<children>`, and [`field-observer-wiring`](../scripts/bsc-plugins/field-observer-wiring.cjs) already does union-find aliasing in-repo. It MUST walk the `extends` chain and accept an inherited declaration — measured 2026-09-23 on a Roku Ultra (OS 15.3.4) that `OSD.callFunc("onDestroy")` reaches the override on `OSD` itself through `JRScreen`'s declaration, pinned by [`callfunc-interface-inheritance.spec.bs`](../tests/source/unit/components/callfunc-interface-inheritance.spec.bs). (2) *Run it over the test bsconfigs* — `bsconfig.json` excludes `tests/**` and the `bsconfig-tests*.json` files load only rooibos, bslint and translation-keys, so no JellyRock guard reaches a spec; the old `captionTask.spec.bs` called `callFunc("updateCaption")` where `updateCaption` was declared by zero components repo-wide, which (2) would have caught. Doing (2) alone still passes on `onDestroy`; doing (1) alone leaves specs unguarded.
+
+**Half (2) done 2026-11-13:** `callfunc-interface` now loads in every test config through `bsconfig-tests-base.json`, and `npm run validate` checks `bsconfig-tests.json`, so a spec's undeclared `callFunc` fails pre-push and CI. It found two on its first run: `ItemDetails.spec.bs` (a suite whose tests could not fail, replaced by `focusRowButton()` tests in `buttonOverflow.spec.bs`) and `OSDRepeatSteps.spec.bs` (now calls the declared `refreshFromQueue`). Half (1), receiver-awareness, is still open, so `callFunc("onDestroy")` on an interface-less component still passes.
 
 #### `npm run measure` finds no Home first-paint sample when a launch drops two Home rows (found with #1043). `[fid: measure-home-sample-missing-dropped-rows]` `[captured 2026-09-25]`
 
@@ -385,6 +385,18 @@ Both runners take the lock through `acquireDeviceLock` (`scripts/rta-run.js`, `s
 Why it matters: a run that loses the device mid-way reads as an app failure until someone finds the other build in the console, and the registry restore it leaves owed holds an auth token.
 
 Closes with: the cause found from the other run's record and the lock's history for that minute, and a runner that refuses to deploy over a held lock, or the reason it had to.
+
+#### Upstream watch: BrighterScript compiling a member access after a const or enum member written with its namespace `[fid: bsc-namespace-const-inlining-upstream]` `[captured 2026-11-13]`
+
+BrighterScript 1.0.0-alpha.56 (pinned) and alpha.57 compile it wrong when a namespaced const or enum member is written with its namespace and a member access follows it: the dotted chain is read as one name. `ns.PREFIX.len()` compiles to `ns_PREFIX_len()`, `ns.Kind.Movie.len()` to `ns_Kind_Movie_len()` and `ns.CFG.width` to `ns_CFG_width`, none of which exists, so the app crashes or reads garbage at run time with no build diagnostic. A top-level enum member (`TE.A.len()` compiles to `"aaa".len()`), the relative form inside the namespace and a local that shares the name of a const all compile correctly (measured 2026-11-13 with the `bsc` CLI and the repo's compiler options). Found 2026-11-13, when the library screens' `libraryTab.serverLandings` crashed the unit suite on a Roku Ultra.
+
+The `no-namespace-const-call` BSC plugin fails the build on the broken shapes. Its Vitest test compiles every shape through BrighterScript and fails when the output changes, which is the retirement trigger: when it fails because a broken shape now compiles correctly, retire the plugin (the file, its test, its six `bsconfig` entries in `bsconfig.json`, `bsconfig-prod.json` and the four `bsconfig-tests*.json`, its two rows in `build-and-tooling.md` and the sentence there about the test configs). No upstream issue was found in `rokucommunity/brighterscript` (searched 2026-11-13); reporting one is a public post, so it waits for the operator.
+
+#### translations:seed context clones source code into the repo's .cache, where other tools can walk into it `[fid: seed-code-checkouts-in-repo-cache]` `[captured 2026-11-15]`
+
+`fetchSourceCode()` in `scripts/translations-seed.js` clones each seed source's full code into the repo's `.cache/translation-seed/<id>-<sha>-code/`, so every checkout downloads its own copy, and other tools can walk into it. ESLint crashed on a cloned project's own config there, and now ignores `.cache/` (`eslint.config.js`). Prettier, markdownlint, the spellchecker and `scripts/lib/lint-excludes.cjs` still don't exclude `.cache/`, and only `.cache/translation-seed/` is gitignored.
+
+To close: clone into the per-user cache folder (`${XDG_CACHE_HOME:-$HOME/.cache}/jellyrock/translation-seed/`, with a test and a line in `docs/dev/translations.md`), or keep the location and add `.cache/` to the other lint excludes. Not done in the PR that added `context`, because the ESLint ignore unblocked the push and moving the cache is a seeder change of its own.
 
 ### components
 
@@ -747,16 +759,6 @@ What closes it, as part of audiobook support:
 
 Issue #1134 asks for backdrops that change over time. `feat/library-backdrops` gives each My Media tile one backdrop from an item inside the library: `libraryBackdrop.query` asks for `Limit: 1`, and `HomeRows` caches that one URL per library for Home's lifetime. The Jellyfin web client takes up to 20 (`src/scripts/autoBackdrops.js`, `SortBy=IsFavoriteOrLiked,Random`) and rotates them. Not done now: rotating needs a timer on Home with a lifecycle to get right (pause off Home, stop on teardown), and a UX call on how often to change. Closes when a focused My Media tile cycles through several backdrops, or when we decide not to rotate.
 
-#### The `JRScene` first-use backdrop setting check never runs (a boolean field cannot hold invalid) `[fid: jrscene-backdrop-lazy-resolve-dead]` `[captured 2026-10-21]`
-
-`JRScene.setBackgroundImage` and `onBackgroundImageUriChanged` decide backdrop visibility "on first use" with `if m.top.shouldShowBackdrop = invalid`, and the forced clear writes `m.top.shouldShowBackdrop = invalid`. The field is a `boolean` (`JRScene.xml`, declared `value="false"`), so it never holds `invalid` and the branch never runs. Measured over ODC on a Stick 4K (2026-10-20): after a forced clear the field reads `false`, and every ordinary backdrop write is ignored until `refreshBackdropSetting` runs, which only `Home.onScreenShown` calls. Dead from the start: `e909d0311` (2025-12-08) added the field, the branch and the Home refresh together; `eac8bb9ed` only renamed it. `docs/architecture/bootstrap.md` describes the lazy resolve as real.
-
-No user-visible failure shown: on known paths Home is shown before any other backdrop writer after sign-in (the cold deep-link clobber in tech-debt `backdrop-ownership-guard` implies the deep-linked item's backdrop was showing).
-
-Options: `resolve` (recommended): track "setting decided" with an `m` flag instead of `invalid` on a boolean field, reset by the forced clear, so the documented behavior becomes true for every path; small, one intended behavior change. `remove`: delete the dead branches and the `invalid` write, leave the Home refresh as the only decider, and correct `bootstrap.md`; no behavior change. `doc`: correct `bootstrap.md` only. No unit test covers the backdrop logic in `JRScene`.
-
-Not checked: whether any real path shows a backdrop-writing screen after sign-in before Home's `onScreenShown`, such as a cold deep link straight to an item. If one exists, that screen loses its backdrop today.
-
 #### The Roku FLAC seek defect behind #662 is unreported, so its workaround has no exit `[fid: roku-flac-seek-defect-unreported]` `[captured 2026-10-21]`
 
 Roku can't finish a FLAC it starts at a non-zero position (a `seek` or a `PlayStart`) when the file's last frame is shorter than its frame size: it stalls in `playing` a moment before the end, or ends at once with "malformed data" (#662, [ADR 0052](../docs/adr/0052-flac-seek-server-stream.md)). JellyRock works around it by loading a FLAC stream the server starts at the seek target (`audioSeek.startAction()`, `AudioPlayerView.startAudioAt()`), with the `AudioPlayer` end guard as backstop. Nobody has told Roku, so no fix is tracked.
@@ -974,6 +976,12 @@ One Play key pause in each 12-round run settles ahead of the rest: 62 ms, then 4
 Not done now because the forwarding needs a design choice (a clock estimate and a host stub in the manager's spec) and the odd round needs a device capture of the anchor's lateness.
 
 Closes with: a manager-level case that drives a pause, its `paused` state and an `Unpause` through `playerEvent` and reads the shift, or a recorded reason no seam is worth it; the anchor's arrival time against the drift reading captured on a round that settles past 40 ms; and the pause's landing time read on the low-end Stick.
+
+#### The skip-segment notification joins two translated words, so word order is wrong in many languages `[fid: skip-label-joined-to-segment-name]` `[captured 2026-11-15]`
+
+`VideoPlayerView.bs` builds the media-segment notification as `translate(translationKeys.ButtonSkip) + " " + segmentLabel`. Word order then follows English in every language: German reads `Überspringen Rückblick` where it should be `Rückblick überspringen`. Found while seeding `ButtonSkip`, `LabelRecap` and `LabelPreview` in the first `/translation-import` batch.
+
+To close: give the notification one string with a placeholder (for example a `MessageSkipSegment` key, "Skip {0}") or one key per segment type, then map or translate it. Needs a device check of the segment notification, so it was not done in that PR.
 
 ### source
 
@@ -1254,6 +1262,14 @@ A SyncPlay catch-up seeks ahead of the group by a fixed 3 s lead (`syncPlayPlayb
 With the file's keyframe times, `syncPlayConverge.catchUp()` could size each lead as the seek's own time plus a margin: one jump and a shorter freeze. Not done with the lead change because it needs its own design. The 12.4.0 server's API has no keyframe data (its OpenAPI description, searched 2026-11-12), so the app would read the file's own index, per container.
 
 Not checked: other server versions, transcodes (HLS segment boundaries), and what parsing an index costs on the device. Closes with a measured design, or a recorded no.
+
+#### Rename negatively worded settings to positive names, with migrations `[fid: positive-setting-names]` `[captured 2026-11-14]`
+
+Four settings are named in the negative: `uiDesignHideClock`, `uiDetailsHideTagline`, `uiTvShowsDisableCommunityRating` and `uiTvShowsDisableUnwatchedCount`. The user turns a setting on or off, so a "Disable" or "Hide" name reads as a double negative. Rename them to positive names in the house style, and check the other `settingName` values against the same rule.
+
+Each rename needs a registry migration (`/new-migration`), because settings are saved under `settingName`. A flip to positive wording must also invert the stored boolean, so test each one on a device.
+
+Afterward, run `npm run update-translations -- --rename Old=New` so each `SettingDesc` key matches its setting's new name. Then tighten the key-name rule in `docs/dev/translations.md` and `locale/CLAUDE.md` back to "`SettingDesc` plus the `settingName` without its area prefix". The rename-key PR (`refactor/translation-key-names`) loosened that rule, because the names it would derive from were about to change. Related: `in-app-settings-copy` (the description wording itself).
 
 ### api
 
@@ -1799,6 +1815,12 @@ Not done with the fix because it needs a new fault kind and its own invariants. 
 
 While there: a simulator whose results never match their requests hangs the device run and no case fails (seen with its numbering broken on purpose, Stick 4K, 2026-11-11). It takes its number from `syncPlayGroup.nextRequestId` now, so that cannot happen by a reordering, but a run that cannot end should fail a case with a step limit, not hang.
 
+#### Details-mode backdrop: no RTA test for Back from an item straight to Home `[fid: backdrop-details-home-back-untested]` `[captured 2026-11-12]`
+
+`tests/rta/specs/backdrop-mode.spec.js` checks that Back from an item clears the backdrop in the Backdrop Images `details` mode on the library grid and on search, but not on Home. The direct check was dropped in `test(backdrop): Open the details-mode item from the poster grid, not a Home Latest row`: the public demo account excludes every library from Latest (`LatestItemsExcludes`, checked 2026-11-12), so Home has no stable row that opens an item, and reaching Home through the grid is vacuous because the grid clears the backdrop first.
+
+Not now: it needs a Home row that opens an item on every run, which the shared demo server does not promise. Closes when such a row is available (for example a Continue Watching fixture the spec seeds itself) and the spec opens an item from Home, presses Back, and waits for `#imageFader.uri` to read empty.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`
@@ -1836,7 +1858,7 @@ The setting text on the TV comes from `locale/custom/en_US.json` (each entry's `
 To close it, as its own project:
 
 - Add rules for TV text to `docs/dev/writing-style.md` (length, casing, tone), building on the casing convention in `locale/CLAUDE.md`.
-- Rewrite the setting descriptions in `en_US.json`. Change values, never keys: a renamed key drops its translations. Settings are saved under `settingName`, so a wording change needs no registry migration.
+- Rewrite the setting descriptions in `en_US.json`. Change values, not keys; to rename a key, use `npm run update-translations -- --rename Old=New`, which keeps its translations. Settings are saved under `settingName`, so a wording change needs no registry migration.
 - Have `scripts/generate/settings-docs.cjs` read the English text from `en_US.json` through `descriptionKey`, so the docs show what the TV shows, and drop the duplicate `description` fields.
 - Check the new text on a Roku for fit, and confirm what Weblate does to existing translations when an English value changes.
 
@@ -1865,3 +1887,29 @@ The server log: the Roku sent `PreviousItem` 1.2 s after its Ready on the second
 Not checked: the Roku console for the failed run (the next run overwrote it); why the reload did not swap; whether `main` can fail the same way (5 passing runs there, too few to rule out a 1-in-25 failure).
 
 Next time it fails: read the kept `console-failed-<time>.log` beside the run's `console.log` (`.device-runs/rta/runs/<device key>/`) around the `PreviousItem` frame, and the server log for the same minute, then run /snag on what they show.
+
+### locale
+
+#### en_US.json has no punctuation rule by string role, which blocks seeding keys whose punctuation differs `[fid: punctuation-standard-by-string-role]` `[captured 2026-11-15]`
+
+`en_US.json` has no punctuation rule by string role. Setting descriptions end with a period, but toasts, badges, buttons and status phrases are mixed, and `locale/CLAUDE.md` covers casing only. Since `/translation-import` batch 1, punctuation counts as shape when mapping (`.claude/skills/translation-import/SKILL.md`, `docs/dev/translations.md`), so a key whose punctuation differs from a source's can't be seeded.
+
+The case that surfaced it: `LabelRecordingScheduled` ("Recording scheduled", the toast in `source/utils/liveTv.bs`). the web client's `RecordingScheduled` is the same toast but reads "Recording scheduled." with a period, so batch 1 left it unmapped (about 53 cells).
+
+To close: decide the punctuation for each role, write it in `locale/CLAUDE.md` beside the casing rule, then map `LabelRecordingScheduled` if its punctuation now matches. Not done now because it needs the owner's call on each role, and changing an English string means re-review for any seed map entry that matched it.
+
+#### Mapped count keys seed nothing until their Zero forms are mapped `[fid: count-keys-need-zero-forms]` `[captured 2026-11-15]`
+
+The first `/translation-import` batch mapped 11 count keys (`LabelAlbumCountMany`, `LabelEpisodeCountOne` and the like), but they seed nothing: `planSeed()` fills a plural form only when its locale gets all three forms, and no source has the `Zero` strings ("No songs", "No albums" …) as exact text. `LabelAlbumCountOne` also has an exact candidate (the web client's `ValueOneAlbum`).
+
+To close: find the `Zero` forms in the sources by meaning (a manual search, since `suggest` matches English text only), map them with `LabelAlbumCountOne`, and check the dry run fills the count sets.
+
+#### Three seed candidates from translation-import batch 1 need a person's call `[fid: translation-import-batch-1-leave-list]` `[captured 2026-11-15]`
+
+The first `/translation-import` batch left these candidates for a person, writing no entry:
+
+- `LabelPlaybackErrorPlayMethod`: the web client's `LabelPlayMethod` matches by name and values, but has no use in its code.
+- `LabelPlaybackErrorSectionMedia`: every candidate names the media-libraries section; ours heads the playing file's details (pt "Multimédia").
+- `ButtonContinueWatching`: the iOS client's `continueWatching` has no use in its code, so whether it is a heading or a button is unclear.
+
+To close: decide each, then map it or add a `reject:` line in `locale/seed/keymap.yml`.

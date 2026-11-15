@@ -24,6 +24,13 @@
          (the search screen reopens its keyboard on the search icon); false lets JRScene route
          it (search and settings open their screens). -->
     <function name="onOverhangAction" />
+    <!-- The router closed this view for good and its onDestroy has run (beforeViewClose). It
+         can stay the active view for a moment after that, so JRScene checks this before it
+         calls a hook that reads the screen's own state. -->
+    <field id="isClosed" type="boolean" value="false" />
+    <!-- Star reached JRScene instead of this screen (focus was in the overhang row): do what
+         Star does here. True when something happened. -->
+    <function name="onOptionsKey" />
     <!-- Back from the overhang row: leave this screen. True when it went back (leaveScreen). -->
     <function name="leaveScreen" />
   </interface>

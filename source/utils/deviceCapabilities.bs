@@ -350,6 +350,26 @@ function getSupportedPassthruCodecs(di as object, channelCount as integer) as ob
   return supportedCodecs
 end function
 
+function getMp4FamilyContainers() as string
+  return "mp4,mov,m4v"
+end function
+
+' isMp4FamilyContainer: Whether a container Jellyfin reports is in the MP4 family.
+'
+' Jellyfin can report an MP4 as ffprobe's whole list ("mov,mp4,m4a,3gp,3g2,mj2"), so a match on
+' any one name counts, as it does in the server's own ContainerHelper.
+'
+' @param {dynamic} container - a MediaSource's Container
+' @returns {boolean}
+function isMp4FamilyContainer(container as dynamic) as boolean
+  if not isValidAndNotEmpty(container) then return false
+  family = getMp4FamilyContainers().Split(",")
+  for each name in LCase(container).Split(",")
+    if arrayHasValue(family, name.Trim()) then return true
+  end for
+  return false
+end function
+
 function GetDirectPlayProfiles() as object
   ' ONE rendezvous to get user settings
   globalUserSettings = m.global.user.settings
@@ -461,7 +481,7 @@ function GetDirectPlayProfiles() as object
       containerString = container
 
       if container = "mp4"
-        containerString = "mp4,mov,m4v"
+        containerString = getMp4FamilyContainers()
       else if container = "mkv"
         containerString = "mkv,webm"
       end if
@@ -1017,6 +1037,24 @@ function getCodecProfiles(caps = invalid as dynamic) as object
       end for
     end if
   end for
+
+  ' Roku's player can't switch audio inside an MP4, MOV or M4V: it lists no tracks and ignores
+  ' audioTrack. Declaring a secondary track unplayable makes the server remux a pick that is not
+  ' the file's first track, so the stream carries it. MKV switches natively and stays out.
+  ' Jellyfin 10.8.9 and later count the first embedded track as primary. Older servers count the
+  ' first track flagged default, so a file whose default is a later track still direct-plays it.
+  codecProfiles.push({
+    "Type": "VideoAudio",
+    "Container": getMp4FamilyContainers(),
+    "Conditions": [
+      {
+        "Condition": "Equals",
+        "Property": "IsSecondaryAudio",
+        "Value": "false",
+        "IsRequired": false
+      }
+    ]
+  })
 
   ' check device for codec profile and level support
   ' AVC / h264

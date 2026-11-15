@@ -7,13 +7,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- (ui) Item-details-only backdrops; Movies pane obeys the setting ([#1365](https://github.com/jellyrock/jellyrock/pull/1365)) by [@cewert](https://github.com/cewert)
+
+### Changed
+
+- (translations) Translate 41 more strings from other Jellyfin clients ([#1386](https://github.com/jellyrock/jellyrock/pull/1386)) by [@cewert](https://github.com/cewert)
+- (translations) Rename 75 keys by role, keeping translations ([#1385](https://github.com/jellyrock/jellyrock/pull/1385)) by [@cewert](https://github.com/cewert)
+- Gate namespaced constant access and spec code at build time ([#1376](https://github.com/jellyrock/jellyrock/pull/1376)) by [@cewert](https://github.com/cewert)
+
 ### Fixed
 
+- (playback) Play and name the audio track picked in an `MP4` ([#1383](https://github.com/jellyrock/jellyrock/pull/1383)) by [@cewert](https://github.com/cewert)
+- (playback) Play the MKV audio track the viewer picked ([#1382](https://github.com/jellyrock/jellyrock/pull/1382)) by [@cewert](https://github.com/cewert)
+- (ui) Star from the overhang no longer crashes the app ([#1372](https://github.com/jellyrock/jellyrock/pull/1372)) by [@cewert](https://github.com/cewert)
 - (syncplay) Reload where the group is; load a mid-reload restart ([#1354](https://github.com/jellyrock/jellyrock/pull/1354)) by [@cewert](https://github.com/cewert)
 
 ### Dependencies
 
+- Update dotenv from v18.0.9 to v18.0.10 ([#1342](https://github.com/jellyrock/jellyrock/pull/1342)) by [@renovate[bot]](https://github.com/apps/renovate)
 - Update actions/setup-java action to v6.2.0 ([#1347](https://github.com/jellyrock/jellyrock/pull/1347)) by [@renovate[bot]](https://github.com/apps/renovate)
+- Docs lint (patch) ([#1362](https://github.com/jellyrock/jellyrock/pull/1362)) by [@renovate[bot]](https://github.com/apps/renovate)
 
 ## [3.4.0](https://github.com/jellyrock/jellyrock/compare/v3.3.1...v3.4.0) - 2026-11-09
 

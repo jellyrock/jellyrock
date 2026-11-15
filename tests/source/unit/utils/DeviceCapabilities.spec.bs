@@ -1234,6 +1234,61 @@ namespace tests
       m.assertEqual(m.capFor("off", 2160).count, 0, "off must not constrain anything")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getCodecProfiles() - secondary audio in containers Roku cannot switch")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    private function secondaryAudioProfiles() as object
+      found = []
+      for each profile in getCodecProfiles()
+        if profile.Type <> "VideoAudio" or not isValid(profile.Conditions) then continue for
+        for each condition in profile.Conditions
+          if condition.Property = "IsSecondaryAudio" then found.push(profile)
+        end for
+      end for
+      return found
+    end function
+
+    @it("declares IsSecondaryAudio false on one VideoAudio profile for the MP4 family")
+    function _()
+      found = m.secondaryAudioProfiles()
+      m.assertEqual(found.count(), 1)
+      if found.count() = 1
+        m.assertEqual(found[0].Container, "mp4,mov,m4v")
+        m.assertFalse(found[0].doesExist("Codec"), "no Codec, so it matches every audio codec")
+        m.assertEqual(found[0].Conditions.count(), 1)
+        m.assertEqual(found[0].Conditions[0], { "Condition": "Equals", "Property": "IsSecondaryAudio", "Value": "false", "IsRequired": false })
+      end if
+    end function
+
+    @it("leaves mkv out, since Roku switches its tracks natively")
+    function _()
+      for each profile in m.secondaryAudioProfiles()
+        m.assertFalse(isValid(profile.Container) and inStr(1, profile.Container, "mkv") > 0, "mkv must not carry IsSecondaryAudio")
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isMp4FamilyContainer()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("matches any MP4-family name in a container list, in any case")
+    function _()
+      m.assertTrue(isMp4FamilyContainer("mov,mp4,m4a,3gp,3g2,mj2"), "ffprobe's list")
+      m.assertTrue(isMp4FamilyContainer("mp4"), "mp4")
+      m.assertTrue(isMp4FamilyContainer("MOV"), "upper case")
+      m.assertTrue(isMp4FamilyContainer("m4v"), "m4v")
+    end function
+
+    @it("does not match other containers or a missing one")
+    function _()
+      m.assertFalse(isMp4FamilyContainer("mkv"), "mkv")
+      m.assertFalse(isMp4FamilyContainer("mkv,webm"), "mkv,webm")
+      m.assertFalse(isMp4FamilyContainer("hls"), "hls")
+      m.assertFalse(isMp4FamilyContainer(""), "empty")
+      m.assertFalse(isMp4FamilyContainer(invalid), "invalid")
+    end function
+
   end class
 
 end namespace

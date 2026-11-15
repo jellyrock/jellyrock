@@ -74,6 +74,10 @@ export const LOCAL_ONLY = {
     'bslint is declared as a BSC plugin in bsconfig.json, and CI runs `npm run validate` ' +
     "(`bsc --noEmit`) with that config — so bslint's diagnostics DO gate in CI, via validate. " +
     'The standalone `bslint` CLI in the aggregate is redundancy, not a gap.',
+  'validate:tests':
+    '`npm run validate` runs it as its second step, and CI runs `npm run validate` ' +
+    '(`_lint-brightscript.yml`), so it gates in CI through validate. Its only own ' +
+    'entry point is the parent script.',
 };
 
 // Aggregate members whose CI home is a Vitest repo-drift-gate test rather than a

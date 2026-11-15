@@ -103,7 +103,7 @@ Test such a plugin with `runPluginOnEdits` as well as the usual cases. `runPlugi
 | Harness | Tests | Returns |
 | --- | --- | --- |
 | `_helpers/run-plugin.js` | Plugins that report diagnostics (tier 1) | `runPluginOnSource`: one array of diagnostics from one `program.validate()`. `runPluginOnEdits`: one array per step of a sequence of edits. |
-| `_helpers/transpile-with-plugin.js` | Plugins that change the transpiled code (tier 2, `roku-log`) | `{pkgPath: transpiledCode}` from `program.getTranspiledFileContents()` |
+| `_helpers/transpile-with-plugin.js` | Plugins that change the transpiled code (tier 2, `roku-log`), and checks of what BrighterScript itself compiles (`no-namespace-const-call`) | `{pkgPath: transpiledCode}` from `program.getTranspiledFileContents()`. It validates first, as a real build does |
 | `_helpers/run-plugin-with-temp-locale.js` | Plugins that add virtual files (tier 2, `translation-keys`) | `createTranslationKeysHarness()`, with `setup`, `regenerate`, `writeLocale` and `teardown` |
 
 A tier 1 test, in outline:

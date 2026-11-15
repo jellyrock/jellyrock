@@ -770,6 +770,95 @@ namespace tests
       m.assertEqual(overflowMenuSelection({ cancelled: false, externallyCancelled: false }, m.menuIds), "")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("focusRowButton() - focus follows the row's index")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' Mounted rows: hasFocus() is false for a detached node whatever the code does.
+    ' An index outside the row must leave focus where it was. A mutator can leave
+    ' one behind when it removes a button, and getChild() then returns invalid.
+
+    @it("focuses the button at the row's index")
+    function _()
+      row = m.makeRow(4)
+      m.mountRow(row, 0)
+      row.group.buttonFocused = 2
+
+      focusRowButton(row.group)
+
+      m.assertTrue(row.group.getChild(2).hasFocus())
+      m.assertFalse(row.group.getChild(0).hasFocus())
+    end function
+
+    @it("focuses the last button when the index names it")
+    function _()
+      row = m.makeRow(4)
+      m.mountRow(row, 0)
+      row.group.buttonFocused = 3
+
+      focusRowButton(row.group)
+
+      m.assertTrue(row.group.getChild(3).hasFocus())
+    end function
+
+    @it("leaves focus where it was for a negative index")
+    function _()
+      row = m.makeRow(4)
+      m.mountRow(row, 1)
+      row.group.buttonFocused = -1
+
+      focusRowButton(row.group)
+
+      m.assertTrue(row.group.getChild(1).hasFocus())
+    end function
+
+    @it("leaves focus where it was for an index past the end")
+    function _()
+      row = m.makeRow(4)
+      m.mountRow(row, 1)
+      row.group.buttonFocused = 14
+
+      focusRowButton(row.group)
+
+      m.assertTrue(row.group.getChild(1).hasFocus())
+    end function
+
+    @it("leaves focus where it was for an index at the count")
+    function _()
+      row = m.makeRow(4)
+      m.mountRow(row, 1)
+      row.group.buttonFocused = 4
+
+      focusRowButton(row.group)
+
+      m.assertTrue(row.group.getChild(1).hasFocus())
+    end function
+
+    @it("leaves focus where it was on an empty row")
+    function _()
+      row = m.makeRow(0)
+      scene = m.top.getScene()
+      scene.appendChild(row.group)
+      m.mountedNodes.push(row.group)
+      row.group.setFocus(true)
+      row.group.buttonFocused = 0
+
+      focusRowButton(row.group)
+
+      m.assertTrue(row.group.hasFocus())
+    end function
+
+    @it("does nothing for a group that cannot carry an index")
+    function _()
+      group = CreateObject("roSGNode", "Group")
+      group.appendChild(CreateObject("roSGNode", "IconButton"))
+
+      focusRowButton(group)
+      focusRowButton(invalid)
+
+      m.assertFalse(group.getChild(0).hasFocus())
+    end function
+
   end class
 
 end namespace

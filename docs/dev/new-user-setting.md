@@ -51,7 +51,7 @@ Put the entry in the right category's `children`, in order of `title`. This is `
     { "title": "Disabled", "id": "disabled", "titleKey": "LabelDisabled" }
   ],
   "titleKey": "LabelPlayDefaultAudioTrack",
-  "descriptionKey": "MessageOverrideWebClientAudioPreferenceWhen"
+  "descriptionKey": "SettingDescPlayDefaultAudioTrack"
 }
 ```
 

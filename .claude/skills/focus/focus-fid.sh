@@ -13,6 +13,9 @@
 #   `mailbox.sh requests --tsv` row.
 # - A line of the text that starts with NOTE: (after any spaces) could be read as one of this
 #   script's own notes, so a NOTE line after the closing tag names each one as followup or request text.
+# - The PICK block carries a NOTE per route that closes the item: the plan route's closeout (a part or
+#   message), and for every kind the scaffold route's /start-project command with the id as
+#   <prefix>:<id>, so the new project's session can read the item.
 # - The {{…}} parts of the PICK block are fill-ins for the model; they print literally.
 # - The entry comes from journal.sh show, found beside this skill's folder at ../log/journal.sh; the
 #   part from mailbox.sh requests show, at ../start-project/mailbox.sh.
@@ -115,6 +118,8 @@ case "$kind" in
   request) printf 'NOTE: on the plan route, the plan'"'"'s Landing & closeout ends with /done request %s, run by the supervising session after the work commit (or /done request %s --declined with its reason, when the change does not fit this repo): on a branch it marks the part handled, so in a pull-request repo run it before the pull request is opened, which carries the handled line into the PR body; once the commit is on the default branch, /done request %s again closes it.\n' "$fid" "$fid" "$fid" ;;
   message) printf 'NOTE: on the plan route, the plan'"'"'s Landing & closeout ends with /done message %s, run by the supervising session after the work commit: on a branch it marks the message handled, so in a pull-request repo run it before the pull request is opened, which carries the handled line into the PR body; once the commit is on the default branch, /done message %s again closes it.\n' "$fid" "$fid" ;;
 esac
+pre="$kind"; [ "$kind" != followup ] || pre=fid
+printf 'NOTE: on the scaffold route, print /start-project {{slug}} %s:%s alone in its own text block, so the new session reads the item and closes it when the project lands.\n' "$pre" "$fid"
 printf '**Recommended:** %s\n' "$title"
 printf '**Why:** you named it: %s.\n' "$why"
 printf '**Route:** {{resume | scaffold | another skill | plan}}. {{for a command route: the line naming its folder, then its one command alone in a text block, then the reply line, as Step 2 shows them}}\n'

@@ -96,7 +96,7 @@ namespace tests
       m.osd.itemData = m.item()
       m.assertTrue(m.button("itemNext").isEnabled)
       m.localQueueAt(0, 2, queueRepeat.ALL)
-      m.osd.callFunc("applyStepButtons")
+      m.osd.callFunc("refreshFromQueue")
       m.assertTrue(m.button("itemBack").isEnabled)
     end function
 

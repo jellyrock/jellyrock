@@ -259,7 +259,7 @@ do_check() {
   echo "locality: $locality"
 
   section "SECTIONS"
-  for want in Context Approach 'Critical files' Verification 'Landing & closeout' 'does NOT do'; do
+  for want in Context Approach 'Critical files' Verification 'Landing & closeout' 'does not do'; do
     if has_heading "$plan" "^## .*$want" 0 i; then echo "present: $want"; else echo "MISSING: $want"; fi
   done
   has_heading "$plan" '^## .*Verification' 0 i || echo "BANNER: no Verification section: the plan has no regression floor; run this repo's verification commands as the tail"

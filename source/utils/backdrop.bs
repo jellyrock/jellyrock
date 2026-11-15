@@ -1,35 +1,58 @@
-' resolveShowBackdrop: Resolves whether to show backdrop images
+import "pkg:/source/enums/BackdropMode.bs"
+
+' resolveBackdropMode: where backdrop images show, from the user's Backdrop Images setting.
 '
-' Checks JellyRock override setting first, then falls back to web client setting.
-' Ensures a valid boolean is always returned.
+' The JellyRock setting wins when it names a mode. Otherwise (the legacy "webclient" value, an
+' empty or unknown value) the server's ShowBackdrop decides between enabled and disabled, and
+' enabled is the default when that is missing or not a boolean.
 '
 ' @param {object} userSettings - JellyfinUserSettings node (JellyRock settings)
 ' @param {object} userConfig - JellyfinUserConfiguration node (web client settings)
-' @returns {boolean} - True to show backdrops, false to hide them
-function resolveShowBackdrop(userSettings as object, userConfig as object) as boolean
-  ' Default to true if we can't determine the value
-  defaultValue = true
+' @returns {string} - a BackdropMode value
+function resolveBackdropMode(userSettings as object, userConfig as object) as string
+  if isValid(userSettings) and isValid(userSettings.uiShowBackdrop)
+    setting = userSettings.uiShowBackdrop
+    if setting = BackdropMode.ENABLED or setting = BackdropMode.DETAILS or setting = BackdropMode.DISABLED
+      return setting
+    end if
+  end if
 
-  ' Try to get web client setting
   if isValid(userConfig) and isValid(userConfig.showBackdrop)
-    ' Ensure it's actually a boolean before using it
     valueType = Type(userConfig.showBackdrop)
     if valueType = "roBoolean" or valueType = "Boolean"
-      defaultValue = userConfig.showBackdrop
+      if userConfig.showBackdrop then return BackdropMode.ENABLED
+      return BackdropMode.DISABLED
     end if
   end if
 
-  ' Check for JellyRock override setting
-  if isValid(userSettings) and isValid(userSettings.uiShowBackdrop) and userSettings.uiShowBackdrop <> ""
-    if userSettings.uiShowBackdrop = "enabled"
-      return true
-    else if userSettings.uiShowBackdrop = "disabled"
-      return false
-      ' else "webclient" or other - use web client setting
-    end if
-  end if
+  return BackdropMode.ENABLED
+end function
 
-  return defaultValue
+' isItemBackdropOwner: true for the screens that show an open item (its details screen and the
+' players), the only screens that show a backdrop in BackdropMode.DETAILS. A backdrop writer
+' passes its own subtype (m.top.subtype()) as the owner; browse screens pass none.
+'
+' @param {dynamic} owner - the writing screen's subtype, or "" / invalid for an unnamed writer
+' @returns {boolean}
+function isItemBackdropOwner(owner as dynamic) as boolean
+  if not isValidAndNotEmpty(owner) then return false
+  return owner = "ItemDetails" or owner = "PlayerHostView" or owner = "VideoPlayerView" or owner = "AudioPlayerView"
+end function
+
+' backdropUriFor: the image a backdrop write actually shows under a mode: the requested URI, or
+' "" to clear. In details mode a write from anything but an item screen becomes a clear. That
+' is also what clears an item's backdrop on Back: each browse screen writes its own backdrop
+' as it is shown again (Home and search through their focused tile, the library grid and
+' Settings directly), so a new browse screen must do the same.
+'
+' @param {string} mode - a BackdropMode value
+' @param {dynamic} owner - the writing screen's subtype (isItemBackdropOwner)
+' @param {string} uri - the requested image
+' @returns {string}
+function backdropUriFor(mode as string, owner as dynamic, uri as string) as string
+  if mode = BackdropMode.ENABLED then return uri
+  if mode = BackdropMode.DETAILS and isItemBackdropOwner(owner) then return uri
+  return ""
 end function
 
 ' backgroundWriteIsStale: true when a global-backdrop write should be SUPPRESSED because the writing

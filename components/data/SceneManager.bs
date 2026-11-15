@@ -37,11 +37,12 @@ end sub
 ' @param {string} uri - The image URI to display
 ' @param {boolean} isAnimated - Whether to animate the transition
 ' @param {boolean} forceBackdrop - Force show backdrop regardless of user setting (used for login splashscreen)
-sub setBackgroundImage(uri as string, isAnimated = true as boolean, forceBackdrop = false as boolean)
-  m.log.info("SceneManager.setBackgroundImage called", uri, isAnimated, forceBackdrop)
+' @param {string} owner - The writing screen's subtype (JRScene.setBackgroundImage)
+sub setBackgroundImage(uri as string, isAnimated = true as boolean, forceBackdrop = false as boolean, owner = "" as string)
+  m.log.info("SceneManager.setBackgroundImage called", uri, isAnimated, forceBackdrop, owner)
   ' Passthrough to scene via callFunc
   if isValid(m.scene)
-    m.scene.callFunc("setBackgroundImage", uri, isAnimated, forceBackdrop)
+    m.scene.callFunc("setBackgroundImage", uri, isAnimated, forceBackdrop, owner)
   else
     m.log.error("SceneManager.setBackgroundImage: m.scene is invalid!")
   end if

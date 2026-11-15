@@ -67,3 +67,4 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0053](0053-back-cancels-every-wait.md) | Back cancels every wait; only a local commit ignores it (partially supersedes 0044) | Accepted | 2026-10-22 |
 | [0054](0054-owned-code-gets-every-check.md) | Code kept in the repo gets every check; only package-managed code is exempt | Accepted | 2026-11-05 |
 | [0055](0055-dialog-ends-with-its-screen.md) | A dialog ends with the screen that opened it, and screen hooks run only through `JRScreen` | Accepted | 2026-11-08 |
+| [0059](0059-roku-audio-track-ids-from-mkv-header.md) | A Roku audio track id comes from the MKV header, read alongside `PlaybackInfo` | Accepted | 2026-11-13 |

@@ -90,6 +90,17 @@ describe('bsconfig inheritance', () => {
     },
   );
 
+  // The test builds share one plugin list. A test config that sets its own
+  // `plugins` replaces that list outright, dropping every gate it holds.
+  const TEST_BASE = 'bsconfig-tests-base.json';
+  it.each(CONFIGS.filter((c) => /^bsconfig-tests.*\.json$/.test(c) && c !== TEST_BASE))(
+    '%s takes its plugins from bsconfig-tests-base.json',
+    (name) => {
+      expect(extendsChain(name)).toContain(TEST_BASE);
+      expect(load(name)).not.toHaveProperty('plugins');
+    },
+  );
+
   // A config the device-test path filter watches changes what the device builds,
   // and so does every file it inherits from: they must re-run the tests too.
   const deviceFilter = deviceTestPathFilter();

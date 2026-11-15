@@ -1,0 +1,184 @@
+' Works out which Roku audio track id each embedded audio stream plays under.
+'
+' A Roku Video node names an MKV audio track by the TrackNumber stored in the file header, and its
+' availableAudioTracks list leaves out tracks the device cannot play. Jellyfin numbers MediaStreams
+' from 0 in file order, but puts external (sidecar) streams first on 10.8 and later and last on 10.7.
+' So neither "same language, Nth" nor "Index + 1" finds the right track: the header numbers do.
+
+' Builds the audio streams of a played source with the Roku track id of each.
+'
+' Each returned entry is a copy of its MediaStream with two fields added: rokuTrackId (a string, or
+' invalid for an external stream, which is not in the container) and rokuTrackFromHeader (true when the
+' id is a number stored in the file, false when it is a position-based guess).
+'
+' With header entries, the k-th embedded audio stream gets the number of the k-th audio header entry.
+' When the header lists a different number of audio tracks than Jellyfin does, or there is no header,
+' the id is the stream's position among the embedded video, audio and subtitle streams, plus 1.
+'
+' @param {dynamic} mediaStreams - the played MediaSource's MediaStreams, every type, or invalid
+' @param {dynamic} [mkvEntries=invalid] - { number, type } entries in header order (mkvTrackEntries()), or invalid
+' @returns {object} the audio streams (Type "Audio", embedded or not) in the order given
+function audioStreamsWithRokuTracks(mediaStreams as dynamic, mkvEntries = invalid as dynamic) as object
+  audio = []
+  if not isValid(mediaStreams) then return audio
+
+  ' Embedded video, audio and subtitle streams in Jellyfin order, with the audio ones counted apart.
+  embedded = []
+  embeddedAudio = []
+  for each stream in mediaStreams
+    kind = LCase(textOrEmpty(stream.Type))
+    if kind = "audio" then audio.push(rokuAudioCopy_(stream))
+    if stream.IsExternal = true then continue for
+    if kind = "video" or kind = "audio" or kind = "subtitle"
+      embedded.push(stream)
+      if kind = "audio" then embeddedAudio.push(stream)
+    end if
+  end for
+  rokuSortByIndex_(embedded)
+  rokuSortByIndex_(embeddedAudio)
+
+  headerNumbers = []
+  if isValid(mkvEntries)
+    for each entry in mkvEntries
+      if isValid(entry) and entry.type = 2 and isValid(entry.number) then headerNumbers.push(entry.number)
+    end for
+  end if
+  useHeader = headerNumbers.count() > 0 and headerNumbers.count() = embeddedAudio.count()
+
+  for each copy in audio
+    copy.rokuTrackId = invalid
+    copy.rokuTrackFromHeader = false
+    if copy.IsExternal = true then continue for
+    if useHeader
+      for k = 0 to embeddedAudio.count() - 1
+        if embeddedAudio[k].Index = copy.Index
+          copy.rokuTrackId = headerNumbers[k].toStr()
+          copy.rokuTrackFromHeader = true
+          exit for
+        end if
+      end for
+    else
+      for position = 0 to embedded.count() - 1
+        if embedded[position].Index = copy.Index
+          copy.rokuTrackId = (position + 1).toStr()
+          exit for
+        end if
+      end for
+    end if
+  end for
+  return audio
+end function
+
+' Converts a Jellyfin audio stream index to a Roku audioTrack Track identifier.
+'
+' A Roku Video node names an MKV audio track by the TrackNumber stored in the file, not by its position,
+' and its availableAudioTracks list leaves out tracks the device cannot play. audioStreamsWithRokuTracks()
+' works the id out from the header (or from stream positions when the header could not be read) and puts
+' it on each entry as rokuTrackId, so this returns that.
+'
+' One check applies only to an id that came from stream positions (rokuTrackFromHeader is false). When
+' availableAudioTracks lists its Track ids out of order, the file's numbers are out of order and a position
+' is no guide to a number. Roku then lists its tracks in header order, so when it lists exactly as many as
+' the file has embedded audio streams, the stream's own place in that list is its track.
+'
+' An entry with no rokuTrackId (an external stream, or data built without the mapping) keeps the old answer:
+' Index + 1, which holds for a plain MKV whose streams are numbered in file order.
+'
+' @param {integer} jellyfinAudioIndex - The Jellyfin audio stream index
+' @param {dynamic} audioStreamsArray - fullAudioData: audio streams with .index and, when mapped, .rokuTrackId
+' @param {dynamic} [availableAudioTracks=invalid] - Roku's availableAudioTracks array (has .track)
+' @returns {string} - Roku track identifier string for audioTrack field
+function getRokuAudioTrackPosition(jellyfinAudioIndex as integer, audioStreamsArray as dynamic, availableAudioTracks = invalid as dynamic) as string
+  if isValid(audioStreamsArray)
+    ordinal = 0
+    for each stream in audioStreamsArray
+      if isValid(stream.index) and stream.index = jellyfinAudioIndex
+        if isValidAndNotEmpty(stream.rokuTrackId)
+          if stream.rokuTrackFromHeader = true then return stream.rokuTrackId
+          listed = rokuListedTrackAt_(audioStreamsArray, availableAudioTracks, ordinal)
+          if isValid(listed) then return listed
+          return stream.rokuTrackId
+        end if
+        exit for
+      end if
+      if stream.isExternal <> true then ordinal += 1
+    end for
+  end if
+
+  ' Fallback: Roku Track = Jellyfin Index + 1 (MKV 1-based track numbering)
+  return (jellyfinAudioIndex + 1).ToStr()
+end function
+
+' The Track of the entry at `ordinal` in Roku's list, when that list is out of order and as long as the
+' file's embedded audio streams. Invalid in every other case.
+function rokuListedTrackAt_(audioStreamsArray as object, availableAudioTracks as dynamic, ordinal as integer) as dynamic
+  if not isValidAndNotEmpty(availableAudioTracks) then return invalid
+
+  previous = -1
+  inOrder = true
+  for each track in availableAudioTracks
+    if not isValid(track.track) then return invalid
+    value = val(track.track.toStr())
+    if value <= previous then inOrder = false
+    previous = value
+  end for
+  if inOrder then return invalid
+
+  embeddedAudio = 0
+  for each stream in audioStreamsArray
+    if stream.isExternal <> true then embeddedAudio += 1
+  end for
+  if availableAudioTracks.count() <> embeddedAudio then return invalid
+  return availableAudioTracks[ordinal].track.toStr()
+end function
+
+' A shallow copy of a stream, so the metadata it came from stays as it was.
+function rokuAudioCopy_(stream as object) as object
+  copy = {}
+  for each key in stream
+    copy[key] = stream[key]
+  end for
+  return copy
+end function
+
+' Orders streams by their Index, in place. Jellyfin already lists them so; this keeps the mapping right if not.
+sub rokuSortByIndex_(streams as object)
+  for i = 1 to streams.count() - 1
+    current = streams[i]
+    j = i - 1
+    while j >= 0 and streams[j].Index > current.Index
+      streams[j + 1] = streams[j]
+      j -= 1
+    end while
+    streams[j + 1] = current
+  end for
+end sub
+
+' True when any audio entry got its id from the header (rokuTrackFromHeader).
+function anyAudioFromHeader(audioStreams as dynamic) as boolean
+  if not isValid(audioStreams) then return false
+  for each stream in audioStreams
+    if stream.rokuTrackFromHeader = true then return true
+  end for
+  return false
+end function
+
+' The number of audio entries in the header's { number, type } list.
+function headerAudioCount(mkvEntries as dynamic) as integer
+  count = 0
+  if not isValid(mkvEntries) then return count
+  for each entry in mkvEntries
+    if isValid(entry) and entry.type = 2 then count += 1
+  end for
+  return count
+end function
+
+' The number of audio entries that are in the container (not external).
+function embeddedAudioCount(audioStreams as dynamic) as integer
+  count = 0
+  if not isValid(audioStreams) then return count
+  for each stream in audioStreams
+    if stream.isExternal <> true then count += 1
+  end for
+  return count
+end function

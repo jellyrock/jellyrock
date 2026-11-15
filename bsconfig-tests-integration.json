@@ -1,5 +1,5 @@
 {
-  "extends": "./bsconfig-base.json",
+  "extends": "./bsconfig-tests-base.json",
   "files": [
     "manifest",
     {
@@ -31,12 +31,6 @@
     "!tests/source/e2e/**/*",
     "!tests/source/**/*.md",
     "!**/*.map"
-  ],
-  "plugins": [
-    "rooibos-roku",
-    "@rokucommunity/bslint",
-    "./scripts/bsc-plugins/translation-keys.cjs",
-    "./scripts/bsc-plugins/strip-vendor-prints.cjs"
   ],
   "rooibos": {
     "tags": ["!migration", "!registry"],

@@ -191,6 +191,51 @@ describe('mergeRelease + pushBack', () => {
     expect(git(w, 'log', '-1', '--format=%s')).toBe('chore: sync translations from release v1.0.0');
   });
 
+  // A key renamed on main (`npm run update-translations -- --rename Old=New`) between
+  // releases. The bot copies only en_US to weblate mid-cycle, so until release prep
+  // Weblate holds the translation under the old name. Whether Weblate's cleanup has
+  // dropped the old key or not, release prep must land the translation under the new
+  // name on both sides, with nothing for the release manager to resolve.
+  describe.each([
+    ['Weblate kept the old key', {}],
+    ['Weblate cleanup dropped the old key', { Old: undefined }],
+  ])('a key renamed on main (%s)', (_label, weblateCleanup) => {
+    it('reaches Weblate under the new name with its translation and no conflict', () => {
+      const en = (keys) => ({ en_US: Object.fromEntries(keys.map((k) => [k, k])) });
+      const { origin, repo } = setup({ A: 'a', Old: 'ancien' });
+      writeLocales(repo, { ...en(['A', 'Old']), fr: { A: 'a', Old: 'ancien' } });
+      commit(repo, 'old key');
+      git(repo, 'push', '--quiet', 'origin', 'main', '+main:weblate');
+      weblatePush(origin, 'sync', {}, 'Translations-Release: 1.0.0');
+      git(repo, 'tag', 'v1.0.0');
+
+      // The rename on main, as the rename mode writes it.
+      commit(repo, 'rename', { ...en(['A', 'New']), fr: { A: 'a', New: 'ancien' } });
+      // jellyrock-bot copies en_US to weblate; Weblate may then clean up fr.
+      const w = weblateClone(origin);
+      writeLocales(w, en(['A', 'New']));
+      git(w, 'add', '-A');
+      git(w, 'commit', '--quiet', '-m', 'chore: sync en_US from main');
+      git(w, 'push', '--quiet', 'origin', 'weblate');
+      weblatePush(origin, 'Translated using Weblate (French)', weblateCleanup);
+      git(repo, 'fetch', '--quiet', 'origin');
+
+      const result = mergeRelease({
+        cwd: repo,
+        ours: git(repo, 'rev-parse', 'HEAD'),
+        theirs: 'origin/weblate',
+        version: '1.1.0',
+      });
+      expect(result.ancestor.version).toBe('1.0.0');
+      expect(result.conflicts).toEqual([]);
+      expect(readFr(repo)).toEqual({ A: 'a', New: 'ancien' });
+      commit(repo, 'refresh');
+
+      pushBack({ cwd: repo, ancestor: result.theirsSha, version: '1.1.0' });
+      expect(readFr(weblateClone(origin))).toEqual({ A: 'a', New: 'ancien' });
+    });
+  });
+
   it('is a no-op on the locale files when merged again', () => {
     const { origin, repo } = setup({ A: 'a' });
     weblatePush(origin, 'Translated using Weblate (French)', { B: 'web-b' });

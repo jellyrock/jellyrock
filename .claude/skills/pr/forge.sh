@@ -45,7 +45,9 @@ F_PR_FOR_COMMIT="number,url,mergedAt,mergeCommit"
 F_ISSUE_VIEW="number,title,body,state,stateReason,labels,author,comments,createdAt,updatedAt,closedByPullRequestsReferences,url"
 F_ISSUE_LIST="number,title,state,labels"
 F_LABEL_LIST="name,description"
-F_RUN_LIST="databaseId,workflowName,displayTitle,createdAt,url"
+F_PR_OPEN_CHECKS="number,title,url,isDraft,mergeable,statusCheckRollup"
+F_RUN_LIST="databaseId,workflowName,displayTitle,createdAt,url,status,conclusion"
+F_WORKFLOW_LIST="id,name,path,state"
 F_RUN_VIEW="status,conclusion,name,event,headBranch,url,createdAt,headSha,jobs"
 # pr mergeable reads this many times before it settles; the wait is seconds between reads
 MERGEABLE_TRIES=5
@@ -61,6 +63,7 @@ pr comments;<N>;JSON: comments;The PR's comments.
 pr commits;<N>;JSON: commits;The PR's commits.
 pr mergeable;<N>;text: MERGEABLE, CONFLICTING or UNKNOWN;Whether PR <N> can merge with its base, reading again for a few seconds while the forge works it out.
 pr list;[--state open|closed|merged|all] [--search <q>] [--limit <n>];JSON: $F_PR_LIST;PRs matching a search.
+pr open-checks;;JSON: $F_PR_OPEN_CHECKS;Every open PR with its checks and merge state (the newest 100).
 pr for-commit;<sha>;JSON: [$F_PR_FOR_COMMIT];The merged PRs holding the commit, squash merges too; [] when none, or the forge never saw it.
 pr create;--base <branch> --title <t> [--label <l>]... [--draft] --body-file <file>;text: the PR's URL;Open a PR from the current branch, as a draft with --draft.
 pr edit;<N> [--title <t>] [--add-label <l,..>] [--remove-label <l,..>] [--base <branch>] [--body-file <file>];text: the PR's URL;Change a PR (at least one part), its base branch included.
@@ -74,7 +77,8 @@ issue comment;<N> --body-file <file>;text: the comment's URL;Comment on an issue
 issue close;<N> --reason completed|not-planned|duplicate;text;Close an issue.
 label list;;JSON: $F_LABEL_LIST;Every label (up to 500).
 label create;<name> --description <text>;text;Create a label.
-run list;[--branch <b>] [--status <s>] [--limit <n>];JSON: $F_RUN_LIST;CI runs, newest first (--branch is filtered here, among the newest max(100, limit) runs).
+run list;[--workflow <name|file|id>] [--branch <b>] [--status <s>] [--limit <n>];JSON: $F_RUN_LIST;CI runs, newest first, of one workflow with --workflow (--branch is filtered here, among the newest max(100, limit) runs).
+workflow list;;JSON: $F_WORKFLOW_LIST;Every active workflow (up to 500).
 run view;<id>;JSON: $F_RUN_VIEW;One CI run with its jobs and steps.
 run log;<id>;text: the log;The log of the run's failed steps.
 run rerun;<id>;text;Re-run the run's failed jobs."
@@ -105,7 +109,7 @@ printf '%s\n' "$SPEC" | awk -F';' -v c="$cmd" '$1 == c "" { f = 1 } END { exit !
   || die 2 "unknown verb '$cmd' (see: $prog --help)"
 
 opt_base="" opt_title="" opt_body_file="" opt_add_label="" opt_remove_label="" opt_parent=""
-opt_reason="" opt_description="" opt_draft="" opt_state="" opt_search="" opt_limit="" opt_branch="" opt_status=""
+opt_reason="" opt_description="" opt_draft="" opt_state="" opt_search="" opt_limit="" opt_branch="" opt_status="" opt_workflow=""
 labels=(); pos=()
 # parse <the verb's flags> <args...>: sets opt_<flag> (dashes to underscores), labels (--label may
 # repeat), opt_draft=1 for --draft (the one flag with no value) and pos (the rest)
@@ -155,7 +159,7 @@ uri_path() {
 }
 
 case "$cmd" in
-  "repo default-branch"|"repo merge-settings"|"user login"|"label list")
+  "repo default-branch"|"repo merge-settings"|"user login"|"label list"|"workflow list"|"pr open-checks")
     parse "" "$@"; positional 0 0 ;;
   "repo file-url")
     parse "" "$@"; positional 1 1
@@ -181,7 +185,7 @@ case "$cmd" in
     [ -z "$opt_state" ] || one_of --state "$opt_state" open closed all
     [ -z "$opt_limit" ] || number --limit "$opt_limit" ;;
   "run list")
-    parse "--branch --status --limit" "$@"; positional 0 0
+    parse "--workflow --branch --status --limit" "$@"; positional 0 0
     [ -z "$opt_limit" ] || number --limit "$opt_limit" ;;
   "pr create")
     parse "--base --title --label --draft --body-file" "$@"; positional 0 0
@@ -295,7 +299,9 @@ pr_by_name() {
 if [ "$backend" = forgejo ]; then
   # What Forgejo cannot do, refused before any setup or call.
   case "$cmd" in
-    run\ *) die 5 "'$cmd' is not available on the Forgejo backend: its API has no Actions logs or rerun, so the run verbs wait for it" ;;
+    run\ *|"workflow list") die 5 "'$cmd' is not available on the Forgejo backend: its API has no Actions logs or rerun, so the run and workflow verbs wait for it" ;;
+    # Forgejo keeps commit statuses, not GitHub's check rollup; this read waits for a real case
+    "pr open-checks") die 5 "'$cmd' is not available on the Forgejo backend: it reads GitHub's check rollup, which Forgejo does not have" ;;
     # Forgejo finds a PR from its merge commit only; the branch walk waits for a real case
     "pr for-commit") die 5 "'$cmd' is not available on the Forgejo backend: its API finds no PR from a branch commit" ;;
     "issue create") [ -z "$opt_parent" ] || die 5 "Forgejo has no sub-issues: drop --parent and add \"Part of #$opt_parent\" to the body" ;;
@@ -606,8 +612,20 @@ case "$cmd" in
   "issue comment")       gh_run issue comment "$n" --body-file "$opt_body_file" ;;
   "issue close")         gh_run issue close "$n" --reason "${opt_reason/not-planned/not planned}" ;;
   "label list")          gh_run label list --limit 500 --json "$F_LABEL_LIST" ;;
+  "workflow list")       gh_run workflow list --limit 500 --json "$F_WORKFLOW_LIST" ;;
+  "pr open-checks")
+    # one page of 100: a full page says so on stderr, since an older open PR was not read
+    out="$(gh pr list --state open --limit 100 --json "$F_PR_OPEN_CHECKS" --jq '(length | tostring), tojson' 2>"$err")" \
+      || { cat "$err" >&2; exit 1; }
+    cat "$err" >&2
+    { read -r got; read -r json; } <<<"$out"
+    printf '%s\n' "$json"
+    [ "$got" != 100 ] \
+      || printf '%s: pr open-checks: read the newest 100 open PRs; older ones were not read\n' "$prog" >&2
+    exit 0 ;;
   "label create")        gh_run label create "$n" --description "$opt_description" ;;
   "run list")
+    optional --workflow "$opt_workflow"
     if [ -z "$opt_branch" ]; then
       optional --status "$opt_status"; optional --limit "$opt_limit"
       gh_run run list "${extra[@]}" --json "$F_RUN_LIST"
@@ -625,7 +643,7 @@ case "$cmd" in
     printf '%s\n' "$json"
     if [ "$fetched" = "$win" ] && [ "$kept" -lt "$n_want" ]; then
       printf "%s: run list: %s run(s) on '%s' among the newest %s%s; older runs were not read\n" \
-        "$prog" "$kept" "$opt_branch" "$win" "${opt_status:+ with status $opt_status}" >&2
+        "$prog" "$kept" "$opt_branch" "$win" "${opt_workflow:+ of workflow $opt_workflow}${opt_status:+ with status $opt_status}" >&2
     fi
     exit 0 ;;
   "run view")            gh_run run view "$n" --json "$F_RUN_VIEW" ;;

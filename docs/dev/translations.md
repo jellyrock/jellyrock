@@ -60,10 +60,28 @@ Keys are PascalCase and start with a prefix that says what kind of text they hol
 | `Label` | UI labels and headings | `LabelCinemaMode`, `LabelEpisodeCountOne` |
 | `Message` | Longer text | `MessageRememberMe` |
 | `Error` | Error messages | `ErrorFailedToUpdateFavorite` |
-| `Setting` | Setting titles and descriptions | `SettingDescDisplayLanguage` |
+| `Setting` | Setting titles, and `SettingDesc` for setting and group descriptions | `SettingHomeRowSize`, `SettingDescCinemaMode` |
 | `Desc` | Descriptions of the custom theme color settings | `DescThemeColorPrimary` |
 | `Day` | Day names | `DayMonday` |
 | `Language` | Names of audio and subtitle languages | `LanguageAf` |
+
+After the prefix, name the key for what the string is for, not for its first words: `MessageConfirmExit`, not `MessageAreYouSureYouWantTo`. A name built from the text says nothing once the text changes, and two strings that start alike end up as `…To` and `…To2`. A setting's description is `SettingDesc` plus a short name for the setting (`SettingDescCinemaMode`).
+
+## Rename a key
+
+Rename a key with the rename mode, never by editing `en_US.json` alone:
+
+```bash
+npm run update-translations -- --rename OldKey=NewKey [--rename Old2=New2 …]
+```
+
+It renames the key in `en_US.json` and in every locale file, so its translations move with it. It also renames the key in the seed map (`keymap.yml`) and ledger, in `settings/settings.json`, and in every `translationKeys.OldKey` in code and tests. If any pair is wrong (an unknown key, a plural key, or a new name a locale file, the seed map or the ledger already holds), it renames nothing. It runs only in fix mode: `npm run lint:translations` refuses `--rename`. It then lists other files that still mention the old name, such as docs and comments, for you to fix by hand.
+
+Before it renames anything, it fetches the `weblate` branch and refuses if Weblate changed a translation of an old key since the last release. That work is not on `main` yet, and release prep drops a key `main` no longer has, so renaming now would lose it. The refusal lists each translation: rename after the next release brings them to `main`. It also refuses when it cannot read `weblate` (offline, for example); `--skip-weblate-check` renames without the check, and loses any such work. Merge the rename soon after running it: a translator who edits the old key before the merge reaches Weblate is not caught.
+
+Release prep carries the rename to Weblate with no step of your own: `main` deleted the old key and added the new one, and the three-way merge takes `main`'s change (see [Weblate sync](../architecture/translations.md#weblate-sync)). Until then Weblate shows the new key as untranslated. If a translator translates it in that window, their translation wins at release prep, and the merge log lists it.
+
+Plural keys are not supported yet, because code names them by their base (`translationKeys.LabelEpisodeCount`).
 
 ## Plurals
 
@@ -119,7 +137,7 @@ Give a new setting both fields:
   "type": "bool",
   "default": "false",
   "titleKey": "LabelCinemaMode",
-  "descriptionKey": "MessageBringTheTheaterExperienceStraightTo"
+  "descriptionKey": "SettingDescCinemaMode"
 }
 ```
 
@@ -191,9 +209,14 @@ Translations move back from the `weblate` branch to `main` only at release prep 
 
 A new key starts untranslated in every language, but another Jellyfin client's community has often translated the same string already. `npm run translations:seed` copies those translations in. It only fills empty cells, only from a reviewed map, and only from projects whose license allows it. Release prep runs it, so mapping a key is enough for it to fill at the next release. Run it yourself to see the result in your pull request.
 
+A plural form (a `Zero`, `One` or `Many` key) is seeded only when its language ends up with all three forms, so a language never shows part of a count in English.
+
 ```bash
 npm run translations:seed                           # dry run: per-key/per-locale coverage, refusals, casing flags
 npm run translations:seed -- suggest --key LabelX   # candidate source keys for a key, as YAML stubs
+npm run translations:seed -- suggest --rank --limit 50   # unmapped keys ranked by cells they would fill
+npm run translations:seed -- suggest --key LabelX --show fr,de   # add each candidate's own translations
+npm run translations:seed -- context --source jellyfin-web --key AddedOnValue   # where a source's code uses a key
 npm run translations:seed -- --write                # apply to locale/custom/ and record each fill in locale/seed/seeded.json
 ```
 
@@ -201,8 +224,10 @@ The first run downloads each pinned source (a shallow, partial clone) into the g
 
 ### Map a key
 
-1. `suggest --key <Key>` lists source keys with the same English text. Treat it as a starting point, not an answer.
-2. Check each candidate's **meaning** and **shape** in context. Meaning is what the source key's name says it is for: web's `MediaInfo*` keys label its media-info panel, and `PriorityIdle` is a process priority. Shape is whether it is the same kind of string: a bare label or `Codec: %1$s`, a standalone label or a word from inside a sentence. Pick the key whose context matches yours.
+To map a batch, highest payoff first, run [`/translation-import`](../../.claude/skills/translation-import/SKILL.md): it applies these steps to each key and reports every decision for review.
+
+1. `suggest --key <Key>` lists source keys with the same English text. Treat it as a starting point, not an answer. To pick which keys to map first, `suggest --rank` orders every unmapped key by the cells it would fill, counted with the seeder's own refusals, so the highest payoff comes first. The count is what a mapping could be worth, not a sign its candidate is right.
+2. Check each candidate's **meaning** and **shape** in context. `--show` prints its own translations in languages you can read, and `context` shows where the source's code uses it (a full checkout of the source at its pinned commit, fetched on first use). Meaning is what the source key's name says it is for: web's `MediaInfo*` keys label its media-info panel, and `PriorityIdle` is a process priority. Shape is whether it is the same kind of string: a bare label or `Codec: %1$s`, a standalone label or a word from inside a sentence. Punctuation is part of shape: a trailing period, a colon or an ellipsis that only one side has is a mismatch. Pick the key whose context matches yours.
 3. Add the entry to `locale/seed/keymap.yml`. Copy both English strings exactly: if either side changes later, the entry stops seeding. List candidates you turned down under `reject:` with a reason, so `suggest` never offers them again.
 4. Do a dry run and **read the values**, at least in languages you can check. A source's translation can be wrong even for its own key: web's `MediaInfoChannels` reads "Chaînes" (TV channels) in French. Drop a bad cell with `exclude: { <locale>: <reason> }`. If the value was already written, also delete it from the locale file. The seed ledger (`locale/seed/seeded.json`) then keeps it from coming back, and the next release's merge removes it from Weblate too.
 5. Review the **Casing to review** list. Nothing is re-cased for you. Exclude a cell when a better-cased value comes from the base language; otherwise keep it, since a lowercase word in the user's language beats English.

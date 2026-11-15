@@ -43,4 +43,15 @@ describe('transpileWithPlugin', () => {
     await transpileWithPlugin(noopPlugin, SOURCE);
     expect(fs.existsSync(path.join(tmpDir, 'out'))).toBe(false);
   });
+
+  it('validates before transpiling, as a real build does, unless told not to', async () => {
+    let validations = 0;
+    const counter = () => ({ name: 'counter', afterValidateProgram: () => validations++ });
+
+    await transpileWithPlugin(counter, SOURCE);
+    expect(validations).toBe(1);
+
+    await transpileWithPlugin(counter, SOURCE, { validate: false });
+    expect(validations).toBe(1);
+  });
 });

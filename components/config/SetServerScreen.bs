@@ -23,7 +23,7 @@ sub init()
   m.top.isLogoVisible = true
 
   m.top.findNode("prompt").text = translate(translationKeys.LabelConnectToServer)
-  m.top.findNode("serverPickerHint").text = translate(translationKeys.LabelPickAJellyfinServerFromThe)
+  m.top.findNode("serverPickerHint").text = translate(translationKeys.LabelServerPickerHint)
   m.top.findNode("manualEntryHint").text = translate(translationKeys.LabelOrEnterServerUrlManually)
   m.top.findNode("submit").text = translate(translationKeys.ButtonSubmit)
 
@@ -239,7 +239,7 @@ end sub
 ' themed chrome and the OK/Cancel buttons; the result arrives on the dialog
 ' node's own `result` field.
 sub ShowKeyboard()
-  m.dialog = showKeyboardDialog(translate(translationKeys.LabelEnterTheServerNameOrIp), "onServerUrlEntered", m.serverUrlTextbox.text)
+  m.dialog = showKeyboardDialog(translate(translationKeys.LabelEnterServerAddress), "onServerUrlEntered", m.serverUrlTextbox.text)
 end sub
 
 sub onServerUrlEntered()

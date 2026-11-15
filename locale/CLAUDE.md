@@ -4,13 +4,15 @@ Translation files for the custom JSON i18n system. [docs/architecture/translatio
 
 ## Edit `en_US.json` only
 
-- `locale/custom/en_US.json` is the source of truth. Add, rename and remove keys there, never in a non-English locale file.
-- **Only two commands write non-English files: `npm run translations:seed` and release prep's `npm run translations:merge`.** Never hand-edit one: translators own the wording in Weblate.
+- `locale/custom/en_US.json` is the source of truth. Add and remove keys there, never in a non-English locale file.
+- **Rename a key with `npm run update-translations -- --rename Old=New`.** Renaming it in `en_US.json` alone strands every translation under the old name. The rename mode moves them, refuses while Weblate holds unreleased work on the old key, and release prep carries the rename to Weblate ([how-to](../docs/dev/translations.md#rename-a-key)).
+- **Only three commands write non-English files: `npm run translations:seed`, release prep's `npm run translations:merge`, and the rename mode above.** Never hand-edit one: translators own the wording in Weblate.
 - Every push to `main` sends `en_US.json` and `languages.json` to the `weblate` branch. Translations come back, and seeded ones go out to Weblate, only at release prep. That merge is three-way and per key: whichever side changed a key wins (deletions included), and Weblate wins when both did ([architecture](../docs/architecture/translations.md#weblate-sync)).
 - `npm run update-translations` fixes what it can locally: it sorts `en_US.json`, removes unused keys and adds missing locales to `languages.json`.
 
 ## Seeding from other Jellyfin clients
 
+- **To translate existing keys from other clients, run `/translation-import`.** It ranks unmapped keys by payoff, reviews each candidate and writes the keymap entries for a PR.
 - **A new key can be born translated.** Run `npm run translations:seed -- suggest --key <Key>`. If another client already has the string, add a reviewed entry to [`seed/keymap.yml`](seed/keymap.yml), and release prep fills it every release. How-to: [`docs/dev/translations.md`](../docs/dev/translations.md#seeding-translations-from-other-jellyfin-clients).
 - **Never map on English text alone.** Check the source key's meaning and shape, and read the dry run's values. Both have caught real errors (see the comments in `keymap.yml`).
 - **Only `GPL-2.0` or `MPL-2.0` sources** go in [`seed/sources.yml`](seed/sources.yml). JellyRock is `GPL-2.0-only`, so a `GPL-3.0` project can never be added. The seeder refuses any other license.
@@ -18,6 +20,8 @@ Translation files for the custom JSON i18n system. [docs/architecture/translatio
 ## Key names
 
 Keys are PascalCase and start with a prefix that says what kind of text they hold. The prefixes and an example of each are in [`docs/dev/translations.md`](../docs/dev/translations.md#key-names). No lint checks the prefix, so pick it by what the string is.
+
+Name the rest of the key for what the string is for (`MessageConfirmExit`), never for its first words (`MessageAreYouSureYouWantTo`, then `…To2`). A setting's description is `SettingDesc` plus a short name for the setting (`SettingDescCinemaMode`).
 
 `npm run lint:translations` fails when `en_US.json` isn't sorted alphabetically.
 

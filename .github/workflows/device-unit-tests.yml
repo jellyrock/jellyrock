@@ -127,7 +127,7 @@ jobs:
           #   which are Node/Vitest tests run by the separate `vitest` job),
           #   source/**, components/**, settings/settings.json, bsconfig.json,
           #   bsconfig-base.json (every test config extends it),
-          #   bsconfig-tests*.json, package.json, package-lock.json
+          #   bsconfig-tests*.json (bsconfig-tests-base.json among them), package.json, package-lock.json
           pattern: '^(tests/source/|source/|components/|settings/settings\.json$|bsconfig\.json$|bsconfig-base\.json$|bsconfig-tests[^/]*\.json$|package(-lock)?\.json$)'
 
       - name: Combine skip reasons

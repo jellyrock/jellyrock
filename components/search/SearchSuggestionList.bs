@@ -133,7 +133,7 @@ end sub
 
 ' "3 of 8" on the header line whenever the list has rows, focused or not, so it says how
 ' many suggestions there are before the viewer goes looking, even when they all fit. The
-' same string (Message1Of2) as SubtitlePanel.updateListCounter, which shows it only while
+' same string (LabelPositionOfTotal) as SubtitlePanel.updateListCounter, which shows it only while
 ' its list scrolls.
 sub updateCounter()
   if not isValid(m.counter) then return
@@ -148,7 +148,7 @@ sub updateCounter()
   position = m.list.itemFocused + 1
   if m.landingIndex >= 0 and not m.list.hasFocus() then position = m.landingIndex + 1
   if position < 1 then position = 1
-  m.counter.text = translate(translationKeys.Message1Of2, [position.toStr(), total.toStr()])
+  m.counter.text = translate(translationKeys.LabelPositionOfTotal, [position.toStr(), total.toStr()])
   m.counter.visible = true
 end sub
 

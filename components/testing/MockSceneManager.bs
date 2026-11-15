@@ -21,8 +21,9 @@ sub resetTime()
 end sub
 
 ' Records the request so a test can assert what a view asked the scene to show.
-sub setBackgroundImage(url as string, _fade = false as boolean, _alwaysShow = false as boolean)
+sub setBackgroundImage(url as string, _fade = false as boolean, _alwaysShow = false as boolean, owner = "" as string)
   m.top.lastBackgroundImage = url
+  m.top.lastBackgroundImageOwner = owner
   m.top.backgroundImageWrites = m.top.backgroundImageWrites + 1
 end sub
 

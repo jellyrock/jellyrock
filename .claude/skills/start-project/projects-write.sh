@@ -169,25 +169,45 @@ done
 
 # Fast-forward the clone. Its copies of the paths already hold the pushed text: staging them lets
 # the merge move HEAD without rewriting them. Another writer may have moved it past this commit.
+# Only the paths still on disk are staged: a path a git mv or git rm took away matches nothing for
+# git add, and the merge takes its deletion by itself. An empty list stages and resets nothing,
+# since a bare pathspec would touch the whole clone.
 note=""
+stage=()
+for p in "${rel[@]}"; do [ -e "$root/$p" ] && stage+=("$p"); done
 while :; do
   cur="$(git -C "$root" rev-parse HEAD)"
   git -C "$root" merge-base --is-ancestor "$new" "$cur" && break
   if ! git -C "$root" merge-base --is-ancestor "$cur" "$new"; then
     note="this clone has $(git -C "$root" rev-list --count "$new..$cur") commit(s) of its own that are not on $remote/$branch, so it was not fast-forwarded; list them in this clone: git log --oneline $remote/$branch..HEAD"; break
   fi
-  if git -C "$root" add -A -- "${rel[@]}" 2>"$tmp/err" && git -C "$root" merge -q --ff-only "$new" >"$tmp/err" 2>&1; then
+  if { [ "${#stage[@]}" -eq 0 ] || git -C "$root" add -A -- "${stage[@]}" 2>"$tmp/err"; } && git -C "$root" merge -q --ff-only "$new" >"$tmp/err" 2>&1; then
     break
   fi
   if grep -q 'index.lock' "$tmp/err" && [ "$SECONDS" -lt "$end" ]; then sleep 1; continue; fi
-  git -C "$root" reset -q -- "${rel[@]}" 2>/dev/null
+  [ "${#stage[@]}" -eq 0 ] || git -C "$root" reset -q -- "${stage[@]}" 2>/dev/null
+  fallback="this clone was not fast-forwarded ($(head -1 "$tmp/err")); pull once its other edits are saved"
+  note="$fallback"
   if grep -q 'would be overwritten' "$tmp/err"; then
-    # The pushed text differs from the clone's: another writer's lines were merged in. Replacing a
-    # file here could drop an edit a session is making to it right now, so the person does it.
-    differ="$(git -C "$root" diff --name-only "$new" -- "${rel[@]}" | tr '\n' ' ')"
-    note="this clone was not fast-forwarded: the pushed commit merged in another writer's lines, so ${differ}differs from it in this clone. Nothing is lost. Once no session here is editing it, run in this clone: git checkout $(git -C "$root" rev-parse --short "$new") -- ${differ}&& git pull --ff-only"
-  else
-    note="this clone was not fast-forwarded ($(head -1 "$tmp/err")); pull once its other edits are saved"
+    # A fast-forward refuses for any file the incoming commits change that is edited or untracked
+    # here, so find those from git state. A named file holds text the pushed commit merged lines
+    # into: the person replaces it. Any other is another session's edit, which a checkout would
+    # discard, so it is only named.
+    mine=""; theirs=""; note=""
+    while IFS= read -r -d '' f; do
+      [ -n "$(git -C "$root" status --porcelain -- "$f")" ] || continue
+      # the session's own file already holds the pushed text: staging it let the merge pass
+      if [ -f "$root/$f" ]; then [ "$(git -C "$root" hash-object -- "$f")" != "$(git -C "$root" rev-parse -q --verify "$new:$f")" ] || continue; fi
+      own=0; for r in "${rel[@]}"; do [ "$f" = "$r" ] || [[ "$f" == "$r"/* ]] && own=1; done
+      if [ "$own" = 1 ]; then mine="$mine$f "; else theirs="$theirs$f "; fi
+    done < <(git -C "$root" diff -z --name-only "$cur" "$new")
+    if [ -n "$mine" ]; then
+      note="this clone was not fast-forwarded: the pushed commit merged in another writer's lines, so ${mine}differs from it in this clone. Nothing is lost. Once no session here is editing it, run in this clone: git checkout $(git -C "$root" rev-parse --short "$new") -- ${mine}&& git pull --ff-only"
+    fi
+    if [ -n "$theirs" ]; then
+      note="${note:+$note. Also, }${theirs}is edited here by another session and changed on $remote/$branch, so this clone was not fast-forwarded. Nothing is lost. Once that session has written or saved its edit, run in this clone: git pull --ff-only"
+    fi
+    [ -n "$note" ] || note="$fallback"
   fi
   break
 done

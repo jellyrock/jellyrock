@@ -4,7 +4,8 @@
 import "pkg:/source/utils/itemImageUrl.bs"
 
 ' updateQueueBackdrop: Updates backdrop based on current queue item
-' Should be called whenever queue position changes or playback starts
+' Should be called whenever queue position changes or playback starts. Runs in a player's
+' scope, so m.top.subtype() names that player as the backdrop's owner (isItemBackdropOwner).
 '
 ' @returns {void}
 sub updateQueueBackdrop()
@@ -13,7 +14,7 @@ sub updateQueueBackdrop()
 
   if not isValid(currentItem)
     ' Clear backdrop if no item
-    m.global.sceneManager.callFunc("setBackgroundImage", "")
+    m.global.sceneManager.callFunc("setBackgroundImage", "", true, false, m.top.subtype())
     return
   end if
 
@@ -26,10 +27,10 @@ sub updateQueueBackdrop()
 
   if backdropUrl = "" or not isValid(backdropUrl)
     ' Clear backdrop if none available
-    m.global.sceneManager.callFunc("setBackgroundImage", "")
+    m.global.sceneManager.callFunc("setBackgroundImage", "", true, false, m.top.subtype())
   else
     ' Update backdrop with animation
     ' setBackgroundImage handles duplicate URIs intelligently, so safe to call repeatedly
-    m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl)
+    m.global.sceneManager.callFunc("setBackgroundImage", backdropUrl, true, false, m.top.subtype())
   end if
 end sub

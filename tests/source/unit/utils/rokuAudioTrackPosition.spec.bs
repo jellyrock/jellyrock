@@ -1,0 +1,123 @@
+import "pkg:/source/utils/rokuAudioTrack.bs"
+
+namespace tests
+
+  @suite("rokuAudioTrack.bs - getRokuAudioTrackPosition()")
+  class RokuAudioTrackPositionTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getRokuAudioTrackPosition() - fallback (no availableAudioTracks)")
+    ' When availableAudioTracks is not provided, uses Jellyfin Index + 1
+    ' as the Roku Track identifier (MKV 1-based track numbering).
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns Index + 1 fallback when audioStreamsArray is invalid")
+    function _()
+      result = getRokuAudioTrackPosition(5, invalid)
+      m.assertEqual(result, "6")
+    end function
+
+    @it("returns Index + 1 fallback when audioStreamsArray is empty")
+    function _()
+      result = getRokuAudioTrackPosition(5, [])
+      m.assertEqual(result, "6")
+    end function
+
+    @it("returns Index + 1 for standard MKV layout (video=0, audio=1, audio=2)")
+    function _()
+      audioStreams = [
+        { index: 1, language: "kor" },
+        { index: 2, language: "eng" }
+      ]
+      ' Korean at Jellyfin index 1 becomes Roku Track 2
+      m.assertEqual(getRokuAudioTrackPosition(1, audioStreams), "2")
+      ' English at Jellyfin index 2 becomes Roku Track 3
+      m.assertEqual(getRokuAudioTrackPosition(2, audioStreams), "3")
+    end function
+
+    @it("returns Index + 1 for audio at index 0")
+    function _()
+      audioStreams = [
+        { index: 0, language: "eng" },
+        { index: 2, language: "spa" }
+      ]
+      m.assertEqual(getRokuAudioTrackPosition(0, audioStreams), "1")
+    end function
+
+    @it("returns Index + 1 for non-contiguous Jellyfin indexes")
+    function _()
+      audioStreams = [
+        { index: 100, language: "eng" },
+        { index: 200, language: "jpn" }
+      ]
+      m.assertEqual(getRokuAudioTrackPosition(200, audioStreams), "201")
+    end function
+
+    @it("returns Index + 1 for single-element array")
+    function _()
+      audioStreams = [
+        { index: 7, language: "tur" }
+      ]
+      m.assertEqual(getRokuAudioTrackPosition(7, audioStreams), "8")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getRokuAudioTrackPosition() - entries carrying rokuTrackId")
+    ' audioStreamsWithRokuTracks() puts the id on each entry; the measured layouts are in
+    ' rokuAudioTrack.spec.bs. These cover the lookup itself.
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("returns the id from the header whatever Roku lists")
+    function _()
+      audioStreams = [
+        { index: 1, language: "eng", rokuTrackId: "2", rokuTrackFromHeader: true },
+        { index: 2, language: "eng", rokuTrackId: "5", rokuTrackFromHeader: true }
+      ]
+      rokuTracks = [
+        { track: "5", language: "eng" },
+        { track: "2", language: "eng" }
+      ]
+      m.assertEqual(getRokuAudioTrackPosition(1, audioStreams, rokuTracks), "2")
+      m.assertEqual(getRokuAudioTrackPosition(2, audioStreams, rokuTracks), "5")
+    end function
+
+    @it("returns a position-based id when Roku's list is in order")
+    function _()
+      audioStreams = [
+        { index: 1, language: "eng", rokuTrackId: "2", rokuTrackFromHeader: false },
+        { index: 2, language: "eng", rokuTrackId: "3", rokuTrackFromHeader: false }
+      ]
+      rokuTracks = [
+        { track: "2", language: "eng" },
+        { track: "3", language: "eng" }
+      ]
+      m.assertEqual(getRokuAudioTrackPosition(2, audioStreams, rokuTracks), "3")
+    end function
+
+    @it("ignores language: an entry with no id falls back to Index + 1")
+    function _()
+      ' Roku lists English first, Korean second. The old lookup matched by language and
+      ' ordinal; it picked the wrong track when Roku left one out, so the language is not read.
+      audioStreams = [
+        { index: 1, language: "kor" },
+        { index: 2, language: "eng" }
+      ]
+      rokuTracks = [
+        { track: "9", language: "eng" },
+        { track: "8", language: "kor" }
+      ]
+      m.assertEqual(getRokuAudioTrackPosition(1, audioStreams, rokuTracks), "2")
+      m.assertEqual(getRokuAudioTrackPosition(2, audioStreams, rokuTracks), "3")
+    end function
+
+    @it("falls back to Index + 1 for an index that is not in the list")
+    function _()
+      audioStreams = [
+        { index: 1, language: "eng", rokuTrackId: "2", rokuTrackFromHeader: true }
+      ]
+      m.assertEqual(getRokuAudioTrackPosition(4, audioStreams), "5")
+    end function
+
+  end class
+
+end namespace

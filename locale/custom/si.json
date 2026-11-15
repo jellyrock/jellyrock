@@ -1,9 +1,12 @@
 {
   "LabelAlbums": "ඇල්බම",
   "LabelAll": "සියලුම",
+  "LabelChapter": "{0} වෙනි පරිච්ඡේදය",
   "LabelExternalSubtitle": "බාහිර",
+  "LabelForcedSubtitle": "නියමිත",
   "LabelPersonKindActor": "නළුවා",
   "LabelPersonKindAlbumArtist": "ඇල්බම කලාකරු",
+  "LabelRepeatRowAll": "සියලුම",
   "LanguageAf": "අෆ්‍රිකාන්ස්",
   "LanguageAr": "අරාබි",
   "LanguageAs": "ඇසෑම්",

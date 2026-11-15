@@ -210,6 +210,15 @@ sub setRowFocusIndex(group as object, index as integer)
   group.buttonFocused = index
 end sub
 
+' Give real focus to the button the row's index names. An index outside the row
+' leaves focus where it is: a mutator that removes a button can leave one behind,
+' and getChild() would then return invalid.
+sub focusRowButton(group as object)
+  index = rowFocusIndex(group)
+  if index < 0 or index >= group.getChildCount() then return
+  group.getChild(index).setFocus(true)
+end sub
+
 ' ---------------------------------------------------------------------------
 ' Applying it to a real row
 '
