@@ -55,7 +55,12 @@ Name it for what it does, in `UPPER_SNAKE_CASE` ending in `_VERSION`: the existi
 
 The value is the release the change ships in. `manifest` holds the last released version, and the release workflow raises it. So the constant must be above the manifest's version: a section already on the constant's version skips the block, and any user who installed the release before your change would never be migrated.
 
-If the release number isn't known yet, use the release you expect. The release workflow checks it when the release is cut: `scripts/lint/migration-versions-check.js` fails the release when a constant added or changed since the previous release is not above that release, or is above the new one, and names the value to set.
+If the release number isn't known yet, use the release you expect. `npm run lint:migration-versions` checks the constants against the latest release tag, and names the value to set:
+
+- On a PR that changes BrightScript, a new constant must be above the latest release.
+- On the release PR, and when the release branch is pushed, it must also be no higher than that release.
+
+A released constant keeps its value: changing it re-runs the migration for users who already ran it. For new work, add a new constant and block. You can remove a released constant, or rename it and keep its value.
 
 ### 2. Add the block
 

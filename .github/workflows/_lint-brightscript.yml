@@ -13,6 +13,10 @@ jobs:
   bslint:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # A release PR checks migration versions whatever its diff: the constants it
+      # ships may have reached main through other PRs (see the step at the end)
+      RELEASE_PR: ${{ startsWith(github.head_ref, 'release-') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: detect
@@ -42,10 +46,10 @@ jobs:
           # that is, the guard could be weakened by a change that never re-runs it. The
           # thread-release check additionally imports its helpers from the
           # auth-binding check, so an edit to either can change what both gate.
-          pattern: '\.(brs|bs|xml)$|^bsconfig.*\.json$|^scripts/(bsc-plugins|lib)/|^\.promise-ratchet-baseline$|^\.dead-code-baseline\.json$|^scripts/lint/(promise-ratchet\.cjs|socket-auth-binding-check\.js|socket-thread-release-check\.js|log-manager-init-check\.js)$'
+          pattern: '\.(brs|bs|xml)$|^bsconfig.*\.json$|^scripts/(bsc-plugins|lib)/|^\.promise-ratchet-baseline$|^\.dead-code-baseline\.json$|^scripts/lint/(promise-ratchet\.cjs|socket-auth-binding-check\.js|socket-thread-release-check\.js|log-manager-init-check\.js|migration-versions-check\.js)$'
           force: ${{ inputs.force }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        if: steps.detect.outputs.relevant == 'true'
+        if: steps.detect.outputs.relevant == 'true' || env.RELEASE_PR == 'true'
         with:
           node-version: "lts/*"
           cache: "npm"
@@ -96,3 +100,16 @@ jobs:
       - name: Check promise-adoption ratchet
         if: steps.detect.outputs.relevant == 'true'
         run: npm run lint:promise-ratchet
+      # Registry migration versions (docs/dev/registry-migrations.md). Every PR checks
+      # that a new migration is numbered above the latest release, or its users skip it.
+      # A release-X.Y.Z PR also checks it is no higher than X.Y.Z. Needs only Node, not
+      # npm ci. The checkout has no tags and the full history is large, so it fetches
+      # only the latest release tag.
+      - name: Check migration versions
+        if: steps.detect.outputs.relevant == 'true' || env.RELEASE_PR == 'true'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          TAG=$(git ls-remote --tags --refs origin | awk -F/ '$3 ~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ {print $3}' | sort -V | tail -n 1)
+          git fetch --no-tags --depth=1 origin "refs/tags/$TAG:refs/tags/$TAG"
+          npm run lint:migration-versions -- --branch "$HEAD_REF" --previous "$TAG"
