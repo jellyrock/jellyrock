@@ -26,7 +26,7 @@ class GridPresenterBase
 
   ' Which library m.apiFilters holds a SUCCESSFUL load for, "" when none. This is the
   ' cache, and the reason one exists: the filter lists are needed only if the user opens
-  ' the options panel, but loadFilters() is reached from configureLoadTask(), which runs
+  ' the Filter menu, but loadFilters() is reached from configureLoadTask(), which runs
   ' on every query build: every sort change, filter change, view change, alpha letter
   ' and voice search. Without this, browsing a library refetches both filter endpoints
   ' repeatedly for data most sessions never look at, competing with the grid's own load
@@ -81,7 +81,7 @@ class GridPresenterBase
   ' Options Configuration
   ' ============================================================================
 
-  ' Returns the options configuration for ItemGridOptions
+  ' Returns what the library screen offers for this library: its tabs, layouts, sorts and filters
   '
   ' `views` lists the library's tabs, each `Name` a libraryTab id, in the web client's
   ' order where the web has the same tabs. A tab is its own view unless its entry names
@@ -114,13 +114,6 @@ class GridPresenterBase
   function getDefaultLayout() as string
     return libraryLayout.COMFORTABLE
   end function
-
-  ' Called when options dialog is closed
-  ' Override to handle presenter-specific option changes
-  ' @param {object} options - The ItemGridOptions component
-  sub onOptionsClosed(_options as object)
-    ' Override in subclass
-  end sub
 
   ' The view mode the grid is currently showing, or "" when it cannot be read.
   '
@@ -234,7 +227,7 @@ class GridPresenterBase
   ' @param {object} parentItem - The library item to load filters for
   ' @param {string} itemType - The item type to filter (for example "Movie", "Series")
   ' @param {boolean} [force=false] - refetch even when this library is already cached.
-  '                                   Set by refreshFilters() when the panel opens.
+  '                                   Set by refreshFilters() when the Filter menu opens.
   sub loadFilters(parentItem as object, itemType as string, force = false as boolean)
     if not isValid(m.view) or not isValid(parentItem) then return
 
@@ -261,18 +254,17 @@ class GridPresenterBase
 
   ' refreshFilters: Revalidate the cached filter lists in the background.
   '
-  ' Called when the options panel OPENS, which is the only moment the lists are actually
-  ' looked at, so freshness is bought exactly where it is spent, and a session that
-  ' never opens the panel pays for one load instead of one per query build.
+  ' Called when the Filter menu opens, which is the only moment the lists are looked at,
+  ' so freshness is bought where it is spent, and a session that never opens the menu
+  ' pays for one load instead of one per query build.
   '
-  ' Not rendered into the open panel, on purpose. BaseGridView.SetUpOptions() has already
-  ' read m.apiFilters by the time this answers, and re-running it would reassign the
-  ' panel's content and reset checkedItem: categories would appear and shift focus under
-  ' a cursor already moving through the list. The refreshed lists show on the NEXT open,
-  ' which is the stale-while-revalidate contract and the reason no TTL is needed.
+  ' Not drawn into the open menu, on purpose: its rows are built from m.apiFilters before
+  ' this answers, and rebuilding them would move categories under a cursor already in the
+  ' list. The refreshed lists show on the next open, which is the stale-while-revalidate
+  ' contract and the reason no TTL is needed.
   '
   ' It also retries a previous failure: a failed load never marks the cache populated, so
-  ' the panel that needs those categories is what asks for them again.
+  ' the menu that needs those categories is what asks for them again.
   sub refreshFilters()
     if not isValid(m.filtersRequest) then return
     m.loadFilters(m.filtersRequest.parentItem, m.filtersRequest.itemType, true)
@@ -287,15 +279,15 @@ class GridPresenterBase
     m.filtersInFlightFor = ""
 
     if errorMsg <> ""
-      ' A failed revalidation must not empty a panel that was working. Once the lists are
-      ' cached, every panel open fires a refresh over them, so a server that goes flaky
+      ' A failed revalidation must not empty a menu that was working. Once the lists are
+      ' cached, every open of the menu fires a refresh over them, so a server that goes flaky
       ' mid-session would otherwise replace good categories with {}, and the cache would
       ' still read as loaded, so nothing but another open would retry. Keeping the last
       ' good result is the whole point of revalidating rather than re-fetching.
       '
-      ' Silent for the same reason: someone looking at a working filter panel has no
+      ' Silent for the same reason: someone looking at a working Filter menu has no
       ' problem to be told about, and the toast would repeat on every open. Only a failure
-      ' with NOTHING cached reaches the user, because that panel really is missing its
+      ' with NOTHING cached reaches the user, because that menu really is missing its
       ' categories.
       if m.filtersLoadedFor = ""
         m.apiFilters = filters

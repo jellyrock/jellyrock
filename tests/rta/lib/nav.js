@@ -51,6 +51,8 @@ import {
   sweepBudget,
   sleep,
   walkOverhangRowTo,
+  focusIsInside,
+  waitDialogClosed,
 } from './steps.js';
 
 /**
@@ -1341,27 +1343,6 @@ export async function navPlaylistDetails(ctx) {
 }
 
 /**
- * Movies grid -> open the grid OPTIONS dialog (View / Sort / Filter). The `*`
- * button (ECP "Info" -> BrightScript "options") toggles the `#options`
- * ItemGridOptions overlay; we wait on its `visible` field.
- */
-export async function navLibraryOptions(ctx) {
-  await navLibraryGrid(ctx);
-  await press(ecp.Key.Option); // '*' opens the grid options dialog
-  // The dialog is shown AND focused on open, so assert focus ENTERS it rather than
-  // reading `#options.visible`: a suspended Home stays in the tree (default "hide" mode)
-  // whose own `#options` (an OptionsSlider, hidden) would win a recursive id lookup and
-  // read visible=false. Focus is unambiguous (one focused node), so it's the robust
-  // signal that the active grid's options dialog opened.
-  await waitFocusInside('#options', {
-    label: 'grid options dialog',
-    timeout: 8000,
-    interval: 500,
-  });
-  await sleep(800); // let the dialog's menus paint
-}
-
-/**
  * From an ItemDetails screen, open the first tile of the detail row whose tiles are
  * of `tileType` (for example "Person" for Cast & Crew, "Season", "Episode", "Audio") ->
  * that child's ItemDetails.
@@ -1662,65 +1643,129 @@ export async function pressGridTile(index = 0) {
 }
 
 /**
- * Open a library's Star panel on its Sort or Filter list, with focus on the list's first row.
- * The panel opens on the Sort button; Right walks to Filter, and Down enters the list.
+ * From a library's content: Up into the header strip, then along it to the `sort` or
+ * `filter` chip. Start with focus on the content's first row (a freshly loaded tab), since
+ * Up reaches the strip only from there.
  */
-async function openStarPanelList(buttonIndex, listId, label) {
-  await press(ecp.Key.Option);
-  await waitFocusInside('#options', { label: `the options dialog, for ${label}`, timeout: 8000 });
-  await scrollFocus({
-    keyPath: '#options.#buttons.focusedIndex',
-    target: buttonIndex,
-    forwardKey: ecp.Key.Right,
-    backKey: ecp.Key.Left,
-    read: getActiveVal,
-    stepped: true,
-    within: '#options',
-    label: `the panel's button for ${label}`,
+export async function focusLibraryChip(id) {
+  const inStrip = (f) => focusIsInside(f.keyPath, '#headerStrip');
+  await waitFocused(inStrip, {
+    timeout: 10000,
+    interval: 400,
+    action: walkFocusUntil(ecp.Key.Up, inStrip),
+    label: `the header strip, for the ${id} chip`,
   });
-  await waitFocusInside(listId, {
-    label: `the list for ${label}`,
+  const chip = id === 'sort' ? '#sortChip' : '#filterChip';
+  const onChip = (f) => focusIsInside(f.keyPath, chip);
+  await waitFocused(onChip, {
     timeout: 8000,
-    action: resendUntilFocusInside(ecp.Key.Down, listId),
+    interval: 400,
+    action: walkFocusUntil(id === 'sort' ? ecp.Key.Left : ecp.Key.Right, onChip),
+    label: `the ${id} chip`,
   });
 }
 
-/** Pick row `index` of an open Star panel list, close the panel, and wait for the reload. */
-async function pickStarPanelRow(listId, index, label) {
+/**
+ * From a library's overhang row back to its grid: Down lands on the header strip, which
+ * sits between the two, and Down again on the grid.
+ */
+export async function returnToLibraryGrid(label) {
+  await press(ecp.Key.Down);
+  await waitFocusInside('#headerStrip', {
+    label: `the header strip, Down from the row (${label})`,
+    timeout: 8000,
+  });
+  await press(ecp.Key.Down);
+  await waitFocusInside('#itemGrid', { label: `the grid, Down from the strip (${label})` });
+}
+
+/** The text of each row of the list dialog on show. */
+export async function listDialogRows() {
+  const count = (await getVal('#optionList.content.getChildCount()')) || 0;
+  return getVals(Array.from({ length: count }, (_, i) => `#optionList.content.${i}.title`));
+}
+
+/** Walk the list dialog on show to row `index` and press OK. */
+async function pickListDialogRow(index, label) {
+  await waitFocusInside('#optionList', { label: `the list for ${label}`, timeout: 8000 });
   await scrollFocus({
-    keyPath: `#options.${listId}.itemFocused`,
+    keyPath: '#optionList.itemFocused',
     target: index,
     forwardKey: ecp.Key.Down,
     backKey: ecp.Key.Up,
-    read: getActiveVal,
+    read: getVal,
     stepped: true,
-    within: listId,
+    within: '#optionList',
     label,
   });
   await press(ecp.Key.Ok);
-  await press(ecp.Key.Option);
-  await waitFocusInside('#itemGrid', { label: `the grid after ${label}`, timeout: 20000 });
-  await waitGridLoaded(`the grid reloaded after ${label}`);
 }
 
 /**
- * Sort the library tab on show by row `index` of its sort list. Start with focus in the
- * grid. The Star panel is how a sort is picked until the header strip's Sort chip
- * replaces it; specs call this, so only this body changes then.
+ * The row of the list dialog on show named `name`, with or without a value after it.
+ * `firstRow` says which list is meant, by its first row's text or a test of it: a list
+ * dialog that replaces another keeps the same node ids, so the first row is what tells
+ * the new list from the old.
+ */
+async function listDialogRowNamed(name, firstRow, label) {
+  const isFirstRow = typeof firstRow === 'function' ? firstRow : (t) => t === firstRow;
+  await waitFor('#optionList.content.0.title', isFirstRow, {
+    label: `${label}: its first row`,
+    timeout: 10000,
+  });
+  const rows = await listDialogRows();
+  const index = rows.findIndex(
+    (t) => t === name || (typeof t === 'string' && t.startsWith(`${name} (`)),
+  );
+  if (index < 0) {
+    // eslint-disable-next-line no-restricted-syntax -- a fail-fast that names its cause: the list is up and read, and lacks the row
+    throw new Error(`${label} has no row named "${name}": it has ${JSON.stringify(rows)}`);
+  }
+  return index;
+}
+
+/** Down from a chip, back to the grid, once a chip's change has loaded. */
+async function returnToGridFromChip(label) {
+  await waitGridLoaded(`the grid reloaded after ${label}`);
+  await waitFocusInside('#itemGrid', {
+    label: `the grid after ${label}`,
+    timeout: 20000,
+    action: resendUntilFocusInside(ecp.Key.Down, '#itemGrid'),
+  });
+}
+
+/**
+ * Sort the library tab on show by row `index` of the Sort chip's menu (the tab's sort
+ * fields in order; the row after them is Order). Start with focus on the grid's first row.
  */
 export async function applyLibrarySort(index) {
-  await openStarPanelList(0, '#sortMenu', 'a sort');
-  await pickStarPanelRow('#sortMenu', index, `sort ${index}`);
+  await focusLibraryChip('sort');
+  await press(ecp.Key.Ok);
+  await pickListDialogRow(index, `sort ${index}`);
+  await waitDialogClosed(`the Sort menu after sort ${index}`);
+  await returnToGridFromChip(`sort ${index}`);
 }
 
 /**
- * Filter the library tab on show by row `index` of its filter list (row 0 is All). Start
- * with focus in the grid. For a plain filter, not a category with a checklist. The Star
- * panel is how a filter is picked until the header strip's Filter chip replaces it.
+ * Filter the library tab on show: open the Filter chip's menu, the category named
+ * `category` in it, and pick `option` from that category's single-choice list ("Status",
+ * "Unplayed"). The menu comes back, and Back closes it. Start with focus on the grid's
+ * first row. Names are the app's English ones, so run it in `en_US`.
  */
-export async function applyLibraryFilter(index) {
-  await openStarPanelList(1, '#filterMenu', 'a filter');
-  await pickStarPanelRow('#filterMenu', index, `filter ${index}`);
+export async function applyLibraryFilter(category, option) {
+  await focusLibraryChip('filter');
+  await press(ecp.Key.Ok);
+  const isString = (t) => typeof t === 'string' && t.length > 0;
+  const categoryRow = await listDialogRowNamed(category, isString, 'the Filter menu');
+  await pickListDialogRow(categoryRow, `the ${category} category`);
+  // A single-choice list opens on "All", which clears the category
+  const optionRow = await listDialogRowNamed(option, 'All', `the ${category} list`);
+  await pickListDialogRow(optionRow, `${category}: ${option}`);
+  // The menu comes back, with Clear filters first now that something is set
+  await listDialogRowNamed(category, 'Clear filters', 'the Filter menu, back');
+  await press(ecp.Key.Back);
+  await waitDialogClosed(`the Filter menu after ${category}: ${option}`);
+  await returnToGridFromChip(`${category}: ${option}`);
 }
 
 /** grid -> focus the hero tile (Right x heroIndex) -> OK -> ItemDetails. */

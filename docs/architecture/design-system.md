@@ -28,7 +28,10 @@ related-files:
   - components/ui/listposition/ListPosition.bs
   - components/ui/listposition/ListPosition.xml
   - source/utils/listPosition.bs
-last-reviewed: 2026-11-14
+  - components/ItemGrid/LibraryHeaderStrip.bs
+  - components/ItemGrid/LibraryHeaderStrip.xml
+  - source/utils/headerStrip.bs
+last-reviewed: 2026-11-15
 ---
 
 # Design system
@@ -70,7 +73,7 @@ One row, the same elements in the same order on every screen that shows them (`J
 | Status (`JROverhang` `status`) | the Large font in secondary color, 9 pixels (`TITLE_STATUS_GAP`) after the title's text, taking what the slot has left | A screen's state next to its name, never a control: the search screen's submitted query while its keyboard is closed. Scrolls when long; hidden when the title alone fills the slot |
 | Clock | right-aligned at x 1824 in a 150 pixel slot, in the text box (`Clock`'s `boxY` and `boxHeight`, whose defaults are the video player's) | Everything else is placed from the slot's left edge |
 | Box gap | none between tabs, whose boxes touch (`TAB_SPACING`), 6 pixels on the right (before the dropdown, before and inside the cluster) | A tab's padding is its air, and a glyph's canvas pads the glyph, so the two give one visible rhythm; the row's elements line up from the right edge in, so the cluster sits at the same place on every screen |
-| Row | boxes 78 tall from design y 27 to 105, every static element's ink centered on y 66 (a focus ring may sit above or below that line); content starts at 104 (Home's row label) and near 125 (a grid's tiles) | There is no room for a second row: measured on a Stick 4K (2026-10-25), content starts right under the row's bottom edge. Put a screen's own status text on the screen |
+| Row | boxes 78 tall from design y 27 to 105, every static element's ink centered on y 66 (a focus ring may sit above or below that line); content starts at 104 (Home's row label) and at 111 on a library (its [header strip](#the-library-header-strip)) | There is no room for a second row: measured on a Stick 4K (2026-10-25), content starts right under the row's bottom edge. Put a screen's own status text on the screen |
 
 ### A tab strip that can outgrow its slot
 
@@ -87,7 +90,30 @@ Only a focus move slides the strip. A new set of tabs, a new screen and a change
 
 The rule is one pure function, `tabStrip.window` in `source/utils/tabStrip.bs`, with the peek width, the cut tab's opacity and the slide's length beside it.
 
-Left and Right walk the row as one and wrap at both ends; Down returns to the screen; Up from a screen's top enters the row at the element used last on that visit, else the first shown (the selected tab on Home, the first cluster icon elsewhere). The cluster shows on every screen once a user is signed in, except a player, which has no now-playing control to come back to; the dropdown shows on Home only. A screen's own controls stay on the screen: the search screen's query box lives in its keyboard overlay, and while the keyboard is closed the overhang shows the submitted query as dim status text after the title, as a grid's title shows "Filtered by".
+Left and Right walk the row as one and wrap at both ends; Down returns to the screen; Up from a screen's top enters the row at the element used last on that visit, else the first shown (the selected tab on Home, the first cluster icon elsewhere). The cluster shows on every screen once a user is signed in, except a player, which has no now-playing control to come back to; the dropdown shows on Home only. A screen's own controls stay on the screen: the search screen's query box lives in its keyboard overlay, and while the keyboard is closed the overhang shows the submitted query as dim status text after the title. A library's sort and filter are on its header strip, which sits between the row and the content: Up from the content's top lands on the strip, and Up from the strip enters the row.
+
+## The library header strip
+
+Every library screen has one row under the overhang (`LibraryHeaderStrip`, fed by `BaseGridView`). It is where a library's own controls live, and it answers one question on its left: what is focused.
+
+| Part | Rule |
+|---|---|
+| The row | 54 pixels tall from y 111, x 96 to 1824. It sits midway between the selected tab's underline and the first row's focus ring: 13 pixels from each, measured on a Roku Ultra capture (2026-11-15). The ring is the reference, not the poster: the ring is what the eye meets |
+| Title | The focused item's name in the Medium font, bold, primary color. It is a caption under the tabs, so it stays smaller than them on every layout. The details screen's title is that page's heading and is larger on purpose |
+| Metadata | One line after the title in the Small font, secondary color: a movie's year, rating and runtime, a series' years and rating, an album's artist and year, a channel's number and program (`itemSummary.line`). It is built as the details screen builds an info row, items 9 pixels each side of a bold bullet, and cut by the same rule (`fitTextRow`) |
+| Narrowed by | "Filtered by: …" in Small secondary text before the count, while a voice search or a letter narrows the tab |
+| Count | "12 of 240" in Small secondary text, the string every position readout uses. A setting, on by default |
+| Chips | `TextButton`s the row's height: padding 15, a 30 pixel glyph (a 63/45 asset, so about 21 pixels of ink, the Medium font's cap height) and a 9 pixel gutter. Sort names the field and points an arrow its way; Filter counts the values set. A chip shows only where it does something: the TV guide takes no sort |
+| Text drop | The row's text is drawn 3 pixels low (`headerStrip.TEXT_DROP`, `TextButton.textDrop`). A label centers its line box and caps sit above that box's middle, which shows in a box only a little taller than its text (measured: caps 3 pixels high in the chip) |
+| When room runs out | The title is cut first, the metadata never takes more than half of the left side, and the count hides before the left side falls under 480 pixels (`headerStrip.fit`, pure, with a spec) |
+
+Where a layout has a panel that describes the focused item, the strip gives up what the panel says better. In the presentation layout the strip shows the title alone, and the panel under it writes the metadata as the details screen does. On the TV guide the strip names the focused program, and the guide's pane starts with what follows.
+
+Left and Right walk the chips and stop at the ends. Down returns to the content. Sort opens an anchored picker: the fields with the one in force marked, then an Order row that flips the direction. Filter opens a menu of categories that combine, with Clear filters first while anything narrows the tab. Star on a library does what the settings icon does. Sort and Filter are reached from the top row: Replay goes to the first item from anywhere, and Up from there reaches the strip.
+
+### The letter rail: the one thing in the margin
+
+Everything a viewer needs is inside the 5% zone. A shortcut may use the margin, and the letter rail is the one that does: it stays at x 52 with its full alphabet. Every jump it offers is a scroll away, so a viewer whose TV clips it loses nothing they cannot do. The second row's titles in a library grid also draw in the bottom margin, since the strip names the focused item inside the zone ([list-grid-item-layout.md](list-grid-item-layout.md#the-library-grids-cells)).
 
 ## A list that hides rows: the position line
 
@@ -113,6 +139,7 @@ The list dialog (`JRListDialog`) is the first to use it. The subtitle panel and 
 | Context | Glyph | Gutter to the text | Why |
 |---|---|---|---|
 | `TextButton` with the Medium font (the subtitle panel) | 24 pixels (`iconSize`, the default) | 12 pixels (`iconGutter`, the default) | The sizes the app's buttons were drawn at |
+| A header strip chip, Medium font | 30 pixels | 9 pixels | A 63/45 asset at 30 draws about 21 pixels of ink, the font's cap height. A glyph whose ink is narrow is pinned larger so its side padding matches its neighbor's (`sort` is 63/51) |
 | `IconButton` (details, the players' controls) | a 63 pixel square load box, drawn 1:1 from a 63 pixel canvas | caption below | The box sets the plate (123 pixels) and the row's overflow budget (`ICON_BUTTON_ICON_SIZE` in `buttonOverflow.bs`). A smaller canvas is not scaled up and gives a narrower plate, so its icons are built at 63 in `icons.json` |
 | A tab with the Large font | 42 pixels | 6 pixels | A 42 pixel poster of a 63/45 asset pads exactly 6 pixels itself, so 12 pixels stays visible |
 | An overhang icon button | 42 pixels in a 78 pixel square box | none | The glyph is the content |

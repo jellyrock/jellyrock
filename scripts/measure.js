@@ -325,7 +325,7 @@ const navEntry = args.nav ? SCREENS.find((s) => s.name === args.nav) : null;
 // without a word: `--nav tvLibraryShows --library <a-movie-id>` would have opened the
 // wrong library and recorded it as the right one, which is the exact class of silent
 // mis-attribution this tool exists to refuse. A screen with no declared `view`
-// (`movieDetails`, `personDetails`, `libraryOptions`) navigates to a movies library by
+// (`movieDetails`, `personDetails`) navigates to a movies library by
 // construction, so that is the honest default, and it is stated rather than assumed.
 const DEFAULT_NAV_COLLECTION_TYPE = 'movies';
 const navCollectionType = navEntry?.view?.collectionType ?? DEFAULT_NAV_COLLECTION_TYPE;

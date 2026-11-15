@@ -83,7 +83,7 @@ export const BUDGETS = new Map([
   // read against. Gating either on a signal would change what is measured.
   // Plus 2 paint settles for the searchTyping and searchRecent screenshots: their gates
   // (the hints, the seeded recent list) pass before the posters and the sliding overlay paint.
-  ['tests/rta/lib/nav.js', 14],
+  ['tests/rta/lib/nav.js', 13],
   ['scripts/capture-screenshots.js', 1],
 
   // Timer-window waits: out-wait a period to prove a NON-EVENT (a dialog that must

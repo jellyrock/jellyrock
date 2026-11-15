@@ -189,6 +189,13 @@ function focusEntry() as boolean
   return true
 end function
 
+function chipAnchor(id as string) as dynamic
+  chip = m.chipNodes[id]
+  if not isValid(chip) or not chip.visible then return invalid
+  rect = chip.sceneBoundingRect()
+  return { x: int(rect.x), y: int(rect.y), width: int(rect.width), height: int(rect.height) }
+end function
+
 ' Left and Right walk the chips and stop at the ends; OK reports the chip. Up and Down
 ' are the screen's.
 function onKeyEvent(key as string, press as boolean) as boolean

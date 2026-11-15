@@ -27,5 +27,7 @@
     <field id="chipAction" type="string" alwaysNotify="true" />
     <!-- Focus the chip used last, else the first shown. False when no chip shows. -->
     <function name="focusEntry" />
+    <!-- Where a chip sits on screen, { x, y, width, height }, for its menu to open from -->
+    <function name="chipAnchor" />
   </interface>
 </component>

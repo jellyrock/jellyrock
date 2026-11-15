@@ -555,28 +555,6 @@ function findNodeBySubtype(node, subtype)
   return foundNodes
 end function
 
-function AssocArrayEqual(Array1 as object, Array2 as object) as boolean
-  if not isValid(Array1) or not isValid(Array2)
-    return false
-  end if
-
-  if not Array1.Count() = Array2.Count()
-    return false
-  end if
-
-  for each key in Array1
-    if not Array2.DoesExist(key)
-      return false
-    end if
-
-    if Array1[key] <> Array2[key]
-      return false
-    end if
-  end for
-
-  return true
-end function
-
 ' Search string array for search value. Return if it's found
 function inArray(haystack, needle) as boolean
   valueToFind = needle

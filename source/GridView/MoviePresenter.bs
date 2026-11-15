@@ -57,9 +57,9 @@ class MoviePresenter extends GridPresenterBase
     return m.isPresentation(viewMode, layout)
   end function
 
-  ' The presentation panel draws only on the Movies tab. The layout is stored per library,
-  ' so a library left in presentation still shows Studios, Genres and Collections in their
-  ' own grids, as it did when presentation was a view of its own.
+  ' The presentation panel draws only on the Movies tab. The layout is saved per library
+  ' and view (ADR 0058), and only the Movies view offers this one, so Studios, Genres and
+  ' Collections keep their own grids.
   private function isPresentation(viewMode as string, layout as string) as boolean
     return LCase(viewMode) = libraryTab.MOVIES and layout = libraryLayout.PRESENTATION
   end function
@@ -156,35 +156,28 @@ class MoviePresenter extends GridPresenterBase
     ' since picking it would narrow nothing.
     if isValid(m.apiFilters)
       if isValidAndNotEmpty(m.apiFilters.Genres)
-        options.filter.push({ "Title": translate(translationKeys.LabelGenres), "Name": "Genres", "Options": m.apiFilters.Genres, "Delimiter": gridQuery.delimitersOf("Genres").panel, "CheckedState": [] })
+        options.filter.push({ "Title": translate(translationKeys.LabelGenres), "Name": "Genres", "Options": m.apiFilters.Genres })
       end if
       if isValidAndNotEmpty(m.apiFilters.OfficialRatings)
-        options.filter.push({ "Title": translate(translationKeys.LabelParentalRatings), "Name": "OfficialRatings", "Options": m.apiFilters.OfficialRatings, "Delimiter": gridQuery.delimitersOf("OfficialRatings").panel, "CheckedState": [] })
+        options.filter.push({ "Title": translate(translationKeys.LabelParentalRatings), "Name": "OfficialRatings", "Options": m.apiFilters.OfficialRatings })
       end if
       if isValidAndNotEmpty(m.apiFilters.Years)
-        options.filter.push({ "Title": translate(translationKeys.LabelYears), "Name": "Years", "Options": m.apiFilters.Years, "Delimiter": gridQuery.delimitersOf("Years").panel, "CheckedState": [] })
+        options.filter.push({ "Title": translate(translationKeys.LabelYears), "Name": "Years", "Options": m.apiFilters.Years })
       end if
 
       ' 12.0+ only, and only when the library actually has the metadata: the lists come
       ' from /Items/Filters2, which omits them entirely below 12.0 (so they arrive empty
       ' and no category is offered).
       '
-      ' A pipe between languages in the panel, not the comma the server wants: one
-      ' language's value is already several codes joined by a comma, so a comma here would
-      ' make the query ambiguous and the restore pass would tick nothing. The request
-      ' flattens them to one comma list (gridQuery.delimitersOf).
-      '
       ' Two categories rather than one combined "Language": the server ANDs the two
       ' parameters, so "English audio with Spanish subtitles" is a query it can answer,
-      ' but the panel can only hold one category active at a time and so cannot express
-      ' it yet. Splitting them keeps each list short and each label honest; combining
-      ' them into one list to work around the panel would double its length and mix two
-      ' concepts. See `itemgridoptions-single-active-filter` in tech-debt.md.
+      ' and the Filter menu keeps the two apart so a viewer can ask it. One list would
+      ' double its length and mix two concepts.
       if isValidAndNotEmpty(m.apiFilters[languageFilters.AUDIO_KEY])
-        options.filter.push({ "Title": translate(translationKeys.LabelAudioLanguage), "Name": languageFilters.AUDIO_KEY, "Options": m.apiFilters[languageFilters.AUDIO_KEY], "Delimiter": gridQuery.delimitersOf(languageFilters.AUDIO_KEY).panel, "CheckedState": [] })
+        options.filter.push({ "Title": translate(translationKeys.LabelAudioLanguage), "Name": languageFilters.AUDIO_KEY, "Options": m.apiFilters[languageFilters.AUDIO_KEY] })
       end if
       if isValidAndNotEmpty(m.apiFilters[languageFilters.SUBTITLE_KEY])
-        options.filter.push({ "Title": translate(translationKeys.LabelSubtitleLanguage), "Name": languageFilters.SUBTITLE_KEY, "Options": m.apiFilters[languageFilters.SUBTITLE_KEY], "Delimiter": gridQuery.delimitersOf(languageFilters.SUBTITLE_KEY).panel, "CheckedState": [] })
+        options.filter.push({ "Title": translate(translationKeys.LabelSubtitleLanguage), "Name": languageFilters.SUBTITLE_KEY, "Options": m.apiFilters[languageFilters.SUBTITLE_KEY] })
       end if
     end if
 
@@ -299,7 +292,7 @@ class MoviePresenter extends GridPresenterBase
 
     ' Reached on every query build (every sort, filter, view, alpha letter and voice
     ' search), so loadFilters() itself is the thing that decides whether to fetch. It
-    ' fetches once per library and is then a no-op until the options panel revalidates it.
+    ' fetches once per library and is then a no-op until the Filter menu revalidates it.
     '
     ' Not in the Collections view: every category those lists fill describes a movie, and
     ' getOptions() offers none of them here. Skipping is free rather than merely cheaper,

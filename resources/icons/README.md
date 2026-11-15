@@ -25,13 +25,13 @@ Pass `--filled` to `npm run icons:add` (or store an `_filled.svg` variant) only 
 
 | # | Rule | Trigger | Examples |
 |---|---|---|---|
-| 1 | Pure-shape primitive | No meaningful outlined alternative | `play`, `pause`, `circle`, `record`, `spinner`, `check`, `arrow-*` |
+| 1 | Pure-shape primitive | No meaningful outlined alternative | `play`, `pause`, `circle`, `record`, `spinner`, `check` |
 | 2 | Small canvas | Canvas narrower than `32px` | `mic_icon` (a 16×22 canvas): outlined strokes lose visibility at small sizes (Material 3 small-target guidance, Apple HIG at or under `28pt`) |
 | 3 | Subject or identity content | Shows a person, a user or a content type (an album, a music note) | `person`, `person_36px` (avatars), `album`, `musicNote`. A filled glyph reads more clearly than an outlined one when the icon is the subject, such as the album disc on the audio player's now-playing screen, not an action. |
 | 4 | Placeholder content | Lives in `images/placeholders/` | The placeholders (`movie`, `album`, `folder` and others), as in the file pickers of Apple Finder, Google Drive and Material 3. One exception: the `livetv` placeholder reuses the outlined `liveTV.svg`. |
 | 5 | Rating glyph | Inline rating display | `star`: filled is the industry standard for ratings |
 | 6 | Playback action button | Composes the filled `play` | `resume` (an arc plus the play triangle), to match the standalone `play` |
-| 7 | Toggle on-state | Paired with an outlined off-state | `heart` (the on-state of the `ItemDetails` Favorite button), `groups` (the cluster's SyncPlay icon, filled in both states because its outlined variant differs from the filled one only by two small holes: its on-state is the glyph drawn in `colorSecondary`, as `IconButton`'s selected state is), `favorite_selected` (the on-state in the `ItemGridOptions` favorite menu: outlined geometry, marked by a hard-coded red), `checkbox_checked` (a checklist row's ticked box, with the outlined `checkbox` as its off-state) |
+| 7 | Toggle on-state | Paired with an outlined off-state | `heart` (the on-state of the `ItemDetails` Favorite button), `groups` (the cluster's SyncPlay icon, filled in both states because its outlined variant differs from the filled one only by two small holes: its on-state is the glyph drawn in `colorSecondary`, as `IconButton`'s selected state is), `favorite_selected` (the favorite mark on the TV guide's program picture: outlined geometry, marked by a hard-coded red), `checkbox_checked` (a checklist row's ticked box, with the outlined `checkbox` as its off-state) |
 | 8 | Selected overhang tab | A tab's glyph is outlined while the tab is not selected and filled while it is; fill follows selection, never focus (the navigation convention, JellyRock's choice 2026-10-25) | `home` (with `home_outline`), `heart` (with `heart_outline`) |
 
 **Choosing the fill for a new icon:**
@@ -122,7 +122,7 @@ Notes for icons whose density differs from the default. Add one whenever an icon
 - **`spinner`** (`sizeFhd: 125`, `glyphSize: 125`): the global loading spinner is 125×125 because [`components/JRScene.xml`](../../components/JRScene.xml) positions it for a bitmap of that size. `glyphSize: 125` makes the Material `progress_activity` arc fill the whole canvas with no padding, to match the outer circle of the original spinner. Don't shrink it without moving its placement in `JRScene`.
 - **`play`, `pause`, `itemPrevious`, `itemNext`, `chapters`** (`glyphSize` between 38 and 60): each is pinned to the largest dimension of the trimmed, hand-made original PNG, so the move to Material changed the look and kept the same footprint on screen.
 - **`mic_icon`** (`sizeFhd: 16`, `glyphSize: 22`): the voice-search indicator in [`components/ItemGrid/Alpha.xml`](../../components/ItemGrid/Alpha.xml) sits next to a keyboard letter in a Poster that is not square, 15 wide and 22 tall (`<Poster id="alphaMic" height="22" width="15" />`). A square canvas would make the Poster letterbox it: the square source shrinks to the Poster's smaller dimension (15×15) and wastes about 30% of the height. So the build produces a 16×22 PNG instead, through the clamp in its `extend()` step (`Math.max(0, canvas - dim)`). The resized glyph is 22 tall and 16 wide at the mic's natural aspect, taller than `sizeFhd: 16`, so no vertical padding is added and the glyph extends past the square canvas. The result has the same 16×22 footprint as the hand-made asset that came before the pipeline.
-- **`favorite.svg` (`fill="#000000"`) and `favorite_selected.svg` (`fill="#FF0000"`)**: the toggle pair for the favorite state. Both use the outlined Material `favorite` glyph, and only the hand-set fill color (black or red) tells off from on. The pair predates the [Fill convention](#fill-convention) and the [Why white fill](#why-white-fill) rule, so `blendColor` cannot tint them: the hard-coded fill wins. If a screen ever needs themed favorite icons, replace them with white-fill sources and apply `blendColor` where they are used.
+- **`favorite_selected.svg` (`fill="#FF0000"`)**: the favorite mark on the TV guide's program picture ([`components/liveTv/ProgramDetails.xml`](../../components/liveTv/ProgramDetails.xml)). It is the outlined Material `favorite` glyph with a hand-set red fill, older than the [Fill convention](#fill-convention) and the [Why white fill](#why-white-fill) rule, so `blendColor` cannot tint it. Its black off-state twin, `favorite.svg`, went with the library's Star panel, the only thing that drew it.
 
 ## Why white fill
 
@@ -191,11 +191,6 @@ this table automatically.
 | `check.svg` | `check` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `check-black.svg` | `check` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `check-white.svg` | `check` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `arrow-up-black.svg` | `arrow_upward` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `arrow-up-white.svg` | `arrow_upward` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `arrow-down-black.svg` | `arrow_downward` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `arrow-down-white.svg` | `arrow_downward` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `favorite.svg` | `favorite` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
 | `favorite_selected.svg` | `favorite` (hand-edited fill `#FF0000`) | Rounded | 500 | 0 | `24px` | 2026-05-09 |
 | `home.svg` | `home` (hand-edited: roof line extended, fill 1) | Rounded | 500 | 1 | `24px` | 2026-10-25 |
 | `home_outline.svg` | `home` (hand-edited: roof line extended, fill 0) | Rounded | 500 | 0 | `24px` | 2026-10-25 |

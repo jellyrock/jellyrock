@@ -12,6 +12,8 @@ import "pkg:/source/GridView/GenericPresenter.bs"
 import "pkg:/source/GridView/gridPaging.bs"
 import "pkg:/source/GridView/gridQuery.bs"
 import "pkg:/source/GridView/itemSummary.bs"
+import "pkg:/source/GridView/libraryFilterMenu.bs"
+import "pkg:/source/GridView/librarySortMenu.bs"
 import "pkg:/source/GridView/libraryTab.bs"
 import "pkg:/source/GridView/LiveTVPresenter.bs"
 import "pkg:/source/GridView/MoviePresenter.bs"
@@ -22,9 +24,11 @@ import "pkg:/source/libraryViewFactory.bs"
 import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/backdrop.bs"
+import "pkg:/source/utils/buttonOverflow.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/dialogNarration.bs"
+import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/displaySettings.bs"
 import "pkg:/source/utils/headerStrip.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
@@ -101,7 +105,15 @@ sub init()
   m.sortField = gridQuery.DEFAULT_SORT_FIELD
   m.sortAscending = true
   m.filters = {}
-  m.favorite = "Favorite"
+  ' The Sort or Filter dialog that is up, and what its rows stand for
+  m.stripDialog = invalid
+  m.sortMenuIds = []
+  m.filterMenuIds = []
+  m.filterCategories = []
+  m.openFilterCategory = invalid
+  ' A filter changed while another screen covered this one: reload when it is shown again
+  m.isFilterReloadDue = false
+  m.headerStrip.observeField("chipAction", "onStripChipAction")
 
   ' Grid run state. Each run gets its own LoadItemsTask2 node (startGridRun), so the query
   ' and the paging state live here: a replaced node takes anything stored on it with it.
@@ -183,7 +195,6 @@ sub init()
 end sub
 
 sub setupNodes()
-  m.options = m.top.findNode("options")
   m.itemGrid = m.top.findNode("itemGrid")
   m.voiceBox = m.top.findNode("VoiceBox")
   m.emptyText = m.top.findNode("emptyText")
@@ -256,7 +267,7 @@ sub onScreenShown()
     ' selectable ghosts. A grid that shows favorites does the same when a favorite toggled
     ' (see favoritesStale). Unchanged tokens = no reload, so the resume stays cheap.
     scene = m.top.getScene()
-    if isValid(scene) and (scene.contentVersion <> m.lastContentVersion or favoritesStale())
+    if isValid(scene) and (scene.contentVersion <> m.lastContentVersion or favoritesStale() or m.isFilterReloadDue)
       reloadGridItems()
     else
       ' The runway may have run short while another screen was up: a later page failed, or
@@ -484,19 +495,18 @@ sub prepareDataLoad(disableRemote = false as boolean)
 end sub
 
 ' Whether this grid lists favorites and a favorite toggled since it last loaded. Read on
-' resume (a toggle on a screen above it) and when the options dialog closes (the Star
-' dialog toggles on this screen).
+' resume: the toggle happens on a screen above this one.
 function favoritesStale() as boolean
   scene = m.top.getScene()
   if not isValid(scene) then return false
   return gridQuery.showsFavorites(m.gridQuery) and scene.favoritesVersion <> m.lastFavoritesVersion
 end function
 
-' Full reset + reload of the grid. Used by optionsClosed (a sort or filter change, or a
-' favorite toggled in the Star dialog on a grid that shows favorites), a tab press, a
-' layout change and the resume-time check in onScreenShown (a delete, or a favorite toggle
-' on a grid that shows favorites, invalidated our cached content).
+' Full reset + reload of the grid. Used by a sort or filter change, a tab press, a layout
+' change and the resume-time check in onScreenShown (a delete, a favorite toggle on a grid
+' that shows favorites, or a filter changed while this screen was covered).
 sub reloadGridItems()
+  m.isFilterReloadDue = false
   m.loadedItems = 0
   m.data = CreateObject("roSGNode", "ContentNode")
   m.itemGrid.content = m.data
@@ -631,8 +641,6 @@ sub loadView()
   ' is a head start on drawing, not a second delivery channel. `content` still carries the
   ' real rows for every view including this one.
   startGridRun(0, true)
-
-  SetUpOptions()
   m.log.debug("end loadView()")
 end sub
 
@@ -1269,7 +1277,7 @@ end sub
 ' ============================================================================
 '
 ' Where focus goes is decided from what the view shows NOW, in the three subs below, never
-' by an event on its own: a load that could not take focus (the options dialog was open,
+' by an event on its own: a load that could not take focus (a dialog was open,
 ' the view was suspended) leaves nothing to put it back, so whatever later hands focus back
 ' to the content (closing the dialog, leaving the alpha menu, resuming) asks here.
 
@@ -1286,10 +1294,11 @@ end sub
 
 ' A load's first result arrived. It moves focus only when the user is not somewhere it must
 ' not be taken from: another screen (the view is suspended), the overhang row (they went
-' up to the tabs while it loaded), or the options dialog, where moving it loses their place
-' and their next OK is dropped or commits the wrong entry. On the alpha menu it stays there.
+' up to the tabs while it loaded), the header strip (they changed the sort or a filter from
+' a chip), or an open dialog, where moving it loses their place and their next OK is dropped
+' or commits the wrong entry. On the alpha menu it stays there.
 sub focusAfterLoad()
-  if not m.isShown or m.options.visible or isOverhangRowFocused() or m.headerStrip.isInFocusChain() then return
+  if not m.isShown or isOverlayDialogFocused() or isOverhangRowFocused() or m.headerStrip.isInFocusChain() then return
   if m.top.isAlphaActive
     m.alphaMenu.setFocus(true)
   else
@@ -1298,7 +1307,7 @@ sub focusAfterLoad()
 end sub
 
 ' Focus what the view shows now, at once: the guide when it is up, else the content area.
-' For a change the viewer made from outside the content (a tab press, the options dialog).
+' For a change the viewer made from outside the content (a tab press, Down from a chip).
 sub focusViewContent()
   if isValid(m.tvGuide)
     if isValid(m.tvGuide.lastFocus) then m.tvGuide.lastFocus.setFocus(true)
@@ -1533,109 +1542,6 @@ function getItemFocused()
 end function
 
 ' ============================================================================
-' Options
-' ============================================================================
-
-sub SetUpOptions()
-  options = {
-    sort: [],
-    filter: [],
-    favorite: []
-  }
-
-  ' Let presenter provide options
-  if isValid(m.presenter)
-    presenterOptions = m.presenter.getOptions(m.top.parentItem)
-    if isValid(presenterOptions.sort) then options.sort = presenterOptions.sort
-    if isValid(presenterOptions.filter) then options.filter = presenterOptions.filter
-  end if
-
-  ' Set selected sort option
-  for each o in options.sort
-    if LCase(o.Name) = LCase(m.sortField)
-      o.Selected = true
-      o.Ascending = m.sortAscending
-      m.options.sortField = o.Name
-    end if
-  end for
-
-  ' Set selected filter option, from the tab's filters in the panel's own shape
-  panel = gridQuery.filtersToPanel(m.filters, options.filter)
-  ' "All" when the panel's list lacks the name, so the panel never keeps another tab's
-  m.options.filter = gridQuery.NO_FILTER
-  for each o in options.filter
-    if LCase(o.Name) = LCase(panel.filter)
-      o.Selected = true
-      m.options.filter = o.Name
-    end if
-
-    ' Select selected filter options
-    if isValid(o.options)
-      if o.options.Count() > 0 and panel.filterOptions.Count() > 0
-        if LCase(o.Name) = LCase(panel.filterOptions.keys()[0])
-          ' Re-ticks the boxes from the saved query. The inverse of the join in
-          ' ItemGridOptions.onKeyEvent, and they are tested as a round trip: a
-          ' disagreement between them is a filter that applies while showing no ticks.
-          o.checkedState = gridQuery.checkedStateFor(o.options, panel.filterOptions[panel.filterOptions.keys()[0]], o.delimiter)
-        end if
-      end if
-    end if
-  end for
-  m.options.filterOptions = panel.filterOptions
-
-  m.options.options = options
-end sub
-
-sub optionsClosed()
-  reload = false
-
-  if m.options.sortField <> m.sortField or m.options.sortAscending <> m.sortAscending
-    m.sortField = m.options.sortField
-    m.sortAscending = m.options.sortAscending
-    reload = true
-
-    setLibrarySort(m.top.parentItem.Id, m.tab, m.sortField, m.sortAscending)
-  end if
-
-  if not isValid(m.options.filterOptions)
-    m.options.filterOptions = {}
-  end if
-
-  ' The panel reports its own shape; compare in it, then keep the tab's filter map
-  filterList = offeredFilters()
-  panel = gridQuery.filtersToPanel(m.filters, filterList)
-  if m.options.filter <> panel.filter or not AssocArrayEqual(m.options.filterOptions, panel.filterOptions)
-    libraryId = m.top.parentItem.Id
-    newFilters = gridQuery.filtersFromPanel(m.options.filter, m.options.filterOptions)
-    sessionFilters.clear(libraryId, m.tab)
-    for each category in newFilters
-      sessionFilters.setCategory(libraryId, m.tab, category, newFilters[category])
-    end for
-    m.filters = sessionFilters.get(libraryId, m.tab)
-    updateTitle()
-    reload = true
-
-    ' Propagate filter change to TV Guide if it's active
-    if isValid(m.tvGuide)
-      m.tvGuide.filter = guideFilter()
-    end if
-  end if
-
-  ' Let presenter handle any custom option processing
-  if isValid(m.presenter)
-    m.presenter.onOptionsClosed(m.options)
-  end if
-
-  if favoritesStale() then reload = true
-
-  if reload
-    reloadGridItems()
-  end if
-
-  focusViewContent()
-end sub
-
-' ============================================================================
 ' The header strip
 ' ============================================================================
 
@@ -1680,28 +1586,166 @@ sub updateStrip(item as dynamic)
   m.headerStrip.content = content
 end sub
 
-' The chips' labels, and which of them the tab on show has a use for.
+' The chips' labels, and which of them the tab on show has a use for. The guide takes no
+' sort. The Filter chip shows while the tab offers a category, and while anything narrows
+' the tab, since Clear filters is behind it.
 sub updateStripChips()
   isGuide = isValid(m.presenter) and m.presenter.showsTVGuide(m.view)
-
-  sortTitle = ""
-  for each sort in offeredSorts()
-    if LCase(textOrEmpty(sort.Name)) = LCase(m.sortField) then sortTitle = textOrEmpty(sort.Title)
-  end for
-  arrow = "↑"
-  if not m.sortAscending then arrow = "↓"
-
-  filterLabel = translate(translationKeys.LabelFilter)
-  active = sessionFilters.count(m.top.parentItem.Id, m.tab)
-  if active > 0 then filterLabel = translate(translationKeys.LabelChipWithValue, [filterLabel, active.toStr()])
+  sortLabel = librarySortMenu.chipLabel(offeredSorts(), m.sortField, m.sortAscending)
+  m.filterCategories = libraryFilterMenu.categories(offeredFilters())
 
   m.headerStrip.chips = {
-    sortLabel: translate(translationKeys.LabelChipWithValue, [translate(translationKeys.LabelSort), sortTitle + " " + arrow]),
-    isSortShown: not isGuide and sortTitle <> "",
-    filterLabel: filterLabel,
-    ' "All" is no filter, so a list of one offers nothing
-    isFilterShown: offeredFilters().count() > 1
+    sortLabel: sortLabel,
+    isSortShown: not isGuide and sortLabel <> "",
+    filterLabel: libraryFilterMenu.chipLabel(sessionFilters.count(m.top.parentItem.Id, m.tab)),
+    isFilterShown: m.filterCategories.count() > 0 or isNarrowed()
   }
+end sub
+
+' Whether anything narrows the tab: a filter, the voice text or a letter.
+function isNarrowed() as boolean
+  return m.filters.count() > 0 or m.voiceBox.text.trim() <> "" or m.nameStartsWith.trim() <> ""
+end function
+
+' OK on a chip.
+sub onStripChipAction()
+  if m.headerStrip.chipAction = "sort"
+    openSortMenu()
+  else
+    ' Opening the menu is the moment the filter lists are read, so it is where they are
+    ' revalidated: the fresh lists land for the next open (GridPresenterBase.refreshFilters)
+    if isValid(m.presenter) then m.presenter.refreshFilters()
+    openFilterMenu("")
+  end if
+end sub
+
+sub openSortMenu()
+  menu = librarySortMenu.rows(offeredSorts(), m.sortField, m.sortAscending)
+  anchor = m.headerStrip.callFunc("chipAnchor", "sort")
+  if menu.ids.count() = 0 or not isValid(anchor) then return
+  m.sortMenuIds = menu.ids
+  focusIndex = menu.selectedIndex
+  if focusIndex < 0 then focusIndex = 0
+  m.stripDialog = showOverflowMenu(translate(translationKeys.LabelSort), menu.labels, "onSortMenuResult", anchor, invalid, focusIndex, menu.selectedIndex)
+end sub
+
+sub onSortMenuResult(event as object)
+  picked = librarySortMenu.outcome(event.getData(), m.sortMenuIds, m.sortField, m.sortAscending)
+  if not isValid(picked) then return
+
+  m.sortField = picked.field
+  m.sortAscending = picked.ascending
+  setLibrarySort(m.top.parentItem.Id, m.tab, m.sortField, m.sortAscending)
+  reloadGridItems()
+end sub
+
+' The Filter menu: Clear filters while anything narrows the tab, then the categories.
+' `focusId` is the row to open on, for the menu coming back from one of its categories.
+sub openFilterMenu(focusId as string)
+  m.filterCategories = libraryFilterMenu.categories(offeredFilters())
+  menu = libraryFilterMenu.rows(m.filterCategories, m.filters, isNarrowed())
+  anchor = m.headerStrip.callFunc("chipAnchor", "filter")
+  if menu.ids.count() = 0 or not isValid(anchor) then return
+  m.filterMenuIds = menu.ids
+
+  focusIndex = 0
+  for i = 0 to menu.ids.count() - 1
+    if LCase(menu.ids[i]) = LCase(focusId) then focusIndex = i
+  end for
+  m.stripDialog = showOverflowMenu(translate(translationKeys.LabelFilter), menu.labels, "onFilterMenuResult", anchor, invalid, focusIndex)
+end sub
+
+sub onFilterMenuResult(event as object)
+  id = overflowMenuSelection(event.getData(), m.filterMenuIds)
+  if id = "" then return
+
+  if id = libraryFilterMenu.CLEAR
+    clearNarrowing()
+    return
+  end if
+
+  category = libraryFilterMenu.find(m.filterCategories, id)
+  if not isValid(category) then return
+  m.openFilterCategory = category
+
+  if category.kind = libraryFilterMenu.KIND_TOGGLE
+    ' A press flips it, and the menu comes back saying so
+    values = []
+    if libraryFilterMenu.checkedIndexes(category, m.filters).count() = 0 then values = libraryFilterMenu.valuesAt(category, [0])
+    applyFilterCategory(category, values)
+    openFilterMenu(category.id)
+  else if category.kind = libraryFilterMenu.KIND_CHOICE
+    list = libraryFilterMenu.choiceList(category, m.filters)
+    m.stripDialog = showListDialog(category.title, list.labels, "onFilterChoicePicked", list.selectedIndex, list.selectedIndex)
+  else
+    labels = []
+    for each option in category.options
+      labels.push(option.title)
+    end for
+    m.stripDialog = showChecklistDialog(category.title, labels, "onFilterChecklistClosed", libraryFilterMenu.checkedIndexes(category, m.filters))
+  end if
+end sub
+
+' A status was picked, or its list was left. Either way the menu comes back.
+sub onFilterChoicePicked(event as object)
+  result = event.getData()
+  category = m.openFilterCategory
+  if not isValid(result) or not isValid(category) or result.externallyCancelled = true then return
+
+  if result.cancelled <> true and isValid(result.optionIndex)
+    list = libraryFilterMenu.choiceList(category, m.filters)
+    if result.optionIndex >= 0 and result.optionIndex < list.values.count() and result.optionIndex <> list.selectedIndex
+      values = []
+      if list.values[result.optionIndex] <> "" then values = [list.values[result.optionIndex]]
+      applyFilterCategory(category, values)
+    end if
+  end if
+  openFilterMenu(category.id)
+end sub
+
+' A checklist closed. A tick counts when it is made (dialogs.md), so the ticks are kept
+' however it closed. Closed by the viewer, the menu comes back. Closed from code, another
+' screen is covering this one: the grid reloads when this one is shown again.
+sub onFilterChecklistClosed(event as object)
+  result = event.getData()
+  category = m.openFilterCategory
+  if not isValid(result) or not isValid(category) then return
+
+  wasClosedFromCode = result.externallyCancelled = true
+  if type(result.checkedIndexes) = "roArray" and (result.cancelled <> true or wasClosedFromCode)
+    values = libraryFilterMenu.valuesAt(category, result.checkedIndexes)
+    if wasClosedFromCode
+      sessionFilters.setCategory(m.top.parentItem.Id, m.tab, category.id, values)
+      m.isFilterReloadDue = true
+    else
+      applyFilterCategory(category, values)
+    end if
+  end if
+  if not wasClosedFromCode then openFilterMenu(category.id)
+end sub
+
+' Keep `values` for one category of the tab on show, and load the tab with them.
+sub applyFilterCategory(category as object, values as object)
+  sessionFilters.setCategory(m.top.parentItem.Id, m.tab, category.id, values)
+  applyFilters()
+end sub
+
+' The session's filters changed: read them back and load the tab with them.
+sub applyFilters()
+  m.filters = sessionFilters.get(m.top.parentItem.Id, m.tab)
+  if isValid(m.tvGuide) then m.tvGuide.filter = guideFilter()
+  reloadGridItems()
+end sub
+
+' Clear filters: everything that narrows the tab goes, the filters, the voice text and
+' the letter.
+sub clearNarrowing()
+  sessionFilters.clear(m.top.parentItem.Id, m.tab)
+  m.voiceBox.text = ""
+  m.top.alphaSelected = ""
+  m.nameStartsWith = ""
+  if isValid(m.tvGuide) then m.tvGuide.searchTerm = ""
+  applyFilters()
 end sub
 
 ' ============================================================================
@@ -1911,45 +1955,12 @@ end function
 ' Key Events
 ' ============================================================================
 
-' JRScreen hook: Star opens the options dialog, from the overhang row as from the grid.
+' JRScreen hook: Star does what the settings icon does, from the overhang row as from the
+' grid: this page's menu, or Settings on a screen that declares no page settings.
 function onOptionsKey() as boolean
-  toggleOptions()
+  m.top.getScene().callFunc("openPageMenu")
   return true
 end function
-
-' Open the options dialog, or close it and apply what was chosen.
-sub toggleOptions()
-  if m.options.visible = true
-    m.options.visible = false
-    m.top.removeChild(m.options)
-    optionsClosed()
-  else
-    ' Rebuild options before showing dialog (to include any dynamically loaded filters)
-    SetUpOptions()
-
-    ' Opening the panel is the only moment the filter lists are actually read, so it is
-    ' also where they are revalidated: SetUpOptions() above has already rendered the
-    ' cached lists, and this refresh lands silently for the NEXT open rather than
-    ' reshuffling categories under a cursor already in the list. It is what lets every
-    ' other path (sort, filter, view, alpha, voice search) stop refetching entirely,
-    ' and it retries a load that previously failed.
-    if isValid(m.presenter) then m.presenter.refreshFilters()
-
-    ' Use TV Guide's focused channel when active, otherwise use the grid's focused item
-    if isValid(m.tvGuide) and isValid(m.channelFocused)
-      itemSelected = m.channelFocused
-    else
-      itemSelected = m.selectedFavoriteItem
-    end if
-    if isValid(itemSelected)
-      m.options.selectedFavoriteItem = itemSelected
-    end if
-
-    m.options.visible = true
-    m.top.appendChild(m.options)
-    m.options.setFocus(true)
-  end if
-end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
@@ -1992,19 +2003,12 @@ function onKeyEvent(key as string, press as boolean) as boolean
   ' ItemDetails and double-pushed (viewer + ItemDetails stacked).
 
   if key = "options"
-    toggleOptions()
-    return true
+    return onOptionsKey()
   else if key = "back"
-    if m.options.visible = true
-      m.options.visible = false
-      optionsClosed()
-      return true
-    else
-      ' The library view is router-owned: pop it via the router (back to Home / the
-      ' previous routed view).
-      sgrouter.goBack()
-      return true
-    end if
+    ' The library view is router-owned: pop it via the router (back to Home / the
+    ' previous routed view).
+    sgrouter.goBack()
+    return true
   else if key = "play"
     ' TV Guide: quickplay the focused channel
     if isValid(m.tvGuide)
@@ -2048,10 +2052,6 @@ function onKeyEvent(key as string, press as boolean) as boolean
     m.top.isAlphaActive = false
     m.alphaMenu.setFocus(false)
     focusContent()
-    return true
-  else if key = "replay" and m.options.visible
-    ' The dialog does not handle Replay, so it arrives here. Reloading and resetting the
-    ' filters under an open dialog would rewrite the choices the user is making in it.
     return true
   else if key = "replay"
     jumpToFirstItem()
@@ -2180,6 +2180,8 @@ sub onDestroy()
   m.itemGrid.unobserveField("currFocusRow")
   m.itemGrid.unobserveField("itemSelected")
   m.voiceBox.unobserveField("text")
+  m.headerStrip.unobserveField("chipAction")
+  abandonDialog(m.stripDialog)
   m.retryButton.unobserveField("isReady")
   m.failureNarrationTimer.unobserveField("fire")
   m.failureNarrationTimer.control = "stop"
@@ -2226,7 +2228,7 @@ sub onDestroy()
   end if
 
   ' Clear node references
-  m.options = invalid
+  m.stripDialog = invalid
   m.itemGrid = invalid
   m.voiceBox = invalid
   m.emptyText = invalid
