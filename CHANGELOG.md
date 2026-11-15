@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- (translations) Translate 134 more strings from other clients ([#1389](https://github.com/jellyrock/jellyrock/pull/1389)) by [@cewert](https://github.com/cewert)
 - (translations) Translate 93 more strings from other clients ([#1388](https://github.com/jellyrock/jellyrock/pull/1388)) by [@cewert](https://github.com/cewert)
 - (translations) Translate 41 more strings from other Jellyfin clients ([#1386](https://github.com/jellyrock/jellyrock/pull/1386)) by [@cewert](https://github.com/cewert)
 - (translations) Rename 75 keys by role, keeping translations ([#1385](https://github.com/jellyrock/jellyrock/pull/1385)) by [@cewert](https://github.com/cewert)
