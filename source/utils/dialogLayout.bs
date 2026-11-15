@@ -246,7 +246,7 @@ function computeDialogLayout(spec as object) as object
   bodyY = y
 
   ' A gap only exists BETWEEN things. A dialog whose body is the last thing in
-  ' the panel (JRListDialog has no footer at all) gets padding under it and
+  ' the panel (a list dialog whose rows all fit) gets padding under it and
   ' nothing else. Reserving a footer's gap for a footer that is not there left
   ' 84px of dead space under the list, which is what this shape is guarding.
   hasFooter = footerHeight > 0

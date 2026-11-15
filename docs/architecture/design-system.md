@@ -28,7 +28,7 @@ related-files:
   - components/ui/listposition/ListPosition.bs
   - components/ui/listposition/ListPosition.xml
   - source/utils/listPosition.bs
-last-reviewed: 2026-11-12
+last-reviewed: 2026-11-14
 ---
 
 # Design system
@@ -104,7 +104,7 @@ A list that shows only some of its rows says so with a position line (`ListPosit
 
 **Wrapping is never signaled.** A list that wraps would light both arrowheads on every row, and a mark that never changes says nothing about where you are. The wrap is a shortcut a viewer finds by pressing, and nothing is lost by never finding it.
 
-Roku's lists report the focused row and not which rows are on screen, so `listPosition.firstVisibleAfter()` follows the window from the focus moves. It is pure and has a spec.
+Roku's lists report the focused row and not which rows are on screen, so `listPosition.firstVisibleAfter()` follows the window from the focus moves. Roku moves the window the least it must, whether focus stepped, paged (FF and Rewind) or jumped, so one rule covers all three. It is pure and has a spec.
 
 The list dialog (`JRListDialog`) is the first to use it. The subtitle panel and the search suggestions each draw a count of their own, older than this rule; moving them onto `ListPosition` is followup `position-line-across-lists`. Home's rows show Roku's own row counter (`showRowCounter`), which is a row list's and stays. The tab strip's dimmed cut tab is the same idea for a strip with no room for a line.
 

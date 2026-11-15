@@ -50,6 +50,22 @@ namespace tests
       m.assertEqual(listPosition.firstVisibleAfter(-3, 0, 8, 12), 0)
     end function
 
+    ' FF and Rewind page the list, and opening on defaultIndex jumps it, and Roku
+    ' moves the window the least it must for those too. Each case is a move seen
+    ' on a device.
+    @it("follows a page or a jump the same way as a step")
+    function _()
+      ' Opening on a row below the first screen puts it at the bottom.
+      m.assertEqual(listPosition.firstVisibleAfter(0, 9, 8, 12), 2)
+      ' Opening on a row inside the first screen leaves the window at the top.
+      m.assertEqual(listPosition.firstVisibleAfter(0, 5, 8, 12), 0)
+      ' FF from the first row, then again to the last.
+      m.assertEqual(listPosition.firstVisibleAfter(0, 17, 8, 24), 10)
+      m.assertEqual(listPosition.firstVisibleAfter(10, 23, 8, 24), 16)
+      ' Rewind from the last row puts the row it lands on at the top.
+      m.assertEqual(listPosition.firstVisibleAfter(16, 6, 8, 24), 6)
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("describe - what the line shows")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

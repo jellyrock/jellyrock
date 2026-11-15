@@ -989,6 +989,14 @@ Why not now: each surface needs its own placement and a look on a device, and th
 
 Closes when each of those shows the position line (the overview dialog: the arrowheads without a count), or records why it does not. Also try a half row showing at the cut edge of a list as a second cue: it was set aside because nobody had tried Roku's `itemClippingRect` on a device.
 
+#### Back on a checklist dialog has no test: the Filter chip's PR adds an RTA case `[fid: checklist-back-untested]` `[captured 2026-11-15]`
+
+`showChecklistDialog` has no test of its main exit: Back on a checklist. No Rooibos spec can press keys on `JRListDialog` (`onKeyEvent` is not callable from a suite), so the user-close path through `resolveDialog(-1)`, which hands `checklistDialogResult()` the opening and the current ticks, is covered only by the pure result spec. The close-from-code path is pinned by the `JRListDialog` spec. Found reviewing the checklist mode (#1390).
+
+Why not now: the checklist has no caller yet, so no device route reaches it.
+
+Closes when the PR that adds the library Filter chip (the first caller) adds an RTA case: open the Filter, tick a row, press Back and check the result is `confirmed` with the new `checkedIndexes`; then open it again and press Back with no change, and check `cancelled`.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`

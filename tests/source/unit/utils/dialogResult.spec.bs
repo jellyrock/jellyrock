@@ -226,14 +226,15 @@ namespace tests
       m.assertEqual(result.checkedIndexes, [])
     end function
 
-    ' The viewer did not choose to leave, so their ticks are not an answer.
-    @it("reports the opening set when code closed the dialog")
+    ' A tick counts when it is made, so a close from code reports the ticks as they
+    ' stand, as Back does. It is still a cancel, so a handler that acts declines it.
+    @it("reports the ticks as they stand when code closed the dialog, cancelled")
     function _()
       result = checklistDialogResult([1], [1, 2, 3], true)
       m.assertTrue(result.cancelled)
       m.assertTrue(result.externallyCancelled)
       m.assertFalse(result.confirmed)
-      m.assertEqual(result.checkedIndexes, [1])
+      m.assertEqual(result.checkedIndexes, [1, 2, 3])
     end function
 
     @it("every other builder reports no ticks")

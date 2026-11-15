@@ -19,7 +19,8 @@ namespace listPosition
 
   ' The first row on screen once focus lands on `focused`, for a list whose focus
   ' moves inside a fixed window (floatingFocus): the window stays put while the
-  ' focused row is inside it, and moves the least it must when it is not.
+  ' focused row is inside it, and moves the least it must when it is not. That holds
+  ' however focus got there: a step, a page (FF and Rewind) or a jump (jumpToItem).
   '
   ' @param {integer} firstVisible - the first row on screen before the move
   ' @param {integer} focused - the row focus landed on

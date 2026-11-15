@@ -811,8 +811,8 @@ namespace tests
       m.assertEqual(checked, [0])
     end function
 
-    ' The viewer did not choose to leave, so their ticks are not an answer.
-    @it("a close from code reports the opening set, cancelled")
+    ' A close from code looks like Back: the ticks as they stand, flagged as code's.
+    @it("a close from code reports the ticks as they stand, cancelled")
     function _()
       scene = m.top.getScene()
       m.checklist([0])
@@ -823,7 +823,7 @@ namespace tests
 
       m.assertTrue(m.dialog.result.cancelled)
       m.assertTrue(m.dialog.result.externallyCancelled)
-      m.assertEqual(m.dialog.result.checkedIndexes, [0])
+      m.assertEqual(m.dialog.result.checkedIndexes, [0, 2])
       m.assertInvalid(m.dialog.getParent())
     end function
 
