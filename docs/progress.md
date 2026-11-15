@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-15: update(translations): Translate 41 more strings from other Jellyfin clients
 - 2026-11-14: refactor(translations): Rename 75 keys by role, keeping translations
 - 2026-11-14: fix(playback): Play and name the audio track picked in an `MP4`
 - 2026-11-14: fix(playback): Play the MKV audio track the viewer picked
@@ -71,9 +72,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-11-02: feat(syncplay): Stay in step, stop seek freezes, add a time offset
 - 2026-11-01: fix: Register Roku's memory monitor and ship only runtime files
 - 2026-11-01: ci: Make the device test run read only its own result
-- 2026-10-31: update(home): Show vertical posters in TV Recently Added rows
-- 2026-10-31: fix(home): Show episode images in Favorites tab
-- 2026-10-31: fix: Correct the canceled-recording toast
 
 ## Open followups
 
