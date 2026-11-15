@@ -32,9 +32,10 @@ const THEME_PRESET_MIGRATION_VERSION = "2.5.0"
 const HOMESECTION_CLEANUP_VERSION = "2.13.0"
 
 ' client version when a library's saved view became its default tab (a libraryTab id) and
-' the grid's layout (presentation or grid) became a setting of its own. The lowest version above the
-' last release (3.3.1), so the next release runs it whatever number it takes.
-const LIBRARY_TAB_MIGRATION_VERSION = "3.3.2"
+' the grid's layout (presentation or grid) became a setting of its own. The library tabs work
+' ships in the next minor release; if `main` releases this number first, raise it to the
+' release this work ships in.
+const LIBRARY_TAB_MIGRATION_VERSION = "3.5.0"
 
 ' Run all necessary registry migrations on the "global" JellyRock registry section
 sub runGlobalMigrations()

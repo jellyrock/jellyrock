@@ -5,7 +5,7 @@ namespace tests
   ' default, the two movie views also imply that view's layout (`display.<id>.layout_movies`),
   ' and `landing` is deleted. Each library's saved sort becomes one key for a tab, and its
   ' saved filters are deleted. Run against real `test-` registry sections.
-  @suite("Library Tab Migration - v3.3.2 Migration")
+  @suite("Library Tab Migration - v3.5.0 Migration")
   @tags("migration")
   class LibraryTabMigrationTests extends tests.BaseTestSuite
 
@@ -16,7 +16,7 @@ namespace tests
 
     ' A user section the runner will migrate: it needs serverId, and a LastRunVersion
     ' below the migration's.
-    private function userSection(testUserId as string, lastRunVersion = "3.3.1" as string) as object
+    private function userSection(testUserId as string, lastRunVersion = "3.4.0" as string) as object
       reg = CreateObject("roRegistrySection", testUserId)
       reg.write("serverId", m.global.server.id)
       reg.write("LastRunVersion", lastRunVersion)
@@ -377,8 +377,8 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("does not run for a section already on the migration's version")
-    @params("3.3.2")
-    @params("3.4.0")
+    @params("3.5.0")
+    @params("3.6.0")
     function _(lastRunVersion)
       testUserId = "test-library-tab-008"
       reg = m.userSection(testUserId, lastRunVersion)
@@ -393,6 +393,8 @@ namespace tests
     end function
 
     @it("runs for a section below the migration's version")
+    @params("3.4.0")
+    @params("3.4.1")
     @params("3.3.1")
     @params("2.13.0")
     function _(lastRunVersion)
