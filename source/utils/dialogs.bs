@@ -3,7 +3,7 @@
 ' All helpers create the dialog, present it, and return the dialog NODE. Result
 ' delivery is per-dialog-instance through the node's `result` field (shape:
 ' { cancelled, confirmed, buttonIndex, buttonText, optionIndex, value,
-' externallyCancelled }), set
+' externallyCancelled, checkedIndexes }), set
 ' exactly once when the user resolves the dialog. There is no shared global
 ' return field, so concurrent observers can never cross-fire.
 '
@@ -27,6 +27,7 @@
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
+import "pkg:/source/utils/dialogResult.bs"
 import "pkg:/source/utils/dialogReveal.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/overlayDialog.bs"
@@ -150,6 +151,40 @@ function showListDialog(title as string, items as object, onResult = "" as strin
   dialog.selectedIndex = selectedIndex
   ' Before `items`, which is the field that triggers the row build.
   if isValid(icons) then dialog.icons = icons
+  dialog.items = items
+  return presentOverlayDialog(dialog, onResult)
+end function
+
+' Tick any number of rows in a list (filter values, tabs to show).
+'
+' The same JRListDialog with `multiSelect` set. OK ticks the focused row or clears its tick,
+' and the dialog stays open; Back leaves. A tick counts when it is made, so there is
+' no Apply and no Cancel, and nothing the viewer did is lost by leaving.
+'
+' result.checkedIndexes is the ticked rows at close, ascending. result.cancelled is
+' true when the set did not change (or code closed the dialog), so a handler that
+' reloads on a change returns on it. To react to each tick, observe the returned
+' dialog's `checkedIndexes` field, which follows every toggle.
+'
+' An action over the ticked rows (delete these, send to those) asks first: open
+' showConfirmDialog from the result handler. The checklist is not the confirm.
+'
+' It opens focused on the first ticked row, so a long list lands on what is set.
+'
+' @param {string} title - dialog title
+' @param {object} items - the row labels
+' @param {string} onResult - result handler in the caller's scope
+' @param {object} checkedIndexes - the rows ticked when it opens
+' bsc-disable-next-line dead-code keep: api: the multi-select member of the dialog family; the library Filter chip is its first caller
+function showChecklistDialog(title as string, items as object, onResult = "" as string, checkedIndexes = invalid as object) as object
+  checked = normalizeCheckedIndexes(checkedIndexes, items.count())
+
+  dialog = createObject("roSGNode", "JRListDialog")
+  dialog.title = title
+  dialog.multiSelect = true
+  dialog.checkedIndexes = checked
+  if checked.count() > 0 then dialog.defaultIndex = checked[0]
+  ' Before `items`, which is the field that triggers the row build.
   dialog.items = items
   return presentOverlayDialog(dialog, onResult)
 end function

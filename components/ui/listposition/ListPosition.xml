@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ListPosition: the position line of a list that hides some of its rows.
+
+     "3 of 12" between two arrowheads, in secondary text. An arrowhead is lit when
+     rows are hidden that way and dimmed when none are, so the line never shifts.
+     It is read, never focused. Its owner decides when to show it (only while the
+     list scrolls) and feeds it from listPosition.describe() in
+     source/utils/listPosition.bs. The rule is in docs/architecture/design-system.md. -->
+<component name="ListPosition" extends="Group">
+  <children>
+    <Poster id="up" uri="pkg:/images/icons/chevron_up_$$RES$$.png" />
+    <LabelSecondarySmall id="count" horizAlign="center" vertAlign="center" />
+    <Poster id="down" uri="pkg:/images/icons/chevron_down_$$RES$$.png" />
+  </children>
+  <interface>
+    <!-- The focused row, counted from 1, and how many rows the list has. -->
+    <field id="position" type="integer" value="1" onChange="onPositionChanged" />
+    <field id="total" type="integer" value="0" onChange="onPositionChanged" />
+    <!-- Whether rows are hidden above the first row on screen, and below the last. -->
+    <field id="hasAbove" type="boolean" value="false" onChange="onEdgesChanged" />
+    <field id="hasBelow" type="boolean" value="false" onChange="onEdgesChanged" />
+    <!-- The width the line is centered in. Its height is listPosition.LINE_HEIGHT. -->
+    <field id="width" type="float" value="0" onChange="onPositionChanged" />
+  </interface>
+</component>
