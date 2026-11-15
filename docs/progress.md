@@ -384,6 +384,12 @@ BrighterScript 1.0.0-alpha.56 (pinned) and alpha.57 compile it wrong when a name
 
 The `no-namespace-const-call` BSC plugin fails the build on the broken shapes. Its Vitest test compiles every shape through BrighterScript and fails when the output changes, which is the retirement trigger: when it fails because a broken shape now compiles correctly, retire the plugin (the file, its test, its six `bsconfig` entries in `bsconfig.json`, `bsconfig-prod.json` and the four `bsconfig-tests*.json`, its two rows in `build-and-tooling.md` and the sentence there about the test configs). No upstream issue was found in `rokucommunity/brighterscript` (searched 2026-11-13); reporting one is a public post, so it waits for the operator.
 
+#### translations:seed context clones source code into the repo's .cache, where other tools can walk into it `[fid: seed-code-checkouts-in-repo-cache]` `[captured 2026-11-15]`
+
+`fetchSourceCode()` in `scripts/translations-seed.js` clones each seed source's full code into the repo's `.cache/translation-seed/<id>-<sha>-code/`, so every checkout downloads its own copy, and other tools can walk into it. ESLint crashed on a cloned project's own config there, and now ignores `.cache/` (`eslint.config.js`). Prettier, markdownlint, the spellchecker and `scripts/lib/lint-excludes.cjs` still don't exclude `.cache/`, and only `.cache/translation-seed/` is gitignored.
+
+To close: clone into the per-user cache folder (`${XDG_CACHE_HOME:-$HOME/.cache}/jellyrock/translation-seed/`, with a test and a line in `docs/dev/translations.md`), or keep the location and add `.cache/` to the other lint excludes. Not done in the PR that added `context`, because the ESLint ignore unblocked the push and moving the cache is a seeder change of its own.
+
 ### components
 
 #### The `cell-load` counters are silently zeroed whenever a screen replaces its content root, so any measurement of a session that does so under-reports. `[fid: cell-load-counters-zeroed-by-root-swap]` `[captured 2026-08-22]`
@@ -952,6 +958,12 @@ Closes after a measurement on the real path: a capture or an ODC read of the ove
 #### A SyncPlay Buffering report takes 0.35 to 0.6 s to be handled; find where the time goes `[fid: syncplay-buffering-report-latency]` `[captured 2026-11-09]`
 
 A SyncPlay Buffering report takes 0.35 to 0.6 s to reach the server's handling: the anchor log line (`SyncPlayManager.anchorGroupPause`, "group paused for this member's buffering", `reportLatencyMs`) measured 345 to 577 ms over eight reloads on a Stick 4K against a local Jellyfin 12.4.0 on a wired LAN, 2026-11-09. The group plays on for that long after this member stalls or reloads before the server pauses it, and that distance is what the drift correction then closes after the `Unpause`. The report goes out through the fire-and-forget side-effect queue (`SubmitSideEffect`, `SideEffectTask`), so the time may be the queue's, the network's or the server's. Measure where it goes (a timestamp when the request leaves the task, against the anchor's arrival); if the queue holds it, give Buffering and Ready a path that sends at once. Not now: the anchor (decision `syncplay-reload-starts-where-group-is`) keeps the Ready exact whatever the latency, so this is a quality gain, not a correctness fix.
+
+#### The skip-segment notification joins two translated words, so word order is wrong in many languages `[fid: skip-label-joined-to-segment-name]` `[captured 2026-11-15]`
+
+`VideoPlayerView.bs` builds the media-segment notification as `translate(translationKeys.ButtonSkip) + " " + segmentLabel`. Word order then follows English in every language: German reads `Überspringen Rückblick` where it should be `Rückblick überspringen`. Found while seeding `ButtonSkip`, `LabelRecap` and `LabelPreview` in the first `/translation-import` batch.
+
+To close: give the notification one string with a placeholder (for example a `MessageSkipSegment` key, "Skip {0}") or one key per segment type, then map or translate it. Needs a device check of the segment notification, so it was not done in that PR.
 
 ### source
 
@@ -1831,3 +1843,19 @@ Next time it fails: read the kept `console-failed-<time>.log` beside the run's `
 The case that surfaced it: `LabelRecordingScheduled` ("Recording scheduled", the toast in `source/utils/liveTv.bs`). the web client's `RecordingScheduled` is the same toast but reads "Recording scheduled." with a period, so batch 1 left it unmapped (about 53 cells).
 
 To close: decide the punctuation for each role, write it in `locale/CLAUDE.md` beside the casing rule, then map `LabelRecordingScheduled` if its punctuation now matches. Not done now because it needs the owner's call on each role, and changing an English string means re-review for any seed map entry that matched it.
+
+#### Mapped count keys seed nothing until their Zero forms are mapped `[fid: count-keys-need-zero-forms]` `[captured 2026-11-15]`
+
+The first `/translation-import` batch mapped 11 count keys (`LabelAlbumCountMany`, `LabelEpisodeCountOne` and the like), but they seed nothing: `planSeed()` fills a plural form only when its locale gets all three forms, and no source has the `Zero` strings ("No songs", "No albums" …) as exact text. `LabelAlbumCountOne` also has an exact candidate (the web client's `ValueOneAlbum`).
+
+To close: find the `Zero` forms in the sources by meaning (a manual search, since `suggest` matches English text only), map them with `LabelAlbumCountOne`, and check the dry run fills the count sets.
+
+#### Three seed candidates from translation-import batch 1 need a person's call `[fid: translation-import-batch-1-leave-list]` `[captured 2026-11-15]`
+
+The first `/translation-import` batch left these candidates for a person, writing no entry:
+
+- `LabelPlaybackErrorPlayMethod`: the web client's `LabelPlayMethod` matches by name and values, but has no use in its code.
+- `LabelPlaybackErrorSectionMedia`: every candidate names the media-libraries section; ours heads the playing file's details (pt "Multimédia").
+- `ButtonContinueWatching`: the iOS client's `continueWatching` has no use in its code, so whether it is a heading or a button is unclear.
+
+To close: decide each, then map it or add a `reject:` line in `locale/seed/keymap.yml`.
