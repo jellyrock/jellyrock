@@ -1,4 +1,5 @@
 {
+  "LabelAlbumArtists": "অ্যালবাম শিল্পী",
   "LabelAlbums": "এলবাম",
   "LabelArtists": "শিল্পী",
   "LabelChannels": "চেনেলস",
@@ -8,7 +9,9 @@
   "LabelExternalSubtitle": "বাহ্যিক",
   "LabelFavorites": "পছন্দসই",
   "LabelFolders": "ফোল্ডাৰ",
+  "LabelForcedSubtitle": "বলপূর্বক",
   "LabelGenres": "শ্রেণী",
+  "LabelHearingImpaired": "শ্ৰবণ অক্ষম",
   "LabelMovies": "চলচ্চিত্ৰ",
   "LabelPersonKindActor": "অভিনেতা",
   "LanguageAf": "আফ্ৰিকানছ্",
