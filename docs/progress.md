@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-15: ci: Check registry migration versions on every PR and at release
 - 2026-11-15: test(rta): Guard the RTA component against a socket it already closed
 - 2026-11-15: update(translations): Translate 134 more strings from other clients
 - 2026-11-15: update(translations): Translate 93 more strings from other clients
