@@ -6,6 +6,7 @@ import "pkg:/source/utils/dialogLayout.bs"
 import "pkg:/source/utils/dialogNarration.bs"
 import "pkg:/source/utils/dialogResult.bs"
 import "pkg:/source/utils/dialogReveal.bs"
+import "pkg:/source/utils/listPosition.bs"
 import "pkg:/source/utils/listTheme.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/translate.bs"
@@ -33,6 +34,8 @@ sub init()
   m.widthProbe = m.top.findNode("widthProbe")
   ' Set per list in onItemsChanged (dialogLayout.listHasGutter).
   m.hasGutter = true
+  ' A checklist's ticks as it opened, for the result's "did it change" (onItemsChanged).
+  m.openedChecked = []
   ' contentWidth is published from applyLayout rather than pinned here, because a
   ' `sizeToContent` panel does not know its width until it has measured its rows.
   ' The fixed-width path still lands on exactly this value.
@@ -43,6 +46,11 @@ sub init()
 
   m.optionList = m.top.findNode("optionList")
   m.optionList.observeField("itemSelected", "onItemSelected")
+  m.optionList.observeField("itemFocused", "onRowFocused")
+  m.position = m.top.findNode("position")
+  ' How many rows the list shows, and the first of them (applyLayout, onRowFocused).
+  m.visibleRows = 0
+  m.firstVisible = 0
   applyListFocusChrome(m.optionList)
 
   ' floatingFocus, always, never fixedFocusWrap. Roku's own wrap engages only
@@ -95,14 +103,30 @@ sub onItemsChanged()
   ' Optional and positionally paired with `items`: see the field comment in the
   ' XML for why it is a parallel array rather than a richer `items` shape.
   icons = m.top.icons
-  m.hasGutter = listHasGutter(selectedIndex, icons)
+  ' A checklist's gutter holds the checkbox on every row, so it marks no current
+  ' option and draws no icons.
+  multiSelect = m.top.multiSelect
+  checked = {}
+  if multiSelect
+    selectedIndex = -1
+    icons = invalid
+    m.openedChecked = normalizeCheckedIndexes(m.top.checkedIndexes, items.count())
+    m.top.checkedIndexes = m.openedChecked
+    for each checkedIndex in m.openedChecked
+      checked[checkedIndex.toStr()] = true
+    end for
+  end if
+  m.hasGutter = listHasGutter(selectedIndex, icons, multiSelect)
   index = 0
   for each item in items
     row = CreateObject("roSGNode", "ContentNode")
     row.title = toString(item)
     rowIconUri = ""
     if isValid(icons) and index < icons.count() then rowIconUri = toString(icons[index])
-    row.addFields({ isSelected: index = selectedIndex, icon: rowIconUri, hasGutter: m.hasGutter })
+    isChecked = checked.doesExist(index.toStr())
+    row.addFields({ isSelected: index = selectedIndex, icon: rowIconUri, hasGutter: m.hasGutter, isCheckable: multiSelect, isChecked: isChecked })
+    ' A checkbox is sighted-only too, so every checklist row says its state.
+    if multiSelect then row.setField("AUDIO_GUIDE_SUFFIX", checkedStateText(isChecked))
 
     ' The three visual markers (check glyph, surface, hue) are all sighted-only,
     ' so the current option is also announced. AUDIO_GUIDE_SUFFIX is a PREDEFINED
@@ -121,12 +145,35 @@ sub onItemsChanged()
     index++
   end for
 
+  m.firstVisible = 0
   applyLayout()
 
   if m.top.defaultIndex > 0 and m.top.defaultIndex < items.count()
     m.optionList.jumpToItem = m.top.defaultIndex
   end if
   m.optionList.setFocus(true)
+  updatePosition()
+end sub
+
+sub onRowFocused()
+  updatePosition()
+end sub
+
+' Keep the position line on the focused row. Roku reports the focused row and not
+' which rows are on screen, so the window is followed here (listPosition.bs).
+sub updatePosition()
+  items = m.top.items
+  if not isValid(items) or m.visibleRows < 1 then return
+
+  focused = m.optionList.itemFocused
+  if focused < 0 then focused = m.top.defaultIndex
+  m.firstVisible = listPosition.firstVisibleAfter(m.firstVisible, focused, m.visibleRows, items.count())
+  state = listPosition.describe(m.firstVisible, focused, m.visibleRows, items.count())
+
+  m.position.visible = state.isShown
+  if state.isShown
+    m.position.setFields({ position: state.position, total: state.total, hasAbove: state.hasAbove, hasBelow: state.hasBelow })
+  end if
 end sub
 
 sub applyLayout()
@@ -147,29 +194,45 @@ sub applyLayout()
   ' fixed-width dialogs reach exactly the layout they always did.
   anchor = m.top.anchor
 
+  ' A list that hides rows gets the position line in the footer slot. Whether it
+  ' hides any is known before the flow runs, except when the flow itself drops
+  ' rows below.
+  footerHeight = 0
+  if items.count() > visibleRows then footerHeight = listPosition.LINE_HEIGHT
+
   layout = computeDialogLayout({
     panelWidth: panelWidth,
     titleHeight: m.chrome.titleHeight,
     bodyHeight: listHeightFor(visibleRows),
-    footerHeight: 0,
+    footerHeight: footerHeight,
     anchor: anchor
   })
 
   ' The flow CLAMPS the body at the ceiling, so a body that did not fit comes
   ' back shorter than it asked for, and a list drawn at the height it wanted
-  ' would then run past the panel's bottom padding. MAX_VISIBLE_ROWS keeps this
-  ' out of reach for a one-line title (8 rows = 648 against ~705 available), but
-  ' a title that wraps to two lines eats the margin. Drop rows to what the panel
+  ' would then run past the panel's bottom padding. Drop rows to what the panel
   ' can hold and lay out again; the list scrolls, so every option stays
   ' reachable. Reading `body.height` back rather than re-deriving the ceiling is
   ' the contract every dialog in the family follows.
+  '
+  ' A list that drops rows now hides some, so it gains the position line, which
+  ' takes room of its own: the flow is asked once with the line to learn the body
+  ' it leaves, then again with the rows that fit it.
   if layout.overflows
+    footerHeight = listPosition.LINE_HEIGHT
+    layout = computeDialogLayout({
+      panelWidth: panelWidth,
+      titleHeight: m.chrome.titleHeight,
+      bodyHeight: listHeightFor(visibleRows),
+      footerHeight: footerHeight,
+      anchor: anchor
+    })
     visibleRows = rowsThatFit(layout.body.height)
     layout = computeDialogLayout({
       panelWidth: panelWidth,
       titleHeight: m.chrome.titleHeight,
       bodyHeight: listHeightFor(visibleRows),
-      footerHeight: 0,
+      footerHeight: footerHeight,
       anchor: anchor
     })
 
@@ -190,6 +253,11 @@ sub applyLayout()
   m.optionList.itemSpacing = [0, LIST_ROW_SPACING]
   m.optionList.numRows = visibleRows
   m.optionList.translation = [layout.body.x, layout.body.y]
+
+  m.visibleRows = visibleRows
+  m.position.translation = [layout.footer.x, layout.footer.y]
+  m.position.width = layout.footer.width
+  updatePosition()
 end sub
 
 ' The panel's width. Fixed at PANEL_WIDTH unless the caller opted into
@@ -285,7 +353,10 @@ sub onOpeningAnnouncementDue()
     ' current at all, and a picker whose active track is missing from the list
     ' still focuses row 0. Announcing it unconditionally would tell a
     ' screen-reader user something the check and the surface do not.
-    if index = m.top.selectedIndex
+    if m.top.multiSelect
+      ' A checklist row says its state for the same reason.
+      focusedText += ", " + checkedStateText(isRowChecked(index))
+    else if index = m.top.selectedIndex
       focusedText += ", " + translate(translationKeys.LabelCurrentlySelected)
     end if
   end if
@@ -310,8 +381,40 @@ sub settleLayout()
 end sub
 
 sub onItemSelected()
+  if m.top.multiSelect
+    toggleRow(m.optionList.itemSelected)
+    return
+  end if
   resolveDialog(m.optionList.itemSelected)
 end sub
+
+' OK on a checklist row: flip it, publish the new set, and say the new state. The
+' dialog stays open; Back is the way out.
+sub toggleRow(index as integer)
+  if m.resolved then return
+  row = m.top.findNode("content").getChild(index)
+  if not isValid(row) then return
+
+  isChecked = not row.isChecked
+  ' The row redraws: its itemContent handler runs on a change to this node's fields.
+  row.isChecked = isChecked
+  row.setField("AUDIO_GUIDE_SUFFIX", checkedStateText(isChecked))
+  m.top.checkedIndexes = toggleCheckedIndex(m.top.checkedIndexes, index)
+
+  ' The platform says nothing when a row's state changes under the focus, so the
+  ' row is read again with its new state.
+  narrateFocusedElement(row.title + ", " + checkedStateText(isChecked))
+end sub
+
+function isRowChecked(index as integer) as boolean
+  row = m.top.findNode("content").getChild(index)
+  return isValid(row) and isValid(row.isChecked) and row.isChecked
+end function
+
+function checkedStateText(isChecked as boolean) as string
+  if isChecked then return translate(translationKeys.LabelChecked)
+  return translate(translationKeys.LabelNotChecked)
+end function
 
 ' Resolve exactly once, then close. index = -1 means dismissed without choosing.
 ' externallyCancelled is true only on the cancelDialog() path below.
@@ -319,7 +422,12 @@ sub resolveDialog(index as integer, externallyCancelled = false as boolean)
   if m.resolved then return
   m.resolved = true
 
-  m.top.result = listDialogResult(index, externallyCancelled)
+  if m.top.multiSelect
+    ' A checklist never commits a row: it reports its set (dialogResult.bs).
+    m.top.result = checklistDialogResult(m.openedChecked, m.top.checkedIndexes, externallyCancelled)
+  else
+    m.top.result = listDialogResult(index, externallyCancelled)
+  end if
 
   closeDialog()
 end sub
