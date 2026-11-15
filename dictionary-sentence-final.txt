@@ -588,6 +588,7 @@
 (?:repo-wide)\.
 (?:reproducibility)\.
 (?:resumable)\.
+(?:Resumable)\.
 (?:retry-with-backoff)\.
 (?:revalidation)\.
 (?:reverse-proxied)\.
@@ -743,6 +744,7 @@
 (?:unquantified)\.
 (?:unresolvable)\.
 (?:unreviewed)\.
+(?:Unplayed)\.
 (?:unscoped)\.
 (?:unshuffled)\.
 (?:unsynchronized)\.

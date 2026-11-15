@@ -456,20 +456,6 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 - **severity**: Low, and provisional. Roku's [`scene.md`](https://gitlab.com/rokudev/dev-doc/-/blob/v2.0/docs/REFERENCES/scenegraph/scene.md) says nothing about how a modal dialog stacks against scene children.
 - **direction**: Confirm on a device that a cast notice cannot arrive while a keyboard dialog is open, then retire this entry. Do not fold the modal channel into the overlay supersede: that would cancel an open keyboard and discard what the user typed. The keyboard wraps an OS control, so it cannot leave the modal channel the way Quick Connect and the playback-error dialog did.
 
-#### `itemgridoptions-hand-rolled-dialog`
-
-- **area**: [`components/ItemGrid/ItemGridOptions.xml`](../../components/ItemGrid/ItemGridOptions.xml), [`components/ItemGrid/ItemGridOptions.bs`](../../components/ItemGrid/ItemGridOptions.bs)
-- **issue**: The library sort and filter panel is a hand-built dialog that predates the `JRDialog` family; the [`no-hand-rolled-dialog`](../../scripts/bsc-plugins/no-hand-rolled-dialog.cjs) plugin found it. It draws its own full-screen 0.75-opacity backdrop and fixed panel, places children at fixed offsets rather than through `computeDialogLayout`, extends `Group` rather than `JRGroup`, and uses Roku's own `RadiobuttonList`, `CheckList`, `ButtonGroup` and `Button` (its top row is the app's `JRButtons`). So it sits outside the family's guarantees. It is not on the overlay channel, so `isOverlayDialogOpen`, `cancelOpenDialog` and the one-overlay supersede cannot see it, and a restyle of the family will not reach it.
-- **severity**: Low. It works today. The grade is about drift: it is the one surface a change to `JRDialogPanel` or `dialogLayout.bs` will not reach. A `bsc-disable-next-line no-hand-rolled-dialog` comment pointing here keeps the gate green.
-- **direction**: Decide what it should be in family terms before touching the markup. Two list modes and a favorites toggle share one panel and swap by opacity. The family's rule is one class of focusable thing per dialog, so the answer is likely several `showListDialog` calls. Removing the suppression comment is the definition of done. [`itemgridoptions-single-active-filter`](#itemgridoptions-single-active-filter) belongs to the same decision.
-
-#### `itemgridoptions-single-active-filter`
-
-- **area**: [`components/ItemGrid/ItemGridOptions.bs`](../../components/ItemGrid/ItemGridOptions.bs) (`onKeyEvent`'s filter branch), [`components/ItemGrid/BaseGridView.bs`](../../components/ItemGrid/BaseGridView.bs) (the options restore pass, `optionsClosed`)
-- **issue**: Only one filter category can be active at a time, so categories replace each other instead of combining. The limit is the panel's: its `m.top.filter` is one string, its `filterOptions` is built as a one-key AA (`newFilter[m.top.filter] = …`), and the restore pass reads `panel.filterOptions.keys()[0]`. The grid no longer has it: a tab's filters are a map of category to values, kept for the session (`sessionFilters`) and turned into a request by `gridQuery.build()`, with `gridQuery.filtersFromPanel()` and `filtersToPanel()` translating between that map and the panel's one-category shape. Picking Genres clears `Unplayed`, and picking Years clears Genres. The server is not the limit: `LoadItemsTask2` appends whatever keys `filterOptions` holds, and on 2026-09-22 a local 12.0.0 server answered `AudioLanguages=eng&Genres=Action` with the intersection. The 12.0 language filters (#1002) make it visible: "English audio with Spanish subtitles" is a query the server can answer and the panel cannot express.
-- **severity**: Low. Each category works on its own, so this is a missing feature, not a defect. Re-read the grade as features land on the panel.
-- **direction**: Make the panel's selection multi-key, so it shows several categories at once and `filter` stops doubling as "which category owns the options". The grid, the session's storage and the query already take the map, so doing it deletes `gridQuery.filtersFromPanel()` and `filtersToPanel()` with the panel's one-key shape. Settle first what the title shows when several are active (`updateTitle()` names only the Favorites filter), and whether the exclusive pseudo-categories (`All`, `Favorites`, `Played`, `Unplayed`, `Resumable`, which map to `Filters=`) stay one radio group. Do it with [`itemgridoptions-hand-rolled-dialog`](#itemgridoptions-hand-rolled-dialog).
-
 #### `bsconfig-files-duplicated`
 
 - **area**: the repository root: `bsconfig-base.json` and the `bsconfig*.json` that inherit from it; the five test-runner configs carry what remains
@@ -668,6 +654,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 ## Recently removed: don't go searching for these
 
+- **`itemgridoptions-hand-rolled-dialog`** and **`itemgridoptions-single-active-filter`**: resolved 2026-11-15 when the library header strip replaced the options panel. Sort and Filter are family dialogs opened from the strip's chips, and filters combine across categories through `sessionFilters` and `libraryFilterMenu`.
 - **`scenemanager-stack-unbounded`**, **`printregistry-on-startup`**, **`selecteditem-bubbling-implicit`**, **`changelog-syncer-mixes-validate-mutate`**, **`make-npm-overlap`** and **`trickplay-prefetch-hardcoded`**: retired 2026-10-11 because their premises no longer held.
   - `SceneManager` has had no scene stack since the sgRouter migration (#677).
   - `printRegistry()` prints only inside `#if debug`.
