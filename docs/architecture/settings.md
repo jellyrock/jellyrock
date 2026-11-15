@@ -7,7 +7,7 @@ related-files:
   - source/utils/session.bs
   - components/data/jellyfin/JellyfinUserSettings.xml
   - components/data/jellyfin/JellyfinUserSettings.bs
-last-reviewed: 2026-11-13
+last-reviewed: 2026-11-15
 ---
 
 # Settings
@@ -25,6 +25,10 @@ Defaults for the first two live only in `settings/settings.json`. Server config 
 ### Page settings are not in `settings.json`
 
 A setting whose value belongs to one screen (how one library view is drawn) is a page setting. It is offered on that screen only, from the overhang's settings icon ([navigation.md](navigation.md#the-overhang-row-up-down-and-the-cluster)), and never in the Settings screen, which has no library to apply it to. An app-wide setting lives in Settings only, so no setting has two homes. A library's page settings are display settings: per-user registry keys named `display.<libraryId>.<key>`, held in `m.global.user.settings.displaySettings` and written through `setLibraryDisplaySetting()`. A key that is per view carries the view inside its third part (`layout_<view>`, from `libraryLayout.settingKey()`), because only three-part `display.` keys load. Removing a library from `displaySettings` deletes every key under its prefix, and `deleteLibraryDisplaySetting()` deletes one. A library's Default tab entry is one: `display.<libraryId>.defaultTab` holds the tab picked on this Roku, which wins over the web client's pick (`gridQuery.resolveView()`).
+
+A tab's sort is a display setting too, though it is picked in the library and not from the settings icon: `display.<libraryId>.sort_<tab>` holds `<field>:<asc|desc>` (`librarySort` in `source/GridView/libraryTab.bs`, read and written through `getLibrarySort()` and `setLibrarySort()`). A screen with no tab, such as a collection, uses the bare `sort` key. A sort the tab's list no longer offers falls back to the title, ascending, and is not written back (`gridQuery.resolveSort()`). Every display setting loads as the string the registry holds.
+
+Filters are not settings. They last for the signed-in session and never reach the registry: [`global-state.md`](global-state.md#the-user-mglobaluser) has where they live.
 
 ## `settings/settings.json`, the one definition
 

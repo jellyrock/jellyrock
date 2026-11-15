@@ -30,6 +30,8 @@ import {
   focusGridTile,
   navLibraryByType,
   overhangSelectedTab,
+  applyLibrarySort,
+  applyLibraryFilter,
   overhangTabIds,
   pressGridTile,
   selectHomeTab,
@@ -194,9 +196,20 @@ it('a tab press shows the tab with focus on the content, and later loads keep th
     drawn: 'studios',
   });
 
-  // Replay from the rail clears the letter and reloads: the tab stays.
+  // Replay from the rail goes to the grid's first item, or stays put when the letter
+  // matched nothing: the letter and the tab stay either way.
+  const underLetter = await getActiveVal('#itemGrid.content.getChildCount()');
+  const stateUnderLetter = await getActiveVal('loadState');
   await press(ecp.Key.Replay);
-  await waitGridLoaded('the Studios tab after Replay');
+  await waitFocusInside(underLetter > 0 ? '#itemGrid' : '#alphaMenu', {
+    label: underLetter > 0 ? 'Replay moved focus to the grid' : 'Replay left an empty tab alone',
+    timeout: 8000,
+  });
+  expect(await getActiveVal('loadState'), 'Replay reloads nothing').toBe(stateUnderLetter);
+  expect(
+    await getActiveVal('#itemGrid.content.getChildCount()'),
+    'the letter is still in force',
+  ).toBe(underLetter);
   expect(await tabState(), 'after Replay').toEqual({
     selectedTabId: 'studios',
     currentView: 'studios',
@@ -448,36 +461,148 @@ it('the Star dialog has Sort and Filter only, and a sort picked there keeps the 
     'Sort',
     'Filter',
   ]);
-
-  // Down enters the Sort list on its first row; the second row is a sort not in force.
-  await waitFocusInside('#sortMenu', {
-    label: 'the Sort list',
-    timeout: 8000,
-    action: resendUntilFocusInside(ecp.Key.Down, '#sortMenu'),
-  });
-  await scrollFocus({
-    keyPath: '#options.#sortMenu.itemFocused',
-    target: 1,
-    forwardKey: ecp.Key.Down,
-    backKey: ecp.Key.Up,
-    read: getActiveVal,
-    stepped: true,
-    within: '#sortMenu',
-    label: 'the second sort',
-  });
-  await press(ecp.Key.Ok);
   await press(ecp.Key.Option);
   await waitFocusInside('#itemGrid', { label: 'the grid after the dialog closed', timeout: 20000 });
-  await waitGridLoaded('the Studios tab re-sorted');
+
+  // The second row of the Sort list is a sort not in force.
+  await applyLibrarySort(1);
 
   const saved = await displaySettings(libraryId);
-  expect(saved.sortField, 'the sort picked in the dialog is saved').not.toBe('SortName');
-  expect(typeof saved.sortField, 'and it was read').toBe('string');
+  expect(typeof saved.sort_studios, 'the sort is saved for the Studios tab').toBe('string');
+  expect(saved.sort_studios, 'in the stored form').toMatch(/^.+:(asc|desc)$/);
+  expect(saved.sort_studios.startsWith('SortName:'), 'and is the one picked').toBe(false);
+  expect(saved.sort_movies, 'no other tab took it').toBeUndefined();
   expect(await tabState(), 'a sort change keeps the tab').toEqual({
     selectedTabId: 'studios',
     currentView: 'studios',
     drawn: 'studios',
   });
+});
+
+/**
+ * What the app holds as the session's filters: one entry per library and tab, each
+ * category's name in lowercase (an associative array does not promise a key's case).
+ */
+async function sessionFilters() {
+  const entries =
+    (await odc.getValue({ base: 'global', keyPath: 'user.libraryFilters' }))?.value ?? {};
+  return Object.fromEntries(
+    Object.entries(entries).map(([entry, categories]) => [
+      entry,
+      Object.fromEntries(
+        Object.entries(categories ?? {}).map(([name, values]) => [name.toLowerCase(), values]),
+      ),
+    ]),
+  );
+}
+
+it('each tab keeps its own sort, across a tab switch and a restart', async (testCtx) => {
+  const libraryId = libraryIdFor(libraries, 'movies');
+  if (!libraryId) testCtx.skip('server has no "movies" library');
+  await openLibrary('library tabs sort per tab', 'movies', 'studios');
+  await waitGridLoaded('the Studios tab');
+  await waitFocusInside('#itemGrid', { label: 'focus on the Studios grid', timeout: 8000 });
+  await applyLibrarySort(1);
+  const studiosSort = (await displaySettings(libraryId)).sort_studios;
+  expect(studiosSort, 'the Studios tab has a sort of its own').toMatch(/^.+:(asc|desc)$/);
+
+  // A tab press resets nothing: Movies has no saved sort, and Studios keeps its own.
+  await selectLibraryTab('movies');
+  await waitGridLoaded('the Movies tab');
+  await selectLibraryTab('studios');
+  await waitGridLoaded('the Studios tab again');
+  let saved = await displaySettings(libraryId);
+  expect(saved.sort_studios, 'kept across the tab switch').toBe(studiosSort);
+  expect(saved.sort_movies, 'and never copied to Movies').toBeUndefined();
+
+  // The sort is in the registry, so a cold start reads it back.
+  await hardRelaunch();
+  await waitHome();
+  saved = await displaySettings(libraryId);
+  expect(saved.sort_studios, 'kept across a restart').toBe(studiosSort);
+});
+
+it('a filter lasts for the session, per tab, and a restart clears it', async (testCtx) => {
+  const libraryId = libraryIdFor(libraries, 'movies');
+  if (!libraryId) testCtx.skip('server has no "movies" library');
+  await openLibrary('library tabs session filters', 'movies', 'movies');
+  await waitGridLoaded('the Movies tab');
+  await waitFocusInside('#itemGrid', { label: 'focus on the Movies grid', timeout: 8000 });
+  expect(await sessionFilters(), 'a session starts with no filters').toEqual({});
+  expect(
+    await getActiveVal('#options.#filterMenu.content.2.title'),
+    'the third filter row is Unplayed',
+  ).toBe('Unplayed');
+
+  await applyLibraryFilter(2);
+  const key = `${libraryId}/movies`;
+  const picked = { [key]: { status: ['Unplayed'] } };
+  expect(await sessionFilters(), 'kept for the Movies tab').toEqual(picked);
+  expect(await displaySettings(libraryId), 'and not saved to the registry').not.toHaveProperty(
+    'filter',
+  );
+
+  // Another tab has its own (none), and coming back finds the Movies tab's still in force.
+  await selectLibraryTab('studios');
+  await waitGridLoaded('the Studios tab');
+  await selectLibraryTab('movies');
+  await waitGridLoaded('the Movies tab again');
+  expect(await sessionFilters(), 'kept across the tab switch, and only for Movies').toEqual(picked);
+
+  // Leaving the library and opening it again is the same session.
+  await press(ecp.Key.Back);
+  await waitHome();
+  await navLibraryByType('movies', libraryId);
+  await waitGridLoaded('the library opened again');
+  expect(await sessionFilters(), 'kept across leaving the library').toEqual(picked);
+
+  // A restart is a new session.
+  await hardRelaunch();
+  await waitHome();
+  expect(await sessionFilters(), 'cleared by a restart').toEqual({});
+});
+
+it('Replay goes to the first item from deep in the grid, and changes nothing else', async (testCtx) => {
+  const libraryId = libraryIdFor(libraries, 'movies');
+  if (!libraryId) testCtx.skip('server has no "movies" library');
+  await openLibrary('library tabs replay', 'movies', 'movies');
+  await waitGridLoaded('the Movies tab');
+  await waitFocusInside('#itemGrid', { label: 'focus on the Movies grid', timeout: 8000 });
+  const count = await getActiveVal('#itemGrid.content.getChildCount()');
+  if (!(count > 6)) testCtx.skip(`the library holds ${count} movie(s): no second row to leave`);
+
+  await focusGridTile(3);
+  await press(ecp.Key.Replay);
+  await waitFor('#itemGrid.itemFocused', (n) => n === 0, {
+    label: 'Replay back on the first item',
+    timeout: 8000,
+    read: getActiveVal,
+  });
+  expect(await getActiveVal('loadState'), 'Replay reloads nothing').toBe('loaded');
+  expect(await getActiveVal('#itemGrid.content.getChildCount()'), 'the same items').toBe(count);
+  await waitFocusInside('#itemGrid', { label: 'focus still on the grid', timeout: 8000 });
+
+  // From the letter rail too: a row down, into the rail, and Replay returns to item 0.
+  await press(ecp.Key.Down);
+  const rowDown = await waitFor('#itemGrid.itemFocused', (n) => n > 0, {
+    label: 'a row below the first',
+    timeout: 8000,
+    read: getActiveVal,
+  });
+  expect(rowDown, 'the grid left its first item').toBeGreaterThan(0);
+  await waitFocusInside('#alphaMenu', {
+    label: 'the letter rail',
+    timeout: 10000,
+    action: resendUntilFocusInside(ecp.Key.Left, '#alphaMenu'),
+  });
+  await press(ecp.Key.Replay);
+  await waitFocusInside('#itemGrid', { label: 'Replay moved focus to the grid', timeout: 8000 });
+  await waitFor('#itemGrid.itemFocused', (n) => n === 0, {
+    label: 'Replay from the rail back on the first item',
+    timeout: 8000,
+    read: getActiveVal,
+  });
+  expect(await getActiveVal('loadState'), 'and reloads nothing').toBe('loaded');
 });
 
 /** The item ids in the open grid, in order, as the app holds them (lowercase, no dashes). */

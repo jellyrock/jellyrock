@@ -149,13 +149,9 @@ sub loadItems()
     params.searchTerm = m.top.searchTerm
   end if
 
+  ' The status filter. Favorites arrives as `isFavorite`, below.
   filter = LCase(m.top.filter)
-  if filter = "all"
-    ' do nothing
-  else if filter = "favorites"
-    params.append({ Filters: "IsFavorite" })
-    params.append({ isFavorite: true })
-  else if filter = "unplayed"
+  if filter = "unplayed"
     params.append({ Filters: "IsUnplayed" })
   else if filter = "played"
     params.append({ Filters: "IsPlayed" })
@@ -163,9 +159,9 @@ sub loadItems()
     params.append({ Filters: "IsResumable" })
   end if
 
-  ' A Favorites tab: favorites fixed on, apart from `filter`, so it combines with Played
-  ' or Unplayed (`Filters` takes one of those). Every supported server honors the
-  ' parameter alone.
+  ' A Favorites tab or the Favorites filter (gridQuery.build): apart from `filter`, so it
+  ' combines with Played or Unplayed (`Filters` takes one of those). Every supported
+  ' server honors the parameter alone.
   if m.top.isFavorite then params.append({ isFavorite: true })
 
   if isValid(m.top.filterOptions)

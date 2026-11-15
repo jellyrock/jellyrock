@@ -232,62 +232,17 @@ namespace tests
     ' ItemGridOptionsFilters.spec.bs, which builds the panel the app does.
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("toWire()")
+    @describe("isLanguageKey()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("flattens the panel delimiter to the one the server accepts")
-    ' A pipe returns 0 results, so what the panel stores can never be what is sent.
-    function _()
-      wire = languageFilters.toWire({ SubtitleLanguages: "fra,fre|deu,ger" })
-
-      m.assertEqual(wire.SubtitleLanguages, "fra,fre,deu,ger")
-    end function
-
-    @it("leaves a single selected language untouched")
-    function _()
-      m.assertEqual(languageFilters.toWire({ AudioLanguages: "jpn" }).AudioLanguages, "jpn")
-    end function
-
-    @it("copies a non-language category through unchanged")
-    ' Genres stores exactly what it sends, pipes and all: converting it would break it.
-    function _()
-      wire = languageFilters.toWire({ Genres: "Action|Science Fiction" })
-
-      m.assertEqual(wire.Genres, "Action|Science Fiction")
-    end function
-
-    @it("converts only the language key when several categories are present")
-    function _()
-      wire = languageFilters.toWire({ Genres: "Action|Drama", AudioLanguages: "fra,fre|jpn" })
-
-      m.assertEqual(wire.Genres, "Action|Drama")
-      m.assertEqual(wire.AudioLanguages, "fra,fre,jpn")
-    end function
-
-    @it("matches the language keys whatever case they come back from the registry in")
-    ' The key round-trips through JSON and a SceneGraph assocarray field, neither of which
-    ' promises to preserve the spelling the presenter declared.
+    @it("matches the language keys whatever case they come back in")
+    ' The key crosses a SceneGraph assocarray field, which does not promise to preserve
+    ' the spelling the presenter declared.
     function _()
       m.assertTrue(languageFilters.isLanguageKey("audiolanguages"))
       m.assertTrue(languageFilters.isLanguageKey("SUBTITLELANGUAGES"))
       m.assertFalse(languageFilters.isLanguageKey("Genres"))
       m.assertFalse(languageFilters.isLanguageKey(invalid))
-    end function
-
-    @it("answers a missing or non-AA filter set with an empty one")
-    function _()
-      m.assertEqual(languageFilters.toWire(invalid), {})
-      m.assertEqual(languageFilters.toWire("Genres"), {})
-    end function
-
-    @it("does not mutate the caller's saved filters")
-    ' BaseGridView holds the panel form and persists it; handing the wire form back would
-    ' write the wrong thing to the registry.
-    function _()
-      saved = { AudioLanguages: "fra,fre|jpn" }
-      languageFilters.toWire(saved)
-
-      m.assertEqual(saved.AudioLanguages, "fra,fre|jpn")
     end function
 
   end class

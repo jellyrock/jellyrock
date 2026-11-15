@@ -31,6 +31,15 @@ A movie library can show its movies two ways: **Presentation**, which shows the 
 
 JellyRock remembers the layout for that tab of the library on this Roku. Your sort, your filter and a letter picked on the letter rail stay as they were.
 
+## What a tab remembers
+
+Each tab keeps its own sort and its own filters, so changing one tab never changes another.
+
+- **Sort** is remembered for that tab of the library on this Roku, until you change it.
+- **Filters** last while you are signed in. They are still there when you come back from an item, from Home or from search, and they clear when you sign out, switch user or close JellyRock.
+
+Press **Replay** in a library to jump to the first item, from the letter rail too. Your sort, your filters and a letter picked on the letter rail stay as they were. It does nothing on the **TV Guide**.
+
 ## Choose the tab a library opens on
 
 A library opens on its usual first tab: **Movies**, **Shows**, **Album Artists** for music and **Channels** for Live TV. If you picked a **Default screen** for the library in the Jellyfin website's Home screen settings, it opens there instead. You can also pick a tab for it on this Roku, which wins over both.

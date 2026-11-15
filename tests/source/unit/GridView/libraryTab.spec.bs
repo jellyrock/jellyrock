@@ -409,6 +409,43 @@ namespace tests
       m.assertEqual(libraryTab.fromServerTab(value, "tvshows"), "")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("librarySort")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keys a tab's sort by the tab, and a screen with no tab by the bare key")
+    function _()
+      m.assertEqual(librarySort.settingKey("movies"), "sort_movies")
+      m.assertEqual(librarySort.settingKey(" AlbumArtists "), "sort_albumartists")
+      m.assertEqual(librarySort.settingKey(""), "sort")
+      m.assertEqual(librarySort.settingKey(invalid), "sort")
+    end function
+
+    @it("stores a sort as one string and reads it back")
+    @params("SortName", true, "SortName:asc")
+    @params("DateCreated", false, "DateCreated:desc")
+    @params("IsFolder,SortName", true, "IsFolder,SortName:asc")
+    function _(field, ascending, stored)
+      m.assertEqual(librarySort.format(field, ascending), stored)
+      m.assertEqual(librarySort.parse(stored), { field: field, ascending: ascending })
+    end function
+
+    @it("reads the direction after the last colon, in any case")
+    function _()
+      m.assertEqual(librarySort.parse("A:B:DESC"), { field: "A:B", ascending: false })
+    end function
+
+    @it("answers Invalid for anything that is not a stored sort")
+    @params("")
+    @params("SortName")
+    @params(":asc")
+    @params("SortName:up")
+    @params("true")
+    function _(stored)
+      m.assertInvalid(librarySort.parse(stored))
+      m.assertInvalid(librarySort.parse(invalid))
+    end function
+
   end class
 
 end namespace
