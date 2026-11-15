@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MIX_STEPS, atRest, mixPlan, seededRandom } from './soak-mix.js';
+import { MIX_STEPS, atRest, mixPlan, parseStepList, seededRandom } from './soak-mix.js';
 
 describe('mixPlan: the seeded order of the SyncPlay soak', () => {
   it('gives the same order for the same seed, and another for another seed', () => {
@@ -97,5 +97,30 @@ describe('atRest: the invariants a mix step must end on', () => {
   it('judges a reading against the state asked for, not the one it is in', () => {
     expect(atRest(playing, 'paused')).toBe(false);
     expect(atRest(paused, 'playing')).toBe(false);
+  });
+});
+
+describe('parseStepList: a chosen step order for the mix', () => {
+  it('returns the names in order, trimming spaces', () => {
+    expect(parseStepList('key-pause, member-unpause ,scrub')).toEqual([
+      'key-pause',
+      'member-unpause',
+      'scrub',
+    ]);
+  });
+
+  it('refuses an unknown step and names it with the known ones', () => {
+    expect(() => parseStepList('scrub,nope')).toThrow(/nope.*known steps/s);
+  });
+
+  it('refuses a step that does not start where the last one ended', () => {
+    expect(() => parseStepList('key-pause,scrub')).toThrow(
+      /step 2.*scrub.*starts from playing.*paused/s,
+    );
+    expect(() => parseStepList('member-unpause')).toThrow(/step 1.*member-unpause/s);
+  });
+
+  it('refuses an empty list', () => {
+    expect(() => parseStepList(' , ')).toThrow(/no steps/);
   });
 });

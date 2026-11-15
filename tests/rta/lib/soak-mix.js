@@ -81,6 +81,38 @@ export function mixPlan(seed, count, leaveOut = []) {
   return plan;
 }
 
+/**
+ * Reads a chosen step order (`RTA_STRESS_STEPS`, comma separated) and checks it against
+ * `MIX_STEPS` and the state chain, starting from a playing group. Throws a message that names the
+ * step and what is wrong, so a bad list fails before the run touches the device.
+ * @param {string} text
+ * @returns {string[]} the step names, in order
+ */
+export function parseStepList(text) {
+  const names = String(text)
+    .split(',')
+    .map((n) => n.trim())
+    .filter(Boolean);
+  if (names.length === 0) throw new Error('RTA_STRESS_STEPS names no steps');
+  let state = 'playing';
+  names.forEach((name, i) => {
+    if (!MIX_STEPS[name]) {
+      throw new Error(
+        `RTA_STRESS_STEPS: step ${i + 1} "${name}" is not a mix step; known steps: ` +
+          Object.keys(MIX_STEPS).join(', '),
+      );
+    }
+    if (MIX_STEPS[name].from !== state) {
+      throw new Error(
+        `RTA_STRESS_STEPS: step ${i + 1} "${name}" starts from ${MIX_STEPS[name].from}, ` +
+          `but the group is ${state} after the step before it`,
+      );
+    }
+    state = MIX_STEPS[name].to;
+  });
+  return names;
+}
+
 // `syncPlayPlayback.SETTLE_CORRECTION_MS` ahead and `SKIP_TO_SYNC_MIN_MS` behind, the bars
 // `syncplay-correction.spec.js` holds a settled member to. A drift is positive when behind.
 export const AHEAD_BAR_MS = 150;

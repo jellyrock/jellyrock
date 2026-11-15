@@ -15,6 +15,10 @@
  * - `mix`: a seeded order of many inputs (`RTA_STRESS_SEED`, 1 by default), with the member
  *   checked at rest with the group after each. Its steps and the rest check are in
  *   `../lib/soak-mix.js`, and `docs/dev/rta-tests.md` says how to read its record.
+ *   `RTA_STRESS_STEPS=key-pause,member-unpause,scrub` runs exactly those mix steps in that order
+ *   instead of the seeded pick (`RTA_STRESS_ROUNDS` is then the list's length, and not needed).
+ *   Each name must be in `MIX_STEPS` and start in the state the step before it ended in, from a
+ *   playing group, or the run fails before it starts.
  *
  * One pass of a race proves little: a wedge that shows in one round of twenty is a real find, and
  * twenty clean rounds are not a pass. Count rounds, and read the summary line, not the verdict.
@@ -52,10 +56,14 @@ import {
   waitFor,
   waitMediaPlaying,
 } from '../lib/steps.js';
-import { MIX_STEPS, atRest, nextStep, seededRandom } from '../lib/soak-mix.js';
+import { MIX_STEPS, atRest, nextStep, parseStepList, seededRandom } from '../lib/soak-mix.js';
 
-const ROUNDS = Number(process.env.RTA_STRESS_ROUNDS || 0);
 const CASE = process.env.RTA_STRESS_CASE || 'scrub';
+// A chosen order for the mix case. The list is the whole run, so its length is the step count and
+// `RTA_STRESS_ROUNDS` is not needed. A bad list throws here, before anything touches the device.
+const STEP_LIST = process.env.RTA_STRESS_STEPS ? parseStepList(process.env.RTA_STRESS_STEPS) : null;
+if (STEP_LIST && CASE !== 'mix') throw new Error('RTA_STRESS_STEPS needs RTA_STRESS_CASE=mix');
+const ROUNDS = STEP_LIST ? STEP_LIST.length : Number(process.env.RTA_STRESS_ROUNDS || 0);
 const LATE_MS = Number(process.env.RTA_STRESS_LATE_MS || 5500);
 const SEED = Number(process.env.RTA_STRESS_SEED || 1);
 const CASES = ['scrub', 'double-ok', 'replay-twice', 'member-seeks', 'late-seek', 'mix'];
@@ -179,8 +187,19 @@ async function resetPosition(before, name = CASE) {
   return true;
 }
 
-/** Opens the trick-play bar with three Right presses, one library wait apart. */
+/**
+ * Opens the trick-play bar with three Right presses, one library wait apart. The OSD stays up
+ * until five seconds after the last key press (`inactiveTimeout` in `VideoPlayerView.xml`), and
+ * while it is up the player sends Right to the OSD and the bar does not open. A step that ends
+ * with the OSD still up over playing video (the Play key's pause, then another member's resume)
+ * would be pressed at too early, so the presses wait for it to close.
+ */
 async function openBar() {
+  await waitFor('#osd.visible', (v) => v === false, {
+    read: osdVisible,
+    timeout: 15000,
+    label: 'the OSD down before the Right presses, so they reach the trick-play bar',
+  });
   await ecp.sendKeypressSequence([ecp.Key.Right, ecp.Key.Right, ecp.Key.Right], { wait: 400 });
   await waitFor('trickPlayBar.visible', (v) => v === true, {
     read: barVisible,
@@ -583,8 +602,9 @@ describe.skipIf(ROUNDS <= 0)('SyncPlay stress', () => {
       console.log(`[STRESS] writing ${file}`);
       const record = (entry) => fs.appendFileSync(file, `${JSON.stringify(entry)}\n`);
       const random = seededRandom(SEED);
-      const counts = { ok: 0, frozen: 0 };
+      const counts = { ok: 0, frozen: 0, error: 0 };
       const frozenSteps = [];
+      const errorSteps = [];
       let state = 'playing';
       let summary;
       let hasStopped = false;
@@ -648,37 +668,64 @@ describe.skipIf(ROUNDS <= 0)('SyncPlay stress', () => {
           'the member at rest with the group before the first step',
         ).toBe('ok');
         for (let index = 0; index < ROUNDS && !hasStopped; index++) {
-          const name = nextStep(random, state);
+          const name = STEP_LIST ? STEP_LIST[index] : nextStep(random, state);
           const expected = MIX_STEPS[name].to;
-          if (state === 'playing') {
-            const position = (await playerPosition()) ?? 0;
-            if (await resetPosition(position, name)) {
-              const reset = await runStep(
-                index,
-                'reset',
-                'playing',
-                MIX_WINDOW_MS,
-                MIX_STABLE_MS,
-                async () => {},
+          let outcome;
+          // A throw inside a step (a wait that times out in `act`, `openBar`, `stepItem` and so
+          // on) is this step's result, not the run's: it is recorded as `error`, the member is
+          // recovered as after a frozen step, and the run goes on to the next step.
+          try {
+            if (STEP_LIST && MIX_STEPS[name].from !== state) {
+              throw new Error(
+                `step ${name} starts from ${MIX_STEPS[name].from}, but the group is ${state} ` +
+                  'after the recovery of the step before it',
               );
-              if (reset !== 'ok') frozenSteps.push(`${index}:reset`);
             }
+            if (state === 'playing') {
+              const position = (await playerPosition()) ?? 0;
+              if (await resetPosition(position, name)) {
+                const reset = await runStep(
+                  index,
+                  'reset',
+                  'playing',
+                  MIX_WINDOW_MS,
+                  MIX_STABLE_MS,
+                  async () => {},
+                );
+                if (reset !== 'ok') frozenSteps.push(`${index}:reset`);
+              }
+            }
+            let windowMs = MIX_WINDOW_MS;
+            if (name === 'late-seek') windowMs += LATE_MS;
+            if (name === 'lost-seek' || name === 'lost-ready') windowMs = MIX_LOST_WINDOW_MS;
+            if (MIX_LOAD_STEPS.has(name)) windowMs = MIX_LOAD_WINDOW_MS;
+            let stableMs = MIX_STABLE_MS;
+            if (name === 'dwell-playing') stableMs = MIX_DWELL_PLAYING_MS;
+            if (name === 'dwell-paused') stableMs = MIX_DWELL_PAUSED_MS;
+            outcome = await runStep(index, name, expected, windowMs, stableMs, (before) =>
+              act(before.position ?? 0, name),
+            );
+            await failRequests([]);
+          } catch (error) {
+            outcome = 'error';
+            const message = error instanceof Error ? error.message : String(error);
+            console.log(`[STRESS] step ${index} ${name} threw: ${message}`);
+            record({
+              index,
+              step: name,
+              from: state,
+              to: expected,
+              engine,
+              outcome,
+              error: message,
+            });
+            await failRequests([]).catch(() => {});
           }
-          let windowMs = MIX_WINDOW_MS;
-          if (name === 'late-seek') windowMs += LATE_MS;
-          if (name === 'lost-seek' || name === 'lost-ready') windowMs = MIX_LOST_WINDOW_MS;
-          if (MIX_LOAD_STEPS.has(name)) windowMs = MIX_LOAD_WINDOW_MS;
-          let stableMs = MIX_STABLE_MS;
-          if (name === 'dwell-playing') stableMs = MIX_DWELL_PLAYING_MS;
-          if (name === 'dwell-paused') stableMs = MIX_DWELL_PAUSED_MS;
-          const outcome = await runStep(index, name, expected, windowMs, stableMs, (before) =>
-            act(before.position ?? 0, name),
-          );
-          await failRequests([]);
           counts[outcome]++;
           state = expected;
-          if (outcome === 'frozen') {
-            frozenSteps.push(`${index}:${name}`);
+          if (outcome === 'error') errorSteps.push(`${index}:${name}`);
+          if (outcome === 'frozen') frozenSteps.push(`${index}:${name}`);
+          if (outcome === 'frozen' || outcome === 'error') {
             state = 'playing';
             hasStopped = !(await recoverMix());
           }
@@ -687,14 +734,16 @@ describe.skipIf(ROUNDS <= 0)('SyncPlay stress', () => {
         await failRequests([]).catch(() => {});
         summary =
           `SUMMARY case=mix seed=${SEED} engine=${engine} steps=${ROUNDS} ok=${counts.ok} ` +
-          `frozen=${counts.frozen}${frozenSteps.length ? ` at ${frozenSteps.join(' ')}` : ''}` +
+          `frozen=${counts.frozen}${frozenSteps.length ? ` at ${frozenSteps.join(' ')}` : ''} ` +
+          `error=${counts.error}${errorSteps.length ? ` at ${errorSteps.join(' ')}` : ''}` +
           `${hasStopped ? ' (stopped: the member did not recover)' : ''}`;
         console.log(summary);
         record({ summary });
       }
       // A run that counted no steps is a finding, not a pass.
-      expect(counts.ok + counts.frozen, summary).toBe(ROUNDS);
+      expect(counts.ok + counts.frozen + counts.error, summary).toBe(ROUNDS);
       expect(frozenSteps, summary).toEqual([]);
+      expect(errorSteps, summary).toEqual([]);
     },
     ROUNDS * 90000 + 120000,
   );
