@@ -1,3 +1,5 @@
+import "pkg:/source/utils/dialogLayout.bs"
+
 namespace tests
 
   @suite("JRListDialog - interface and list construction")
@@ -704,6 +706,250 @@ namespace tests
 
       m.assertTrue(successorFocused, "the closing dialog took focus from the dialog that replaced it")
       m.assertFalse(openerFocused)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Checklist (multiSelect)")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    private function checklist(checked as object) as object
+      m.dialog.title = "Genres"
+      m.dialog.multiSelect = true
+      m.dialog.checkedIndexes = checked
+      m.dialog.items = ["Action", "Comedy", "Drama"]
+      return m.dialog.findNode("content")
+    end function
+
+    private function checklistRow(isChecked as boolean) as object
+      row = CreateObject("roSGNode", "JRListDialogRow")
+      row.width = 800
+      row.height = 60
+      content = CreateObject("roSGNode", "ContentNode")
+      content.title = "Action"
+      content.addFields({ isCheckable: true, isChecked: isChecked, hasGutter: true })
+      row.itemContent = content
+      return row
+    end function
+
+    @it("builds every row checkable, with the given rows ticked")
+    function _()
+      content = m.checklist([2])
+
+      m.assertTrue(content.getChild(0).isCheckable)
+      m.assertFalse(content.getChild(0).isChecked)
+      m.assertFalse(content.getChild(1).isChecked)
+      m.assertTrue(content.getChild(2).isChecked)
+      m.assertTrue(content.getChild(0).hasGutter)
+    end function
+
+    @it("an ordinary list builds no checkable rows")
+    function _()
+      m.dialog.items = ["one", "two"]
+      content = m.dialog.findNode("content")
+      m.assertFalse(content.getChild(0).isCheckable)
+    end function
+
+    ' The gutter holds the checkbox, so a checklist marks no current option and
+    ' draws no icon even when a caller sets them.
+    @it("ignores selectedIndex and icons")
+    function _()
+      m.dialog.selectedIndex = 1
+      m.dialog.icons = ["pkg:/a.png", "pkg:/b.png", "pkg:/c.png"]
+      content = m.checklist([])
+
+      m.assertFalse(content.getChild(1).isSelected)
+      m.assertEqual(content.getChild(0).icon, "")
+    end function
+
+    @it("publishes the opening set normalized on the field")
+    function _()
+      m.checklist([2, 0, 2, 9])
+      m.assertEqual(m.dialog.checkedIndexes, [0, 2])
+    end function
+
+    @it("says each row's state after its title")
+    function _()
+      content = m.checklist([1])
+      m.assertEqual(content.getChild(0).AUDIO_GUIDE_SUFFIX, "Not checked")
+      m.assertEqual(content.getChild(1).AUDIO_GUIDE_SUFFIX, "Checked")
+    end function
+
+    ' OK reaches the dialog as the list's itemSelected.
+    @it("OK ticks a row, publishes the set and stays open")
+    function _()
+      scene = m.top.getScene()
+      content = m.checklist([0])
+      scene.appendChild(m.dialog)
+
+      m.dialog.findNode("optionList").itemSelected = 2
+      isChecked = content.getChild(2).isChecked
+      suffix = content.getChild(2).AUDIO_GUIDE_SUFFIX
+      checked = m.dialog.checkedIndexes
+      result = m.dialog.result
+      stillMounted = isValid(m.dialog.getParent())
+      scene.removeChild(m.dialog)
+
+      m.assertTrue(isChecked)
+      m.assertEqual(suffix, "Checked")
+      m.assertEqual(checked, [0, 2])
+      m.assertInvalid(result, "a tick must not resolve the dialog")
+      m.assertTrue(stillMounted, "a tick must not close the dialog")
+    end function
+
+    @it("OK on a ticked row unticks it")
+    function _()
+      scene = m.top.getScene()
+      content = m.checklist([0, 1])
+      scene.appendChild(m.dialog)
+
+      m.dialog.findNode("optionList").itemSelected = 1
+      isChecked = content.getChild(1).isChecked
+      checked = m.dialog.checkedIndexes
+      scene.removeChild(m.dialog)
+
+      m.assertFalse(isChecked)
+      m.assertEqual(checked, [0])
+    end function
+
+    ' The viewer did not choose to leave, so their ticks are not an answer.
+    @it("a close from code reports the opening set, cancelled")
+    function _()
+      scene = m.top.getScene()
+      m.checklist([0])
+      scene.appendChild(m.dialog)
+      m.dialog.findNode("optionList").itemSelected = 2
+
+      m.dialog.callFunc("cancelDialog")
+
+      m.assertTrue(m.dialog.result.cancelled)
+      m.assertTrue(m.dialog.result.externallyCancelled)
+      m.assertEqual(m.dialog.result.checkedIndexes, [0])
+      m.assertInvalid(m.dialog.getParent())
+    end function
+
+    @it("a checklist row draws its checkbox and nothing else in the gutter")
+    function _()
+      row = m.checklistRow(false)
+
+      m.assertTrue(row.findNode("checkBox").visible)
+      m.assertFalse(row.findNode("checkIcon").visible)
+      m.assertFalse(row.findNode("rowIcon").visible)
+      m.assertFalse(row.findNode("selectedBackground").visible)
+      m.assertEqual(row.findNode("checkBox").uri, m.global.constants.iconCheckbox)
+      m.assertEqual(row.findNode("checkBox").blendColor, m.themeColor(m.global.constants.colorTextPrimary))
+    end function
+
+    @it("a ticked row draws the ticked box as a toggle's on-state")
+    function _()
+      row = m.checklistRow(true)
+
+      m.assertEqual(row.findNode("checkBox").uri, m.global.constants.iconCheckboxChecked)
+      m.assertEqual(row.findNode("checkBox").blendColor, m.themeColor(m.global.constants.colorSecondary))
+    end function
+
+    ' A toggle changes a field on the content node of a row that is already drawn.
+    ' The row has no observer of its own for it: Roku runs the row's itemContent
+    ' handler on the change, and the checklist depends on that.
+    @it("a drawn row redraws when its content's isChecked changes")
+    function _()
+      row = m.checklistRow(false)
+      content = row.itemContent
+
+      content.isChecked = true
+      afterTick = row.findNode("checkBox").uri
+      content.isChecked = false
+      afterUntick = row.findNode("checkBox").uri
+
+      m.assertEqual(afterTick, m.global.constants.iconCheckboxChecked)
+      m.assertEqual(afterUntick, m.global.constants.iconCheckbox)
+    end function
+
+    ' A list reuses a row for other content as it scrolls.
+    @it("a reused row stops following the content it left")
+    function _()
+      row = m.checklistRow(false)
+      first = row.itemContent
+      second = CreateObject("roSGNode", "ContentNode")
+      second.addFields({ isCheckable: true, isChecked: false, hasGutter: true })
+      row.itemContent = second
+
+      first.isChecked = true
+
+      m.assertEqual(row.findNode("checkBox").uri, m.global.constants.iconCheckbox)
+    end function
+
+    @it("an ordinary row shows no checkbox")
+    function _()
+      row = CreateObject("roSGNode", "JRListDialogRow")
+      row.width = 800
+      row.height = 60
+      content = CreateObject("roSGNode", "ContentNode")
+      content.title = "Plain"
+      row.itemContent = content
+
+      m.assertFalse(row.findNode("checkBox").visible)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("The position line")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    private function longList(count as integer) as object
+      items = []
+      for i = 1 to count
+        items.push("track " + i.toStr())
+      end for
+      return items
+    end function
+
+    ' The line answers "is there more?", and a list seen whole has answered it.
+    @it("is hidden for a list that shows every row")
+    function _()
+      m.dialog.items = ["one", "two", "three"]
+      m.assertFalse(m.dialog.findNode("position").visible)
+    end function
+
+    @it("shows the count and lights only the lower arrowhead at the top of a long list")
+    function _()
+      m.dialog.items = m.longList(20)
+      position = m.dialog.findNode("position")
+
+      m.assertTrue(position.visible)
+      m.assertEqual(position.position, 1)
+      m.assertEqual(position.total, 20)
+      m.assertFalse(position.hasAbove)
+      m.assertTrue(position.hasBelow)
+      m.assertEqual(position.findNode("count").text, "1 of 20")
+    end function
+
+    @it("opens on the focused row's position when a later row is the default")
+    function _()
+      m.dialog.defaultIndex = 19
+      m.dialog.items = m.longList(20)
+      position = m.dialog.findNode("position")
+
+      m.assertEqual(position.position, 20)
+      m.assertTrue(position.hasAbove)
+      m.assertFalse(position.hasBelow)
+    end function
+
+    ' Geometry comes from the flow's footer slot, never from arithmetic here.
+    @it("sits in the layout's footer slot, under the list")
+    function _()
+      m.dialog.title = "Select audio"
+      m.dialog.items = m.longList(20)
+      optionList = m.dialog.findNode("optionList")
+      position = m.dialog.findNode("position")
+      listBottom = optionList.translation[1] + (optionList.numRows * LIST_ROW_HEIGHT) + ((optionList.numRows - 1) * LIST_ROW_SPACING)
+
+      m.assertEqual(position.translation[0], optionList.translation[0])
+      m.assertEqual(position.translation[1], listBottom + BODY_GAP)
+    end function
+
+    @it("is not focusable: the rows stay the only focusable thing")
+    function _()
+      m.dialog.items = m.longList(20)
+      m.assertFalse(m.dialog.findNode("position").focusable)
     end function
 
   end class

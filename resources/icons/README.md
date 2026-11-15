@@ -31,7 +31,7 @@ Pass `--filled` to `npm run icons:add` (or store an `_filled.svg` variant) only 
 | 4 | Placeholder content | Lives in `images/placeholders/` | The placeholders (`movie`, `album`, `folder` and others), as in the file pickers of Apple Finder, Google Drive and Material 3. One exception: the `livetv` placeholder reuses the outlined `liveTV.svg`. |
 | 5 | Rating glyph | Inline rating display | `star`: filled is the industry standard for ratings |
 | 6 | Playback action button | Composes the filled `play` | `resume` (an arc plus the play triangle), to match the standalone `play` |
-| 7 | Toggle on-state | Paired with an outlined off-state | `heart` (the on-state of the `ItemDetails` Favorite button), `groups` (the cluster's SyncPlay icon, filled in both states because its outlined variant differs from the filled one only by two small holes: its on-state is the glyph drawn in `colorSecondary`, as `IconButton`'s selected state is), `favorite_selected` (the on-state in the `ItemGridOptions` favorite menu: outlined geometry, marked by a hard-coded red) |
+| 7 | Toggle on-state | Paired with an outlined off-state | `heart` (the on-state of the `ItemDetails` Favorite button), `groups` (the cluster's SyncPlay icon, filled in both states because its outlined variant differs from the filled one only by two small holes: its on-state is the glyph drawn in `colorSecondary`, as `IconButton`'s selected state is), `favorite_selected` (the on-state in the `ItemGridOptions` favorite menu: outlined geometry, marked by a hard-coded red), `checkbox_checked` (a checklist row's ticked box, with the outlined `checkbox` as its off-state) |
 | 8 | Selected overhang tab | A tab's glyph is outlined while the tab is not selected and filled while it is; fill follows selection, never focus (the navigation convention, JellyRock's choice 2026-10-25) | `home` (with `home_outline`), `heart` (with `heart_outline`) |
 
 **Choosing the fill for a new icon:**
@@ -222,3 +222,7 @@ this table automatically.
 | `groups.svg` | `groups` | Rounded | 500 | 1 | `24px` | 2026-10-27 |
 | `groups_menu.svg` | `groups` | Rounded | 500 | 1 | `24px` | 2026-11-03 (a copy of `groups.svg` at the default density, for the gear's **Leave Group** row) |
 | `timer.svg` | `timer` | Rounded | 500 | 0 | `24px` | 2026-11-03 |
+| `checkbox.svg` | `check_box_outline_blank` | Rounded | 500 | 0 | `24px` | 2026-11-15 |
+| `checkbox_checked.svg` | `check_box` | Rounded | 500 | 1 | `24px` | 2026-11-15 |
+| `chevron_up.svg` | `keyboard_arrow_up` | Rounded | 500 | 0 | `24px` | 2026-11-15 |
+| `chevron_down.svg` | `keyboard_arrow_down` | Rounded | 500 | 0 | `24px` | 2026-11-15 |

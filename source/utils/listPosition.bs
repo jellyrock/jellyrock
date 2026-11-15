@@ -1,0 +1,79 @@
+' Where a viewer is in a list that hides some of its rows, as pure decisions.
+'
+' A list that scrolls shows a position line: "3 of 12" between two arrowheads, each
+' lit when rows are hidden that way. Wrapping is never signaled: an arrowhead that
+' was always on would look the same on the first row and the last.
+'
+' Roku's lists report the focused row and not which rows are on screen, so the
+' window is worked out here from the focus moves, where a spec can ask it.
+import "pkg:/source/utils/pixelGrid.bs"
+
+namespace listPosition
+  ' The line's box. LabelSecondarySmall centered in it, as the app's other list
+  ' counters are drawn (SubtitlePanel, SearchSuggestionList).
+  const LINE_HEIGHT = 36
+  ' The arrowhead's canvas (resources/icons/icons.json: chevron_up, chevron_down).
+  const CHEVRON_SIZE = 24
+  ' Between an arrowhead and the count.
+  const PART_GAP = 12
+
+  ' The first row on screen once focus lands on `focused`, for a list whose focus
+  ' moves inside a fixed window (floatingFocus): the window stays put while the
+  ' focused row is inside it, and moves the least it must when it is not.
+  '
+  ' @param {integer} firstVisible - the first row on screen before the move
+  ' @param {integer} focused - the row focus landed on
+  ' @param {integer} visibleRows - how many rows the list shows at once
+  ' @param {integer} itemCount - how many rows the list has
+  function firstVisibleAfter(firstVisible as integer, focused as integer, visibleRows as integer, itemCount as integer) as integer
+    if visibleRows < 1 or itemCount <= visibleRows then return 0
+
+    first = firstVisible
+    if focused < first then first = focused
+    if focused > first + visibleRows - 1 then first = focused - visibleRows + 1
+
+    lastFirst = itemCount - visibleRows
+    if first > lastFirst then first = lastFirst
+    if first < 0 then first = 0
+    return first
+  end function
+
+  ' What the position line shows.
+  '
+  ' @returns {object} - { isShown, position, total, hasAbove, hasBelow }. isShown is
+  '   false for a list that shows every row: the line answers "is there more?", and
+  '   a list seen whole has already answered it.
+  function describe(firstVisible as integer, focused as integer, visibleRows as integer, itemCount as integer) as object
+    position = focused + 1
+    ' A list reports -1 before it has been focused; the honest answer is the first row.
+    if position < 1 then position = 1
+    if position > itemCount then position = itemCount
+
+    isShown = visibleRows >= 1 and itemCount > visibleRows
+    return {
+      isShown: isShown,
+      position: position,
+      total: itemCount,
+      hasAbove: isShown and firstVisible > 0,
+      hasBelow: isShown and firstVisible + visibleRows < itemCount
+    }
+  end function
+
+  ' Where the three parts sit in a line `width` wide: the count centered, an
+  ' arrowhead on each side of it. All on the 3 px grid.
+  '
+  ' @param {integer} width - the line's width
+  ' @param {integer} countWidth - the count's measured text width
+  ' @returns {object} - { upX, countX, countWidth, downX, chevronY }
+  function layout(width as integer, countWidth as integer) as object
+    countWidth = snapToGrid(countWidth)
+    countX = floorToGrid(int((width - countWidth) / 2))
+    return {
+      upX: countX - PART_GAP - CHEVRON_SIZE,
+      countX: countX,
+      countWidth: countWidth,
+      downX: countX + countWidth + PART_GAP,
+      chevronY: int((LINE_HEIGHT - CHEVRON_SIZE) / 2)
+    }
+  end function
+end namespace

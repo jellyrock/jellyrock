@@ -70,3 +70,4 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0056](0056-library-tab-ids-and-layout.md) | Library tabs have JellyRock's own ids, and layout is a setting of its own (partially superseded by 0058) | Accepted | 2026-11-05 |
 | [0057](0057-page-settings-declared-by-screen.md) | Page settings are declared by a screen and presented by the scene | Accepted | 2026-11-12 |
 | [0058](0058-library-layout-saved-per-view.md) | A library's layout is saved per view (partially supersedes 0056) | Accepted | 2026-11-12 |
+| [0060](0060-ok-commits-back-leaves.md) | In a dialog, OK is the commit and Back only leaves | Accepted | 2026-11-14 |

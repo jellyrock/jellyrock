@@ -1,0 +1,43 @@
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/listPosition.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+sub init()
+  m.up = m.top.findNode("up")
+  m.countLabel = m.top.findNode("count")
+  m.down = m.top.findNode("down")
+
+  for each chevron in [m.up, m.down]
+    chevron.width = listPosition.CHEVRON_SIZE
+    chevron.height = listPosition.CHEVRON_SIZE
+    chevron.loadWidth = listPosition.CHEVRON_SIZE
+    chevron.loadHeight = listPosition.CHEVRON_SIZE
+    chevron.loadDisplayMode = "limitSize"
+  end for
+  m.countLabel.height = listPosition.LINE_HEIGHT
+
+  onEdgesChanged()
+end sub
+
+sub onPositionChanged()
+  ' The string the app's other position readouts use, so "3 of 12" means the same
+  ' thing wherever it turns up.
+  m.countLabel.text = translate(translationKeys.Message1Of2, [m.top.position.toStr(), m.top.total.toStr()])
+  ' No width on the label while it is measured, so the rect is the text's own.
+  m.countLabel.width = 0
+  parts = listPosition.layout(int(m.top.width), int(m.countLabel.localBoundingRect().width))
+
+  m.countLabel.width = parts.countWidth
+  m.countLabel.translation = [parts.countX, 0]
+  m.up.translation = [parts.upX, parts.chevronY]
+  m.down.translation = [parts.downX, parts.chevronY]
+end sub
+
+' Secondary text when rows are hidden that way, disabled text when none are: the
+' arrowhead stays in place either way, so the count does not move as focus does.
+sub onEdgesChanged()
+  constants = m.global.constants
+  m.up.blendColor = m.top.hasAbove ? constants.colorTextSecondary : constants.colorTextDisabled
+  m.down.blendColor = m.top.hasBelow ? constants.colorTextSecondary : constants.colorTextDisabled
+end sub

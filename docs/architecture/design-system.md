@@ -25,6 +25,9 @@ related-files:
   - source/utils/textMetrics.bs
   - source/utils/iconBarNav.bs
   - resources/icons/icons.json
+  - components/ui/listposition/ListPosition.bs
+  - components/ui/listposition/ListPosition.xml
+  - source/utils/listPosition.bs
 last-reviewed: 2026-11-12
 ---
 
@@ -85,6 +88,25 @@ Only a focus move slides the strip. A new set of tabs, a new screen and a change
 The rule is one pure function, `tabStrip.window` in `source/utils/tabStrip.bs`, with the peek width, the cut tab's opacity and the slide's length beside it.
 
 Left and Right walk the row as one and wrap at both ends; Down returns to the screen; Up from a screen's top enters the row at the element used last on that visit, else the first shown (the selected tab on Home, the first cluster icon elsewhere). The cluster shows on every screen once a user is signed in, except a player, which has no now-playing control to come back to; the dropdown shows on Home only. A screen's own controls stay on the screen: the search screen's query box lives in its keyboard overlay, and while the keyboard is closed the overhang shows the submitted query as dim status text after the title, as a grid's title shows "Filtered by".
+
+## A list that hides rows: the position line
+
+A list that shows only some of its rows says so with a position line (`ListPosition`): the count "3 of 12" in secondary small text, between an up and a down arrowhead. It answers the two things a clipped list leaves open: whether there is more and which way, and how many there are.
+
+| Part | Rule |
+|---|---|
+| When it shows | Only while the list hides rows. A list seen whole has already answered the question |
+| The count | The focused row and the total, in the string every position readout uses (`Message1Of2`) |
+| An arrowhead | `colorTextSecondary` when rows are hidden that way, `colorTextDisabled` when none are. It stays in place either way, so the count does not move as focus does |
+| Where it sits | Its own line beside the list, never on a title's line: a long title in another language would meet it. In a dialog it is the footer slot, under the list |
+| Size | A 36 pixel line, 24 pixel arrowheads, 12 pixels between an arrowhead and the count (`listPosition.bs`) |
+| Focus | None. It is read, never focused |
+
+**Wrapping is never signaled.** A list that wraps would light both arrowheads on every row, and a mark that never changes says nothing about where you are. The wrap is a shortcut a viewer finds by pressing, and nothing is lost by never finding it.
+
+Roku's lists report the focused row and not which rows are on screen, so `listPosition.firstVisibleAfter()` follows the window from the focus moves. It is pure and has a spec.
+
+The list dialog (`JRListDialog`) is the first to use it. The subtitle panel and the search suggestions each draw a count of their own, older than this rule; moving them onto `ListPosition` is followup `position-line-across-lists`. Home's rows show Roku's own row counter (`showRowCounter`), which is a row list's and stays. The tab strip's dimmed cut tab is the same idea for a strip with no room for a line.
 
 ## A glyph beside text, and in a button
 

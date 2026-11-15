@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-13
+last-updated: 2026-11-15
 ---
 
 # Progress
@@ -980,6 +980,14 @@ To close: give the guide a refresh of its own channel list (`Schedule` already r
 Home's Favorites tab reloads from the server on every return to Home (`Home.refresh()` calls `FavoritesRows.loadFavorites()`), even when no favorite changed. Since decision `favorite-toggles-bump-version`, every favorite toggle bumps `JRScene.favoritesVersion` through `favorites.request()`, so Home could skip the request when the counter has not moved since its last load, as `BaseGridView.favoritesStale()` does for the library grids. The win is one fewer request per return to Home while its Favorites tab is up; `FavoritesRows` already updates rows in place, so the viewer's place is kept either way.
 
 Not done with the library fix because Home works correctly today; this is a cost saving. To close: record the counter when `FavoritesRows` loads, skip `loadFavorites()` in `Home.refresh()` when it has not moved, and check that a favorite toggled from a details screen still shows on return to Home.
+
+#### Move the app's other lists onto the position line `[fid: position-line-across-lists]` `[captured 2026-11-15]`
+
+`ListPosition` (`components/ui/listposition/`, rule in `docs/architecture/design-system.md`, "A list that hides rows: the position line") is the one way a clipped list says it has more rows: "3 of 12" between two arrowheads lit by the rows hidden that way. Only `JRListDialog` uses it. Two older counters draw the count alone, each by hand: `SubtitlePanel.updateListCounter` and `SearchSuggestionList.updateCounter`. (Home's rows use Roku's own `showRowCounter`, which stays.) The Settings lists and `OverviewDialog`'s scrolling text have no cue at all.
+
+Why not now: each surface needs its own placement and a look on a device, and the piece that added the line was the list dialog's.
+
+Closes when each of those shows the position line (the overview dialog: the arrowheads without a count), or records why it does not. Also try a half row showing at the cut edge of a list as a second cue: it was set aside because nobody had tried Roku's `itemClippingRect` on a device.
 
 ### source
 

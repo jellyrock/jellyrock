@@ -356,6 +356,7 @@ Each helper creates a dialog, presents it and returns it. The answer arrives on 
 | `showChoiceDialog` | `JRDialog` when the choices fit as buttons (`choicesFitAsButtons`), else `JRListDialog` through `showListDialog` | Overlay |
 | `showStillWatchingDialog` | `JRDialog` with `anyKeyResolves`: any key answers | Overlay |
 | `showListDialog` | `JRListDialog`. An optional `icons` array puts a glyph beside each row, for action lists; pickers use that space for the check on the current choice | Overlay |
+| `showChecklistDialog` | `JRListDialog` with `multiSelect`: OK ticks a row, Back leaves, the ticks arrive as `result.checkedIndexes` ([dialogs.md](dialogs.md#6-ok-is-the-commit-and-back-only-leaves)) | Overlay |
 | `showOverflowMenu` | `JRListDialog` anchored to a button, sized to its rows, with no title ([dialogs.md](dialogs.md#presenting-and-tearing-down)) | Overlay |
 | `showInfoDialog` | `OverviewDialog` | Overlay |
 | `showReportDialog` | `OverviewDialog`, with label and value rows. Setting its `sections` again with the same row ids rewrites the values in place ([dialogs.md](dialogs.md#a-read-only-body-can-be-a-paragraph-or-rows)) | Overlay |
