@@ -1,16 +1,123 @@
-' The library grid's cells, in one place: every presenter's grid config reads these, so
-' a size is changed here and nowhere else. docs/architecture/list-grid-item-layout.md has
-' the contract a cell follows, and the measurements these came from.
-namespace libraryGrid
-  ' A portrait poster cell (movies, shows, collections, channels, photos), six to a row.
-  ' Six cells and five gaps span the header strip's width, less 6 pixels.
-  const POSTER_WIDTH = 252
-  const POSTER_HEIGHT = 378
-  const POSTER_COLUMN_GAP = 42
-  const POSTER_ROW_GAP = 69
+import "pkg:/source/utils/headerStrip.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/pixelGrid.bs"
 
-  ' A square cell (albums, artists), five to a row.
-  const SQUARE_SIZE = 323
-  const SQUARE_COLUMN_GAP = 28
-  const SQUARE_ROW_GAP = 72
+' The library grid's cells, derived in one place. A view declares a shape, the viewer
+' picks a size, and the titles setting gives a count of text lines; cell() turns those
+' into everything the grid is set with. No presenter holds a cell's pixels.
+' docs/architecture/list-grid-item-layout.md has the contract a cell follows.
+namespace libraryGrid
+
+  ' A 2:3 poster (movies, shows, collections, channels, photos).
+  const SHAPE_PORTRAIT = "portrait"
+  ' Square art (albums, artists).
+  const SHAPE_SQUARE = "square"
+
+  const SIZE_SMALL = "small"
+  const SIZE_MEDIUM = "medium"
+  const SIZE_LARGE = "large"
+
+  ' The least room between two cells. The grid's focus ring reaches 12 pixels outside a
+  ' cell and is drawn behind its neighbors, so a smaller gap would hide part of it.
+  const MIN_GAP = 15
+
+  ' Where a cell's text sits between two rows: the first line starts this far under the
+  ' poster (GridItem's TITLE_GAP), each line takes a slot, and the next row's focus ring
+  ' gets its air below the last line.
+  const TEXT_TOP_GAP = 18
+  const TEXT_LINE_HEIGHT = 33
+  const TEXT_BOTTOM_GAP = 18
+
+  ' steps: how many cells a row holds and how wide a cell is, per shape and size. These
+  ' are designed values, picked from device captures; everything else is derived from
+  ' them. A portrait width is a multiple of 6, so its 2:3 height lands on the 3 pixel
+  ' grid too.
+  function steps() as object
+    return {
+      portrait: {
+        small: { columns: 7, width: 216 },
+        medium: { columns: 6, width: 252 },
+        large: { columns: 5, width: 300 }
+      },
+      square: {
+        small: { columns: 6, width: 258 },
+        medium: { columns: 5, width: 324 },
+        large: { columns: 4, width: 405 }
+      }
+    }
+  end function
+
+  ' isSize: whether `size` is exactly one of the sizes above.
+  function isSize(size as dynamic) as boolean
+    if type(size) <> "roString" and type(size) <> "String" then return false
+    return size = libraryGrid.SIZE_SMALL or size = libraryGrid.SIZE_MEDIUM or size = libraryGrid.SIZE_LARGE
+  end function
+
+  ' cell: the grid's numbers for a shape at a size.
+  '
+  ' An unknown shape draws as a portrait and an unknown size as medium, so a value saved
+  ' by a newer build never breaks this one.
+  '
+  ' @param shape - SHAPE_PORTRAIT or SHAPE_SQUARE
+  ' @param size - SIZE_SMALL, SIZE_MEDIUM or SIZE_LARGE
+  ' @param textLines - how many lines of text a cell shows under its poster; 0 for none
+  ' @return {object} see cellFor()
+  function cell(shape as dynamic, size as dynamic, textLines as integer) as object
+    table = libraryGrid.steps()
+    shapeName = libraryGrid.SHAPE_PORTRAIT
+    if textOrEmpty(shape) = libraryGrid.SHAPE_SQUARE then shapeName = libraryGrid.SHAPE_SQUARE
+    sizeName = libraryGrid.SIZE_MEDIUM
+    if libraryGrid.isSize(size) then sizeName = size
+
+    stepFor = table[shapeName][sizeName]
+    return libraryGrid.cellFor(shapeName, stepFor.columns, stepFor.width, textLines)
+  end function
+
+  ' cellFor: the grid's numbers for `columns` cells of `width` across the header strip's
+  ' span. cell() is the door for app code; this one is separate so a bench can draw a
+  ' step before it is in the table.
+  '
+  ' The column gap is what the span leaves, floored to the 3 pixel grid, so a row may end
+  ' a few pixels short of the strip's right edge. With no text the row gap equals the
+  ' column gap; with text it holds the lines.
+  '
+  ' @return {object}
+  '   columns: integer
+  '   itemSize: [width, height] of the poster slot
+  '   rowHeights: [height], equal to the slot (a MarkupGrid frames the slot when they match)
+  '   itemSpacing: [column gap, row gap]
+  '   rowPitch: one row and its gap
+  '   imageSize: { width, height } to ask the server for
+  function cellFor(shape as string, columns as integer, width as integer, textLines as integer) as object
+    height = width
+    if shape <> libraryGrid.SHAPE_SQUARE then height = (width * 3) \ 2
+
+    columnGap = libraryGrid.MIN_GAP
+    if columns > 1 then columnGap = floorToGrid((headerStrip.WIDTH - columns * width) \ (columns - 1))
+
+    rowGap = columnGap
+    if textLines > 0
+      rowGap = libraryGrid.TEXT_TOP_GAP + textLines * libraryGrid.TEXT_LINE_HEIGHT + libraryGrid.TEXT_BOTTOM_GAP
+    end if
+
+    return {
+      columns: columns,
+      itemSize: [width, height],
+      rowHeights: [height],
+      itemSpacing: [columnGap, rowGap],
+      rowPitch: height + rowGap,
+      imageSize: { width: width, height: height }
+    }
+  end function
+
+  ' rowsFor: how many rows a grid at design y `top` shows: every row whose slot starts
+  ' above the screen's bottom edge.
+  function rowsFor(gridCell as object, top as integer) as integer
+    room = 1080 - top
+    if room <= 0 then return 1
+    showing = room \ gridCell.rowPitch
+    if room mod gridCell.rowPitch > 0 then showing++
+    return showing
+  end function
+
 end namespace

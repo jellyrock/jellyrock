@@ -13,6 +13,7 @@ import "pkg:/source/GridView/gridPaging.bs"
 import "pkg:/source/GridView/gridQuery.bs"
 import "pkg:/source/GridView/itemSummary.bs"
 import "pkg:/source/GridView/libraryFilterMenu.bs"
+import "pkg:/source/GridView/libraryGrid.bs"
 import "pkg:/source/GridView/librarySortMenu.bs"
 import "pkg:/source/GridView/libraryTab.bs"
 import "pkg:/source/GridView/LiveTVPresenter.bs"
@@ -811,7 +812,24 @@ end sub
 sub configureGrid()
   if not isValid(m.presenter) then return
 
-  config = m.presenter.getGridConfig(m.view, m.layout)
+  ' A cell shows its title under the poster, or nothing: the row gap follows
+  textLines = 0
+  if m.global.user.settings.itemGridTitles = "showalways" then textLines = 1
+
+  config = m.presenter.getGridConfig(m.view, m.layout, libraryGrid.SIZE_MEDIUM, textLines)
+
+  ' Bench hook: draw a step that is not in libraryGrid's table yet (grid-size-bench.spec.js)
+  #if ENABLE_RTA
+    benchStep = m.global.rtaGridStep
+    if isValid(benchStep) and isValid(benchStep.columns) and isValid(benchStep.width)
+      benchCell = libraryGrid.cellFor(m.presenter.getGridShape(m.view), benchStep.columns, benchStep.width, textLines)
+      config.itemSize = benchCell.itemSize
+      config.rowHeights = benchCell.rowHeights
+      config.itemSpacing = benchCell.itemSpacing
+      config.numColumns = benchCell.columns
+      config.numRows = libraryGrid.rowsFor(benchCell, config.translation[1])
+    end if
+  #end if
 
   if isValid(config.translation)
     if type(config.translation) = "roArray"

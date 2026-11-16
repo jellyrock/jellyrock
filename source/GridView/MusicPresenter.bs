@@ -86,44 +86,15 @@ class MusicPresenter extends GridPresenterBase
     return options
   end function
 
-  ' Configure grid layout and positioning for music views
-  override function getGridConfig(currentView as string, _layout as string) as object
-    viewLower = LCase(currentView)
+  ' Albums and artists are square art
+  override function getGridShape(_viewMode as string) as string
+    return libraryGrid.SHAPE_SQUARE
+  end function
 
-    if viewLower = libraryTab.ALBUMS
-      ' Albums view - square poster
-      return {
-        translation: [headerStrip.LEFT, headerStrip.CONTENT_TOP],
-        itemSize: [libraryGrid.SQUARE_SIZE, libraryGrid.SQUARE_SIZE],
-        rowHeights: [libraryGrid.SQUARE_SIZE],
-        itemSpacing: [libraryGrid.SQUARE_COLUMN_GAP, libraryGrid.SQUARE_ROW_GAP],
-        numRows: "3",
-        numColumns: "5",
-        imageDisplayMode: "scaleToFit"
-      }
-    else if viewLower = libraryTab.GENRES
-      ' Genres view - smaller posters
-      return {
-        translation: [headerStrip.LEFT, headerStrip.CONTENT_TOP],
-        itemSize: [libraryGrid.SQUARE_SIZE, libraryGrid.SQUARE_SIZE],
-        rowHeights: [libraryGrid.SQUARE_SIZE],
-        itemSpacing: [libraryGrid.SQUARE_COLUMN_GAP, libraryGrid.SQUARE_ROW_GAP],
-        numRows: "3",
-        numColumns: "5",
-        imageDisplayMode: "scaleToZoom"
-      }
-    else
-      ' Default: the artist grid (Artists or Album Artists)
-      return {
-        translation: [headerStrip.LEFT, headerStrip.CONTENT_TOP],
-        itemSize: [libraryGrid.SQUARE_SIZE, libraryGrid.SQUARE_SIZE],
-        rowHeights: [libraryGrid.SQUARE_SIZE],
-        itemSpacing: [libraryGrid.SQUARE_COLUMN_GAP, libraryGrid.SQUARE_ROW_GAP],
-        numRows: "3",
-        numColumns: "5",
-        imageDisplayMode: "scaleToZoom"
-      }
-    end if
+  ' An album's cover is drawn whole
+  override function getImageDisplayMode(viewMode as string) as string
+    if LCase(viewMode) = libraryTab.ALBUMS then return "scaleToFit"
+    return "scaleToZoom"
   end function
 
   ' Configure load task with music-specific parameters

@@ -163,26 +163,42 @@ class GridPresenterBase
   ' Grid Configuration
   ' ============================================================================
 
-  ' Returns grid layout configuration for the specified view mode
+  ' The shape of the cells a view draws, a libraryGrid shape. Override for square art.
+  function getGridShape(_viewMode as string) as string
+    return libraryGrid.SHAPE_PORTRAIT
+  end function
+
+  ' How a cell's image fills it: "scaleToZoom" fills and crops, "scaleToFit" draws it whole.
+  function getImageDisplayMode(_viewMode as string) as string
+    return "scaleToZoom"
+  end function
+
+  ' The design y the grid starts at. Override where a layout puts something above it.
+  function getGridTop(_viewMode as string, _layout as string) as integer
+    return headerStrip.CONTENT_TOP
+  end function
+
+  ' The grid's settings for a view: its cell from libraryGrid.cell(), placed at
+  ' getGridTop(). A presenter declares the shape, the image mode and the top, and never
+  ' a cell's pixels, so this is not overridden.
   ' @param {string} viewMode - Current view, a libraryTab id
   ' @param {string} layout - Current layout, a libraryLayout value
-  ' @return {object} Grid config with properties:
-  '   - translation: [x, y] grid position
-  '   - itemSize: [width, height] size of each grid cell
-  '   - itemSpacing: [column gap, row gap] between cells
-  '   - rowHeights: [height] array of row heights
-  '   - numRows: string number of visible rows
-  '   - numColumns: string number of columns
-  '   - imageDisplayMode: "scaleToZoom" | "scaleToFit"
-  function getGridConfig(_viewMode as string, _layout as string) as object
+  ' @param {string} size - The viewer's size for the view, a libraryGrid size
+  ' @param {integer} textLines - Lines of text a cell shows under its poster
+  ' @return {object} translation, itemSize, itemSpacing, rowHeights, numRows, numColumns,
+  '   imageDisplayMode and imageSize ({ width, height } to ask the server for)
+  function getGridConfig(viewMode as string, layout as string, size as string, textLines as integer) as object
+    gridCell = libraryGrid.cell(m.getGridShape(viewMode), size, textLines)
+    top = m.getGridTop(viewMode, layout)
     return {
-      translation: [headerStrip.LEFT, headerStrip.CONTENT_TOP],
-      itemSize: [libraryGrid.POSTER_WIDTH, libraryGrid.POSTER_HEIGHT],
-      rowHeights: [libraryGrid.POSTER_HEIGHT],
-      itemSpacing: [libraryGrid.POSTER_COLUMN_GAP, libraryGrid.POSTER_ROW_GAP],
-      numRows: "4",
-      numColumns: "6",
-      imageDisplayMode: "scaleToZoom"
+      translation: [headerStrip.LEFT, top],
+      itemSize: gridCell.itemSize,
+      rowHeights: gridCell.rowHeights,
+      itemSpacing: gridCell.itemSpacing,
+      numRows: libraryGrid.rowsFor(gridCell, top),
+      numColumns: gridCell.columns,
+      imageDisplayMode: m.getImageDisplayMode(viewMode),
+      imageSize: gridCell.imageSize
     }
   end function
 
