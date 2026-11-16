@@ -1058,6 +1058,18 @@ One answer to weigh: label the first tab with the library's own name.
 
 Why not now: it changes what a tab is called on every tabbed library, and needs its own captures and a rule for a long name in the tab strip. Closes when a tabbed library shows its name, or the gap is recorded as intended.
 
+#### Grid with details is offered only on a movie library's Movies tab `[fid: grid-with-details-beyond-movies]` `[captured 2026-11-16]`
+
+Grid with details (the presentation layout) is offered only on a movie library's Movies tab, so a layout only movies get reads as unfinished. Offer it on Shows, Collections and Favorites. Each needs the fields its page asks the server for (each presenter's `configureLoadTask()`) and a look at what its details panel shows. Deferred by piece 10 of the library redesign (ADR 0061): it is a pull request of its own after the redesign lands on `main`.
+
+#### Library grids have no List layout `[fid: library-list-layout]` `[captured 2026-11-16]`
+
+Add the third kind of library layout, List: a cell with the poster, the title, facts and the overview beside it, where Items per row sets the column count (one wide row per line at the largest, two columns in the middle; whether it goes to three is a bench call). It needs an overview on every page of items, so measure the page cost first (`docs/dev/measuring-performance.md`). ADR 0061 reserves the stored id `list`. Deferred by piece 10 of the library redesign: its own pull request after the redesign lands on `main`.
+
+#### Home video and music video libraries draw portrait cells where Home draws them wide `[fid: wide-cells-home-and-music-videos]` `[captured 2026-11-16]`
+
+Home video and music video libraries draw portrait cells in the library grid, while Home's Latest rows draw the same items wide (`latestRows.slotSizeFor`), so a library looks different on Home and when opened (read from the code, not seen on a device). Add a wide shape to `libraryGrid` (one row of widths, one shared rule for which libraries get it). Capture a real home video library first. Deferred by piece 10 of the library redesign: its own pull request after the redesign lands on `main`.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
