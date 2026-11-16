@@ -36,7 +36,7 @@ const TEXT_ROW_GAP = 18 + 33 + 18;
 const floorToGrid = (n) => n - (n % 3);
 
 // [columns, width]: the plan's candidate for each count, then tighter ones down to the
-// 15 pixel floor the focus ring allows
+// 18 pixel floor (libraryGrid.MIN_GAP)
 const PORTRAIT = [
   [5, 300],
   [5, 312],
@@ -44,7 +44,6 @@ const PORTRAIT = [
   [6, 264],
   [7, 216],
   [7, 228],
-  [7, 234],
   [8, 192],
   [8, 198],
   [9, 168],

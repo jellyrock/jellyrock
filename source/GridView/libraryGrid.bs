@@ -18,8 +18,9 @@ namespace libraryGrid
   const SIZE_LARGE = "large"
 
   ' The least room between two cells. The grid's focus ring reaches 12 pixels outside a
-  ' cell and is drawn behind its neighbors, so a smaller gap would hide part of it.
-  const MIN_GAP = 15
+  ' cell and is drawn behind its neighbors; 18 leaves the ring the same 6 pixels of air
+  ' outside it as it has inside.
+  const MIN_GAP = 18
 
   ' Where a cell's text sits between two rows: the first line starts this far under the
   ' poster (GridItem's TITLE_GAP), each line takes a slot, and the next row's focus ring
