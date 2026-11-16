@@ -151,6 +151,9 @@ function connectAndPump(url as string) as boolean
         handleFrame(event.data)
       else if event.id = "on_open"
         m.log.info("socket open")
+        ' An open after the first is a reconnect: frames sent while the socket was down are lost,
+        ' so SyncPlay is told and asks the server where it stands (one write, per reconnect).
+        if m.socketHasOpened then tellSyncPlaySocketReopened()
         m.socketHasOpened = true
         setChannelStatus(serverCapabilities.STATUS_AVAILABLE)
         sessionTimer = CreateObject("roTimespan")
@@ -256,6 +259,12 @@ sub sendSyncPlayFrame(command as object)
     return
   end if
   m.syncPlayManager.frames = syncPlayInbox.push(m.syncPlayOutbox, command, now.AsSeconds(), now.GetMilliseconds())
+end sub
+
+' Tell the SyncPlay manager the session socket opened again (its `socketReopened` field).
+sub tellSyncPlaySocketReopened()
+  manager = m.global.syncPlayManager
+  if isValid(manager) then manager.socketReopened = true
 end sub
 
 ' Drop the client and its socket. This only runs after the connection is already terminal, so no

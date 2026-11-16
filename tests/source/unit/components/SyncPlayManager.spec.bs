@@ -105,6 +105,21 @@ namespace tests
       m.assertEqual(m.manager.groupState, "Playing")
     end function
 
+    @it("a session socket that reopens asks the server only while in a group")
+    function _()
+      m.manager.socketReopened = true
+      m.assertEqual(m.manager.sync.socketReopens, 0)
+      m.joinGroup()
+      m.manager.socketReopened = true
+      m.assertEqual(m.manager.sync.socketReopens, 1)
+      ' Each reopen is one ask: the field notifies on every write.
+      m.manager.socketReopened = true
+      m.assertEqual(m.manager.sync.socketReopens, 2)
+      syncPlayFrames.send(m.manager, m.update("GroupLeft", invalid))
+      m.manager.socketReopened = true
+      m.assertEqual(m.manager.sync.socketReopens, 2)
+    end function
+
     @it("GroupLeft and NotInGroup return to the fresh state")
     function _()
       m.joinGroup()

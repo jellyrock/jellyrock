@@ -15,6 +15,11 @@
          or lost costs nothing: the next write or inboxTimer carries the frame. -->
     <field id="frames" type="assocarray" alwaysNotify="true" onChange="onFrames" />
 
+    <!-- The receiver task writes true each time the session socket opens again after a drop
+         (RemoteControlTask.tellSyncPlaySocketReopened). In a group, the manager then asks the
+         server whether the membership still stands. -->
+    <field id="socketReopened" type="boolean" alwaysNotify="true" onChange="onSocketReopened" />
+
     <!-- Published state, written together once per change. The player and the host read
          `following`; the group menu (phase D) and an ODC spec read the rest. -->
     <field id="inGroup" type="boolean" value="false" />
@@ -30,7 +35,7 @@
     <!-- { offsetMs, delayMs, hasEstimate, lastCommand, trackerPhase, playingItemId, playingItemIndex,
          playlistCount, loadNotice, playbackDiffMs (how far behind the group this member sits, ms, invalid
          unless the node plays with a measured position and the group plays; refreshed after every event in RTA builds only, otherwise whenever something else publishes), extraOffsetMs (the
-         viewer's time offset setting), loadCount (the loads performed for queue frames, a monotonic count), correctionsDone (the corrections of this member's own that ended, a monotonic count), groupSeeks (the Seek commands the group sent while this member followed, a monotonic count), readiesSent (the Ready reports this member sent, a monotonic count), framesRescued (the frames that did not arrive with their own notification, a monotonic count), repeatMode and shuffleMode (the group's, in the server's words,
+         viewer's time offset setting), loadCount (the loads performed for queue frames, a monotonic count), correctionsDone (the corrections of this member's own that ended, a monotonic count), groupSeeks (the Seek commands the group sent while this member followed, a monotonic count), readiesSent (the Ready reports this member sent, a monotonic count), framesRescued (the frames that did not arrive with their own notification, a monotonic count), socketReopens (the times a reopened socket found this member in a group and it asked the server, a monotonic count), repeatMode and shuffleMode (the group's, in the server's words,
          from the last queue update) } -->
     <field id="sync" type="assocarray" />
     <!-- Something the viewer is told: { kind, groupName, userName }; a confirmPlay notice also

@@ -18,7 +18,7 @@ related-files:
   - components/home/Home.bs
   - scripts/lint/socket-auth-binding-check.js
   - docs/architecture/remote-control-longpoll-contract.md
-last-reviewed: 2026-11-15
+last-reviewed: 2026-11-16
 ---
 
 # Remote control: cast to JellyRock
@@ -85,6 +85,7 @@ Cast commands keep the one-field road: they rarely arrive back to back, and thei
 
 The client once ran in a Task of its own and handed each message to the receiver through a node field the receiver waited on. Twice in a 2,000-step SyncPlay soak (2026-11-15, Streaming Stick 4K) a frame was held before the receiver had it and released when the next frame arrived, about 17 seconds later; the same kind of hand-off, one hop further on, had held frames before (see Threading above). With the client on the receiver's thread there is no hand-off left, one thread fewer, and no socket thread to release (the #728 leak class no longer applies here). Decision `syncplay-socket-runs-in-receiver` records it.
 
+- **A reconnect is told to SyncPlay.** Every `on_open` after the first in a receiver run writes the manager's `socketReopened` field (`RemoteControlTask.tellSyncPlaySocketReopened`). Frames the server sent while the socket was down are lost, and `remoteChannelStatus` does not change on a quick reconnect, so the manager is told directly and asks the server whether its group still stands (`SyncPlayManager.onSocketReopened`).
 - **The end of a connection** is `on_close` or `on_error`, with `ready_state = CLOSED` as a backstop for a socket that opened (`isTerminalSocketEvent`). Every `_close()` path in the client posts one of the first two today, and nothing enforces that.
 - **`closeSocket()`** drops the client and closes its TCP socket (`release()`). It sends no close frame: on every path that reaches it the client has already left `OPEN`. The teardown is abrupt by design ([`remotecontrol-socket-abrupt-teardown`](tech-debt.md#remotecontrol-socket-abrupt-teardown)).
 

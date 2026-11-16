@@ -132,6 +132,10 @@ sub ensureReady()
   ' Times the comparison recovered a seek stuck at a full buffer (the recovery seek, and the reload
   ' when that sticks too), for the specs: the player's fault, counted so a soak can report it.
   m.stuckSeeks = 0
+  ' Times a reopened session socket found this member in a group (onSocketReopened), for the specs.
+  m.socketReopens = 0
+  ' A reopened socket's burst has not reached the server yet (onTimeSyncResults).
+  m.reopenUnanswered = false
   ' How long the last pause took to stop the node, for the specs (playerFact).
   m.pauseLandedMs = 0&
   ' What the comparison works from: the player and group models (syncPlayConverge.newComparison).
@@ -899,13 +903,18 @@ sub onTimeSyncResults(event as object)
   end if
   m.log.info("time sync", "rounds", added, "offsetMs", m.estimator.offsetMs.toStr(), "delayMs", m.estimator.delayMs.toStr())
   if not m.state.inGroup then return
-  if m.estimator.hasEstimate
+  ' A reopened socket's question is answered once a round reaches the server. A server that is
+  ' still starting refuses the rounds and the Ping alike, so until then the burst is paced as
+  ' one with no estimate (soon, then backing off) and no Ping is sent.
+  if added > 0 then m.reopenUnanswered = false
+  isSettled = m.estimator.hasEstimate and not m.reopenUnanswered
+  if isSettled
     m.failedBursts = 0
     post("Ping", syncPlayRequests.ping(m.estimator.delayMs \ 2))
   else
     m.failedBursts++
   end if
-  m.syncTimer.duration = syncPlayOffset.nextBurstSeconds(m.estimator.hasEstimate, m.failedBursts)
+  m.syncTimer.duration = syncPlayOffset.nextBurstSeconds(isSettled, m.failedBursts)
   m.syncTimer.control = "start"
   ' A new estimate moves every time the comparison placed on the device clock.
   converge()
@@ -915,6 +924,21 @@ end sub
 sub onSyncTimer()
   ensureReady()
   if m.state.inGroup then startTimeSync(SYNC_ROUNDS)
+end sub
+
+' The session socket opened again after a drop. Whatever the server sent meanwhile is lost, a
+' GroupLeft among it, and a server that restarted holds no group at all. So a member asks at
+' once instead of at its next timed sync: the burst ends with a Ping (onTimeSyncResults), which
+' a server that no longer holds the membership answers with NotInGroup.
+sub onSocketReopened()
+  ensureReady()
+  if not m.state.inGroup then return
+  m.socketReopens++
+  m.reopenUnanswered = true
+  m.failedBursts = 0
+  m.log.info("session socket reopened in a group: syncing the clock and pinging", "groupId", m.state.groupId)
+  startTimeSync(SYNC_ROUNDS)
+  publish()
 end sub
 
 ' --- helpers ---
@@ -1035,6 +1059,7 @@ sub leaveLocally()
   m.timeSyncTask = releaseTask(m.timeSyncTask, "results")
   m.state = syncPlayState.newState()
   syncPlayOffset.reset(m.estimator)
+  m.reopenUnanswered = false
   m.lastCommand = invalid
   m.owedLoad = invalid
   m.expectingRemount = false
@@ -1095,6 +1120,7 @@ sub publish()
       readiesSent: m.readiesSent,
       unreachableNotices: m.unreachableNotices,
       stuckSeeks: m.stuckSeeks,
+      socketReopens: m.socketReopens,
       pauseLandedMs: m.pauseLandedMs,
       framesRescued: m.framesRescued,
       resumeLagMs: resumeLagForSpecs("resumeLagMs"),
