@@ -113,7 +113,7 @@ Left and Right walk the chips and stop at the ends. Down returns to the content.
 
 ### The letter rail: the one thing in the margin
 
-Everything a viewer needs is inside the 5% zone. A shortcut may use the margin, and the letter rail is the one that does: it stays at x 52 with its full alphabet. Every jump it offers is a scroll away, so a viewer whose TV clips it loses nothing they cannot do. The second row's titles in a library grid also draw in the bottom margin, since the strip names the focused item inside the zone ([list-grid-item-layout.md](list-grid-item-layout.md#the-library-grids-cells)).
+Everything a viewer needs is inside the 5% zone. A shortcut may use the margin, and the letter rail is the one that does: it stays at x 52 with its full alphabet. The rail is a filter, not a jump: a press narrows the tab to names starting with that letter, under any sort. A TV that clips the margin loses that filter, because nothing inside the zone offers the letters. This gap is accepted: the rail has been at the left edge since the library grid existed. The second row's titles in a library grid also draw in the bottom margin, since the strip names the focused item inside the zone ([list-grid-item-layout.md](list-grid-item-layout.md#the-library-grids-cells)).
 
 ## A list that hides rows: the position line
 
