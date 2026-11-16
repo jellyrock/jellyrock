@@ -1840,7 +1840,8 @@ function columnsEntry() as object
 end function
 
 ' The titles entry: the app-wide Item Titles setting, offered here because a pick shows on
-' this grid at once. Its list says it applies to every library.
+' this grid at once. Its list says it applies to every library, and its options are the
+' Settings screen's own words in its order, so the setting reads one way in both places.
 function titlesEntry() as object
   title = translate(translationKeys.LabelItemTitles)
   selected = "false"
@@ -1850,8 +1851,8 @@ function titlesEntry() as object
     title: title,
     pickerTitle: translate(translationKeys.LabelAppliesToAllLibraries, [title]),
     options: [
-      { id: "true", title: translate(translationKeys.LabelTitlesShown) },
-      { id: "false", title: translate(translationKeys.LabelTitlesHidden) }
+      { id: "false", title: translate(translationKeys.LabelDisabled) },
+      { id: "true", title: translate(translationKeys.LabelEnabled) }
     ],
     selected: selected
   }

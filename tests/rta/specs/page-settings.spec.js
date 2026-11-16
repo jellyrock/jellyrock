@@ -107,7 +107,7 @@ it('the gear on a movie library opens a menu under it: its page entries, then Al
   expect(await dialogRows(), 'each entry with its value, then All settings').toEqual([
     'Layout (Grid)',
     'Items per row (7)',
-    'Item Titles (Shown)',
+    'Item Titles (Enabled)',
     'Default tab (Movies)',
     'All settings',
   ]);
@@ -136,11 +136,11 @@ it('Layout lists the layouts, Back returns to the menu, and a pick redraws the t
   await waitPageMenu();
   await press(ecp.Key.Ok);
   // The picker replaces the menu: wait for its own rows, not for any list.
-  await waitFor('#optionList.content.0.title', (t) => t === 'Presentation', {
+  await waitFor('#optionList.content.0.title', (t) => t === 'Grid with details', {
     label: 'the Layout list',
     timeout: 10000,
   });
-  expect(await dialogRows()).toEqual(['Presentation', 'Grid']);
+  expect(await dialogRows()).toEqual(['Grid with details', 'Grid']);
   expect(await getVal('#optionList.content.1.isSelected'), 'the layout in force is marked').toBe(
     true,
   );
@@ -161,7 +161,7 @@ it('Layout lists the layouts, Back returns to the menu, and a pick redraws the t
   });
 
   await press(ecp.Key.Ok);
-  await waitFor('#optionList.content.0.title', (t) => t === 'Presentation', {
+  await waitFor('#optionList.content.0.title', (t) => t === 'Grid with details', {
     label: 'the Layout list again',
     timeout: 10000,
   });
@@ -203,7 +203,7 @@ it('Layout lists the layouts, Back returns to the menu, and a pick redraws the t
   await focusGear('the movie grid');
   await press(ecp.Key.Ok);
   await waitPageMenu();
-  expect((await dialogRows())[0]).toBe('Layout (Presentation)');
+  expect((await dialogRows())[0]).toBe('Layout (Grid with details)');
   await press(ecp.Key.Back);
   await waitDialogClosed('Back closed the menu');
 });
@@ -288,16 +288,21 @@ it('Item Titles from the menu hides the titles at once and is the app-wide setti
     });
   }
   await press(ecp.Key.Ok);
-  await waitFor('#optionList.content.0.title', (t) => t === 'Shown', {
+  await waitFor('#optionList.content.0.title', (t) => t === 'Disabled', {
     label: 'the Item Titles list',
     timeout: 10000,
   });
   expect(await getVal('#jrDialog.title'), 'the list says how far the setting reaches').toBe(
     'Item Titles (all libraries)',
   );
-  await press(ecp.Key.Down);
+  // The list opens on Enabled, the value in force, and lists the Settings screen's words
   await waitFor('#optionList.itemFocused', (n) => n === 1, {
-    label: 'Hidden focused',
+    label: 'Enabled focused',
+    timeout: 8000,
+  });
+  await press(ecp.Key.Up);
+  await waitFor('#optionList.itemFocused', (n) => n === 0, {
+    label: 'Disabled focused',
     timeout: 8000,
   });
   await press(ecp.Key.Ok);
@@ -412,15 +417,15 @@ it('a pick from the page menu redraws the grid in place: same item, same items, 
   await expectTitles('nine to a row', true);
 
   // A cell the grid keeps on its item gets no new bind: it has to follow the setting itself
-  await pickFromStar('titles hidden', 2, 'Shown', 1);
+  await pickFromStar('titles hidden', 2, 'Disabled', 0);
   await expectKept('titles hidden', 9);
   await expectTitles('titles hidden', false);
 
-  await pickFromStar('the presentation layout', 0, 'Presentation', 0);
+  await pickFromStar('the presentation layout', 0, 'Grid with details', 0);
   await expectKept('the presentation layout', 9);
   expect(await getVal('#presentationInfo.visible'), 'the panel shows').toBe(true);
 
-  await pickFromStar('the grid layout', 0, 'Presentation', 1);
+  await pickFromStar('the grid layout', 0, 'Grid with details', 1);
   await expectKept('the grid layout', 9);
   expect(await getVal('#presentationInfo.visible'), 'the panel is gone').toBe(false);
 
@@ -468,7 +473,7 @@ it('a layout whose grid starts lower offers only the counts that fit', async (te
   expect(await dialogRows()).toEqual(['5', '6', '7', '8', '9', '10', '11']);
   expect((await movieDisplaySettings()).columns_movies, 'the saved count is left alone').toBe('3');
   await press(ecp.Key.Back);
-  await waitFor('#optionList.content.0.title', (t) => t === 'Layout (Presentation)', {
+  await waitFor('#optionList.content.0.title', (t) => t === 'Layout (Grid with details)', {
     label: 'the menu again',
     timeout: 10000,
   });
@@ -485,7 +490,7 @@ it('picking the layout already in force closes the list and changes nothing', as
   await press(ecp.Key.Ok);
   await waitPageMenu();
   await press(ecp.Key.Ok);
-  await waitFor('#optionList.content.0.title', (t) => t === 'Presentation', {
+  await waitFor('#optionList.content.0.title', (t) => t === 'Grid with details', {
     label: 'the Layout list',
     timeout: 10000,
   });
@@ -563,7 +568,7 @@ it('a layout change keeps the letter picked on the letter rail', async (testCtx)
   await press(ecp.Key.Ok);
   await waitPageMenu();
   await press(ecp.Key.Ok);
-  await waitFor('#optionList.content.0.title', (t) => t === 'Presentation', {
+  await waitFor('#optionList.content.0.title', (t) => t === 'Grid with details', {
     label: 'the Layout list',
     timeout: 10000,
   });

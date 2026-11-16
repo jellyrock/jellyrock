@@ -253,7 +253,7 @@ namespace libraryLayout
   ' title: a layout's own name, for the Layout page setting; "" for one this build lacks.
   function title(layout as dynamic) as string
     if not libraryLayout.isKnown(layout) then return ""
-    if layout = libraryLayout.PRESENTATION then return translate(translationKeys.LabelLayoutPresentation)
+    if layout = libraryLayout.PRESENTATION then return translate(translationKeys.LabelLayoutGridWithDetails)
     return translate(translationKeys.LabelLayoutGrid)
   end function
 
