@@ -20,6 +20,7 @@ import { afterAll, beforeAll, it, expect } from 'vitest';
 import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import {
+  appSession,
   authenticate,
   authenticateForPush,
   commandChannelAvailable,
@@ -226,6 +227,86 @@ it("after the group's unpause this member settles within the correction threshol
       read: getGlobalVal,
       timeout: 20000,
       label: "this member's drift from the group inside the correction thresholds",
+    },
+  );
+});
+
+// Longer than the player's 10 s report while paused and its read-back (`playbackCheckIn`), and
+// than the window the frozen-position check and the buffer check judge a still position over.
+const HELD_PAUSE_MS = 25000;
+// By this long into the pause the pause report has gone out and one paused check-in has passed.
+const SERVER_PAUSED_BY_MS = 12000;
+
+it("a group pause held past the paused check-in stays paused on the node and on the server's session, and the Unpause plays on in step", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const deviceId = await getGlobalVal('device.serverDeviceName');
+  await syncPlay(member, 'Pause');
+  await waitFor('state', (s) => s === 'paused', {
+    read: playerState,
+    timeout: 10000,
+    label: "the node paused on the group's pause",
+  });
+  const pausedAt = await playerPosition();
+  expect(typeof pausedAt, 'a position was read at the pause').toBe('number');
+
+  // Not a wait: every sample over the window has to show the pause still held. A playback
+  // watchdog that took the still position for a stall would stop or reload the stream, and a
+  // lost pause report would leave the server's session playing.
+  const samples = [];
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < HELD_PAUSE_MS) {
+    const roku = await appSession(member, deviceId);
+    samples.push({
+      atMs: Date.now() - startedAt,
+      state: await playerState(),
+      position: await playerPosition(),
+      following: await getGlobalVal('syncPlayManager.following'),
+      serverPaused: roku.PlayState?.IsPaused,
+      serverItem: roku.NowPlayingItem?.Id,
+    });
+    await sleep(1000);
+  }
+  const late = samples.filter((s) => s.atMs >= SERVER_PAUSED_BY_MS);
+  expect(late.length, 'samples were taken after the paused check-in').toBeGreaterThanOrEqual(5);
+  expect(
+    samples.filter((s) => s.state !== 'paused'),
+    'the node stays paused for the whole pause',
+  ).toEqual([]);
+  expect(
+    samples.filter((s) => typeof s.position !== 'number' || Math.abs(s.position - pausedAt) > 0.5),
+    'the node stays where the pause left it',
+  ).toEqual([]);
+  expect(
+    samples.filter((s) => s.following !== true),
+    'this member follows the group for the whole pause',
+  ).toEqual([]);
+  expect(
+    late.filter((s) => s.serverPaused !== true || s.serverItem !== heroId),
+    "the server's session shows this item paused once the check-in has passed",
+  ).toEqual([]);
+
+  await syncPlay(member, 'Unpause');
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 15000,
+    label: "the node playing on the group's unpause after the held pause",
+  });
+  await waitFor('#osd.visible', (v) => v === false, {
+    read: osdVisible,
+    timeout: 10000,
+    label: 'the OSD down again after the held pause',
+  });
+  await waitFor(
+    'syncPlayManager.sync.playbackDiffMs',
+    (v) => typeof v === 'number' && v >= -150 && v <= 400,
+    {
+      read: getGlobalVal,
+      timeout: 20000,
+      label:
+        "this member's drift from the group inside the correction thresholds after the held pause",
     },
   );
 });

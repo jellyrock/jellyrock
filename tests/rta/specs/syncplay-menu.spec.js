@@ -953,7 +953,7 @@ it("a cast while the halted member's confirm is up asks about the cast instead, 
   );
 });
 
-it('a cast while halted follows the group again, and a cast over its player ends the start it opened', async (testCtx) => {
+it("a cast while halted asks first, and Cancel leaves the cast's details screen with the remote; confirmed, it follows the group again, and a cast over its player ends the start it opened", async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(
       'the server has no command channel to this Roku (https without the companion plugin)',
@@ -965,6 +965,38 @@ it('a cast while halted follows the group again, and a cast over its player ends
   expect(await getGlobalVal('syncPlayManager.following'), 'halted by its Back').toBe(false);
   const [first, second] = await moviesOtherThanHero(2);
   const roku = await appSession(member, await getGlobalVal('device.serverDeviceName'));
+
+  // Cancelled first, from Home: the cast plays nothing and the group's playback stands. A cast
+  // opens its video's details screen on the way to the player (`JRScene.onDeepLinkResolved`), so
+  // that screen is what the question is asked over and what keeps the remote, one Back from Home.
+  await backOutToHome();
+  await waitHome();
+  await playOnSession(member, roku.Id, [first]);
+  await waitFor('#jrDialog.id', (v) => v === 'jrDialog', {
+    timeout: 20000,
+    label: "the confirm dialog for a halted member's cast over Home",
+  });
+  await press(ecp.Key.Ok);
+  await waitDialogClosed('the cast confirm closed by Cancel', { timeout: 10000 });
+  await waitFocusInside('#buttons', {
+    label: "the focus on the cast's details buttons after the cancelled cast",
+    timeout: 10000,
+    interval: 250,
+  });
+  expect(await getActiveVal('subtype()'), "on the cast's details screen, no player opened").toBe(
+    'ItemDetails',
+  );
+  expect(await getGlobalVal('syncPlayManager.following'), 'still halted').toBe(false);
+  expect(await getGlobalVal('syncPlayManager.playHeld'), 'nothing held').toBe(false);
+  await waitFor('#appWaitHost.openWaits', (v) => v && Object.keys(v).length === 0, {
+    read: getVal,
+    timeout: 10000,
+    label: 'no start left open after the cancelled cast',
+  });
+  await press(ecp.Key.Back);
+  await waitFocusInHomeContent({
+    label: "Home, one Back from the cancelled cast's details screen",
+  });
 
   // Halted: the cast is held for the viewer's confirmation, as any halted member's play is, since
   // it replaces what the whole group is watching. Confirmed, it follows the group again and goes
