@@ -24,7 +24,7 @@ related-files:
   - source/utils/dialogNarration.bs
   - source/utils/buttonOverflow.bs
   - scripts/bsc-plugins/no-hand-rolled-dialog.cjs
-last-reviewed: 2026-11-14
+last-reviewed: 2026-11-15
 ---
 
 # The dialog family
@@ -33,7 +33,7 @@ JellyRock's overlay dialogs (alerts, confirms, choices, pickers, long read-only 
 
 For how to show a dialog from a component, the short version is in [`components/CLAUDE.md`](../../components/CLAUDE.md). This doc is the full contract and the reasons behind it.
 
-Two modal surfaces are still outside the family: `ItemGridOptions`, tracked as [`itemgridoptions-hand-rolled-dialog`](tech-debt.md#itemgridoptions-hand-rolled-dialog), and the subtitle search panel (`SubtitlePanel`), which has its own layout and focus model. The `no-hand-rolled-dialog` build rule stops new ones.
+One modal surface is still outside the family: the subtitle search panel (`SubtitlePanel`), which has its own layout and focus model. The `no-hand-rolled-dialog` build rule stops new ones. The library's options panel was the other until the header strip replaced it: its Sort and Filter are family dialogs now, opened from the strip's chips.
 
 ## Why this is a standard, not a style guide
 
@@ -175,7 +175,7 @@ The checklist (`showChecklistDialog`, `JRListDialog` with `multiSelect`) is wher
 - **A close from code reports the ticks as they stand.** `cancelDialog` (a covered screen, a replacement) delivers the same set Back would, as a cancel with `externallyCancelled`, so the result never disagrees with the live field. A handler that acts declines it, as for every dialog.
 - **An action over the ticked rows asks first.** A "delete these" opens `showConfirmDialog` from the checklist's result handler (the hand-off [below](#presenting-and-tearing-down)). The deliberate second press belongs on the confirm, never on an Apply row.
 
-Why not Apply and Cancel buttons: they break decision 5, and a list that wraps both ways cannot reach a footer without giving the wrap up, which is the bug `dialogKeys.bs` records. Why not an Apply row at the end of the list: Back would then discard ticks, the most common exit losing work, and in a long list the row sits off screen. The panel this replaces (`ItemGridOptions`) and the web client's filter dialog both apply a tick as it is made.
+Why not Apply and Cancel buttons: they break decision 5, and a list that wraps both ways cannot reach a footer without giving the wrap up, which is the bug `dialogKeys.bs` records. Why not an Apply row at the end of the list: Back would then discard ticks, the most common exit losing work, and in a long list the row sits off screen. The library's old options panel, which this replaced, and the web client's filter dialog both applied a tick as it was made.
 
 ## Key models
 
@@ -221,7 +221,7 @@ The helpers and the result contract are in [`navigation.md`](./navigation.md#the
 
 Code that only asks whether an overlay dialog is open imports `source/utils/overlayDialog.bs`, which holds `openOverlayDialog`, `isOverlayDialogOpen` and the shared overlay id, not `dialogs.bs`. `JRScreen` is the base of every screen, so importing the helpers there would put them and their layout code in every screen's scope.
 
-`showOverflowMenu` looks like a new surface and is not. It presents the same `JRListDialog` (same chrome, key model, result contract and specs) with three presentation fields set: `anchor`, `sizeToContent` and `titleVisible = false`. Use it for a menu hanging off a button (**More**, the playback-settings gear on the player, or the overhang's settings icon on a screen with page settings), and `showListDialog` for everything else. Its optional `defaultIndex` is `JRListDialog`'s own field, for a menu reopened on the row the user left it from. If you need a fourth difference, add a field to `JRListDialog`, not a second component. `showChecklistDialog` is the same move in another direction: `multiSelect` and `checkedIndexes` are fields on `JRListDialog`, not a checklist component.
+`showOverflowMenu` looks like a new surface and is not. It presents the same `JRListDialog` (same chrome, key model, result contract and specs) with three presentation fields set: `anchor`, `sizeToContent` and `titleVisible = false`. Use it for a menu hanging off a button (**More**, the playback-settings gear on the player, or the overhang's settings icon on a screen with page settings), and `showListDialog` for everything else. Its optional `defaultIndex` is `JRListDialog`'s own field, for a menu reopened on the row the user left it from. Its optional `selectedIndex` makes the menu a picker: the row of the option in force takes the check, as in `showListDialog`. A library's Sort chip is the picker, since its menu hangs off the chip that names the sort; a menu of actions leaves it out, because no row is current. If you need a fourth difference, add a field to `JRListDialog`, not a second component. `showChecklistDialog` is the same move in another direction: `multiSelect` and `checkedIndexes` are fields on `JRListDialog`, not a checklist component.
 
 The keyboard (`JRKeyboardDialog`) is Roku's `StandardKeyboardDialog`, themed through `RSGPalette`. It returns the family's result shape but uses Roku's modal channel, not the family's chrome, layout or narration.
 

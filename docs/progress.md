@@ -474,10 +474,6 @@ It runs `m.view.unobserveField("state")` before `m.view.control = "stop"`, and [
 
 (#750). Jellyfin's `SubtitleManager.SearchSubtitles(Video, …)` returns an empty list unless `video.VideoType` is `VideoFile` — so an ISO image or DVD / Blu-ray folder always gets "no subtitles found" — read at the `v10.7.0`, `v10.7.7`, `v10.8.13`, `v10.9.11`, `v10.10.7`, `v10.11.11` and `v12.0` tags, unchanged. `ItemDetails` does not gate the button on the targeted version's `VideoType` (its only `VideoType = "VideoFile"` check is `buildVideoDropdownItems`), so the user is told to check provider setup when setup is fine. Documented for users in [`manage-subtitles.md`](user/features/manage-subtitles.md). **Decide:** hide the button for a non-`VideoFile` version, or keep the doc as the answer. A code change, so it needs device testing — kept out of #750's docs pass for that reason.
 
-#### `ItemGridOptions` commits View / Sort / Filter on the key RELEASE, so a press guard would break selection. `[fid: item-grid-options-commits-on-key-release]` `[captured 2026-09-19]`
-
-`onKeyEvent` ignores its `press` argument; the focused list consumes the OK press and only the release reaches the dialog, which is where it commits (console-verified 2026-09-19 on a Stick 4K). The one-line `if not press then return false` would therefore make selection never commit. The correct fix drives selection from the lists' `itemSelected` rather than key events. No user-visible bug once page deliveries stop pulling focus into the open dialog (fixed separately); releases also re-run the Down branch's `jumpToItem = 0`, harmless while focus is stable.
-
 #### Posters and Continue Watching can show a different version's progress than the one that would play (#933 follow-up; the DISPLAY half of the version-choice work, split out 2026-09-17 by user call). `[fid: posters-show-other-version-progress]` `[captured 2026-09-19]`
 
 The playback half shipped: `versionResume.chooseResumeSource()` is the single chooser for the details screen, quick play and casts, so all of them resume the same version (most recently played, unless the in-progress versions sit within 30 s of each other, where the best version for the device among them wins — recorded as `version-resume-near-level`); episodes a queue arrives at start fresh instead (`episode-queue-starts-fresh`). What is still unresolved is DISPLAY: a library poster and the Continue Watching row bind the item's OWN `UserData`, so with an alternate in progress the bar can belong to a version other than the one Play would start, and with ONLY an alternate in progress a poster shows no bar at all. **Not a scope call to make in passing:** a per-tile `GET /UserItems/{id}/UserData` is one request per tile, exactly the crossing cost [`async.md`](architecture/async.md) warns about in a grid, and the cheap alternative — preferring the item's own version when positions are near-level — would AMEND `version-resume-near-level` rather than merely narrow it. **Also weigh (user idea, 2026-09-19): a visual cue that another version of an episode or movie is available**, on the tiles and episode rows where the choice otherwise stays hidden until the details screen; capture what those screens show today on 12.0 and 10.11 before designing it (UI screenshots work — only playback cannot be captured). **Fix shape:** weigh the options and MEASURE a per-tile read on a real grid before choosing; the signals available without any request are the item's own position and the server's source order.
@@ -1005,14 +1001,6 @@ Why not now: each surface needs its own placement and a look on a device, and th
 
 Closes when each of those shows the position line (the overview dialog: the arrowheads without a count), or records why it does not. Also try a half row showing at the cut edge of a list as a second cue: it was set aside because nobody had tried Roku's `itemClippingRect` on a device.
 
-#### Back on a checklist dialog has no test: the Filter chip's PR adds an RTA case `[fid: checklist-back-untested]` `[captured 2026-11-15]`
-
-`showChecklistDialog` has no test of its main exit: Back on a checklist. No Rooibos spec can press keys on `JRListDialog` (`onKeyEvent` is not callable from a suite), so the user-close path through `resolveDialog(-1)`, which hands `checklistDialogResult()` the opening and the current ticks, is covered only by the pure result spec. The close-from-code path is pinned by the `JRListDialog` spec. Found reviewing the checklist mode (#1390).
-
-Why not now: the checklist has no caller yet, so no device route reaches it.
-
-Closes when the PR that adds the library Filter chip (the first caller) adds an RTA case: open the Filter, tick a row, press Back and check the result is `confirmed` with the new `checkedIndexes`; then open it again and press Back with no change, and check `cancelled`.
-
 #### The Replay key has no one rule outside playback `[fid: replay-key-one-rule-outside-playback]` `[captured 2026-11-15]`
 
 Outside playback the Replay key means "back to the start", but three ways. On Home and the Favorites rows it jumps to the first item of the focused row, sideways (`HomeRows.onKeyEvent`, `FavoritesRows.onKeyEvent`). In a library grid it jumps to item 0. On a library's Genres tab it jumps to the first row, upward. The persistence split of the library screens work made a library's Replay go to the first item from anywhere on the screen, the letter rail included (`BaseGridView.jumpToFirstItem()`), and removed the legacy branch that cleared the letter and the voice text. That settled the library and nothing else, on purpose.
@@ -1020,6 +1008,45 @@ Outside playback the Replay key means "back to the start", but three ways. On Ho
 Decide once: which way a row list goes; whether Replay from the letter rail should move focus to the grid, as it does now; what it does on the TV guide, where it does nothing today; and whether screens without it (details, search, settings) get it. Then apply the rule everywhere and write it into `docs/architecture/design-system.md`.
 
 Why not now: it is a design choice for the operator across several screens, and the piece that surfaced it changes one.
+
+#### The TV guide needs a component of its own in place of Roku's `TimeGrid` `[fid: custom-tv-guide-component]` `[captured 2026-11-15]`
+
+The TV guide draws on Roku's own `TimeGrid` (`JRTimeGrid` in `components/liveTv/schedule.bs`), which limits what it can show and how it lays out. The library header strip worked around three of its limits: the row count is set by hand (`scheduleGrid.numRows`, seven on screen and three below the edge so logos load ahead), a fast run of Down presses still outruns that buffer, and the details pane and its picture are placed by fixed numbers. A component of the app's own would own its rows, its loading and its layout.
+
+Why not now: it is a rewrite of the guide, with its own design and device work. What the library screen and the guide exchange is small and would stay: the favorites filter, the search term, `isAtTop()` and `focusedSummary`. Closes when a custom guide component replaces `JRTimeGrid`, or the idea is dropped.
+
+#### A portrait poster is three sizes across Home, the library grid and the Genres rows `[fid: one-portrait-poster-size]` `[captured 2026-11-15]`
+
+Three screens draw a portrait poster at three sizes: Home's rows at 234 by 351 (`itemAspectRatio.PORTRAIT`), the library grid at 252 by 378 (`libraryGrid.POSTER_WIDTH`), and the Genres tab's rows at 213 by 320 (`genreList` in `BaseGridView.xml`). The library grid was 264 by 396 until the header strip took room above it, so the sizes were never one. Raised by the operator while judging the strip's layout (2026-11-15).
+
+Why not now: one size changes Home and every row list, each with its own row heights and focus chrome (`docs/architecture/list-grid-item-layout.md`), and needs its own captures. Closes when the three share one constant, or the difference is recorded as intended.
+
+#### Hear the library header strip, its Sort menu and its Filter checklist with the screen reader on `[fid: header-strip-screen-reader-check]` `[captured 2026-11-15]`
+
+The library header strip has not been heard with the screen reader on. To check by ear, on a movie library: the Sort and Filter chips say their label and value ("Sort: Title", the direction, "Filter: 2"); the Sort menu says which field is in force and reads the Order row's direction in words; the Filter menu reads each category with what is set; a Filter checklist says "Checked" and "Not checked" as a row is ticked. The strip's title and metadata are not focusable, so also check whether a focused poster still names its item.
+
+Why not now: it needs a person listening to a device. It belongs to the screen reader epic (issue 759). Closes when the check is done and anything it finds is fixed or filed.
+
+#### The letter rail's filter cannot be reached inside the safe zone, and whether the rail should jump is undecided `[fid: letter-rail-filter-outside-safe-zone]` `[captured 2026-11-16]`
+
+The library letter rail is a filter: a press reloads the tab with `NameStartsWith` (`BaseGridView.onAlphaSelectedChanged()`, `LoadItemsTask2`), under any sort. It is drawn at x 52, outside the 5% zone, and nothing inside the zone offers the letters, so a TV that clips the margin loses the filter. `docs/architecture/design-system.md` ("The letter rail: the one thing in the margin") records that as an accepted gap, corrected on 2026-11-15 from a sentence that called the rail a jump.
+
+Two changes to weigh together, since each alters what the rail is for:
+
+1. **A "Starts with" category in the Filter menu.** The letters become reachable inside the zone and the rail becomes a true shortcut. Clear filters already clears the letter, and the strip already shows it.
+2. **The rail jumps to the letter when the tab is sorted by name,** in place of filtering, as several other media clients' letter rails do. It needs the index of a letter's first item and paging to an arbitrary place in the grid, and a rule for the rail under any other sort.
+
+Why not now: both are design choices for the operator, and the second needs a paging design. See also `library-grid-alpha-menu-trim`, which needs the same per-letter knowledge.
+
+Not checked: whether any TV in use clips x 52.
+
+#### A library with tabs never shows its own name `[fid: tabbed-library-hides-its-name]` `[captured 2026-11-16]`
+
+A library with tabs never shows its own name. Its first tab is the type's word (`MoviePresenter` labels it with `LabelMovies`, the TV presenter with its own), and the overhang hides the title while tabs show (`JROverhang.onTabsChanged()`), so two movie libraries look the same once open. A screen with no tabs shows its name as the overhang title, underlined as a selected tab is, so the gap is only on tabbed libraries. Found while reviewing the library header strip (2026-11-16).
+
+One answer to weigh: label the first tab with the library's own name.
+
+Why not now: it changes what a tab is called on every tabbed library, and needs its own captures and a rule for a long name in the tab strip. Closes when a tabbed library shows its name, or the gap is recorded as intended.
 
 ### source
 

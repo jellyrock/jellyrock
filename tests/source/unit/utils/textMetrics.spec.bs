@@ -23,6 +23,27 @@ namespace tests
       m.assertEqual(overhangRow.TEXT_DROP, snapToGrid(int(capsAboveCenter(large) + 0.5)))
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("underlineTop")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("centers the line in the room under the text")
+    function _()
+      ' A 78 box, text 30 tall: the text ends at 54, 24 is left, and a 6 line sits 9 into it
+      m.assertEqual(underlineTop(78, 30, 6), 63.0)
+      ' No room to spare: the line starts at the text's bottom edge
+      m.assertEqual(underlineTop(40, 28, 6), 34.0)
+    end function
+
+    @it("puts the overhang title's line inside the row, under text in the Large font")
+    function _()
+      ' At 42 the text looks 29.4 tall and ends at 53.7; a 6 line centered in the 24.3 left
+      ' starts at 62.85. Compared in hundredths: a float product is not exact.
+      top = underlineTop(overhangRow.ROW_HEIGHT, labelTextHeight(42), overhangRow.TITLE_UNDERLINE)
+      m.assertEqual(int(top * 100 + 0.5), 6285)
+      m.assertTrue(top + overhangRow.TITLE_UNDERLINE <= overhangRow.ROW_HEIGHT, "the line stays inside the row")
+    end function
+
   end class
 
 end namespace

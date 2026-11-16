@@ -8,6 +8,7 @@ import "pkg:/source/utils/iconBarNav.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/overhangRow.bs"
 import "pkg:/source/utils/pixelGrid.bs"
+import "pkg:/source/utils/textMetrics.bs"
 import "pkg:/source/utils/translate.bs"
 
 const OVERHANG_LEFT = 96 ' The 5% action-safe left edge: the logo, or the tabs without one
@@ -33,6 +34,9 @@ sub init()
   m.clock.observeField("textWidth", "onLayoutInputChanged")
   ' The title centers in the same box as a tab's text, so its caps sit where the tabs' do
   m.title.height = overhangRow.ROW_HEIGHT
+  m.titleUnderline = m.top.findNode("titleUnderline")
+  m.titleUnderline.height = overhangRow.TITLE_UNDERLINE
+  m.titleUnderline.color = m.global.constants.colorSecondary
   if isValid(m.logo) then m.logo.translation = [OVERHANG_LEFT, LOGO_Y]
   m.isClockHidden = false
 
@@ -396,6 +400,7 @@ sub layout()
   titleWidth = leftOfDropdown - titleX
   if titleWidth < TITLE_MIN_WIDTH then titleWidth = TITLE_MIN_WIDTH
   m.title.maxWidth = titleWidth
+  layoutTitleUnderline(titleX, titleWidth)
 
   ' The status follows the title's text (its measured width, on the grid), a tab gap after, and
   ' takes what is left; it hides with the title (tabs in its place), or when the title alone
@@ -488,7 +493,7 @@ sub onTabsChanged()
   ' Preserved tabs are already sized, so hide title instantly.
   ' Rebuilt tabs need render tracking, so keep title visible until ready.
   if m.tabBar.isReady
-    m.title.visible = false
+    hideTitle()
   else
     m.tabBar.unobserveField("isReady") ' prevent stacking duplicate observers on rapid tab changes
     m.tabBar.observeField("isReady", "onTabBarReady")
@@ -501,7 +506,30 @@ sub onTabBarReady()
   if isValid(m.tabBar)
     m.tabBar.unobserveField("isReady")
   end if
+  hideTitle()
+end sub
+
+' The tabs take the title's place: the title goes, and its underline with it.
+sub hideTitle()
   m.title.visible = false
+  m.titleUnderline.visible = false
+end sub
+
+' The line under the title, as wide as its text and no wider than the title's slot (a
+' longer title is cut at the slot's end). It sits where a selected tab's underline does
+' (underlineTop), so a screen with a title and a screen with tabs mark the viewer's place
+' the same way. Hidden with the title, and under a title with no text.
+sub layoutTitleUnderline(titleX as integer, titleWidth as integer)
+  textWidth = snapToGrid(-int(-m.titleMeasure.localBoundingRect().width))
+  if textWidth > titleWidth then textWidth = titleWidth
+  if not m.title.visible or textWidth <= 0
+    m.titleUnderline.visible = false
+    return
+  end if
+  top = underlineTop(overhangRow.ROW_HEIGHT, labelTextHeight(m.global.constants.fontSizeLarge), overhangRow.TITLE_UNDERLINE)
+  m.titleUnderline.width = textWidth
+  m.titleUnderline.translation = [titleX, overhangRow.TEXT_TOP + top]
+  m.titleUnderline.visible = true
 end sub
 
 ' Proxy tab bar selection changes to the overhang's selectedTabId field

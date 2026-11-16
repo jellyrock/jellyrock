@@ -46,8 +46,7 @@
     "musicArtistDetails",
     "audioDetails",
     "playlistDetails",
-    "personDetails",
-    "libraryOptions"
+    "personDetails"
   ],
   "storeScreens": [
     "userSelect",

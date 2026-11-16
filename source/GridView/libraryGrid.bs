@@ -1,0 +1,16 @@
+' The library grid's cells, in one place: every presenter's grid config reads these, so
+' a size is changed here and nowhere else. docs/architecture/list-grid-item-layout.md has
+' the contract a cell follows, and the measurements these came from.
+namespace libraryGrid
+  ' A portrait poster cell (movies, shows, collections, channels, photos), six to a row.
+  ' Six cells and five gaps span the header strip's width, less 6 pixels.
+  const POSTER_WIDTH = 252
+  const POSTER_HEIGHT = 378
+  const POSTER_COLUMN_GAP = 42
+  const POSTER_ROW_GAP = 69
+
+  ' A square cell (albums, artists), five to a row.
+  const SQUARE_SIZE = 323
+  const SQUARE_COLUMN_GAP = 28
+  const SQUARE_ROW_GAP = 72
+end namespace
