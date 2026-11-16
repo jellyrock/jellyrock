@@ -1002,6 +1002,18 @@ Measured 2026-11-16 on a Streaming Stick 4K against Jellyfin 12.4.0 (two joins p
 
 Not built with `dabe5d11` because it adds state: the verdict has to be keyed on the version and the cap, and dropped when the gear's bitrate pick changes, or a stale one re-encodes a stream the server could have copied. Closes when a second player of the same version starts capped with no restart, shown by a unit case and a device run.
 
+#### After the session socket reopens, a SyncPlay member shows a lost group for up to a time-sync interval `[fid: syncplay-membership-stale-after-socket-reopen]` `[captured 2026-11-16]`
+
+After the session socket drops and reopens, a member that was in a SyncPlay group keeps showing itself in the group until its next periodic time sync posts a Ping and the server answers `NotInGroup` (`SyncPlayManager.onTimeSyncResults`, then the `NotInGroup` branch of the group update handler). Nothing asks the server at the reopen.
+
+Measured 2026-11-16 on a Streaming Stick 4K against Jellyfin 12.4.0 over HTTP, with the server stopped and started while the Roku sat in a group on Home (records `step4-socket-samples.jsonl` and `step4-socketB-samples.jsonl` in the SyncPlay project's spikes): the icon read enabled and in the group for 58.4 s in one run and 14.4 s in the other after the socket reopened, then the "Left" toast showed. The restarted server had no groups.
+
+Two candidate changes, neither built: post a Ping when the socket reopens while in a group, so the answer comes at once; and, when the group still exists, join it again without asking. The second is a design choice and needs its own measurement.
+
+Not checked: a socket drop with the server still up (a network blip), where the group survives for the other members; whether the server ends the membership on that drop was not measured here. Not checked: the same drop while the player is following a playing group.
+
+Closes with a device run of both drops (server restart, and socket only) while following a playing group, and either the Ping at reopen with a unit case, or a decision that the wait is acceptable.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
