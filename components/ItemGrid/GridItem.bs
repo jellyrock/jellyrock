@@ -10,12 +10,6 @@ import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
 
-' Vertical offset of the poster/placeholder from the cell top. The title label sits
-' below the poster, inside the grid's inter-row spacing (see updateLayout).
-const POSTER_TOP_OFFSET = 22
-' Gap between the bottom of the poster and the title label. Matches JRRowItem's
-' FOCUS_PADDING so grid and row cells share one vertical rhythm.
-const TITLE_GAP = 18
 ' Inset of the genre action-tile label from the backdrop edges.
 const GENRE_LABEL_INSET = 5
 
@@ -186,17 +180,17 @@ sub onGridTitlesChanged()
 end sub
 
 ' Sizes and positions every child to the current cell dimensions. The focus slot is
-' rowItemSize/itemSize; the poster fills it at POSTER_TOP_OFFSET so the poster overflows
-' the slot bottom and the focus border (drawn behind it) reads with a top margin and no
-' overlap. The title sits below at POSTER_TOP_OFFSET + h + TITLE_GAP, kept outside the
+' rowItemSize/itemSize; the poster fills it at libraryGrid.POSTER_TOP_OFFSET so the poster
+' overflows the slot bottom and the focus border (drawn behind it) reads with a top margin
+' and no overlap. The title sits libraryGrid.TEXT_TOP_GAP below the poster, kept outside the
 ' focus border because the container sets rowHeights/itemSize taller than the slot (the
 ' focus border pins to the slot, not the cell's full bounding box).
 sub updateLayout(w as float, h as float)
-  setPosterRect(0, POSTER_TOP_OFFSET, w, h)
-  m.genreLabel.translation = [GENRE_LABEL_INSET, POSTER_TOP_OFFSET + GENRE_LABEL_INSET]
+  setPosterRect(0, libraryGrid.POSTER_TOP_OFFSET, w, h)
+  m.genreLabel.translation = [GENRE_LABEL_INSET, libraryGrid.POSTER_TOP_OFFSET + GENRE_LABEL_INSET]
   m.genreLabel.width = w - 2 * GENRE_LABEL_INSET
   m.genreLabel.height = h - 2 * GENRE_LABEL_INSET
-  m.itemText.translation = [0, POSTER_TOP_OFFSET + h + TITLE_GAP]
+  m.itemText.translation = [0, libraryGrid.POSTER_TOP_OFFSET + h + libraryGrid.TEXT_TOP_GAP]
   m.itemText.maxWidth = w
 end sub
 
@@ -240,9 +234,9 @@ sub renderLoadingCell()
   m.placeholder.itemType = ""
   m.placeholder.visible = true
   m.cachedPosterUri = ""
-  ' POSTER_TOP_OFFSET: this cell's poster rect starts below the cell origin (see
+  ' libraryGrid.POSTER_TOP_OFFSET: this cell's poster rect starts below the cell origin (see
   ' setPosterRect), and the spinner centers within the POSTER area, not the slot.
-  m.loadingSpinner = skeleton.showSpinner(m.top, m.loadingSpinner, m.top.width, m.top.height, POSTER_TOP_OFFSET)
+  m.loadingSpinner = skeleton.showSpinner(m.top, m.loadingSpinner, m.top.width, m.top.height, libraryGrid.POSTER_TOP_OFFSET)
 end sub
 
 ' Renders a "View All" action tile: themed backdrop + centered "View All" label, no poster

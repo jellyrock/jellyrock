@@ -34,9 +34,9 @@ For an item component that shows a poster with a title below it:
 
    **One `rowHeights` entry covers every row, but keep `itemSize.y` equal to it anyway.** Roku's [`RowList` reference](https://gitlab.com/rokudev/dev-doc/-/blob/v2.0/docs/REFERENCES/scenegraph/list-and-grid-nodes/rowlist.md) says rows past the end of the array fall back to `itemSize.y`, unlike `rowItemSize`, `rowLabelOffset` and `rowItemSpacing`, which repeat their last value. Measured 2026-08-09 on an Ultra, it repeats like the others: `rowHeights="[415]"` with `itemSize.y` forced to `200` left rows 2 and 3 at a 455-pixel pitch, not 240. So the app relies on behavior the docs do not promise, and a second `rowHeights` entry would bring the documented fallback back. Keeping the two equal is correct under either reading.
 3. **The poster fills the slot.** The two item components do it two ways:
-   - `GridItem` places the poster `POSTER_TOP_OFFSET` below the slot's top, so it runs past the slot's bottom and the indicator, drawn behind, shows a clear margin above the image.
+   - `GridItem` places the poster `libraryGrid.POSTER_TOP_OFFSET` below the slot's top, so it runs past the slot's bottom and the indicator, drawn behind, shows a clear margin above the image.
    - `JRRowItem` places the poster at the slot's origin, the same size as the slot.
-4. **The title sits below the poster**, in the title area `rowHeights` added, outside the indicator: at `POSTER_TOP_OFFSET` plus the poster height plus `TITLE_GAP` in `GridItem`, and at the poster height plus `FOCUS_PADDING` in `JRRowItem`.
+4. **The title sits below the poster**, in the title area `rowHeights` added, outside the indicator: at `libraryGrid.POSTER_TOP_OFFSET` plus the poster height plus `libraryGrid.TEXT_TOP_GAP` in `GridItem`, and at the poster height plus `FOCUS_PADDING` in `JRRowItem`.
 
 ## Don't hand-roll focus chrome in a custom row
 

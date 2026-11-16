@@ -30,12 +30,13 @@ namespace libraryGrid
   ' bsc-disable-next-line dead-code keep: design-system: libraryGrid.spec.bs holds every width in widths() to it
   const MIN_GAP = 18
 
-  ' The poster starts this far under its slot's top (GridItem's POSTER_TOP_OFFSET).
+  ' The poster starts this far under its slot's top. GridItem draws every cell with it,
+  ' the genre rows' cells too.
   const POSTER_TOP_OFFSET = 22
 
   ' Where a cell's text sits between two rows: the first line starts this far under the
-  ' poster (GridItem's TITLE_GAP), each line takes a slot, and the next row's focus ring
-  ' gets its air below the last line.
+  ' poster (GridItem draws it there, the same gap as JRRowItem's FOCUS_PADDING), each line
+  ' takes a slot, and the next row's focus ring gets its air below the last line.
   const TEXT_TOP_GAP = 18
   const TEXT_LINE_HEIGHT = 33
   const TEXT_BOTTOM_GAP = 18
