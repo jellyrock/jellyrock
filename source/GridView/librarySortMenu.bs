@@ -1,0 +1,78 @@
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+' The library's Sort menu: what its rows say, and what a pick means. Pure, so a spec can
+' reach it; BaseGridView opens the dialog and applies the outcome.
+'
+' The rows are the tab's sort fields, the one in force marked, then an Order row that
+' flips the direction. Picking a field keeps the direction.
+namespace librarySortMenu
+
+  ' The id of the Order row, which is no sort field.
+  const ORDER = "order"
+
+  ' @param offeredSorts - the presenter's sort list, [{ Name, Title }]
+  ' @return {object} { labels, ids, selectedIndex }: the rows in order, each row's id (a
+  '   sort field's Name, then ORDER), and the row of the field in force, -1 when the list
+  '   does not hold it
+  function rows(offeredSorts as dynamic, field as string, ascending as boolean) as object
+    menu = { labels: [], ids: [], selectedIndex: -1 }
+    if type(offeredSorts) <> "roArray" then return menu
+
+    for each sort in offeredSorts
+      if isValid(sort)
+        if LCase(textOrEmpty(sort.Name)) = LCase(field) then menu.selectedIndex = menu.ids.count()
+        menu.ids.push(textOrEmpty(sort.Name))
+        menu.labels.push(textOrEmpty(sort.Title))
+      end if
+    end for
+    if menu.ids.count() = 0 then return menu
+
+    menu.ids.push(librarySortMenu.ORDER)
+    menu.labels.push(translate(translationKeys.LabelChipWithValue, [translate(translationKeys.LabelSortOrder), librarySortMenu.directionName(ascending)]))
+    return menu
+  end function
+
+  ' The direction in words, for the Order row and for a screen reader.
+  function directionName(ascending as boolean) as string
+    if ascending then return translate(translationKeys.LabelAscending)
+    return translate(translationKeys.LabelDescending)
+  end function
+
+  ' What a closed menu changes.
+  '
+  ' @param result - the dialog's result
+  ' @param ids - the ids rows() returned for the menu that was open
+  ' @return {dynamic} { field, ascending } to sort by, or invalid for no change: the menu
+  '   was left, closed from code, or the field already in force was picked
+  function outcome(result as dynamic, ids as dynamic, field as string, ascending as boolean) as dynamic
+    if not isValid(result) or type(ids) <> "roArray" then return invalid
+    if result.externallyCancelled = true or result.cancelled = true then return invalid
+    index = result.optionIndex
+    if not isValid(index) then return invalid
+    if index < 0 or index >= ids.count() then return invalid
+
+    picked = ids[index]
+    if picked = librarySortMenu.ORDER then return { field: field, ascending: not ascending }
+    if LCase(picked) = LCase(field) then return invalid
+    return { field: picked, ascending: ascending }
+  end function
+
+  ' The Sort chip's label: "Sort: Title ↑". "" when the tab's list lacks the field.
+  function chipLabel(offeredSorts as dynamic, field as string, ascending as boolean) as string
+    title = ""
+    if type(offeredSorts) = "roArray"
+      for each sort in offeredSorts
+        if isValid(sort)
+          if LCase(textOrEmpty(sort.Name)) = LCase(field) then title = textOrEmpty(sort.Title)
+        end if
+      end for
+    end if
+    if title = "" then return ""
+    arrow = "↑"
+    if not ascending then arrow = "↓"
+    return translate(translationKeys.LabelChipWithValue, [translate(translationKeys.LabelSort), title + " " + arrow])
+  end function
+
+end namespace

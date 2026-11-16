@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   PresentationBackdrop: A backdrop component for presentation views
-  Displays a 960x540 (16:9 half-screen) backdrop on the right side with fade animations.
+  Displays a 1152x648 (16:9) backdrop at the screen's top right, fading out to the left, at
+  the bottom and under the overhang row, with fade animations. It starts 99 pixels above
+  the screen, so the picture's middle sits in the middle of what shows above the grid.
   Follows BackdropFader pattern with reduced shade (no text overlays presentation backdrops).
 -->
 <component name="PresentationBackdrop" extends="Rectangle">
@@ -11,12 +13,15 @@
   </interface>
 
   <children>
-    <!-- Backdrop positioned on right half of screen (960 = 1920/2) on 5% edge -->
-    <Group id="backdropGroup" translation="[864, 112]">
-      <Poster id="oldBackground" height="540" width="960" loadDisplayMode="scaleToFill" opacity="0" />
-      <Poster id="background" height="540" width="960" loadDisplayMode="scaleToFill" opacity="0" />
-      <Rectangle id="shade" height="540" width="960" visible="false" />
-      <Gradient id="leftGradient" height="540" width="102" direction="horizontal" />
+    <!-- The presentation grid covers its lower part, so it is raised to center what shows -->
+    <Group id="backdropGroup" translation="[768, -99]">
+      <Poster id="oldBackground" height="648" width="1152" loadDisplayMode="scaleToFill" opacity="0" />
+      <Poster id="background" height="648" width="1152" loadDisplayMode="scaleToFill" opacity="0" />
+      <Rectangle id="shade" height="648" width="1152" visible="false" />
+      <Gradient id="leftGradient" height="648" width="384" direction="horizontal" />
+      <Gradient id="bottomGradient" height="192" width="1152" rotateDegrees="180" translation="[0, 456]" />
+      <!-- Under the overhang row and the header strip, whose text draws over the picture -->
+      <Gradient id="topGradient" height="210" width="1152" translation="[0, 99]" />
     </Group>
 
 

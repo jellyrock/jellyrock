@@ -17,8 +17,8 @@ Watch the live channels your Jellyfin server offers, see what's on now and later
 ## Browse channels and the TV guide
 
 1. Open your **Live TV** library from Home.
-2. Press the options button (**\***) on the remote to switch between **Channels**, a grid of channel logos, and **TV Guide**, a schedule of every channel. JellyRock remembers the view you picked.
-3. In either view, the options button also filters the list to your favorite channels.
+2. Use the tabs at the top of the screen to switch between **Channels**, a grid of channel logos, and **TV Guide**, a schedule of every channel.
+3. On either tab, **Filter** in the row under the tabs narrows the list to your favorite channels.
 
 In the TV guide, move through channels and time with the arrows, and press **OK** on a program to see its details below the guide. From there:
 

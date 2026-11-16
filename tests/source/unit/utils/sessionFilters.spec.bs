@@ -95,6 +95,20 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("count()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("counts the ticked values across a tab's categories, and no other tab's")
+    function _()
+      m.assertEqual(sessionFilters.count("lib-1", "movies"), 0)
+      sessionFilters.setCategory("lib-1", "movies", "Genres", ["Action", "Drama"])
+      sessionFilters.setCategory("lib-1", "movies", gridQuery.CATEGORY_STATUS, ["Unplayed"])
+      sessionFilters.setCategory("lib-1", "genres", "Years", ["1999"])
+      m.assertEqual(sessionFilters.count("lib-1", "movies"), 3)
+      m.assertEqual(sessionFilters.count("lib-1", "genres"), 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("clear()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

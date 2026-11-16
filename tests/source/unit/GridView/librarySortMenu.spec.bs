@@ -1,0 +1,108 @@
+import "pkg:/source/GridView/librarySortMenu.bs"
+
+namespace tests
+
+  ' The library's Sort menu: the tab's fields with the one in force marked, then an Order
+  ' row that flips the direction.
+  @suite("librarySortMenu - the Sort chip's menu")
+  class LibrarySortMenuTests extends tests.BaseTestSuite
+
+    private function sorts() as object
+      return [
+        { Title: "Title", Name: "SortName" },
+        { Title: "Date Added", Name: "DateCreated" },
+        { Title: "Random", Name: "Random" }
+      ]
+    end function
+
+    private function picked(index as integer) as object
+      return { cancelled: false, externallyCancelled: false, optionIndex: index }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("rows()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("lists the fields, marks the one in force and ends with the Order row")
+    function _()
+      menu = librarySortMenu.rows(m.sorts(), "DateCreated", true)
+      m.assertEqual(menu.ids, ["SortName", "DateCreated", "Random", librarySortMenu.ORDER])
+      m.assertEqual(menu.labels, ["Title", "Date Added", "Random", "Order: Ascending"])
+      m.assertEqual(menu.selectedIndex, 1)
+    end function
+
+    @it("names the direction in the Order row")
+    function _()
+      menu = librarySortMenu.rows(m.sorts(), "SortName", false)
+      m.assertEqual(menu.labels[3], "Order: Descending")
+    end function
+
+    @it("finds the field in force whatever case it was saved in, and marks none it lacks")
+    function _()
+      m.assertEqual(librarySortMenu.rows(m.sorts(), "sortname", true).selectedIndex, 0)
+      m.assertEqual(librarySortMenu.rows(m.sorts(), "PlayCount", true).selectedIndex, -1)
+    end function
+
+    @it("gives a one-sort tab its field and the Order row")
+    function _()
+      menu = librarySortMenu.rows([{ Title: "Title", Name: "SortName" }], "SortName", true)
+      m.assertEqual(menu.ids, ["SortName", librarySortMenu.ORDER])
+    end function
+
+    @it("has no rows for a tab with no sorts")
+    function _()
+      m.assertEqual(librarySortMenu.rows([], "SortName", true).ids, [])
+      m.assertEqual(librarySortMenu.rows(invalid, "SortName", true).ids, [])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("outcome()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sorts by a picked field and keeps the direction")
+    function _()
+      ids = librarySortMenu.rows(m.sorts(), "SortName", false).ids
+      m.assertEqual(librarySortMenu.outcome(m.picked(1), ids, "SortName", false), { field: "DateCreated", ascending: false })
+    end function
+
+    @it("flips the direction on the Order row and keeps the field")
+    function _()
+      ids = librarySortMenu.rows(m.sorts(), "SortName", true).ids
+      m.assertEqual(librarySortMenu.outcome(m.picked(3), ids, "SortName", true), { field: "SortName", ascending: false })
+      m.assertEqual(librarySortMenu.outcome(m.picked(3), ids, "SortName", false), { field: "SortName", ascending: true })
+    end function
+
+    @it("changes nothing when the field in force is picked again")
+    function _()
+      ids = librarySortMenu.rows(m.sorts(), "SortName", true).ids
+      m.assertInvalid(librarySortMenu.outcome(m.picked(0), ids, "sortname", true))
+    end function
+
+    @it("changes nothing when the menu was left, or closed from code")
+    function _()
+      ids = librarySortMenu.rows(m.sorts(), "SortName", true).ids
+      m.assertInvalid(librarySortMenu.outcome({ cancelled: true, externallyCancelled: false, optionIndex: 1 }, ids, "SortName", true))
+      m.assertInvalid(librarySortMenu.outcome({ cancelled: true, externallyCancelled: true, optionIndex: 1 }, ids, "SortName", true))
+      m.assertInvalid(librarySortMenu.outcome(invalid, ids, "SortName", true))
+      m.assertInvalid(librarySortMenu.outcome(m.picked(9), ids, "SortName", true), "a row the menu did not have")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("chipLabel()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("names the sort and points the arrow its way")
+    function _()
+      m.assertEqual(librarySortMenu.chipLabel(m.sorts(), "SortName", true), "Sort: Title ↑")
+      m.assertEqual(librarySortMenu.chipLabel(m.sorts(), "DateCreated", false), "Sort: Date Added ↓")
+    end function
+
+    @it("is blank when the tab's list lacks the field, so the chip hides")
+    function _()
+      m.assertEqual(librarySortMenu.chipLabel(m.sorts(), "PlayCount", true), "")
+      m.assertEqual(librarySortMenu.chipLabel([], "SortName", true), "")
+    end function
+
+  end class
+
+end namespace

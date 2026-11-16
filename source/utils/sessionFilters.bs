@@ -71,6 +71,16 @@ namespace sessionFilters
     sessionFilters.store(entries)
   end sub
 
+  ' How many values are ticked on one tab, across its categories: the Filter chip's number.
+  function count(libraryId as dynamic, tabId as dynamic) as integer
+    total = 0
+    entry = sessionFilters.get(libraryId, tabId)
+    for each category in entry
+      if type(entry[category]) = "roArray" then total += entry[category].count()
+    end for
+    return total
+  end function
+
   ' Remove every filter from one tab.
   sub clear(libraryId as dynamic, tabId as dynamic)
     entries = sessionFilters.all()
