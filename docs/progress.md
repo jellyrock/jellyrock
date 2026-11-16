@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-15
+last-updated: 2026-11-16
 ---
 
 # Progress
@@ -1036,6 +1036,19 @@ Why not now: one size changes Home and every row list, each with its own row hei
 The library header strip has not been heard with the screen reader on. To check by ear, on a movie library: the Sort and Filter chips say their label and value ("Sort: Title", the direction, "Filter: 2"); the Sort menu says which field is in force and reads the Order row's direction in words; the Filter menu reads each category with what is set; a Filter checklist says "Checked" and "Not checked" as a row is ticked. The strip's title and metadata are not focusable, so also check whether a focused poster still names its item.
 
 Why not now: it needs a person listening to a device. It belongs to the screen reader epic (issue 759). Closes when the check is done and anything it finds is fixed or filed.
+
+#### The letter rail's filter cannot be reached inside the safe zone, and whether the rail should jump is undecided `[fid: letter-rail-filter-outside-safe-zone]` `[captured 2026-11-16]`
+
+The library letter rail is a filter: a press reloads the tab with `NameStartsWith` (`BaseGridView.onAlphaSelectedChanged()`, `LoadItemsTask2`), under any sort. It is drawn at x 52, outside the 5% zone, and nothing inside the zone offers the letters, so a TV that clips the margin loses the filter. `docs/architecture/design-system.md` ("The letter rail: the one thing in the margin") records that as an accepted gap, corrected on 2026-11-15 from a sentence that called the rail a jump.
+
+Two changes to weigh together, since each alters what the rail is for:
+
+1. **A "Starts with" category in the Filter menu.** The letters become reachable inside the zone and the rail becomes a true shortcut. Clear filters already clears the letter, and the strip already shows it.
+2. **The rail jumps to the letter when the tab is sorted by name,** in place of filtering, as several other media clients' letter rails do. It needs the index of a letter's first item and paging to an arbitrary place in the grid, and a rule for the rail under any other sort.
+
+Why not now: both are design choices for the operator, and the second needs a paging design. See also `library-grid-alpha-menu-trim`, which needs the same per-letter knowledge.
+
+Not checked: whether any TV in use clips x 52.
 
 ### source
 
