@@ -11,7 +11,8 @@ import "pkg:/source/utils/translate.bs"
 ' titles are translated text, and `selected` is the id of the option in force. `valueTitle`
 ' is optional: the value the menu row shows when the selected option's own title does not
 ' read well there. `pickerTitle` is optional too: the heading of the entry's list when
-' it has more to say than the entry's title, as an app-wide setting offered on a page does. This file is the part of that with no node in it.
+' it has more to say than the entry's title, as an app-wide setting offered on a page
+' does. This file is the part of that with no node in it.
 namespace pageSettings
 
   ' The menu row that opens the Settings screen.
