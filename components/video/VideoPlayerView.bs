@@ -2421,8 +2421,9 @@ end sub
 ' Starts the re-encode check for the stream handed to the player (reencodeCheck.bs): the server
 ' may be re-encoding the video at a bitrate the device's video buffer cannot hold, which a first
 ' request cannot rule out. It runs on a timer from the handoff, not from `playing`: a stream like that
-' never leaves buffering. It stands down for a stream the server does not transcode, Live TV, and a
-' load that already asked for a re-encode. In a SyncPlay group its restart is a reload like any other
+' never leaves buffering. The first read is due a second after the handoff, and each later one a
+' second after the last found nothing to judge, up to reencodeCheck.MAX_ATTEMPTS. It stands down
+' for a stream the server does not transcode, Live TV, and a load that already asked for a re-encode. In a SyncPlay group its restart is a reload like any other
 ' (reloadInPlace).
 '
 ' @param {dynamic} capBps - LoadVideoContentTask's reencodeCapBps for this load: 0 or invalid for none
@@ -2480,7 +2481,7 @@ sub onReencodeSessionRead(res as object, ctx as object)
   else if verdict = ReencodeVerdict.LATER
     m.log.info("The server shows no transcode to judge yet; reading again", "attempt", ctx.attempt, "itemId", ctx.itemId)
     m.reencodeAttempt = ctx.attempt + 1
-    m.reencodeCheckTimer.duration = reencodeCheck.SECOND_CHECK_SECONDS
+    m.reencodeCheckTimer.duration = reencodeCheck.NEXT_CHECK_SECONDS
     m.reencodeCheckTimer.control = "start"
   else
     ' An unreadable answer says how it failed (no answer, an HTTP status); every other reason is the decision's own.

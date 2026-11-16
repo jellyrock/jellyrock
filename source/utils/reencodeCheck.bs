@@ -7,16 +7,18 @@ import "pkg:/source/utils/misc.bs"
 ' or above the source bitrate + 10%, because the server copies the video only when the requested
 ' bitrate is at or above the source's. So a high-bitrate source keeps a request near its own
 ' bitrate, and a server that has to re-encode anyway then encodes at that bitrate. The player asks
-' the server what it is doing once the stream is handed over, and restarts with the cap when the
-' answer is such an encode.
+' the server what it is doing soon after the stream is handed over, and restarts with the cap when
+' the answer is such an encode. The session shows the encode once the server starts it, so the
+' first read comes early and a read that finds nothing to judge is repeated each second.
 namespace reencodeCheck
 
   ' Seconds from handing the stream to the player to the first read of the session.
-  const FIRST_CHECK_SECONDS = 4
-  ' Seconds from the first read to the second, taken only when the server showed no transcode yet.
-  const SECOND_CHECK_SECONDS = 4
-  ' The reads a load gets: the second only when the first found no transcode to judge.
-  const MAX_ATTEMPTS = 2
+  const FIRST_CHECK_SECONDS = 1
+  ' Seconds from a read to the next one, taken only when that read found nothing to judge yet.
+  const NEXT_CHECK_SECONDS = 1
+  ' The reads a load gets: each later one only when the one before found nothing to judge yet.
+  ' With the two intervals above the last one falls about 8 seconds after the handoff.
+  const MAX_ATTEMPTS = 8
 
   ' The bitrate above which the video buffer cannot hold a segment of this load: the maxBitrate
   ' calculateOptimalTranscodingParams works out for the played version, 0 when the source fits at
@@ -51,7 +53,7 @@ namespace reencodeCheck
   ' @param res - the fetchAsync response AA ({ ok, json }); json is the list of this device's sessions
   ' @param capBps - bufferCapBps for the load, 0 when it has none
   ' @param itemId - the item this load plays
-  ' @param flags - { attempt: 1 or 2, isLive, askedNoCopy (the load already asked for a re-encode,
+  ' @param flags - { attempt: 1 to MAX_ATTEMPTS, isLive, askedNoCopy (the load already asked for a re-encode,
   '   which applies the cap), hasFailed (a playback error owns the flow), isStale
   '   (a newer load, or another item, since the read began) }
   ' @returns { verdict: a ReencodeVerdict, reason: why, for the log: aboveCap, withinCap,
@@ -69,8 +71,10 @@ namespace reencodeCheck
     if flags.attempt < reencodeCheck.MAX_ATTEMPTS then notYet.verdict = ReencodeVerdict.LATER
 
     session = reencodeCheck.sessionFor(res.json, itemId)
-    ' No session of this device is playing this item: the answer is about something else.
-    if not isValid(session) then return { verdict: ReencodeVerdict.NONE, reason: "noSession" }
+    ' No session of this device is playing this item: the answer is about something else. An early
+    ' read can land while the session still names the last item (its stop report not yet handled),
+    ' so this reads again while reads remain, as for a transcode not shown yet.
+    if not isValid(session) then return { verdict: notYet.verdict, reason: "noSession" }
     info = session.TranscodingInfo
     if type(info) <> "roAssociativeArray" or info.Count() = 0 then return notYet
     ' An older server sends no IsVideoDirect: nothing to judge, and no later read changes that.
