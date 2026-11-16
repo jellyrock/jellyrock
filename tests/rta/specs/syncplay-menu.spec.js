@@ -572,14 +572,31 @@ it('while halted the menu offers Resume with Group, which opens the player follo
   await waitToast(`Following ${GROUP_NAME} again.`, { label: 'the following-again toast' });
   await waitMediaPlaying("the group's item, resumed", 60000);
   expect(await getGlobalVal('syncPlayManager.following')).toBe(true);
-  // The group kept playing while this member was halted, so the resume lands past the start. A
-  // load that starts partway in still reads 0 at its first playing (playback.md), so this waits.
-  await waitFor('position', (v) => typeof v === 'number' && v > 5, {
-    read: readPlayer(ctx.heroId),
-    timeout: 15000,
-    interval: 250,
-    label: 'resumed at the group position, not from zero',
+  // The group kept playing while this member was halted. A load that starts partway in reads 0 at
+  // its first playing (playback.md), and a fixed mark fails when the group itself is near its
+  // start, so "at the group position" is the member in step with a playing group. The 45 s budget
+  // covers one restarted load: it restarts once for the re-encode cap.
+  await waitFor('syncPlayManager.groupState', (s) => s === 'Playing', {
+    read: getGlobalVal,
+    timeout: 45000,
+    label: 'the group playing, for the resumed member to catch up to',
   });
+  // `syncPlayPlayback.SETTLE_CORRECTION_MS` ahead and `SKIP_TO_SYNC_MIN_MS` behind: past them
+  // the manager corrects, so within them is in step with the group.
+  await waitFor(
+    'syncPlayManager.sync.playbackDiffMs',
+    (v) => typeof v === 'number' && v >= -150 && v <= 400,
+    {
+      read: getGlobalVal,
+      timeout: 45000,
+      label: "this member's drift from the group inside the correction thresholds",
+    },
+  );
+  const resumed = readPlayer(ctx.heroId);
+  expect(await resumed('state'), 'playing, in step with the group').toBe('playing');
+  const position = await resumed('position');
+  expect(typeof position, 'a position was read').toBe('number');
+  expect(position, 'resumed past zero').toBeGreaterThan(0);
 
   // Back halts again, leaving the state the next case starts from.
   await stopPlayback();
