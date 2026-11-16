@@ -2900,6 +2900,16 @@ A library tab's sort is saved in the registry per library and tab, and its filte
 
 A sort saved before this is kept. The registry migration cannot know a library's type, so it parks a sort with no saved view under a key with no tab in it and the library moves it to its default tab when it opens. Ruled out: dropping it, which loses the common case, and writing it under every type's default key.
 
+## decision-id: library-header-strip
+
+**date**: 2026-11-15
+**status**: accepted
+**related-files**: `components/ItemGrid/LibraryHeaderStrip.bs`, `components/ItemGrid/BaseGridView.bs`, `source/utils/headerStrip.bs`, `source/GridView/librarySortMenu.bs`, `source/GridView/libraryFilterMenu.bs`, `source/GridView/libraryGrid.bs`
+
+A library's own controls and the caption for its focused item live on one header strip under the tabs (`LibraryHeaderStrip`). Its left side describes the focused item, with a metadata line built and cut as the details screen builds its info rows; its right side holds the count and the Sort and Filter chips. Where a layout has a panel of its own the strip yields: the title alone in the presentation layout, the focused program on the TV guide. Its title stays Medium on every layout, because it is a caption under the tabs and the details screen's title is that page's heading. The strip owns the count and what narrows the tab; the overhang's title, on a screen with no tabs, is the name alone, under a selected tab's underline on every screen that shows a title.
+
+Ruled out: keeping sort and filter behind the Star key, or listing them in the Star menu as well (Star does what the settings icon does, with no rule of its own on a library, and Replay then Up reaches the strip from deep in a grid); Back clearing a filter (Back always goes back; Clear filters in the Filter menu clears the filters, the voice search and the letter); flipping the sort by picking it again (an Order row makes the direction visible and lets a screen reader say it); the old panel's Favorite button for the focused item, which is not carried over (an item is marked a favorite on its own page). The portrait cell is 252 by 378 and its second row's titles may sit in the bottom margin, since the strip names the focused item inside the 5% zone; the letter rail is the one shortcut drawn in the margin.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

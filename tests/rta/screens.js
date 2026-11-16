@@ -42,7 +42,6 @@ import {
   navSeriesDetails,
   navMusicDetail,
   navPlaylistDetails,
-  navLibraryOptions,
   navPersonDetails,
   navSeasonDetails,
   navEpisodeDetails,
@@ -498,5 +497,4 @@ export const SCREENS = [
   // Person detail (movie -> Cast & Crew extras row -> first person) + the grid
   // options dialog (View / Sort / Filter). Both chain through the movie/grid navs.
   { name: 'personDetails', state: 'home', nav: navPersonDetails, capture: { eligible: true } },
-  { name: 'libraryOptions', state: 'home', nav: navLibraryOptions, capture: { eligible: true } },
 ];

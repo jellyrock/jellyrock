@@ -34,11 +34,11 @@ On a movie, show or episode's page, the **Collections** row lists the collection
 
 ## A library's collections
 
-In a movie or TV library, open **Options** and pick **Collections** in the **View** menu to list the collections in that library.
+In a movie or TV library, select the **Collections** tab at the top of the screen to list the collections in that library.
 
 ## Filter by audio or subtitle language
 
-In a movie library, open **Options**. The **Filter** menu has **Audio Language** and **Subtitle Language**, which list the languages that library has. Pick one to show only the movies that have it.
+In a movie library, open **Filter** in the row under the tabs. It has **Audio Language** and **Subtitle Language**, which list the languages that library has. Tick one or more to show only the movies that have them, and use both to ask for one audio language with another subtitle language.
 
 ## Troubleshooting
 

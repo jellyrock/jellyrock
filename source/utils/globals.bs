@@ -409,6 +409,10 @@ sub refreshThemeOnNode(node as object, constants as object)
     if isValid(buttonIcon)
       buttonIcon.blendColor = constants.colorTextSecondary
     end if
+
+    ' The line under the overhang's title: a selected tab's underline color
+  else if node.id = "titleUnderline"
+    node.color = constants.colorSecondary
   end if
 
   ' Recurse into all children

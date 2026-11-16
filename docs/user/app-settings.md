@@ -549,6 +549,9 @@ Settings relating to how the application looks.
   - [Movies](#user-interface-libraries-movies)
     - [Community and Critical Ratings](#uiMoviesShowRatings)
     - [Default View](#itemGridMovieDefaultView)
+  - [Photos](#user-interface-libraries-photos)
+    - [Slideshow](#photosSlideshow)
+    - [Random Order](#photosRandom)
   - [TV Shows](#user-interface-libraries-tv-shows)
     - [Blur Unwatched Episodes](#uiTvShowsBlurUnwatched)
     - [Disable Community Rating for Episodes](#uiTvShowsDisableCommunityRating)
@@ -839,7 +842,7 @@ Show item count in the library and index of selected item.
 | --- | --- |
 | Setting Name | `itemGridShowItemCount` |
 | Type | `bool` |
-| Default | `false` |
+| Default | `true` |
 
 <h6 id="itemGridTitles">Item Titles</h6>
 
@@ -884,6 +887,36 @@ Default view for Movie Libraries.
 | Type | `radio` |
 | Default | `moviesgrid` |
 | Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Movies (Presentation)</td><td><code>Movies</code></td></tr><tr><td>Movies (Grid)</td><td><code>MoviesGrid</code></td></tr></tbody></table> |
+
+#### Photos
+
+<a id="user-interface-libraries-photos"></a>
+
+Settings for viewing photos.
+
+<h5 id="photosSlideshow">Slideshow</h5>
+
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-libraries">Libraries</a> › <a href="#user-interface-libraries-photos">Photos</a> › <a href="#photosSlideshow">Slideshow</a>
+
+Advance to the next photo automatically.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `photosSlideshow` |
+| Type | `bool` |
+| Default | `false` |
+
+<h5 id="photosRandom">Random Order</h5>
+
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-libraries">Libraries</a> › <a href="#user-interface-libraries-photos">Photos</a> › <a href="#photosRandom">Random Order</a>
+
+Advance to a random photo automatically. Has no effect while Slideshow is on.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `photosRandom` |
+| Type | `bool` |
+| Default | `false` |
 
 #### TV Shows
 

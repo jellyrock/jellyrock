@@ -93,9 +93,10 @@ class MusicPresenter extends GridPresenterBase
     if viewLower = libraryTab.ALBUMS
       ' Albums view - square poster
       return {
-        translation: [96, 102],
-        itemSize: [323, 323],
-        rowHeights: [323],
+        translation: [headerStrip.LEFT, headerStrip.CONTENT_TOP],
+        itemSize: [libraryGrid.SQUARE_SIZE, libraryGrid.SQUARE_SIZE],
+        rowHeights: [libraryGrid.SQUARE_SIZE],
+        itemSpacing: [libraryGrid.SQUARE_COLUMN_GAP, libraryGrid.SQUARE_ROW_GAP],
         numRows: "3",
         numColumns: "5",
         imageDisplayMode: "scaleToFit"
@@ -103,9 +104,10 @@ class MusicPresenter extends GridPresenterBase
     else if viewLower = libraryTab.GENRES
       ' Genres view - smaller posters
       return {
-        translation: [96, 102],
-        itemSize: [323, 323],
-        rowHeights: [323],
+        translation: [headerStrip.LEFT, headerStrip.CONTENT_TOP],
+        itemSize: [libraryGrid.SQUARE_SIZE, libraryGrid.SQUARE_SIZE],
+        rowHeights: [libraryGrid.SQUARE_SIZE],
+        itemSpacing: [libraryGrid.SQUARE_COLUMN_GAP, libraryGrid.SQUARE_ROW_GAP],
         numRows: "3",
         numColumns: "5",
         imageDisplayMode: "scaleToZoom"
@@ -113,9 +115,10 @@ class MusicPresenter extends GridPresenterBase
     else
       ' Default: the artist grid (Artists or Album Artists)
       return {
-        translation: [96, 102],
-        itemSize: [323, 323],
-        rowHeights: [323],
+        translation: [headerStrip.LEFT, headerStrip.CONTENT_TOP],
+        itemSize: [libraryGrid.SQUARE_SIZE, libraryGrid.SQUARE_SIZE],
+        rowHeights: [libraryGrid.SQUARE_SIZE],
+        itemSpacing: [libraryGrid.SQUARE_COLUMN_GAP, libraryGrid.SQUARE_ROW_GAP],
         numRows: "3",
         numColumns: "5",
         imageDisplayMode: "scaleToZoom"

@@ -32,6 +32,9 @@ import {
   overhangSelectedTab,
   applyLibrarySort,
   applyLibraryFilter,
+  listDialogRows,
+  returnToLibraryGrid,
+  waitPageMenu,
   overhangTabIds,
   pressGridTile,
   selectHomeTab,
@@ -46,6 +49,7 @@ import {
   resendUntilFocusInside,
   scrollFocus,
   waitFocused,
+  waitDialogClosed,
   waitFocusInside,
   waitFor,
   waitHome,
@@ -173,8 +177,7 @@ it('a tab press shows the tab with focus on the content, and later loads keep th
     label: 'the tab bar from the Studios grid',
   });
   await press(ecp.Key.Ok);
-  await press(ecp.Key.Down);
-  await waitFocusInside('#itemGrid', { label: 'Down returns to the grid', timeout: 8000 });
+  await returnToLibraryGrid('OK on the tab already selected');
   expect(await getActiveVal('loadState'), 'the same tab again reloads nothing').toBe('loaded');
 
   // A letter on the rail reloads the grid: the tab stays.
@@ -447,22 +450,26 @@ it("Up from the TV guide's first channel reaches the tabs, and Channels opens", 
   });
 });
 
-it('the Star dialog has Sort and Filter only, and a sort picked there keeps the tab', async (testCtx) => {
+it('Star opens the page menu, with no Sort or Filter in it, and a sort picked from the chip keeps the tab', async (testCtx) => {
   const libraryId = libraryIdFor(libraries, 'movies');
   if (!libraryId) testCtx.skip('server has no "movies" library');
-  await openLibrary('library tabs star dialog', 'movies', 'movies');
+  await openLibrary('library tabs star and sort chip', 'movies', 'movies');
   await selectLibraryTab('studios');
   await waitGridLoaded('the Studios tab');
   await waitFocusInside('#itemGrid', { label: 'focus on the Studios grid', timeout: 8000 });
 
+  // Star does what the settings icon does: this page's menu
   await press(ecp.Key.Option);
-  await waitFocusInside('#options', { label: 'the options dialog', timeout: 8000 });
-  expect(await getActiveVal('#options.#buttons.buttons'), 'no View list').toEqual([
-    'Sort',
-    'Filter',
-  ]);
-  await press(ecp.Key.Option);
-  await waitFocusInside('#itemGrid', { label: 'the grid after the dialog closed', timeout: 20000 });
+  await waitPageMenu('the page menu, from Star');
+  const rows = await listDialogRows();
+  expect(rows.at(-1), 'the menu ends with All settings').toBe('All settings');
+  expect(
+    rows.some((row) => row.startsWith('Sort') || row.startsWith('Filter')),
+    'Sort and Filter are on the strip, not in the menu',
+  ).toBe(false);
+  await press(ecp.Key.Back);
+  await waitDialogClosed('Back closed the page menu');
+  await waitFocusInside('#itemGrid', { label: 'the grid after the menu closed', timeout: 20000 });
 
   // The second row of the Sort list is a sort not in force.
   await applyLibrarySort(1);
@@ -529,12 +536,11 @@ it('a filter lasts for the session, per tab, and a restart clears it', async (te
   await waitGridLoaded('the Movies tab');
   await waitFocusInside('#itemGrid', { label: 'focus on the Movies grid', timeout: 8000 });
   expect(await sessionFilters(), 'a session starts with no filters').toEqual({});
-  expect(
-    await getActiveVal('#options.#filterMenu.content.2.title'),
-    'the third filter row is Unplayed',
-  ).toBe('Unplayed');
 
-  await applyLibraryFilter(2);
+  await applyLibraryFilter('Status', 'Unplayed');
+  expect(await getActiveVal('#headerStrip.#filterChip.text'), 'the chip counts it').toBe(
+    'Filter: 1',
+  );
   const key = `${libraryId}/movies`;
   const picked = { [key]: { status: ['Unplayed'] } };
   expect(await sessionFilters(), 'kept for the Movies tab').toEqual(picked);
@@ -659,68 +665,6 @@ it('an item unfavorited from its details leaves the Favorites tab on Back', asyn
     await waitGridLoaded('the Favorites tab after Back');
     expect(await gridIds(), 'the unfavorited movie left the Favorites tab').not.toContain(target);
     expect((await tabState()).selectedTabId, 'and the tab is still Favorites').toBe('favorites');
-  } finally {
-    await setFavorite(session, first.Id, wasFavorite);
-  }
-});
-
-it("the Star dialog shows a favorite's heart filled, and one press removes it from the Favorites tab", async (testCtx) => {
-  const libraryId = libraryIdFor(libraries, 'movies');
-  if (!libraryId) testCtx.skip('server has no "movies" library');
-  const headers = tokenHeader(session.token);
-  const itemUrl = (id) => `${session.serverUrl}/Users/${session.userId}/Items/${id}`;
-  const first = (
-    await getJson(
-      `${session.serverUrl}/Items?UserId=${session.userId}&ParentId=${libraryId}` +
-        '&IncludeItemTypes=Movie&Recursive=true&SortBy=SortName&SortOrder=Ascending' +
-        '&Limit=1&Fields=UserData',
-      headers,
-    )
-  )?.Items?.[0];
-  if (!first) testCtx.skip('the movies library holds no movie');
-  const target = first.Id.replace(/-/g, '').toLowerCase();
-  const wasFavorite = first.UserData?.IsFavorite === true;
-  const FILLED = 'pkg:/images/icons/favorite_selected_$$RES$$.png';
-  const EMPTY = 'pkg:/images/icons/favorite_$$RES$$.png';
-  try {
-    if (!wasFavorite) await setFavorite(session, first.Id, true);
-    await openLibrary('library tabs star dialog favorite', 'movies', 'movies');
-    await selectLibraryTab('favorites');
-    await waitGridLoaded('the Favorites tab');
-    const before = await gridIds();
-    expect(before, 'the favorited movie is on the Favorites tab').toContain(target);
-
-    await focusGridTile(before.indexOf(target));
-    await press(ecp.Key.Option);
-    await waitFocusInside('#options', { label: 'the options dialog', timeout: 8000 });
-    expect(
-      await getActiveVal('#options.#favoriteMenu.iconUri'),
-      'the dialog shows the favorite with a filled heart',
-    ).toBe(FILLED);
-
-    // A press that lands on the already-selected button hands focus to the heart: ItemGridOptions.buttonFocusChanged().
-    await waitFocusInside('#favoriteMenu', {
-      label: 'the heart button',
-      timeout: 8000,
-      action: resendUntilFocusInside(ecp.Key.Right, '#favoriteMenu'),
-    });
-    await press(ecp.Key.Ok);
-    // ItemGridOptions.toggleFavorite() sets the icon from the new state and never writes it again.
-    await waitFor('#options.#favoriteMenu.iconUri', (v) => v === EMPTY, {
-      label: 'the heart emptied',
-      timeout: 8000,
-      read: getActiveVal,
-    });
-
-    await press(ecp.Key.Option);
-    await waitFocusInside('#itemGrid', {
-      label: 'the grid after the dialog closed',
-      timeout: 20000,
-    });
-    await waitGridLoaded('the Favorites tab after the dialog closed');
-    expect(await gridIds(), 'the removed movie left the Favorites tab').not.toContain(target);
-    const after = await getJson(itemUrl(first.Id), headers);
-    expect(after?.UserData?.IsFavorite, 'the server no longer has it as a favorite').toBe(false);
   } finally {
     await setFavorite(session, first.Id, wasFavorite);
   }

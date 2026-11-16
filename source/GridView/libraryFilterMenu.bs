@@ -1,0 +1,157 @@
+import "pkg:/source/GridView/gridQuery.bs"
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
+
+' The library's Filter menu: its categories, what its rows say, and how a category's
+' ticks map to the values the session keeps (sessionFilters). Pure, so a spec can reach
+' it; BaseGridView opens the dialogs and applies what was picked.
+'
+' A presenter's filter list becomes categories of three kinds:
+'   KIND_TOGGLE   Favorites: on or off, flipped by a press on its row
+'   KIND_CHOICE   the status (Played, Unplayed, Resumable): one of them, or none
+'   KIND_CHECKS   a server category (Genres, Years): any of its options, ticked in a
+'                 checklist
+' Categories narrow each other, and the values inside one widen it.
+namespace libraryFilterMenu
+
+  const KIND_TOGGLE = "toggle"
+  const KIND_CHOICE = "choice"
+  const KIND_CHECKS = "checks"
+
+  ' The id of the row that clears everything narrowing the tab.
+  const CLEAR = "clear"
+
+  ' @param offeredFilters - the presenter's filter list for the view on show
+  ' @return {object} the categories in the list's order, each { id, title, kind,
+  '   options: [{ title, value }] }. The entry named All is no category, and the statuses
+  '   fold into one, placed where the first of them stood.
+  function categories(offeredFilters as dynamic) as object
+    result = []
+    if type(offeredFilters) <> "roArray" then return result
+
+    status = invalid
+    for each entry in offeredFilters
+      if isValid(entry)
+        name = textOrEmpty(entry.Name).trim()
+        if type(entry.Options) = "roArray"
+          options = []
+          for each option in entry.Options
+            value = gridQuery.optionValue(option)
+            if value <> "" then options.push({ title: gridQuery.optionTitle(option), value: value })
+          end for
+          if options.count() > 0 then result.push({ id: name, title: textOrEmpty(entry.Title), kind: libraryFilterMenu.KIND_CHECKS, options: options })
+        else if gridQuery.isStatus(name)
+          if not isValid(status)
+            status = { id: gridQuery.CATEGORY_STATUS, title: translate(translationKeys.LabelPlayedStatus), kind: libraryFilterMenu.KIND_CHOICE, options: [] }
+            result.push(status)
+          end if
+          status.options.push({ title: textOrEmpty(entry.Title), value: name })
+        else if LCase(name) = LCase(gridQuery.FAVORITES_VALUE)
+          result.push({ id: gridQuery.CATEGORY_FAVORITES, title: textOrEmpty(entry.Title), kind: libraryFilterMenu.KIND_TOGGLE, options: [{ title: textOrEmpty(entry.Title), value: gridQuery.FAVORITES_VALUE }] })
+        end if
+      end if
+    end for
+    return result
+  end function
+
+  ' The category with `id`, or invalid.
+  function find(categoryList as dynamic, id as dynamic) as dynamic
+    if type(categoryList) <> "roArray" then return invalid
+    for each category in categoryList
+      if LCase(category.id) = LCase(textOrEmpty(id)) then return category
+    end for
+    return invalid
+  end function
+
+  ' The menu's rows: Clear filters first while anything narrows the tab, then each
+  ' category with what is set in it ("Genres (2)", "Status (Unplayed)", "Favorites (On)").
+  '
+  ' @param filters - the tab's filter map
+  ' @param isNarrowed - whether anything narrows the tab: a filter, the voice text, a letter
+  ' @return {object} { labels, ids }
+  function rows(categoryList as dynamic, filters as dynamic, isNarrowed as boolean) as object
+    menu = { labels: [], ids: [] }
+    if isNarrowed
+      menu.ids.push(libraryFilterMenu.CLEAR)
+      menu.labels.push(translate(translationKeys.LabelClearFilters))
+    end if
+    if type(categoryList) <> "roArray" then return menu
+
+    for each category in categoryList
+      menu.ids.push(category.id)
+      value = libraryFilterMenu.valueText(category, filters)
+      if value = ""
+        menu.labels.push(category.title)
+      else
+        menu.labels.push(translate(translationKeys.LabelSettingWithValue, [category.title, value]))
+      end if
+    end for
+    return menu
+  end function
+
+  ' What a category's row says is set in it, "" for nothing.
+  function valueText(category as object, filters as dynamic) as string
+    indexes = libraryFilterMenu.checkedIndexes(category, filters)
+    if indexes.count() = 0 then return ""
+    if category.kind = libraryFilterMenu.KIND_TOGGLE then return translate(translationKeys.LabelFilterOn)
+    if category.kind = libraryFilterMenu.KIND_CHOICE then return category.options[indexes[0]].title
+    return indexes.count().toStr()
+  end function
+
+  ' The options of `category` the filter map holds, as indexes into its options: what a
+  ' checklist opens ticked. Values are matched without regard to case.
+  function checkedIndexes(category as object, filters as dynamic) as object
+    indexes = []
+    held = gridQuery.valuesOf(filters, category.id)
+    for i = 0 to category.options.count() - 1
+      value = LCase(category.options[i].value)
+      for each candidate in held
+        if LCase(textOrEmpty(candidate).trim()) = value
+          indexes.push(i)
+          exit for
+        end if
+      end for
+    end for
+    return indexes
+  end function
+
+  ' The values of the options at `indexes`, in the category's order: what the session keeps.
+  function valuesAt(category as object, indexes as dynamic) as object
+    values = []
+    if type(indexes) <> "roArray" then return values
+    for i = 0 to category.options.count() - 1
+      for each index in indexes
+        if index = i
+          values.push(category.options[i].value)
+          exit for
+        end if
+      end for
+    end for
+    return values
+  end function
+
+  ' The single-choice list a KIND_CHOICE category opens: "All" first, which clears it.
+  '
+  ' @return {object} { labels, values, selectedIndex }, the value of "All" being ""
+  function choiceList(category as object, filters as dynamic) as object
+    list = { labels: [translate(translationKeys.LabelAll)], values: [""], selectedIndex: 0 }
+    indexes = libraryFilterMenu.checkedIndexes(category, filters)
+    for i = 0 to category.options.count() - 1
+      list.labels.push(category.options[i].title)
+      list.values.push(category.options[i].value)
+      if indexes.count() > 0
+        if indexes[0] = i then list.selectedIndex = i + 1
+      end if
+    end for
+    return list
+  end function
+
+  ' The Filter chip's label: "Filter", or "Filter: 2" with the count of values set.
+  function chipLabel(count as integer) as string
+    label = translate(translationKeys.LabelFilter)
+    if count <= 0 then return label
+    return translate(translationKeys.LabelChipWithValue, [label, count.toStr()])
+  end function
+
+end namespace

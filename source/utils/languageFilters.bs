@@ -16,13 +16,11 @@ import "pkg:/source/utils/misc.bs"
 '     audio" would get their whole library back, which reads as a broken filter.
 '   * Within one parameter the values are OR'd (`hin,pol` returns exactly the
 '     union, 2 films); across the two parameters they are AND'd (Spanish audio 3,
-'     Japanese subtitles 9, both together 2). The panel can only have one filter
-'     category active at a time, so only the OR half is reachable today:
-'     see `itemgridoptions-single-active-filter` in tech-debt.md.
-'   * Comma is the delimiter on the wire, and a pipe returns 0 there. It is not what
-'     the categories declare: an option's value is itself several comma-joined codes,
-'     so the panel separates options with PANEL_DELIMITER, and the request joins
-'     the selected values with a comma (gridQuery.wireOptions). See PANEL_DELIMITER.
+'     Japanese subtitles 9, both together 2). The library's Filter menu keeps each
+'     category's values apart, so both halves are reachable.
+'   * Comma is the delimiter on the wire, and a pipe returns 0 there. An option's value
+'     is itself several comma-joined codes, and the request joins the selected values
+'     with a comma into one flat list (gridQuery.wireOptions).
 '   * Values are case-sensitive 3-letter ISO 639-2 codes. `ENG` and `en` both
 '     return 0. So the option list must send the server's own `Value` verbatim,
 '     which is why nothing here upper- or lower-cases a code.
@@ -63,24 +61,6 @@ namespace languageFilters
   ' Separates the codes WITHIN one language's value, and is what the server requires
   ' between values. Comma is not a preference: a pipe-separated list returns 0 results.
   const CODE_DELIMITER = ","
-
-  ' Separates the selected options from EACH OTHER, in the panel and in the registry.
-  '
-  ' It cannot also be CODE_DELIMITER, and that is the whole reason this constant exists.
-  ' One language's value is already several codes joined by a comma ("fra,fre"), so a
-  ' comma between options makes the saved query ambiguous: the restore pass splits
-  ' "fra,fre" into "fra" and "fre", matches neither against the option, and leaves the
-  ' box unticked while the filter is still applied, and one confirming keypress on that
-  ' panel then clears the filter outright. Measured on a Roku Stick 2026-09-22: the
-  ' round-trip test fails on exactly the 8 alias-merged languages and passes on the rest,
-  ' which is what makes the bug look like flakiness rather than breakage.
-  '
-  ' "|" is what Genres and OfficialRatings already use for the same reason (their values
-  ' are free text that can contain a comma), so this follows the panel's existing rule
-  ' rather than inventing one: an option's value never contains its category's delimiter.
-  ' The request never carries it: gridQuery.wireOptions joins the selected values with
-  ' CODE_DELIMITER.
-  const PANEL_DELIMITER = "|"
 
   ' supported: Whether this server honours the language filter parameters.
   '

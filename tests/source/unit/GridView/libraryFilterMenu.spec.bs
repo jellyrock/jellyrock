@@ -1,0 +1,159 @@
+import "pkg:/source/GridView/gridQuery.bs"
+import "pkg:/source/GridView/libraryFilterMenu.bs"
+
+namespace tests
+
+  ' The library's Filter menu: a presenter's filter list as categories, what the menu's
+  ' rows say, and how a category's ticks map to the values the session keeps.
+  @suite("libraryFilterMenu - the Filter chip's menu")
+  class LibraryFilterMenuTests extends tests.BaseTestSuite
+
+    ' A movie library's list on a tab the Favorites tab does not cover
+    private function offered() as object
+      return [
+        { Title: "All", Name: "All" },
+        { Title: "Favorites", Name: "Favorites" },
+        { Title: "Played", Name: "Played" },
+        { Title: "Unplayed", Name: "Unplayed" },
+        { Title: "Resumable", Name: "Resumable" },
+        { Title: "Genres", Name: "Genres", Options: ["Action", "Drama", "Science Fiction"] },
+        { Title: "Years", Name: "Years", Options: [1999, 2001] },
+        { Title: "Audio Language", Name: "AudioLanguages", Options: [{ title: "French", value: "fra,fre" }, { title: "Japanese", value: "jpn" }] }
+      ]
+    end function
+
+    private function ids(categoryList as object) as object
+      result = []
+      for each category in categoryList
+        result.push(category.id)
+      end for
+      return result
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("categories()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("drops All, keeps Favorites, folds the statuses into one and keeps each server category")
+    function _()
+      list = libraryFilterMenu.categories(m.offered())
+      m.assertEqual(m.ids(list), [gridQuery.CATEGORY_FAVORITES, gridQuery.CATEGORY_STATUS, "Genres", "Years", "AudioLanguages"])
+      m.assertEqual(list[0].kind, libraryFilterMenu.KIND_TOGGLE)
+      m.assertEqual(list[1].kind, libraryFilterMenu.KIND_CHOICE)
+      m.assertEqual(list[2].kind, libraryFilterMenu.KIND_CHECKS)
+    end function
+
+    @it("gives the status its three choices in the list's order")
+    function _()
+      status = libraryFilterMenu.find(libraryFilterMenu.categories(m.offered()), gridQuery.CATEGORY_STATUS)
+      values = []
+      for each option in status.options
+        values.push(option.value)
+      end for
+      m.assertEqual(values, ["Played", "Unplayed", "Resumable"])
+    end function
+
+    @it("separates an option's label from its value, and reads a number as its text")
+    function _()
+      list = libraryFilterMenu.categories(m.offered())
+      m.assertEqual(libraryFilterMenu.find(list, "audiolanguages").options[0], { title: "French", value: "fra,fre" })
+      m.assertEqual(libraryFilterMenu.find(list, "Years").options[0], { title: "1999", value: "1999" })
+    end function
+
+    @it("leaves out a category with nothing to tick")
+    function _()
+      list = libraryFilterMenu.categories([{ Title: "All", Name: "All" }, { Title: "Genres", Name: "Genres", Options: [] }])
+      m.assertEqual(list, [])
+    end function
+
+    @it("has no categories for a list of All alone, an empty list or none")
+    function _()
+      m.assertEqual(libraryFilterMenu.categories([{ Title: "All", Name: "All" }]), [])
+      m.assertEqual(libraryFilterMenu.categories([]), [])
+      m.assertEqual(libraryFilterMenu.categories(invalid), [])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("rows()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("lists the categories alone while nothing narrows the tab")
+    function _()
+      menu = libraryFilterMenu.rows(libraryFilterMenu.categories(m.offered()), {}, false)
+      m.assertEqual(menu.labels, ["Favorites", "Status", "Genres", "Years", "Audio Language"])
+      m.assertEqual(menu.ids[0], gridQuery.CATEGORY_FAVORITES)
+    end function
+
+    @it("puts Clear filters first while something narrows the tab, and says what is set")
+    function _()
+      filters = { Favorites: ["Favorites"], Status: ["Unplayed"], Genres: ["Action", "Drama"] }
+      menu = libraryFilterMenu.rows(libraryFilterMenu.categories(m.offered()), filters, true)
+      m.assertEqual(menu.ids[0], libraryFilterMenu.CLEAR)
+      m.assertEqual(menu.labels, ["Clear filters", "Favorites (On)", "Status (Unplayed)", "Genres (2)", "Years", "Audio Language"])
+    end function
+
+    @it("offers Clear filters for a voice search or a letter alone, with no category set")
+    function _()
+      menu = libraryFilterMenu.rows([], {}, true)
+      m.assertEqual(menu.ids, [libraryFilterMenu.CLEAR])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("ticks and values")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("opens a checklist ticked on what the session holds, whatever case it came back in")
+    function _()
+      genres = libraryFilterMenu.find(libraryFilterMenu.categories(m.offered()), "Genres")
+      m.assertEqual(libraryFilterMenu.checkedIndexes(genres, { genres: ["science fiction", "Action"] }), [0, 2])
+      m.assertEqual(libraryFilterMenu.checkedIndexes(genres, {}), [])
+    end function
+
+    @it("turns ticked rows into values in the category's order, a round trip")
+    function _()
+      list = libraryFilterMenu.categories(m.offered())
+      genres = libraryFilterMenu.find(list, "Genres")
+      m.assertEqual(libraryFilterMenu.valuesAt(genres, [2, 0]), ["Action", "Science Fiction"])
+
+      languages = libraryFilterMenu.find(list, "AudioLanguages")
+      values = libraryFilterMenu.valuesAt(languages, [0, 1])
+      m.assertEqual(values, ["fra,fre", "jpn"], "the value, never the label")
+      filters = {}
+      filters[languages.id] = values
+      m.assertEqual(libraryFilterMenu.checkedIndexes(languages, filters), [0, 1], "a value holding a comma comes back whole")
+    end function
+
+    @it("ignores a tick the category has no row for")
+    function _()
+      genres = libraryFilterMenu.find(libraryFilterMenu.categories(m.offered()), "Genres")
+      m.assertEqual(libraryFilterMenu.valuesAt(genres, [7, -1]), [])
+      m.assertEqual(libraryFilterMenu.valuesAt(genres, invalid), [])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("choiceList()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("offers All first, then the choices, with the one in force selected")
+    function _()
+      status = libraryFilterMenu.find(libraryFilterMenu.categories(m.offered()), gridQuery.CATEGORY_STATUS)
+      list = libraryFilterMenu.choiceList(status, { Status: ["Unplayed"] })
+      m.assertEqual(list.labels, ["All", "Played", "Unplayed", "Resumable"])
+      m.assertEqual(list.values, ["", "Played", "Unplayed", "Resumable"])
+      m.assertEqual(list.selectedIndex, 2)
+      m.assertEqual(libraryFilterMenu.choiceList(status, {}).selectedIndex, 0, "All while no status is set")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("chipLabel()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("says Filter alone, or with the count of values set")
+    function _()
+      m.assertEqual(libraryFilterMenu.chipLabel(0), "Filter")
+      m.assertEqual(libraryFilterMenu.chipLabel(3), "Filter: 3")
+    end function
+
+  end class
+
+end namespace
