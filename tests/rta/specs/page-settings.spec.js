@@ -21,6 +21,7 @@ import { captureRawUI } from '../capture.js';
 import {
   navLibraryGrid,
   navTvLibrary,
+  openSettingsFromGear,
   pressGridTile,
   waitGridLoaded,
   waitPageMenu,
@@ -29,6 +30,7 @@ import {
 import {
   enterOverhangRow,
   getActiveVal,
+  getActiveVals,
   getVal,
   getVals,
   press,
@@ -441,6 +443,40 @@ it('a pick from the page menu redraws the grid in place: same item, same items, 
   await waitFocusInside('#itemGrid', { label: 'back on the grid', timeout: 20000 });
   await expectKept('back from the details', 9);
   await expectTitles('back from the details', true);
+});
+
+it('a titles change made while the genre rows were covered draws them again without a load', async (testCtx) => {
+  if (!moviesId) testCtx.skip('server has no "movies" library');
+  await launchWithMovies('page settings titles genres', 'genres');
+  await navLibraryGrid({ libraries });
+  await waitFocusInside('#genreList', { label: 'focus in the genre rows', timeout: 20000 });
+  const [rows, wereShown] = await getActiveVals([
+    '#genreList.content.getChildCount()',
+    'showItemTitles',
+  ]);
+  if (!(rows > 0)) testCtx.skip('the movie library shows no genre rows');
+  expect(wereShown, 'titles show before the change').toBe(true);
+  // A load gives the rows a new content node, so a mark on this one says whether they were kept
+  await odc.setValue({ keyPath: '#genreList.content.title', value: 'rta-kept' });
+
+  await focusGear('the genre rows');
+  await openSettingsFromGear({ pageMenu: true });
+  // As Settings saves it; what is under test is the way back, not the Settings menus
+  await odc.setValue({ base: 'global', keyPath: 'user.settings.itemGridShowTitles', value: false });
+  // A genre load started from here holds in its skeleton stage, so one cannot finish unseen
+  await odc.setValue({ base: 'global', keyPath: 'rtaSkeletonHoldMs', value: 15000 });
+  await press(ecp.Key.Back);
+  // Focus goes back to the gear that opened Settings, after the library is shown again
+  await waitFocused(atSettingsIcon, { timeout: 8000, interval: 250, label: 'the gear again' });
+
+  const [loadState, mark, isShown] = await getActiveVals([
+    'loadState',
+    '#genreList.content.title',
+    'showItemTitles',
+  ]);
+  expect(isShown, 'the rows follow the new setting').toBe(false);
+  expect(loadState, 'no load started').toBe('loaded');
+  expect(mark, 'the same rows, not a load').toBe('rta-kept');
 });
 
 it('a layout whose grid starts lower offers only the counts that fit', async (testCtx) => {

@@ -530,7 +530,16 @@ end sub
 ' a grid that holds items drew overlapping cells when tried. So the content is detached,
 ' the grid configured, and the same content given back. With nothing loaded there is no
 ' place to keep, and the view loads as on a reload.
+'
+' The genre rows and the TV guide draw no item grid, and of these changes only the titles
+' reach them: configureGrid() sets showItemTitles, which their cells follow, and readies the
+' hidden grid, which holds no items on those views. Their content is kept.
 sub relayoutGrid()
+  if not showsItemGrid()
+    configureGrid()
+    return
+  end if
+
   if m.top.loadState <> "loaded" or m.loadedItems = 0
     reloadGridItems()
     return
@@ -1792,8 +1801,8 @@ end sub
 ' ============================================================================
 
 ' JRScreen hook: Layout, when the view on show can be drawn more than one way; the cells
-' per row and the titles, when the item grid draws it; and Default tab, when the library has more than
-' one tab.
+' per row and the titles, when the item grid draws it; and Default tab, when the library
+' has more than one tab.
 function pageSettingsEntries() as object
   entries = []
   layouts = offeredLayouts()
