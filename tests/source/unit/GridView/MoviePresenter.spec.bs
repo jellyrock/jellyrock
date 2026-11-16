@@ -17,7 +17,6 @@ namespace tests
     private current as object
     private info as object
     private logo as object
-    private title as object
 
     protected override function beforeEach()
       super.beforeEach()
@@ -26,9 +25,6 @@ namespace tests
       m.logo = m.info.createChild("Poster")
       m.logo.id = "movieLogo"
       m.logo.visible = false
-      m.title = m.info.createChild("Label")
-      m.title.id = "selectedMovieName"
-      m.title.visible = false
       top = CreateObject("roSGNode", "Group")
       top.appendChild(m.info)
 
@@ -45,7 +41,6 @@ namespace tests
       m.current = invalid
       m.info = invalid
       m.logo = invalid
-      m.title = invalid
       super.afterEach()
     end function
 
@@ -73,7 +68,6 @@ namespace tests
 
       m.assertEqual(m.logo.uri, "http://server/logo-b")
       m.assertTrue(m.logo.visible)
-      m.assertTrue(m.title.visible)
     end function
 
     @it("ignores a lookup that focus has since moved past")
@@ -84,7 +78,6 @@ namespace tests
 
       m.assertEqual(m.logo.uri, "", "a replaced lookup's logo must not be shown")
       m.assertFalse(m.logo.visible)
-      m.assertFalse(m.title.visible, "a replaced lookup must not touch the panel at all")
     end function
 
     @it("ignores a lookup that finishes after teardown")
@@ -123,7 +116,6 @@ namespace tests
       m.presenter.onItemFocused({ id: "movie-1", name: "A Movie" }, viewMode, layout)
 
       m.assertEqual(m.view.loadLogoTask.id, "still-the-original-node", "no lookup may be started for a hidden panel")
-      m.assertEqual(m.title.text, "", "nor may anything be written into the panel")
     end function
 
     @it("turns on exactly the predicate that decides whether the panel is on screen")
@@ -142,14 +134,14 @@ namespace tests
 
     @it("puts the presentation backdrop and grid behind the same predicate")
     ' configureBackdrop and configureGrid ask three questions; if they disagree the grid
-    ' sits 650 px down against a fullscreen backdrop, or the panel draws over a full grid.
+    ' sits under an empty panel against a fullscreen backdrop, or the panel draws over a full grid.
     @params("movies", "presentation", true)
     @params("movies", "comfortable", false)
     @params("studios", "presentation", false)
     function _(viewMode, layout, expected)
       m.assertEqual(m.presenter.getBackdropMode(viewMode, layout) = "presentation", expected)
       config = m.presenter.getGridConfig(viewMode, layout)
-      m.assertEqual(config.translation[1] = 650, expected, "the grid drops for the panel only in presentation")
+      m.assertEqual(config.translation[1] > headerStrip.CONTENT_TOP, expected, "the grid drops for the panel only in presentation")
     end function
 
   end class

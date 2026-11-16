@@ -3,7 +3,7 @@
  *
  * `VideoPlayerView.onPositionChanged` skips the segment and next-episode checks while a
  * dialog is open. It used to decide that by looking for a node named `dialogBackground`,
- * which only `ItemGridOptions` has, so the check never held and the Next Episode button
+ * which only the library's options panel had (since removed), so the check never held and the Next Episode button
  * came up over any dialog.
  *
  * The OSD hides that bug in most cases: both notifications refuse to show while it is up,

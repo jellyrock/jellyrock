@@ -31,6 +31,30 @@ A movie library can show its movies two ways: **Presentation**, which shows the 
 
 JellyRock remembers the layout for that tab of the library on this Roku. Your sort, your filter and a letter picked on the letter rail stay as they were.
 
+## See what is focused
+
+A row under the tabs describes the item you are on: its title, and its year, rating and length where it has them. On the right it shows where you are in the list, such as "12 of 240". To hide that count, turn off **Settings → User Interface → Libraries → General → Grid View Settings → Item Count**.
+
+## Sort a tab
+
+1. From the first row of a tab, press **Up** once. The **Sort** button takes focus. It names the sort in use and its direction, such as "Sort: Title ↑".
+2. Press **OK**, then select what to sort by. The tab reloads in that order.
+3. To reverse the order, open the menu again and select **Order** at the bottom of it.
+
+## Filter a tab
+
+1. From the first row of a tab, press **Up**, then **Right** to the **Filter** button, and press **OK**.
+2. Select a kind of filter. **Status** offers **Played**, **Unplayed** and **Resumable**, and you pick one. **Genres**, **Parental Ratings** and **Years** each open a list where you tick as many as you want; press **Back** when you are done.
+3. The menu comes back so you can add another kind. Press **Back** to close it.
+
+Filters work together. Two genres ticked show items in either genre, and a genre with **Unplayed** shows only the items in that genre you have not played. The **Filter** button counts what is set, such as "Filter: 2".
+
+To remove every filter, open **Filter** and select **Clear filters**, the first row. It also clears a voice search and a letter picked on the letter rail.
+
+Which filters a tab offers depends on the library. A music library has **Favorites** alone, and a movie library has the most.
+
+Deep in a long list, press **Replay** to jump to the first item, then **Up** to reach **Sort** and **Filter**.
+
 ## What a tab remembers
 
 Each tab keeps its own sort and its own filters, so changing one tab never changes another.

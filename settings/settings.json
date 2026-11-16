@@ -1049,7 +1049,7 @@
                     "description": "Show item count in the library and index of selected item.",
                     "settingName": "itemGridShowItemCount",
                     "type": "bool",
-                    "default": "false",
+                    "default": "true",
                     "titleKey": "LabelItemCount",
                     "descriptionKey": "SettingDescShowItemCount"
                   },

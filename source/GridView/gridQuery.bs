@@ -67,9 +67,8 @@ namespace gridQuery
 
   ' offers: whether `name` is one of the entries a presenter is listing.
   '
-  ' Case-insensitive, matching how BaseGridView.SetUpOptions compares a name to the saved
-  ' one. A presenter's `Name` and the saved string must agree under the same rule in both
-  ' places or a choice could restore here and fail to tick there.
+  ' Case-insensitive: a saved name and a presenter's `Name` agree whatever case either
+  ' was written in.
   '
   ' @param offered - a list of `{ Name }`: a presenter's views, or one of its filter lists
   ' @param name - the name to look for
@@ -272,21 +271,15 @@ namespace gridQuery
     return value = "played" or value = "unplayed" or value = "resumable"
   end function
 
-  ' delimitersOf: how one server category's values are joined, in the Star panel's string
-  ' (`panel`) and in the request (`wire`). The one place they are decided: a presenter
-  ' declares a category's `Delimiter` from here, and the request reads it here because it
-  ' is built before a category's list has loaded.
+  ' wireDelimiter: what joins one server category's values in the request.
   '
   ' Genres and parental ratings are free text that may hold a comma, so they use "|", as
   ' does a category not named here. A year is digits, so ",". One language option's value
-  ' is already a comma list of ISO codes, so the panel separates options with
-  ' PANEL_DELIMITER and the request flattens them into one comma list.
-  '
-  ' @return {object} { panel, wire }
-  function delimitersOf(category as dynamic) as object
-    if languageFilters.isLanguageKey(category) then return { panel: languageFilters.PANEL_DELIMITER, wire: languageFilters.CODE_DELIMITER }
-    if LCase(textOrEmpty(category)) = "years" then return { panel: ",", wire: "," }
-    return { panel: "|", wire: "|" }
+  ' is already a comma list of ISO codes, and the request takes one flat comma list.
+  function wireDelimiter(category as dynamic) as string
+    if languageFilters.isLanguageKey(category) then return languageFilters.CODE_DELIMITER
+    if LCase(textOrEmpty(category)) = "years" then return ","
+    return "|"
   end function
 
   ' wireOptions: every server category as a request parameter, its values joined.
@@ -298,130 +291,28 @@ namespace gridQuery
     for each category in filters
       if not gridQuery.isBuiltInCategory(category)
         values = gridQuery.valuesOf(filters, category)
-        if values.count() > 0 then wire[category] = values.join(gridQuery.delimitersOf(category).wire)
+        if values.count() > 0 then wire[category] = values.join(gridQuery.wireDelimiter(category))
       end if
     end for
     return wire
   end function
 
-  ' ── The Star panel's shape ────────────────────────────────────────────────────
-  '
-  ' ItemGridOptions predates the filter map. It reports one `filter` name (All, a plain
-  ' filter, or the one category it ticked) and a `filterOptions` AA holding that
-  ' category's values joined by the category's panel delimiter. These two functions are
-  ' the only place the two shapes meet, and they go when the panel does.
-
-  ' offeredName: a category as the presenter's list spells it, else as given.
-  '
-  ' An AA does not keep a key's case, so a category read back out of the map is
-  ' lowercase, while the panel reports and compares the list's own `Name`.
-  function offeredName(category as dynamic, offeredFilters as dynamic) as string
-    if type(offeredFilters) = "roArray"
-      for each entry in offeredFilters
-        if isValid(entry)
-          if LCase(textOrEmpty(entry.Name)) = LCase(textOrEmpty(category)) then return textOrEmpty(entry.Name)
-        end if
-      end for
-    end if
-    return textOrEmpty(category)
-  end function
-
-  ' filtersFromPanel: the filter map for what the panel reports.
-  '
-  ' @param filter - the panel's `filter`
-  ' @param filterOptions - the panel's `filterOptions`
-  function filtersFromPanel(filter as dynamic, filterOptions as dynamic) as object
-    filters = {}
-
-    if type(filterOptions) = "roAssociativeArray"
-      for each category in filterOptions
-        values = []
-        for each value in textOrEmpty(filterOptions[category]).split(gridQuery.delimitersOf(category).panel)
-          if value.trim() <> "" then values.push(value.trim())
-        end for
-        if values.count() > 0 then filters[category] = values
-      end for
-      if filters.count() > 0 then return filters
-    end if
-
-    name = textOrEmpty(filter).trim()
-    if LCase(name) = LCase(gridQuery.FAVORITES_VALUE)
-      filters[gridQuery.CATEGORY_FAVORITES] = [gridQuery.FAVORITES_VALUE]
-    else if gridQuery.isStatus(name)
-      ' Only a status: the panel also reports a category it offers with an empty list
-      ' this way, and that narrows nothing
-      filters[gridQuery.CATEGORY_STATUS] = [name]
-    end if
-    return filters
-  end function
-
-  ' filtersToPanel: what the panel shows for a filter map.
-  '
-  ' The panel can show one thing. The session never holds more while the panel is the
-  ' only way to set a filter; if it ever did, a server category would show first, then
-  ' the status, then Favorites.
-  '
-  ' @return {object} { filter, filterOptions }
-  function filtersToPanel(filters as dynamic, offeredFilters as dynamic) as object
-    panel = { filter: gridQuery.NO_FILTER, filterOptions: {} }
-    if type(filters) <> "roAssociativeArray" then return panel
-
-    for each category in filters
-      if not gridQuery.isBuiltInCategory(category)
-        values = gridQuery.valuesOf(filters, category)
-        if values.count() > 0
-          panel.filter = gridQuery.offeredName(category, offeredFilters)
-          panel.filterOptions[panel.filter] = values.join(gridQuery.delimitersOf(category).panel)
-          return panel
-        end if
-      end if
-    end for
-
-    if gridQuery.statusOf(filters) <> gridQuery.NO_FILTER
-      panel.filter = gridQuery.offeredName(gridQuery.statusOf(filters), offeredFilters)
-    else if gridQuery.hasFavorites(filters)
-      panel.filter = gridQuery.FAVORITES_VALUE
-    end if
-    return panel
-  end function
-
-  ' ── A category's options, its saved query, and the invariant between them ──────
+  ' ── A category's options ─────────────────────────────────────────────────────
   '
   ' A filter category's selectable options come in two shapes, and every site that reads
-  ' them goes through optionTitle() / optionValue() so they cannot disagree about which
+  ' them goes through optionTitle() and optionValue(), so they cannot disagree about which
   ' is which.
   '
-  ' A PLAIN STRING is its own query value: Genres sends the genre name, Years sends the
-  ' year. What the panel shows and what the request carries are the same text.
+  ' A plain string is its own value: Genres sends the genre name, Years sends the year.
   '
-  ' An AA ({ title, value }) separates them, which the 12.0 language filters need in
-  ' both directions. The label has to be the app's own localized language name, because
-  ' the server's is an English library-science string ("Spanish; Castilian (spa)"); the
-  ' value has to be the server's own case-sensitive codes, and for a language with two
-  ' ISO 639-2 spellings it is BOTH of them, since the server matches the literal tag on
-  ' the file. Sending the label would return nothing.
+  ' An AA ({ title, value }) separates them, which the 12.0 language filters need in both
+  ' directions. The label is the app's own localized language name, because the server's
+  ' is an English library-science string ("Spanish; Castilian (spa)"); the value is the
+  ' server's own case-sensitive codes, both of them for a language with two ISO 639-2
+  ' spellings, since the server matches the literal tag on the file.
   '
-  ' THE INVARIANT. A category's query is its checked options' values joined by the
-  ' category's panel delimiter, and that same string is what the Star panel reports.
-  ' Decoding it on restore is a plain split, which is correct only while this holds:
-  '
-  '     An option's value never contains its category's delimiter.
-  '
-  ' Every category is built to satisfy it, and delimitersOf() chooses each category's
-  ' delimiters for that reason.
-  '
-  ' Break it and the failure is silent and specific: the query still applies, because
-  ' joining is unaffected, but the restore pass splits a value apart and matches none of
-  ' the pieces, so the filter is active with no box ticked, and one confirming keypress
-  ' on that panel then clears it. queryValueFor() and checkedStateFor() are inverses, and
-  ' are tested as a ROUND TRIP rather than individually, because each is self-consistently
-  ' correct on its own while the pair silently disagrees.
-  '
-  ' Both accessors read through textOrEmpty() rather than toString(), which FAULTS on
-  ' Invalid (it falls through to Str()), and a filter category's option list is exactly
-  ' the kind of place a missing entry shows up. Both also trim, because Str() on a number
-  ' returns a LEADING SPACE (`1999` -> `" 1999"`), which would never match the saved
-  ' query. Both faults were found by the unit tests on device, not by review.
+  ' Both accessors read through textOrEmpty(), since toString() faults on Invalid, and
+  ' both trim: Str() on a number returns a leading space, which would never match.
 
   ' optionTitle: what the user sees for one selectable option.
   function optionTitle(option as dynamic) as string
@@ -442,94 +333,6 @@ namespace gridQuery
   function isFilterOptionPair(option as dynamic) as boolean
     if not isValid(option) then return false
     return LCase(type(option)) = "roassociativearray"
-  end function
-
-  ' checkListValues: every option's query value, read off the filter panel's own nodes.
-  '
-  ' The VALUE of each option, never its title. They are the same text for Genres and
-  ' Years; for a language filter the title is a localized name the server would match
-  ' nothing against. Read off the CheckList's nodes, not the presenter's option list,
-  ' because those nodes are what the CheckList's checkedState indexes into.
-  '
-  ' @param category - a filter category node whose children are FilterOptionNodes
-  ' @return {object} array of strings, one per option, in panel order
-  function checkListValues(category as dynamic) as object
-    values = []
-    if not isValid(category) then return values
-    for i = 0 to category.getChildCount() - 1
-      option = category.getChild(i)
-      value = option.value
-      ' A node whose value never got set falls back to its title, which is the correct
-      ' answer for every category whose options are plain strings.
-      if not isValidAndNotEmpty(value) then value = textOrEmpty(option.title)
-      values.push(value)
-    end for
-    return values
-  end function
-
-  ' queryValueFor: the saved query for one category (its checked options' values, joined).
-  '
-  ' Takes VALUES rather than options because the caller (ItemGridOptions) reads them off
-  ' the CheckList's own nodes via checkListValues(), not off the presenter's option list.
-  '
-  ' @param values - option query values in panel order
-  ' @param checkedState - one boolean per option, panel order
-  ' @param delimiter - the category's delimiter
-  ' @return {string} "" when nothing is checked, which the caller reads as "no filter"
-  function queryValueFor(values as dynamic, checkedState as dynamic, delimiter as string) as string
-    if type(values) <> "roArray" or type(checkedState) <> "roArray" then return ""
-
-    selected = []
-    for i = 0 to values.count() - 1
-      ' A checkedState shorter than the option list means the panel and the list have
-      ' drifted; take only what both agree on rather than indexing off the end.
-      if i >= checkedState.count() then exit for
-      if isBooleanTrue(checkedState[i])
-        value = textOrEmpty(values[i]).trim()
-        if value <> "" then selected.push(value)
-      end if
-    end for
-
-    return selected.join(delimiter)
-  end function
-
-  ' checkedStateFor: which of a category's options a saved query has selected.
-  '
-  ' The inverse of queryValueFor(), and the reason the pair has to be tested together:
-  ' this is what re-ticks the boxes when the panel reopens, matching on the VALUE because
-  ' that is what was saved: the registry holds the query the filter applied, not the
-  ' labels it was picked by.
-  '
-  ' @param options - a category's `Options` list
-  ' @param savedQuery - the stored query string for this category
-  ' @param delimiter - the category's delimiter
-  ' @return {object} one boolean per option, panel order
-  function checkedStateFor(options as dynamic, savedQuery as dynamic, delimiter as string) as object
-    checkedState = []
-    if type(options) <> "roArray" then return checkedState
-
-    ' An empty separator makes Split() return one entry PER CHARACTER, so a category that
-    ' somehow declared none must fall back to "the whole string is one value".
-    saved = textOrEmpty(savedQuery).trim()
-    selected = []
-    if saved <> ""
-      if delimiter = ""
-        selected = [saved]
-      else
-        selected = saved.split(delimiter)
-      end if
-    end if
-
-    for each option in options
-      value = LCase(gridQuery.optionValue(option))
-      matched = false
-      for each candidate in selected
-        if value <> "" and value = LCase(textOrEmpty(candidate).trim()) then matched = true
-      end for
-      checkedState.push(matched)
-    end for
-
-    return checkedState
   end function
 
 end namespace

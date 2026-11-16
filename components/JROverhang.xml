@@ -13,6 +13,9 @@
     <Poster id="logo" uri="pkg:/images/branding/logo.png" height="39" width="180" />
     <!-- Title: shown when the screen has no tabs, at the tab bar's place -->
     <ScrollingLabelPrimaryLarge id="title" vertAlign="center" maxWidth="300" repeatCount="0" />
+    <!-- The line under the title: a selected tab's underline, so the row marks where the
+         viewer is the same way with tabs or without. Placed by layout(). -->
+    <Rectangle id="titleUnderline" visible="false" />
     <!-- The screen's status, dim, right after the title (the search screen's submitted query);
          placed by layout() from the title's measured width (titleMeasure, never shown) -->
     <ScrollingLabelSecondaryLarge id="status" vertAlign="center" maxWidth="300" repeatCount="0" visible="false" />

@@ -14,6 +14,8 @@
   "more_horiz": { "sizeFhd": 63, "glyphSize": 46 },
   "album": { "sizeFhd": 63, "glyphSize": 46 },
   "search": { "sizeFhd": 63, "glyphSize": 45 },
+  "sort": { "sizeFhd": 63, "glyphSize": 51 },
+  "filter": { "sizeFhd": 63, "glyphSize": 45 },
   "settings": { "sizeFhd": 63, "glyphSize": 45 },
   "groups": { "sizeFhd": 63, "glyphSize": 45 },
   "heart": { "sizeFhd": 63, "glyphSize": 45 },

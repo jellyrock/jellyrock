@@ -9,28 +9,32 @@
   field is set, then hands it the component through onInit(m). The presenter determines:
   - Backdrop mode (fullscreen, presentation, none)
   - Grid configuration (translation, rows, columns)
-  - Options (view, sort, filter)
+  - Options (tabs, layouts, sort, filter)
   - Metadata display
 -->
 <component name="BaseGridView" extends="JRScreen">
   <children>
-    <VoiceTextEditBox id="VoiceBox" visible="true" width="40" translation="[52, 120]" />
+    <!-- Hidden: screen-level voice capture, as on Home and Search -->
+    <VoiceTextEditBox id="VoiceBox" visible="true" width="40" translation="[0, 0]" />
 
     <!-- Presentation backdrop (right half of screen) - used by movie/music/tvshow presenters -->
     <PresentationBackdrop id="presentationBackdrop" visible="false" />
 
     <!-- Presentation info group - populated by presenter with media-specific metadata nodes -->
-    <Group id="presentationInfo" visible="false" translation="[120, 40]">
-      <LayoutGroup id="movieInfo" layoutDirection="vert" translation="[0, 120]" itemSpacings="[9]">
-        <LabelPrimaryLarge id="selectedMovieName" width="900" horizAlign="left" />
+    <!-- The header strip above it names the focused movie, so this starts with what the
+         strip leaves out: the ratings, the genres, then the tagline and overview. -->
+    <Group id="presentationInfo" visible="false" translation="[96, 183]">
+      <!-- One column that starts right under the strip, so a movie with no ratings or no
+           tagline leaves no hole: each part follows the one before it. -->
+      <LayoutGroup id="movieInfo" layoutDirection="vert" itemSpacings="[0, 12]">
         <!-- Movie metadata groups - dynamically populated by MoviePresenter -->
         <LayoutGroup id="movieInfoGroup" layoutDirection="horiz" itemSpacings="[9]" />
         <LayoutGroup id="movieGenres" layoutDirection="horiz" itemSpacings="[9]" />
+        <!-- Tagline and overview - dynamically populated by MoviePresenter -->
+        <LayoutGroup id="movieDescription" layoutDirection="vert" itemSpacings="[15]" />
       </LayoutGroup>
-      <!-- Movie description group - dynamically populated by MoviePresenter with tagline and overview -->
-      <LayoutGroup id="movieDescription" layoutDirection="vert" vertAlignment="bottom" translation="[0, 620]" itemSpacings="[36]" />
 
-      <Poster id="movieLogo" visible="false" loadDisplayMode="scaleToFit" width="384" height="196" translation="[1270, 400]" />
+      <Poster id="movieLogo" visible="false" loadDisplayMode="scaleToFit" width="384" height="196" translation="[1344, 48]" />
       <!-- Music info nodes -->
       <LabelPrimaryLarge id="selectedArtistName" visible="false" wrap="true" width="850" height="196" horizAlign="left" vertAlign="center" />
       <Poster id="artistLogo" visible="false" loadDisplayMode="scaleToFit" width="384" height="196" />
@@ -42,7 +46,7 @@
     <!-- Main item grid - defaults match GridItem (264x396), presenters override as needed -->
     <JRMarkupGrid
       id="itemGrid"
-      translation="[96, 102]"
+      translation="[96, 168]"
       itemComponentName="GridItem"
       numColumns="6"
       numRows="3"
@@ -83,7 +87,7 @@
     <JRRowList
       id="genreList"
       opacity="0"
-      translation="[120, 120]"
+      translation="[120, 186]"
       itemComponentName="GridItem"
       numColumns="1"
       numRows="3"
@@ -118,8 +122,9 @@
     <!-- A slow first page: moves the spinner's text on while the user waits (onSlowLoadDue). -->
     <Timer id="slowLoadTimer" repeat="false" />
 
-    <!-- Options dialog -->
-    <ItemGridOptions id="options" visible="false" />
+    <!-- The header strip: the focused item, the count, the Sort and Filter chips. Above the
+         grid, the presentation pane and the TV guide in drawing order. -->
+    <LibraryHeaderStrip id="headerStrip" translation="[96, 111]" />
 
     <!-- Alphabetical navigation -->
     <Alpha id="alpha" />
