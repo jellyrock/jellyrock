@@ -998,6 +998,14 @@ To close: build `phrases` with `guard` in its own PR, then map or translate the 
 
 Not checked: none of these strings was watched on a device (the examples are composed from the locale files); whether the seed sources offer placeholder versions that could seed the new strings; whether number + unit order (`"45 mins"`, `"Ch 5"`) holds in every language.
 
+#### A film that restarted for the re-encode cap restarts again in every new player `[fid: reencode-verdict-forgotten-per-player]` `[captured 2026-11-16]`
+
+The re-encode check's verdict lives on the player (`m.retryFlags.disallowVideoCopy` in `VideoPlayerView`), so a new player of a film that restarted a minute ago restarts again: Resume with Group, a halted member's Play on the group's video, or a second play outside a group. Keeping the verdict for the film version for the app run would let a later player ask for the capped re-encode at once.
+
+Measured 2026-11-16 on a Streaming Stick 4K against Jellyfin 12.4.0 (two joins per run, one film): with the earlier read of `dabe5d11` the group sat in Waiting 10.1 to 10.6 s on three restarted joins and 12.5 s on a fourth, against 7.2 and 8.6 s with the check off. The gain from remembering is an estimate from those two sets, not a measurement.
+
+Not built with `dabe5d11` because it adds state: the verdict has to be keyed on the version and the cap, and dropped when the gear's bitrate pick changes, or a stale one re-encodes a stream the server could have copied. Closes when a second player of the same version starts capped with no restart, shown by a unit case and a device run.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
