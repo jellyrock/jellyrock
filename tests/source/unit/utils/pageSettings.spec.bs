@@ -126,6 +126,21 @@ namespace tests
       m.assertEqual(list.selectedIndex, 1)
     end function
 
+    @it("heads the list with the entry's title")
+    function _()
+      entry = m.layoutEntry("grid")
+
+      m.assertEqual(pageSettings.picker(entry).title, entry.title)
+    end function
+
+    @it("heads the list with the entry's picker title when it has one")
+    function _()
+      entry = m.layoutEntry("grid")
+      entry.pickerTitle = "Item Titles (all libraries)"
+
+      m.assertEqual(pageSettings.picker(entry).title, "Item Titles (all libraries)")
+    end function
+
     @it("marks an option whose id is the empty string")
     function _()
       m.assertEqual(pageSettings.picker(m.defaultTabEntry("")).selectedIndex, 0)

@@ -91,7 +91,7 @@ async function movieDisplaySettings() {
   return all?.[moviesId] ?? {};
 }
 
-it('the gear on a movie library opens a menu under it: Layout, Items per row, Default tab, then All settings', async (testCtx) => {
+it('the gear on a movie library opens a menu under it: its page entries, then All settings', async (testCtx) => {
   if (!moviesId) testCtx.skip('server has no "movies" library');
   await launchWithMovies('page settings menu', 'movies', 'grid');
   await navLibraryGrid({ libraries });
@@ -102,6 +102,7 @@ it('the gear on a movie library opens a menu under it: Layout, Items per row, De
   expect(await dialogRows(), 'each entry with its value, then All settings').toEqual([
     'Layout (Grid)',
     'Items per row (7)',
+    'Item Titles (Shown)',
     'Default tab (Movies)',
     'All settings',
   ]);
@@ -262,6 +263,56 @@ it('Items per row lists the counts, and a pick redraws the grid and is kept', as
   await waitHome();
   await navLibraryGrid({ libraries });
   expect((await gridShape()).columns, 'nine again on reopening').toBe(9);
+});
+
+it('Item Titles from the menu hides the titles at once and is the app-wide setting', async (testCtx) => {
+  if (!moviesId) testCtx.skip('server has no "movies" library');
+  await launchWithMovies('page settings titles', 'movies', 'grid');
+  await navLibraryGrid({ libraries });
+  const before = await getVals(['#itemGrid.itemSpacing', '#itemGrid.content.0.title']);
+  expect(before[0], 'the row gap holds a line of title').toEqual([21, 69]);
+  await focusGear('the movie grid');
+
+  await press(ecp.Key.Ok);
+  await waitPageMenu();
+  for (const row of [1, 2]) {
+    await press(ecp.Key.Down);
+    await waitFor('#optionList.itemFocused', (n) => n === row, {
+      label: `row ${row} of the menu`,
+      timeout: 8000,
+    });
+  }
+  await press(ecp.Key.Ok);
+  await waitFor('#optionList.content.0.title', (t) => t === 'Shown', {
+    label: 'the Item Titles list',
+    timeout: 10000,
+  });
+  expect(await getVal('#jrDialog.title'), 'the list says how far the setting reaches').toBe(
+    'Item Titles (all libraries)',
+  );
+  await press(ecp.Key.Down);
+  await waitFor('#optionList.itemFocused', (n) => n === 1, {
+    label: 'Hidden focused',
+    timeout: 8000,
+  });
+  await press(ecp.Key.Ok);
+
+  await waitDialogClosed('the pick closed the list');
+  await waitGridLoaded('the grid after the titles pick');
+  await waitFocusInside('#itemGrid', { label: 'focus on the grid after the pick', timeout: 20000 });
+  const [spacing, isShown, setting] = await getVals([
+    '#itemGrid.itemSpacing',
+    '#routerOutlet.showItemTitles',
+    '#itemGrid.numColumns',
+  ]);
+  expect(spacing, 'the row gap closes to the column gap').toEqual([21, 21]);
+  expect(setting, 'the count is untouched').toBe(7);
+  expect(isShown).not.toBe(true);
+  const settings = (
+    await odc.getValue({ base: 'global', keyPath: 'user.settings.itemGridShowTitles' })
+  )?.value;
+  expect(settings, 'the app-wide setting is what changed').toBe(false);
+  if (process.env.RTA_CAPTURE) await captureRawUI('page-settings-titles-hidden');
 });
 
 it('a layout whose grid starts lower offers only the counts that fit', async (testCtx) => {
@@ -438,17 +489,20 @@ it('a screen with one view still has a page menu, for its grid: a network in a T
 
   await press(ecp.Key.Ok);
   await waitPageMenu();
-  expect(await dialogRows(), 'the count, then All settings').toEqual([
+  expect(await dialogRows(), "the grid's two entries, then All settings").toEqual([
     'Items per row (7)',
+    'Item Titles (Shown)',
     'All settings',
   ]);
 
-  // All settings is still one more press away.
-  await press(ecp.Key.Down);
-  await waitFor('#optionList.itemFocused', (n) => n === 1, {
-    label: 'the All settings row',
-    timeout: 8000,
-  });
+  // All settings is still there, at the end.
+  for (const row of [1, 2]) {
+    await press(ecp.Key.Down);
+    await waitFor('#optionList.itemFocused', (n) => n === row, {
+      label: `row ${row} of the menu`,
+      timeout: 8000,
+    });
+  }
   await press(ecp.Key.Ok);
   await waitSettingsScreen();
   await press(ecp.Key.Back);

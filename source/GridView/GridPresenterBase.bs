@@ -185,8 +185,8 @@ class GridPresenterBase
   ' @param {string} layout - Current layout, a libraryLayout value
   ' @param {dynamic} savedColumns - The view's stored cells per row, or Invalid for none
   ' @param {integer} textLines - Lines of text a cell shows under its poster
-  ' @return {object} translation, itemSize, itemSpacing, rowHeights, numRows, numColumns,
-  '   imageDisplayMode and imageSize ({ width, height } to ask the server for)
+  ' @return {object} translation, itemSize, itemSpacing, rowHeights, numRows, numColumns
+  '   and imageDisplayMode
   function getGridConfig(viewMode as string, layout as string, savedColumns as dynamic, textLines as integer) as object
     shape = m.getGridShape(viewMode)
     top = m.getGridTop(viewMode, layout)
@@ -198,8 +198,7 @@ class GridPresenterBase
       itemSpacing: gridCell.itemSpacing,
       numRows: libraryGrid.rowsFor(gridCell, top),
       numColumns: gridCell.columns,
-      imageDisplayMode: m.getImageDisplayMode(viewMode),
-      imageSize: gridCell.imageSize
+      imageDisplayMode: m.getImageDisplayMode(viewMode)
     }
   end function
 

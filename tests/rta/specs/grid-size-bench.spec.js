@@ -52,7 +52,7 @@ async function drawAndCapture(part, libraryId, columns, areTitlesShown) {
   await odc.writeRegistry({
     values: {
       [session.userId]: {
-        itemGridTitles: areTitlesShown ? 'showalways' : 'hidealways',
+        itemGridShowTitles: areTitlesShown ? 'true' : 'false',
         [`display.${libraryId}.columns_${part.view}`]: String(columns),
       },
     },

@@ -372,6 +372,58 @@ namespace tests
       m.assertFalse(reg.exists("displayLiveTvLanding"))
     end function
 
+    @it("turns the titles setting into on or off, Show On Hover becoming off")
+    @params("showalways", "true")
+    @params("hidealways", "false")
+    @params("showonhover", "false")
+    function _(saved, expected)
+      testUserId = "test-library-tab-016"
+      reg = m.userSection(testUserId)
+      reg.write("itemGridTitles", saved)
+      reg.flush()
+
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
+
+      reg = CreateObject("roRegistrySection", testUserId)
+      m.assertFalse(reg.exists("itemGridTitles"))
+      m.assertEqual(reg.read("itemGridShowTitles"), expected)
+    end function
+
+    @it("leaves a titles setting it already migrated alone on a second run")
+    function _()
+      testUserId = "test-library-tab-017"
+      reg = m.userSection(testUserId)
+      reg.write("itemGridTitles", "hidealways")
+      reg.flush()
+
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
+
+      m.assertEqual(CreateObject("roRegistrySection", testUserId).read("itemGridShowTitles"), "false")
+    end function
+
+    @it("writes no titles setting for a user who never saved one")
+    function _()
+      testUserId = "test-library-tab-018"
+      m.userSection(testUserId).flush()
+
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
+
+      m.assertFalse(CreateObject("roRegistrySection", testUserId).exists("itemGridShowTitles"))
+    end function
+
+    @it("deletes the default movie view that nothing reads")
+    function _()
+      testUserId = "test-library-tab-019"
+      reg = m.userSection(testUserId)
+      reg.write("itemGridMovieDefaultView", "Movies")
+      reg.flush()
+
+      migrateLibraryTabs(CreateObject("roRegistrySection", testUserId), testUserId)
+
+      m.assertFalse(CreateObject("roRegistrySection", testUserId).exists("itemGridMovieDefaultView"))
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("the version gate")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

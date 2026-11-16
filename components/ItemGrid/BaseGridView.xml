@@ -139,8 +139,8 @@
     <field id="imageDisplayMode" type="string" value="scaleToZoom" />
     <field id="alphaSelected" type="string" alias="alpha.letterSelected" alwaysNotify="true" />
     <field id="isAlphaActive" type="boolean" value="false" />
-    <field id="showItemTitles" type="string" value="showonhover" />
-    <field id="gridTitles" type="string" />
+    <!-- Whether cells show their title under the poster: GridItem reads it on every bind -->
+    <field id="showItemTitles" type="boolean" value="true" />
     <field id="currentView" type="string" value="" />
     <!--
       Load lifecycle of this view's content, for tests/tooling to observe atomically:

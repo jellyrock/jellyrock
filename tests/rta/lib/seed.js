@@ -110,6 +110,8 @@ export async function seedHome(session, locale) {
         // when the whole run ends, so a mode one spec chose would reach every spec after it.
         // A spec that wants a mode writes it after this seed (backdrop-mode.spec.js).
         uiShowBackdrop: null,
+        // Likewise the titles setting, which a library's page menu can change (page-settings.spec.js)
+        itemGridShowTitles: null,
       },
     },
   });

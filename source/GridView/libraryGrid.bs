@@ -127,7 +127,6 @@ namespace libraryGrid
   '   rowHeights: [height], equal to the slot (a MarkupGrid frames the poster when they match)
   '   itemSpacing: [column gap, row gap]
   '   rowPitch: one row and its gap
-  '   imageSize: { width, height } to ask the server for
   function cell(shape as dynamic, columns as integer, textLines as integer) as object
     shapeName = libraryGrid.shapeOf(shape)
     if columns < libraryGrid.MIN_COLUMNS then columns = libraryGrid.MIN_COLUMNS
@@ -147,9 +146,30 @@ namespace libraryGrid
       itemSize: [width, height],
       rowHeights: [height],
       itemSpacing: [columnGap, rowGap],
-      rowPitch: height + rowGap,
-      imageSize: { width: width, height: height }
+      rowPitch: height + rowGap
     }
+  end function
+
+  ' imageSizeFor: the image a cell of this size asks the server for: the smallest of three
+  ' fixed sizes that covers it, so the picture is never drawn enlarged.
+  '
+  ' Fixed sizes and not the cell's own, because the first request for a size the server
+  ' has not made is slow for every image in the library. Three sizes per shape pay that
+  ' once each; a size per count would pay it nine times. A cell scales what it gets down
+  ' to its own size as it loads (Poster.loadWidth and loadHeight), so a larger image costs
+  ' download time, not texture memory. The two smaller sizes of each shape are ones other
+  ' screens ask for too (source/constants/imageSize.bs).
+  '
+  ' @return {object} { width, height }
+  function imageSizeFor(width as integer, height as integer) as object
+    if width = height
+      if width <= 280 then return { width: 280, height: 280 }
+      if width <= 440 then return { width: 440, height: 440 }
+      return { width: 564, height: 564 }
+    end if
+    if width <= 180 then return { width: 180, height: 270 }
+    if width <= 295 then return { width: 295, height: 440 }
+    return { width: 564, height: 846 }
   end function
 
   ' rowsFor: how many rows a grid at design y `top` builds: every row whose slot starts

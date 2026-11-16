@@ -53,6 +53,8 @@ const SLOW_LOAD_SERVER_S = 30
 const DEFAULT_TAB_KEY = "defaultTab"
 ' The page setting for how many cells a row holds
 const COLUMNS_KEY = "columns"
+' The page setting for the app-wide Item Titles setting
+const TITLES_KEY = "titles"
 
 sub init()
   m.log = new log.Logger("BaseGridView")
@@ -157,7 +159,6 @@ sub init()
 
   ' Get reset folder setting
   m.resetGrid = userSettings.itemGridReset
-  m.top.gridTitles = userSettings.itemGridTitles
 
   ' Presenter (built by onPresenterTypeChanged when presenterType is set)
   m.presenter = invalid
@@ -270,7 +271,7 @@ sub onScreenShown()
     ' selectable ghosts. A grid that shows favorites does the same when a favorite toggled
     ' (see favoritesStale). Unchanged tokens = no reload, so the resume stays cheap.
     scene = m.top.getScene()
-    if isValid(scene) and (scene.contentVersion <> m.lastContentVersion or favoritesStale() or m.isFilterReloadDue)
+    if isValid(scene) and (scene.contentVersion <> m.lastContentVersion or favoritesStale() or m.isFilterReloadDue or titlesSettingChanged())
       reloadGridItems()
     else
       ' The runway may have run short while another screen was up: a later page failed, or
@@ -814,9 +815,10 @@ end sub
 sub configureGrid()
   if not isValid(m.presenter) then return
 
-  ' A cell shows its title under the poster, or nothing: the row gap follows
+  ' A cell shows its title under the poster, or nothing: the cells and the row gap follow
+  m.top.showItemTitles = m.global.user.settings.itemGridShowTitles
   textLines = 0
-  if m.global.user.settings.itemGridTitles = "showalways" then textLines = 1
+  if m.top.showItemTitles then textLines = 1
 
   savedColumns = getLibraryDisplaySetting(m.top.parentItem.Id, libraryGrid.settingKey(m.view), invalid)
   config = m.presenter.getGridConfig(m.view, m.layout, savedColumns, textLines)
@@ -851,15 +853,6 @@ sub configureGrid()
 
   if isValid(config.imageDisplayMode)
     m.top.imageDisplayMode = config.imageDisplayMode
-  end if
-
-  ' Configure item titles visibility
-  userSettings = m.global.user.settings
-  showInfo = m.presenter.shouldShowPresentationInfo(m.view, m.layout)
-  if showInfo
-    m.top.showItemTitles = "hidealways"
-  else
-    m.top.showItemTitles = userSettings.itemGridTitles
   end if
 end sub
 
@@ -1770,7 +1763,7 @@ end sub
 ' ============================================================================
 
 ' JRScreen hook: Layout, when the view on show can be drawn more than one way; the cells
-' per row, when the item grid draws it; and Default tab, when the library has more than
+' per row and the titles, when the item grid draws it; and Default tab, when the library has more than
 ' one tab.
 function pageSettingsEntries() as object
   entries = []
@@ -1778,11 +1771,20 @@ function pageSettingsEntries() as object
   if layouts.count() > 1
     entries.push({ id: "layout", title: translate(translationKeys.LabelLayout), options: layouts, selected: m.layout })
   end if
-  if showsItemGrid() then entries.push(columnsEntry())
+  if showsItemGrid()
+    entries.push(columnsEntry())
+    entries.push(titlesEntry())
+  end if
   if type(m.offeredViews) = "roArray" and m.offeredViews.count() > 1
     entries.push(defaultTabEntry())
   end if
   return entries
+end function
+
+' Whether the titles setting no longer matches what the grid was drawn with: it is app-wide,
+' so Settings or another library's menu may have changed it while this screen was covered.
+function titlesSettingChanged() as boolean
+  return m.global.user.settings.itemGridShowTitles <> m.top.showItemTitles
 end function
 
 ' Whether the view on show is drawn by the item grid, not the genre rows or the TV guide.
@@ -1808,6 +1810,32 @@ function columnsEntry() as object
   }
 end function
 
+' The titles entry: the app-wide Item Titles setting, offered here because a pick shows on
+' this grid at once. Its list says it applies to every library.
+function titlesEntry() as object
+  title = translate(translationKeys.LabelItemTitles)
+  selected = "false"
+  if m.top.showItemTitles then selected = "true"
+  return {
+    id: TITLES_KEY,
+    title: title,
+    pickerTitle: translate(translationKeys.LabelAppliesToAllLibraries, [title]),
+    options: [
+      { id: "true", title: translate(translationKeys.LabelTitlesShown) },
+      { id: "false", title: translate(translationKeys.LabelTitlesHidden) }
+    ],
+    selected: selected
+  }
+end function
+
+' Save the app-wide titles setting and redraw this grid with it. Other libraries pick it
+' up when they are next shown (titlesSettingChanged).
+sub applyTitles(value as string)
+  setUserSetting("itemGridShowTitles", value = "true")
+  reloadGridItems()
+  focusContent()
+end sub
+
 ' Draw the view on show with `columns` cells to a row and save the choice for it. As a
 ' layout change, it keeps the sort, the filter, the alpha letter and the voice text.
 sub applyColumns(columns as string)
@@ -1823,6 +1851,8 @@ sub onPageSettingChanged(id as string, value as string)
     applyLayout(value)
   else if id = COLUMNS_KEY
     applyColumns(value)
+  else if id = TITLES_KEY
+    applyTitles(value)
   else if id = DEFAULT_TAB_KEY
     applyDefaultTab(value)
   end if
@@ -2232,7 +2262,7 @@ sub onDestroy()
 
   ' Break the GridItem <-> content-root retain CYCLE before dropping our references.
   ' Every GridItem caches m.gridView = this view node (resolveGridViewConfig walks up for
-  ' the gridTitles field) AND observes fields on the shared content root with observeField
+  ' the showItemTitles field) AND observes fields on the shared content root with observeField
   ' (setupGridTextureObserver), which makes the content root hold each cell's component
   ' scope. That closes the loop:
   '   view -> m.data -> cell scope -> m.gridView -> view
