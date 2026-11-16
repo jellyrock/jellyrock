@@ -183,13 +183,14 @@ class GridPresenterBase
   ' a cell's pixels, so this is not overridden.
   ' @param {string} viewMode - Current view, a libraryTab id
   ' @param {string} layout - Current layout, a libraryLayout value
-  ' @param {string} size - The viewer's size for the view, a libraryGrid size
+  ' @param {dynamic} savedColumns - The view's stored cells per row, or Invalid for none
   ' @param {integer} textLines - Lines of text a cell shows under its poster
   ' @return {object} translation, itemSize, itemSpacing, rowHeights, numRows, numColumns,
   '   imageDisplayMode and imageSize ({ width, height } to ask the server for)
-  function getGridConfig(viewMode as string, layout as string, size as string, textLines as integer) as object
-    gridCell = libraryGrid.cell(m.getGridShape(viewMode), size, textLines)
+  function getGridConfig(viewMode as string, layout as string, savedColumns as dynamic, textLines as integer) as object
+    shape = m.getGridShape(viewMode)
     top = m.getGridTop(viewMode, layout)
+    gridCell = libraryGrid.cell(shape, libraryGrid.resolveColumns(savedColumns, shape, top), textLines)
     return {
       translation: [headerStrip.LEFT, top],
       itemSize: gridCell.itemSize,

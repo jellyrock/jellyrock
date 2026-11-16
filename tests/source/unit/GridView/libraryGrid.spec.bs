@@ -3,19 +3,19 @@ import "pkg:/source/utils/headerStrip.bs"
 
 namespace tests
 
-  ' libraryGrid: every library grid cell comes from a shape, a size and a count of text
-  ' lines. These pin what any step in the table has to satisfy, so a new step that
-  ' breaks the 3 pixel grid, overruns the header strip or crowds the focus ring fails
-  ' here, before anyone sees it on a TV.
+  ' libraryGrid: every library grid cell comes from a shape, a count of cells per row and
+  ' a count of text lines. These pin what every count in the table has to satisfy, so a
+  ' width that breaks the 3 pixel grid, overruns the header strip or crowds the focus ring
+  ' fails here, before anyone sees it on a TV.
   @suite("libraryGrid - the library grid's derived cell")
   class LibraryGridTests extends tests.BaseTestSuite
 
     private function everyCell() as object
       cells = []
       for each shape in [libraryGrid.SHAPE_PORTRAIT, libraryGrid.SHAPE_SQUARE]
-        for each size in [libraryGrid.SIZE_SMALL, libraryGrid.SIZE_MEDIUM, libraryGrid.SIZE_LARGE]
+        for columns = libraryGrid.MIN_COLUMNS to libraryGrid.MAX_COLUMNS
           for textLines = 0 to 2
-            cells.push({ name: `${shape} ${size} ${textLines}`, shape: shape, cell: libraryGrid.cell(shape, size, textLines) })
+            cells.push({ name: `${shape} ${columns} ${textLines}`, shape: shape, cell: libraryGrid.cell(shape, columns, textLines) })
           end for
         end for
       end for
@@ -23,7 +23,7 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("cell() - what every step holds to")
+    @describe("cell() - what every count holds to")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("puts every number on the 3 pixel grid")
@@ -36,14 +36,13 @@ namespace tests
       end for
     end function
 
-    @it("fills the header strip's span without passing it")
+    @it("ends a row within 6 pixels of the header strip's right edge, never past it")
     function _()
       for each entry in m.everyCell()
         c = entry.cell
         rowWidth = c.columns * c.itemSize[0] + (c.columns - 1) * c.itemSpacing[0]
         m.assertTrue(rowWidth <= headerStrip.WIDTH, entry.name)
-        ' Flooring each gap to the grid gives up less than 3 pixels a gap
-        m.assertTrue(headerStrip.WIDTH - rowWidth < 3 * c.columns, entry.name)
+        m.assertTrue(headerStrip.WIDTH - rowWidth <= 6, entry.name)
       end for
     end function
 
@@ -70,54 +69,116 @@ namespace tests
       end for
     end function
 
+    @it("draws smaller cells as a row holds more of them")
+    function _()
+      for each shape in [libraryGrid.SHAPE_PORTRAIT, libraryGrid.SHAPE_SQUARE]
+        for columns = libraryGrid.MIN_COLUMNS + 1 to libraryGrid.MAX_COLUMNS
+          wider = libraryGrid.cell(shape, columns - 1, 1).itemSize[0]
+          m.assertTrue(libraryGrid.cell(shape, columns, 1).itemSize[0] < wider, `${shape} ${columns}`)
+        end for
+      end for
+    end function
+
     @it("grows the row gap by one line slot for each line of text")
     function _()
       for each shape in [libraryGrid.SHAPE_PORTRAIT, libraryGrid.SHAPE_SQUARE]
-        one = libraryGrid.cell(shape, libraryGrid.SIZE_MEDIUM, 1)
-        two = libraryGrid.cell(shape, libraryGrid.SIZE_MEDIUM, 2)
+        one = libraryGrid.cell(shape, 6, 1)
+        two = libraryGrid.cell(shape, 6, 2)
         m.assertEqual(two.itemSpacing[1] - one.itemSpacing[1], libraryGrid.TEXT_LINE_HEIGHT, shape)
       end for
     end function
 
     @it("makes the row gap equal the column gap when a cell shows no text")
     function _()
-      for each shape in [libraryGrid.SHAPE_PORTRAIT, libraryGrid.SHAPE_SQUARE]
-        c = libraryGrid.cell(shape, libraryGrid.SIZE_SMALL, 0)
-        m.assertEqual(c.itemSpacing[1], c.itemSpacing[0], shape)
+      for each entry in m.everyCell()
+        if entry.name.right(2) = " 0" then m.assertEqual(entry.cell.itemSpacing[1], entry.cell.itemSpacing[0], entry.name)
       end for
     end function
 
-    @it("draws the medium portrait cell approved at the header strip's design gate")
+    @it("keeps six portrait cells at the size approved with the header strip")
     function _()
-      c = libraryGrid.cell(libraryGrid.SHAPE_PORTRAIT, libraryGrid.SIZE_MEDIUM, 1)
+      c = libraryGrid.cell(libraryGrid.SHAPE_PORTRAIT, 6, 1)
 
-      m.assertEqual(c.columns, 6)
       m.assertEqual(c.itemSize, [252, 378])
       m.assertEqual(c.itemSpacing, [42, 69])
     end function
 
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("cell() - a value this build does not know")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("draws an unknown size as medium")
-    @params("huge")
-    @params("")
-    @params(invalid)
-    @params(3)
-    function _(size)
-      expected = libraryGrid.cell(libraryGrid.SHAPE_PORTRAIT, libraryGrid.SIZE_MEDIUM, 1)
-
-      m.assertEqual(libraryGrid.cell(libraryGrid.SHAPE_PORTRAIT, size, 1), expected)
+    @it("draws a count out of range as the nearest one in range")
+    function _()
+      m.assertEqual(libraryGrid.cell(libraryGrid.SHAPE_PORTRAIT, 1, 1).columns, libraryGrid.MIN_COLUMNS)
+      m.assertEqual(libraryGrid.cell(libraryGrid.SHAPE_PORTRAIT, 40, 1).columns, libraryGrid.MAX_COLUMNS)
     end function
 
     @it("draws an unknown shape as a portrait")
     @params("wide")
     @params(invalid)
     function _(shape)
-      expected = libraryGrid.cell(libraryGrid.SHAPE_PORTRAIT, libraryGrid.SIZE_MEDIUM, 1)
+      m.assertEqual(libraryGrid.cell(shape, 7, 1), libraryGrid.cell(libraryGrid.SHAPE_PORTRAIT, 7, 1))
+    end function
 
-      m.assertEqual(libraryGrid.cell(shape, libraryGrid.SIZE_MEDIUM, 1), expected)
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("minColumns() and choices()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("offers every count under the header strip")
+    function _()
+      m.assertEqual(libraryGrid.minColumns(libraryGrid.SHAPE_PORTRAIT, headerStrip.CONTENT_TOP), 3)
+      m.assertEqual(libraryGrid.choices(libraryGrid.SHAPE_PORTRAIT, headerStrip.CONTENT_TOP), [3, 4, 5, 6, 7, 8, 9, 10, 11])
+    end function
+
+    @it("starts at the first count whose whole poster shows when the grid starts lower")
+    ' From y 438, four to a row is a poster 621 tall that ends one pixel past the screen
+    function _()
+      m.assertEqual(libraryGrid.minColumns(libraryGrid.SHAPE_PORTRAIT, 438), 5)
+      m.assertEqual(libraryGrid.choices(libraryGrid.SHAPE_PORTRAIT, 438)[0], 5)
+    end function
+
+    @it("shows one whole poster at every count it offers")
+    function _()
+      for each top in [headerStrip.CONTENT_TOP, 438, 600]
+        for each shape in [libraryGrid.SHAPE_PORTRAIT, libraryGrid.SHAPE_SQUARE]
+          for each columns in libraryGrid.choices(shape, top)
+            bottom = top + libraryGrid.POSTER_TOP_OFFSET + libraryGrid.cell(shape, columns, 1).itemSize[1]
+            m.assertTrue(bottom <= libraryGrid.SCREEN_HEIGHT, `${shape} ${columns} at ${top}`)
+          end for
+        end for
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resolveColumns()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("honors a saved count in range")
+    @params("3", 3)
+    @params("7", 7)
+    @params("11", 11)
+    @params(" 9 ", 9)
+    function _(saved, expected)
+      m.assertEqual(libraryGrid.resolveColumns(saved, libraryGrid.SHAPE_PORTRAIT, headerStrip.CONTENT_TOP), expected)
+    end function
+
+    @it("draws the shape's default for anything else")
+    @params(invalid)
+    @params("")
+    @params("2")
+    @params("12")
+    @params("7.5")
+    @params("large")
+    function _(saved)
+      m.assertEqual(libraryGrid.resolveColumns(saved, libraryGrid.SHAPE_PORTRAIT, headerStrip.CONTENT_TOP), libraryGrid.DEFAULT_PORTRAIT_COLUMNS)
+      m.assertEqual(libraryGrid.resolveColumns(saved, libraryGrid.SHAPE_SQUARE, headerStrip.CONTENT_TOP), libraryGrid.DEFAULT_SQUARE_COLUMNS)
+    end function
+
+    @it("raises a saved count to the floor of a grid that starts lower")
+    function _()
+      m.assertEqual(libraryGrid.resolveColumns("3", libraryGrid.SHAPE_PORTRAIT, 438), 5)
+      m.assertEqual(libraryGrid.resolveColumns("8", libraryGrid.SHAPE_PORTRAIT, 438), 8)
+    end function
+
+    @it("saves a view's count under its own key")
+    function _()
+      m.assertEqual(libraryGrid.settingKey("Movies"), "columns_movies")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -127,7 +188,7 @@ namespace tests
     @it("counts every row whose slot starts above the screen's edge")
     function _()
       ' From y 168 a 447 pixel pitch shows two rows and the top of a third
-      c = libraryGrid.cell(libraryGrid.SHAPE_PORTRAIT, libraryGrid.SIZE_MEDIUM, 1)
+      c = libraryGrid.cell(libraryGrid.SHAPE_PORTRAIT, 6, 1)
 
       m.assertEqual(c.rowPitch, 447)
       m.assertEqual(libraryGrid.rowsFor(c, 168), 3)

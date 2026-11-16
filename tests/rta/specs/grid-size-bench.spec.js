@@ -1,83 +1,40 @@
 /**
- * The library grid drawn at candidate column counts, for picking the Size steps by eye.
+ * The library grid drawn at every count of items per row, for judging the sizes by eye.
  * It gates nothing, so it runs only when asked for:
  *
  *   RTA_BENCH=1 npm run test:rta -- grid-size-bench
  *
- * Each capture lands in `out/rta-captures/` as `grid-<shape>-<columns>x<width>-<titles>.png`.
- * A candidate is a column count and a cell width; the rest is the arithmetic of
- * `libraryGrid.cellFor()`, repeated here so a candidate can be drawn before it is in the
- * app's table. A candidate reaches the app through the RTA-only `rtaGridStep` global, which
- * `BaseGridView.configureGrid()` reads when a library opens, so each one is drawn by the
- * app's own path on a library opened anew.
+ * Each capture lands in `out/rta-captures/` as `grid-<part>-<count>-<titles>.png`. A count
+ * reaches the app as a viewer's pick does, through the saved `columns_<view>` display
+ * setting, so each one costs a cold start.
  *
- * `RTA_GRID_ONLY=portrait|square|presentation` runs one part. Set `RTA_GRID_TAG` to keep
- * two runs apart.
+ * `RTA_GRID_ONLY=portrait|presentation|square` runs one part, `RTA_GRID_COLUMNS=3,11`
+ * those counts alone, and `RTA_GRID_TAG` keeps two runs apart.
  */
 import { beforeAll, it } from 'vitest';
-import { ecp, odc } from 'roku-test-automation';
+import { odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import { authenticate, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
 import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
 import { navLibraryByType, waitGridLoaded } from '../lib/nav.js';
-import { press, sleep, waitHome } from '../lib/steps.js';
+import { sleep, waitHome } from '../lib/steps.js';
 import { captureRawUI } from '../capture.js';
 
 const BENCH_ENABLED = process.env.RTA_BENCH === '1';
 const ONLY = process.env.RTA_GRID_ONLY || '';
 const TAG = process.env.RTA_GRID_TAG ? `${process.env.RTA_GRID_TAG}-` : '';
-// A resized cell asks for its poster again, and no field says when the last one has drawn
+const WANTED = (process.env.RTA_GRID_COLUMNS || '').split(',').filter(Boolean).map(Number);
+// Posters load after the grid reports loaded, and no field says when the last has drawn
 const PAINT_SETTLE_MS = 5000;
 
-// libraryGrid.cellFor()'s inputs, mirrored (source/GridView/libraryGrid.bs)
-const SPAN = 1728;
-const TEXT_ROW_GAP = 18 + 33 + 18;
-const floorToGrid = (n) => n - (n % 3);
-
-// [columns, width] for every count from 3 to 12: the widest cell on the 3 pixel grid
-// whose row ends within 6 pixels of the strip's right edge with gaps of at least 18
-// (libraryGrid.MIN_GAP). 12 has no such fit and ends 18 short. 5 and 7 carry a second,
-// roomier candidate.
-const PORTRAIT = [
-  [3, 564],
-  [4, 414],
-  [5, 324],
-  [5, 312],
-  [6, 252],
-  [7, 228],
-  [7, 216],
-  [8, 192],
-  [9, 168],
-  [10, 156],
-  [11, 138],
-  [12, 126],
+// libraryGrid.MIN_COLUMNS to MAX_COLUMNS; the presentation layout's floor is 5
+const COUNTS = [3, 4, 5, 6, 7, 8, 9, 10, 11];
+const PARTS = [
+  { name: 'portrait', type: 'movies', view: 'movies', layout: 'comfortable', from: 3 },
+  { name: 'presentation', type: 'movies', view: 'movies', layout: 'presentation', from: 5 },
+  { name: 'square', type: 'music', view: 'albums', layout: undefined, from: 3 },
 ];
-const SQUARE = [
-  [3, 564],
-  [4, 414],
-  [5, 324],
-  [6, 273],
-  [7, 231],
-  [8, 195],
-  [9, 168],
-  [10, 156],
-  [11, 138],
-  [12, 126],
-];
-// The presentation layout's grid starts at design y 438 with the poster 22 below: a
-// candidate is drawn there only when one whole poster fits above the screen's edge
-// `RTA_GRID_COLUMNS=3,4` draws those counts alone
-const COLUMNS = (process.env.RTA_GRID_COLUMNS || '').split(',').filter(Boolean).map(Number);
-const isWanted = ([columns]) => COLUMNS.length === 0 || COLUMNS.includes(columns);
-const fitsPresentation = ([, width]) => 438 + 22 + (width * 3) / 2 <= 1080;
-
-function cellFor(shape, columns, width, textLines) {
-  const height = shape === 'square' ? width : (width * 3) / 2;
-  const columnGap = floorToGrid(Math.floor((SPAN - columns * width) / (columns - 1)));
-  const rowGap = textLines > 0 ? TEXT_ROW_GAP : columnGap;
-  return { columns, width, height, columnGap, rowGap };
-}
 
 let session;
 let libraries;
@@ -88,68 +45,43 @@ beforeAll(async () => {
   libraries = await getLibraries(session);
 });
 
-/**
- * A cold start on Home with the titles setting and the library's landing written.
- * Returns the walk that opens the library from Home, or false when the server has none.
- */
-async function seedLibrary(collectionType, view, layout, areTitlesShown) {
-  const libraryId = libraryIdFor(libraries, collectionType);
-  if (!libraryId) {
-    console.log(`  [grid] no "${collectionType}" library on this server: skipped`);
-    return false;
-  }
+/** A cold start with the count and the titles setting saved, the library opened, a capture. */
+async function drawAndCapture(part, libraryId, columns, areTitlesShown) {
   const expectedServer = await seedHome(session, RTA_CONFIG.languages[0]);
+  const landing = await seedLibraryLanding(session, libraryId, part.view, { layout: part.layout });
   await odc.writeRegistry({
-    values: { [session.userId]: { itemGridTitles: areTitlesShown ? 'showalways' : 'hidealways' } },
+    values: {
+      [session.userId]: {
+        itemGridTitles: areTitlesShown ? 'showalways' : 'hidealways',
+        [`display.${libraryId}.columns_${part.view}`]: String(columns),
+      },
+    },
   });
-  const landing = await seedLibraryLanding(session, libraryId, view, { layout });
   await hardRelaunch();
-  await assertSeedTookEffect(expectedServer, `grid ${collectionType}`, landing ? { landing } : {});
+  await assertSeedTookEffect(expectedServer, `grid ${part.name}`, landing ? { landing } : {});
   await waitHome();
-  return async () => {
-    await navLibraryByType(collectionType, libraryId);
-    await waitGridLoaded(`grid ${collectionType} ${view}`);
-  };
-}
-
-/** Open the library drawn as one candidate, capture it, and go back to Home. */
-async function drawAndCapture(shape, [columns, width], areTitlesShown, label, open) {
-  const cell = cellFor(shape, columns, width, areTitlesShown ? 1 : 0);
-  await odc.setValue({ base: 'global', keyPath: 'rtaGridStep', value: { columns, width } });
-  await open();
-  console.log(
-    `  [grid] ${label} ${columns} x ${cell.width} by ${cell.height}, gaps ${cell.columnGap} and ${cell.rowGap}`,
-  );
+  await navLibraryByType(part.type, libraryId);
+  await waitGridLoaded(`grid ${part.name} ${columns}`);
   await sleep(PAINT_SETTLE_MS);
   const titles = areTitlesShown ? 'titles' : 'notitles';
-  await captureRawUI(`grid-${TAG}${label}-${columns}x${width}-${titles}`);
-  await press(ecp.Key.Back);
-  await waitHome();
+  await captureRawUI(`grid-${TAG}${part.name}-${columns}-${titles}`);
 }
 
 it.skipIf(!BENCH_ENABLED)(
-  'captures the library grid at each candidate size',
+  'captures the library grid at every count of items per row',
   async () => {
-    for (const areTitlesShown of [true, false]) {
-      if (!ONLY || ONLY === 'portrait') {
-        const open = await seedLibrary('movies', 'movies', 'comfortable', areTitlesShown);
-        for (const candidate of open ? PORTRAIT.filter(isWanted) : []) {
-          await drawAndCapture('portrait', candidate, areTitlesShown, 'portrait', open);
-        }
+    for (const part of PARTS.filter((p) => !ONLY || p.name === ONLY)) {
+      const libraryId = libraryIdFor(libraries, part.type);
+      if (!libraryId) {
+        console.log(`  [grid] no "${part.type}" library on this server: ${part.name} skipped`);
+        continue;
       }
-      if (!ONLY || ONLY === 'presentation') {
-        const open = await seedLibrary('movies', 'movies', 'presentation', areTitlesShown);
-        for (const candidate of open ? PORTRAIT.filter(fitsPresentation).filter(isWanted) : []) {
-          await drawAndCapture('portrait', candidate, areTitlesShown, 'presentation', open);
-        }
-      }
-      if (!ONLY || ONLY === 'square') {
-        const open = await seedLibrary('music', 'albums', undefined, areTitlesShown);
-        for (const candidate of open ? SQUARE.filter(isWanted) : []) {
-          await drawAndCapture('square', candidate, areTitlesShown, 'square', open);
-        }
+      const counts = COUNTS.filter((n) => n >= part.from && (!WANTED.length || WANTED.includes(n)));
+      for (const areTitlesShown of [true, false]) {
+        for (const columns of counts)
+          await drawAndCapture(part, libraryId, columns, areTitlesShown);
       }
     }
   },
-  30 * 60 * 1000,
+  60 * 60 * 1000,
 );

@@ -17,6 +17,7 @@ import { RTA_CONFIG } from '../config.js';
 import { authenticate, getJson, getLibraries, libraryIdFor, tokenHeader } from '../lib/jellyfin.js';
 import { seedHome, seedLibraryLanding, assertSeedTookEffect, heldDefaultTab } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
+import { captureRawUI } from '../capture.js';
 import {
   navLibraryGrid,
   navTvLibrary,
@@ -29,6 +30,7 @@ import {
   enterOverhangRow,
   getActiveVal,
   getVal,
+  getVals,
   press,
   resendUntilFocusInside,
   scrollFocus,
@@ -89,7 +91,7 @@ async function movieDisplaySettings() {
   return all?.[moviesId] ?? {};
 }
 
-it('the gear on a movie library opens a menu under it: Layout, Default tab, then All settings', async (testCtx) => {
+it('the gear on a movie library opens a menu under it: Layout, Items per row, Default tab, then All settings', async (testCtx) => {
   if (!moviesId) testCtx.skip('server has no "movies" library');
   await launchWithMovies('page settings menu', 'movies', 'comfortable');
   await navLibraryGrid({ libraries });
@@ -99,6 +101,7 @@ it('the gear on a movie library opens a menu under it: Layout, Default tab, then
   await waitPageMenu();
   expect(await dialogRows(), 'each entry with its value, then All settings').toEqual([
     'Layout (Comfortable)',
+    'Items per row (7)',
     'Default tab (Movies)',
     'All settings',
   ]);
@@ -195,6 +198,106 @@ it('Layout lists the layouts, Back returns to the menu, and a pick redraws the t
   await press(ecp.Key.Ok);
   await waitPageMenu();
   expect((await dialogRows())[0]).toBe('Layout (Presentation)');
+  await press(ecp.Key.Back);
+  await waitDialogClosed('Back closed the menu');
+});
+
+/** The item grid's columns and cell size, as it is drawn now. */
+async function gridShape() {
+  const [columns, itemSize] = await getVals(['#itemGrid.numColumns', '#itemGrid.itemSize']);
+  return { columns, itemSize };
+}
+
+it('Items per row lists the counts, and a pick redraws the grid and is kept', async (testCtx) => {
+  if (!moviesId) testCtx.skip('server has no "movies" library');
+  await launchWithMovies('page settings columns', 'movies', 'comfortable');
+  await navLibraryGrid({ libraries });
+  expect(await gridShape(), 'seven to a row until a count is picked').toEqual({
+    columns: 7,
+    itemSize: [228, 342],
+  });
+  await focusGear('the movie grid');
+
+  await press(ecp.Key.Ok);
+  await waitPageMenu();
+  await press(ecp.Key.Down);
+  await waitFor('#optionList.itemFocused', (n) => n === 1, {
+    label: 'the Items per row row',
+    timeout: 8000,
+  });
+  await press(ecp.Key.Ok);
+  await waitFor('#optionList.content.0.title', (t) => t === '3', {
+    label: 'the Items per row list',
+    timeout: 10000,
+  });
+  expect(await dialogRows()).toEqual(['3', '4', '5', '6', '7', '8', '9', '10', '11']);
+  await waitFor('#optionList.itemFocused', (n) => n === 4, {
+    label: 'focus opens on the count in force',
+    timeout: 8000,
+  });
+  for (const row of [5, 6]) {
+    await press(ecp.Key.Down);
+    await waitFor('#optionList.itemFocused', (n) => n === row, {
+      label: `row ${row} of the list`,
+      timeout: 8000,
+    });
+  }
+  await press(ecp.Key.Ok);
+
+  await waitDialogClosed('the pick closed the list');
+  await waitGridLoaded('the grid after the count pick');
+  await waitFocusInside('#itemGrid', { label: 'focus on the grid after the pick', timeout: 20000 });
+  expect(await gridShape(), 'nine to a row, drawn at once').toEqual({
+    columns: 9,
+    itemSize: [168, 252],
+  });
+  if (process.env.RTA_CAPTURE) await captureRawUI('page-settings-nine-per-row');
+
+  const saved = await movieDisplaySettings();
+  expect(saved.columns_movies, 'saved for the Movies view').toBe('9');
+  expect(saved.sort_movies, 'a size change is not a view change: the sort stays').toBe(SEEDED_SORT);
+
+  // Leave and come back: the library opens as it was left.
+  await press(ecp.Key.Back);
+  await waitHome();
+  await navLibraryGrid({ libraries });
+  expect((await gridShape()).columns, 'nine again on reopening').toBe(9);
+});
+
+it('a layout whose grid starts lower offers only the counts that fit', async (testCtx) => {
+  if (!moviesId) testCtx.skip('server has no "movies" library');
+  const expectedServer = await seedHome(session, LOCALE);
+  const landing = await seedLibraryLanding(session, moviesId, 'movies', { layout: 'presentation' });
+  await odc.writeRegistry({
+    values: { [session.userId]: { [`display.${moviesId}.columns_movies`]: '3' } },
+  });
+  await hardRelaunch();
+  await assertSeedTookEffect(expectedServer, 'page settings columns floor', { landing });
+  await waitHome();
+  await navLibraryGrid({ libraries });
+  expect((await gridShape()).columns, 'three does not fit under the panel: five is drawn').toBe(5);
+
+  await focusGear('the movie grid');
+  await press(ecp.Key.Ok);
+  await waitPageMenu();
+  expect((await dialogRows())[1]).toBe('Items per row (5)');
+  await press(ecp.Key.Down);
+  await waitFor('#optionList.itemFocused', (n) => n === 1, {
+    label: 'the Items per row row',
+    timeout: 8000,
+  });
+  await press(ecp.Key.Ok);
+  await waitFor('#optionList.content.0.title', (t) => t === '5', {
+    label: 'the Items per row list',
+    timeout: 10000,
+  });
+  expect(await dialogRows()).toEqual(['5', '6', '7', '8', '9', '10', '11']);
+  expect((await movieDisplaySettings()).columns_movies, 'the saved count is left alone').toBe('3');
+  await press(ecp.Key.Back);
+  await waitFor('#optionList.content.0.title', (t) => t === 'Layout (Presentation)', {
+    label: 'the menu again',
+    timeout: 10000,
+  });
   await press(ecp.Key.Back);
   await waitDialogClosed('Back closed the menu');
 });
@@ -310,7 +413,7 @@ it('a layout change keeps the letter picked on the letter rail', async (testCtx)
   await waitFocusInside('#itemGrid', { label: 'focus on the grid after the pick', timeout: 20000 });
 });
 
-it('a screen with no page settings opens Settings in one press: a network in a TV library', async (testCtx) => {
+it('a screen with one view still has a page menu, for its grid: a network in a TV library', async (testCtx) => {
   const tvId = libraryIdFor(libraries, 'tvshows');
   if (!tvId) testCtx.skip('server has no "tvshows" library');
   const expectedServer = await seedHome(session, LOCALE);
@@ -322,7 +425,7 @@ it('a screen with no page settings opens Settings in one press: a network in a T
   if ((await getActiveVal('#itemGrid.content.getChildCount()')) < 1)
     testCtx.skip('the TV library lists no networks');
 
-  // A network folder has one view, no tabs and no layouts to choose from.
+  // A network folder has one view, no tabs and no layouts: its menu is its grid's count alone.
   await pressGridTile(0);
   await waitFor('parentItem.id', (id) => typeof id === 'string' && id !== '' && id !== tvId, {
     label: 'the network opened',
@@ -333,6 +436,19 @@ it('a screen with no page settings opens Settings in one press: a network in a T
   await waitFocusInside('#itemGrid', { label: 'focus on the network grid', timeout: 20000 });
   await focusGear('the network grid');
 
+  await press(ecp.Key.Ok);
+  await waitPageMenu();
+  expect(await dialogRows(), 'the count, then All settings').toEqual([
+    'Items per row (7)',
+    'All settings',
+  ]);
+
+  // All settings is still one more press away.
+  await press(ecp.Key.Down);
+  await waitFor('#optionList.itemFocused', (n) => n === 1, {
+    label: 'the All settings row',
+    timeout: 8000,
+  });
   await press(ecp.Key.Ok);
   await waitSettingsScreen();
   await press(ecp.Key.Back);

@@ -140,7 +140,7 @@ namespace tests
     @params("studios", "presentation", false)
     function _(viewMode, layout, expected)
       m.assertEqual(m.presenter.getBackdropMode(viewMode, layout) = "presentation", expected)
-      config = m.presenter.getGridConfig(viewMode, layout, libraryGrid.SIZE_MEDIUM, 1)
+      config = m.presenter.getGridConfig(viewMode, layout, invalid, 1)
       m.assertEqual(config.translation[1] > headerStrip.CONTENT_TOP, expected, "the grid drops for the panel only in presentation")
     end function
 

@@ -51,6 +51,8 @@ const SLOW_LOAD_SERVER_S = 30
 ' The display setting that holds this Roku's default tab for a library, and the id of its
 ' entry in the gear menu.
 const DEFAULT_TAB_KEY = "defaultTab"
+' The page setting for how many cells a row holds
+const COLUMNS_KEY = "columns"
 
 sub init()
   m.log = new log.Logger("BaseGridView")
@@ -816,20 +818,8 @@ sub configureGrid()
   textLines = 0
   if m.global.user.settings.itemGridTitles = "showalways" then textLines = 1
 
-  config = m.presenter.getGridConfig(m.view, m.layout, libraryGrid.SIZE_MEDIUM, textLines)
-
-  ' Bench hook: draw a step that is not in libraryGrid's table yet (grid-size-bench.spec.js)
-  #if ENABLE_RTA
-    benchStep = m.global.rtaGridStep
-    if isValid(benchStep) and isValid(benchStep.columns) and isValid(benchStep.width)
-      benchCell = libraryGrid.cellFor(m.presenter.getGridShape(m.view), benchStep.columns, benchStep.width, textLines)
-      config.itemSize = benchCell.itemSize
-      config.rowHeights = benchCell.rowHeights
-      config.itemSpacing = benchCell.itemSpacing
-      config.numColumns = benchCell.columns
-      config.numRows = libraryGrid.rowsFor(benchCell, config.translation[1])
-    end if
-  #end if
+  savedColumns = getLibraryDisplaySetting(m.top.parentItem.Id, libraryGrid.settingKey(m.view), invalid)
+  config = m.presenter.getGridConfig(m.view, m.layout, savedColumns, textLines)
 
   if isValid(config.translation)
     if type(config.translation) = "roArray"
@@ -1779,24 +1769,60 @@ end sub
 ' Page settings (the settings icon's menu)
 ' ============================================================================
 
-' JRScreen hook: Layout, when the view on show can be drawn more than one way, and
-' Default tab, when the library has more than one tab.
+' JRScreen hook: Layout, when the view on show can be drawn more than one way; the cells
+' per row, when the item grid draws it; and Default tab, when the library has more than
+' one tab.
 function pageSettingsEntries() as object
   entries = []
   layouts = offeredLayouts()
   if layouts.count() > 1
     entries.push({ id: "layout", title: translate(translationKeys.LabelLayout), options: layouts, selected: m.layout })
   end if
+  if showsItemGrid() then entries.push(columnsEntry())
   if type(m.offeredViews) = "roArray" and m.offeredViews.count() > 1
     entries.push(defaultTabEntry())
   end if
   return entries
 end function
 
+' Whether the view on show is drawn by the item grid, not the genre rows or the TV guide.
+function showsItemGrid() as boolean
+  if not isValid(m.presenter) or not isValid(m.top.parentItem) then return false
+  if m.presenter.showsTVGuide(m.view) then return false
+  return m.genreList.opacity <> 1
+end function
+
+' The cells-per-row entry: every count the grid on show has room for, the one in force
+' selected. The grid's own numColumns is that count, set by configureGrid().
+function columnsEntry() as object
+  options = []
+  top = m.presenter.getGridTop(m.view, m.layout)
+  for each columns in libraryGrid.choices(m.presenter.getGridShape(m.view), top)
+    options.push({ id: columns.toStr(), title: columns.toStr() })
+  end for
+  return {
+    id: COLUMNS_KEY,
+    title: translate(translationKeys.LabelItemsPerRow),
+    options: options,
+    selected: m.itemGrid.numColumns.toStr()
+  }
+end function
+
+' Draw the view on show with `columns` cells to a row and save the choice for it. As a
+' layout change, it keeps the sort, the filter, the alpha letter and the voice text.
+sub applyColumns(columns as string)
+  if columns = m.itemGrid.numColumns.toStr() then return
+  setLibraryDisplaySetting(m.top.parentItem.Id, libraryGrid.settingKey(m.view), columns)
+  reloadGridItems()
+  focusContent()
+end sub
+
 ' JRScreen hook: the viewer picked a new option for one of those settings.
 sub onPageSettingChanged(id as string, value as string)
   if id = "layout"
     applyLayout(value)
+  else if id = COLUMNS_KEY
+    applyColumns(value)
   else if id = DEFAULT_TAB_KEY
     applyDefaultTab(value)
   end if
