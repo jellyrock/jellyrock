@@ -76,7 +76,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
   - At runtime, `launchTask()` queues a launch above the watermark instead of starting it ([ADR 0031](../adr/0031-task-thread-ceiling.md), [ADR 0041](../adr/0041-task-launch-queue.md)). The pre-ship device gate is [`task-thread-peak.spec.js`](../../tests/rta/specs/task-thread-peak.spec.js). Measured peaks are in ADR 0031 and [ADR 0036](../adr/0036-api-pool-width-by-device-class.md).
 
   Neither guard sees repetition driven by a timer or an observer. That shape is churn, not concurrency: the Quick Connect poll before #847 built a Task every tick but ran one at a time (the #847 commit has the detail). The next timer-driven launch will not be caught.
-- **direction**: Audit the persistent floor and keep it small; `source/api/CLAUDE.md` says not to change the pool width without measuring on a device. `JRButtons`' `TextSizeTask` exists because `roFontRegistry` was believed render-thread-forbidden; [`threading.md`](threading.md#a-correction-worth-keeping) shows it is not, so check whether that task can go. The other half, auditing each routed screen's `onDestroy` for complete release of its Task nodes, was done read-only on 2026-10-13 and found no gap: every Task node a component with an `onDestroy` stores is released there or in a helper it calls, and every host calls its children's `onDestroy` (the overhang's `JRTabBar` and `JRDropdown` are never destroyed, since the overhang lives for the app).
+- **direction**: Audit the persistent floor and keep it small; `source/api/CLAUDE.md` says not to change the pool width without measuring on a device. `JRButtons`' `TextSizeTask`, a Task kept only to measure text, went with the library options panel (2026-11-15). The other half, auditing each routed screen's `onDestroy` for complete release of its Task nodes, was done read-only on 2026-10-13 and found no gap: every Task node a component with an `onDestroy` stores is released there or in a helper it calls, and every host calls its children's `onDestroy` (the overhang's `JRTabBar` and `JRDropdown` are never destroyed, since the overhang lives for the app).
 
 #### `no-lint-for-mlog-without-logger`
 
@@ -128,7 +128,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 - **area**: [`scripts/bsc-plugins/observe-without-on-destroy.cjs`](../../scripts/bsc-plugins/observe-without-on-destroy.cjs), [`scripts/bsc-plugins/jrscreen-on-destroy.cjs`](../../scripts/bsc-plugins/jrscreen-on-destroy.cjs)
 - **issue**: Both teardown plugins cover only descendants of `JRScreen` (`TARGET_BASE = 'JRScreen'`). A `Group` or `LayoutGroup` used as a widget gets no coverage, and several dozen such components observe a field they never unobserve. Most of that is self-observation, which dies with the node. The cross-node cases are the real leak shape:
-  - `JRButtons` held a `TextSizeTask` observer for its lifetime until it was fixed by hand under #728.
+  - `JRButtons` (removed since, with the library options panel) held a `TextSizeTask` observer for its lifetime until it was fixed by hand under #728.
   - [`GridItem`](../../components/ItemGrid/GridItem.bs) observes the content root its `BaseGridView` owns, unobserves only when the root changes, and has no `onDestroy`. [ADR 0029](../adr/0029-destroy-routed-screens-on-pop.md) breaks the resulting retain cycle from the container side: `BaseGridView.onDestroy` drops the content root.
   - [`JRRowItem`](../../components/ui/rowitem/JRRowItem.bs) and its `BrowseRowItem` subclass (the cell for `ExtrasRowList`, `SearchRow` and `FavoritesRows`) cache `m.contentRoot` and observe it in a one-time `setupTextureObserver()`, with no `onDestroy`. `SearchScreen.onDestroy` drops its content, but `ExtrasRowList.onDestroy` does not.
 
@@ -496,7 +496,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 #### `legacy-print-statements`
 
-- **area**: 12 component `.bs` files (the font tasks, `JRButtons`, `JRButtonGroup`, `JRLabel`, `JRScrollingLabel`, `JRLabelList`, `JRRowList`, `JRTimeGrid`, `HomeRows`, `VideoPlayerView`) and `source/data/JellyfinDataTransformer.bs`. `ResumeButton.bs` carries the opt-out header with no `print` left.
+- **area**: Component `.bs` files (the font tasks, `JRButtonGroup`, `JRLabel`, `JRScrollingLabel`, `JRLabelList`, `JRRowList`, `JRTimeGrid`, `HomeRows`, `VideoPlayerView`) and `source/data/JellyfinDataTransformer.bs`. `ResumeButton.bs` carries the opt-out header with no `print` left.
 - **issue**: Raw `print` statements remain where `m.log.*` could be used (component and class methods). Prod builds strip `m.log` calls but not `print`, so these reach the device log unconditionally.
 - **direction**: In each file, import `pkg:/source/logging/Logger.bs`, create `m.log = new log.Logger("…")` in `init()` (or the class constructor), and convert each `print` to the right level. Each file carries a `' bsc-disable-file print-locations` header pointing here; remove it with the last `print`. Remove `ResumeButton.bs`' header now, so a new `print` there is flagged.
 - **enforced**: `scripts/bsc-plugins/print-locations.cjs` flags every new `print` outside `source/main.bs` and the `globals.bs` debug block, skipping free functions in `source/`, which have no `m`.
