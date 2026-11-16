@@ -543,12 +543,11 @@ Settings relating to how the application looks.
   - [General](#user-interface-libraries-general)
     - [Grid View Settings](#user-interface-libraries-general-grid-view-settings)
       - [Item Count](#itemGridShowItemCount)
-      - [Item Titles](#itemGridTitles)
+      - [Item Titles](#itemGridShowTitles)
     - [Hide Taglines](#uiDetailsHideTagline)
     - [Return to Top](#itemGridReset)
   - [Movies](#user-interface-libraries-movies)
     - [Community and Critical Ratings](#uiMoviesShowRatings)
-    - [Default View](#itemGridMovieDefaultView)
   - [Photos](#user-interface-libraries-photos)
     - [Slideshow](#photosSlideshow)
     - [Random Order](#photosRandom)
@@ -844,18 +843,17 @@ Show item count in the library and index of selected item.
 | Type | `bool` |
 | Default | `true` |
 
-<h6 id="itemGridTitles">Item Titles</h6>
+<h6 id="itemGridShowTitles">Item Titles</h6>
 
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-libraries">Libraries</a> › <a href="#user-interface-libraries-general">General</a> › <a href="#user-interface-libraries-general-grid-view-settings">Grid View Settings</a> › <a href="#itemGridTitles">Item Titles</a>
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-libraries">Libraries</a> › <a href="#user-interface-libraries-general">General</a> › <a href="#user-interface-libraries-general-grid-view-settings">Grid View Settings</a> › <a href="#itemGridShowTitles">Item Titles</a>
 
-Select when to show titles.
+Show each item's title under its poster.
 
 | Property | Value |
 | --- | --- |
-| Setting Name | `itemGridTitles` |
-| Type | `radio` |
-| Default | `showalways` |
-| Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Show On Hover</td><td><code>showonhover</code></td></tr><tr><td>Always Show</td><td><code>showalways</code></td></tr><tr><td>Always Hide</td><td><code>hidealways</code></td></tr></tbody></table> |
+| Setting Name | `itemGridShowTitles` |
+| Type | `bool` |
+| Default | `true` |
 
 #### Movies
 
@@ -874,19 +872,6 @@ Ratings for how good a movie is.
 | Setting Name | `uiMoviesShowRatings` |
 | Type | `bool` |
 | Default | `true` |
-
-<h5 id="itemGridMovieDefaultView">Default View</h5>
-
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-libraries">Libraries</a> › <a href="#user-interface-libraries-movies">Movies</a> › <a href="#itemGridMovieDefaultView">Default View</a>
-
-Default view for Movie Libraries.
-
-| Property | Value |
-| --- | --- |
-| Setting Name | `itemGridMovieDefaultView` |
-| Type | `radio` |
-| Default | `moviesgrid` |
-| Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Movies (Presentation)</td><td><code>Movies</code></td></tr><tr><td>Movies (Grid)</td><td><code>MoviesGrid</code></td></tr></tbody></table> |
 
 #### Photos
 
