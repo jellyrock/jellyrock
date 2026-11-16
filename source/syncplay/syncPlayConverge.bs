@@ -64,10 +64,11 @@ namespace syncPlayConverge
       ' samples, syncPlayPlayer.lagInUse), one written with that, and one to spare.
       holdLimit: 4,
       ' How long a seek may sit at a full buffer, still buffering, before it is taken as stuck,
-      ' and how often the comparison looks again while a seek is in flight. On the soak's two
-      ' movies a seek that landed sat there 1.44 s at most (237 seeks); on a 100 Mbps file up to
-      ' 6.3 s (8 seeks); a stuck one for 20 s or more (Stick 4K, 2026-11-13).
-      stuckFullBufferMs: 15000,
+      ' and how often the comparison looks again while a seek is in flight. Seeks that landed
+      ' sat there 6.4 s at most on a 100 Mbps file (54 seeks) and 2.4 s at most on the soak's
+      ' two movies (about 2,960 seeks). A stuck one never leaves: one sat 16 s until the
+      ' recovery seek (Stick 4K, 2026-11-16).
+      stuckFullBufferMs: 10000,
       stuckPollMs: 1000,
       pauseWriteLimit: syncPlayPlayback.PAUSE_ATTEMPTS,
       ' The longest a paused member ahead of the group waits for it before seeking back instead.

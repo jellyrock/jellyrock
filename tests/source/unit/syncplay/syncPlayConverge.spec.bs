@@ -642,6 +642,18 @@ namespace tests
       m.assertEqual(m.kindOf(m.decide(player, group, again& + 5000)), "")
     end function
 
+    @it("with the default policy, a seek at a full buffer for 7 s is left alone and one for 10 s is recovered")
+    function _()
+      group = m.seekGroup()
+      group.saidBuffering = true
+      slow = m.playingAt(m.at60s, 9000&)
+      syncPlayPlayer.told(slow, "seek", "group", m.at100s, 9100&)
+      syncPlayPlayer.nodeState(slow, "buffering", 9200&)
+      syncPlayPlayer.bufferFull(slow, 10000&)
+      m.assertEqual(m.kindOf(m.decide(slow, group, 17000&)), "")
+      m.assertEqual(m.kindOf(m.decide(slow, group, 20000&)), "seek")
+    end function
+
     @it("a seek that is slow to fill its buffer, or whose node is not buffering, is left alone")
     function _()
       policy = syncPlayConverge.defaultPolicy()
