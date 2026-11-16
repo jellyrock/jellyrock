@@ -35,30 +35,42 @@ const SPAN = 1728;
 const TEXT_ROW_GAP = 18 + 33 + 18;
 const floorToGrid = (n) => n - (n % 3);
 
-// [columns, width]: the plan's candidate for each count, then tighter ones down to the
-// 18 pixel floor (libraryGrid.MIN_GAP)
+// [columns, width] for every count from 3 to 12: the widest cell on the 3 pixel grid
+// whose row ends within 6 pixels of the strip's right edge with gaps of at least 18
+// (libraryGrid.MIN_GAP). 12 has no such fit and ends 18 short. 5 and 7 carry a second,
+// roomier candidate.
 const PORTRAIT = [
-  [5, 300],
-  [5, 312],
-  [6, 252],
-  [6, 264],
-  [7, 216],
-  [7, 228],
-  [8, 192],
-  [8, 198],
-  [9, 168],
-  [9, 174],
-];
-const SQUARE = [
-  [4, 405],
+  [3, 564],
   [4, 414],
   [5, 324],
-  [5, 330],
-  [6, 258],
-  [6, 273],
+  [5, 312],
+  [6, 252],
+  [7, 228],
   [7, 216],
-  [7, 231],
+  [8, 192],
+  [9, 168],
+  [10, 156],
+  [11, 138],
+  [12, 126],
 ];
+const SQUARE = [
+  [3, 564],
+  [4, 414],
+  [5, 324],
+  [6, 273],
+  [7, 231],
+  [8, 195],
+  [9, 168],
+  [10, 156],
+  [11, 138],
+  [12, 126],
+];
+// The presentation layout's grid starts at design y 438 with the poster 22 below: a
+// candidate is drawn there only when one whole poster fits above the screen's edge
+// `RTA_GRID_COLUMNS=3,4` draws those counts alone
+const COLUMNS = (process.env.RTA_GRID_COLUMNS || '').split(',').filter(Boolean).map(Number);
+const isWanted = ([columns]) => COLUMNS.length === 0 || COLUMNS.includes(columns);
+const fitsPresentation = ([, width]) => 438 + 22 + (width * 3) / 2 <= 1080;
 
 function cellFor(shape, columns, width, textLines) {
   const height = shape === 'square' ? width : (width * 3) / 2;
@@ -121,19 +133,19 @@ it.skipIf(!BENCH_ENABLED)(
     for (const areTitlesShown of [true, false]) {
       if (!ONLY || ONLY === 'portrait') {
         const open = await seedLibrary('movies', 'movies', 'comfortable', areTitlesShown);
-        for (const candidate of open ? PORTRAIT : []) {
+        for (const candidate of open ? PORTRAIT.filter(isWanted) : []) {
           await drawAndCapture('portrait', candidate, areTitlesShown, 'portrait', open);
         }
       }
       if (!ONLY || ONLY === 'presentation') {
         const open = await seedLibrary('movies', 'movies', 'presentation', areTitlesShown);
-        for (const candidate of open ? PORTRAIT : []) {
+        for (const candidate of open ? PORTRAIT.filter(fitsPresentation).filter(isWanted) : []) {
           await drawAndCapture('portrait', candidate, areTitlesShown, 'presentation', open);
         }
       }
       if (!ONLY || ONLY === 'square') {
         const open = await seedLibrary('music', 'albums', undefined, areTitlesShown);
-        for (const candidate of open ? SQUARE : []) {
+        for (const candidate of open ? SQUARE.filter(isWanted) : []) {
           await drawAndCapture('square', candidate, areTitlesShown, 'square', open);
         }
       }

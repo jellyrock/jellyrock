@@ -140,11 +140,14 @@ namespace tests
       m.assertEqual(libraryGrid.rowsFor(c, 180), 3)
     end function
 
-    @it("builds one row when the grid starts below the screen")
+    @it("never builds fewer than two rows")
+    ' With one row a MarkupGrid clips the poster at the slot's bottom and draws the focus
+    ' ring around the slot, 22 pixels above the poster
     function _()
-      c = { rowPitch: 300 }
+      tall = { rowPitch: 915 }
 
-      m.assertEqual(libraryGrid.rowsFor(c, 1080), 1)
+      m.assertEqual(libraryGrid.rowsFor(tall, 168), 2)
+      m.assertEqual(libraryGrid.rowsFor(tall, 1080), 2)
     end function
 
   end class

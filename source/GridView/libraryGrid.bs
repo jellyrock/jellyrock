@@ -111,13 +111,16 @@ namespace libraryGrid
     }
   end function
 
-  ' rowsFor: how many rows a grid at design y `top` shows: every row whose slot starts
-  ' above the screen's bottom edge.
+  ' rowsFor: how many rows a grid at design y `top` builds: every row whose slot starts
+  ' above the screen's bottom edge, and never fewer than two. A grid built with one row
+  ' clips its poster at the slot's bottom and draws the focus ring around the slot, 22
+  ' pixels above the poster.
   function rowsFor(gridCell as object, top as integer) as integer
     room = 1080 - top
-    if room <= 0 then return 1
+    if room <= 0 then return 2
     showing = room \ gridCell.rowPitch
     if room mod gridCell.rowPitch > 0 then showing++
+    if showing < 2 then return 2
     return showing
   end function
 
