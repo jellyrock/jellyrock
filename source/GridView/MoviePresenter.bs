@@ -76,7 +76,7 @@ class MoviePresenter extends GridPresenterBase
       layouts: {
         movies: [
           { "Name": libraryLayout.PRESENTATION },
-          { "Name": libraryLayout.COMFORTABLE }
+          { "Name": libraryLayout.GRID }
         ]
       },
       sort: [

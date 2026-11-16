@@ -79,7 +79,7 @@ namespace tests
 
     @it("maps every view name the presenters used to save")
     @params("Movies", "movies", "presentation")
-    @params("MoviesGrid", "movies", "comfortable")
+    @params("MoviesGrid", "movies", "grid")
     @params("Studios", "studios", "")
     @params("Genres", "genres", "")
     @params("Collections", "collections", "")
@@ -98,7 +98,7 @@ namespace tests
     end function
 
     @it("matches a legacy name in another case")
-    @params("MOVIESGRID", "movies", "comfortable")
+    @params("MOVIESGRID", "movies", "grid")
     @params("artistsgrid", "artists", "")
     @params("TVGUIDE", "guide", "")
     @params(" Shows ", "shows", "")
@@ -222,17 +222,17 @@ namespace tests
 
     @it("names each layout it knows, and nothing for one it does not")
     function _()
-      m.assertEqual(libraryLayout.title(libraryLayout.COMFORTABLE), "Comfortable")
+      m.assertEqual(libraryLayout.title(libraryLayout.GRID), "Grid")
       m.assertEqual(libraryLayout.title(libraryLayout.PRESENTATION), "Presentation")
       m.assertEqual(libraryLayout.title("posters"), "")
       m.assertEqual(libraryLayout.title(invalid), "")
     end function
 
     @it("honors a saved layout it knows")
-    @params("comfortable")
+    @params("grid")
     @params("presentation")
     function _(saved)
-      m.assertEqual(libraryLayout.resolve(saved, libraryLayout.COMFORTABLE), saved)
+      m.assertEqual(libraryLayout.resolve(saved, libraryLayout.GRID), saved)
     end function
 
     @it("falls back to the default for anything else")
@@ -243,7 +243,7 @@ namespace tests
     @params("compact")
     @params("Presentation")
     function _(saved)
-      m.assertEqual(libraryLayout.resolve(saved, libraryLayout.COMFORTABLE), libraryLayout.COMFORTABLE)
+      m.assertEqual(libraryLayout.resolve(saved, libraryLayout.GRID), libraryLayout.GRID)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -301,7 +301,7 @@ namespace tests
 
       layouts = presenter.getOptions(m.library("movies")).layouts
 
-      m.assertEqual(m.names(layouts[libraryTab.MOVIES]), [libraryLayout.PRESENTATION, libraryLayout.COMFORTABLE])
+      m.assertEqual(m.names(layouts[libraryTab.MOVIES]), [libraryLayout.PRESENTATION, libraryLayout.GRID])
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

@@ -201,7 +201,7 @@ namespace libraryTab
 
     lower = LCase(saved)
     if lower = "movies" then return { tab: libraryTab.MOVIES, layout: libraryLayout.PRESENTATION }
-    if lower = "moviesgrid" then return { tab: libraryTab.MOVIES, layout: libraryLayout.COMFORTABLE }
+    if lower = "moviesgrid" then return { tab: libraryTab.MOVIES, layout: libraryLayout.GRID }
     if lower = "studios" then return { tab: libraryTab.STUDIOS, layout: "" }
     if lower = "networks" then return { tab: libraryTab.NETWORKS, layout: "" }
     if lower = "genres" then return { tab: libraryTab.GENRES, layout: "" }
@@ -231,7 +231,7 @@ end namespace
 namespace libraryLayout
 
   ' The poster grid with titles under the posters: what every library showed by default.
-  const COMFORTABLE = "comfortable"
+  const GRID = "grid"
 
   ' The movie presentation panel: the focused movie's details above a two-row grid.
   const PRESENTATION = "presentation"
@@ -239,7 +239,7 @@ namespace libraryLayout
   ' isKnown: whether `layout` is exactly one of the layouts above.
   function isKnown(layout as dynamic) as boolean
     if type(layout) <> "roString" and type(layout) <> "String" then return false
-    return layout = libraryLayout.COMFORTABLE or layout = libraryLayout.PRESENTATION
+    return layout = libraryLayout.GRID or layout = libraryLayout.PRESENTATION
   end function
 
   ' settingKey: the display-setting key a view's layout is saved under.
@@ -254,7 +254,7 @@ namespace libraryLayout
   function title(layout as dynamic) as string
     if not libraryLayout.isKnown(layout) then return ""
     if layout = libraryLayout.PRESENTATION then return translate(translationKeys.LabelLayoutPresentation)
-    return translate(translationKeys.LabelLayoutComfortable)
+    return translate(translationKeys.LabelLayoutGrid)
   end function
 
   ' resolve: the layout a load should use.

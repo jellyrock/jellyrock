@@ -93,14 +93,14 @@ async function movieDisplaySettings() {
 
 it('the gear on a movie library opens a menu under it: Layout, Items per row, Default tab, then All settings', async (testCtx) => {
   if (!moviesId) testCtx.skip('server has no "movies" library');
-  await launchWithMovies('page settings menu', 'movies', 'comfortable');
+  await launchWithMovies('page settings menu', 'movies', 'grid');
   await navLibraryGrid({ libraries });
   await focusGear('the movie grid');
 
   await press(ecp.Key.Ok);
   await waitPageMenu();
   expect(await dialogRows(), 'each entry with its value, then All settings').toEqual([
-    'Layout (Comfortable)',
+    'Layout (Grid)',
     'Items per row (7)',
     'Default tab (Movies)',
     'All settings',
@@ -121,7 +121,7 @@ it('the gear on a movie library opens a menu under it: Layout, Items per row, De
 
 it('Layout lists the layouts, Back returns to the menu, and a pick redraws the tab and is kept', async (testCtx) => {
   if (!moviesId) testCtx.skip('server has no "movies" library');
-  await launchWithMovies('page settings layout', 'movies', 'comfortable');
+  await launchWithMovies('page settings layout', 'movies', 'grid');
   await navLibraryGrid({ libraries });
   expect(await getVal('#presentationInfo.visible'), 'the poster grid to begin with').toBe(false);
   await focusGear('the movie grid');
@@ -134,7 +134,7 @@ it('Layout lists the layouts, Back returns to the menu, and a pick redraws the t
     label: 'the Layout list',
     timeout: 10000,
   });
-  expect(await dialogRows()).toEqual(['Presentation', 'Comfortable']);
+  expect(await dialogRows()).toEqual(['Presentation', 'Grid']);
   expect(await getVal('#optionList.content.1.isSelected'), 'the layout in force is marked').toBe(
     true,
   );
@@ -145,7 +145,7 @@ it('Layout lists the layouts, Back returns to the menu, and a pick redraws the t
 
   // Back from the list is back to the menu, on the row it was opened from.
   await press(ecp.Key.Back);
-  await waitFor('#optionList.content.0.title', (t) => t === 'Layout (Comfortable)', {
+  await waitFor('#optionList.content.0.title', (t) => t === 'Layout (Grid)', {
     label: 'the menu again',
     timeout: 10000,
   });
@@ -210,7 +210,7 @@ async function gridShape() {
 
 it('Items per row lists the counts, and a pick redraws the grid and is kept', async (testCtx) => {
   if (!moviesId) testCtx.skip('server has no "movies" library');
-  await launchWithMovies('page settings columns', 'movies', 'comfortable');
+  await launchWithMovies('page settings columns', 'movies', 'grid');
   await navLibraryGrid({ libraries });
   expect(await gridShape(), 'seven to a row until a count is picked').toEqual({
     columns: 7,
@@ -304,7 +304,7 @@ it('a layout whose grid starts lower offers only the counts that fit', async (te
 
 it('picking the layout already in force closes the list and changes nothing', async (testCtx) => {
   if (!moviesId) testCtx.skip('server has no "movies" library');
-  await launchWithMovies('page settings same pick', 'movies', 'comfortable');
+  await launchWithMovies('page settings same pick', 'movies', 'grid');
   await navLibraryGrid({ libraries });
   await focusGear('the movie grid');
 
@@ -325,7 +325,7 @@ it('picking the layout already in force closes the list and changes nothing', as
   await waitDialogClosed('the pick closed the list');
   await waitFocused(atSettingsIcon, { timeout: 8000, interval: 250, label: 'the gear again' });
   expect(await getVal('#presentationInfo.visible'), 'still the poster grid').toBe(false);
-  expect((await movieDisplaySettings()).layout_movies, 'nothing new saved').toBe('comfortable');
+  expect((await movieDisplaySettings()).layout_movies, 'nothing new saved').toBe('grid');
 });
 
 /**
@@ -358,7 +358,7 @@ it('a layout change keeps the letter picked on the letter rail', async (testCtx)
       timeout: 20000,
     });
 
-  await launchWithMovies('page settings letter', 'movies', 'comfortable');
+  await launchWithMovies('page settings letter', 'movies', 'grid');
   await navLibraryGrid({ libraries });
 
   // Left from the first column enters the rail.

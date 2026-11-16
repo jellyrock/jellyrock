@@ -107,7 +107,7 @@ namespace tests
     ' group above already asserts on.
 
     @it("does not start a logo lookup for a view whose panel is hidden")
-    @params("movies", "comfortable")
+    @params("movies", "grid")
     @params("studios", "presentation")
     @params("collections", "presentation")
     function _(viewMode, layout)
@@ -123,7 +123,7 @@ namespace tests
     ' other tabs in their own grids.
     @params("movies", "presentation", true)
     @params("MOVIES", "presentation", true)
-    @params("movies", "comfortable", false)
+    @params("movies", "grid", false)
     @params("movies", "", false)
     @params("studios", "presentation", false)
     @params("genres", "presentation", false)
@@ -136,7 +136,7 @@ namespace tests
     ' configureBackdrop and configureGrid ask three questions; if they disagree the grid
     ' sits under an empty panel against a fullscreen backdrop, or the panel draws over a full grid.
     @params("movies", "presentation", true)
-    @params("movies", "comfortable", false)
+    @params("movies", "grid", false)
     @params("studios", "presentation", false)
     function _(viewMode, layout, expected)
       m.assertEqual(m.presenter.getBackdropMode(viewMode, layout) = "presentation", expected)

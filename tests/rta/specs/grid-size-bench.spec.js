@@ -31,7 +31,7 @@ const PAINT_SETTLE_MS = 5000;
 // libraryGrid.MIN_COLUMNS to MAX_COLUMNS; the presentation layout's floor is 5
 const COUNTS = [3, 4, 5, 6, 7, 8, 9, 10, 11];
 const PARTS = [
-  { name: 'portrait', type: 'movies', view: 'movies', layout: 'comfortable', from: 3 },
+  { name: 'portrait', type: 'movies', view: 'movies', layout: 'grid', from: 3 },
   { name: 'presentation', type: 'movies', view: 'movies', layout: 'presentation', from: 5 },
   { name: 'square', type: 'music', view: 'albums', layout: undefined, from: 3 },
 ];

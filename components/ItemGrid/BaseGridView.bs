@@ -170,7 +170,7 @@ sub init()
   m.tab = ""
   m.view = ""
   m.isFavoriteTab = false
-  m.layout = libraryLayout.COMFORTABLE
+  m.layout = libraryLayout.GRID
   m.top.tabMode = "scrolling"
 
   ' TV Guide state (LiveTV only)
@@ -558,7 +558,7 @@ sub showTab(tabId as string)
   ' Presenters read the view back off this field (GridPresenterBase.currentView)
   m.top.currentView = m.view
 
-  defaultLayout = libraryLayout.COMFORTABLE
+  defaultLayout = libraryLayout.GRID
   if isValid(m.presenter) then defaultLayout = m.presenter.getDefaultLayout()
   savedLayout = getLibraryDisplaySetting(m.top.parentItem.Id, libraryLayout.settingKey(m.view), invalid)
   m.layout = libraryLayout.resolve(savedLayout, defaultLayout)

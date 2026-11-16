@@ -112,7 +112,7 @@ class GridPresenterBase
   ' The layout a library draws in until one is chosen for it.
   ' @return {string} a libraryLayout value
   function getDefaultLayout() as string
-    return libraryLayout.COMFORTABLE
+    return libraryLayout.GRID
   end function
 
   ' The view mode the grid is currently showing, or "" when it cannot be read.
