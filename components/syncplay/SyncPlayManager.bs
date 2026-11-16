@@ -129,6 +129,9 @@ sub ensureReady()
   ' Times the viewer was told the group cannot be reached, for the specs: a soak step that tells
   ' them with no outage has found a request whose result was lost.
   m.unreachableNotices = 0
+  ' Times the comparison recovered a seek stuck at a full buffer (the recovery seek, and the reload
+  ' when that sticks too), for the specs: the player's fault, counted so a soak can report it.
+  m.stuckSeeks = 0
   ' How long the last pause took to stop the node, for the specs (playerFact).
   m.pauseLandedMs = 0&
   ' What the comparison works from: the player and group models (syncPlayConverge.newComparison).
@@ -1091,6 +1094,7 @@ sub publish()
       groupSeeks: m.groupSeeks,
       readiesSent: m.readiesSent,
       unreachableNotices: m.unreachableNotices,
+      stuckSeeks: m.stuckSeeks,
       pauseLandedMs: m.pauseLandedMs,
       framesRescued: m.framesRescued,
       resumeLagMs: resumeLagForSpecs("resumeLagMs"),
@@ -1392,6 +1396,7 @@ sub carryOut(action as object)
     drift = publishedDriftMs()
     if isValid(drift) then driftText = syncPlayTime.asLong(drift).toStr()
     byPick = group.pickPending
+    if action.stuck = true then m.stuckSeeks++
     if action.stuck = true then m.log.warn("seek stuck at a full buffer, writing it again", "targetTicks", syncPlayTime.asLong(action.targetTicks).toStr(), "isTranscoded", player.isTranscoded, "owner", action.owner)
     if action.silent = true then m.log.info("playing node sent no reading", "activity", player.activity, "clock", player.clock.kind)
     syncPlayConverge.applied(player, group, action, nowMs&)
@@ -1430,6 +1435,7 @@ sub carryOut(action as object)
     if action.fellBack = true
       m.log.warn("catch-up seek fell back to where it started, loading the stream again", "hasPlayer", isValid(node))
     else
+      m.stuckSeeks++
       m.log.warn("seek stuck again after its recovery seek, loading the stream again", "hasPlayer", isValid(node))
     end if
     if isValid(node) then node.callFunc("reloadAtCurrentPosition")

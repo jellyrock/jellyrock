@@ -56,7 +56,14 @@ import {
   waitFor,
   waitMediaPlaying,
 } from '../lib/steps.js';
-import { MIX_STEPS, atRest, nextStep, parseStepList, seededRandom } from '../lib/soak-mix.js';
+import {
+  MIX_STEPS,
+  atRest,
+  nextStep,
+  parseStepList,
+  seededRandom,
+  stuckSummary,
+} from '../lib/soak-mix.js';
 
 const CASE = process.env.RTA_STRESS_CASE || 'scrub';
 // A chosen order for the mix case. The list is the whole run, so its length is the step count and
@@ -406,6 +413,7 @@ async function snapshot() {
     groupSeeks: sync?.groupseeks,
     readies: sync?.readiessent,
     unreachable: sync?.unreachablenotices,
+    stuck: sync?.stuckseeks,
     pauseLandedMs: sync?.pauselandedms,
     resumeLagMs: sync?.resumelagms,
     resumeLagSampleMs: sync?.resumelagsamplems,
@@ -604,6 +612,7 @@ describe.skipIf(ROUNDS <= 0)('SyncPlay stress', () => {
       const random = seededRandom(SEED);
       const counts = { ok: 0, frozen: 0, error: 0 };
       const frozenSteps = [];
+      const stuckSteps = [];
       const errorSteps = [];
       let state = 'playing';
       let summary;
@@ -620,6 +629,10 @@ describe.skipIf(ROUNDS <= 0)('SyncPlay stress', () => {
         // cannot be reached: a notice here is a request whose result never counted.
         const toldUnreachable = (end.unreachable ?? 0) - (before.unreachable ?? 0);
         if (toldUnreachable > 0) result.outcome = 'frozen';
+        // Counted, never failed: a seek stuck at a full buffer is Roku's player, and the app's
+        // recovery can free it before the window closes.
+        const stuckSeeks = (end.stuck ?? 0) - (before.stuck ?? 0);
+        if (stuckSeeks > 0) stuckSteps.push({ label: `${index}:${name}`, count: stuckSeeks });
         record({
           index,
           step: name,
@@ -633,6 +646,7 @@ describe.skipIf(ROUNDS <= 0)('SyncPlay stress', () => {
           groupSeeks: (end.groupSeeks ?? 0) - (before.groupSeeks ?? 0),
           readies: (end.readies ?? 0) - (before.readies ?? 0),
           toldUnreachable,
+          stuckSeeks,
           loads: (end.loads ?? 0) - (before.loads ?? 0),
           positionBefore: before.position,
           end,
@@ -735,7 +749,8 @@ describe.skipIf(ROUNDS <= 0)('SyncPlay stress', () => {
         summary =
           `SUMMARY case=mix seed=${SEED} engine=${engine} steps=${ROUNDS} ok=${counts.ok} ` +
           `frozen=${counts.frozen}${frozenSteps.length ? ` at ${frozenSteps.join(' ')}` : ''} ` +
-          `error=${counts.error}${errorSteps.length ? ` at ${errorSteps.join(' ')}` : ''}` +
+          `error=${counts.error}${errorSteps.length ? ` at ${errorSteps.join(' ')}` : ''} ` +
+          `${stuckSummary(stuckSteps)}` +
           `${hasStopped ? ' (stopped: the member did not recover)' : ''}`;
         console.log(summary);
         record({ summary });

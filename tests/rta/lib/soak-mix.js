@@ -140,3 +140,13 @@ export function atRest(s, expected) {
     s.drift <= BEHIND_BAR_MS
   );
 }
+
+/**
+ * The `stuck=` term of the mix's SUMMARY line: the stuck-seek recoveries the app made over the run,
+ * and the steps they happened in as `<index>:<step>`. Counted, never failed: the fault is in Roku's player.
+ * @param {{ label: string, count: number }[]} steps the steps with a recovery and how many each had
+ */
+export function stuckSummary(steps) {
+  const total = steps.reduce((sum, step) => sum + step.count, 0);
+  return `stuck=${total}${total > 0 ? ` at ${steps.map((step) => step.label).join(' ')}` : ''}`;
+}

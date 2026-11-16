@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { MIX_STEPS, atRest, mixPlan, parseStepList, seededRandom } from './soak-mix.js';
+import {
+  MIX_STEPS,
+  atRest,
+  mixPlan,
+  parseStepList,
+  seededRandom,
+  stuckSummary,
+} from './soak-mix.js';
 
 describe('mixPlan: the seeded order of the SyncPlay soak', () => {
   it('gives the same order for the same seed, and another for another seed', () => {
@@ -122,5 +129,20 @@ describe('parseStepList: a chosen step order for the mix', () => {
 
   it('refuses an empty list', () => {
     expect(() => parseStepList(' , ')).toThrow(/no steps/);
+  });
+});
+
+describe('stuckSummary: the stuck-seek term of the SUMMARY line', () => {
+  it('reads stuck=0 and no steps when the app recovered nothing', () => {
+    expect(stuckSummary([])).toBe('stuck=0');
+  });
+
+  it('totals the recoveries and lists the steps they happened in', () => {
+    expect(
+      stuckSummary([
+        { label: '4:scrub', count: 1 },
+        { label: '9:replay', count: 2 },
+      ]),
+    ).toBe('stuck=3 at 4:scrub 9:replay');
   });
 });
