@@ -110,7 +110,7 @@ The XML is the one place a reader finds every field and its type, without search
 - **`settings`** holds every per-user setting. Defaults come from `settings/settings.json`, saved values from the registry, and a write to a field is saved for you. [`settings.md`](settings.md) has the whole lifecycle.
 - **`config` and `policy`** come from the server's user record at sign-in (`transformUserConfiguration()` and `transformUserPolicy()`). JellyRock never writes them back.
 - **`libraryFilters`** holds each library tab's filters for the signed-in session, as `{ "<libraryId>/<tab>": { <category>: [values] } }`. `source/utils/sessionFilters.bs` is its only reader and writer, and `gridQuery.build()` turns one tab's entry into a request. It lives here, and not on the scene, because session state for a user must end with the session: `user.Logout()` resets every field of this node, and every sign-out, user switch and server switch runs it, so no exit path has to remember to clear it. It is never saved, so an app restart clears it too. Read it from the render thread only.
-- **`fontScaleFactor`** is set by `calculateFontScaleFactor()` in `main.bs` when `uiFontFallback` is on. It scales text drawn in the downloaded fallback font, and `JRLabel`, `JRButtons` and the other `JR*` text components read it.
+- **`fontScaleFactor`** is set by `calculateFontScaleFactor()` in `main.bs` when `uiFontFallback` is on. It scales text drawn in the downloaded fallback font, and `JRLabel` and the other `JR*` text components read it.
 
 ## Constants: `m.global.constants`
 

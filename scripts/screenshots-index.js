@@ -55,7 +55,6 @@ const SECTIONS = [
       'musicLibraryArtists',
       'musicLibraryGenres',
       'playlistsLibrary',
-      'libraryOptions',
     ],
   },
   {

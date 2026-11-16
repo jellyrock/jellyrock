@@ -315,7 +315,7 @@ Not every plugin honors every marker, and an unsupported one fails silently: the
 | `no-raw-run` | ✅ | ✅ | ❌ | A whole-file opt-out would lift the thread bound from a whole file. Suppress the line and say why |
 | `no-task-fanout` | ✅ | ✅ | ❌ | Same reason as `no-raw-run` |
 | `no-same-node-relaunch` | ✅ | ✅ | ❌ | Same reason. Only for an intended relaunch; a site awaiting migration goes in `PENDING_MIGRATIONS` |
-| `no-hand-rolled-dialog` | ✅ | ✅ | ❌ | Same reason. Also matches inside a multi-line XML comment (`ItemGridOptions` is the live case) |
+| `no-hand-rolled-dialog` | ✅ | ✅ | ❌ | Same reason. Also matches inside a multi-line XML comment (the library's old options panel carried its suppression that way until it was removed) |
 | `no-namespace-const-call` | ✅ | ✅ | ✅ | Built on the program factory, which honors a whole-file marker. Prefer the line markers |
 | `jrscreen-on-destroy` | ❌ | ❌ | ✅ | The diagnostic lands on the XML component declaration |
 | `auto-abandon-promises` | ❌ | ❌ | ✅ | |

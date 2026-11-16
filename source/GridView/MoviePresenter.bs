@@ -16,6 +16,19 @@ import "pkg:/source/utils/languageFilters.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/tasks.bs"
 
+' The presentation layout's grid starts here, and never moves: the panel above it fills
+' the room it has. PANEL_ROOM is that room, from the panel's top (y 183) to the first
+' row's focus ring. The panel is spaced as the details screen spaces the same text
+' (ItemDetails.xml and FocusableOverview): its info rows touch, 12 pixels come before the
+' description, and 15 between the tagline and the overview. A line of the Medium font
+' takes TEXT_LINE.
+const PRESENTATION_GRID_Y = 438
+const PANEL_ROOM = 252
+const TEXT_LINE = 40
+const DESCRIPTION_GAP = 12
+const TAGLINE_GAP = 15
+const OVERVIEW_MIN_LINES = 2
+
 class MoviePresenter extends GridPresenterBase
 
   ' Counter for generating unique divider IDs
@@ -44,9 +57,9 @@ class MoviePresenter extends GridPresenterBase
     return m.isPresentation(viewMode, layout)
   end function
 
-  ' The presentation panel draws only on the Movies tab. The layout is stored per library,
-  ' so a library left in presentation still shows Studios, Genres and Collections in their
-  ' own grids, as it did when presentation was a view of its own.
+  ' The presentation panel draws only on the Movies tab. The layout is saved per library
+  ' and view (ADR 0058), and only the Movies view offers this one, so Studios, Genres and
+  ' Collections keep their own grids.
   private function isPresentation(viewMode as string, layout as string) as boolean
     return LCase(viewMode) = libraryTab.MOVIES and layout = libraryLayout.PRESENTATION
   end function
@@ -143,35 +156,28 @@ class MoviePresenter extends GridPresenterBase
     ' since picking it would narrow nothing.
     if isValid(m.apiFilters)
       if isValidAndNotEmpty(m.apiFilters.Genres)
-        options.filter.push({ "Title": translate(translationKeys.LabelGenres), "Name": "Genres", "Options": m.apiFilters.Genres, "Delimiter": gridQuery.delimitersOf("Genres").panel, "CheckedState": [] })
+        options.filter.push({ "Title": translate(translationKeys.LabelGenres), "Name": "Genres", "Options": m.apiFilters.Genres })
       end if
       if isValidAndNotEmpty(m.apiFilters.OfficialRatings)
-        options.filter.push({ "Title": translate(translationKeys.LabelParentalRatings), "Name": "OfficialRatings", "Options": m.apiFilters.OfficialRatings, "Delimiter": gridQuery.delimitersOf("OfficialRatings").panel, "CheckedState": [] })
+        options.filter.push({ "Title": translate(translationKeys.LabelParentalRatings), "Name": "OfficialRatings", "Options": m.apiFilters.OfficialRatings })
       end if
       if isValidAndNotEmpty(m.apiFilters.Years)
-        options.filter.push({ "Title": translate(translationKeys.LabelYears), "Name": "Years", "Options": m.apiFilters.Years, "Delimiter": gridQuery.delimitersOf("Years").panel, "CheckedState": [] })
+        options.filter.push({ "Title": translate(translationKeys.LabelYears), "Name": "Years", "Options": m.apiFilters.Years })
       end if
 
       ' 12.0+ only, and only when the library actually has the metadata: the lists come
       ' from /Items/Filters2, which omits them entirely below 12.0 (so they arrive empty
       ' and no category is offered).
       '
-      ' A pipe between languages in the panel, not the comma the server wants: one
-      ' language's value is already several codes joined by a comma, so a comma here would
-      ' make the query ambiguous and the restore pass would tick nothing. The request
-      ' flattens them to one comma list (gridQuery.delimitersOf).
-      '
       ' Two categories rather than one combined "Language": the server ANDs the two
       ' parameters, so "English audio with Spanish subtitles" is a query it can answer,
-      ' but the panel can only hold one category active at a time and so cannot express
-      ' it yet. Splitting them keeps each list short and each label honest; combining
-      ' them into one list to work around the panel would double its length and mix two
-      ' concepts. See `itemgridoptions-single-active-filter` in tech-debt.md.
+      ' and the Filter menu keeps the two apart so a viewer can ask it. One list would
+      ' double its length and mix two concepts.
       if isValidAndNotEmpty(m.apiFilters[languageFilters.AUDIO_KEY])
-        options.filter.push({ "Title": translate(translationKeys.LabelAudioLanguage), "Name": languageFilters.AUDIO_KEY, "Options": m.apiFilters[languageFilters.AUDIO_KEY], "Delimiter": gridQuery.delimitersOf(languageFilters.AUDIO_KEY).panel, "CheckedState": [] })
+        options.filter.push({ "Title": translate(translationKeys.LabelAudioLanguage), "Name": languageFilters.AUDIO_KEY, "Options": m.apiFilters[languageFilters.AUDIO_KEY] })
       end if
       if isValidAndNotEmpty(m.apiFilters[languageFilters.SUBTITLE_KEY])
-        options.filter.push({ "Title": translate(translationKeys.LabelSubtitleLanguage), "Name": languageFilters.SUBTITLE_KEY, "Options": m.apiFilters[languageFilters.SUBTITLE_KEY], "Delimiter": gridQuery.delimitersOf(languageFilters.SUBTITLE_KEY).panel, "CheckedState": [] })
+        options.filter.push({ "Title": translate(translationKeys.LabelSubtitleLanguage), "Name": languageFilters.SUBTITLE_KEY, "Options": m.apiFilters[languageFilters.SUBTITLE_KEY] })
       end if
     end if
 
@@ -185,9 +191,10 @@ class MoviePresenter extends GridPresenterBase
       ' Collections view - BoxSet posters are 2:3, the same shape as a movie poster, so
       ' this is the full-grid layout unchanged.
       return {
-        translation: [96, 102],
-        itemSize: [264, 396],
-        rowHeights: [396],
+        translation: [headerStrip.LEFT, headerStrip.CONTENT_TOP],
+        itemSize: [libraryGrid.POSTER_WIDTH, libraryGrid.POSTER_HEIGHT],
+        rowHeights: [libraryGrid.POSTER_HEIGHT],
+        itemSpacing: [libraryGrid.POSTER_COLUMN_GAP, libraryGrid.POSTER_ROW_GAP],
         numRows: "3",
         numColumns: "6",
         imageDisplayMode: "scaleToZoom"
@@ -195,9 +202,10 @@ class MoviePresenter extends GridPresenterBase
     else if lowerView = libraryTab.STUDIOS
       ' Studios view - scaleToFit for logos
       return {
-        translation: [96, 102],
-        itemSize: [264, 396],
-        rowHeights: [396],
+        translation: [headerStrip.LEFT, headerStrip.CONTENT_TOP],
+        itemSize: [libraryGrid.POSTER_WIDTH, libraryGrid.POSTER_HEIGHT],
+        rowHeights: [libraryGrid.POSTER_HEIGHT],
+        itemSpacing: [libraryGrid.POSTER_COLUMN_GAP, libraryGrid.POSTER_ROW_GAP],
         numRows: "3",
         numColumns: "6",
         imageDisplayMode: "scaleToFit"
@@ -205,29 +213,33 @@ class MoviePresenter extends GridPresenterBase
     else if lowerView = libraryTab.GENRES
       ' Genres view - smaller posters
       return {
-        translation: [96, 102],
+        translation: [headerStrip.LEFT, headerStrip.CONTENT_TOP],
         itemSize: [230, 315],
         rowHeights: [315],
+        itemSpacing: [libraryGrid.SQUARE_COLUMN_GAP, libraryGrid.SQUARE_ROW_GAP],
         numRows: "3",
         numColumns: "7",
         imageDisplayMode: "scaleToZoom"
       }
     else if m.isPresentation(viewMode, layout)
-      ' Presentation layout - shows metadata panel, fewer rows
+      ' Presentation layout: the grid starts under the metadata panel, and the second row
+      ' shows its top
       return {
-        translation: [96, 650],
-        itemSize: [264, 396],
-        rowHeights: [396],
-        numRows: "2",
+        translation: [headerStrip.LEFT, PRESENTATION_GRID_Y],
+        itemSize: [libraryGrid.POSTER_WIDTH, libraryGrid.POSTER_HEIGHT],
+        rowHeights: [libraryGrid.POSTER_HEIGHT],
+        itemSpacing: [libraryGrid.POSTER_COLUMN_GAP, libraryGrid.POSTER_ROW_GAP],
+        numRows: "3",
         numColumns: "6",
         imageDisplayMode: "scaleToZoom"
       }
     else
       ' Comfortable layout - rowHeights > itemSize to always leave space for titles
       return {
-        translation: [96, 102],
-        itemSize: [264, 396],
-        rowHeights: [396],
+        translation: [headerStrip.LEFT, headerStrip.CONTENT_TOP],
+        itemSize: [libraryGrid.POSTER_WIDTH, libraryGrid.POSTER_HEIGHT],
+        rowHeights: [libraryGrid.POSTER_HEIGHT],
+        itemSpacing: [libraryGrid.POSTER_COLUMN_GAP, libraryGrid.POSTER_ROW_GAP],
         numRows: "3",
         numColumns: "6",
         imageDisplayMode: "scaleToZoom"
@@ -280,7 +292,7 @@ class MoviePresenter extends GridPresenterBase
 
     ' Reached on every query build (every sort, filter, view, alpha letter and voice
     ' search), so loadFilters() itself is the thing that decides whether to fetch. It
-    ' fetches once per library and is then a no-op until the options panel revalidates it.
+    ' fetches once per library and is then a no-op until the Filter menu revalidates it.
     '
     ' Not in the Collections view: every category those lists fill describes a movie, and
     ' getOptions() offers none of them here. Skipping is free rather than merely cheaper,
@@ -308,7 +320,6 @@ class MoviePresenter extends GridPresenterBase
     if not isValid(infoGroup) then return
 
     movieLogo = infoGroup.findNode("movieLogo")
-    selectedMovieName = infoGroup.findNode("selectedMovieName")
     movieInfoGroup = infoGroup.findNode("movieInfoGroup")
     movieGenresGroup = infoGroup.findNode("movieGenres")
     movieDescriptionGroup = infoGroup.findNode("movieDescription")
@@ -316,25 +327,19 @@ class MoviePresenter extends GridPresenterBase
     ' Hide logo initially
     if isValid(movieLogo) then movieLogo.visible = false
 
-    ' Set movie title
-    if isValid(selectedMovieName)
-      selectedMovieName.text = item.name
-    end if
-
-    ' Dynamically populate movieInfoGroup with available metadata
+    ' The first row, as the details screen writes a movie's: year, rating, the star and
+    ' critic ratings, runtime. The header strip above the panel gives the title alone here.
     if isValid(movieInfoGroup)
       ' Clear existing children
       movieInfoGroup.removeChildrenIndex(movieInfoGroup.getChildCount(), 0)
       m.dividerCount = 0
 
-      ' Production Year
       if item.productionYear > 0
         yearNode = m.createInfoLabelNode("selectedMovieProductionYear")
         yearNode.text = str(item.productionYear).trim()
         m.displayInfoNode(movieInfoGroup, yearNode)
       end if
 
-      ' Official Rating
       if isValidAndNotEmpty(item.officialRating)
         ratingNode = m.createInfoLabelNode("selectedMovieOfficialRating")
         ratingNode.text = item.officialRating
@@ -361,7 +366,6 @@ class MoviePresenter extends GridPresenterBase
         end if
       end if
 
-      ' Runtime
       if item.runTimeTicks > 0
         runtime = int(item.runTimeTicks / 600000000.0 + 0.5) ' Round to nearest minute
         runtimeNode = m.createInfoLabelNode("runtime")
@@ -382,7 +386,7 @@ class MoviePresenter extends GridPresenterBase
         genreNode.horizAlign = "left"
         genreNode.vertAlign = "center"
         genreNode.width = 900
-        genreNode.height = 0
+        genreNode.height = TEXT_LINE
         genreNode.text = item.genres.join(" / ")
         genreNode.isBold = true
         movieGenresGroup.appendChild(genreNode)
@@ -394,22 +398,33 @@ class MoviePresenter extends GridPresenterBase
       ' Clear existing children
       movieDescriptionGroup.removeChildrenIndex(movieDescriptionGroup.getChildCount(), 0)
 
+      ' The overview takes the lines the rows above it leave, so a movie with no ratings
+      ' or no tagline shows more of it and nothing floats over a gap
+      used = 0
+      if isValid(movieInfoGroup) and movieInfoGroup.getChildCount() > 0 then used += TEXT_LINE
+      if isValid(movieGenresGroup) and movieGenresGroup.getChildCount() > 0 then used += TEXT_LINE
+      if used > 0 then used += DESCRIPTION_GAP
+      if item.taglines.count() > 0 and item.taglines[0] <> "" then used += TEXT_LINE + TAGLINE_GAP
+      overviewLines = (PANEL_ROOM - used) \ TEXT_LINE
+      if overviewLines < OVERVIEW_MIN_LINES then overviewLines = OVERVIEW_MIN_LINES
+
       ' Tagline (stored in taglines array)
       if item.taglines.count() > 0 and item.taglines[0] <> ""
-        taglineNode = CreateObject("roSGNode", "LabelPrimaryMedium")
+        taglineNode = CreateObject("roSGNode", "LabelSecondaryMedium")
         taglineNode.id = "selectedMovieTagline"
-        taglineNode.width = 900
+        taglineNode.isBold = true
+        taglineNode.width = 800
         taglineNode.text = item.taglines[0]
         movieDescriptionGroup.appendChild(taglineNode)
       end if
 
       ' Overview
       if isValidAndNotEmpty(item.overview)
-        overviewNode = CreateObject("roSGNode", "LabelPrimarySmall")
+        overviewNode = CreateObject("roSGNode", "LabelSecondaryMedium")
         overviewNode.id = "selectedMovieOverview"
         overviewNode.wrap = true
-        overviewNode.lineSpacing = 9
-        overviewNode.height = 250
+        overviewNode.lineSpacing = 0
+        overviewNode.maxLines = overviewLines
         overviewNode.width = 800
         overviewNode.ellipsisText = "..."
         overviewNode.text = item.overview
@@ -446,13 +461,6 @@ class MoviePresenter extends GridPresenterBase
     if not isValid(infoGroup) then return
 
     movieLogo = infoGroup.findNode("movieLogo")
-    selectedMovieName = infoGroup.findNode("selectedMovieName")
-
-    ' Always show the movie title
-    if isValid(selectedMovieName)
-      selectedMovieName.visible = true
-    end if
-
     ' Show logo if available
     if isValid(data) and data.Count() > 0
       if isValid(movieLogo)

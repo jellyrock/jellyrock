@@ -76,7 +76,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
   - At runtime, `launchTask()` queues a launch above the watermark instead of starting it ([ADR 0031](../adr/0031-task-thread-ceiling.md), [ADR 0041](../adr/0041-task-launch-queue.md)). The pre-ship device gate is [`task-thread-peak.spec.js`](../../tests/rta/specs/task-thread-peak.spec.js). Measured peaks are in ADR 0031 and [ADR 0036](../adr/0036-api-pool-width-by-device-class.md).
 
   Neither guard sees repetition driven by a timer or an observer. That shape is churn, not concurrency: the Quick Connect poll before #847 built a Task every tick but ran one at a time (the #847 commit has the detail). The next timer-driven launch will not be caught.
-- **direction**: Audit the persistent floor and keep it small; `source/api/CLAUDE.md` says not to change the pool width without measuring on a device. `JRButtons`' `TextSizeTask` exists because `roFontRegistry` was believed render-thread-forbidden; [`threading.md`](threading.md#a-correction-worth-keeping) shows it is not, so check whether that task can go. The other half, auditing each routed screen's `onDestroy` for complete release of its Task nodes, was done read-only on 2026-10-13 and found no gap: every Task node a component with an `onDestroy` stores is released there or in a helper it calls, and every host calls its children's `onDestroy` (the overhang's `JRTabBar` and `JRDropdown` are never destroyed, since the overhang lives for the app).
+- **direction**: Audit the persistent floor and keep it small; `source/api/CLAUDE.md` says not to change the pool width without measuring on a device. `JRButtons`' `TextSizeTask`, a Task kept only to measure text, went with the library options panel (2026-11-15). The other half, auditing each routed screen's `onDestroy` for complete release of its Task nodes, was done read-only on 2026-10-13 and found no gap: every Task node a component with an `onDestroy` stores is released there or in a helper it calls, and every host calls its children's `onDestroy` (the overhang's `JRTabBar` and `JRDropdown` are never destroyed, since the overhang lives for the app).
 
 #### `no-lint-for-mlog-without-logger`
 
@@ -128,7 +128,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 - **area**: [`scripts/bsc-plugins/observe-without-on-destroy.cjs`](../../scripts/bsc-plugins/observe-without-on-destroy.cjs), [`scripts/bsc-plugins/jrscreen-on-destroy.cjs`](../../scripts/bsc-plugins/jrscreen-on-destroy.cjs)
 - **issue**: Both teardown plugins cover only descendants of `JRScreen` (`TARGET_BASE = 'JRScreen'`). A `Group` or `LayoutGroup` used as a widget gets no coverage, and several dozen such components observe a field they never unobserve. Most of that is self-observation, which dies with the node. The cross-node cases are the real leak shape:
-  - `JRButtons` held a `TextSizeTask` observer for its lifetime until it was fixed by hand under #728.
+  - `JRButtons` (removed since, with the library options panel) held a `TextSizeTask` observer for its lifetime until it was fixed by hand under #728.
   - [`GridItem`](../../components/ItemGrid/GridItem.bs) observes the content root its `BaseGridView` owns, unobserves only when the root changes, and has no `onDestroy`. [ADR 0029](../adr/0029-destroy-routed-screens-on-pop.md) breaks the resulting retain cycle from the container side: `BaseGridView.onDestroy` drops the content root.
   - [`JRRowItem`](../../components/ui/rowitem/JRRowItem.bs) and its `BrowseRowItem` subclass (the cell for `ExtrasRowList`, `SearchRow` and `FavoritesRows`) cache `m.contentRoot` and observe it in a one-time `setupTextureObserver()`, with no `onDestroy`. `SearchScreen.onDestroy` drops its content, but `ExtrasRowList.onDestroy` does not.
 
@@ -456,20 +456,6 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 - **severity**: Low, and provisional. Roku's [`scene.md`](https://gitlab.com/rokudev/dev-doc/-/blob/v2.0/docs/REFERENCES/scenegraph/scene.md) says nothing about how a modal dialog stacks against scene children.
 - **direction**: Confirm on a device that a cast notice cannot arrive while a keyboard dialog is open, then retire this entry. Do not fold the modal channel into the overlay supersede: that would cancel an open keyboard and discard what the user typed. The keyboard wraps an OS control, so it cannot leave the modal channel the way Quick Connect and the playback-error dialog did.
 
-#### `itemgridoptions-hand-rolled-dialog`
-
-- **area**: [`components/ItemGrid/ItemGridOptions.xml`](../../components/ItemGrid/ItemGridOptions.xml), [`components/ItemGrid/ItemGridOptions.bs`](../../components/ItemGrid/ItemGridOptions.bs)
-- **issue**: The library sort and filter panel is a hand-built dialog that predates the `JRDialog` family; the [`no-hand-rolled-dialog`](../../scripts/bsc-plugins/no-hand-rolled-dialog.cjs) plugin found it. It draws its own full-screen 0.75-opacity backdrop and fixed panel, places children at fixed offsets rather than through `computeDialogLayout`, extends `Group` rather than `JRGroup`, and uses Roku's own `RadiobuttonList`, `CheckList`, `ButtonGroup` and `Button` (its top row is the app's `JRButtons`). So it sits outside the family's guarantees. It is not on the overlay channel, so `isOverlayDialogOpen`, `cancelOpenDialog` and the one-overlay supersede cannot see it, and a restyle of the family will not reach it.
-- **severity**: Low. It works today. The grade is about drift: it is the one surface a change to `JRDialogPanel` or `dialogLayout.bs` will not reach. A `bsc-disable-next-line no-hand-rolled-dialog` comment pointing here keeps the gate green.
-- **direction**: Decide what it should be in family terms before touching the markup. Two list modes and a favorites toggle share one panel and swap by opacity. The family's rule is one class of focusable thing per dialog, so the answer is likely several `showListDialog` calls. Removing the suppression comment is the definition of done. [`itemgridoptions-single-active-filter`](#itemgridoptions-single-active-filter) belongs to the same decision.
-
-#### `itemgridoptions-single-active-filter`
-
-- **area**: [`components/ItemGrid/ItemGridOptions.bs`](../../components/ItemGrid/ItemGridOptions.bs) (`onKeyEvent`'s filter branch), [`components/ItemGrid/BaseGridView.bs`](../../components/ItemGrid/BaseGridView.bs) (the options restore pass, `optionsClosed`)
-- **issue**: Only one filter category can be active at a time, so categories replace each other instead of combining. The limit is the panel's: its `m.top.filter` is one string, its `filterOptions` is built as a one-key AA (`newFilter[m.top.filter] = …`), and the restore pass reads `panel.filterOptions.keys()[0]`. The grid no longer has it: a tab's filters are a map of category to values, kept for the session (`sessionFilters`) and turned into a request by `gridQuery.build()`, with `gridQuery.filtersFromPanel()` and `filtersToPanel()` translating between that map and the panel's one-category shape. Picking Genres clears `Unplayed`, and picking Years clears Genres. The server is not the limit: `LoadItemsTask2` appends whatever keys `filterOptions` holds, and on 2026-09-22 a local 12.0.0 server answered `AudioLanguages=eng&Genres=Action` with the intersection. The 12.0 language filters (#1002) make it visible: "English audio with Spanish subtitles" is a query the server can answer and the panel cannot express.
-- **severity**: Low. Each category works on its own, so this is a missing feature, not a defect. Re-read the grade as features land on the panel.
-- **direction**: Make the panel's selection multi-key, so it shows several categories at once and `filter` stops doubling as "which category owns the options". The grid, the session's storage and the query already take the map, so doing it deletes `gridQuery.filtersFromPanel()` and `filtersToPanel()` with the panel's one-key shape. Settle first what the title shows when several are active (`updateTitle()` names only the Favorites filter), and whether the exclusive pseudo-categories (`All`, `Favorites`, `Played`, `Unplayed`, `Resumable`, which map to `Filters=`) stay one radio group. Do it with [`itemgridoptions-hand-rolled-dialog`](#itemgridoptions-hand-rolled-dialog).
-
 #### `bsconfig-files-duplicated`
 
 - **area**: the repository root: `bsconfig-base.json` and the `bsconfig*.json` that inherit from it; the five test-runner configs carry what remains
@@ -510,7 +496,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 #### `legacy-print-statements`
 
-- **area**: 12 component `.bs` files (the font tasks, `JRButtons`, `JRButtonGroup`, `JRLabel`, `JRScrollingLabel`, `JRLabelList`, `JRRowList`, `JRTimeGrid`, `HomeRows`, `VideoPlayerView`) and `source/data/JellyfinDataTransformer.bs`. `ResumeButton.bs` carries the opt-out header with no `print` left.
+- **area**: Component `.bs` files (the font tasks, `JRButtonGroup`, `JRLabel`, `JRScrollingLabel`, `JRLabelList`, `JRRowList`, `JRTimeGrid`, `HomeRows`, `VideoPlayerView`) and `source/data/JellyfinDataTransformer.bs`. `ResumeButton.bs` carries the opt-out header with no `print` left.
 - **issue**: Raw `print` statements remain where `m.log.*` could be used (component and class methods). Prod builds strip `m.log` calls but not `print`, so these reach the device log unconditionally.
 - **direction**: In each file, import `pkg:/source/logging/Logger.bs`, create `m.log = new log.Logger("…")` in `init()` (or the class constructor), and convert each `print` to the right level. Each file carries a `' bsc-disable-file print-locations` header pointing here; remove it with the last `print`. Remove `ResumeButton.bs`' header now, so a new `print` there is flagged.
 - **enforced**: `scripts/bsc-plugins/print-locations.cjs` flags every new `print` outside `source/main.bs` and the `globals.bs` debug block, skipping free functions in `source/`, which have no `m`.
@@ -668,6 +654,7 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 ## Recently removed: don't go searching for these
 
+- **`itemgridoptions-hand-rolled-dialog`** and **`itemgridoptions-single-active-filter`**: resolved 2026-11-15 when the library header strip replaced the options panel. Sort and Filter are family dialogs opened from the strip's chips, and filters combine across categories through `sessionFilters` and `libraryFilterMenu`.
 - **`scenemanager-stack-unbounded`**, **`printregistry-on-startup`**, **`selecteditem-bubbling-implicit`**, **`changelog-syncer-mixes-validate-mutate`**, **`make-npm-overlap`** and **`trickplay-prefetch-hardcoded`**: retired 2026-10-11 because their premises no longer held.
   - `SceneManager` has had no scene stack since the sgRouter migration (#677).
   - `printRegistry()` prints only inside `#if debug`.

@@ -205,33 +205,6 @@ namespace tests
 
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("the panel contract")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("never produces a value containing the delimiter the panel separates options with")
-    ' THE invariant. An option value that contains its category's delimiter still applies
-    ' correctly as a query, but the restore pass tears it apart and ticks nothing. So the
-    ' filter is active with no box checked, and one confirming keypress clears it. This is
-    ' the check that would have caught shipping "," as both.
-    function _()
-      options = languageFilters.optionsFrom([
-        { Name: "French (fra)", Value: "fra" },
-        { Name: "French (fre)", Value: "fre" },
-        { Name: "Japanese", Value: "jpn" },
-        { Name: "German (deu)", Value: "deu" },
-        { Name: "German (ger)", Value: "ger" }
-      ])
-
-      m.assertTrue(options.count() > 0)
-      for each option in options
-        m.assertEqual(inStr(1, option.value, languageFilters.PANEL_DELIMITER), 0)
-      end for
-    end function
-
-    ' The round trip through the panel's own save and restore is pinned in
-    ' ItemGridOptionsFilters.spec.bs, which builds the panel the app does.
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("isLanguageKey()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

@@ -83,9 +83,10 @@ class GenericPresenter extends GridPresenterBase
   ' Standard grid layout
   override function getGridConfig(_viewMode as string, _layout as string) as object
     return {
-      translation: [96, 102],
-      itemSize: [264, 396],
-      rowHeights: [396],
+      translation: [headerStrip.LEFT, headerStrip.CONTENT_TOP],
+      itemSize: [libraryGrid.POSTER_WIDTH, libraryGrid.POSTER_HEIGHT],
+      rowHeights: [libraryGrid.POSTER_HEIGHT],
+      itemSpacing: [libraryGrid.POSTER_COLUMN_GAP, libraryGrid.POSTER_ROW_GAP],
       numRows: "3",
       numColumns: "6",
       imageDisplayMode: "scaleToZoom"

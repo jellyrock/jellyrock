@@ -22,7 +22,9 @@ import {
   navSettings,
   openSettingsFromGear,
   openSearchKeyboard,
+  returnToLibraryGrid,
   submitSearchFromKeyboard,
+  waitPageMenu,
   waitSearchResults,
 } from '../lib/nav.js';
 import {
@@ -31,6 +33,7 @@ import {
   getVal,
   walkOverhangRowTo,
   press,
+  waitDialogClosed,
   waitFocused,
   waitFocusInside,
   waitFor,
@@ -91,7 +94,7 @@ async function roundTripThroughSettings(label, { pageMenu = false } = {}) {
   });
 }
 
-it('a library screen: Up enters the row, the gear round-trips, Down returns to the grid', async () => {
+it('a library screen: Up enters the row, the gear round-trips, Down walks back through the strip', async () => {
   await freshApp('overhang-cluster library');
   await navLibraryGrid(ctx);
   expect(await getVal('#overhang.#cluster.visible'), 'the cluster shows').toBe(true);
@@ -101,8 +104,7 @@ it('a library screen: Up enters the row, the gear round-trips, Down returns to t
   if (CAPTURE) await captureRawUI('overhangCluster');
   await roundTripThroughSettings('the library', { pageMenu: true });
 
-  await press(ecp.Key.Down);
-  await waitFocusInside('#itemGrid', { label: 'the grid after Down from the row' });
+  await returnToLibraryGrid('after the gear round trip');
 });
 
 it('details: Up climbs to the row, the gear round-trips, Down returns to the screen', async () => {
@@ -151,18 +153,20 @@ it('Settings: Up enters the row, the gear there does nothing, Back from the row 
 });
 
 // Star from the row does what Star does on the screen under it. The row sits outside the
-// screen, so the scene gets the key and hands it to the screen (JRScreen.onOptionsKey).
-it('Star from the row on a library opens its options, and Star again closes them', async () => {
+// screen, so the scene gets the key and hands it to the screen (JRScreen.onOptionsKey). On a
+// library that is the page menu, the one the settings icon opens.
+it('Star from the row on a library opens its page menu, and Back closes it', async () => {
   await freshApp('overhang-cluster star library');
   await navLibraryGrid(ctx);
   await enterOverhangRow('the grid');
 
   await press(ecp.Key.Option);
-  await waitFocusInside('#options', { label: 'the library options, opened from the row' });
+  await waitPageMenu('the page menu, opened from the row');
   expect(await getActiveVal('subtype()'), 'the app is still on the library').toBe('BaseGridView');
 
-  await press(ecp.Key.Option);
-  await waitFocusInside('#itemGrid', { label: 'the grid after Star closed the options' });
+  await press(ecp.Key.Back);
+  await waitDialogClosed('Back closed the page menu');
+  expect(await getActiveVal('subtype()'), 'and Back left the library open').toBe('BaseGridView');
 });
 
 it('Star from the row on Settings closes Settings in one press, as it does on the screen', async () => {
@@ -210,8 +214,8 @@ it('Star on a library that is closed but still the active view is dropped', asyn
   expect(await getActiveVal('isClosed'), 'the library reports itself closed').toBe(true);
 
   await press(ecp.Key.Option);
-  // A read that completes is the app still running: without the check the key reached
-  // BaseGridView.toggleOptions() on released state and the app stopped in the debugger.
+  // A read that completes is the app still running: without the check the key reached the
+  // library's Star handler on released state and the app stopped in the debugger.
   expect(await getActiveVal('subtype()'), 'the app still answers, on the same view').toBe(
     'BaseGridView',
   );

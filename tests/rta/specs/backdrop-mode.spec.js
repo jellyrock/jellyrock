@@ -29,6 +29,7 @@ import {
   openSettingsFromGear,
   pickSettingsRadioOption,
   pressGridTile,
+  returnToLibraryGrid,
   waitSettingsMenuHas,
 } from '../lib/nav.js';
 import {
@@ -189,8 +190,7 @@ async function chooseModeAndReturnToGrid(mode) {
     interval: 250,
     label: 'the gear again, back on the grid',
   });
-  await press(ecp.Key.Down);
-  await waitFocusInside('#itemGrid', { label: 'the grid after Settings' });
+  await returnToLibraryGrid('after Settings');
 }
 
 it('applies a mode chosen in Settings over the library grid, with no visit to Home', async (testCtx) => {
