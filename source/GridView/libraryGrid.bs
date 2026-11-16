@@ -18,10 +18,11 @@ namespace libraryGrid
   const MIN_COLUMNS = 3
   const MAX_COLUMNS = 11
 
-  ' What a view draws until the viewer picks: the first count whose second row, titles
-  ' included, ends inside the 5% safe zone.
+  ' What a view draws until the viewer picks. Seven posters is the first count whose
+  ' second row ends inside the 5% safe zone with its titles; six squares are the size
+  ' nearest to those posters, so a music library reads at the same scale as a movie one.
   const DEFAULT_PORTRAIT_COLUMNS = 7
-  const DEFAULT_SQUARE_COLUMNS = 5
+  const DEFAULT_SQUARE_COLUMNS = 6
 
   ' The least room between two cells. The grid's focus ring reaches 12 pixels outside a
   ' cell and is drawn behind its neighbors; 18 leaves the ring the same 6 pixels of air
