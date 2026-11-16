@@ -10,3 +10,26 @@ const CAPS_ABOVE_CENTER = 0.07
 function capsAboveCenter(fontSize as integer) as float
   return fontSize * CAPS_ABOVE_CENTER
 end function
+
+' The share of the font size a label's text is seen to take, from the top of a capital to
+' the baseline. A label's own box is taller: it keeps room for line spacing.
+const VISIBLE_TEXT_SHARE = 0.7
+
+' How tall a label's text looks at `fontSize`, in design pixels.
+function labelTextHeight(fontSize as integer) as float
+  return fontSize * VISIBLE_TEXT_SHARE
+end function
+
+' Where an underline goes under text centered in a box: its top, from the box's top. The
+' line is centered in the room between the text's bottom edge and the box's bottom edge.
+' A selected tab's underline and the one under the overhang's title both come from here.
+' Not rounded: a tab's line has always been placed on the raw float.
+'
+' @param boxHeight - the box the text is centered in
+' @param textHeight - how tall the text looks (labelTextHeight)
+' @param lineHeight - the underline's weight
+function underlineTop(boxHeight as float, textHeight as float, lineHeight as float) as float
+  textBottom = (boxHeight + textHeight) / 2
+  gapBelowText = boxHeight - textBottom
+  return textBottom + ((gapBelowText - lineHeight) / 2)
+end function

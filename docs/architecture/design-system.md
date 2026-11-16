@@ -31,7 +31,7 @@ related-files:
   - components/ItemGrid/LibraryHeaderStrip.bs
   - components/ItemGrid/LibraryHeaderStrip.xml
   - source/utils/headerStrip.bs
-last-reviewed: 2026-11-15
+last-reviewed: 2026-11-16
 ---
 
 # Design system
@@ -52,7 +52,7 @@ The palette encodes interaction state, not only hue. Pick by meaning and the cho
 | `colorBackgroundSecondary` | Structural separators, subtle borders, the fill behind a focused button | |
 | `colorTextPrimary`, `colorTextSecondary`, `colorTextDisabled` | Text by emphasis level; a focused control's text and glyph take primary, a resting one secondary, a control that cannot act disabled (a disabled overhang icon, focused or not) | |
 
-It matters most where two appear in one frame. In a dialog the button focus ring is `colorPrimary` and the accent rule under the title `colorSecondary`; an accent rule in `colorPrimary` would read as focusable. In the overhang the focus ring is `colorPrimary` and the selected tab's underline `colorSecondary`: the underline marks where you are, the ring what you are on.
+It matters most where two appear in one frame. In a dialog the button focus ring is `colorPrimary` and the accent rule under the title `colorSecondary`; an accent rule in `colorPrimary` would read as focusable. In the overhang the focus ring is `colorPrimary` and the underline `colorSecondary`, under the selected tab or under the title of a screen with no tabs: the underline marks where you are, the ring what you are on.
 
 ## Border weights: 3 pixels static, 6 pixels focusable
 
@@ -70,6 +70,7 @@ One row, the same elements in the same order on every screen that shows them (`J
 | User dropdown (`JRDropdown`) | a 42 pixel avatar, the name, a 24 pixel chevron, 9 pixels apart, in a 78 pixel box with 9 pixels at the sides | The box hugs its content, the name's width rounded up onto the grid; a name past 300 pixels is cut with an ellipsis. The name drops 3 pixels in its box, as a text box does (below) |
 | Logo | 180 by 39 at y 51 | Its capitals and baseline sit on the tab text's |
 | Text box (tabs, the title, the clock) | the row's 78 pixels, 3 pixels below the row's top (y 30 to 108) | A label centers its line box, and caps and digits sit about 7% of the font size above that box's middle, so text in this box centers on the row's line. The title takes the same box as a tab's text, so it sits where the tabs' text does |
+| Title (`JROverhang` `title`) | the Large font in primary color in the tabs' place, shown on a screen with no tabs, with a 6 pixel `colorSecondary` line under its text (`overhangRow.TITLE_UNDERLINE`) | The name of what was opened and nothing else: a library screen's count and what narrows it are on its header strip. The line is a selected tab's underline, placed by the same arithmetic (`underlineTop` in `source/utils/textMetrics.bs`), so the row marks where the viewer is the same way with tabs or without. It is as wide as the text, never wider than the title's slot, and not focusable |
 | Status (`JROverhang` `status`) | the Large font in secondary color, 9 pixels (`TITLE_STATUS_GAP`) after the title's text, taking what the slot has left | A screen's state next to its name, never a control: the search screen's submitted query while its keyboard is closed. Scrolls when long; hidden when the title alone fills the slot |
 | Clock | right-aligned at x 1824 in a 150 pixel slot, in the text box (`Clock`'s `boxY` and `boxHeight`, whose defaults are the video player's) | Everything else is placed from the slot's left edge |
 | Box gap | none between tabs, whose boxes touch (`TAB_SPACING`), 6 pixels on the right (before the dropdown, before and inside the cluster) | A tab's padding is its air, and a glyph's canvas pads the glyph, so the two give one visible rhythm; the row's elements line up from the right edge in, so the cluster sits at the same place on every screen |

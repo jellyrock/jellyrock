@@ -78,6 +78,28 @@ namespace tests
       m.assertOnGrid({ "title x": title.translation[0], "title y": title.translation[1], "title height": title.height, "title width": title.maxWidth })
     end function
 
+    @it("underline the title of a screen with no tabs, from the title's left edge")
+    function _()
+      m.overhang.tabs = []
+      m.overhang.title = "Playlists"
+      title = m.overhang.findNode("title")
+      line = m.overhang.findNode("titleUnderline")
+      m.assertTrue(line.visible, "the line shows under a title")
+      m.assertEqual(line.translation[0], title.translation[0])
+      m.assertEqual(int(line.height), overhangRow.TITLE_UNDERLINE)
+      m.assertTrue(line.width > 0 and line.width <= title.maxWidth, "as wide as the text, inside the title's slot")
+      m.assertOnGrid({ "line x": line.translation[0], "line width": line.width })
+      ' Under the text and inside the row
+      m.assertTrue(line.translation[1] > overhangRow.TEXT_TOP and line.translation[1] + line.height <= overhangRow.TEXT_TOP + overhangRow.ROW_HEIGHT, "inside the title's box")
+    end function
+
+    @it("draw no line under a title with no text")
+    function _()
+      m.overhang.tabs = []
+      m.overhang.title = ""
+      m.assertFalse(m.overhang.findNode("titleUnderline").visible)
+    end function
+
     @it("keep the cluster CLOCK_GAP left of the clock's digits, on the grid, at every width")
     function _()
       cluster = m.overhang.findNode("cluster")
