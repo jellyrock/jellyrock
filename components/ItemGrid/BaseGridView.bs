@@ -892,6 +892,8 @@ sub configureGrid()
   if isValid(config.imageDisplayMode)
     m.top.imageDisplayMode = config.imageDisplayMode
   end if
+
+  m.top.gridShape = config.shape
 end sub
 
 ' Swaps the genre RowList to a new set of rows and reveals it, preserving the user's

@@ -137,6 +137,8 @@
     <field id="loadLogoTask" type="node" />
     <field id="quickPlayNode" type="node" alwaysNotify="true" />
     <field id="imageDisplayMode" type="string" value="scaleToZoom" />
+    <!-- The cells' shape, a libraryGrid shape: GridItem reads it on every bind to size its image -->
+    <field id="gridShape" type="string" value="portrait" />
     <field id="alphaSelected" type="string" alias="alpha.letterSelected" alwaysNotify="true" />
     <field id="isAlphaActive" type="boolean" value="false" />
     <!-- Whether cells show their title under the poster: GridItem reads it on every bind -->

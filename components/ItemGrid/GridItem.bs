@@ -46,6 +46,7 @@ sub init()
   ' Display/title config read from the owning BaseGridView. Resolved lazily via
   ' resolveGridViewConfig() (defaults until then).
   m.imageDisplayMode = "scaleToZoom"
+  m.gridShape = libraryGrid.SHAPE_PORTRAIT
   m.areTitlesShown = true
   ' The owning BaseGridView node, resolved lazily by walking up the node tree.
   ' Also the callFunc target for getItemFlatIndex in texture management.
@@ -73,6 +74,7 @@ sub resolveGridViewConfig()
   end if
 
   if isValid(m.gridView.imageDisplayMode) then m.imageDisplayMode = m.gridView.imageDisplayMode
+  m.gridShape = libraryGrid.shapeOf(m.gridView.gridShape)
   m.areTitlesShown = m.gridView.showItemTitles = true
 end sub
 
@@ -275,8 +277,9 @@ sub renderMediaItem(itemData as object, itemType as string)
 
   m.itemPoster.loadDisplayMode = resolveLoadDisplayMode(itemType)
 
-  ' The smallest of the grid's fixed image sizes that covers this cell
-  posterUri = getItemPosterUrl(itemData, libraryGrid.imageSizeFor(int(m.top.width), int(m.top.height)))
+  ' The smallest of the grid's fixed image sizes that covers this cell, in the shape the view
+  ' declares: a cell being resized is briefly neither shape, so its size cannot say which
+  posterUri = getItemPosterUrl(itemData, libraryGrid.imageSizeFor(m.gridShape, int(m.top.width)))
 
   ' Cache URI + display mode for texture management
   m.cachedPosterUri = posterUri

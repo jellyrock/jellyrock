@@ -151,8 +151,8 @@ namespace libraryGrid
     }
   end function
 
-  ' imageSizeFor: the image a cell of this size asks the server for: the smallest of three
-  ' fixed sizes that covers it, so the picture is never drawn enlarged.
+  ' imageSizeFor: the image a cell `width` wide asks the server for: the smallest of the
+  ' shape's three fixed sizes that covers it, so the picture is never drawn enlarged.
   '
   ' Fixed sizes and not the cell's own, because the first request for a size the server
   ' has not made is slow for every image in the library. Three sizes per shape pay that
@@ -161,9 +161,10 @@ namespace libraryGrid
   ' download time, not texture memory. The two smaller sizes of each shape are ones other
   ' screens ask for too (source/constants/imageSize.bs).
   '
+  ' @param shape - the cell's libraryGrid shape; anything else is a portrait
   ' @return {object} { width, height }
-  function imageSizeFor(width as integer, height as integer) as object
-    if width = height
+  function imageSizeFor(shape as dynamic, width as integer) as object
+    if libraryGrid.shapeOf(shape) = libraryGrid.SHAPE_SQUARE
       if width <= 280 then return { width: 280, height: 280 }
       if width <= 440 then return { width: 440, height: 440 }
       return { width: 564, height: 564 }

@@ -187,7 +187,7 @@ namespace tests
     function _()
       for each entry in m.everyCell()
         cellSize = entry.cell.itemSize
-        image = libraryGrid.imageSizeFor(cellSize[0], cellSize[1])
+        image = libraryGrid.imageSizeFor(entry.shape, cellSize[0])
         m.assertTrue(image.width >= cellSize[0], entry.name)
         m.assertTrue(image.height >= cellSize[1], entry.name)
         m.assertEqual(image.width = image.height, cellSize[0] = cellSize[1], entry.name)
@@ -200,7 +200,7 @@ namespace tests
         sizes = {}
         for columns = libraryGrid.MIN_COLUMNS to libraryGrid.MAX_COLUMNS
           cellSize = libraryGrid.cell(shape, columns, 1).itemSize
-          sizes[libraryGrid.imageSizeFor(cellSize[0], cellSize[1]).width.toStr()] = true
+          sizes[libraryGrid.imageSizeFor(shape, cellSize[0]).width.toStr()] = true
         end for
         m.assertEqual(sizes.count(), 3, shape)
       end for
@@ -208,7 +208,15 @@ namespace tests
 
     @it("keeps the genre rows' poster at the size it had")
     function _()
-      m.assertEqual(libraryGrid.imageSizeFor(213, 320), { width: 295, height: 440 })
+      m.assertEqual(libraryGrid.imageSizeFor(libraryGrid.SHAPE_PORTRAIT, 213), { width: 295, height: 440 })
+    end function
+
+    @it("takes the shape it is given, not the one a cell's size suggests")
+    function _()
+      ' A square cell going from 273 to 231 pixels can be read at 231 by 273 between the two writes
+      m.assertEqual(libraryGrid.imageSizeFor(libraryGrid.SHAPE_SQUARE, 231), { width: 280, height: 280 })
+      m.assertEqual(libraryGrid.imageSizeFor(libraryGrid.SHAPE_PORTRAIT, 228), { width: 295, height: 440 })
+      m.assertEqual(libraryGrid.imageSizeFor("wide", 228), { width: 295, height: 440 }, "an unknown shape is a portrait")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
