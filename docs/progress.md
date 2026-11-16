@@ -828,14 +828,6 @@ The overhang cluster is hidden on playback screens (`JRScene.registerOverhangDat
 
 What closes it: a now-playing control outside the player that returns to it; a rule for starting other media while a player is suspended under another screen (untested: two `AudioPlayerView`s observing the shared `m.global.audioPlayer`); then the cluster on playback screens again. Not now: it needs its own design.
 
-#### A group Pause during a SyncPlay member's first-frame start hold leaves it paused with no OSD `[fid: syncplay-pause-during-start-hold-no-osd]` `[captured 2026-10-28]`
-
-A group Pause that arrives while a member holds its first frame for the group's synchronized start (the first-frame pause in `SyncPlayManager`, before its Ready and the group's `Unpause`) leaves the node paused with no OSD: `syncPlayPlayback.applyPlan()` writes a Pause step only for a playing (or settled buffering) node, so no `showOsd` reaches the player, and the Pause replaces the pending `Unpause`. The viewer sees a frozen picture with no controls, the symptom #1276 fixed for every other pause.
-
-Found while fixing `syncplay-controls.spec.js`'s intermittent pause failures (#1276, 2026-10-28): the test race was this window, and the test now waits for the group's `Unpause`. The app-side fix (a Pause that finds this member in its start hold also shows the OSD, through a step in `applyPlan()` and its handling in `VideoPlayerView.handleTransport`) was rejected for now: the window is about the first second of a start, and no failing device console confirms the app case.
-
-Closes after a manual check: pause from another member (jellyfin-web) within a second of a group start on the Roku. If the picture freezes with no OSD, build the fix above with a unit spec on `applyPlan` and a device check; if it never shows, close as not reproduced.
-
 #### `UserSelect` applies 'splash disabled' before the branding answer arrives `[fid: splashscreen-flag-reads-false-unset]` `[captured 2026-10-29]`
 
 `JellyfinServer.isSplashscreenEnabled` (`components/data/jellyfin/JellyfinServer.xml`) is commented "invalid = not loaded yet", but it is `type="boolean"` with no value, so an unset field reads `false`. `UserSelect.loadSplashscreen()` therefore always takes its `isValid()` "already cached" branch and applies "splash disabled" (clearing the backdrop) before the branding fetch delivers the real value. Found while fixing the screenshot capture, whose `settleBackdrop()` reads the server's `/Branding/Configuration` for this reason; the app log shows `Splashscreen disabled - using default background` before every `Branding config cached successfully`.
@@ -853,12 +845,6 @@ Not fixed there because telling each cell its row adds work per cell in Home's h
 #### The trick-play carousel's seek flag can never reset once an OK sets it `[fid: trickplay-carousel-flag-never-resets]` `[captured 2026-11-01]`
 
 `VideoPlayerView.onPositionChanged` resets `m.carouselHiddenForSeek` inside a branch that runs only while that flag is false, so once an OK on the trick-play bar sets it, it stays set. Its comment expects the reset when the bar closes. The same branch resets `m.trickSeekTarget`, so that value also stays from the last scrub until the bar's text next changes. Read from the code in the branch review (2026-11-01), present since `fc1d48fab`; the effect on screen is unmeasured. The carousel may stop hiding when a later scrub is canceled, since only the key handler then drives it. Not fixed now: it needs a device run to see what the viewer gets, and it is older than the work that found it. Closes with that run and a reset outside the guard, or a decision to drop it.
-
-#### The SyncPlay wait-on-me correction is proven on the device only with an injected seek, never on a natural slow seek `[fid: syncplay-wait-on-me-natural-path-unproven]` `[captured 2026-11-02]`
-
-The SyncPlay wait-on-me correction (`SyncPlayManager.checkSettle`, gated on `lastSeekGaveUp` since commit `677d6c70`) has end-to-end device evidence only from a run that injected a `localSeek` event the node never landed. Two natural-path runs of the project's correction-lead probe (`PROBE_WAIT_ON_ME=1`, the 100 Mbps direct-play fixture, Stick 4K, local 12.2 server, 2026-11-02) never printed "drift correction asks the group to wait": in the one with a valid console the given-up seek's stall brought an `Unpause` 686 ms off, that `Unpause` wrote a seek of its own, the seek landed and cleared the flag, and the next correction ran its seek and hold normally. That is the designed outcome, so nothing is wrong, but the branch is unproven on a natural slow seek. Not done now: the probe needs a shape that leaves the member behind after a given-up seek with no landed seek between (a stall whose `Unpause` arrives within 400 ms, or a second given-up seek), which is device time with a design choice. Closes with a natural-path capture of the "asks the group to wait" line followed by the group's Seek, a Ready at that position with no seek written, and a settled drift; or with a decision that the injected run and the unit verdict cases are enough. Do not open `nc` on port 8085 during an RTA run: the deploy cuts it and voids the harness's own console log.
-
-One natural run seen on 2026-11-16 (Streaming Stick 4K, Jellyfin 12.4.0, commit `fe2d3f16`): after a stream restart for a real playback error, the member's catch-up seek on a transcode a few seconds old buffered past its limit, the member sent the group a Seek to its own position, and the group waited, resumed, and the member ended 40 ms from it. That is one run, on the path after an error restart; a slow seek with no restart before it is still unseen.
 
 #### Under Repeat One, the still-watching check counts a Cinema Mode intro's end as a new video `[fid: still-watching-counts-intro-under-repeat-one]` `[captured 2026-11-03]`
 
@@ -964,19 +950,17 @@ Closes after a measurement on the real path: a capture or an ODC read of the ove
 
 `SubtitlePanel`'s delete response focuses the panel whenever `m.top.isOpen` is true (the `panelOpen` check before `applyFocus()` in the delete's result path). If a cast, a deep link or a remote `GoToSearch` covers `ItemDetails` after the viewer confirmed a delete but before its response arrives, the panel is still open on the hidden screen, so `applyFocus()` pulls the focus into it and the visible screen stops answering the remote. No dialog is involved, so ADR 0055's cover cancel does not reach it. Found by reading the code in the PR #1336 review (2026-11-08); not reproduced. Not fixed there because it needs a reproduction and a choice: close the panel on cover in `ItemDetails.onScreenHidden`, or gate the panel's async focus on the host screen being shown (`m.isShown`, as `navigation.md` advises for timers and observers). Close it with a unit case that covers the screen while a delete is in flight.
 
-#### A SyncPlay Buffering report takes 0.35 to 0.6 s to be handled; find where the time goes `[fid: syncplay-buffering-report-latency]` `[captured 2026-11-09]`
+#### No manager-level unit case reads what `SyncPlayManager` passes the comparison, and the pause landing limit rests on one device `[fid: syncplay-pause-estimate-wiring-untested]` `[captured 2026-11-10]`
 
-A SyncPlay Buffering report takes 0.35 to 0.6 s to reach the server's handling: the anchor log line (`SyncPlayManager.anchorGroupPause`, "group paused for this member's buffering", `reportLatencyMs`) measured 345 to 577 ms over eight reloads on a Stick 4K against a local Jellyfin 12.4.0 on a wired LAN, 2026-11-09. The group plays on for that long after this member stalls or reloads before the server pauses it, and that distance is what the drift correction then closes after the `Unpause`. The report goes out through the fire-and-forget side-effect queue (`SubmitSideEffect`, `SideEffectTask`), so the time may be the queue's, the network's or the server's. Measure where it goes (a timestamp when the request leaves the task, against the anchor's arrival); if the queue holds it, give Buffering and Ready a path that sends at once. Not now: the anchor (decision `syncplay-reload-starts-where-group-is`) keeps the Ready exact whatever the latency, so this is a quality gain, not a correctness fix.
+`SyncPlayManager` forwards player events and group frames to the two pure models (`playerFact`, `tellGroupModel`, `onCommand`) and carries out what `syncPlayConverge.decide()` asks (`converge`, `carryOut`, `sendRequest`). The models and the comparison are unit-tested; nothing at the manager level reads what the manager passes the comparison (its context from `comparisonCtx()`, a report, an ask). Reports and asks go out through `fetchAsync`, which a spec with a server set cannot run, and the manager's spec has no mounted `PlayerHostView`. The pure specs, the simulator and the RTA specs carry it. One fault in that forwarding was found by reading, not by a test (`87e1e037`: the last stream's path and length kept when a new one started).
 
-#### The SyncPlay pause position's manager forwarding has no unit case, and one Play key round in twelve settles ahead `[fid: syncplay-pause-estimate-wiring-untested]` `[captured 2026-11-10]`
+Revised 2026-11-16 for the comparison engine: the functions the first text named (`applyPendingPlan`, `dropPausedEstimate`, `syncResumeShift`) went with the old engine, and its "one Play key round in twelve settles ahead" reading was taken on that engine and is not carried over.
 
-The rules for where a pause stopped a SyncPlay member live in the pure layer (`syncPlayPlayback.newPausePosition` and the functions beside it) and are unit-tested there. `SyncPlayManager` forwards player events to them (`playerEvent`'s `pauseWritten`, `state` and `position` branches, `applyPendingPlan`, `dropPausedEstimate`, `syncResumeShift`), and no unit case reaches that forwarding: the manager's spec runs with no clock estimate, so every command is held, and with no mounted `PlayerHostView`. Device runs cover it: the pause rounds of 2026-11-10 on a Stick 4K against a local 12.4 server, and the two RTA cases in `syncplay-correction.spec.js` (pause rounds with no correction, and a waiting `Unpause` losing its shift).
+Not checked: how long a pause takes to land on the low-end Stick. `PAUSE_LANDED_MS` (250) rests on the Stick 4K alone, and a device whose pause lands later gets no stopped position from it. The manager logs each landing (`pause landed`, `afterMs`), so a run there reads it off the console.
 
-One Play key pause in each 12-round run settles ahead of the rest: 62 ms, then 46 ms after the pause's time moved to the player's own write. The time from the old stamp to the write measured 0 to 10 ms on 39 writes, so that is not the cause. Not checked: whether a position notification delivered late on a busy render thread makes the anchor read early, whether the probe's own reads load that thread, a transcode, HTTPS, the low-end Stick. `PAUSE_LANDED_MS` (250) rests on the Stick 4K alone: a device whose pause lands later gets no estimate and keeps the old behavior.
+Not done now because the manager-level case needs a design choice: a seam for the requests (a stub for `sendRequest`, or a request sink the spec can read) and a host stub for the writes.
 
-Not done now because the forwarding needs a design choice (a clock estimate and a host stub in the manager's spec) and the odd round needs a device capture of the anchor's lateness.
-
-Closes with: a manager-level case that drives a pause, its `paused` state and an `Unpause` through `playerEvent` and reads the shift, or a recorded reason no seam is worth it; the anchor's arrival time against the drift reading captured on a round that settles past 40 ms; and the pause's landing time read on the low-end Stick.
+Closes with: a manager-level case that drives a player event and a group command through `playerEvent` and `onCommand` and reads the action carried out, or a recorded reason no seam is worth it; and the pause's landing time read on the low-end Stick.
 
 #### Translated labels are joined to other text in code, so word order is wrong in many languages `[fid: skip-label-joined-to-segment-name]` `[captured 2026-11-15]`
 
@@ -1191,20 +1175,6 @@ Voice fast-forward and rewind while following are now a relative group seek (`vo
 
 Closes when the queue-edit design ships or is declined in a decision note, and a device check shows the held remote key cannot land a scrub without an OK.
 
-#### A halt landing just after a SyncPlay correction's pause write can leave the node paused `[fid: syncplay-correction-pause-in-flight]` `[captured 2026-11-01]`
-
-`releaseCorrection` reads `m.playerState`, which lags a pause write. A halt landing after a correction writes its pause but before the `paused` event finds the node "playing", writes no resume, and drops the correction, so the node stays paused with nothing to resume it. Read from the code in PR #1296's review, never reproduced; a pause lands in under 10 ms (2026-10-23). The same window for a group `Unpause`, and a watchdog that ends the correction early, now resume the node through `syncPlayPlayback.owesCorrectionResume`; a halt clears that flag, since this member no longer answers to the group. Not fixed now: a halted member's node is the viewer's own from there, and pressing Play recovers it. Closes with a forced reproduction and a resume on release, or a decision to drop it.
-
-#### A group Seek during a SyncPlay load repeats until the node lands `[fid: syncplay-group-seek-during-load]` `[captured 2026-11-01]`
-
-A `Seek` during a load is written to the loading node, its budget ends, and `Ready` goes out at position 0, which draws another `Seek`. Two rounds on a slow file (Stick 4K, 12.2 server, 2026-11-01) repeated about four times and ended correct in about 27 s. Not fixed now: the outcome is right and the code predates this work. Closes by holding the seek for the first frame, as an `Unpause` during a load now does, if that shortens it on a device.
-
-#### A SyncPlay correction's seek can close a scrub bar the viewer just opened `[fid: syncplay-correction-closes-scrub-bar]` `[captured 2026-11-01]`
-
-`checkSettle` cannot see the trick-play bar, and the node's seek closes it. Seen in 1 of 4 rounds that pressed Right as a correction fired (Stick 4K, 12.2 server, 2026-11-01); the bar did not open in the other three, so this evidence is weak. Not fixed now: the window is about a second after a resume. Closes with a forced reproduction and a gate on the open bar, or a decision to drop it.
-
-Two more of the same shape, both read from the code in the branch review (2026-11-01), neither reproduced. `onCorrectionTimer` can write its `resume` under a bar the viewer opened during a hold. A scrub the viewer cancels may leave this member behind the group by however long the bar was up, with no correction unless the drift check is still armed; a scrub whose Seek was lost left a member 8.7 s behind (Stick 4K, 12.2 server, 2026-11-01), and the fallback now re-arms the check for that case only. The gate needs a way for the manager to see the bar.
-
 #### A SyncPlay hold can leave a small lead unchanged, spending both corrections `[fid: syncplay-hold-leaves-lead]` `[captured 2026-11-01]`
 
 A hold that should close a small lead on a SyncPlay member can leave the lead where it was, and the two corrections an `Unpause` allows are then spent. Measured 2026-11-01: on the low-end Stick (12.2) one `Unpause` read -877, then -329, and ended at -321 ms, and another read -362, then -344 ms. On the Stick 4K it failed one case across 14 runs and 259 corrections (10.9.11): 2246 behind, then -229, then -246 ms.
@@ -1225,14 +1195,6 @@ Closes with the server's side of a failure and either a fix, or a proof it comes
 
 Seen again 2026-11-07 on 10.9.11 (Stick 4K, `syncplay-controls`' setup, "the Roku in the group", `last=false`): 2 of 3 runs that day failed the same way and the third passed, while 10.7.7, 10.8.13, 10.10.7, 10.11.11, 12.0.0 and 12.4.0 each passed once.
 
-#### A SyncPlay group Pause landing as a correction's hold resumes shows no OSD `[fid: syncplay-pause-at-hold-resume-no-osd]` `[captured 2026-11-01]`
-
-A group `Pause` that lands as a correction's hold writes its resume shows no OSD. The node still reads `paused` and `m.correction` is already gone, so `applyPlan` sees a paused node and no hold and writes no verb; `owesPause` then pauses the node with the OSD down. Seen once in `syncplay-correction`'s "another member's Pause during a correction's hold brings up the OSD" on 12.2 (Stick 4K, 2026-11-01), with a hold of 83 ms. The group stays correct, and the viewer sees a frozen picture with no controls until a key press. Not fixed now: `applyPlan` writes nothing for a paused node on purpose, and showing the OSD there touches the first-frame hold that `syncplay-pause-during-start-hold-no-osd` is about, so the two want one decision. The spec fails about once in 30 runs for this reason. Closes with that decision and a spec whose hold is long enough to rule the race out.
-
-#### A SyncPlay group can sit in Waiting with this member's node playing `[fid: syncplay-group-waiting-node-playing]` `[captured 2026-11-01]`
-
-A SyncPlay group can sit in `Waiting` with this member's node playing. Seen once, in round 0 of `syncplay-stress`'s `replay-twice` case (Stick 4K, 12.2, 2026-11-01): `state=playing group=Waiting phase=ready` at the end of the 12 s settle window, after a member moved the position and Replay was pressed twice. A node playing means no freeze on screen, but the group waits on this member. It did not recur in the next 30 rounds of that case. That run had no console capture, so the cause is unknown; it could be a Ready lost after the held seek, or a settle window too short for that round. Not fixed now: nothing shows a cause to fix. Closes with a recurrence read from the run's console, or a decision to drop it.
-
 #### Roku's analyzer still flags the custom locale folder and a deprecated API `[fid: analyzer-remaining-warnings]` `[captured 2026-11-01]`
 
 Roku's analyzer on #1299's branch (2026-11-01) still warns `Unsupported or incorrectly configured locales found: custom`, because `translate.bs` reads `pkg:/locale/custom/` and Roku treats folders under `locale/` as locales. It also warns that `InitClientCertificates()` is deprecated, in `TimeSyncTask` and the vendored `rr` module. The analyzer exits 0 on all of them. Whether any blocks publishing was not checked.
@@ -1250,10 +1212,6 @@ Roku's analyzer (2026-11-01) warns that the app must fire `AppDialogInitiate` an
 Several checks compare a number's `type()` against a partial list of names. On a Stick 4K (Roku OS 15.3.4, measured 2026-10-31) an AA value reports `roInteger`, a value from a native AA or a node field `roInt`, a `ParseJson` value and a local literal `Integer`. These lists leave out at least one: `setFieldTextValue()` in `misc.bs` and `setFieldText()` in `ItemDetails.bs` (no `roInteger`), the query builder in `baseRequest.bs` (no `Integer`), and `ProgramDetails.bs` (only `roInt`). None is shown to misbehave yet: each depends on where its value comes from. `isIntSafe()` and `mediaNumber()` already handle every name.
 
 **Fix shape:** check each site's real value on a device and move the wrong ones to those helpers. A build plugin rule only if the mistake recurs: this shape has now shipped in `GetBitRateLimit` and been caught in #1299.
-
-#### A SyncPlay Ready after a slow silent seek can carry the position from before the seek and draw a corrective Seek `[fid: syncplay-ready-stale-position-after-slow-seek]` `[captured 2026-11-02]`
-
-After a slow silent seek on a SyncPlay member, the `Ready` goes out at the `playing` edge with the node's own position, which `docs/architecture/playback.md` says can still read the position from before the seek; a position off by more than 500 ms draws a corrective `Seek` from the server. Read from the code in PR #1296's review (2026-11-01), never reproduced; refiled from `syncplay-slow-seek-catch-up-unbounded` when the SyncPlay project's consolidation step closed it (the unbounded lead and the seek-stall cycle end with the wait-on-me correction, commit `a151efbc`). Closes with a device capture of a `Ready` after a slow seek compared against the seek's target, and a read of the position from a later notification when they differ, or a decision to drop it.
 
 #### `initializeLogManager` leaves `enabled` false, which `guard` would turn into silence `[fid: log-enabled-default-false]` `[captured 2026-11-05]`
 
@@ -1822,12 +1780,6 @@ A Rooibos spec in `SyncPlayManager.spec.bs` that sends a queue frame after a hal
 
 So the confirmation check became a pure function (`syncPlayQueue.queuedNextCount()`), and no manager spec sends a frame after a catch-up. Not checked: which thread copies the state, and whether creating `start` on the render thread (a helper node) avoids it. Close it when a manager spec can send a frame after a catch-up, or when docs/dev/unit-tests.md says why it cannot.
 
-#### ctx.heroId is empty in the `syncplay-menu` RTA spec on a server without the configured hero title `[fid: rta-hero-id-empty-on-local-server]` `[captured 2026-11-08]`
-
-In `tests/rta/specs/syncplay-menu.spec.js`, `ctx.heroId` comes from `getHero()`, which finds `RTA_CONFIG.heroMovie` by title. On a server without that title (the local Jellyfin 12.4.0 server, 2026-11-08) it is empty, while `startPlayback(ctx)` still reaches the hero by its index. So `moviesOtherThanHero()` filters nothing and returns the group's own video first. One case already works around it (its comment says the first result is the group's video), and the catch-up addition case reads the group's video id off the details screen instead. A new case that trusts `ctx.heroId` passes a queue with an empty id.
-
-Fix shape: fill `ctx.heroId` from the movie `startPlayback` actually opens (the same index the nav uses), or fail fast in `beforeAll` when it is empty. Close it when `ctx.heroId` is never empty on a server the suite runs against.
-
 #### Capture a SyncPlay group's stream restart after a real playback error `[fid: syncplay-error-restart-uncaptured]` `[captured 2026-11-09]`
 
 The stream restart after a playback error (`PlaybackErrorRetry.RESTART_STREAM`, from #1339) reports itself to a SyncPlay group through the reload path of decision `syncplay-reload-reports-its-start` (`VideoPlayerView.reloadInPlace()`, then `SyncPlayManager.playerEvent()` with the `reloaded` event), which `tests/rta/specs/syncplay-reload.spec.js` covers for a gear-pick reload. The error-triggered restart itself was never captured inside a group on that build: twice on 2026-11-08 (Streaming Stick 4K, Roku OS 15.3.4, Jellyfin 12.4, the server's ffmpeg killed and its segments deleted until the player reacted) Roku reported a stall instead of the `-5` error, and Roku decides which. Not done now because no way to make a stream error on demand exists yet (tech debt `playback-error-dialog-untestable-on-device`). Close it by capturing one error restart while following a group, checking it sends one Buffering and one Ready at the group's position with no corrective Seek (`syncPlayManager.sync.groupSeeks` unchanged), and adding that step to the spec once the error can be produced.
@@ -1861,16 +1813,6 @@ While there: a simulator whose results never match their requests hangs the devi
 `tests/rta/specs/backdrop-mode.spec.js` checks that Back from an item clears the backdrop in the Backdrop Images `details` mode on the library grid and on search, but not on Home. The direct check was dropped in `test(backdrop): Open the details-mode item from the poster grid, not a Home Latest row`: the public demo account excludes every library from Latest (`LatestItemsExcludes`, checked 2026-11-12), so Home has no stable row that opens an item, and reaching Home through the grid is vacuous because the grid clears the backdrop first.
 
 Not now: it needs a Home row that opens an item on every run, which the shared demo server does not promise. Closes when such a row is available (for example a Continue Watching fixture the spec seeds itself) and the spec opens an item from Home, presses Back, and waits for `#imageFader.uri` to read empty.
-
-#### The SyncPlay controls spec presses Right for a scrub without waiting for the OSD to close `[fid: syncplay-controls-scrub-presses-under-osd]` `[captured 2026-11-15]`
-
-Two scrub cases in `tests/rta/specs/syncplay-controls.spec.js` send three Right presses and wait for the trick-play bar: "a trickplay scrub confirmed with OK seeks the whole group", which runs right after the Play-key pause and resume case, and "a scrub whose Seek the server never answers". Neither waits for the OSD to be down first.
-
-Why it matters: the OSD hides only once 5 s have passed since the last key press (`inactiveTimeout` in `VideoPlayerView.xml`, `inactiveCheck()` in `OSD.bs`), and while it is up the player sends Right to the OSD, so the bar does not open. The same shape ended a mix soak of `syncplay-stress.spec.js` at its `openBar()` (Stick 4K, 2026-11-15), fixed there by waiting for `#osd.visible` to read false before the presses.
-
-Not seen failing in `syncplay-controls.spec.js`: the four SyncPlay specs ran 49 passed and 1 skipped on 2026-11-15. Not checked: whether the case before each scrub leaves the OSD up, which decides whether this can fail at all.
-
-Not done with the soak fix because it needs its own device run to show the OSD state before each scrub. Closes with the same wait for the OSD to close before the presses (a shared helper in `lib/steps.js` if both specs use it), or a recorded reason the cases cannot start with the OSD up.
 
 #### The SyncPlay simulator never lets a seek fall back to the stream's start, so the reload that answers it has no sweep `[fid: syncplay-sim-seek-never-falls-back]` `[captured 2026-11-15]`
 
