@@ -14,7 +14,6 @@ sub init()
   m.detailsView = m.top.findNode("detailsView")
   m.noInfoView = m.top.findNode("noInformation")
 
-  m.programName = m.top.findNode("programName")
   m.episodeTitle = m.top.findNode("episodeTitle")
   m.episodeNumber = m.top.findNode("episodeNumber")
   m.overview = m.top.findNode("overview")
@@ -23,9 +22,6 @@ sub init()
   m.isLiveGroup = m.top.findNode("isLive")
   m.isRepeatGroup = m.top.findNode("isRepeat")
 
-  m.broadcastDetails = m.top.findNode("broadcastDetails")
-  m.duration = m.top.findNode("duration")
-  m.channelName = m.top.findNode("channelName")
   m.image = m.top.findNode("image")
   m.favorite = m.top.findNode("favorite")
 
@@ -81,12 +77,10 @@ end sub
 
 sub onChannelUpdated()
   if not isValid(m.top.channel)
-    m.top.findNode("noInfoChannelName").text = ""
-    m.channelName.text = ""
+    m.top.summary = { title: "", metadata: [] }
   else
-    m.top.findNode("noInfoChannelName").text = m.top.channel.Title
-    m.channelName.text = m.top.channel.Title
     if not isValid(m.top.programDetails)
+      m.top.summary = { title: m.top.channel.Title, metadata: [] }
       m.image.uri = getItemImageUrl(m.top.channel, "Primary", imageSize.POSTER_MD)
     end if
     m.favorite.visible = m.top.channel.isFavorite
@@ -111,7 +105,6 @@ sub onProgramUpdated()
     return
   end if
 
-  m.programName.text = prog.Title
   m.overview.text = prog.overview
 
   m.episodeDetailsGroup.removeChildrenIndex(m.episodeDetailsGroup.getChildCount(), 0)
@@ -135,7 +128,8 @@ sub onProgramUpdated()
     m.episodeDetailsGroup.appendChild(m.episodeTitle)
   end if
 
-  m.duration.text = getDurationStringFromSeconds(prog.PlayDuration)
+  duration = getDurationStringFromSeconds(prog.PlayDuration)
+  broadcast = ""
 
   ' Calculate Broadcast Details
   now = createObject("roDateTime")
@@ -158,23 +152,31 @@ sub onProgramUpdated()
 
   if startDate.AsSeconds() < now.AsSeconds() and endDate.AsSeconds() > now.AsSeconds()
     if day = translationKeys.DayToday
-      m.broadcastDetails.text = translate(translationKeys.LabelStartedAt) + " " + formatTime(localStartDate)
+      broadcast = translate(translationKeys.LabelStartedAt) + " " + formatTime(localStartDate)
     else
-      m.broadcastDetails.text = translate(translationKeys.LabelStarted) + " " + translate(day) + ", " + formatTime(localStartDate)
+      broadcast = translate(translationKeys.LabelStarted) + " " + translate(day) + ", " + formatTime(localStartDate)
     end if
   else if startDate.AsSeconds() > now.AsSeconds()
     if day = translationKeys.DayToday
-      m.broadcastDetails.text = translate(translationKeys.LabelStartsAt) + " " + formatTime(localStartDate)
+      broadcast = translate(translationKeys.LabelStartsAt) + " " + formatTime(localStartDate)
     else
-      m.broadcastDetails.text = translate(translationKeys.LabelStarts) + " " + translate(day) + ", " + formatTime(localStartDate)
+      broadcast = translate(translationKeys.LabelStarts) + " " + translate(day) + ", " + formatTime(localStartDate)
     end if
   else
     if day = translationKeys.DayToday
-      m.broadcastDetails.text = translate(translationKeys.LabelEndedAt) + " " + formatTime(localEndDate)
+      broadcast = translate(translationKeys.LabelEndedAt) + " " + formatTime(localEndDate)
     else
-      m.broadcastDetails.text = translate(translationKeys.LabelEnded) + " " + translate(day) + ", " + formatTime(localEndDate)
+      broadcast = translate(translationKeys.LabelEnded) + " " + translate(day) + ", " + formatTime(localEndDate)
     end if
   end if
+
+  channelTitle = ""
+  if isValid(m.top.channel) then channelTitle = m.top.channel.Title
+  metadata = []
+  for each part in [duration, broadcast, channelTitle]
+    if isValidAndNotEmpty(part) then metadata.push(part)
+  end for
+  m.top.summary = { title: prog.Title, metadata: metadata }
 
   m.image.uri = getItemImageUrl(prog, "Primary", imageSize.POSTER_MD)
 

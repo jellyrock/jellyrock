@@ -35,20 +35,6 @@ namespace tests
       ]
     end function
 
-    ' A movie library's filter list as the Star panel gets it, categories included.
-    private function panelFilters() as object
-      return [
-        { Name: "All" },
-        { Name: "Favorites" },
-        { Name: "Played" },
-        { Name: "Unplayed" },
-        { Name: "Genres", Options: ["Action", "Science Fiction"], Delimiter: "|" },
-        { Name: "Years", Options: ["1999", "2001"], Delimiter: "," },
-        { Name: languageFilters.AUDIO_KEY, Options: [], Delimiter: languageFilters.PANEL_DELIMITER },
-        { Name: languageFilters.SUBTITLE_KEY, Options: [], Delimiter: languageFilters.PANEL_DELIMITER }
-      ]
-    end function
-
     ' A Favorites tab's query with nothing else in force. A fresh AA per call.
     private function favoritesQuery() as object
       return { isFavorite: true, filter: "All", filterOptions: {}, nameStartsWith: "", searchTerm: "" }
@@ -184,117 +170,38 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("delimitersOf()")
+    @describe("wireDelimiter()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("joins genres and parental ratings with a pipe, in the panel and the request")
+    @it("joins genres and parental ratings with a pipe")
     ' Free text that may hold a comma
     function _()
-      m.assertEqual(gridQuery.delimitersOf("Genres"), { panel: "|", wire: "|" })
-      m.assertEqual(gridQuery.delimitersOf("OfficialRatings"), { panel: "|", wire: "|" })
+      m.assertEqual(gridQuery.wireDelimiter("Genres"), "|")
+      m.assertEqual(gridQuery.wireDelimiter("OfficialRatings"), "|")
     end function
 
-    @it("joins years with a comma in both")
+    @it("joins years with a comma, whatever case the key comes back in")
     function _()
-      m.assertEqual(gridQuery.delimitersOf("Years"), { panel: ",", wire: "," })
-      m.assertEqual(gridQuery.delimitersOf("years"), { panel: ",", wire: "," }, "a key read back lowercase")
+      m.assertEqual(gridQuery.wireDelimiter("Years"), ",")
+      m.assertEqual(gridQuery.wireDelimiter("years"), ",")
     end function
 
-    @it("separates languages with a pipe in the panel and a comma in the request")
-    ' One language's value is already a comma list of codes
+    @it("joins languages with a comma, as the server requires")
+    ' One language's value is already a comma list of codes, and the request is one flat list
     function _()
-      expected = { panel: languageFilters.PANEL_DELIMITER, wire: languageFilters.CODE_DELIMITER }
-      m.assertEqual(gridQuery.delimitersOf(languageFilters.AUDIO_KEY), expected)
-      m.assertEqual(gridQuery.delimitersOf(LCase(languageFilters.SUBTITLE_KEY)), expected)
+      m.assertEqual(gridQuery.wireDelimiter(languageFilters.AUDIO_KEY), languageFilters.CODE_DELIMITER)
+      m.assertEqual(gridQuery.wireDelimiter(LCase(languageFilters.SUBTITLE_KEY)), languageFilters.CODE_DELIMITER)
     end function
 
     @it("uses a pipe for a category it does not name")
     function _()
-      m.assertEqual(gridQuery.delimitersOf("Studios"), { panel: "|", wire: "|" })
-      m.assertEqual(gridQuery.delimitersOf(invalid), { panel: "|", wire: "|" })
+      m.assertEqual(gridQuery.wireDelimiter("Studios"), "|")
+      m.assertEqual(gridQuery.wireDelimiter(invalid), "|")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("filtersFromPanel() / filtersToPanel()")
+    @describe("build() with a presenter")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("reads All as no filter")
-    function _()
-      m.assertEqual(gridQuery.filtersFromPanel("All", {}), {})
-      m.assertEqual(gridQuery.filtersFromPanel(invalid, invalid), {})
-    end function
-
-    @it("reads a plain filter as the status, and Favorites as its own category")
-    function _()
-      m.assertEqual(gridQuery.filtersFromPanel("Unplayed", {}), { Status: ["Unplayed"] })
-      m.assertEqual(gridQuery.filtersFromPanel("Favorites", {}), { Favorites: ["Favorites"] })
-    end function
-
-    @it("reads a category the panel reports with no values as no filter")
-    ' The panel reports a category it offers with an empty list as its plain filter name
-    function _()
-      m.assertEqual(gridQuery.filtersFromPanel("Genres", {}), {})
-      m.assertEqual(gridQuery.filtersFromPanel("Years", invalid), {})
-      m.assertEqual(gridQuery.filtersFromPanel("Resumable", {}), { Status: ["Resumable"] }, "a status still counts")
-    end function
-
-    @it("splits a ticked category by its own panel delimiter")
-    function _()
-      filters = gridQuery.filtersFromPanel("Genres", { Genres: "Action|Science Fiction" })
-      m.assertEqual(filters, { Genres: ["Action", "Science Fiction"] })
-
-      filters = gridQuery.filtersFromPanel("Years", { Years: "1999,2001" })
-      m.assertEqual(filters, { Years: ["1999", "2001"] })
-
-      ' One language's value keeps its comma: the panel separates languages with a pipe
-      panelOptions = {}
-      panelOptions[languageFilters.AUDIO_KEY] = "fra,fre|jpn"
-      filters = gridQuery.filtersFromPanel(languageFilters.AUDIO_KEY, panelOptions)
-      m.assertEqual(filters[languageFilters.AUDIO_KEY], ["fra,fre", "jpn"])
-    end function
-
-    @it("gives the panel back exactly what it reported")
-    ' The pair is tested as a round trip: a disagreement is a filter in force that the
-    ' panel shows as changed, or as not ticked.
-    function _()
-      offered = m.panelFilters()
-      languageOptions = {}
-      languageOptions[languageFilters.SUBTITLE_KEY] = "fra,fre|deu,ger"
-      reports = [
-        { filter: "All", filterOptions: {} },
-        { filter: "Played", filterOptions: {} },
-        { filter: "Favorites", filterOptions: {} },
-        { filter: "Genres", filterOptions: { Genres: "Action|Science Fiction" } },
-        { filter: "Years", filterOptions: { Years: "1999,2001" } },
-        { filter: languageFilters.SUBTITLE_KEY, filterOptions: languageOptions }
-      ]
-
-      for each report in reports
-        filters = gridQuery.filtersFromPanel(report.filter, report.filterOptions)
-        panel = gridQuery.filtersToPanel(filters, offered)
-        m.assertEqual(panel.filter, report.filter)
-        m.assertEqual(panel.filterOptions, report.filterOptions)
-      end for
-    end function
-
-    @it("names a category as the list spells it, though the map lowercases its key")
-    ' The panel compares names exactly: "genres" for "Genres" would read as a change on
-    ' every close, and reload the grid.
-    function _()
-      filters = {}
-      filters["genres"] = ["Action"]
-      m.assertEqual(gridQuery.filtersToPanel(filters, m.panelFilters()).filter, "Genres")
-      m.assertEqual(gridQuery.filtersToPanel({ status: ["played"] }, m.panelFilters()).filter, "Played")
-    end function
-
-    @it("shows a language category by the panel's delimiter before its list has loaded")
-    function _()
-      filters = {}
-      filters[languageFilters.AUDIO_KEY] = ["fra,fre", "jpn"]
-      panel = gridQuery.filtersToPanel(filters, [{ Name: "All" }])
-
-      m.assertEqual(panel.filterOptions[languageFilters.AUDIO_KEY], "fra,fre|jpn")
-    end function
 
     @it("applies what the presenter sets for the view")
     function _()
@@ -412,93 +319,11 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("checkListValues()")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    ' The round trip through the panel the app builds is pinned in ItemGridOptions.spec.bs;
-    ' these cover the reader on its own.
-
-    ' A filter category as ItemGridOptions builds it: one FilterOptionNode per option.
-    private function categoryOf(options as object) as object
-      category = CreateObject("roSGNode", "ContentNode")
-      for each option in options
-        node = category.CreateChild("FilterOptionNode")
-        node.title = option.title
-        node.value = option.value
-      end for
-      return category
-    end function
-
-    @it("reads every option's value, in panel order")
-    function _()
-      category = m.categoryOf([{ title: "French", value: "fra,fre" }, { title: "Japanese", value: "jpn" }])
-      m.assertEqual(gridQuery.checkListValues(category), ["fra,fre", "jpn"])
-    end function
-
-    @it("falls back to the title for an option whose value was never set")
-    function _()
-      category = m.categoryOf([{ title: "Drama", value: "" }, { title: "French", value: "fra,fre" }])
-      m.assertEqual(gridQuery.checkListValues(category), ["Drama", "fra,fre"])
-    end function
-
-    @it("answers a missing or empty category with no values")
-    function _()
-      m.assertEqual(gridQuery.checkListValues(invalid), [])
-      m.assertEqual(gridQuery.checkListValues(CreateObject("roSGNode", "ContentNode")), [])
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("queryValueFor() / checkedStateFor() - edges")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("joins only the checked options, in panel order")
-    function _()
-      values = ["Action", "Drama", "Horror"]
-      m.assertEqual(gridQuery.queryValueFor(values, [true, false, true], "|"), "Action|Horror")
-    end function
-
-    @it("stops at the end of a checkedState shorter than the option list")
-    ' A drifted panel must not index off the end of the array.
-    function _()
-      m.assertEqual(gridQuery.queryValueFor(["Action", "Drama"], [true], "|"), "Action")
-    end function
-
-    @it("answers a missing option list or checked state with no filter")
-    function _()
-      m.assertEqual(gridQuery.queryValueFor(invalid, [true], "|"), "")
-      m.assertEqual(gridQuery.queryValueFor(["Action"], invalid, "|"), "")
-      m.assertEqual(gridQuery.checkedStateFor(invalid, "Action", "|"), [])
-    end function
-
-    @it("ticks nothing for an empty saved query")
-    function _()
-      m.assertEqual(gridQuery.checkedStateFor(["Action", "Drama"], "", "|"), [false, false])
-    end function
-
-    @it("treats a missing delimiter as one whole value, not one per character")
-    ' Split("") returns one entry PER CHARACTER, which would match single-letter options.
-    function _()
-      m.assertEqual(gridQuery.checkedStateFor(["Action"], "Action", ""), [true])
-    end function
-
-    @it("never ticks an option that has no value")
-    function _()
-      m.assertEqual(gridQuery.checkedStateFor([invalid, "Drama"], "Drama", "|"), [false, true])
-    end function
-
-    @it("matches the saved query case-insensitively, as the restore pass always has")
-    function _()
-      m.assertEqual(gridQuery.checkedStateFor(["Drama"], "drama", "|"), [true])
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("offers()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("finds a view the presenter is listing, whatever the casing")
-    ' BaseGridView.SetUpOptions already compares a saved view to a presenter's Name under
-    ' LCase(). If this matched differently, a view could restore here and then fail to
-    ' tick in the panel.
+    ' A saved name and a presenter's Name agree whatever case either was written in.
     @params("MoviesGrid", true)
     @params("moviesgrid", true)
     @params("MOVIESGRID", true)

@@ -60,9 +60,6 @@ Every screen in the app, captured on a real Roku. The full gallery below is in *
     <td align="center" valign="top"><a href="en_US/musicLibraryGenres.webp"><img src="en_US/musicLibraryGenres.webp" width="260" alt="Music Library Genres"></a><br>Music Library Genres</td>
     <td align="center" valign="top"><a href="en_US/playlistsLibrary.webp"><img src="en_US/playlistsLibrary.webp" width="260" alt="Playlists Library"></a><br>Playlists Library</td>
   </tr>
-  <tr>
-    <td align="center" valign="top"><a href="en_US/libraryOptions.webp"><img src="en_US/libraryOptions.webp" width="260" alt="Library Options"></a><br>Library Options</td>
-  </tr>
 </table>
 
 ## Item details

@@ -1,0 +1,111 @@
+import "pkg:/source/GridView/itemSummary.bs"
+import "pkg:/source/utils/skeleton.bs"
+
+namespace tests
+
+  ' itemSummary.line: what the library header strip says about the focused item, by the
+  ' item's own type.
+  @suite("itemSummary - the focused item's title and metadata line")
+  class ItemSummaryTests extends tests.BaseTestSuite
+
+    private function item(itemType as string, name as string) as object
+      node = CreateObject("roSGNode", "JellyfinBaseItem")
+      node.type = itemType
+      node.name = name
+      return node
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("nothing to describe")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("answers blanks for no item and for a skeleton placeholder")
+    function _()
+      m.assertEqual(itemSummary.line(invalid), { title: "", metadata: [] })
+      m.assertEqual(itemSummary.line(skeleton.createPlaceholder()), { title: "", metadata: [] })
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("by type")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("gives a movie its year, rating and runtime in whole minutes")
+    function _()
+      movie = m.item("Movie", "The Boy in the Plastic Bubble")
+      movie.productionYear = 1976
+      movie.officialRating = "PG"
+      movie.runTimeTicks = 62400000000& ' 104 minutes
+      line = itemSummary.line(movie)
+      m.assertEqual(line.title, "The Boy in the Plastic Bubble")
+      m.assertEqual(line.metadata, ["1976", "PG", "104 mins"])
+    end function
+
+    @it("leaves out what a movie lacks, with no empty item")
+    function _()
+      movie = m.item("Movie", "Untitled")
+      movie.officialRating = "R"
+      m.assertEqual(itemSummary.line(movie).metadata, ["R"])
+      m.assertEqual(itemSummary.line(m.item("Movie", "Bare")).metadata, [])
+    end function
+
+    @it("gives a series its years as the details screen writes them")
+    function _()
+      ended = m.item("Series", "Ended")
+      ended.productionYear = 2019
+      ended.endDate = "2023-05-01T00:00:00.0000000Z"
+      ended.officialRating = "TV-MA"
+      m.assertEqual(itemSummary.line(ended).metadata, ["2019 - 2023", "TV-MA"])
+
+      running = m.item("Series", "Running")
+      running.productionYear = 2021
+      running.status = "Continuing"
+      m.assertEqual(itemSummary.line(running).metadata, ["2021 - Present"])
+
+      noEndDate = m.item("Series", "Ended, no date")
+      noEndDate.productionYear = 2010
+      noEndDate.status = "Ended"
+      m.assertEqual(itemSummary.line(noEndDate).metadata, ["2010"])
+    end function
+
+    @it("gives an album its artist and year")
+    function _()
+      album = m.item("MusicAlbum", "Blue Train")
+      album.albumArtist = "John Coltrane"
+      album.productionYear = 1958
+      m.assertEqual(itemSummary.line(album).metadata, ["John Coltrane", "1958"])
+    end function
+
+    @it("gives a channel its number and what is on")
+    function _()
+      channel = m.item("TvChannel", "BBC One")
+      channel.channelNumber = "101"
+      program = m.item("Program", "The News")
+      channel.currentProgram = program
+      m.assertEqual(itemSummary.line(channel).metadata, ["101", "The News"])
+
+      idle = m.item("TvChannel", "Idle")
+      idle.channelNumber = "7"
+      m.assertEqual(itemSummary.line(idle).metadata, ["7"], "no program, no empty item")
+    end function
+
+    @it("gives an artist, a genre and a studio the name alone")
+    function _()
+      for each itemType in ["MusicArtist", "Genre", "MusicGenre", "Studio"]
+        node = m.item(itemType, "Name")
+        node.productionYear = 1999
+        line = itemSummary.line(node)
+        m.assertEqual(line.title, "Name")
+        m.assertEqual(line.metadata, [], itemType)
+      end for
+    end function
+
+    @it("describes any other type by what it has, so a mixed folder reads right")
+    function _()
+      boxSet = m.item("BoxSet", "A Collection")
+      boxSet.productionYear = 2001
+      m.assertEqual(itemSummary.line(boxSet).metadata, ["2001"])
+    end function
+
+  end class
+
+end namespace

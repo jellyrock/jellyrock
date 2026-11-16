@@ -175,7 +175,6 @@ end function
 ' @param {object} items - the row labels
 ' @param {string} onResult - result handler in the caller's scope
 ' @param {object} checkedIndexes - the rows ticked when it opens
-' bsc-disable-next-line dead-code keep: api: the multi-select member of the dialog family; the library Filter chip is its first caller
 function showChecklistDialog(title as string, items as object, onResult = "" as string, checkedIndexes = invalid as object) as object
   checked = normalizeCheckedIndexes(checkedIndexes, items.count())
 
@@ -216,15 +215,20 @@ end function
 ' a second surface. See docs/architecture/dialogs.md for why that distinction
 ' is enforced rather than encouraged.
 ' `defaultIndex` is the row to focus, for a menu reopened on the row the user left it from.
-function showOverflowMenu(title as string, items as object, onResult as string, anchor as object, icons = invalid as object, defaultIndex = 0 as integer) as object
+'
+' `selectedIndex` makes the menu a PICKER: the row of the option in force takes the check,
+' as it does in showListDialog. Leave it out for a menu of actions, where no row is current.
+' A library's Sort chip is the picker: its menu hangs off the chip that names the sort.
+function showOverflowMenu(title as string, items as object, onResult as string, anchor as object, icons = invalid as object, defaultIndex = 0 as integer, selectedIndex = -1 as integer) as object
   dialog = createObject("roSGNode", "JRListDialog")
   dialog.title = title
   dialog.titleVisible = false
   dialog.sizeToContent = true
   dialog.anchor = anchor
   dialog.defaultIndex = defaultIndex
-  ' selectedIndex is left at -1: these are ACTIONS, so no row is current. That
-  ' is also what frees the row gutter for the buttons' own glyphs.
+  ' For a menu of actions selectedIndex stays -1, since no row is current. That is also
+  ' what frees the row gutter for the buttons' own glyphs.
+  if selectedIndex >= 0 then dialog.selectedIndex = selectedIndex
   if isValid(icons) then dialog.icons = icons
   ' Before `items`, which is the field that triggers the row build.
   dialog.items = items

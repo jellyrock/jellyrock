@@ -164,8 +164,7 @@ namespace tests
     @describe("the server categories")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("declares each category's panel delimiter from gridQuery.delimitersOf")
-    ' The request reads the same function before the lists load, so the two cannot differ
+    @it("offers every server category that has options, each with its option list")
     function _()
       presenter = new MovieCategoriesProbe()
       presenter.onInit(m.host(libraryTab.MOVIES))
@@ -179,9 +178,9 @@ namespace tests
 
       categories = 0
       for each entry in presenter.getOptions(m.library("movies")).filter
-        if isValid(entry.Delimiter)
+        if type(entry.Options) = "roArray"
           categories++
-          m.assertEqual(entry.Delimiter, gridQuery.delimitersOf(entry.Name).panel, entry.Name)
+          m.assertTrue(entry.Options.count() > 0, entry.Name)
         end if
       end for
       m.assertEqual(categories, 5, "every category is offered")

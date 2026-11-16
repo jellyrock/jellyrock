@@ -64,6 +64,7 @@ sub init()
   m.top.observeField("iconSize", "onIconSizeChanged")
   m.top.observeField("iconGutter", "onSizeChanged")
   m.top.observeField("shouldSnapToGrid", "onSizeChanged")
+  m.top.observeField("textDrop", "onSizeChanged")
   m.top.observeField("showSelectedIndicator", "onSizeChanged")
   ' Named distinctly from JRTab's own isButtonSelected observer so a subclass can
   ' still react to the same field without displacing the indicator's own toggle.
@@ -198,7 +199,7 @@ sub setSizeAndCenterText()
   ' Calculate visible text height for equal padding
   ' localBoundingRect height includes line spacing, adjust to match horizontal padding
   fontSize = m.buttonText.font.size
-  visibleTextHeight = fontSize * 0.7
+  visibleTextHeight = labelTextHeight(fontSize)
 
   ' An icon reserves its own width plus a gutter, so the label gets what's left
   ' rather than overlapping it. The in-flight spinner reserves the SAME slot, so
@@ -247,7 +248,7 @@ sub setSizeAndCenterText()
   ' That is bw/2 + textCenterOffset(iconSpace) in all three cases, so the icon
   ' and underline arithmetic below still reads the same centre it always did.
   m.buttonText.width = buttonWidth - iconSpace
-  m.buttonText.translation = [labelLeft(iconSpace), 0]
+  m.buttonText.translation = [labelLeft(iconSpace), m.top.textDrop]
 
   layoutIcon(buttonWidth, buttonHeight, textWidth, iconSpace)
   ' The underline has to be derived from where the text ACTUALLY landed, not
@@ -370,7 +371,7 @@ sub layoutIcon(buttonWidth as float, buttonHeight as float, textWidth as float, 
 
   ' Center on the caps, not the label box: the box keeps descender room, so the caps sit
   ' above its middle (capsAboveCenter).
-  iconY = int((buttonHeight - m.top.iconSize) / 2 - capsAboveCenter(m.buttonText.font.size))
+  iconY = int((buttonHeight - m.top.iconSize) / 2 - capsAboveCenter(m.buttonText.font.size)) + m.top.textDrop
   if m.top.iconSide = "left"
     ' Sits immediately left of the centred text, one gutter away.
     textLeft = (buttonWidth / 2) + textCenterOffset(iconSpace) - (textWidth / 2)
@@ -449,9 +450,6 @@ sub layoutSelectedIndicator(buttonHeight as float, textLeft as float, textWidth 
     return
   end if
 
-  textBottom = (buttonHeight + visibleTextHeight) / 2
-  gapBelowText = buttonHeight - textBottom
-
   ' A leading icon is part of the label, so the underline starts under it; a trailing
   ' icon is the button's affordance and stays outside the line.
   lineLeft = textLeft
@@ -463,10 +461,8 @@ sub layoutSelectedIndicator(buttonHeight as float, textLeft as float, textWidth 
 
   m.buttonIndicator.width = lineWidth
   m.buttonIndicator.height = TEXT_BUTTON_INDICATOR_HEIGHT
-  ' Not rounded: the previous implementation passed the raw float here, and
-  ' keeping it makes the overhang tab bar's underline bit-identical to what it
-  ' rendered before this moved into TextButton.
-  m.buttonIndicator.translation = [lineLeft, textBottom + ((gapBelowText - TEXT_BUTTON_INDICATOR_HEIGHT) / 2)]
+  ' underlineTop (textMetrics.bs) places the overhang title's line too, so the two agree
+  m.buttonIndicator.translation = [lineLeft, underlineTop(buttonHeight, visibleTextHeight, TEXT_BUTTON_INDICATOR_HEIGHT)]
   m.buttonIndicator.visible = m.top.isButtonSelected
 end sub
 
