@@ -26,6 +26,11 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-15: chore(tooling): Refuse to run checks on a stale install
+- 2026-11-15: ci: Check registry migration versions on every PR and at release
+- 2026-11-15: test(rta): Guard the RTA component against a socket it already closed
+- 2026-11-15: update(translations): Translate 134 more strings from other clients
+- 2026-11-15: update(translations): Translate 93 more strings from other clients
 - 2026-11-15: update(translations): Translate 41 more strings from other Jellyfin clients
 - 2026-11-14: refactor(translations): Rename 75 keys by role, keeping translations
 - 2026-11-14: fix(playback): Play and name the audio track picked in an `MP4`
@@ -977,11 +982,21 @@ Not done now because the forwarding needs a design choice (a clock estimate and 
 
 Closes with: a manager-level case that drives a pause, its `paused` state and an `Unpause` through `playerEvent` and reads the shift, or a recorded reason no seam is worth it; the anchor's arrival time against the drift reading captured on a round that settles past 40 ms; and the pause's landing time read on the low-end Stick.
 
-#### The skip-segment notification joins two translated words, so word order is wrong in many languages `[fid: skip-label-joined-to-segment-name]` `[captured 2026-11-15]`
+#### Translated labels are joined to other text in code, so word order is wrong in many languages `[fid: skip-label-joined-to-segment-name]` `[captured 2026-11-15]`
 
-`VideoPlayerView.bs` builds the media-segment notification as `translate(translationKeys.ButtonSkip) + " " + segmentLabel`. Word order then follows English in every language: German reads `Überspringen Rückblick` where it should be `Rückblick überspringen`. Found while seeding `ButtonSkip`, `LabelRecap` and `LabelPreview` in the first `/translation-import` batch.
+Code builds sentences from a translated fragment plus a value (`translate(translationKeys.X) + " " + value`, or the template-string form), so word order follows English in every language. A search for those two forms matched 37 lines with 15 keys in 9 files (2026-11-15). Examples composed from the current locale files: Spanish `LabelStarts` + day reads `Comienza el hoy` (the translator expected a date), German `LabelViewAll` + name reads `Alle anzeigen Filme`, German `ButtonSkip` + segment name reads `Überspringen Rückblick`. Found while seeding `ButtonSkip` in `/translation-import` batch 1; batch 2 found the rest.
 
-To close: give the notification one string with a placeholder (for example a `MessageSkipSegment` key, "Skip {0}") or one key per segment type, then map or translate it. Needs a device check of the segment notification, so it was not done in that PR.
+The sites: `ProgramDetails.bs` (`LabelStarted`, `LabelStarts`, `LabelEnded` + day + time; `LabelStartedAt`, `LabelStartsAt`, `LabelEndedAt` + time), `HomeRows.bs` (`LabelRecentlyAddedIn` + library name), `LoadItemsTask2.bs` (`LabelViewAll` + name), `VideoPlayerView.bs` (`ButtonSkip` + segment name, `LabelNextEpisode` + countdown), `ItemDetails.bs` (`LabelOn` + studio, `LabelAt` + air time, `LabelAdded` + date), `AudioPlayerView.bs` (`LabelTrack` + `LabelPositionOfTotal`). Number + unit (`LabelMins`) and the abbreviations (`LabelCh`, `LabelS`, `LabelE`) join the same way. The joins came with the fork; nothing has tried to fix them, and no test reaches the joined text (`videoNotifications.spec.bs` covers only the notice timing).
+
+Options:
+
+- `phrases` (recommended): turn the sentence fragments into about 11 placeholder strings ("Starts {0}, {1}", "Recently added in {0}", "Skip {0}") and update the call sites; leave number + unit and the abbreviations. About 11 strings restart untranslated until a seeding batch or Weblate fills them; needs a device pass on Live TV, Home and the OSD.
+- `all`: `phrases` plus number + unit and the abbreviations (`"{0} mins"`, `"S{0}E{1}"`): about 15 new keys, more untranslated strings for little gain where the order already holds.
+- `guard` (recommended with `phrases`): a lint check that flags these joins, with a baseline of today's count, so no new ones are added. It stops the spread but fixes nothing alone.
+
+To close: build `phrases` with `guard` in its own PR, then map or translate the new strings.
+
+Not checked: none of these strings was watched on a device (the examples are composed from the locale files); whether the seed sources offer placeholder versions that could seed the new strings; whether number + unit order (`"45 mins"`, `"Ch 5"`) holds in every language.
 
 ### source
 
@@ -1860,6 +1875,16 @@ Loads with the re-encode restart took 12.1 to 16.8 s on the Stick 4K between 202
 Not done now: it needs a shared helper in `tests/rta/lib` that writes a passing case's number to the run's record, which is a design choice for the run record, not a change to one case.
 
 Close it when the case writes the time from the OK press on Resume with Group to its in-step gate passing into the run's record.
+
+#### Upstream watch: drop the `roku-test-automation` closed-socket patch once upstream guards it `[fid: rta-closed-socket-patch-upstream]` `[captured 2026-11-15]`
+
+Watching upstream: `roku-test-automation` releases after 2.2.2 (including the 3.0.0-alpha line) that guard `handleClientSocketEvent()` and `closeSocket()` in `device/components/RTA_OnDeviceComponentTask.brs` against a client socket already closed.
+
+Both functions call a method on `m.clientSockets[id]` without checking it, and `closeSocket()` deletes that id, so an event delivered for a socket already closed stops the app in the debugger with `runtime error &hec`. Every RTA case after it then times out. Seen once in a full `library-tabs` run on 2026-11-15, and reproduced on a device by opening and closing connections to port 9000 rapidly. 3.0.0-alpha.4 still has the unguarded code. `patches/roku-test-automation+2.2.2.patch` adds the two checks, and `tests/scripts/unit/rta-closed-socket-guard.test.js` pins them.
+
+Not reported upstream yet: a report is a public post, so it waits for the operator's yes.
+
+When it moves: if the release guards both functions, delete the patch and its test. Otherwise regenerate the patch on any version bump with `npx patch-package roku-test-automation`, since its filename pins 2.2.2. A bump the patch still applies to only warns about the mismatch. One it no longer applies to fails `npm ci` on CI, while a local install prints the error and carries on without the patch, and `rta-closed-socket-guard.test.js` then fails in `test:scripts`.
 
 ### docs
 

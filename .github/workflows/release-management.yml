@@ -114,6 +114,7 @@ jobs:
         run: |
           PREVIOUS_VERSION=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 | sed 's/^v//')
           CURRENT_VERSION="${{ steps.extract_version.outputs.version }}"
+          echo "previous_version=$PREVIOUS_VERSION" >> $GITHUB_OUTPUT
           if [[ -z "$PREVIOUS_VERSION" ]]; then
             echo "No previous version found. This is the first version."
             echo "is_greater=true" >> $GITHUB_OUTPUT
@@ -146,6 +147,22 @@ jobs:
         run: |
           echo "::error::New version must be greater than the previous version."
           exit 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "lts/*"
+
+      # A registry migration added since the last release must be numbered above it, or
+      # its users skip it, and no higher than this release (docs/dev/registry-migrations.md).
+      # The release PR runs the same check; this one stops the release before a PR and a
+      # draft release are made. Skipped for a first release, which has nothing before it.
+      - name: Check migration versions
+        if: steps.validate_new_version.outputs.previous_version != ''
+        run: >-
+          npm run lint:migration-versions --
+          --release "${{ steps.extract_version.outputs.version }}"
+          --previous "v${{ steps.validate_new_version.outputs.previous_version }}"
 
       - name: Check if PR already exists
         id: check_pr

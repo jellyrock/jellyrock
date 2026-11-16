@@ -6,6 +6,7 @@ related-files:
   - bsconfig-prod.json
   - package.json
   - patches/
+  - scripts/lib/install-freshness.cjs
   - Makefile
   - scripts/create-package.cjs
   - scripts/create-signed-package.cjs
@@ -102,7 +103,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-11-08
+last-reviewed: 2026-11-15
 ---
 
 # Build and tooling
@@ -511,7 +512,11 @@ Third-party code kept in the repo is different: JellyRock owns it, and every che
 - `eslint-config-prettier` turns off the ESLint rules that would fight Prettier.
 - `dotenv` reads the checkout's `.env` and the per-user `~/.config/jellyrock/env`, through [`scripts/lib/env-config.cjs`](../../scripts/lib/env-config.cjs).
 - `husky` installs the git hooks from `prepare` on every `npm ci`.
-- `patch-package` applies the diffs in `patches/` after install. The Rooibos patch holds two fixes: coverage aggregated on write, so coverage runs stay under the render-thread watchdog ([rooibos#364](https://github.com/rokucommunity/rooibos/issues/364)), and the console reporter's `Ignored` count ([rooibos#435](https://github.com/rokucommunity/rooibos/pull/435)). After a Rooibos bump, regenerate it with `npx patch-package rooibos-roku` so its name matches the installed version.
+- `patch-package` applies the diffs in `patches/` after install. Each patch's filename pins the version it was made for. After a bump, regenerate it with `npx patch-package <package>` so the name matches the installed version.
+  - The Rooibos patch holds two fixes: coverage aggregated on write, so coverage runs stay under the render-thread watchdog ([rooibos#364](https://github.com/rokucommunity/rooibos/issues/364)), and the console reporter's `Ignored` count ([rooibos#435](https://github.com/rokucommunity/rooibos/pull/435)).
+  - The `roku-test-automation` patch stops its on-device component from crashing on an event for a client socket it already closed, which stalled every later RTA case. [`rta-closed-socket-guard.test.js`](../../tests/scripts/unit/rta-closed-socket-guard.test.js) fails if the patch is missing. Followup `rta-closed-socket-patch-upstream` in [progress.md](../progress.md) drops it once upstream guards the same code.
+
+`npm ci` and `patch-package` run only at install, so a checkout can fall behind the lockfile or a new patch with no warning. [`install-freshness.cjs`](../../scripts/lib/install-freshness.cjs) is the read-only check (`npm run check:install`). It compares `package-lock.json` with the record npm keeps in `node_modules/.package-lock.json`, and `patches/` with a hash record that `npm run patches:apply` writes after `patch-package` succeeds. It runs first in pre-push, in the session-start nudge and before each npm script that builds and deploys to a device, and before `npm run measure -- --deploy`. A stale install fails with `npm ci` as the fix. `test:rta:fast` and `test:rta:tdd` skip it, because they build nothing and deploy what is already in `build/`. It stays out of `npm run lint`, because CI installs fresh on every run.
 
 ## JS hygiene
 
