@@ -21,6 +21,7 @@ import {
   authenticate,
   authenticateForPush,
   commandChannelAvailable,
+  firstMovie,
   getHero,
   getJson,
   getLibraries,
@@ -94,8 +95,13 @@ beforeAll(async () => {
   // manager never learns of the group, so the second test skips visibly rather than wait.
   pushAvailable = await commandChannelAvailable(session);
   const libraries = await getLibraries(session);
-  const hero = await getHero(session, libraryIdFor(libraries, 'movies'));
-  ctx = { heroIndex: hero.index, heroId: hero.id, session, libraries };
+  const moviesId = libraryIdFor(libraries, 'movies');
+  const hero = await getHero(session, moviesId);
+  // A server without the configured hero title is walked to its first movie (index 0), so the id
+  // is that movie's: an empty one would make moviesOtherThanHero() return the group's own video.
+  const heroId = hero.id || (await firstMovie(session, { parentId: moviesId })).id;
+  expect(heroId, 'a movie in the movies library for the group to play').toBeTruthy();
+  ctx = { heroIndex: hero.index, heroId, session, libraries };
   // A group a previous run left behind would double the rows this spec counts.
   await syncPlay(member, 'Leave').catch(() => {});
   const expectedServer = await seedHome(session, LOCALE);
@@ -684,13 +690,14 @@ it("a halted member's play led by the group's video catches up and adds the rest
   // The case above leaves the Roku halted in the group, the group still on the hero alone.
   expect(await getGlobalVal('syncPlayManager.following'), 'halted by its Back').toBe(false);
   expect(await getGlobalVal('syncPlayManager.sync.playlistCount'), 'the hero alone').toBe(1);
-  // The group's video, read off the details screen the case above left open: ctx.heroId is
-  // empty on a server without the configured hero title, which the suite reaches by its index.
+  // The group's video, read off the details screen the case above left open. It is the movie the
+  // walk opened, so it also checks ctx.heroId names that movie on a server without the hero title.
   expect(await getActiveVal('subtype()'), "on the details screen of the group's video").toBe(
     'ItemDetails',
   );
   const groupVideo = await getActiveVal('itemContent.id');
   expect(groupVideo, "the group's video id was read").toBeTruthy();
+  expect(groupVideo, 'ctx.heroId is the movie the walk opened').toBe(ctx.heroId);
   const other = (await moviesOtherThanHero(2)).find((id) => id !== groupVideo);
   // A Play All whose first video is the group's: the demo library has no collection that starts
   // with the hero, so the queue a launcher would build is set as one would, and started the way

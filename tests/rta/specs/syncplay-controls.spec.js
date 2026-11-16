@@ -36,6 +36,7 @@ import {
   getGlobalVal,
   getVal,
   getVals,
+  openTrickPlayBar,
   press,
   readPlayer,
   scrollFocus,
@@ -382,14 +383,7 @@ it('a trickplay scrub confirmed with OK seeks the whole group, and this member l
       'the server has no command channel to this Roku (https without the companion plugin)',
     );
   const before = await playerPosition();
-  // Trick mode steps once per press it sees: presses sent back to back read as one (the bar's
-  // text stayed at the current position, Stick 4K, 2026-10-28), so each gets the library's wait.
-  await ecp.sendKeypressSequence([ecp.Key.Right, ecp.Key.Right, ecp.Key.Right], { wait: 400 });
-  await waitFor('trickPlayBar.visible', (v) => v === true, {
-    read: barVisible,
-    timeout: 10000,
-    label: 'the trick-play bar up after three Right presses',
-  });
+  await openTrickPlayBar(heroId);
   await press(ecp.Key.Ok);
   // Three Right presses read about 30 s ahead on a Stick 4K (2026-10-28); the server's Seek
   // lands this member there, and the bar closes through that Seek.
@@ -422,12 +416,7 @@ it('a scrub confirmed with OK whose Seek the server never answers still closes t
   // group command comes back: the bar must close by its own fallback.
   await failRequests([{ prefix: 'syncPlaySeek', kind: 'http', status: 403, times: 1 }]);
   try {
-    await ecp.sendKeypressSequence([ecp.Key.Right, ecp.Key.Right, ecp.Key.Right], { wait: 400 });
-    await waitFor('trickPlayBar.visible', (v) => v === true, {
-      read: barVisible,
-      timeout: 10000,
-      label: 'the trick-play bar up after three Right presses',
-    });
+    await openTrickPlayBar(heroId);
     await press(ecp.Key.Ok);
     // Shorter than the fallback timer: until then nothing may seek this member. A local seek
     // written at once (the old behavior) shows as the bar closing or the node buffering.
@@ -1014,6 +1003,87 @@ it('a second same-item NextItem right after a RepeatOne restart does not reload 
     timeout: 15000,
     label: 'repeat off again for the cases after',
   });
+});
+
+// Restarts the playing item for the group under RepeatOne (a same-item NextItem) and returns once
+// this Roku has started loading it, so the caller's next request reaches a member mid-load.
+async function restartAndCatchTheLoad() {
+  await syncPlay(member, 'SetRepeatMode', { Mode: 'RepeatOne' });
+  await waitFor('syncPlayManager.sync.repeatMode', (v) => v === 'RepeatOne', {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: "the group's RepeatOne reached this Roku",
+  });
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 30000,
+    label: 'playing before the restart',
+  });
+  const playingItemId = await getGlobalVal('syncPlayManager.sync.playingItemId');
+  const loadsBefore = await getGlobalVal('syncPlayManager.sync.loadCount');
+  expect(typeof loadsBefore, 'the manager counts its loads').toBe('number');
+  await syncPlay(member, 'NextItem', { PlaylistItemId: playingItemId });
+  await waitFor('syncPlayManager.sync.loadCount', (v) => v > loadsBefore, {
+    read: getGlobalVal,
+    timeout: 20000,
+    interval: 50,
+    label: 'the restart loading on this Roku',
+  });
+  return { loadsBefore };
+}
+async function repeatOffAgain() {
+  await syncPlay(member, 'SetRepeatMode', { Mode: 'RepeatNone' });
+  await waitFor('syncPlayManager.sync.repeatMode', (v) => v === 'RepeatNone', {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: 'repeat off again for the cases after',
+  });
+}
+
+it("another member's Seek while this Roku loads a restart moves it there with one group Seek", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const seeksBefore = await getGlobalVal('syncPlayManager.sync.groupSeeks');
+  expect(typeof seeksBefore, 'the manager counts the group Seeks it took').toBe('number');
+  const { loadsBefore } = await restartAndCatchTheLoad();
+  const target = 120;
+  await syncPlay(member, 'Seek', { PositionTicks: target * 10_000_000 });
+  await waitFor('syncPlayManager.sync.lastCommand.command', (v) => v === 'Seek', {
+    read: getGlobalVal,
+    timeout: 20000,
+    interval: 50,
+    label: "the group's Seek reached this Roku during its load",
+  });
+  // The group plays on once this member's Ready at the Seek's point is accepted.
+  await waitFor('syncPlayManager.sync.lastCommand.command', (v) => v === 'Unpause', {
+    read: getGlobalVal,
+    timeout: 90000,
+    label: "the group's Unpause after the Seek",
+  });
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 30000,
+    label: 'playing after the Seek',
+  });
+  await waitFor('position', (v) => typeof v === 'number' && v >= target, {
+    read: playerPosition,
+    timeout: 30000,
+    label: "the node playing from the Seek's target",
+  });
+  expect(await playerPosition(), "near the Seek's target, not past it").toBeLessThan(target + 60);
+  // A Ready the server finds off the point is answered with another Seek: one means none was.
+  expect(
+    (await getGlobalVal('syncPlayManager.sync.groupSeeks')) - seeksBefore,
+    'group Seeks this member took',
+  ).toBe(1);
+  expect(
+    (await getGlobalVal('syncPlayManager.sync.loadCount')) - loadsBefore,
+    'the item was loaded once',
+  ).toBe(1);
+  expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+  await repeatOffAgain();
 });
 
 // Opens the OSD gear and returns the number of rows and a reader for a row's title.

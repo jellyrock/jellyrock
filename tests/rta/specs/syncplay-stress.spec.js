@@ -49,6 +49,7 @@ import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
 import {
   getGlobalVal,
+  openTrickPlayBar,
   press,
   readPlayer,
   sleep,
@@ -195,34 +196,13 @@ async function resetPosition(before, name = CASE) {
 }
 
 /**
- * Opens the trick-play bar with three Right presses, one library wait apart. The OSD stays up
- * until five seconds after the last key press (`inactiveTimeout` in `VideoPlayerView.xml`), and
- * while it is up the player sends Right to the OSD and the bar does not open. A step that ends
- * with the OSD still up over playing video (the Play key's pause, then another member's resume)
- * would be pressed at too early, so the presses wait for it to close.
- */
-async function openBar() {
-  await waitFor('#osd.visible', (v) => v === false, {
-    read: osdVisible,
-    timeout: 15000,
-    label: 'the OSD down before the Right presses, so they reach the trick-play bar',
-  });
-  await ecp.sendKeypressSequence([ecp.Key.Right, ecp.Key.Right, ecp.Key.Right], { wait: 400 });
-  await waitFor('trickPlayBar.visible', (v) => v === true, {
-    read: barVisible,
-    timeout: 10000,
-    label: 'the trick-play bar up after three Right presses',
-  });
-}
-
-/**
  * Drives one input. Returns the time of the OK press for the scrub cases, else null.
  * @param {number} before the node's position, in seconds
  * @param {string} name the case, or the mix step
  */
 async function act(before, name = CASE) {
   if (SCRUB_CASES.has(name)) {
-    await openBar();
+    await openTrickPlayBar(playingId);
     if (name === 'late-seek') {
       await failRequests([{ prefix: 'syncPlaySeek', kind: 'slow', ms: LATE_MS, times: 1 }]);
     }
@@ -685,7 +665,7 @@ describe.skipIf(ROUNDS <= 0)('SyncPlay stress', () => {
           const name = STEP_LIST ? STEP_LIST[index] : nextStep(random, state);
           const expected = MIX_STEPS[name].to;
           let outcome;
-          // A throw inside a step (a wait that times out in `act`, `openBar`, `stepItem` and so
+          // A throw inside a step (a wait that times out in `act`, `openTrickPlayBar`, `stepItem` and so
           // on) is this step's result, not the run's: it is recorded as `error`, the member is
           // recovered as after a frozen step, and the run goes on to the next step.
           try {

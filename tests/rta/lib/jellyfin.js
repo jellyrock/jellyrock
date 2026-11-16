@@ -411,11 +411,13 @@ export const getHero = (session, parentId) =>
  * Resolved at runtime so a take never assumes a specific title exists on a given demo server
  * (for example the cast-to-another-server take needs a real movie + name on the TARGET
  * server, which may differ from RTA_CONFIG.heroMovie). The name feeds the cast's
- * `itemName` switch-prompt arg.
+ * `itemName` switch-prompt arg. With `parentId`, the first movie of that library: the one a
+ * grid walk to index 0 opens, as `findMovie` reads an index.
  */
-export async function firstMovie(session) {
+export async function firstMovie(session, { parentId } = {}) {
   const url =
     `${session.serverUrl}/Items?UserId=${session.userId}` +
+    (parentId ? `&ParentId=${parentId}` : '') +
     `&IncludeItemTypes=Movie&Recursive=true&SortBy=SortName&SortOrder=Ascending&Limit=1`;
   // Throws on a failed request; the empty result below means the server answered and
   // the library has no movies. See the module header.
