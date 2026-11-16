@@ -1339,7 +1339,6 @@ sub onItemFocused()
   ' Update texture buffer range on every focus change
   updateGridTextureBufferRange(m.data, m.itemGrid.itemFocused, m.itemGrid.numColumns, m.itemGrid.numRows)
 
-  updateTitle()
   m.selectedFavoriteItem = m.itemGrid.content.getChild(m.itemGrid.itemFocused)
   updateStrip(m.selectedFavoriteItem)
 
@@ -1567,7 +1566,7 @@ sub updateStrip(item as dynamic)
     content.title = summary.title
     ' The presentation panel, under the strip, writes the metadata as the details screen
     ' does, so the strip gives the title alone there
-    if not m.presenter.shouldShowPresentationInfo(m.view, m.layout) then content.metadata = summary.metadata
+    if not isValid(m.presenter) or not m.presenter.shouldShowPresentationInfo(m.view, m.layout) then content.metadata = summary.metadata
     ' The grid's position and total. The Genres row list has a counter per row instead.
     if m.genreList.opacity <> 1
       position = m.itemGrid.itemFocused + 1
@@ -1704,8 +1703,10 @@ sub onFilterChoicePicked(event as object)
 end sub
 
 ' A checklist closed. A tick counts when it is made (dialogs.md), so the ticks are kept
-' however it closed. Closed by the viewer, the menu comes back. Closed from code, another
-' screen is covering this one: the grid reloads when this one is shown again.
+' however it closed. Closed by the viewer, the menu comes back. Closed from code, either
+' another screen is covering this one (JRScreen.hideCovered hides the screen before it
+' ends the dialog), and the grid reloads when this one is shown again, or another dialog
+' took the checklist's place over this screen, and the grid reloads now.
 sub onFilterChecklistClosed(event as object)
   result = event.getData()
   category = m.openFilterCategory
@@ -1714,7 +1715,7 @@ sub onFilterChecklistClosed(event as object)
   wasClosedFromCode = result.externallyCancelled = true
   if type(result.checkedIndexes) = "roArray" and (result.cancelled <> true or wasClosedFromCode)
     values = libraryFilterMenu.valuesAt(category, result.checkedIndexes)
-    if wasClosedFromCode
+    if wasClosedFromCode and not m.top.visible
       sessionFilters.setCategory(m.top.parentItem.Id, m.tab, category.id, values)
       m.isFilterReloadDue = true
     else
@@ -1746,6 +1747,14 @@ sub clearNarrowing()
   m.nameStartsWith = ""
   if isValid(m.tvGuide) then m.tvGuide.searchTerm = ""
   applyFilters()
+
+  ' A tab that offers no category shows the Filter chip only while something narrows it,
+  ' so clearing can take the chip away. The menu is still closing and would hand the focus
+  ' back to that chip, so the focus moves first: to another chip, else to the content. A
+  ' dialog that no longer holds the focus when it closes restores none (closeOverlayDialog).
+  if not isValid(m.headerStrip.callFunc("chipAnchor", "filter"))
+    if m.headerStrip.callFunc("focusEntry") <> true then focusViewContent()
+  end if
 end sub
 
 ' ============================================================================
@@ -1892,7 +1901,8 @@ sub onVoiceFilter()
     ' Route voice search to TV Guide when it's active
     if isValid(m.tvGuide)
       m.tvGuide.searchTerm = m.voiceBox.text
-      updateTitle()
+      updateStripChips()
+      updateStrip(invalid)
       m.tvGuide.lastFocus.setFocus(true)
       return
     end if
@@ -1935,7 +1945,9 @@ sub onVoiceFilter()
       end if
     end if
 
-    updateTitle()
+    ' The Filter chip shows while anything narrows the tab, and the strip says what does
+    updateStripChips()
+    updateStrip(invalid)
   end if
 end sub
 
@@ -2095,6 +2107,8 @@ end sub
 ' Overhang Title
 ' ============================================================================
 
+' The overhang's title, shown on a screen with no tabs: what was opened. The header strip
+' says the rest: what narrows the tab and the place in the list (updateStrip).
 sub updateTitle()
   m.top.overhangTitle = m.top.parentItem.title
 
@@ -2102,31 +2116,12 @@ sub updateTitle()
     m.top.overhangTitle = m.top.parentItem.title + " (" + translate(translationKeys.LabelFavorites) + ")"
   end if
 
-  ' Voice search and alpha filters take precedence over view-specific titles
-  ' Check trim() to avoid showing "(Filtered by )" with empty/whitespace values
-  if m.voiceBox.text.trim() <> ""
-    m.top.overhangTitle = translate(translationKeys.MessageFilteredBy, [m.top.parentItem.title, m.voiceBox.text])
-    return
-  end if
-
-  if m.nameStartsWith.trim() <> ""
-    m.top.overhangTitle = translate(translationKeys.MessageFilteredBy, [m.top.parentItem.title, m.nameStartsWith])
-    return
-  end if
-
-  ' View-specific titles (only when no active filters). A library's content tab (Movies,
-  ' Shows, Channels, Photos) carries no suffix; the others are named by the title the
-  ' presenter gave the tab.
+  ' View-specific titles. A library's content tab (Movies, Shows, Channels, Photos)
+  ' carries no suffix; the others are named by the title the presenter gave the tab.
   lowerView = LCase(m.view)
   if lowerView = libraryTab.STUDIOS or lowerView = libraryTab.NETWORKS or lowerView = libraryTab.GENRES or lowerView = libraryTab.COLLECTIONS or lowerView = libraryTab.ARTISTS or lowerView = libraryTab.ALBUM_ARTISTS or lowerView = libraryTab.ALBUMS
     tabTitle = offeredViewTitle(m.view)
     if tabTitle <> "" then m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, tabTitle)
-  end if
-
-  ' Add item count if enabled
-  actInt = m.itemGrid.itemFocused + 1
-  if m.showItemCount and m.totalRecordCount > 0 and lowerView <> libraryTab.GENRES
-    m.top.overhangTitle += " (" + translate(translationKeys.LabelPositionOfTotal, [actInt.toStr(), m.totalRecordCount.toStr()]) + ")"
   end if
 end sub
 

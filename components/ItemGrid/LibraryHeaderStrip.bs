@@ -37,12 +37,14 @@ sub init()
     })
     ' A chip reports its size once it has measured its label, and again when the label
     ' changes: the row is laid out from those sizes.
-    chip.observeField("isReady", "layout")
+    chip.observeField("isReady", "relayout")
   end for
 
   ' The chips on show, from left to right, and the one focus last left
   m.shown = []
   m.lastChip = ""
+  ' Whether the last fit cut the metadata line (fitMetadata)
+  m.isMetadataCut = false
 end sub
 
 sub onContentChanged()
@@ -62,6 +64,15 @@ sub onChipsChanged()
   m.shown = []
   applyChip(CHIP_SORT, textOrEmpty(chips.sortLabel), chips.isSortShown = true)
   applyChip(CHIP_FILTER, textOrEmpty(chips.filterLabel), chips.isFilterShown = true)
+  relayout()
+end sub
+
+' The chips changed, or one of them measured itself: the row has other room now. A fit
+' that cut the metadata line removed the items it dropped, so the line is built whole
+' again first and gets back what the new room allows.
+sub relayout()
+  content = m.top.content
+  if m.isMetadataCut and isValid(content) then setMetadata(content.metadata)
   layout()
 end sub
 
@@ -110,6 +121,7 @@ end sub
 
 ' Rebuild the metadata line: one label per item, a bullet between two.
 sub setMetadata(items as dynamic)
+  m.isMetadataCut = false
   m.metadata.removeChildrenIndex(m.metadata.getChildCount(), 0)
   if type(items) <> "roArray" then return
   for each item in items
@@ -160,6 +172,7 @@ sub fitMetadata(widths as object, budget as integer)
   if widths.count() = 0 then return
   fit = fitTextRow(widths, metadataSeparatorWidth(), budget, headerStrip.METADATA_MIN_CUT)
   if fit.keep = widths.count() and fit.cutWidth = 0 then return
+  m.isMetadataCut = true
 
   if fit.cutWidth > 0 then m.metadata.getChild((fit.keep - 1) * 2).width = fit.cutWidth
   lastKept = (fit.keep - 1) * 2
