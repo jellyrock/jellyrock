@@ -86,6 +86,25 @@ namespace tests
       return group
     end function
 
+    ' A load from the item's start, its Buffering arrived, its first frame paused for the wait and
+    ' its Ready decided and applied, so the Ready is in flight. Returns the player.
+    private function readyInFlight(group as object) as object
+      player = syncPlayPlayer.newPlayer()
+      syncPlayGroup.itemChanged(group, "p-1", 1000&)
+      syncPlayPlayer.mounted(player, 0&, 9000&)
+      buffering = m.decide(player, group, 9000&)
+      syncPlayConverge.applied(player, group, buffering.action, 9000&)
+      syncPlayGroup.requestArrived(group, "report", "buffering", group.report.id)
+      syncPlayPlayer.nodeState(player, "playing", 9800&)
+      hold = m.decide(player, group, 9800&)
+      syncPlayConverge.applied(player, group, hold.action, 9800&)
+      syncPlayPlayer.reading(player, 840000&, 9810&)
+      syncPlayPlayer.nodeState(player, "paused", 9825&)
+      ready = m.decide(player, group, 9825&)
+      syncPlayConverge.applied(player, group, ready.action, 9825&)
+      return player
+    end function
+
     private function decide(player as object, group as object, nowMs as longinteger) as object
       return syncPlayConverge.decide(player, group, m.ctx(), syncPlayConverge.defaultPolicy(), nowMs)
     end function
@@ -987,6 +1006,35 @@ namespace tests
       ready = m.decide(player, group, 9826&)
       m.assertEqual(ready.action.what, "ready")
       m.assertEqual(ready.action.positionTicks, 830000&)
+    end function
+
+
+    @it("a group Pause naming a new point while this wait's Ready is in flight seeks nowhere, and is the group's pause once the Ready arrives")
+    function _()
+      group = syncPlayGroup.newGroup()
+      player = m.readyInFlight(group)
+      syncPlayGroup.command(group, m.cmd("Pause", 9900&, 25000000&))
+      ' The node is already paused: the group's pause is taken over with the OSD, with no seek
+      ' to the new point and no report behind it.
+      shown = m.decide(player, group, 9901&)
+      m.assertEqual(m.kindOf(shown), "pause")
+      m.assertEqual(shown.action.owner, "group")
+      m.assertTrue(shown.action.showOsd)
+      syncPlayConverge.applied(player, group, shown.action, 9901&)
+      m.assertEqual(m.kindOf(m.decide(player, group, 9902&)), "")
+      syncPlayGroup.requestArrived(group, "report", "ready", group.report.id)
+      m.assertEqual(m.kindOf(m.decide(player, group, 9950&)), "")
+    end function
+
+    @it("a group Pause naming a new point is sought when this wait's Ready fails")
+    function _()
+      group = syncPlayGroup.newGroup()
+      player = m.readyInFlight(group)
+      syncPlayGroup.command(group, m.cmd("Pause", 9900&, 25000000&))
+      syncPlayGroup.requestFailed(group, "report", "ready", group.report.id)
+      seek = m.decide(player, group, 9950&)
+      m.assertEqual(m.kindOf(seek), "seek")
+      m.assertEqual(seek.action.targetTicks, 25000000&)
     end function
 
     @it("a load that starts partway in waits for its first reading before any pause")

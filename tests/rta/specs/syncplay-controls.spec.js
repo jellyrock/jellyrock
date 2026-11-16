@@ -1040,6 +1040,68 @@ async function repeatOffAgain() {
   });
 }
 
+it("another member's Pause while this Roku loads a restart leaves it paused with the OSD up, and the Unpause plays on", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const { loadsBefore } = await restartAndCatchTheLoad();
+  await syncPlay(member, 'Pause');
+  await waitFor('syncPlayManager.sync.lastCommand.command', (v) => v === 'Pause', {
+    read: getGlobalVal,
+    timeout: 20000,
+    label: "the group's Pause reached this Roku during its load",
+  });
+  await waitFor('state', (s) => s === 'paused', {
+    read: playerState,
+    timeout: 90000,
+    label: 'the node paused once the restart loaded',
+  });
+  await waitFor('#osd.visible', (v) => v === true, {
+    read: osdVisible,
+    timeout: 10000,
+    label: "the OSD up on the group's pause",
+  });
+  await waitFor('syncPlayManager.groupState', (v) => v === 'Paused', {
+    read: getGlobalVal,
+    timeout: 30000,
+    label: "the group paused after this member's Ready",
+  });
+  await syncPlay(member, 'Unpause');
+  await waitFor('syncPlayManager.sync.lastCommand.command', (v) => v === 'Unpause', {
+    read: getGlobalVal,
+    timeout: 20000,
+    label: "the group's Unpause reached this Roku",
+  });
+  // The server's last Pause names a point past where this member stopped, so the Unpause finds it
+  // behind and it catches up.
+  await waitFor(
+    'syncPlayManager.sync.playbackDiffMs',
+    (v) => typeof v === 'number' && v >= -150 && v <= 400,
+    {
+      read: getGlobalVal,
+      timeout: 45000,
+      label: 'this member in step with the group after the unpause',
+    },
+  );
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 15000,
+    label: "the node playing on the group's unpause",
+  });
+  await waitFor('#osd.visible', (v) => v === false, {
+    read: osdVisible,
+    timeout: 10000,
+    label: 'the OSD down again after the unpause',
+  });
+  expect(
+    (await getGlobalVal('syncPlayManager.sync.loadCount')) - loadsBefore,
+    'the item was loaded once',
+  ).toBe(1);
+  expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+  await repeatOffAgain();
+});
+
 it("another member's Seek while this Roku loads a restart moves it there with one group Seek", async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(

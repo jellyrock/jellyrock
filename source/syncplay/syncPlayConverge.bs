@@ -287,7 +287,7 @@ namespace syncPlayConverge
     ' The server takes a Ready only near the point a command names, so a member elsewhere seeks
     ' there first. Where the server stopped the group's line for this member's own load has a
     ' rule of its own below: the load already started there, so only one that lands short seeks.
-    if want.owesReady and isValid(want.pointTicks) and standsAtCommand(group) and (isPlayingOn or activity = "paused")
+    if want.owesReady and isValid(want.pointTicks) and standsAtCommand(group) and (isPlayingOn or activity = "paused") and not readyInFlightForWait(group)
       point& = syncPlayTime.asLong(want.pointTicks)
       if not nearPoint(player, point&, policy, nowMs)
         if not soughtPoint(group, point&, policy) then return { kind: "seek", owner: "group", targetTicks: point&, toPoint: true }
@@ -655,6 +655,15 @@ namespace syncPlayConverge
     cmd = group.command
     if not isValid(cmd) or not syncPlayGroup.commandIsCurrent(group, cmd) then return false
     return cmd.command = "Pause" or cmd.command = "Seek"
+  end function
+
+  ' Whether this wait's Ready is on its way to the server. A command that names a new point
+  ' while it is would move the node and send a Buffering behind it, which flips the group out of
+  ' its pause and back. The Ready's reply settles the wait, so nothing is sought until then. A
+  ' Ready sent before a group Seek belongs to the earlier wait and does not hold that seek back.
+  function readyInFlightForWait(group as object) as boolean
+    report = group.report
+    return report.state = "flight" and report.what = "ready" and report.waitCount = group.waitCount
   end function
 
   ' Whether the seek in flight is stuck: the node still buffers, and its buffer has been full
