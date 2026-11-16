@@ -1408,7 +1408,7 @@ sub carryOut(action as object)
     if kind = "pause"
       tellPlayer(host, { command: "pause", showOsd: action.showOsd = true })
     else if kind = "resume"
-      tellPlayer(host, { command: "resume" })
+      tellPlayer(host, { command: "resume", hideOsd: action.hideOsd = true })
     else
       ' A jump the viewer's own time offset pick caused reads as intended with a word.
       if action.byPick = true then notify("syncing", "", "")

@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-15
+last-updated: 2026-11-16
 ---
 
 # Progress
@@ -1846,6 +1846,10 @@ The unit simulator (`tests/source/shared/syncPlaySim.bs`) lands every seek at or
 Why not now: the fix was proven on the device, and teaching the simulator a stream's start and age is its own change with its own sweep to re-baseline.
 
 Closes when the simulator can make a seek fall back to the stream's start on a young transcode, and its sweep shows the member brought in by the reload.
+
+#### An RTA run prints an uncaught `read ECONNRESET` and its source is unknown `[fid: rta-run-uncaught-econnreset]` `[captured 2026-11-16]`
+
+An RTA run printed an uncaught `read ECONNRESET` (`node:internal/process/promises`, `triggerUncaughtException`) right after the RTA build deployed, then ran on and passed 400 of 400 steps (`syncplay-stress` mix, Stick 4K, 2026-11-16). Which process or socket raised it was not found: a promise in the runner or a library with no catch. A rejection nothing handles can end a run that should go on. Close it by rerunning `npm run test:rta -- syncplay-stress` with a short `RTA_STRESS_STEPS` list, finding where the rejection comes from, and catching it there. Not fixed now: the source is unknown and needs a reproduction first.
 
 ### docs
 

@@ -3185,6 +3185,9 @@ function handleTransport(evt as object) as object
       if viewerPaused and syncPlayHooks.control({ kind: "unpause" }) then return { status: "success" }
       if not viewerPaused and m.top.state = "paused" then return { status: "error.redundant" }
     end if
+    ' A SyncPlay group's resume that ends a pause the viewer saw closes the OSD at once, as their
+    ' own resume does (the comparison's resume action marks the verb), never left to its timeout.
+    if evt.fromGroup = true and evt.hideOsd = true then handleHideAction(false)
     ' A buffering node writes nothing and still reports success: it plays once it has buffered, and
     ' a control "play" written during a seek's buffering wedges it in `buffering` for good
     ' (measured on a Streaming Stick 4K, 2026-10-23). See voiceTransport.playControl().

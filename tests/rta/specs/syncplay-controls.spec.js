@@ -261,6 +261,40 @@ it("the Roku's Play key pauses the whole group, and a second press has it playin
   });
 });
 
+it("another member's Unpause closes the OSD this member's Play key opened, without its timeout", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  // The OSD hides by itself once no key was pressed for `inactiveTimeout` (5 s, on the OSD's
+  // instance in VideoPlayerView.xml). The Play key below is the last key, so an OSD that is
+  // down sooner than that after it was closed by the group's resume, not by the timeout.
+  const OSD_TIMEOUT_MS = 5000;
+  const keyAt = Date.now();
+  await press(ecp.Key.Play);
+  await waitFor('syncPlayManager.groupState', (s) => s === 'Paused', {
+    read: getGlobalVal,
+    timeout: 10000,
+    label: "the group paused on this member's Play key",
+  });
+  expect(await osdVisible(), 'the OSD up on the Play key').toBe(true);
+  await syncPlay(member, 'Unpause');
+  await waitFor('#osd.visible', (v) => v === false, {
+    read: osdVisible,
+    timeout: 15000,
+    label: "the OSD down on the member's Unpause",
+  });
+  const downAfterMs = Date.now() - keyAt;
+  expect(downAfterMs, 'the OSD closed before its own timeout could have closed it').toBeLessThan(
+    OSD_TIMEOUT_MS,
+  );
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 15000,
+    label: "the node playing on the member's Unpause",
+  });
+});
+
 it('a trickplay scrub confirmed with OK seeks the whole group, and this member lands at the target', async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(

@@ -1541,6 +1541,36 @@ namespace tests
       m.assertEqual(m.kindOf(m.decide(m.pausedAt(m.at65s - 1000 * m.oneMs, "group"), group, 10000&)), "resume")
     end function
 
+    @it("a resume that ends a pause the viewer saw closes the OSD")
+    function _()
+      for each owner in ["group", "viewer", ""]
+        result = m.decide(m.pausedAt(m.at65s, owner), m.playingLine(), 10000&)
+        m.assertEqual(m.kindOf(result), "resume")
+        m.assertTrue(result.action.hideOsd = true)
+      end for
+    end function
+
+    @it("a resume that ends a hold or a wait leaves the OSD as the viewer has it")
+    function _()
+      for each owner in ["hold", "wait"]
+        result = m.decide(m.pausedAt(m.at65s, owner), m.playingLine(), 10000&)
+        m.assertEqual(m.kindOf(result), "resume")
+        m.assertFalse(result.action.hideOsd = true)
+      end for
+    end function
+
+    @it("a paused node that resumes with the budget spent closes the OSD the same way")
+    function _()
+      group = m.playingLine()
+      group.catchUps = 2
+      group.askedWait = true
+      seen = m.decide(m.pausedAt(m.at65s - 1000 * m.oneMs, "group"), group, 10000&)
+      m.assertTrue(seen.action.hideOsd = true)
+      held = m.decide(m.pausedAt(m.at65s - 1000 * m.oneMs, "hold"), group, 10000&)
+      m.assertEqual(m.kindOf(held), "resume")
+      m.assertFalse(held.action.hideOsd = true)
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("the viewer's scrub")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

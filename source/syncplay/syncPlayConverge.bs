@@ -372,7 +372,7 @@ namespace syncPlayConverge
       end if
       ' A resume takes effect late by a lag the player model learns, so it is written that early;
       ' for a node that runs on past its stop the lag is below zero, and it is written later.
-      if nowMs >= resumeAt& then return { kind: "resume", owner: "group" }
+      if nowMs >= resumeAt& then return groupResume(player)
       wake(result, resumeAt&)
       return invalid
     end if
@@ -424,6 +424,14 @@ namespace syncPlayConverge
     return lag&
   end function
 
+  ' The resume that has a paused node play with the group. One that ends a pause the viewer saw
+  ' closes the OSD, as their own resume does. A hold or a wait showed them no pause, so an OSD
+  ' they opened meanwhile stays (SyncPlayManager.pausedForViewer draws the same line).
+  function groupResume(player as object) as object
+    wasSeen = player.pauseOwner <> "hold" and player.pauseOwner <> "wait"
+    return { kind: "resume", owner: "group", hideOsd: wasSeen }
+  end function
+
   ' Where to seek a node that reads playing and takes no pause: the point the group stands at,
   ' else where its line is now (the viewer's own pause, not yet answered), else where this
   ' member's own load was to start. Invalid when nothing names a place.
@@ -457,7 +465,7 @@ namespace syncPlayConverge
       recover = player.activity = "playing" and not isValid(position) and group.recoverSeeks < 1
       if not recover
         ' Nothing more can bring it in: it plays where it is, never left frozen.
-        if player.activity = "paused" then return { kind: "resume", owner: "group" }
+        if player.activity = "paused" then return groupResume(player)
         return invalid
       end if
     end if
@@ -465,7 +473,7 @@ namespace syncPlayConverge
     if leadMs& < policy.leadMs then leadMs& = policy.leadMs
     target = lineTicksAt(group, ctx.estimator, nowMs + leadMs&)
     if not isValid(target) or syncPlayPlayback.seekPastEnd(syncPlayTime.asLong(target), ctx.durationSeconds)
-      if player.activity = "paused" then return { kind: "resume", owner: "group" }
+      if player.activity = "paused" then return groupResume(player)
       return invalid
     end if
     seek = { kind: "seek", owner: "hold", targetTicks: syncPlayTime.asLong(target), catchUp: true, byPick: group.pickPending }
