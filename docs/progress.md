@@ -986,17 +986,17 @@ Measured 2026-11-16 on a Streaming Stick 4K against Jellyfin 12.4.0 (two joins p
 
 Not built with `dabe5d11` because it adds state: the verdict has to be keyed on the version and the cap, and dropped when the gear's bitrate pick changes, or a stale one re-encodes a stream the server could have copied. Closes when a second player of the same version starts capped with no restart, shown by a unit case and a device run.
 
-#### After the session socket reopens, a SyncPlay member shows a lost group for up to a time-sync interval `[fid: syncplay-membership-stale-after-socket-reopen]` `[captured 2026-11-16]`
+#### After the session socket reopens, the server's answer to a SyncPlay member can be lost, and a drop the group survives still ends the membership `[fid: syncplay-membership-stale-after-socket-reopen]` `[captured 2026-11-16]`
 
-After the session socket drops and reopens, a member that was in a SyncPlay group keeps showing itself in the group until its next periodic time sync posts a Ping and the server answers `NotInGroup` (`SyncPlayManager.onTimeSyncResults`, then the `NotInGroup` branch of the group update handler). Nothing asks the server at the reopen.
+A member whose session socket reopens now asks the server at once where it stands (`SyncPlayManager.onSocketReopened`, commit `4ecc888a`): a clock sync, then the Ping a server answers with `NotInGroup` when it no longer holds the membership. Two things are left.
 
-Measured 2026-11-16 on a Streaming Stick 4K against Jellyfin 12.4.0 over HTTP, with the server stopped and started while the Roku sat in a group on Home (records `step4-socket-samples.jsonl` and `step4-socketB-samples.jsonl` in the SyncPlay project's spikes): the icon read enabled and in the group for 58.4 s in one run and 14.4 s in the other after the socket reopened, then the "Left" toast showed. The restarted server had no groups.
+**The answer can be lost.** In one of three server restarts after the change (Streaming Stick 4K, Jellyfin 12.4.0, 2026-11-16) the server handled the Ping 233 ms after the socket request and logged that the session belongs to no group, and no `NotInGroup` frame reached the app. The member then learned at its next timed sync, 60 s later, as before the change. In another run the same exchange 252 ms after the socket request did arrive. Followup `syncplay-join-frame-never-seen` has the same shape: a frame sent soon after the socket opens that never arrives.
 
-Two candidate changes, neither built: post a Ping when the socket reopens while in a group, so the answer comes at once; and, when the group still exists, join it again without asking. The second is a design choice and needs its own measurement.
+**A socket drop with the server up ends the membership while the group lives on.** With the server frozen for 40 s (`docker pause`) while the Roku followed a playing group, the socket closed with an error 57 s after the unfreeze, reopened 1 s later, and the member was told `NotInGroup` within 0.6 s. The group still existed with its other member. The viewer is put out of the group and keeps the video as their own. Joining the group again without asking is a design choice, not built.
 
-Not checked: a socket drop with the server still up (a network blip), where the group survives for the other members; whether the server ends the membership on that drop was not measured here. Not checked: the same drop while the player is following a playing group.
+Not checked: the retry while the server answers 503 on a device (no run after it met a server still starting); a drop on the Roku's side of the network, where the server keeps running untouched; a server other than 12.4.0.
 
-Closes with a device run of both drops (server restart, and socket only) while following a playing group, and either the Ping at reopen with a unit case, or a decision that the wait is acceptable.
+Closes with the lost answer explained or covered, and a decision on joining again after a drop the group survived.
 
 ### source
 
