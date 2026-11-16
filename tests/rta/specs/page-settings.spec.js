@@ -57,13 +57,18 @@ beforeAll(async () => {
   moviesId = libraryIdFor(libraries, 'movies');
 });
 
-/** A cold start with the movie library seeded to open `view`, drawn in `layout` when given. */
-async function launchWithMovies(label, view, layout) {
+/**
+ * A cold start with the movie library seeded to open `view`, drawn in `layout` when given,
+ * with any further registry values in `values`.
+ */
+async function launchWithMovies(label, view, layout, values = {}) {
   const expectedServer = await seedHome(session, LOCALE);
   const landing = await seedLibraryLanding(session, moviesId, view, { layout });
   // rta-run.js restores the whole registry after the run.
   await odc.writeRegistry({
-    values: { [session.userId]: { [`display.${moviesId}.sort_movies`]: SEEDED_SORT } },
+    values: {
+      [session.userId]: { [`display.${moviesId}.sort_movies`]: SEEDED_SORT, ...values },
+    },
   });
   await hardRelaunch();
   await assertSeedTookEffect(expectedServer, label, { landing });
@@ -313,6 +318,124 @@ it('Item Titles from the menu hides the titles at once and is the app-wide setti
   )?.value;
   expect(settings, 'the app-wide setting is what changed').toBe(false);
   if (process.env.RTA_CAPTURE) await captureRawUI('page-settings-titles-hidden');
+});
+
+/**
+ * Each grid cell's title, as drawn. `#itemGrid.<n>` is the grid's nth rendered cell, not its
+ * nth item, so the cells come back in no particular order; a cell with no text (a loading
+ * cell, or one not bound) is left out.
+ */
+async function cellTitles() {
+  const cells = 24;
+  const paths = [];
+  for (let i = 0; i < cells; i++)
+    paths.push(`#itemGrid.${i}.#itemText.text`, `#itemGrid.${i}.#itemText.visible`);
+  const values = await getVals(paths);
+  const titles = [];
+  for (let i = 0; i < cells; i++) {
+    const text = values[2 * i];
+    if (typeof text === 'string' && text !== '') titles.push({ text, visible: values[2 * i + 1] });
+  }
+  return titles;
+}
+
+/** Star from the grid, then menu row `menuRow`, then list row `listRow` of a list whose first row reads `firstRow`. */
+async function pickFromStar(label, menuRow, firstRow, listRow) {
+  await press(ecp.Key.Option);
+  await waitPageMenu(label);
+  await scrollFocus({
+    keyPath: '#optionList.itemFocused',
+    target: menuRow,
+    forwardKey: ecp.Key.Down,
+    backKey: ecp.Key.Up,
+    label: `${label}: the menu row`,
+  });
+  await press(ecp.Key.Ok);
+  await waitFor('#optionList.content.0.title', (t) => t === firstRow, {
+    label: `${label}: the list`,
+    timeout: 10000,
+  });
+  await scrollFocus({
+    keyPath: '#optionList.itemFocused',
+    target: listRow,
+    forwardKey: ecp.Key.Down,
+    backKey: ecp.Key.Up,
+    label: `${label}: the list row`,
+  });
+  await press(ecp.Key.Ok);
+  await waitDialogClosed(label);
+  await waitFocusInside('#itemGrid', { label: `${label}: focus on the grid`, timeout: 20000 });
+}
+
+it('a pick from the page menu redraws the grid in place: same item, same items, no reload', async (testCtx) => {
+  if (!moviesId) testCtx.skip('server has no "movies" library');
+  await launchWithMovies('page settings in place', 'movies', 'grid', {
+    [`display.${moviesId}.columns_movies`]: '3',
+  });
+  await navLibraryGrid({ libraries });
+  await waitFocusInside('#itemGrid', { label: 'focus on the movie grid', timeout: 20000 });
+  // Three to a row puts the seventh movie on the third row: far enough in to be lost by a reload
+  const focused = 6;
+  await scrollFocus({
+    keyPath: '#itemGrid.itemFocused',
+    target: focused,
+    forwardKey: ecp.Key.Down,
+    stride: 3,
+    label: 'to the seventh movie',
+  });
+  // A reload builds a new content node, so a mark on this one says whether the items were kept
+  await odc.setValue({ keyPath: '#itemGrid.content.title', value: 'rta-kept' });
+
+  async function expectKept(label, columns) {
+    const [index, count, mark, stripTitle, focusedTitle] = await getVals([
+      '#itemGrid.itemFocused',
+      '#itemGrid.numColumns',
+      '#itemGrid.content.title',
+      '#headerStrip.#title.text',
+      `#itemGrid.content.${focused}.title`,
+    ]);
+    expect(count, `${label}: the count drawn`).toBe(columns);
+    expect(index, `${label}: the same item in focus`).toBe(focused);
+    expect(mark, `${label}: the same items, not a reload`).toBe('rta-kept');
+    expect(typeof focusedTitle, `${label}: the focused item read`).toBe('string');
+    expect(stripTitle, `${label}: the strip names it`).toBe(focusedTitle);
+  }
+
+  async function expectTitles(label, isShown) {
+    const titles = await cellTitles();
+    expect(titles.length, `${label}: cells read`).toBeGreaterThan(0);
+    for (const cell of titles) expect(cell.visible, `${label}: "${cell.text}"`).toBe(isShown);
+  }
+
+  await pickFromStar('nine to a row', 1, '3', 6);
+  await expectKept('nine to a row', 9);
+  await expectTitles('nine to a row', true);
+
+  // A cell the grid keeps on its item gets no new bind: it has to follow the setting itself
+  await pickFromStar('titles hidden', 2, 'Shown', 1);
+  await expectKept('titles hidden', 9);
+  await expectTitles('titles hidden', false);
+
+  await pickFromStar('the presentation layout', 0, 'Presentation', 0);
+  await expectKept('the presentation layout', 9);
+  expect(await getVal('#presentationInfo.visible'), 'the panel shows').toBe(true);
+
+  await pickFromStar('the grid layout', 0, 'Presentation', 1);
+  await expectKept('the grid layout', 9);
+  expect(await getVal('#presentationInfo.visible'), 'the panel is gone').toBe(false);
+
+  // The titles changed while the library was covered, as Settings or another library's
+  // menu changes them: the way back redraws, and keeps the place
+  await press(ecp.Key.Ok);
+  await waitFor('#videoTitle.text', (t) => typeof t === 'string' && t !== '', {
+    label: "the movie's details",
+    timeout: 20000,
+  });
+  await odc.setValue({ base: 'global', keyPath: 'user.settings.itemGridShowTitles', value: true });
+  await press(ecp.Key.Back);
+  await waitFocusInside('#itemGrid', { label: 'back on the grid', timeout: 20000 });
+  await expectKept('back from the details', 9);
+  await expectTitles('back from the details', true);
 });
 
 it('a layout whose grid starts lower offers only the counts that fit', async (testCtx) => {

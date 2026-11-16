@@ -271,8 +271,11 @@ sub onScreenShown()
     ' selectable ghosts. A grid that shows favorites does the same when a favorite toggled
     ' (see favoritesStale). Unchanged tokens = no reload, so the resume stays cheap.
     scene = m.top.getScene()
-    if isValid(scene) and (scene.contentVersion <> m.lastContentVersion or favoritesStale() or m.isFilterReloadDue or titlesSettingChanged())
+    if isValid(scene) and (scene.contentVersion <> m.lastContentVersion or favoritesStale() or m.isFilterReloadDue)
       reloadGridItems()
+    else if titlesSettingChanged()
+      ' Settings or another library's menu changed the titles: same items, drawn again
+      relayoutGrid()
     else
       ' The runway may have run short while another screen was up: a later page failed, or
       ' the user left from near the end. Asked here and not only when focus lands back in
@@ -506,9 +509,9 @@ function favoritesStale() as boolean
   return gridQuery.showsFavorites(m.gridQuery) and scene.favoritesVersion <> m.lastFavoritesVersion
 end function
 
-' Full reset + reload of the grid. Used by a sort or filter change, a tab press, a layout
-' change and the resume-time check in onScreenShown (a delete, a favorite toggle on a grid
-' that shows favorites, or a filter changed while this screen was covered).
+' Full reset + reload of the grid. Used by a sort or filter change, a tab press and the
+' resume-time check in onScreenShown (a delete, a favorite toggle on a grid that shows
+' favorites, or a filter changed while this screen was covered).
 sub reloadGridItems()
   m.isFilterReloadDue = false
   m.loadedItems = 0
@@ -517,6 +520,32 @@ sub reloadGridItems()
   m.flatIndexMap = {}
   initTextureManager(m.data, invalid, invalid, invalid)
   loadView()
+end sub
+
+' Draw the view on show again after a change to how it is drawn (the layout, the count per
+' row, the titles), keeping the items loaded and the one in focus. None of those changes
+' the query, so nothing is fetched again.
+'
+' The grid takes its new geometry while it holds no content, as on a load: sizes written to
+' a grid that holds items drew overlapping cells when tried. So the content is detached,
+' the grid configured, and the same content given back. With nothing loaded there is no
+' place to keep, and the view loads as on a reload.
+sub relayoutGrid()
+  if m.top.loadState <> "loaded" or m.loadedItems = 0
+    reloadGridItems()
+    return
+  end if
+
+  focused = m.itemGrid.itemFocused
+  if focused < 0 then focused = 0
+  m.itemGrid.content = invalid
+  configureBackdrop()
+  configureGrid()
+  m.itemGrid.content = m.data
+  m.itemGrid.jumpToItem = focused
+  ' The strip, the panel, the backdrop, the texture range and the runway all follow the
+  ' focused item; the index may be the one it had, so no focus event is owed
+  onItemFocused()
 end sub
 
 ' The library was given its item: resolve the tab it opens on, declare its tabs, load.
@@ -1832,16 +1861,17 @@ end function
 ' up when they are next shown (titlesSettingChanged).
 sub applyTitles(value as string)
   setUserSetting("itemGridShowTitles", value = "true")
-  reloadGridItems()
+  relayoutGrid()
   focusContent()
 end sub
 
 ' Draw the view on show with `columns` cells to a row and save the choice for it. As a
-' layout change, it keeps the sort, the filter, the alpha letter and the voice text.
+' layout change, it keeps the sort, the filter, the alpha letter, the voice text and the
+' item in focus (relayoutGrid).
 sub applyColumns(columns as string)
   if columns = m.itemGrid.numColumns.toStr() then return
   setLibraryDisplaySetting(m.top.parentItem.Id, libraryGrid.settingKey(m.view), columns)
-  reloadGridItems()
+  relayoutGrid()
   focusContent()
 end sub
 
@@ -1914,12 +1944,13 @@ function offeredLayouts() as object
 end function
 
 ' Draw the view on show in `layout` and save the choice for it. Not a view change: the
-' sort, the filter, the alpha letter and the voice text stay as they are.
+' sort, the filter, the alpha letter, the voice text and the item in focus stay as they
+' are (relayoutGrid).
 sub applyLayout(layout as string)
   if not libraryLayout.isKnown(layout) or layout = m.layout then return
   m.layout = layout
   setLibraryDisplaySetting(m.top.parentItem.Id, libraryLayout.settingKey(m.view), layout)
-  reloadGridItems()
+  relayoutGrid()
   focusContent()
 end sub
 
@@ -2234,6 +2265,8 @@ sub onDestroy()
   m.top.unobserveField("selectedTabId")
   m.top.unobserveField("alphaSelected")
   m.top.unobserveField("isAlphaActive")
+  ' Every grid cell follows the titles setting (GridItem.onGridTitlesChanged)
+  m.top.unobserveField("showItemTitles")
 
   m.log.verbose("onDestroy")
 

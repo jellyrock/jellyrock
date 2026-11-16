@@ -64,7 +64,9 @@ end sub
 '
 ' The view is found once, by walking up to the first ancestor with showItemTitles and not
 ' by a fixed depth: the MarkupGrid puts cells 2 levels below BaseGridView, the genre
-' RowList deeper.
+' RowList deeper. The cell then follows the titles setting between binds too: a redraw in
+' place (BaseGridView.relayoutGrid) keeps a cell on its item, so no bind comes.
+' BaseGridView.onDestroy releases the observer.
 sub resolveGridViewConfig()
   if not isValid(m.gridView)
     node = m.top.getParent()
@@ -73,6 +75,7 @@ sub resolveGridViewConfig()
     end while
     if not isValid(node) then return
     m.gridView = node
+    m.gridView.observeField("showItemTitles", "onGridTitlesChanged")
   end if
 
   if isValid(m.gridView.imageDisplayMode) then m.imageDisplayMode = m.gridView.imageDisplayMode
@@ -146,9 +149,8 @@ sub renderItem()
   skeleton.hideSpinner(m.loadingSpinner)
   m.itemPoster.visible = true
 
-  ' Title text + default (always-on) visibility, recomputed every recycle.
+  ' Title text, recomputed every recycle; whether it shows is settled after the branch below
   m.itemText.text = getRowItemTitle(itemData)
-  m.itemText.visible = m.areTitlesShown
 
   itemFolderType = ""
   if isValid(itemData.folderType) then itemFolderType = LCase(itemData.folderType)
@@ -164,8 +166,23 @@ sub renderItem()
   else
     renderMediaItem(itemData, itemType)
   end if
+  applyTitleVisibility()
 
   noteAppearance()
+end sub
+
+' The title shows when the grid shows titles and the cell draws an item: a View All tile
+' carries its label inside the tile, and a loading cell has no text.
+sub applyTitleVisibility()
+  m.itemText.visible = m.areTitlesShown and m.itemText.text <> "" and not m.genreLabel.visible
+end sub
+
+' The view's titles setting changed while this cell kept its item. Only the title
+' follows: rendering the cell again would restart a poster that is already drawn.
+sub onGridTitlesChanged()
+  if not isValid(m.gridView) then return
+  m.areTitlesShown = m.gridView.showItemTitles = true
+  applyTitleVisibility()
 end sub
 
 ' Sizes and positions every child to the current cell dimensions. The focus slot is
@@ -236,7 +253,6 @@ end sub
 sub renderGenreTile()
   m.itemPoster.uri = ""
   m.placeholder.visible = false
-  m.itemText.visible = false
   m.genreBackdrop.visible = true
   m.genreLabel.text = translate(translationKeys.LabelViewAll)
   m.genreLabel.visible = true
