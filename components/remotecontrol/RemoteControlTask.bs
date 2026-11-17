@@ -142,8 +142,15 @@ function connectAndPump(url as string) as boolean
   sessionTimer = invalid ' marks when the socket opened; invalid => never opened (an unstable attempt)
   m.keepAliveIntervalMs = 0 ' set when a ForceKeepAlive arrives; 0 => no KeepAlive is due
   m.keepAliveTimer = CreateObject("roTimespan")
+  heldBytes = 0
   while true
     m.ws.run()
+    ' Bytes the pass read and did not decode: part of a frame still arriving, or data the client
+    ' cannot read as a frame. Logged when the count changes, so a frame stuck here shows.
+    if m.ws._data_size <> heldBytes
+      heldBytes = m.ws._data_size
+      if heldBytes > 0 then m.log.info("socket holds bytes not yet decoded", "bytes", heldBytes)
+    end if
     while true
       event = m.wsEvents.GetMessage()
       if not isValid(event) then exit while
@@ -195,7 +202,13 @@ end function
 sub handleFrame(data as object)
   if not isValid(data) or not isValidAndNotEmpty(data.message) then return
   envelope = parseJson(data.message)
-  if not isValid(envelope) then return
+  if not isValid(envelope)
+    m.log.warn("socket frame is not JSON, ignored", "chars", data.message.len())
+    return
+  end if
+  ' Every frame that reaches the receiver, by type and size: a frame the server sent that has no
+  ' line here never got this far.
+  m.log.info("socket frame", "messageType", envelope.MessageType, "chars", data.message.len())
 
   command = remoteCommand.parseMessage(envelope)
   kind = command.kind
