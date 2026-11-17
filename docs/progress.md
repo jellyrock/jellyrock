@@ -1266,6 +1266,20 @@ Not seen with cast commands, and not tried. Why not now: the SyncPlay fix was si
 
 Closes with a device run that sends cast commands back to back in a long loop and either shows none is held, or moves them to a numbered hand-off (`syncPlayInbox` is the model: the main loop would apply each number once and check the field again on a timer).
 
+#### One SyncPlay seek past its landing budget stops the member from seeking, and the budget has thin headroom `[fid: syncplay-one-slow-seek-stops-seeking]` `[captured 2026-11-17]`
+
+A SyncPlay member's seek that is still buffering when its landing budget runs out (`syncPlayPlayback.SEEK_SETTLE_MS`, 3 s) is kept as given up, even when it lands a moment later (`syncPlayPlayer.endSeek`: "the next one would be as slow"). From then on `syncPlayConverge.catchUp` writes no seek for this member: when it falls behind, it asks the group to seek to its own position, so every member is pulled back to it. Only a seek that lands in time clears this, and only a group Seek can be that seek.
+
+The rule was built for a file where every seek is slow (decision of 2026-11-01, a 100 Mbps direct play). It also fires on one marginal seek. On 2026-11-16 (Streaming Stick 4K, Jellyfin 12.4.0) 1 of 121 of the member's own seeks outlasted the budget: a direct play, 81% buffered at 3 s, on a file whose other seeks landed in time. The budget was set from "up to 2.6 s from the seek write to `playing`" (2026-10-23), so its headroom is thin.
+
+The device case "a correction seek that outlasts its budget holds the group once, and the member seeks again only after a group Seek lands" (`syncplay-correction.spec.js`) pins today's behavior, using the switch `m.global.rtaSyncPlaySeekBudgetMs`, compiled into RTA builds alone. A change here changes that case.
+
+Two questions, to answer together from data: is 3 s the right budget, and should one slow seek be enough to stop seeking (the alternatives are two in a row, or trying a seek again after some time). The mixed soak now records `slowSeeks` per step and `slow=` on its summary, so the 2,000-step soak gives the rate.
+
+Not checked: the rate on the low-end Stick, over HTTPS or on a transcode; how long real seeks take past 3 s (the app logs that a seek was slow, not by how much).
+
+Closes with a decision on the budget and on the give-up rule, made from the soak's `slow=` numbers.
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`
