@@ -1270,6 +1270,16 @@ Not checked: the rate on the low-end Stick, over HTTPS or on a transcode; how lo
 
 Closes with a decision on the budget and on the give-up rule, made from the soak's `slow=` numbers.
 
+#### The early-Logger fix sits on a local branch with no PR `[fid: logger-rebind-branch-unshipped]` `[captured 2026-11-17]`
+
+The fix for a `log.Logger` built before the log manager exists is committed on its own branch, `fix/logger-rebind-late-manager` (worktree `.claude/worktrees/logger-rebind`, commit `766ab917`), and is not pushed and has no PR. Without it `AppWaitHost` and the startup `JellyfinUserSettings` write no log line on a device. A Logger with no manager now looks again on each call (`Logger.attach()`).
+
+Checked 2026-11-17 on a Streaming Stick 4K: the new `LogManager.spec.bs` cases failed before the fix and pass after; the same RTA spec with and without the change printed 0 and 1 `AppWaitHost` lines.
+
+Not done now: it was found during SyncPlay work and kept off PR #1355. Its PR goes through `/pr` from a Claude session started in that worktree. `/pr`'s decision pass should record the choice not to buffer lines written before the manager exists.
+
+Close it when the branch's PR is open.
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`
