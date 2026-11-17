@@ -258,10 +258,10 @@ namespace tests
     function _()
       m.attach("12.0.0", libraryTab.COLLECTIONS)
 
-      config = m.presenter.getGridConfig(libraryTab.COLLECTIONS, libraryLayout.PRESENTATION)
+      config = m.presenter.getGridConfig(libraryTab.COLLECTIONS, libraryLayout.PRESENTATION, "6", 1)
 
       m.assertEqual(config.translation, [headerStrip.LEFT, headerStrip.CONTENT_TOP])
-      m.assertEqual(config.numRows, "3")
+      m.assertEqual(config.numRows, 3)
       m.assertEqual(config.imageDisplayMode, "scaleToZoom")
     end function
 

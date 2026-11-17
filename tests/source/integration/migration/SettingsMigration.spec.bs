@@ -163,12 +163,13 @@ namespace tests
       ' Verify item grid settings migrated correctly
       m.assertTrue(reg.exists("itemGridShowItemCount"))
       m.assertEqual(reg.read("itemGridShowItemCount"), "true")
-      m.assertTrue(reg.exists("itemGridTitles"))
-      m.assertEqual(reg.read("itemGridTitles"), "showalways")
+      ' The titles setting was renamed, then became on or off in v3.5.0
+      m.assertFalse(reg.exists("itemGridTitles"))
+      m.assertEqual(reg.read("itemGridShowTitles"), "true")
       m.assertTrue(reg.exists("itemGridReset"))
       m.assertEqual(reg.read("itemGridReset"), "false")
-      m.assertTrue(reg.exists("itemGridMovieDefaultView"))
-      m.assertEqual(reg.read("itemGridMovieDefaultView"), "moviesgrid")
+      ' The default movie view was renamed, then deleted in v3.5.0: nothing read it
+      m.assertFalse(reg.exists("itemGridMovieDefaultView"))
 
       ' Verify home section settings are deleted (server-authoritative since v2.13.0)
       ' v1.1.0 renames homesection0-6 to homeSection0-6, then v2.13.0 deletes them

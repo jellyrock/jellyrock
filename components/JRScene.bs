@@ -1310,7 +1310,7 @@ sub onPageMenuResult()
   if focusIndex < 0 then focusIndex = 0
   ' Straight from this handler: the picker takes over from the menu, focus target included.
   m.pageMenu = { view: menu.view, entry: entry, values: list.values }
-  m.pageMenuDialog = showListDialog(textOrEmpty(entry.title), list.labels, "onPageSettingPicked", focusIndex, list.selectedIndex)
+  m.pageMenuDialog = showListDialog(list.title, list.labels, "onPageSettingPicked", focusIndex, list.selectedIndex)
   claimPageDialogForScreen(menu.view)
 end sub
 
