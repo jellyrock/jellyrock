@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-15
+last-updated: 2026-11-17
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-17: fix(home): Hide the Live TV rows from users without Live TV access
 - 2026-11-15: chore(tooling): Refuse to run checks on a stale install
 - 2026-11-15: ci: Check registry migration versions on every PR and at release
 - 2026-11-15: test(rta): Guard the RTA component against a socket it already closed
@@ -70,13 +71,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-11-03: fix(login): Offer Quick Connect when a server lists no users
 - 2026-11-03: fix(playback): Play the episode once when Repeat is picked during a Cinema Mode intro
 - 2026-11-03: feat(player): Repeat a video or the queue from the OSD gear
-- 2026-11-02: fix(playback): Play Cinema Mode intros, drop the stale queue slot
-- 2026-11-02: docs(catalog): Publish the newest Jellyfin line and release dates
-- 2026-11-02: fix(syncplay): Ask the group to wait after a seek that cannot land
-- 2026-11-02: test(rta): Capture the device console and run specs across servers
-- 2026-11-02: feat(syncplay): Stay in step, stop seek freezes, add a time offset
-- 2026-11-01: fix: Register Roku's memory monitor and ship only runtime files
-- 2026-11-01: ci: Make the device test run read only its own result
 
 ## Open followups
 
