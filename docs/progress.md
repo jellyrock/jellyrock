@@ -986,16 +986,6 @@ Measured 2026-11-16 on a Streaming Stick 4K against Jellyfin 12.4.0 (two joins p
 
 Not built with `dabe5d11` because it adds state: the verdict has to be keyed on the version and the cap, and dropped when the gear's bitrate pick changes, or a stale one re-encodes a stream the server could have copied. Closes when a second player of the same version starts capped with no restart, shown by a unit case and a device run.
 
-#### A socket drop the SyncPlay group survives still ends the Roku's membership `[fid: syncplay-membership-stale-after-socket-reopen]` `[captured 2026-11-16]`
-
-A member whose session socket reopens asks the server where it stands (`SyncPlayManager.onSocketReopened`): a clock sync, then the Ping a server answers with `NotInGroup` when it no longer holds the membership. The receiver tells the manager at the server's first `ForceKeepAlive` after the reopen, not at the open, because the server accepts the socket before it attaches it to the session and drops what it would push in between (`remoteProtocol.reopenIsToldNow()`, commit `4819ebde`). After that change, 14 server restarts in a row learned within 1.7 s (Streaming Stick 4K, Jellyfin 12.4.0, 2026-11-16). One thing is left.
-
-**A socket drop with the server up ends the membership while the group lives on.** With the server frozen for 40 s (`docker pause`) while the Roku followed a playing group, the socket closed with an error 57 s after the unfreeze, reopened 1 s later, and the member was told `NotInGroup` within 0.6 s. The group still existed with its other member. The viewer is put out of the group and keeps the video as their own. Joining the group again without asking is a design choice, not built.
-
-Not checked: a drop on the Roku's side of the network, where the server keeps running untouched; a server other than 12.4.0, where the attach order was not read and a server that sent no `ForceKeepAlive` would get no reopen check; whether followup `syncplay-join-frame-never-seen` is the same gap between accept and attach (its joins come seconds after launch, so only if the socket had reconnected then).
-
-Closes with a decision on joining again after a drop the group survived.
-
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
