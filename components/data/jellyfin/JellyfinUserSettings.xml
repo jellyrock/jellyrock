@@ -85,9 +85,8 @@
 
     <!-- Item Grid Settings -->
     <field id="itemGridShowItemCount" type="boolean" alwaysNotify="true" />
-    <field id="itemGridTitles" type="string" alwaysNotify="true" />
+    <field id="itemGridShowTitles" type="boolean" alwaysNotify="true" />
     <field id="itemGridReset" type="boolean" alwaysNotify="true" />
-    <field id="itemGridMovieDefaultView" type="string" alwaysNotify="true" />
 
     <!-- Photo Settings -->
     <field id="photosSlideshow" type="boolean" alwaysNotify="true" />

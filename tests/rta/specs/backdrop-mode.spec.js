@@ -51,7 +51,7 @@ const PRESENTATION_VIEW = 'presentation';
 // The Movies tab in its poster grid, which sends the focused movie's backdrop to the scene
 // (MoviePresenter.getBackdropMode returns "fullscreen" for it), so details mode has a browse
 // write to turn into a clear.
-const POSTER_VIEW = 'comfortable';
+const POSTER_VIEW = 'grid';
 const isImage = (u) => typeof u === 'string' && u.length > 0;
 const hasTitle = (t) => typeof t === 'string' && t.length > 0;
 
