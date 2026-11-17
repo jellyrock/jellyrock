@@ -60,7 +60,7 @@
       together. Measured on device (Ultra, 1080p UI), a row composes as:
 
         rowHeights  =  row label  +  rowLabelOffset.y  +  the GridItem cell
-        cell        =  POSTER_TOP_OFFSET (22) + rowItemSize.y (320) + TITLE_GAP (18) + title
+        cell        =  POSTER_TOP_OFFSET (22) + rowItemSize.y (320) + TEXT_TOP_GAP (18) + title
         row pitch   =  rowHeights + itemSpacing.y  =  455 (measured 2026-08-09)
 
       The label and title heights are the RENDERED heights of MediumSystemFont at
@@ -137,10 +137,12 @@
     <field id="loadLogoTask" type="node" />
     <field id="quickPlayNode" type="node" alwaysNotify="true" />
     <field id="imageDisplayMode" type="string" value="scaleToZoom" />
+    <!-- The cells' shape, a libraryGrid shape: GridItem reads it on every bind to size its image -->
+    <field id="gridShape" type="string" value="portrait" />
     <field id="alphaSelected" type="string" alias="alpha.letterSelected" alwaysNotify="true" />
     <field id="isAlphaActive" type="boolean" value="false" />
-    <field id="showItemTitles" type="string" value="showonhover" />
-    <field id="gridTitles" type="string" />
+    <!-- Whether cells show their title under the poster: GridItem reads it on every bind -->
+    <field id="showItemTitles" type="boolean" value="true" />
     <field id="currentView" type="string" value="" />
     <!--
       Load lifecycle of this view's content, for tests/tooling to observe atomically:

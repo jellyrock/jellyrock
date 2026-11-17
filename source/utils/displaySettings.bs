@@ -32,7 +32,7 @@ end function
 
 ' Get all display settings for a library
 ' Returns: AA with all settings, or empty {} if library not found
-' Example: { sort_movies: "DateCreated:desc", layout_movies: "comfortable", defaultTab: "genres" }
+' Example: { sort_movies: "DateCreated:desc", layout_movies: "grid", defaultTab: "genres" }
 function getLibraryDisplaySettings(libraryId as dynamic) as object
   if not isValid(libraryId) or libraryId = ""
     return {}

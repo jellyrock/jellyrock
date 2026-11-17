@@ -13,6 +13,7 @@ import "pkg:/source/GridView/gridPaging.bs"
 import "pkg:/source/GridView/gridQuery.bs"
 import "pkg:/source/GridView/itemSummary.bs"
 import "pkg:/source/GridView/libraryFilterMenu.bs"
+import "pkg:/source/GridView/libraryGrid.bs"
 import "pkg:/source/GridView/librarySortMenu.bs"
 import "pkg:/source/GridView/libraryTab.bs"
 import "pkg:/source/GridView/LiveTVPresenter.bs"
@@ -50,6 +51,10 @@ const SLOW_LOAD_SERVER_S = 30
 ' The display setting that holds this Roku's default tab for a library, and the id of its
 ' entry in the gear menu.
 const DEFAULT_TAB_KEY = "defaultTab"
+' The page setting for how many cells a row holds
+const COLUMNS_KEY = "columns"
+' The page setting for the app-wide Item Titles setting
+const TITLES_KEY = "titles"
 
 sub init()
   m.log = new log.Logger("BaseGridView")
@@ -154,7 +159,6 @@ sub init()
 
   ' Get reset folder setting
   m.resetGrid = userSettings.itemGridReset
-  m.top.gridTitles = userSettings.itemGridTitles
 
   ' Presenter (built by onPresenterTypeChanged when presenterType is set)
   m.presenter = invalid
@@ -167,7 +171,7 @@ sub init()
   m.tab = ""
   m.view = ""
   m.isFavoriteTab = false
-  m.layout = libraryLayout.COMFORTABLE
+  m.layout = libraryLayout.GRID
   m.top.tabMode = "scrolling"
 
   ' TV Guide state (LiveTV only)
@@ -269,6 +273,9 @@ sub onScreenShown()
     scene = m.top.getScene()
     if isValid(scene) and (scene.contentVersion <> m.lastContentVersion or favoritesStale() or m.isFilterReloadDue)
       reloadGridItems()
+    else if titlesSettingChanged()
+      ' Settings or another library's menu changed the titles: same items, drawn again
+      relayoutGrid()
     else
       ' The runway may have run short while another screen was up: a later page failed, or
       ' the user left from near the end. Asked here and not only when focus lands back in
@@ -502,9 +509,9 @@ function favoritesStale() as boolean
   return gridQuery.showsFavorites(m.gridQuery) and scene.favoritesVersion <> m.lastFavoritesVersion
 end function
 
-' Full reset + reload of the grid. Used by a sort or filter change, a tab press, a layout
-' change and the resume-time check in onScreenShown (a delete, a favorite toggle on a grid
-' that shows favorites, or a filter changed while this screen was covered).
+' Full reset + reload of the grid. Used by a sort or filter change, a tab press and the
+' resume-time check in onScreenShown (a delete, a favorite toggle on a grid that shows
+' favorites, or a filter changed while this screen was covered).
 sub reloadGridItems()
   m.isFilterReloadDue = false
   m.loadedItems = 0
@@ -513,6 +520,41 @@ sub reloadGridItems()
   m.flatIndexMap = {}
   initTextureManager(m.data, invalid, invalid, invalid)
   loadView()
+end sub
+
+' Draw the view on show again after a change to how it is drawn (the layout, the count per
+' row, the titles), keeping the items loaded and the one in focus. None of those changes
+' the query, so nothing is fetched again.
+'
+' The grid takes its new geometry while it holds no content, as on a load: sizes written to
+' a grid that holds items drew overlapping cells when tried. So the content is detached,
+' the grid configured, and the same content given back. With nothing loaded there is no
+' place to keep, and the view loads as on a reload.
+'
+' The genre rows and the TV guide draw no item grid, and of these changes only the titles
+' reach them: configureGrid() sets showItemTitles, which their cells follow, and readies the
+' hidden grid, which holds no items on those views. Their content is kept.
+sub relayoutGrid()
+  if not showsItemGrid()
+    configureGrid()
+    return
+  end if
+
+  if m.top.loadState <> "loaded" or m.loadedItems = 0
+    reloadGridItems()
+    return
+  end if
+
+  focused = m.itemGrid.itemFocused
+  if focused < 0 then focused = 0
+  m.itemGrid.content = invalid
+  configureBackdrop()
+  configureGrid()
+  m.itemGrid.content = m.data
+  m.itemGrid.jumpToItem = focused
+  ' The strip, the panel, the backdrop, the texture range and the runway all follow the
+  ' focused item; the index may be the one it had, so no focus event is owed
+  onItemFocused()
 end sub
 
 ' The library was given its item: resolve the tab it opens on, declare its tabs, load.
@@ -555,7 +597,7 @@ sub showTab(tabId as string)
   ' Presenters read the view back off this field (GridPresenterBase.currentView)
   m.top.currentView = m.view
 
-  defaultLayout = libraryLayout.COMFORTABLE
+  defaultLayout = libraryLayout.GRID
   if isValid(m.presenter) then defaultLayout = m.presenter.getDefaultLayout()
   savedLayout = getLibraryDisplaySetting(m.top.parentItem.Id, libraryLayout.settingKey(m.view), invalid)
   m.layout = libraryLayout.resolve(savedLayout, defaultLayout)
@@ -811,7 +853,13 @@ end sub
 sub configureGrid()
   if not isValid(m.presenter) then return
 
-  config = m.presenter.getGridConfig(m.view, m.layout)
+  ' A cell shows its title under the poster, or nothing: the cells and the row gap follow
+  m.top.showItemTitles = m.global.user.settings.itemGridShowTitles
+  textLines = 0
+  if m.top.showItemTitles then textLines = 1
+
+  savedColumns = getLibraryDisplaySetting(m.top.parentItem.Id, libraryGrid.settingKey(m.view), invalid)
+  config = m.presenter.getGridConfig(m.view, m.layout, savedColumns, textLines)
 
   if isValid(config.translation)
     if type(config.translation) = "roArray"
@@ -845,14 +893,7 @@ sub configureGrid()
     m.top.imageDisplayMode = config.imageDisplayMode
   end if
 
-  ' Configure item titles visibility
-  userSettings = m.global.user.settings
-  showInfo = m.presenter.shouldShowPresentationInfo(m.view, m.layout)
-  if showInfo
-    m.top.showItemTitles = "hidealways"
-  else
-    m.top.showItemTitles = userSettings.itemGridTitles
-  end if
+  m.top.gridShape = config.shape
 end sub
 
 ' Swaps the genre RowList to a new set of rows and reveals it, preserving the user's
@@ -1761,13 +1802,18 @@ end sub
 ' Page settings (the settings icon's menu)
 ' ============================================================================
 
-' JRScreen hook: Layout, when the view on show can be drawn more than one way, and
-' Default tab, when the library has more than one tab.
+' JRScreen hook: Layout, when the view on show can be drawn more than one way; the cells
+' per row and the titles, when the item grid draws it; and Default tab, when the library
+' has more than one tab.
 function pageSettingsEntries() as object
   entries = []
   layouts = offeredLayouts()
   if layouts.count() > 1
     entries.push({ id: "layout", title: translate(translationKeys.LabelLayout), options: layouts, selected: m.layout })
+  end if
+  if showsItemGrid()
+    entries.push(columnsEntry())
+    entries.push(titlesEntry())
   end if
   if type(m.offeredViews) = "roArray" and m.offeredViews.count() > 1
     entries.push(defaultTabEntry())
@@ -1775,10 +1821,94 @@ function pageSettingsEntries() as object
   return entries
 end function
 
+' Whether the titles setting no longer matches what the grid was drawn with: it is app-wide,
+' so Settings or another library's menu may have changed it while this screen was covered.
+function titlesSettingChanged() as boolean
+  return m.global.user.settings.itemGridShowTitles <> m.top.showItemTitles
+end function
+
+' Whether the view on show is drawn by the item grid, not the genre rows or the TV guide.
+function showsItemGrid() as boolean
+  if not isValid(m.presenter) or not isValid(m.top.parentItem) then return false
+  if m.presenter.showsTVGuide(m.view) then return false
+  return m.genreList.opacity <> 1
+end function
+
+' The cells-per-row entry: every count the grid on show has room for, the one in force
+' selected. The grid's own numColumns is that count, set by configureGrid(). It is
+' provisional when it is not the saved count (the default, or a saved count raised to the
+' layout's floor), so picking it saves it (applyColumns).
+function columnsEntry() as object
+  options = []
+  top = m.presenter.getGridTop(m.view, m.layout)
+  for each columns in libraryGrid.choices(m.presenter.getGridShape(m.view), top)
+    options.push({ id: columns.toStr(), title: columns.toStr() })
+  end for
+  drawn = m.itemGrid.numColumns.toStr()
+  return {
+    id: COLUMNS_KEY,
+    title: translate(translationKeys.LabelItemsPerRow),
+    options: options,
+    selected: drawn,
+    isSelectedProvisional: drawn <> savedColumnsSetting()
+  }
+end function
+
+' The view's saved count per row as the registry holds it, "" when none is saved.
+function savedColumnsSetting() as string
+  return textOrEmpty(getLibraryDisplaySetting(m.top.parentItem.Id, libraryGrid.settingKey(m.view), invalid))
+end function
+
+' The titles entry: the app-wide Item Titles setting, offered here because a pick shows on
+' this grid at once. Its list says it applies to every library, and its options are the
+' Settings screen's own words in its order, so the setting reads one way in both places.
+function titlesEntry() as object
+  title = translate(translationKeys.LabelItemTitles)
+  selected = "false"
+  if m.top.showItemTitles then selected = "true"
+  return {
+    id: TITLES_KEY,
+    title: title,
+    pickerTitle: translate(translationKeys.LabelAppliesToAllLibraries, [title]),
+    options: [
+      { id: "false", title: translate(translationKeys.LabelDisabled) },
+      { id: "true", title: translate(translationKeys.LabelEnabled) }
+    ],
+    selected: selected
+  }
+end function
+
+' Save the app-wide titles setting and redraw this grid with it. Other libraries pick it
+' up when they are next shown (titlesSettingChanged).
+sub applyTitles(value as string)
+  setUserSetting("itemGridShowTitles", value = "true")
+  relayoutGrid()
+  focusContent()
+end sub
+
+' Draw the view on show with `columns` cells to a row and save the choice for it. As a
+' layout change, it keeps the sort, the filter, the alpha letter, the voice text and the
+' item in focus (relayoutGrid).
+'
+' A pick is saved even when it is the count already drawn: a layout whose grid starts lower
+' draws a smaller saved count raised to its floor (libraryGrid.resolveColumns), and picking
+' that raised count is a choice of its own, which the other layout then draws too.
+sub applyColumns(columns as string)
+  isDrawn = columns = m.itemGrid.numColumns.toStr()
+  if isDrawn and columns = savedColumnsSetting() then return
+  setLibraryDisplaySetting(m.top.parentItem.Id, libraryGrid.settingKey(m.view), columns)
+  if not isDrawn then relayoutGrid()
+  focusContent()
+end sub
+
 ' JRScreen hook: the viewer picked a new option for one of those settings.
 sub onPageSettingChanged(id as string, value as string)
   if id = "layout"
     applyLayout(value)
+  else if id = COLUMNS_KEY
+    applyColumns(value)
+  else if id = TITLES_KEY
+    applyTitles(value)
   else if id = DEFAULT_TAB_KEY
     applyDefaultTab(value)
   end if
@@ -1840,12 +1970,13 @@ function offeredLayouts() as object
 end function
 
 ' Draw the view on show in `layout` and save the choice for it. Not a view change: the
-' sort, the filter, the alpha letter and the voice text stay as they are.
+' sort, the filter, the alpha letter, the voice text and the item in focus stay as they
+' are (relayoutGrid).
 sub applyLayout(layout as string)
   if not libraryLayout.isKnown(layout) or layout = m.layout then return
   m.layout = layout
   setLibraryDisplaySetting(m.top.parentItem.Id, libraryLayout.settingKey(m.view), layout)
-  reloadGridItems()
+  relayoutGrid()
   focusContent()
 end sub
 
@@ -2160,6 +2291,8 @@ sub onDestroy()
   m.top.unobserveField("selectedTabId")
   m.top.unobserveField("alphaSelected")
   m.top.unobserveField("isAlphaActive")
+  ' Every grid cell follows the titles setting (GridItem.onGridTitlesChanged)
+  m.top.unobserveField("showItemTitles")
 
   m.log.verbose("onDestroy")
 
@@ -2188,7 +2321,7 @@ sub onDestroy()
 
   ' Break the GridItem <-> content-root retain CYCLE before dropping our references.
   ' Every GridItem caches m.gridView = this view node (resolveGridViewConfig walks up for
-  ' the gridTitles field) AND observes fields on the shared content root with observeField
+  ' the showItemTitles field) AND observes fields on the shared content root with observeField
   ' (setupGridTextureObserver), which makes the content root hold each cell's component
   ' scope. That closes the loop:
   '   view -> m.data -> cell scope -> m.gridView -> view

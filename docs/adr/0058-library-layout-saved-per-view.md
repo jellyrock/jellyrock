@@ -1,6 +1,6 @@
 # ADR 0058: A library's layout is saved per view
 
-**Status:** Accepted. Partially supersedes [ADR 0056](0056-library-tab-ids-and-layout.md) (what the layout is saved against).
+**Status:** Accepted. Partially supersedes [ADR 0056](0056-library-tab-ids-and-layout.md) (what the layout is saved against). Partially superseded by [ADR 0061](0061-library-grid-count-per-row.md) (a density apart from the layout).
 **Date:** 2026-11-12
 
 **related-files**: `source/GridView/libraryTab.bs`, `components/ItemGrid/BaseGridView.bs`, `source/migrations.bs`, `components/data/jellyfin/JellyfinUserSettings.bs`

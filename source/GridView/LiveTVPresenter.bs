@@ -50,17 +50,9 @@ class LiveTVPresenter extends GridPresenterBase
     }
   end function
 
-  ' Channel logos need scaleToFit, not scaleToZoom
-  override function getGridConfig(_viewMode as string, _layout as string) as object
-    return {
-      translation: [headerStrip.LEFT, headerStrip.CONTENT_TOP],
-      itemSize: [libraryGrid.POSTER_WIDTH, libraryGrid.POSTER_HEIGHT],
-      rowHeights: [libraryGrid.POSTER_HEIGHT],
-      itemSpacing: [libraryGrid.POSTER_COLUMN_GAP, libraryGrid.POSTER_ROW_GAP],
-      numRows: "3",
-      numColumns: "6",
-      imageDisplayMode: "scaleToFit"
-    }
+  ' Channel logos are drawn whole
+  override function getImageDisplayMode(_viewMode as string) as string
+    return "scaleToFit"
   end function
 
   override sub configureLoadTask(task as object, _parentItem as object, _viewMode as string)

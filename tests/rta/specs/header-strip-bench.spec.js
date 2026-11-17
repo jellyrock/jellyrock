@@ -87,12 +87,12 @@ it.skipIf(!BENCH_ENABLED)(
   async () => {
     if (
       !['livetv', 'presentation'].includes(ONLY) &&
-      (await openLibrary('movies', 'movies', 'comfortable'))
+      (await openLibrary('movies', 'movies', 'grid'))
     ) {
-      await capture('movies-comfortable');
+      await capture('movies-grid');
       // Two rows down and one right, so the strip describes another item
       await press(ecp.Key.Right);
-      await capture('movies-comfortable-second-item');
+      await capture('movies-grid-second-item');
       await press(ecp.Key.Left);
       await waitFocusInside('#headerStrip', {
         action: walkFocusUntil(ecp.Key.Up, (f) => focusIsInside(f.keyPath, '#headerStrip')),
