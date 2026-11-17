@@ -479,7 +479,7 @@ it('a titles change made while the genre rows were covered draws them again with
   expect(mark, 'the same rows, not a load').toBe('rta-kept');
 });
 
-it('a layout whose grid starts lower offers only the counts that fit', async (testCtx) => {
+it('a layout whose grid starts lower offers only the counts that fit, and keeps a pick of the one drawn', async (testCtx) => {
   if (!moviesId) testCtx.skip('server has no "movies" library');
   const expectedServer = await seedHome(session, LOCALE);
   const landing = await seedLibraryLanding(session, moviesId, 'movies', { layout: 'presentation' });
@@ -507,14 +507,22 @@ it('a layout whose grid starts lower offers only the counts that fit', async (te
     timeout: 10000,
   });
   expect(await dialogRows()).toEqual(['5', '6', '7', '8', '9', '10', '11']);
-  expect((await movieDisplaySettings()).columns_movies, 'the saved count is left alone').toBe('3');
-  await press(ecp.Key.Back);
-  await waitFor('#optionList.content.0.title', (t) => t === 'Layout (Grid with details)', {
-    label: 'the menu again',
-    timeout: 10000,
+  expect(
+    (await movieDisplaySettings()).columns_movies,
+    'the floor leaves the saved count alone',
+  ).toBe('3');
+
+  // Five is drawn only because three does not fit, so picking five is a choice of its own
+  await waitFor('#optionList.itemFocused', (n) => n === 0, {
+    label: 'focus opens on the count drawn',
+    timeout: 8000,
   });
-  await press(ecp.Key.Back);
-  await waitDialogClosed('Back closed the menu');
+  await press(ecp.Key.Ok);
+  await waitDialogClosed('the pick closed the list');
+  expect((await movieDisplaySettings()).columns_movies, 'a pick of the count drawn is saved').toBe(
+    '5',
+  );
+  expect((await gridShape()).columns, 'still five').toBe(5);
 });
 
 it('picking the layout already in force closes the list and changes nothing', async (testCtx) => {

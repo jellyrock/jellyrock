@@ -1835,19 +1835,28 @@ function showsItemGrid() as boolean
 end function
 
 ' The cells-per-row entry: every count the grid on show has room for, the one in force
-' selected. The grid's own numColumns is that count, set by configureGrid().
+' selected. The grid's own numColumns is that count, set by configureGrid(). It is
+' provisional when it is not the saved count (the default, or a saved count raised to the
+' layout's floor), so picking it saves it (applyColumns).
 function columnsEntry() as object
   options = []
   top = m.presenter.getGridTop(m.view, m.layout)
   for each columns in libraryGrid.choices(m.presenter.getGridShape(m.view), top)
     options.push({ id: columns.toStr(), title: columns.toStr() })
   end for
+  drawn = m.itemGrid.numColumns.toStr()
   return {
     id: COLUMNS_KEY,
     title: translate(translationKeys.LabelItemsPerRow),
     options: options,
-    selected: m.itemGrid.numColumns.toStr()
+    selected: drawn,
+    isSelectedProvisional: drawn <> savedColumnsSetting()
   }
+end function
+
+' The view's saved count per row as the registry holds it, "" when none is saved.
+function savedColumnsSetting() as string
+  return textOrEmpty(getLibraryDisplaySetting(m.top.parentItem.Id, libraryGrid.settingKey(m.view), invalid))
 end function
 
 ' The titles entry: the app-wide Item Titles setting, offered here because a pick shows on
@@ -1880,10 +1889,15 @@ end sub
 ' Draw the view on show with `columns` cells to a row and save the choice for it. As a
 ' layout change, it keeps the sort, the filter, the alpha letter, the voice text and the
 ' item in focus (relayoutGrid).
+'
+' A pick is saved even when it is the count already drawn: a layout whose grid starts lower
+' draws a smaller saved count raised to its floor (libraryGrid.resolveColumns), and picking
+' that raised count is a choice of its own, which the other layout then draws too.
 sub applyColumns(columns as string)
-  if columns = m.itemGrid.numColumns.toStr() then return
+  isDrawn = columns = m.itemGrid.numColumns.toStr()
+  if isDrawn and columns = savedColumnsSetting() then return
   setLibraryDisplaySetting(m.top.parentItem.Id, libraryGrid.settingKey(m.view), columns)
-  relayoutGrid()
+  if not isDrawn then relayoutGrid()
   focusContent()
 end sub
 

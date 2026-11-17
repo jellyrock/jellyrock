@@ -172,6 +172,16 @@ namespace tests
       m.assertEqual(outcome.action, pageSettings.PICK_NONE)
     end function
 
+    @it("reports a change for a pick of the option in force when it is provisional")
+    function _()
+      entry = m.layoutEntry("grid")
+      entry.isSelectedProvisional = true
+      outcome = pageSettings.pickOutcome({ cancelled: false, optionIndex: 1 }, entry, pageSettings.picker(entry).values)
+
+      m.assertEqual(outcome.action, pageSettings.PICK_CHANGE)
+      m.assertEqual(outcome.value, "grid")
+    end function
+
     @it("reports a change to the option whose id is the empty string")
     function _()
       entry = m.defaultTabEntry("genres")
