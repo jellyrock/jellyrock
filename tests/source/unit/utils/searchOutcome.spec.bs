@@ -76,26 +76,6 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("canSearchLiveTv")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("searches Live TV for a user with Live TV access")
-    function _()
-      m.assertTrue(searchOutcome.canSearchLiveTv({ enableLiveTvAccess: true }))
-    end function
-
-    @it("does not search Live TV for a user without Live TV access")
-    function _()
-      m.assertFalse(searchOutcome.canSearchLiveTv({ enableLiveTvAccess: false }))
-    end function
-
-    @it("searches Live TV when the policy, or its field, is missing")
-    function _()
-      m.assertTrue(searchOutcome.canSearchLiveTv(invalid))
-      m.assertTrue(searchOutcome.canSearchLiveTv({}))
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("LIBRARY_TYPES")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

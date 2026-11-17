@@ -1,0 +1,45 @@
+import "pkg:/source/utils/userPolicy.bs"
+
+namespace tests
+
+  ' Contract tests for the permission checks screens make before asking the server for
+  ' something the user's policy may deny (source/utils/userPolicy.bs).
+  '
+  ' Wrong in one direction, a screen sends a read the server refuses and shows the refusal as a
+  ' failure the viewer can never fix by retrying. Wrong in the other, a user who has access
+  ' loses a feature.
+  @suite("userPolicy - permission checks")
+  class UserPolicyTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("hasLiveTvAccess")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for a user with Live TV access")
+    function _()
+      m.assertTrue(userPolicy.hasLiveTvAccess({ enableLiveTvAccess: true }))
+    end function
+
+    @it("is false for a user without Live TV access")
+    function _()
+      m.assertFalse(userPolicy.hasLiveTvAccess({ enableLiveTvAccess: false }))
+    end function
+
+    @it("is true when the policy, or its field, is missing")
+    function _()
+      m.assertTrue(userPolicy.hasLiveTvAccess(invalid))
+      m.assertTrue(userPolicy.hasLiveTvAccess({}))
+    end function
+
+    @it("reads the JellyfinUserPolicy node the app holds")
+    function _()
+      policy = CreateObject("roSGNode", "JellyfinUserPolicy")
+      policy.enableLiveTvAccess = false
+      m.assertFalse(userPolicy.hasLiveTvAccess(policy))
+      policy.enableLiveTvAccess = true
+      m.assertTrue(userPolicy.hasLiveTvAccess(policy))
+    end function
+
+  end class
+
+end namespace

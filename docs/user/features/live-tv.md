@@ -51,7 +51,7 @@ Your server saves each recording. Which library it shows up in depends on how yo
 
 ## On the Home screen
 
-Home has two Live TV rows when they have something to show:
+Home has two Live TV rows when your account has Live TV access and they have something to show:
 
 - **On Now**: programs airing now. Select one to open its page.
 - **Active Recordings**: what your server is recording right now.
