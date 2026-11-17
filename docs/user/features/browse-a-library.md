@@ -1,5 +1,5 @@
 ---
-pitch: Move between a library's tabs at the top of the screen, choose how each one is drawn, and pick the tab it opens on.
+pitch: Move between a library's tabs, choose how each is drawn and how many items fit in a row, and pick where it opens.
 since: unreleased
 server: 10.7.0
 ---
@@ -23,13 +23,16 @@ Press **Up** from the top of a tab to reach the tabs again. Opening a studio, a 
 
 ## Change how a tab is drawn
 
-A movie library can show its movies two ways: **Presentation**, which shows the focused movie's details above the posters, or **Comfortable**, a full grid of posters.
+The settings icon's menu changes how the tab on screen is drawn. Each change redraws the tab at once and keeps you on the item you were on. Your sort, your filter and a letter picked on the letter rail stay as they were.
 
-1. In the library, press **Up** until the top row has focus, then move to the settings icon and press **OK**.
-2. Select **Layout**. Its row shows the layout in use.
-3. Select a layout. The library is redrawn at once.
+1. In the library, press **Up** until the top row has focus, then move to the settings icon and press **OK**. Each row of the menu shows its setting in use.
+2. Select a setting, then a choice.
 
-JellyRock remembers the layout for that tab of the library on this Roku. Your sort, your filter and a letter picked on the letter rail stay as they were.
+- **Layout:** a movie library's **Movies** tab shows a **Grid** of posters, or a **Grid with details**, which shows the focused movie's details above the posters.
+- **Items per row:** how many posters or covers fit across the screen, from 3 to 11. Fewer makes them bigger; more shows more at once. A tab shows 7 posters, or 6 album or artist covers, until you pick.
+- **Item Titles:** **Enabled** shows each item's title under it, **Disabled** shows the art alone. This one applies to every library, and you can also set it in **Settings → User Interface → Libraries → General → Grid View Settings → Item Titles**.
+
+JellyRock remembers the layout and the items per row for that tab of the library on this Roku.
 
 ## See what is focused
 
@@ -76,4 +79,4 @@ The first choice in the list keeps no tab on this Roku. It reads **Web client se
 
 ## The settings icon's menu
 
-The menu lists the library's own settings first and **All settings** last. A list with nothing to choose, such as a network opened inside a TV library, has no menu: the settings icon opens Settings directly.
+The menu lists the library's own settings first and **All settings** last. On a screen with nothing to set, the settings icon opens Settings directly.

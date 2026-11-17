@@ -1055,29 +1055,12 @@
                   },
                   {
                     "title": "Item Titles",
-                    "description": "Select when to show titles.",
-                    "settingName": "itemGridTitles",
-                    "type": "radio",
-                    "default": "showalways",
-                    "options": [
-                      {
-                        "title": "Show On Hover",
-                        "id": "showonhover",
-                        "titleKey": "LabelShowOnHover"
-                      },
-                      {
-                        "title": "Always Show",
-                        "id": "showalways",
-                        "titleKey": "LabelAlwaysShow"
-                      },
-                      {
-                        "title": "Always Hide",
-                        "id": "hidealways",
-                        "titleKey": "LabelAlwaysHide"
-                      }
-                    ],
+                    "description": "Show each item's title under its poster.",
+                    "settingName": "itemGridShowTitles",
+                    "type": "bool",
+                    "default": "true",
                     "titleKey": "LabelItemTitles",
-                    "descriptionKey": "LabelSelectWhenToShowTitles"
+                    "descriptionKey": "SettingDescShowItemTitles"
                   }
                 ],
                 "titleKey": "LabelGridViewSettings",
@@ -1117,27 +1100,6 @@
                 "default": "true",
                 "titleKey": "LabelCommunityAndCriticalRatings",
                 "descriptionKey": "SettingDescMoviesShowRatings"
-              },
-              {
-                "title": "Default View",
-                "description": "Default view for Movie Libraries.",
-                "settingName": "itemGridMovieDefaultView",
-                "type": "radio",
-                "default": "moviesgrid",
-                "options": [
-                  {
-                    "title": "Movies (Presentation)",
-                    "id": "Movies",
-                    "titleKey": "LabelMoviesPresentation"
-                  },
-                  {
-                    "title": "Movies (Grid)",
-                    "id": "MoviesGrid",
-                    "titleKey": "LabelMoviesGrid"
-                  }
-                ],
-                "titleKey": "LabelDefaultView",
-                "descriptionKey": "LabelDefaultViewForMovieLibraries"
               }
             ],
             "titleKey": "LabelMovies",

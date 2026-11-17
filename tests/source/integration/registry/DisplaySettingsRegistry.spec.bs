@@ -391,7 +391,7 @@ namespace tests
       reg = CreateObject("roRegistrySection", m.testUserId)
       reg.write("display." + m.testLibraryId + ".layout_movies", "presentation")
       reg.write("display." + m.testLibraryId + ".notInMemory", "kept only in the registry")
-      reg.write("display." + otherLibraryId + ".layout_movies", "comfortable")
+      reg.write("display." + otherLibraryId + ".layout_movies", "grid")
       reg.write("unrelatedSetting", "stays")
       reg.flush()
 
@@ -411,7 +411,7 @@ namespace tests
       for each key in reg.GetKeyList()
         m.assertFalse(key.instr("display." + m.testLibraryId + ".") = 0, "left behind: " + key)
       end for
-      m.assertEqual(reg.read("display." + otherLibraryId + ".layout_movies"), "comfortable")
+      m.assertEqual(reg.read("display." + otherLibraryId + ".layout_movies"), "grid")
       m.assertEqual(reg.read("display." + otherLibraryId + ".landing"), "movies")
       m.assertEqual(reg.read("unrelatedSetting"), "stays")
     end function

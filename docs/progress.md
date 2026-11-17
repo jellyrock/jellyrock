@@ -987,7 +987,7 @@ The agreed model: Slideshow means start playing automatically (off opens the alb
 
 #### A setting changed in Settings does not reach the screen under it unless that screen re-reads it by hand `[fid: settings-change-reaches-covered-screen]` `[captured 2026-11-12]`
 
-Settings can be opened from any screen, and a setting changed there reaches the screen under it only where that screen reads it again by hand. A theme or language change rebuilds the screen (`settings.performSettingsExit`, `JRScene.reloadRoutedHome`); any other change goes back to a screen that resumes as it was. `BaseGridView` reads `itemGridShowItemCount` and `itemGridTitles` once in `init`, so changing either from a library does nothing until the library is reopened; `reapplyPresentationBackdropSetting` in its `onScreenShown` is the one hand-wired exception. Other screens were not checked. Found 2026-11-12 while building page settings for the library screens.
+Settings can be opened from any screen, and a setting changed there reaches the screen under it only where that screen reads it again by hand. A theme or language change rebuilds the screen (`settings.performSettingsExit`, `JRScene.reloadRoutedHome`); any other change goes back to a screen that resumes as it was. `BaseGridView` reads `itemGridShowItemCount` once in `init`, so changing it from a library does nothing until the library is reopened. Two settings are hand-wired in its `onScreenShown`: `reapplyPresentationBackdropSetting` for the backdrop, and `titlesSettingChanged` then `relayoutGrid` for Item Titles (`itemGridShowTitles`, since PR 1400). Other screens were not checked. Found 2026-11-12 while building page settings for the library screens.
 
 Agreed shape: one more `JRScreen` function beside `pageSettingsEntries` and `onPageSettingChanged`, `onSettingsChanged(names)`. `JellyfinUserSettings.onSettingChanged` already sees every setting write, so it notes which changed, and the base screen hands a screen the names changed since it was last shown; the screen applies what it cares about in place and keeps its scroll position. First measure which settings each screen type reads only at `init`. Not now because it touches every screen type and is its own pull request to `main`, apart from the library screens branch.
 
@@ -1063,6 +1063,24 @@ A library with tabs never shows its own name. Its first tab is the type's word (
 One answer to weigh: label the first tab with the library's own name.
 
 Why not now: it changes what a tab is called on every tabbed library, and needs its own captures and a rule for a long name in the tab strip. Closes when a tabbed library shows its name, or the gap is recorded as intended.
+
+#### Grid with details is offered only on a movie library's Movies tab `[fid: grid-with-details-beyond-movies]` `[captured 2026-11-16]`
+
+Grid with details (the presentation layout) is offered only on a movie library's Movies tab, so a layout only movies get reads as unfinished. Offer it on Shows, Collections and Favorites. Each needs the fields its page asks the server for (each presenter's `configureLoadTask()`) and a look at what its details panel shows. Deferred by piece 10 of the library redesign (ADR 0061): it is a pull request of its own after the redesign lands on `main`.
+
+#### Library grids have no List layout `[fid: library-list-layout]` `[captured 2026-11-16]`
+
+Add the third kind of library layout, List: a cell with the poster, the title, facts and the overview beside it, where Items per row sets the column count (one wide row per line at the largest, two columns in the middle; whether it goes to three is a bench call). It needs an overview on every page of items, so measure the page cost first (`docs/dev/measuring-performance.md`). ADR 0061 reserves the stored id `list`. Deferred by piece 10 of the library redesign: its own pull request after the redesign lands on `main`.
+
+#### Home video and music video libraries draw portrait cells where Home draws them wide `[fid: wide-cells-home-and-music-videos]` `[captured 2026-11-16]`
+
+Home video and music video libraries draw portrait cells in the library grid, while Home's Latest rows draw the same items wide (`latestRows.slotSizeFor`), so a library looks different on Home and when opened (read from the code, not seen on a device). Add a wide shape to `libraryGrid` (one row of widths, one shared rule for which libraries get it). Capture a real home video library first. Deferred by piece 10 of the library redesign: its own pull request after the redesign lands on `main`.
+
+#### A library's page menu describes the previous tab while a new tab loads `[fid: page-menu-describes-previous-tab-while-loading]` `[captured 2026-11-17]`
+
+`BaseGridView.showsItemGrid()` decides whether a library's page menu offers Items per row and Item Titles from `genreList.opacity`, which changes only when a load lands. So while a tab switch loads, the menu describes the previous tab's surface. Switching to a movie or TV library's Genres tab still offers Items per row until the genre rows draw, and a pick there saves an unused `columns_genres` and reloads. Switching from Genres back, the entry is missing until the first page arrives. Found in the review of PR 1400 (2026-11-16), read from the code.
+
+Low impact: a short window and no lasting harm. Not fixed in that PR because the fix needs the presenter to say which views draw the genre rows; today `onItemDataLoaded` decides from the data, since music genres use the grid. Close it by giving presenters that answer and having `showsItemGrid()` ask it.
 
 ### source
 

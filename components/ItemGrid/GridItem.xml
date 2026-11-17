@@ -23,8 +23,8 @@
       width/height: set by the parent MarkupGrid (itemSize) or RowList (rowItemSize).
       Declaring them with a default guarantees they are never Invalid (unlike width on a
       raw Group node) and lets us observe size changes to drive updateLayout(). This is
-      what lets one component render every cell size: 264x396 (default), 323x323 (music,
-      via the presenter's itemSize), 230x320 (genre RowList).
+      what lets one component render every cell size: the library grid's, which
+      libraryGrid.cell() derives per shape and count, and the genre RowList's.
     -->
     <field id="width" type="float" value="0" onChange="onSizeChanged" />
     <field id="height" type="float" value="0" onChange="onSizeChanged" />

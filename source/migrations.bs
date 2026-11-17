@@ -613,6 +613,22 @@ sub migrateLibraryTabs(reg as object, section as string)
     changedCount++
   end if
 
+  ' Titles under posters are on or off. Show On Hover becomes off: the header strip names
+  ' the focused item.
+  if reg.exists("itemGridTitles")
+    areTitlesShown = "false"
+    if reg.read("itemGridTitles") = "showalways" then areTitlesShown = "true"
+    reg.write("itemGridShowTitles", areTitlesShown)
+    reg.delete("itemGridTitles")
+    changedCount++
+  end if
+
+  ' A default movie view that nothing has read since the views became tabs
+  if reg.exists("itemGridMovieDefaultView")
+    reg.delete("itemGridMovieDefaultView")
+    changedCount++
+  end if
+
   if changedCount > 0
     reg.flush()
     print `Migrated library views to v${LIBRARY_TAB_MIGRATION_VERSION} for userid: ${section}`

@@ -1,4 +1,5 @@
 import "pkg:/source/constants/imageSize.bs"
+import "pkg:/source/GridView/libraryGrid.bs"
 import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
@@ -9,12 +10,6 @@ import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/textureManager.bs"
 import "pkg:/source/utils/translate.bs"
 
-' Vertical offset of the poster/placeholder from the cell top. The title label sits
-' below the poster, inside the grid's inter-row spacing (see updateLayout).
-const POSTER_TOP_OFFSET = 22
-' Gap between the bottom of the poster and the title label. Matches JRRowItem's
-' FOCUS_PADDING so grid and row cells share one vertical rhythm.
-const TITLE_GAP = 18
 ' Inset of the genre action-tile label from the backdrop edges.
 const GENRE_LABEL_INSET = 5
 
@@ -51,31 +46,36 @@ sub init()
   ' Display/title config read from the owning BaseGridView. Resolved lazily via
   ' resolveGridViewConfig() (defaults until then).
   m.imageDisplayMode = "scaleToZoom"
-  m.gridTitles = ""
+  m.gridShape = libraryGrid.SHAPE_PORTRAIT
+  m.areTitlesShown = true
   ' The owning BaseGridView node, resolved lazily by walking up the node tree.
   ' Also the callFunc target for getItemFlatIndex in texture management.
   m.gridView = invalid
 end sub
 
-' Resolves the owning BaseGridView and reads its display/title config. Walks up
-' the node tree to the first ancestor exposing gridTitles rather than assuming a
-' fixed depth: the MarkupGrid puts cells 2 levels below BaseGridView, but the genre
-' RowList nests them deeper. The old fixed GetParent().GetParent() walk missed
-' BaseGridView for RowList cells, so genre tiles silently fell back to scaleToZoom
-' (cropping posters the presenter intended as scaleToFit) and an empty gridTitles
-' (no titles ever). Idempotent: caches m.gridView on first success.
+' Reads the display and title config off the owning BaseGridView, on every bind: the
+' view changes both while its cells live on (a tab with another image mode, the titles
+' setting), and a cell that kept its first reading would draw the old one.
+'
+' The view is found once, by walking up to the first ancestor with showItemTitles and not
+' by a fixed depth: the MarkupGrid puts cells 2 levels below BaseGridView, the genre
+' RowList deeper. The cell then follows the titles setting between binds too: a redraw in
+' place (BaseGridView.relayoutGrid) keeps a cell on its item, so no bind comes.
+' BaseGridView.onDestroy releases the observer.
 sub resolveGridViewConfig()
-  if isValid(m.gridView) then return
+  if not isValid(m.gridView)
+    node = m.top.getParent()
+    while isValid(node) and not node.hasField("showItemTitles")
+      node = node.getParent()
+    end while
+    if not isValid(node) then return
+    m.gridView = node
+    m.gridView.observeField("showItemTitles", "onGridTitlesChanged")
+  end if
 
-  node = m.top.getParent()
-  while isValid(node) and not node.hasField("gridTitles")
-    node = node.getParent()
-  end while
-  if not isValid(node) then return
-
-  m.gridView = node
-  if isValid(node.imageDisplayMode) then m.imageDisplayMode = node.imageDisplayMode
-  if isValid(node.gridTitles) then m.gridTitles = node.gridTitles
+  if isValid(m.gridView.imageDisplayMode) then m.imageDisplayMode = m.gridView.imageDisplayMode
+  m.gridShape = libraryGrid.shapeOf(m.gridView.gridShape)
+  m.areTitlesShown = m.gridView.showItemTitles = true
 end sub
 
 ' Re-render when the parent assigns a new item to this (possibly recycled) cell.
@@ -145,9 +145,8 @@ sub renderItem()
   skeleton.hideSpinner(m.loadingSpinner)
   m.itemPoster.visible = true
 
-  ' Title text + default (always-on) visibility, recomputed every recycle.
+  ' Title text, recomputed every recycle; whether it shows is settled after the branch below
   m.itemText.text = getRowItemTitle(itemData)
-  m.itemText.visible = m.gridTitles = "showalways"
 
   itemFolderType = ""
   if isValid(itemData.folderType) then itemFolderType = LCase(itemData.folderType)
@@ -163,22 +162,37 @@ sub renderItem()
   else
     renderMediaItem(itemData, itemType)
   end if
+  applyTitleVisibility()
 
   noteAppearance()
 end sub
 
+' The title shows when the grid shows titles and the cell draws an item: a View All tile
+' carries its label inside the tile, and a loading cell has no text.
+sub applyTitleVisibility()
+  m.itemText.visible = m.areTitlesShown and m.itemText.text <> "" and not m.genreLabel.visible
+end sub
+
+' The view's titles setting changed while this cell kept its item. Only the title
+' follows: rendering the cell again would restart a poster that is already drawn.
+sub onGridTitlesChanged()
+  if not isValid(m.gridView) then return
+  m.areTitlesShown = m.gridView.showItemTitles = true
+  applyTitleVisibility()
+end sub
+
 ' Sizes and positions every child to the current cell dimensions. The focus slot is
-' rowItemSize/itemSize; the poster fills it at POSTER_TOP_OFFSET so the poster overflows
-' the slot bottom and the focus border (drawn behind it) reads with a top margin and no
-' overlap. The title sits below at POSTER_TOP_OFFSET + h + TITLE_GAP, kept outside the
-' focus border because the container sets rowHeights/itemSize taller than the slot (the
-' focus border pins to the slot, not the cell's full bounding box).
+' rowItemSize/itemSize; the poster fills it at libraryGrid.POSTER_TOP_OFFSET so the poster
+' overflows the slot bottom and the focus border (drawn behind it) reads with a top margin
+' and no overlap. The title sits libraryGrid.TEXT_TOP_GAP below the poster, outside the
+' focus border, in room the container leaves under the slot: a MarkupGrid's row gap
+' (itemSpacing), a RowList's rowHeights set taller than the slot.
 sub updateLayout(w as float, h as float)
-  setPosterRect(0, POSTER_TOP_OFFSET, w, h)
-  m.genreLabel.translation = [GENRE_LABEL_INSET, POSTER_TOP_OFFSET + GENRE_LABEL_INSET]
+  setPosterRect(0, libraryGrid.POSTER_TOP_OFFSET, w, h)
+  m.genreLabel.translation = [GENRE_LABEL_INSET, libraryGrid.POSTER_TOP_OFFSET + GENRE_LABEL_INSET]
   m.genreLabel.width = w - 2 * GENRE_LABEL_INSET
   m.genreLabel.height = h - 2 * GENRE_LABEL_INSET
-  m.itemText.translation = [0, POSTER_TOP_OFFSET + h + TITLE_GAP]
+  m.itemText.translation = [0, libraryGrid.POSTER_TOP_OFFSET + h + libraryGrid.TEXT_TOP_GAP]
   m.itemText.maxWidth = w
 end sub
 
@@ -214,9 +228,7 @@ end sub
 sub renderLoadingCell()
   m.itemPoster.uri = ""
   m.itemPoster.visible = false
-  ' Clear the text, not only visibility: a recycled cell keeps its previous item's
-  ' title, and under gridTitles="showonhover" onFocusChanged re-shows the label on
-  ' focus. The skeleton window is interactive, so a stale title would surface.
+  ' Clear the text, not only visibility: a recycled cell keeps its previous item's title
   m.itemText.text = ""
   m.itemText.visible = false
   m.genreBackdrop.visible = false
@@ -224,9 +236,9 @@ sub renderLoadingCell()
   m.placeholder.itemType = ""
   m.placeholder.visible = true
   m.cachedPosterUri = ""
-  ' POSTER_TOP_OFFSET: this cell's poster rect starts below the cell origin (see
+  ' libraryGrid.POSTER_TOP_OFFSET: this cell's poster rect starts below the cell origin (see
   ' setPosterRect), and the spinner centers within the POSTER area, not the slot.
-  m.loadingSpinner = skeleton.showSpinner(m.top, m.loadingSpinner, m.top.width, m.top.height, POSTER_TOP_OFFSET)
+  m.loadingSpinner = skeleton.showSpinner(m.top, m.loadingSpinner, m.top.width, m.top.height, libraryGrid.POSTER_TOP_OFFSET)
 end sub
 
 ' Renders a "View All" action tile: themed backdrop + centered "View All" label, no poster
@@ -237,7 +249,6 @@ end sub
 sub renderGenreTile()
   m.itemPoster.uri = ""
   m.placeholder.visible = false
-  m.itemText.visible = false
   m.genreBackdrop.visible = true
   m.genreLabel.text = translate(translationKeys.LabelViewAll)
   m.genreLabel.visible = true
@@ -266,7 +277,9 @@ sub renderMediaItem(itemData as object, itemType as string)
 
   m.itemPoster.loadDisplayMode = resolveLoadDisplayMode(itemType)
 
-  posterUri = getItemPosterUrl(itemData)
+  ' The smallest of the grid's fixed image sizes that covers this cell, in the shape the view
+  ' declares: a cell being resized is briefly neither shape, so its size cannot say which
+  posterUri = getItemPosterUrl(itemData, libraryGrid.imageSizeFor(m.gridShape, int(m.top.width)))
 
   ' Cache URI + display mode for texture management
   m.cachedPosterUri = posterUri
@@ -311,9 +324,6 @@ sub onFocusChanged()
     m.itemText.repeatCount = -1
   else
     m.itemText.repeatCount = 0
-  end if
-  if m.gridTitles = "showonhover"
-    m.itemText.visible = m.top.itemHasFocus
   end if
 end sub
 

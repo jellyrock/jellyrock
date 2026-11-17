@@ -11,7 +11,7 @@
     {
       "slug": "browse-a-library",
       "title": "Browse a library",
-      "pitch": "Move between a library's tabs at the top of the screen, choose how each one is drawn, and pick the tab it opens on.",
+      "pitch": "Move between a library's tabs, choose how each is drawn and how many items fit in a row, and pick where it opens.",
       "since": "unreleased",
       "sinceDate": null,
       "server": "10.7.0",
