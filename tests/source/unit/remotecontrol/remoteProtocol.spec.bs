@@ -197,6 +197,48 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the session check")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is for servers before 10.11, and not for an unknown version")
+    function _()
+      m.assertTrue(remoteProtocol.checksSocketSession("10.10.7"))
+      m.assertTrue(remoteProtocol.checksSocketSession("10.8.13"))
+      m.assertFalse(remoteProtocol.checksSocketSession("10.11.0"))
+      m.assertFalse(remoteProtocol.checksSocketSession("12.4.0"))
+      m.assertFalse(remoteProtocol.checksSocketSession(""))
+      m.assertFalse(remoteProtocol.checksSocketSession(invalid))
+    end function
+
+    @it("asks an http server for this device's sessions, and builds nothing without a part")
+    function _()
+      m.assertEqual(remoteProtocol.buildSessionCheckUrl("http://host:8096", "dev-1"), "http://host:8096/Sessions?deviceId=dev-1")
+      m.assertEqual(remoteProtocol.buildSessionCheckUrl("https://host", "dev-1"), "")
+      m.assertEqual(remoteProtocol.buildSessionCheckUrl("http://host:8096", ""), "")
+    end function
+
+    @it("a session of this device that takes media commands is attached")
+    function _()
+      body = FormatJson([{ DeviceId: "other", SupportsMediaControl: false }, { DeviceId: "dev-1", SupportsMediaControl: true }])
+      m.assertEqual(remoteProtocol.socketSessionState(200, body, "dev-1"), remoteProtocol.SESSION_ATTACHED)
+    end function
+
+    @it("this device listed with no session taking media commands is detached")
+    function _()
+      body = FormatJson([{ DeviceId: "dev-1", SupportsMediaControl: false }, { DeviceId: "other", SupportsMediaControl: true }])
+      m.assertEqual(remoteProtocol.socketSessionState(200, body, "dev-1"), remoteProtocol.SESSION_DETACHED)
+    end function
+
+    @it("a failed request, a body that is not a list and a list without this device are unknown")
+    function _()
+      m.assertEqual(remoteProtocol.socketSessionState(0, "", "dev-1"), remoteProtocol.SESSION_UNKNOWN)
+      m.assertEqual(remoteProtocol.socketSessionState(403, "[]", "dev-1"), remoteProtocol.SESSION_UNKNOWN)
+      m.assertEqual(remoteProtocol.socketSessionState(200, "not json", "dev-1"), remoteProtocol.SESSION_UNKNOWN)
+      m.assertEqual(remoteProtocol.socketSessionState(200, FormatJson({ a: 1 }), "dev-1"), remoteProtocol.SESSION_UNKNOWN)
+      m.assertEqual(remoteProtocol.socketSessionState(200, FormatJson([{ DeviceId: "other", SupportsMediaControl: false }]), "dev-1"), remoteProtocol.SESSION_UNKNOWN)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("probeOutcome() — what a plugin probe's answer means")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

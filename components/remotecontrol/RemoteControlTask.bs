@@ -7,6 +7,7 @@ import "pkg:/source/remotecontrol/remoteCommand.bs"
 import "pkg:/source/remotecontrol/remoteProtocol.bs"
 import "pkg:/source/syncplay/syncPlayInbox.bs"
 import "pkg:/source/utils/backoff.bs"
+import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/serverCapabilities.bs"
 
@@ -67,9 +68,18 @@ sub runWsReceiver(serverUrl as string)
   ' Set at the first on_open: until then a close says nothing about a channel this run has had.
   m.socketHasOpened = false
   m.reopenAwaitsAttach = false
+  ' The session check (remoteProtocol.checksSocketSession): whether this server needs it, the
+  ' request it makes, and how many reopens in a row it has caused.
+  m.checksSession = remoteProtocol.checksSocketSession(m.global.server.version)
+  m.sessionCheckUrl = remoteProtocol.buildSessionCheckUrl(serverUrl, m.global.device.serverDeviceName)
+  m.sessionCheckReopens = 0
 
   attempt = 0
   while true
+    ' Before 10.11 the server ends its session when the last socket closes, and the connect below
+    ' would create the next one alongside whatever else arrives then. Announcing first means the
+    ' session exists when the socket asks for it, with this device's capabilities on it.
+    if m.checksSession then announceSession(serverUrl)
     wasStable = connectAndPump(url)
 
     ' The socket closed. Reconnect unless the session is gone. SignOut(false) (logout AND server
@@ -164,6 +174,9 @@ function connectAndPump(url as string) as boolean
         ' first keep-alive request, which follows the attach (see handleFrame).
         m.reopenAwaitsAttach = m.socketHasOpened
         m.socketHasOpened = true
+        ' Armed here, started at the server's keep-alive request, which follows the attach.
+        m.sessionCheckArmed = m.checksSession and m.sessionCheckUrl <> "" and m.sessionCheckReopens < remoteProtocol.SESSION_CHECK_LIMIT
+        m.sessionCheckTimer = invalid
         setChannelStatus(serverCapabilities.STATUS_AVAILABLE)
         sessionTimer = CreateObject("roTimespan")
       else if isTerminalSocketEvent(event, isValid(sessionTimer))
@@ -173,8 +186,55 @@ function connectAndPump(url as string) as boolean
       end if
     end while
     if m.keepAliveIntervalMs > 0 and m.keepAliveTimer.TotalMilliseconds() >= m.keepAliveIntervalMs then sendKeepAlive()
+    if isValid(m.sessionCheckTimer) and m.sessionCheckTimer.TotalMilliseconds() >= remoteProtocol.SESSION_CHECK_DELAY_MS
+      m.sessionCheckTimer = invalid
+      if socketIsOffItsSession()
+        ' Reopened at once, as a stable session that blipped: the next connect lands on the
+        ' session the server uses, which exists by now.
+        closeSocket()
+        return true
+      end if
+    end if
   end while
   return false ' unreachable (the loop only exits via the terminal-event return); satisfies the analyzer
+end function
+
+' Posts this device's capabilities and waits for the answer, which makes the server create the
+' device's session if it holds none. Blocks this thread for the request. A failure is logged and
+' the connect goes on: the session check after the attach is the net under it.
+sub announceSession(serverUrl as string)
+  req = CreateObject("roUrlTransfer")
+  port = CreateObject("roMessagePort")
+  req.SetMessagePort(port)
+  req.SetUrl(serverUrl + "/Sessions/Capabilities/Full")
+  req.AddHeader("Authorization", buildAuthHeader())
+  req.AddHeader("Content-Type", "application/json")
+  code = 0
+  if req.AsyncPostFromString(FormatJson(getDeviceCapabilities()))
+    event = wait(5000, port)
+    if type(event) = "roUrlEvent"
+      code = event.GetResponseCode()
+    else
+      req.AsyncCancel()
+    end if
+  end if
+  if code < 200 or code >= 300 then m.log.warn("could not announce the session before the socket connect", "httpCode", code)
+end sub
+
+' Asks the server whether this device's session has the socket (remoteProtocol.socketSessionState).
+' True only when the server lists the device with no socket: the socket is then on a session
+' the server stopped using, and nothing it pushes arrives. Blocks this thread for the request.
+function socketIsOffItsSession() as boolean
+  answer = httpGet(m.sessionCheckUrl, 5000)
+  state = remoteProtocol.socketSessionState(answer.code, answer.body, m.global.device.serverDeviceName)
+  if state = remoteProtocol.SESSION_DETACHED
+    m.sessionCheckReopens++
+    m.log.warn("the server's session has no socket; reopening the socket", "reopensInARow", m.sessionCheckReopens)
+    return true
+  end if
+  if state = remoteProtocol.SESSION_ATTACHED then m.sessionCheckReopens = 0
+  m.log.info("session check", "state", state, "httpCode", answer.code)
+  return false
 end function
 
 sub sendKeepAlive()
@@ -218,6 +278,11 @@ sub handleFrame(data as object)
   if remoteProtocol.reopenIsToldNow(m.reopenAwaitsAttach, kind)
     m.reopenAwaitsAttach = false
     tellSyncPlaySocketReopened()
+  end if
+
+  if kind = "keepalive" and m.sessionCheckArmed = true
+    m.sessionCheckArmed = false
+    m.sessionCheckTimer = CreateObject("roTimespan")
   end if
 
   if kind = "keepalive"
