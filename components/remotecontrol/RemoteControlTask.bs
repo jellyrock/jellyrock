@@ -66,6 +66,7 @@ sub runWsReceiver(serverUrl as string)
   m.port = CreateObject("roMessagePort")
   ' Set at the first on_open: until then a close says nothing about a channel this run has had.
   m.socketHasOpened = false
+  m.reopenAwaitsAttach = false
 
   attempt = 0
   while true
@@ -158,9 +159,10 @@ function connectAndPump(url as string) as boolean
         handleFrame(event.data)
       else if event.id = "on_open"
         m.log.info("socket open")
-        ' An open after the first is a reconnect: frames sent while the socket was down are lost,
-        ' so SyncPlay is told and asks the server where it stands (one write, per reconnect).
-        if m.socketHasOpened then tellSyncPlaySocketReopened()
+        ' An open after the first is a reconnect. The server accepts the socket before it attaches it
+        ' to the session and drops what it would push in between, so SyncPlay is told at the server's
+        ' first keep-alive request, which follows the attach (see handleFrame).
+        m.reopenAwaitsAttach = m.socketHasOpened
         m.socketHasOpened = true
         setChannelStatus(serverCapabilities.STATUS_AVAILABLE)
         sessionTimer = CreateObject("roTimespan")
@@ -212,6 +214,11 @@ sub handleFrame(data as object)
 
   command = remoteCommand.parseMessage(envelope)
   kind = command.kind
+
+  if remoteProtocol.reopenIsToldNow(m.reopenAwaitsAttach, kind)
+    m.reopenAwaitsAttach = false
+    tellSyncPlaySocketReopened()
+  end if
 
   if kind = "keepalive"
     ' Jellyfin asks us to keep the session alive; send one now and poll on HALF the requested
@@ -274,7 +281,8 @@ sub sendSyncPlayFrame(command as object)
   m.syncPlayManager.frames = syncPlayInbox.push(m.syncPlayOutbox, command, now.AsSeconds(), now.GetMilliseconds())
 end sub
 
-' Tell the SyncPlay manager the session socket opened again (its `socketReopened` field).
+' Tell the SyncPlay manager a reconnected session socket can receive pushes (its `socketReopened`
+' field). Called at the server's first keep-alive request after the open, not at the open itself.
 sub tellSyncPlaySocketReopened()
   manager = m.global.syncPlayManager
   if isValid(manager) then manager.socketReopened = true

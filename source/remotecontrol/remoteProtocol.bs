@@ -113,6 +113,16 @@ namespace remoteProtocol
     return hasOpened and not wasStable
   end function
 
+  ' Whether a frame is the moment to tell SyncPlay that a reconnected socket can receive pushes.
+  ' The server accepts the socket before it attaches it to the session and drops what it would
+  ' push in between. Its keep-alive request follows the attach, so that frame is the first proof.
+  '
+  ' @param awaitsAttach - a reconnect's open happened and has not been told yet
+  ' @param frameKind - the kind remoteCommand.parseMessage gave the frame
+  function reopenIsToldNow(awaitsAttach as boolean, frameKind as string) as boolean
+    return awaitsAttach and frameKind = "keepalive"
+  end function
+
   ' What to do with a plugin probe's answer (see probeOutcome).
   const PROBE_AVAILABLE = "available"
   const PROBE_UNAVAILABLE = "unavailable"

@@ -178,6 +178,25 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("reopenIsToldNow() — when a reconnect is told to SyncPlay")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("tells nothing at a first open's keep-alive request: there is no reconnect to tell")
+    function _()
+      m.assertFalse(remoteProtocol.reopenIsToldNow(false, "keepalive"))
+    end function
+
+    @it("tells at a reconnect's keep-alive request: the server has attached the socket")
+    function _()
+      m.assertTrue(remoteProtocol.reopenIsToldNow(true, "keepalive"))
+    end function
+
+    @it("tells nothing at a reconnect's other frame: the attach is not proven yet")
+    function _()
+      m.assertFalse(remoteProtocol.reopenIsToldNow(true, "syncplayupdate"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("probeOutcome() — what a plugin probe's answer means")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
