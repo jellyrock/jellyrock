@@ -1840,6 +1840,24 @@ Not reported upstream yet: a report is a public post, so it waits for the operat
 
 When it moves: if the release guards both functions, delete the patch and its test. Otherwise regenerate the patch on any version bump with `npx patch-package roku-test-automation`, since its filename pins 2.2.2. A bump the patch still applies to only warns about the mismatch. One it no longer applies to fails `npm ci` on CI, while a local install prints the error and carries on without the patch, and `rta-closed-socket-guard.test.js` then fails in `test:scripts`.
 
+#### The `syncplay-menu` RTA spec records a collection as its hero movie on a server that groups movies into collections `[fid: rta-first-movie-returns-collection]` `[captured 2026-11-17]`
+
+On a server whose first movies library groups movies into collections, `syncplay-menu.spec.js` fails 8 of 18 cases. Its `beforeAll` falls back to `firstMovie()` (`tests/rta/lib/jellyfin.js`) when the server has no movie named `RTA_CONFIG.heroMovie`. `firstMovie()` asks for `IncludeItemTypes=Movie`, and such a server answers with collections first: the first two entries of the library were of type `BoxSet` (read 2026-11-17 on a 12.4.0 server). With `CollapseBoxSetItems=false` the same request returned movies. The group then played a movie, so `ctx.heroId` named the collection and `readPlayer(ctx.heroId)` read nothing in the Resume with Group case; the seven failures after it followed from that one.
+
+Found 2026-11-17 during the SyncPlay HTTPS device check (Stick 4K). The workaround is `RTA_HERO_MOVIE` set to a plain movie in that library: the rerun passed 17 with 1 skipped. The local test servers and the demo server do not group movies, so no regular run shows it. `playback-check-in.spec.js` and `tests/rta/demos/run.mjs` also call `firstMovie()`.
+
+Not done now: it shows only on a server that groups movies, and the setting works around it.
+
+Options, `skip` recommended:
+
+- `skip`: the fallback reads the library's list as the grid shows it, takes the first entry that is a movie, and walks to that entry's position. Footprint: `jellyfin.js`, its unit test, the spec's `beforeAll`. Its risk is the order assumption below, which one HTTPS device run would settle.
+- `refuse`: the fallback fails at once with a message naming the cause and the fix (set `RTA_HERO_MOVIE` to a movie in the first movies library). It does not fix the cause.
+- `uncollapse`: `firstMovie()` passes `CollapseBoxSetItems=false`. It helps only if the app's grid also shows movies one by one; otherwise the walk still opens the wrong tile.
+
+Not checked: which tile the app's grid showed first on that server (the collection or a movie); whether `playback-check-in` fails the same way there; whether the grid's order matches the server's collapsed order.
+
+Close it when `syncplay-menu` passes against a library that groups movies with no `RTA_HERO_MOVIE` set, or fails at once with a message naming the setting.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`
