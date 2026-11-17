@@ -291,6 +291,7 @@ ffmpeg
 ffmpeg-tagged
 FHD
 filesystem
+Finamp
 flac
 FLAC
 FLACs
@@ -421,6 +422,7 @@ Mixin
 mka
 MKV
 mkv
+Moonfin
 MP3
 mp4
 mpv-shim
@@ -808,6 +810,7 @@ WebP
 webp
 whitespace
 Whitespace
+Wholphin
 Wikimedia
 WIP
 worklist

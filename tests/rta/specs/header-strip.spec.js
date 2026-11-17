@@ -60,7 +60,7 @@ async function openLibraryTab(collectionType, label, tab, testCtx, content = '#i
   const libraryId = libraryIdFor(libraries, collectionType);
   if (!libraryId) testCtx.skip(`server has no "${collectionType}" library`);
   const expectedServer = await seedHome(session, LOCALE);
-  const landing = await seedLibraryLanding(session, libraryId, tab, { layout: 'comfortable' });
+  const landing = await seedLibraryLanding(session, libraryId, tab, { layout: 'grid' });
   // rta-run.js restores the whole registry after the run.
   await odc.writeRegistry({
     values: { [session.userId]: { [`display.${libraryId}.sort_${tab}`]: null } },

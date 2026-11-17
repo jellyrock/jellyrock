@@ -9,7 +9,7 @@ namespace tests
       return {
         id: "layout",
         title: "Layout",
-        options: [{ id: "presentation", title: "Presentation" }, { id: "comfortable", title: "Comfortable" }],
+        options: [{ id: "presentation", title: "Presentation" }, { id: "grid", title: "Grid" }],
         selected: selected
       }
     end function
@@ -30,10 +30,10 @@ namespace tests
 
     @it("lists the entries in order, each with its value, then All settings")
     function _()
-      menu = pageSettings.menuRows([m.layoutEntry("comfortable"), m.defaultTabEntry("genres")])
+      menu = pageSettings.menuRows([m.layoutEntry("grid"), m.defaultTabEntry("genres")])
 
       m.assertEqual(menu.ids, ["layout", "defaultTab", pageSettings.ALL_SETTINGS])
-      m.assertEqual(menu.labels, ["Layout (Comfortable)", "Default tab (Genres)", "All settings"])
+      m.assertEqual(menu.labels, ["Layout (Grid)", "Default tab (Genres)", "All settings"])
     end function
 
     @it("shows the value of an option whose id is the empty string")
@@ -59,10 +59,10 @@ namespace tests
     @params("")
     @params(invalid)
     function _(valueTitle)
-      entry = m.layoutEntry("comfortable")
+      entry = m.layoutEntry("grid")
       entry.valueTitle = valueTitle
 
-      m.assertEqual(pageSettings.menuRows([entry]).labels[0], "Layout (Comfortable)")
+      m.assertEqual(pageSettings.menuRows([entry]).labels[0], "Layout (Grid)")
     end function
 
     @it("shows the title alone when the selected id names no option")
@@ -94,7 +94,7 @@ namespace tests
       badOption = { id: "bad", title: "Bad", options: [{ id: "a", title: "A" }, "b"] }
       noOptionId = { id: "blank", title: "Blank", options: [{ title: "A" }] }
 
-      menu = pageSettings.menuRows([noOptions, noId, reserved, invalid, badOption, noOptionId, m.layoutEntry("comfortable")])
+      menu = pageSettings.menuRows([noOptions, noId, reserved, invalid, badOption, noOptionId, m.layoutEntry("grid")])
 
       m.assertEqual(menu.ids, ["layout", pageSettings.ALL_SETTINGS])
     end function
@@ -105,7 +105,7 @@ namespace tests
 
     @it("finds an entry by id and reports a missing one as invalid")
     function _()
-      entries = [m.layoutEntry("comfortable"), m.defaultTabEntry("")]
+      entries = [m.layoutEntry("grid"), m.defaultTabEntry("")]
 
       m.assertEqual(pageSettings.findEntry(entries, "defaultTab").title, "Default tab")
       m.assertInvalid(pageSettings.findEntry(entries, "sort"))
@@ -119,11 +119,26 @@ namespace tests
 
     @it("lists the options with the selected one marked")
     function _()
-      list = pageSettings.picker(m.layoutEntry("comfortable"))
+      list = pageSettings.picker(m.layoutEntry("grid"))
 
-      m.assertEqual(list.labels, ["Presentation", "Comfortable"])
-      m.assertEqual(list.values, ["presentation", "comfortable"])
+      m.assertEqual(list.labels, ["Presentation", "Grid"])
+      m.assertEqual(list.values, ["presentation", "grid"])
       m.assertEqual(list.selectedIndex, 1)
+    end function
+
+    @it("heads the list with the entry's title")
+    function _()
+      entry = m.layoutEntry("grid")
+
+      m.assertEqual(pageSettings.picker(entry).title, entry.title)
+    end function
+
+    @it("heads the list with the entry's picker title when it has one")
+    function _()
+      entry = m.layoutEntry("grid")
+      entry.pickerTitle = "Item Titles (all libraries)"
+
+      m.assertEqual(pageSettings.picker(entry).title, "Item Titles (all libraries)")
     end function
 
     @it("marks an option whose id is the empty string")
@@ -142,7 +157,7 @@ namespace tests
 
     @it("reports a change for a pick other than the option in force")
     function _()
-      entry = m.layoutEntry("comfortable")
+      entry = m.layoutEntry("grid")
       outcome = pageSettings.pickOutcome({ cancelled: false, optionIndex: 0 }, entry, pageSettings.picker(entry).values)
 
       m.assertEqual(outcome.action, pageSettings.PICK_CHANGE)
@@ -151,10 +166,20 @@ namespace tests
 
     @it("does nothing for a pick of the option already in force")
     function _()
-      entry = m.layoutEntry("comfortable")
+      entry = m.layoutEntry("grid")
       outcome = pageSettings.pickOutcome({ cancelled: false, optionIndex: 1 }, entry, pageSettings.picker(entry).values)
 
       m.assertEqual(outcome.action, pageSettings.PICK_NONE)
+    end function
+
+    @it("reports a change for a pick of the option in force when it is provisional")
+    function _()
+      entry = m.layoutEntry("grid")
+      entry.isSelectedProvisional = true
+      outcome = pageSettings.pickOutcome({ cancelled: false, optionIndex: 1 }, entry, pageSettings.picker(entry).values)
+
+      m.assertEqual(outcome.action, pageSettings.PICK_CHANGE)
+      m.assertEqual(outcome.value, "grid")
     end function
 
     @it("reports a change to the option whose id is the empty string")
@@ -168,7 +193,7 @@ namespace tests
 
     @it("reopens the menu when the viewer pressed Back")
     function _()
-      entry = m.layoutEntry("comfortable")
+      entry = m.layoutEntry("grid")
       outcome = pageSettings.pickOutcome({ cancelled: true }, entry, pageSettings.picker(entry).values)
 
       m.assertEqual(outcome.action, pageSettings.PICK_REOPEN)
@@ -176,7 +201,7 @@ namespace tests
 
     @it("does nothing for a close that code made, even with a row index on it")
     function _()
-      entry = m.layoutEntry("comfortable")
+      entry = m.layoutEntry("grid")
       result = { cancelled: true, externallyCancelled: true, optionIndex: 0 }
       outcome = pageSettings.pickOutcome(result, entry, pageSettings.picker(entry).values)
 
@@ -185,7 +210,7 @@ namespace tests
 
     @it("does nothing for a missing result or a row that is not there")
     function _()
-      entry = m.layoutEntry("comfortable")
+      entry = m.layoutEntry("grid")
       values = pageSettings.picker(entry).values
 
       m.assertEqual(pageSettings.pickOutcome(invalid, entry, values).action, pageSettings.PICK_NONE)

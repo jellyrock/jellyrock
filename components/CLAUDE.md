@@ -131,7 +131,9 @@ The visual standard is a human doc: [docs/architecture/design-system.md](../docs
 
 ## `RowList` and grid item components (focus-indicator layout)
 
-Building or changing the `itemComponentName` for a `RowList` or `MarkupGrid` (a poster with a title below it)? The focus indicator pins to the poster slot (`rowItemSize` or `itemSize`) **only when `rowHeights` is taller than the slot**. Without `rowHeights` it wraps the item's whole bounding box, poster and title, so the border reaches past the image and covers the title. Set `rowHeights` to the slot height plus a title area and put the title below the poster, in that area. `JRRowItem` with `HomeRows` is the reference: the poster fills the slot from its origin, and the title sits `FOCUS_PADDING` below it. The full contract and its evidence are in [list-grid-item-layout.md](../docs/architecture/list-grid-item-layout.md); this has been rediscovered the hard way more than once.
+Building or changing the `itemComponentName` for a `RowList` (a poster with a title below it)? The focus indicator pins to the poster slot (`rowItemSize`) **only when `rowHeights` is taller than the slot**. Without `rowHeights` it wraps the item's whole bounding box, poster and title, so the border reaches past the image and covers the title. Set `rowHeights` to the slot height plus a title area and put the title below the poster, in that area. `JRRowItem` with `HomeRows` is the reference: the poster fills the slot from its origin, and the title sits `FOCUS_PADDING` below it.
+
+**A `MarkupGrid` is the other way round:** it frames the poster with `rowHeights` equal to `itemSize`, and the title sits in the row gap (`itemSpacing`). The library grid gets all of it from `libraryGrid.cell()`, so a presenter sets no cell size. The full contract and its evidence are in [list-grid-item-layout.md](../docs/architecture/list-grid-item-layout.md); this has been rediscovered the hard way more than once.
 
 ## Custom list rows: let the list draw the focus indicator
 

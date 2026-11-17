@@ -1,6 +1,7 @@
 # ADR 0057: Page settings are declared by a screen and presented by the scene
 
 **Status:** Accepted
+**Partially superseded by:** [ADR 0062](0062-app-setting-offered-on-a-page.md) (an app-wide setting may also be a page entry where a pick visibly changes the page)
 **Date:** 2026-11-12
 
 **related-files**: `components/JRScreen.bs`, `components/JRScreen.xml`, `components/JRScene.bs`, `components/JROverhang.bs`, `source/utils/pageSettings.bs`, `source/utils/iconBarNav.bs`, `source/utils/dialogLayout.bs`, `components/ItemGrid/BaseGridView.bs`, `docs/architecture/navigation.md`

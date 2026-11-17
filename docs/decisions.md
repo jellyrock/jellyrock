@@ -2890,6 +2890,14 @@ A library's own controls and the caption for its focused item live on one header
 
 Ruled out: keeping sort and filter behind the Star key, or listing them in the Star menu as well (Star does what the settings icon does, with no rule of its own on a library, and Replay then Up reaches the strip from deep in a grid); Back clearing a filter (Back always goes back; Clear filters in the Filter menu clears the filters, the voice search and the letter); flipping the sort by picking it again (an Order row makes the direction visible and lets a screen reader say it); the old panel's Favorite button for the focused item, which is not carried over (an item is marked a favorite on its own page). The portrait cell is 252 by 378 and its second row's titles may sit in the bottom margin, since the strip names the focused item inside the 5% zone; the letter rail is the one shortcut drawn in the margin.
 
+## decision-id: library-grid-three-image-sizes
+
+**date**: 2026-11-16
+**status**: accepted
+**related-files**: `source/GridView/libraryGrid.bs`, `components/ItemGrid/GridItem.bs`
+
+A library grid cell asks the server for the smallest of three fixed image sizes per shape that covers it (`libraryGrid.imageSizeFor`: portrait 180 by 270, 295 by 440, 564 by 846; square 280, 440, 564), and scales it to its own size as it loads. It used to ask for 295 by 440 at every size, which drew 324 to 564 pixel cells enlarged. A size per count was measured on the 512 MB Stick (2026-11-16) and rejected: the first request for a size the server has not made was far slower for every image (11 per row took 11.4 s to fill the first time, then about 2.8 s), and nine counts and two shapes would pay that eighteen times for about a tenth less time at the densest count. Three sizes pay it three times per shape.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
