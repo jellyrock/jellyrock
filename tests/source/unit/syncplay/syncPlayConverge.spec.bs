@@ -1229,13 +1229,73 @@ namespace tests
       m.assertEqual(player.activity, "seeking")
     end function
 
-    @it("the lead grows with how long the last seek took")
+    @it("the lead covers the slowest of the stream's recent seeks")
     function _()
       player = m.playingAt(m.at65s - 500 * m.oneMs, 10000&)
-      player.lastSeekMs = 2600&
+      player.seekSamples = [900&, 2600&, 1200&]
       result = m.decide(player, m.playingLine(), 10000&)
       ' 2600 + 500 ms on from 65 s.
       m.assertEqual(result.action.targetTicks, m.at65s + 3100 * m.oneMs)
+      m.assertEqual(result.action.budgetMs, 3100&)
+      m.assertEqual(result.action.learnedLeadMs, 3100&)
+    end function
+
+    @it("a catch-up with fast seeks behind it keeps the shortest lead, and says what they would allow")
+    function _()
+      player = m.playingAt(m.at65s - 500 * m.oneMs, 10000&)
+      player.seekSamples = [900&, 1100&]
+      result = m.decide(player, m.playingLine(), 10000&)
+      m.assertEqual(result.action.targetTicks, m.at65s + syncPlayPlayback.CATCH_UP_LEAD_MS * m.oneMs)
+      m.assertEqual(result.action.budgetMs, syncPlayTime.asLong(syncPlayPlayback.CATCH_UP_LEAD_MS))
+      m.assertEqual(result.action.learnedLeadMs, 1600&)
+      m.assertEqual(result.action.seekSamples, 2)
+    end function
+
+    @it("one slow seek among fast ones lengthens the lead to its limit, and the member still seeks")
+    function _()
+      player = m.playingAt(m.at65s - 500 * m.oneMs, 10000&)
+      player.seekSamples = [900&, 7900&, 1000&]
+      result = m.decide(player, m.playingLine(), 10000&)
+      m.assertEqual(m.kindOf(result), "seek")
+      m.assertEqual(result.action.targetTicks, m.at65s + syncPlayPlayback.CATCH_UP_LEAD_MAX_MS * m.oneMs)
+      m.assertEqual(result.action.budgetMs, syncPlayTime.asLong(syncPlayPlayback.CATCH_UP_LEAD_MAX_MS))
+    end function
+
+    @it("a single slow seek does not stop the member seeking")
+    function _()
+      player = m.playingAt(m.at65s - 500 * m.oneMs, 10000&)
+      player.seekSamples = [7900&]
+      m.assertEqual(m.kindOf(m.decide(player, m.playingLine(), 10000&)), "seek")
+    end function
+
+    @it("a member whose seeks as a rule need more than the longest lead asks the group to wait")
+    function _()
+      player = m.playingAt(m.at65s - 2000 * m.oneMs, 10000&)
+      player.seekSamples = [7000&, 6500&]
+      result = m.decide(player, m.playingLine(), 10000&)
+      m.assertEqual(m.kindOf(result), "ask")
+      m.assertTrue(result.action.waitOnMe)
+    end function
+
+    @it("a member whose seeks turn fast again catches up alone again")
+    function _()
+      player = m.playingAt(m.at65s - 2000 * m.oneMs, 10000&)
+      player.seekSamples = [7000&, 6500&, 900&, 1000&, 1100&]
+      m.assertEqual(m.kindOf(m.decide(player, m.playingLine(), 10000&)), "seek")
+    end function
+
+    @it("a catch-up's seek is slow only once it outlasts its lead")
+    function _()
+      player = m.playingAt(m.at65s - 500 * m.oneMs, 10000&)
+      player.seekSamples = [4000&]
+      group = m.playingLine()
+      result = m.decide(player, group, 10000&)
+      syncPlayConverge.applied(player, group, result.action, 10000&)
+      syncPlayPlayer.nodeState(player, "buffering", 10050&)
+      syncPlayPlayer.advance(player, 10000& + 4499&)
+      m.assertFalse(player.seekSlow)
+      syncPlayPlayer.advance(player, 10000& + 4500&)
+      m.assertTrue(player.seekSlow)
     end function
 
     @it("a drift is judged only on a measured position")

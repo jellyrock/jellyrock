@@ -1041,7 +1041,7 @@ end sub
   sub applySeekBudgetHook(player as object)
     budgetMs = m.global.rtaSyncPlaySeekBudgetMs
     if player.seekOwner = "group" or budgetMs <= 0 then return
-    syncPlayPlayer.shortenSeekBudget(player, syncPlayTime.asLong(budgetMs))
+    syncPlayPlayer.setSeekBudget(player, syncPlayTime.asLong(budgetMs))
     m.global.rtaSyncPlaySeekBudgetMs = 0
     m.log.info("seek budget shortened for a spec", "budgetMs", budgetMs)
   end sub
@@ -1505,6 +1505,7 @@ sub carryOut(action as object)
       return
     end if
     m.log.info("comparison wrote", kind, "owner", action.owner, "driftMs", driftText, "byPick", byPick)
+    if action.catchUp = true then m.log.info("catch-up lead", "leadMs", syncPlayTime.asLong(action.budgetMs).toStr(), "learnedLeadMs", syncPlayTime.asLong(action.learnedLeadMs).toStr(), "seekSamples", action.seekSamples)
     if kind = "pause"
       tellPlayer(host, { command: "pause", showOsd: action.showOsd = true })
     else if kind = "resume"

@@ -25,6 +25,9 @@ namespace syncPlayPlayer
   const RESUME_LAG_MIN_MS = -500
   const RESUME_LAG_MAX_MS = 150
   const RESUME_LAG_SAMPLES = 5
+  ' How many of the stream's last landed seeks are kept: a catch-up's lead and whether the
+  ' member's seeks are too slow to catch up alone are read from them (syncPlayConverge.catchUp).
+  const SEEK_SAMPLES = 5
 
   ' Activities:
   '   "none"      no player.
@@ -32,7 +35,7 @@ namespace syncPlayPlayer
   '   "seeking"   a seek was written and the node has not reported `playing` since. It stays in
   '               flight however long it takes: once it outlasts its budget while buffering it
   '               is also `seekSlow`, a stall the group should hear of, and still not a node
-  '               to write to.
+  '               to write to. When it lands, however late, its time is one more sample.
   '   "arrived"   the first frame of a load, or a seek's `playing`: the next notification says
   '               where the node landed. A seek lands up to seconds off its target, so the target
   '               is never taken for the landing.
@@ -84,13 +87,16 @@ namespace syncPlayPlayer
       seekOwner: "",
       seekSlow: false,
       ' How long the seek in flight may take to land before it is slow. Back to the normal
-      ' budget at each seek written, so a shortened one lasts one seek.
+      ' budget at each seek written, so one set for a seek lasts that seek.
       seekBudgetMs: syncPlayPlayback.SEEK_SETTLE_MS,
       slowTold: false,
       ' When the seek in flight was first seen at a full buffer, or invalid.
       bufferFullAtMs: invalid,
       lastSeekMs: 0&,
+      ' The last seek never landed: its budget ran out with the node not even buffering.
       lastSeekGaveUp: false,
+      ' How long each of the stream's last few landed seeks took, oldest first.
+      seekSamples: [],
       lastLandingTicks: invalid,
       ' How late a resume from the stop the node is now in takes effect, in ms: the median of
       ' the last few resumes from a stop of the same kind, each read off the first position
@@ -218,6 +224,7 @@ namespace syncPlayPlayer
     player.bufferFullAtMs = invalid
     player.lastSeekMs = 0&
     player.lastSeekGaveUp = false
+    player.seekSamples = []
     player.lastLandingTicks = invalid
     ' A new stream resumes in its own time.
     player.resumeLagMs = 0&
@@ -373,10 +380,11 @@ namespace syncPlayPlayer
     if player.activity = "seeking" and not isValid(player.bufferFullAtMs) then player.bufferFullAtMs = nowMs
   end sub
 
-  ' Gives the seek in flight a shorter landing budget, for a device spec to make one seek
-  ' outlast its budget. Nothing in the app calls it outside an RTA build. It does nothing with no
-  ' seek in flight, and the next seek written has the normal budget again.
-  sub shortenSeekBudget(player as object, budgetMs as longinteger)
+  ' Gives the seek in flight its own landing budget: a catch-up's is its lead, since the group
+  ' has nothing to hear of while the seek is on schedule, and a device spec shortens one to make
+  ' a seek outlast it. It does nothing with no seek in flight, and the next seek written has the
+  ' normal budget again.
+  sub setSeekBudget(player as object, budgetMs as longinteger)
     if player.activity = "seeking" and budgetMs > 0 then player.seekBudgetMs = budgetMs
   end sub
 
@@ -399,7 +407,6 @@ namespace syncPlayPlayer
       ' says, with nothing known of its position.
       if player.nodeState = "buffering"
         player.seekSlow = true
-        player.lastSeekGaveUp = true
         return
       end if
       endSeek(player, nowMs, true, invalid)
@@ -510,6 +517,23 @@ namespace syncPlayPlayer
     return medianOf(late)
   end function
 
+  ' The slowest of the stream's recent landed seeks, in ms, or 0 with none: what the next
+  ' catch-up's lead has to cover.
+  function slowestSeekMs(player as object) as longinteger
+    slowest& = 0&
+    for each sample in player.seekSamples
+      if syncPlayTime.asLong(sample) > slowest& then slowest& = syncPlayTime.asLong(sample)
+    end for
+    return slowest&
+  end function
+
+  ' What a seek on this stream takes as a rule: the median of the recent landed seeks, or
+  ' invalid until two have landed, since one seek says nothing of the next.
+  function typicalSeekMs(player as object) as dynamic
+    if player.seekSamples.count() < 2 then return invalid
+    return medianOf(player.seekSamples)
+  end function
+
   ' The median of a list of ms values, or 0 for none.
   function medianOf(samples as dynamic) as longinteger
     if not isValid(samples) or samples.count() = 0 then return 0&
@@ -571,12 +595,15 @@ namespace syncPlayPlayer
   end sub
 
   ' The seek in flight is over: how long it took, whether it was given up, and where it landed
-  ' (invalid when no notification said).
+  ' (invalid when no notification said). One that landed is a sample, however long it took: the
+  ' next catch-up is given that long, and one slow seek among fast ones changes nothing else.
   sub endSeek(player as object, nowMs as longinteger, gaveUp as boolean, landingTicks as dynamic)
     player.lastSeekMs = nowMs - syncPlayTime.asLong(player.seekWrittenAtMs)
-    ' A seek that outlasted its budget counts as given up even when it lands in the end: the
-    ' next one would be as slow.
-    player.lastSeekGaveUp = gaveUp or player.seekSlow
+    player.lastSeekGaveUp = gaveUp
+    if not gaveUp
+      player.seekSamples.push(player.lastSeekMs)
+      if player.seekSamples.count() > SEEK_SAMPLES then player.seekSamples.shift()
+    end if
     player.seekSlow = false
     player.slowTold = false
     player.bufferFullAtMs = invalid

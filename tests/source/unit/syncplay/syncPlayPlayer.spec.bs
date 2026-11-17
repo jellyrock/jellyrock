@@ -702,7 +702,7 @@ namespace tests
     function _()
       player = m.playingAt60()
       syncPlayPlayer.told(player, "seek", "hold", 1000000000&, 1100&)
-      syncPlayPlayer.shortenSeekBudget(player, 200&)
+      syncPlayPlayer.setSeekBudget(player, 200&)
       syncPlayPlayer.nodeState(player, "buffering", 1150&)
       syncPlayPlayer.advance(player, 1299&)
       m.assertFalse(syncPlayPlayer.takeSlowEdge(player))
@@ -715,7 +715,7 @@ namespace tests
     function _()
       player = m.playingAt60()
       syncPlayPlayer.told(player, "seek", "hold", 1000000000&, 1100&)
-      syncPlayPlayer.shortenSeekBudget(player, 200&)
+      syncPlayPlayer.setSeekBudget(player, 200&)
       syncPlayPlayer.told(player, "seek", "hold", 2000000000&, 5000&)
       syncPlayPlayer.nodeState(player, "buffering", 5050&)
       syncPlayPlayer.advance(player, 5200&)
@@ -727,7 +727,7 @@ namespace tests
     @it("shortening a budget does nothing when no seek is in flight")
     function _()
       player = m.playingAt60()
-      syncPlayPlayer.shortenSeekBudget(player, 200&)
+      syncPlayPlayer.setSeekBudget(player, 200&)
       m.assertEqual(player.seekBudgetMs, syncPlayPlayback.SEEK_SETTLE_MS)
       syncPlayPlayer.told(player, "seek", "hold", 1000000000&, 1100&)
       syncPlayPlayer.nodeState(player, "buffering", 1150&)
@@ -765,17 +765,48 @@ namespace tests
       m.assertEqual(player.activity, "seeking")
       m.assertTrue(syncPlayPlayer.isInFlight(player))
       m.assertTrue(player.seekSlow)
-      m.assertTrue(player.lastSeekGaveUp)
+      m.assertFalse(player.lastSeekGaveUp)
       m.assertInvalid(syncPlayPlayer.nextDeadlineMs(player))
-      ' It lands in the end, 7.9 s after the write: an arrival like any other, and still a seek
-      ' too slow to repeat.
+      ' It lands in the end, 7.9 s after the write: an arrival like any other, whose time is
+      ' one more sample and not a verdict on the next seek.
       syncPlayPlayer.nodeState(player, "playing", 9000&)
       m.assertEqual(player.activity, "arrived")
       syncPlayPlayer.reading(player, 1000200000&, 9020&)
       m.assertEqual(player.activity, "playing")
       m.assertFalse(player.seekSlow)
-      m.assertTrue(player.lastSeekGaveUp)
+      m.assertFalse(player.lastSeekGaveUp)
       m.assertEqual(player.lastSeekMs, 7920&)
+      m.assertEqual(player.seekSamples.count(), 1)
+      m.assertEqual(syncPlayPlayer.slowestSeekMs(player), 7920&)
+    end function
+
+    @it("the seek history keeps the last five that landed, and a new stream starts it empty")
+    function _()
+      player = m.playingAt60()
+      ' Seven seeks, taking 100, 200, up to 700 ms.
+      for i = 1 to 7
+        at& = 10000& * i
+        syncPlayPlayer.told(player, "seek", "group", 1000000000&, at&)
+        syncPlayPlayer.nodeState(player, "playing", at& + 100 * i - 20)
+        syncPlayPlayer.reading(player, 1000000000&, at& + 100 * i)
+      end for
+      m.assertEqual(player.seekSamples.count(), 5)
+      m.assertEqual(syncPlayTime.asLong(player.seekSamples[0]), 300&)
+      m.assertEqual(syncPlayPlayer.slowestSeekMs(player), 700&)
+      m.assertEqual(syncPlayPlayer.typicalSeekMs(player), 500&)
+      syncPlayPlayer.mounted(player, invalid, 90000&)
+      m.assertEqual(player.seekSamples.count(), 0)
+      m.assertEqual(syncPlayPlayer.slowestSeekMs(player), 0&)
+      m.assertInvalid(syncPlayPlayer.typicalSeekMs(player))
+    end function
+
+    @it("one landed seek says nothing of what a seek takes as a rule")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "seek", "group", 1000000000&, 1100&)
+      syncPlayPlayer.nodeState(player, "playing", 9000&)
+      syncPlayPlayer.reading(player, 1000200000&, 9020&)
+      m.assertInvalid(syncPlayPlayer.typicalSeekMs(player))
     end function
 
     @it("a seek the node never answered is given up where its state says")
@@ -785,6 +816,7 @@ namespace tests
       syncPlayPlayer.advance(player, 1100& + syncPlayPlayback.SEEK_SETTLE_MS)
       m.assertEqual(player.activity, "playing")
       m.assertTrue(player.lastSeekGaveUp)
+      m.assertEqual(player.seekSamples.count(), 0)
       m.assertInvalid(syncPlayPlayer.positionAt(player, 4200&))
     end function
 

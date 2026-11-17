@@ -457,7 +457,7 @@ it('a resume that seeks reports no stall, so the group does not wait', async (te
 
 // The slow path, made to happen: about one seek in a hundred outlasts its budget on its own, too
 // few for a run to meet. `armSlowSeek` gives the correction's seek a budget it cannot make.
-it('a correction seek that outlasts its budget holds the group once, and the member seeks again only after a group Seek lands', async (testCtx) => {
+it('a correction seek that outlasts its budget holds the group once, and the member still corrects by a seek of its own after', async (testCtx) => {
   skipWithoutPush(testCtx);
   const slowBefore = await slowSeeks();
   const readiesBefore = await getGlobalVal('syncPlayManager.sync.readiesSent');
@@ -480,11 +480,13 @@ it('a correction seek that outlasts its budget holds the group once, and the mem
     await waitGroup('Playing');
     await waitPlaying();
     expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
-    // Behind again, and no seek of its own goes out: the last one was given up.
-    expect(await resumeBehind(), 'no correction seek after a slow one').toBeUndefined();
-    // A group Seek that lands in time, and the next correction seeks again.
-    await landGroupSeek();
-    expect(await resumeBehind(), 'a correction seek after the group Seek landed').toBeTruthy();
+    // Behind again, and a seek of its own goes out: one slow seek that landed is one sample of
+    // what a seek takes here, not a reason to stop seeking (`syncPlayConverge.seeksTooSlow`).
+    // A resume can spend its check before the offset is raised, so it is tried again, as
+    // `forceCorrectionSeek` does, with no group Seek in between.
+    let sought;
+    for (let attempt = 0; attempt < 4 && !sought; attempt++) sought = await resumeBehind();
+    expect(sought, 'a correction seek after a slow one').toBeTruthy();
   } finally {
     await odc.setValue({ base: 'global', keyPath: 'rtaSyncPlaySeekBudgetMs', value: 0 });
     await setOffset(0);

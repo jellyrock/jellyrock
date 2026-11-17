@@ -52,9 +52,10 @@ namespace syncPlayConverge
       pickBarMs: syncPlayPlayback.PICK_CORRECTION_MS,
       ' How near the point a member must be for the server to take its Ready.
       pointToleranceMs: syncPlayPlayback.READY_TOLERANCE_MS,
-      ' How far ahead of the group a catch-up seeks, at least, and what it keeps over the last
-      ' seek's time.
+      ' How far ahead of the group a catch-up seeks, at least and at most, and what it keeps over
+      ' the slowest of the stream's recent seeks.
       leadMs: syncPlayPlayback.CATCH_UP_LEAD_MS,
+      leadMaxMs: syncPlayPlayback.CATCH_UP_LEAD_MAX_MS,
       leadMarginMs: syncPlayPlayback.CORRECTION_LEAD_MARGIN_MS,
       ' Catch-ups in a row that did not bring the member in step, before the group is asked to
       ' wait instead.
@@ -192,6 +193,8 @@ namespace syncPlayConverge
       group.pointSoughtTicks = invalid
     else if kind = "seek"
       syncPlayPlayer.told(player, "seek", action.owner, action.targetTicks, nowMs)
+      ' A catch-up is expected to take its lead: the group hears of a stall only past that.
+      if isValid(action.budgetMs) then syncPlayPlayer.setSeekBudget(player, syncPlayTime.asLong(action.budgetMs))
       if action.catchUp = true
         group.catchUps++
         group.pickPending = false
@@ -444,8 +447,10 @@ namespace syncPlayConverge
   end function
 
   ' One catch-up: seek ahead of the group by the time a seek takes plus a margin. The node then
-  ' arrives, its landing is read, and the rules above hold it until the group reaches it. When
-  ' the budget is spent or the last seek was given up, the group is asked to wait instead: once
+  ' arrives, its landing is read, and the rules above hold it until the group reaches it. The
+  ' member that is behind pays first: the group is asked to wait only when the member cannot
+  ' catch up alone, which is when the budget is spent, the last seek never landed, or its seeks
+  ' as a rule need a longer lead than a catch-up may take (seeksTooSlow). It is asked once
   ' it is answered, and again while the request fails, since a lost one leaves the member behind.
   ' A stall of the member's own allows the ask again, since the group may never have heard it.
   ' A playing node with no known position cannot ask, so it gets one more seek per group command.
@@ -455,7 +460,7 @@ namespace syncPlayConverge
     ' this: a seek some seconds ahead comes back playing from the stream's start.
     if group.catchUps > 0 and group.catchUpReloads < 1 and catchUpFellBack(player) then return { kind: "reload", fellBack: true }
     recover = false
-    if player.lastSeekGaveUp or group.catchUps >= policy.catchUpLimit
+    if player.lastSeekGaveUp or seeksTooSlow(player, policy) or group.catchUps >= policy.catchUpLimit
       position = syncPlayPlayer.positionAt(player, nowMs)
       if group.ask.state <> "flight" and isValid(position) and waitIsWanted(group, policy, nowMs, result)
         return { kind: "ask", what: "seek", positionTicks: syncPlayTime.asLong(position), waitOnMe: true }
@@ -469,16 +474,31 @@ namespace syncPlayConverge
         return invalid
       end if
     end if
-    leadMs& = syncPlayTime.asLong(player.lastSeekMs) + policy.leadMarginMs
+    ' The lead covers the slowest of the stream's recent seeks, so one slow seek lengthens the
+    ' next few catch-ups and nothing more. learnedLeadMs is that lead before the floor, for a
+    ' soak to say what a floor learned the same way would be.
+    learnedLeadMs& = syncPlayPlayer.slowestSeekMs(player) + policy.leadMarginMs
+    leadMs& = learnedLeadMs&
     if leadMs& < policy.leadMs then leadMs& = policy.leadMs
+    if leadMs& > policy.leadMaxMs then leadMs& = policy.leadMaxMs
     target = lineTicksAt(group, ctx.estimator, nowMs + leadMs&)
     if not isValid(target) or syncPlayPlayback.seekPastEnd(syncPlayTime.asLong(target), ctx.durationSeconds)
       if player.activity = "paused" then return groupResume(player)
       return invalid
     end if
-    seek = { kind: "seek", owner: "hold", targetTicks: syncPlayTime.asLong(target), catchUp: true, byPick: group.pickPending }
+    seek = { kind: "seek", owner: "hold", targetTicks: syncPlayTime.asLong(target), catchUp: true, byPick: group.pickPending, budgetMs: leadMs&, learnedLeadMs: learnedLeadMs&, seekSamples: player.seekSamples.count() }
     if recover then seek.recover = true
     return seek
+  end function
+
+  ' Whether this member's seeks are too slow for it to catch up alone: the lead a typical one
+  ' needs is past the longest a catch-up may take. Judged on the median of the stream's recent
+  ' seeks, so one slow seek among fast ones does not say so, and a member whose seeks turn fast
+  ' again catches up alone again.
+  function seeksTooSlow(player as object, policy as object) as boolean
+    typical = syncPlayPlayer.typicalSeekMs(player)
+    if not isValid(typical) then return false
+    return syncPlayTime.asLong(typical) + policy.leadMarginMs > policy.leadMaxMs
   end function
 
   ' Whether the node's last seek was a catch-up that landed nearer to where it started than to its

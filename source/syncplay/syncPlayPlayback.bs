@@ -60,6 +60,11 @@ namespace syncPlayPlayback
   ' seek slower than the lead lands behind the group with no hold to bring it in step. This
   ' covers a target 10 s past its keyframe on direct play (Stick 4K, 2026-11-11).
   const CATCH_UP_LEAD_MS = 3000
+  ' The comparison's longest lead for a catch-up, which is the longest it freezes this member's
+  ' picture alone. A member whose seeks need more asks the group to come to it instead. A viewing
+  ' choice, not a measurement: it sits under the wait for a stuck seek
+  ' (syncPlayConverge.defaultPolicy's stuckFullBufferMs).
+  const CATCH_UP_LEAD_MAX_MS = 6000
 
   ' --- positions ---
 
