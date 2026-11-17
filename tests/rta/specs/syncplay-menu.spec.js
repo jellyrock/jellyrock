@@ -35,6 +35,7 @@ import { hardRelaunch } from '../lib/driver.js';
 import { focusIsInHomeContent } from '../lib/home-list.js';
 import { focusOverhangIcon, startPlayback } from '../lib/nav.js';
 import { failRequests } from '../lib/failRequests.js';
+import { recordAssertion } from '../../../scripts/run-record.js';
 import {
   focusIsInside,
   getActiveVal,
@@ -567,6 +568,7 @@ it('while halted the menu offers Resume with Group, which opens the player follo
     'Resume with Group',
     'Leave Group',
   ]);
+  const resumePressedAt = Date.now();
   await press(ecp.Key.Ok);
   await waitDialogClosed('resume menu closed', { timeout: 10000 });
   await waitFor('subtype()', (v) => v === 'PlayerHostView', {
@@ -598,6 +600,9 @@ it('while halted the menu offers Resume with Group, which opens the player follo
       label: "this member's drift from the group inside the correction thresholds",
     },
   );
+  // The gates above pass on a join of any length inside their budgets, so the time from the
+  // press to in step goes in the run's ledger line, where a series of runs shows it growing.
+  recordAssertion({ name: 'resumeWithGroupJoinMs', verified: Date.now() - resumePressedAt });
   const resumed = readPlayer(ctx.heroId);
   expect(await resumed('state'), 'playing, in step with the group').toBe('playing');
   const position = await resumed('position');

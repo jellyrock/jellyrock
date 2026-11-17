@@ -216,7 +216,7 @@ A baseline is a filter over the ledger, never a deleted file. Each line carries 
 | `deviceKey` | Which Roku: the lock's `sha256(device-id)`, never an address | Devices are not interchangeable. `null` when the lock couldn't identify the device |
 | `outcome` | `passed`, `failed`, `interrupted`, `crashed` or `blocked` | The only key about the run itself, not the invocation |
 
-`assertions` (`{ <screen>: <count> }`) records how much each content assertion checked. A content assertion can check forty pairings or four and pass either way, so watch the count across a series; nothing asserts a floor on it, because fixture churn would make that fail for the wrong reason.
+`assertions` (`{ <screen>: <count> }`) records how much each content assertion checked. A content assertion can check forty pairings or four and pass either way, so watch the count across a series; nothing asserts a floor on it, because fixture churn would make that fail for the wrong reason. A case can also land a number it measured there, under its own name: `resumeWithGroupJoinMs` is the time from the OK press on Resume with Group to the member being in step, taken on the test machine's clock.
 
 ### Reading a baseline out of it
 
