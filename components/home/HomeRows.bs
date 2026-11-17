@@ -1,10 +1,10 @@
 ' bsc-disable-file print-locations (legacy print() sites; migration to m.log.* tracked by tech-debt.md#legacy-print-statements)
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPromise.bs"
-import "pkg:/source/constants/homeSlots.bs"
 import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/home/homeRowFailure.bs"
 import "pkg:/source/home/homeScreenLoad.bs"
+import "pkg:/source/home/homeSections.bs"
 import "pkg:/source/home/latestRows.bs"
 import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/translationKeys.bs"
@@ -226,21 +226,13 @@ end sub
 ' SECTION PLAN & SKELETON ROW CREATION
 ' ============================================
 
-' buildSectionPlan: Reads the homeSection settings (slots 0 to homeSlots.SLOT_COUNT - 1), returns ordered array of sections to display
+' buildSectionPlan: The sections to display, in order (homeSections.plan): the viewer's layout,
+' less any section the user's policy denies.
 '
 ' @return {roArray} Array of { type: string, settingIndex: integer }
 function buildSectionPlan() as object
-  plan = []
-  userSettings = m.global.user.settings
-
-  for i = 0 to homeSlots.SLOT_COUNT - 1
-    sectionName = LCase(userSettings["homeSection" + i.toStr()] ?? "none")
-    if sectionName <> "none"
-      plan.push({ type: sectionName, settingIndex: i })
-    end if
-  end for
-
-  return plan
+  globalUser = m.global.user
+  return homeSections.plan(globalUser.settings, globalUser.policy)
 end function
 
 ' createSkeletonRows: Creates empty HomeRow nodes for all planned sections except latestmedia.
@@ -1405,15 +1397,15 @@ sub setRowItemSize()
     m.sizeClock.mark()
   #end if
 
-  homeSections = m.top.content.getChildren(-1, 0)
-  newSizeArray = CreateObject("roArray", homeSections.count(), false)
-  newRowHeights = CreateObject("roArray", homeSections.count(), false)
-  newRowSpacings = CreateObject("roArray", homeSections.count(), false)
+  rows = m.top.content.getChildren(-1, 0)
+  newSizeArray = CreateObject("roArray", rows.count(), false)
+  newRowHeights = CreateObject("roArray", rows.count(), false)
+  newRowSpacings = CreateObject("roArray", rows.count(), false)
 
   interRowSpacing = 60
 
-  for i = 0 to homeSections.count() - 1
-    section = homeSections[i]
+  for i = 0 to rows.count() - 1
+    section = rows[i]
     slotSize = isValid(section.cursorSize) ? section.cursorSize : rowSlotSize.WIDE
     newSizeArray[i] = slotSize
 

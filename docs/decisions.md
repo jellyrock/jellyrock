@@ -2812,6 +2812,16 @@ The merge cannot carry Weblate work on `Old` made since the last release: it exi
 
 Keys are named for what the string is for, not its first words. A setting description is `SettingDesc` plus a short name for the setting; followup `positive-setting-names` renames the negatively worded settings first, then derives these from `settingName` again. First applied to 75 machine-named keys, moving 695 cells with none lost.
 
+## decision-id: home-rows-policy-gated
+
+**date**: 2026-11-17
+**status**: accepted
+**related-files**: `source/home/homeSections.bs`, `source/utils/userPolicy.bs`, `components/home/HomeRows.bs`, `source/utils/searchOutcome.bs`
+
+A Home section the user's policy denies is left out of the section plan (`homeSections.plan`), never shown as a failed row. For a user without Live TV access, On Now and Active Recordings are dropped: the server refuses their reads (403 on both, probed 2026-11-17 against 12.4.0 with a temporary restricted user; 10.7.7 answered 200 with no items), so the failure tile's retry could never succeed. The check moved from `searchOutcome.canSearchLiveTv` to `userPolicy.hasLiveTvAccess`, shared by Home and Search. `jellyfin-web` and `jellyfin-androidtv` skip On Now the same way.
+
+Ruled out: **treating a 403 as "remove the row"**. It sends a read on every Home load that can only fail, misses older servers that answer instead of refusing, and reverses `home-row-failure-tile` for one status. Accepted: the policy is read at sign-in, so an access change made mid-session shows after the next sign-in. Re-evaluate if users report that delay.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

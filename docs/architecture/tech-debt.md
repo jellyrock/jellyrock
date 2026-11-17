@@ -96,12 +96,6 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 ### Medium
 
-#### `homerows-spec-asserts-nothing`
-
-- **area**: [`components/home/HomeRows.bs`](../../components/home/HomeRows.bs) (`buildSectionPlan`)
-- **issue**: A suite once verified nothing: its assertions were `m.assertTrue(true)`, and every test called an undeclared `callFunc`, which runs nothing and raises nothing ([`components/CLAUDE.md`](../../components/CLAUDE.md)). The assertions, the `<interface>` declaration and the per-test build are fixed. The test configs now load `callfunc-interface` through `bsconfig-tests-base.json`, and `npm run validate` checks `bsconfig-tests.json`, so an undeclared `callFunc` in a spec fails the build. What is left: `buildSectionPlan()` has no direct test. [`homeSlots.spec.bs`](../../tests/source/unit/utils/homeSlots.spec.bs) covers the slot count, the settings fields, `user.SaveUserHomeSections()` and `user.hasHomeSectionData()`.
-- **direction**: Add a plan-level case for `buildSectionPlan()` once the seam exists, or extract the plan builder into `source/` as a pure function.
-
 #### `homerows-geometry-invariant-ungated`
 
 - **area**: [`components/home/HomeRows.bs`](../../components/home/HomeRows.bs) (`setRowItemSize`, `applyPendingRowRemovals`, `rowStructureChanged`), [`tests/rta/`](../../tests/rta/)
@@ -273,6 +267,13 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 - **direction**: One failure-state component (message, button label, the area to center in) that does the centering and the opening announcement itself, and reports a retry press on a field. What stays with each screen: when to show it, where focus goes (the grid moves focus to Try again; Search does too once its overlay has closed, and otherwise keeps it on the keyboard), and Search's announcement on arrival while the keyboard is open (`showSearchOutcome`).
 
 ### Low
+
+#### `user-policy-xml-defaults-diverge`
+
+- **area**: [`components/data/jellyfin/JellyfinUserPolicy.xml`](../../components/data/jellyfin/JellyfinUserPolicy.xml), [`source/data/SessionDataTransformer.bs`](../../source/data/SessionDataTransformer.bs) (`transformUserPolicy`)
+- **issue**: A `JellyfinUserPolicy` node the server never filled carries the XML field defaults: the one `setGlobals()` and `user.Logout()` create, or the one `transformUserPolicy` returns when the server sends no policy. Those differ from the fallbacks `transformUserPolicy` applies at sign-in. Only `enableLiveTvAccess` is aligned (`true`). The playback, transcoding, remuxing, downloading, device, remote-access, sharing and preference fields have no XML value, so they read `false` on that node and `true` after sign-in. `AudioPlayerView` already reads `enableAudioPlaybackTranscoding`. No sign-in path reaches a never-filled policy today, so the first feature to gate on one of these fields inherits the wrong answer silently.
+- **severity**: Low. Unreachable on today's sign-in paths, and the fix is mechanical.
+- **direction**: Give each XML field the default `transformUserPolicy` uses, so a never-filled node and a sign-in agree. Add a spec that compares a fresh node's fields with the transformer's output for an empty policy object, so the two cannot drift again.
 
 #### `playerhostview-second-subsystem`
 

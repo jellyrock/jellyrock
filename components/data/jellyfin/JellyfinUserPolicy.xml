@@ -42,7 +42,9 @@
     <field id="enableContentDeletionFromFolders" type="array" />
 
     <!-- Live TV Permissions -->
-    <field id="enableLiveTvAccess" type="boolean" />
+    <!-- true, as SessionDataTransformer defaults it: a policy never filled reads as allowed
+         (userPolicy.hasLiveTvAccess), not as a denial that hides the Live TV rows. -->
+    <field id="enableLiveTvAccess" type="boolean" value="true" />
     <field id="enableLiveTvManagement" type="boolean" />
 
     <!-- Channel Permissions -->

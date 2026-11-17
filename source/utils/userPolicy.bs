@@ -1,0 +1,23 @@
+import "pkg:/source/utils/misc.bs"
+
+' Permission checks a screen makes before asking the server for something the user's policy
+' may deny. A read the server refuses would otherwise show as a failure no retry can fix.
+'
+' Each check takes m.global.user.policy (a JellyfinUserPolicy node, or an AA in tests). A
+' policy, or a field, that is missing reads as allowed, as SessionDataTransformer defaults it.
+namespace userPolicy
+
+  ' Whether the user may read Live TV: its programs, channels and recordings. Jellyfin refuses
+  ' those reads (403) to a user without its LiveTvAccess policy; older servers that do not
+  ' check still answer them.
+  '
+  ' @param {dynamic} policy - m.global.user.policy, or invalid
+  ' @return {boolean} false only when the policy denies Live TV access
+  function hasLiveTvAccess(policy as dynamic) as boolean
+    if not isValid(policy) then return true
+    access = policy.enableLiveTvAccess
+    if not isValid(access) then return true
+    return access <> false
+  end function
+
+end namespace
