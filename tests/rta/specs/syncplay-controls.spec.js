@@ -617,14 +617,15 @@ it("the remote's play/pause during a group Seek pauses the group and does not we
 // the node reads behind and seeks ahead (with a toast, since nothing the viewer pressed looks like a
 // jump); lowered, it reads ahead and holds. The pick is written to the OSD's `syncPlayPick`, the
 // field the gear's picker sets, so `VideoPlayerView.onSyncPlayPicked` runs as it does for a viewer.
-// Each pick waits for `sync.correctionsDone` to count the correction it started: a drift reading,
-// the toast and the node's state can all still show the pick before. The first raise is the gear's
-// smallest step. A pick's seek that outlasts its budget is told to the group as a stall, so the group
-// waits and its Unpause is expected then; `sync.slowSeeks` tells the two apart. Nothing here puts the member exactly in step (the normal bars leave a resume up to
-// `SKIP_TO_SYNC_MIN_MS` behind, and a seek lands a little late), so each pick is sized to cross the
-// bar from where the member can be: one step up from a member not ahead, then two steps down from
-// wherever the second raise's seek landed. One step down is the same bar the other way (`Abs`),
-// which the unit rows pin.
+// Each pick waits for the app's answer to it: `sync.correctionsDone` counting the correction it
+// started, or `sync.picksSettled` counting the verdict that the member already rests in step, so
+// there is nothing to correct. A drift reading, the toast and the node's state can all still show
+// the pick before either. The first raise is the gear's smallest step. A pick's seek that outlasts
+// its budget is told to the group as a stall, so the group waits and its Unpause is expected then;
+// `sync.slowSeeks` tells the two apart. Nothing here puts the member exactly in step (the normal
+// bars leave a resume up to `SKIP_TO_SYNC_MIN_MS` behind, and a seek lands a little late), and a
+// member resting more than the bar on the far side absorbs a step. So a pick can settle without a
+// correction, and the case asks only that each pick is answered and the member ends in step.
 // `syncPlayPlayback.PICK_CORRECTION_MS`: a check a pick armed corrects past this, either way.
 const PICK_BAR_MS = 50;
 // `playbackSettingsMenu.TIME_OFFSET_STEP_MS`: the gear's smallest pick, under the normal bars.
@@ -639,33 +640,44 @@ const pickTimeOffset = (ms) =>
     keyPath: `#${heroId}.#osd.syncPlayPick`,
     value: { kind: 'timeOffset', value: ms },
   });
-const correctionsDone = () => getGlobalVal('syncPlayManager.sync.correctionsDone');
-// Picks `ms` and waits for the correction it started to run to its resume, playing again.
-async function pickAndWaitForCorrection(ms, { toast = false } = {}) {
-  const before = await correctionsDone();
+// Both counts in one read, so a wait compares a pair read together. Each only rises.
+const pickAnswers = async () => {
+  const done = await getGlobalVal('syncPlayManager.sync.correctionsDone');
+  const settled = await getGlobalVal('syncPlayManager.sync.picksSettled');
+  expect(typeof done, 'the correction count was read').toBe('number');
+  expect(typeof settled, 'the settled-pick count was read').toBe('number');
+  return { done, settled };
+};
+// Picks `ms` and waits for the app's answer: a correction run to its resume, playing again, or the
+// verdict that the member was already in step. Returns which one it was.
+async function pickAndWaitForAnswer(ms, { toast = false } = {}) {
+  const before = await pickAnswers();
   await pickTimeOffset(ms);
   expect(
     await getGlobalVal('user.settings.playbackSyncPlayTimeOffsetMs'),
     'the pick was saved',
   ).toBe(ms);
-  if (toast)
+  const answer = await waitFor(
+    'syncPlayManager.sync.picksSettled',
+    (a) => a.done > before.done || a.settled > before.settled,
+    {
+      read: pickAnswers,
+      timeout: 20000,
+      label: `the app's answer to the pick of ${ms} ms: a correction run to its resume, or in step`,
+    },
+  );
+  const corrected = answer.done > before.done;
+  // The toast is raised only for a seek a pick caused, so a pick found in step shows none.
+  if (toast && corrected)
     await waitToast('Syncing with the group', {
       label: `the toast for the seek after the pick of ${ms} ms`,
     });
-  await waitFor(
-    'syncPlayManager.sync.correctionsDone',
-    (v) => typeof v === 'number' && v > before,
-    {
-      read: getGlobalVal,
-      timeout: 20000,
-      label: `the correction the pick of ${ms} ms started, run to its resume`,
-    },
-  );
   await waitFor('state', (s) => s === 'playing', {
     read: playerState,
     timeout: 15000,
     label: `playing again after the pick of ${ms} ms`,
   });
+  return corrected;
 }
 it('a time offset picked in the gear corrects the drift at once, without an Unpause', async (testCtx) => {
   if (!pushAvailable)
@@ -700,17 +712,17 @@ it('a time offset picked in the gear corrects the drift at once, without an Unpa
   try {
     // Raised twice: behind past the bar, so the node seeks ahead. The toast is read on the first
     // only, since the second's could be the first's still on screen.
-    await pickAndWaitForCorrection(PICK_STEP_MS, { toast: true });
+    await pickAndWaitForAnswer(PICK_STEP_MS, { toast: true });
     heldTheGroup = await aPickSeekWasSlow();
     if (!heldTheGroup) {
-      await pickAndWaitForCorrection(2 * PICK_STEP_MS);
+      await pickAndWaitForAnswer(2 * PICK_STEP_MS);
       heldTheGroup = await aPickSeekWasSlow();
     }
     if (!heldTheGroup) {
       // Lowered: ahead past the bar, so the node holds until the group arrives, and lands in step
       // (a hold resumes on time). A reading from before the hold is ahead past the bar, so it
       // cannot pass this wait.
-      await pickAndWaitForCorrection(0);
+      await pickAndWaitForAnswer(0);
       await waitFor(
         'syncPlayManager.sync.playbackDiffMs',
         (v) => typeof v === 'number' && Math.abs(v) <= PICK_BAR_MS,
@@ -736,7 +748,7 @@ it('a time offset picked in the gear corrects the drift at once, without an Unpa
   } else {
     expect(
       await getGlobalVal('syncPlayManager.sync.lastCommand.emittedatms'),
-      'no Unpause came in between: the picks alone corrected it',
+      'no Unpause came in between: the picks alone settled it',
     ).toBe(unpausedAt);
   }
   expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);

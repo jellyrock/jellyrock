@@ -383,6 +383,20 @@ namespace tests
       m.assertFalse(m.manager.callFunc("control", { kind: "timeOffset" }), "halted: the pick stays a setting")
     end function
 
+    @it("publishes the count of picks found in step, which a pick with no drift to judge leaves alone")
+    function _()
+      m.joinGroup()
+      m.playGroupItem()
+      m.manager.callFunc("playerEvent", { kind: "mounted" })
+      m.assertEqual(m.manager.sync.picksSettled, 0, "published from the start, beside correctionsDone")
+      m.assertEqual(m.manager.sync.correctionsDone, 0)
+      m.global.user.settings.playbackSyncPlayTimeOffsetMs = 100
+      m.assertTrue(m.manager.callFunc("control", { kind: "timeOffset" }))
+      ' No clock estimate, so the comparison has no drift to judge: the pick is neither found in step nor corrected.
+      m.assertEqual(m.manager.sync.picksSettled, 0)
+      m.assertEqual(m.manager.sync.correctionsDone, 0)
+    end function
+
     @it("the drift is unknown until an Unpause is in force")
     function _()
       m.joinGroup()

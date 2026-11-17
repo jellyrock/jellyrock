@@ -179,6 +179,11 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // `publish` writes the count; it only grows, so "above the count read before" cannot revert.
   // `syncplay-controls.spec.js` waits on it after each time offset pick.
   'syncPlayManager.sync.correctionsDone',
+  // `SyncPlayManager.carryOut` counts each time offset pick the comparison found the member
+  // already in step (the `settled` action, once per pick since `applied` clears `pickPending`),
+  // and `publish` writes the count; it only grows, so "above the count read before" cannot
+  // revert. `syncplay-controls.spec.js` waits on it, beside `correctionsDone`, after each pick.
+  'syncPlayManager.sync.picksSettled',
   // `SyncPlayManager.publish` writes whether a correction is under way (`correctionInFlight`: the
   // player model holds a seek or a pause owned by a hold). The waited-for `false` is
   // terminal: it holds until the next drift arms a correction, which the step's own seek is what

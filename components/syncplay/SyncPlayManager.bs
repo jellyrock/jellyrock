@@ -161,6 +161,10 @@ sub ensureReady()
   ' whether one was under way when the comparison last settled.
   m.correctionsEnded = 0
   m.wasCorrecting = false
+  ' How many time offset picks the comparison found the member already in step for, so no
+  ' correction ran, published as picksSettled: a spec that waits on a pick's correction takes this
+  ' as the other answer.
+  m.picksSettled = 0
   ' Which of the receiver's numbered frames have been applied (syncPlayInbox).
   m.inbox = syncPlayInbox.newInbox()
   ' Whether inboxTimer runs, and how many of its checks in a row found no group.
@@ -1178,6 +1182,7 @@ sub publish()
       extraOffsetMs: m.estimator.extraOffsetMs,
       loadCount: m.loadCount,
       correctionsDone: m.correctionsEnded,
+      picksSettled: m.picksSettled,
       correctionInFlight: correctionInFlight(),
       groupSeeks: m.groupSeeks,
       readiesSent: m.readiesSent,
@@ -1540,6 +1545,7 @@ sub carryOut(action as object)
     ' "settled" changes only the models. A notice also tells the viewer, once per outage: the
     ' requests keep going, and playback is left as it is.
     if kind = "settled"
+      m.picksSettled++
       settledDrift = publishedDriftMs()
       if isValid(settledDrift) then m.log.info("time offset pick found the member in step", "driftMs", syncPlayTime.asLong(settledDrift).toStr())
     end if

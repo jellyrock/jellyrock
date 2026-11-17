@@ -48,8 +48,10 @@ namespace syncPlayPlayback
   const SETTLE_CORRECTION_MS = 150
   ' The bar, either way, for a check a time offset pick armed: the viewer asked for a shift, so a
   ' small one is worth making. Half the gear's step (playbackSettingsMenu.TIME_OFFSET_STEP_MS, a unit
-  ' test pins the two), so it sits halfway between the drift reading's own noise and one step: every
-  ' step corrects, and noise alone never does. Normal drift keeps the bars above, so jitter never seeks.
+  ' test pins the two), so it sits halfway between the drift reading's own noise and one step: a step
+  ' from a member in step crosses it, and noise alone never does. A member resting more than the bar on
+  ' the far side can absorb one step, and then ends within the bar of the offset picked, with no
+  ' correction. Normal drift keeps the bars above, so jitter never seeks.
   const PICK_CORRECTION_MS = 50
   ' What a lead keeps over the last seek's time, for a seek a little slower than the one before.
   const CORRECTION_LEAD_MARGIN_MS = 500
