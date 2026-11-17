@@ -98,11 +98,13 @@ beforeAll(async () => {
   const libraries = await getLibraries(session);
   const moviesId = libraryIdFor(libraries, 'movies');
   const hero = await getHero(session, moviesId);
-  // A server without the configured hero title is walked to its first movie (index 0), so the id
-  // is that movie's: an empty one would make moviesOtherThanHero() return the group's own video.
-  const heroId = hero.id || (await firstMovie(session, { parentId: moviesId })).id;
+  // A server without the configured hero title is walked to its first movie, so the id and the
+  // tile are that movie's: an empty id would make moviesOtherThanHero() return the group's own
+  // video, and tile 0 can be a collection on a library that groups its movies.
+  const fallback = hero.id ? hero : await firstMovie(session, { parentId: moviesId });
+  const heroId = fallback.id;
   expect(heroId, 'a movie in the movies library for the group to play').toBeTruthy();
-  ctx = { heroIndex: hero.index, heroId, session, libraries };
+  ctx = { heroIndex: fallback.index, heroId, session, libraries };
   // A group a previous run left behind would double the rows this spec counts.
   await syncPlay(member, 'Leave').catch(() => {});
   const expectedServer = await seedHome(session, LOCALE);
@@ -1171,14 +1173,19 @@ it('a membership the app exit left behind is remembered, and ended at the next l
     { base: 'global', keyPath: 'syncPlayManager', funcName: 'join', funcParams: [group.GroupId] },
     { timeout: 10000 },
   );
-  await waitFor('#overhang.#cluster.#syncplayIcon.isActive', isActive, {
-    label: 'the icon turns active on the join',
+  // The case before this one leaves the Roku in a group of the same name, with the icon active.
+  // Only this group's id says this join arrived.
+  const joinedId = group.GroupId.replaceAll('-', '');
+  await waitFor('syncPlayManager.groupId', (v) => v === joinedId, {
+    read: getGlobalVal,
+    label: "this group's join reached the Roku",
     timeout: 20000,
   });
-  const before = (await odc.readRegistry())?.values?.[session.userId] ?? {};
-  expect(before.syncPlayGroup, 'the registry remembers the group while in it').toContain(
-    GROUP_NAME,
+  expect(await getVal('#overhang.#cluster.#syncplayIcon.isActive'), 'the icon is active').toBe(
+    true,
   );
+  const before = (await odc.readRegistry())?.values?.[session.userId] ?? {};
+  expect(before.syncPlayGroup, 'the registry remembers this group while in it').toContain(joinedId);
 
   // The app exit: nothing posts Leave. Home's first run then leaves whatever the registry
   // remembers, before Home finishes mounting, and forgets it.

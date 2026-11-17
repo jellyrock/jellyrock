@@ -217,6 +217,11 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // (`followAgain`, a join) or a halt (`haltFollowing`, a leave) moves: false holds until the next
   // follow. `syncplay-menu.spec.js` waits on it after Back during a catch-up's load.
   'syncPlayManager.following',
+  // `SyncPlayManager.publish` writes `groupId` from the membership state, which only a GroupJoined
+  // or a GroupLeft/NotInGroup frame moves: a group's id holds until this member leaves it.
+  // `syncplay-menu.spec.js` waits on it to know a join of one group arrived, where the icon and
+  // the group's name can still be an earlier group's.
+  'syncPlayManager.groupId',
   // `SyncPlayManager.publishedDriftMs` gives the drift from the group, published after every event
   // in RTA builds (`#if ENABLE_RTA` in `converge`); it is unknown unless the node plays with a
   // measured position and the group plays. Past its thresholds the manager corrects it, and it then holds inside them,
