@@ -1838,16 +1838,6 @@ Closes when the simulator can make a seek fall back to the stream's start on a y
 
 An RTA run printed an uncaught `read ECONNRESET` (`node:internal/process/promises`, `triggerUncaughtException`) right after the RTA build deployed, then ran on and passed 400 of 400 steps (`syncplay-stress` mix, Stick 4K, 2026-11-16). Which process or socket raised it was not found: a promise in the runner or a library with no catch. A rejection nothing handles can end a run that should go on. Close it by rerunning `npm run test:rta -- syncplay-stress` with a short `RTA_STRESS_STEPS` list, finding where the rejection comes from, and catching it there. Not fixed now: the source is unknown and needs a reproduction first.
 
-#### The Resume with Group RTA case does not record how long the join took `[fid: rta-resume-join-time-unrecorded]` `[captured 2026-11-16]`
-
-The Resume with Group case in `tests/rta/specs/syncplay-menu.spec.js` now waits for the member to be in step with the group, with a 45 s budget, where it used to fail on a 15 s window (`30c16762`). A join that gets slower no longer fails the case, and nothing records how long it took: Vitest hides a passing case's console lines, and `syncplay-stress.spec.js` keeps its own `note()`, which is not exported.
-
-Loads with the re-encode restart took 12.1 to 16.8 s on the Stick 4K between 2026-11-10 and 2026-11-16 (`screen-load paint` in the run consoles).
-
-Not done now: it needs a shared helper in `tests/rta/lib` that writes a passing case's number to the run's record, which is a design choice for the run record, not a change to one case.
-
-Close it when the case writes the time from the OK press on Resume with Group to its in-step gate passing into the run's record.
-
 #### Upstream watch: drop the `roku-test-automation` closed-socket patch once upstream guards it `[fid: rta-closed-socket-patch-upstream]` `[captured 2026-11-15]`
 
 Watching upstream: `roku-test-automation` releases after 2.2.2 (including the 3.0.0-alpha line) that guard `handleClientSocketEvent()` and `closeSocket()` in `device/components/RTA_OnDeviceComponentTask.brs` against a client socket already closed.
