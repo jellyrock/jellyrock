@@ -79,8 +79,9 @@ namespace syncPlayGroup
       pointRetried: false,
       ' Seeks written to free a node that reads playing and takes no pause, since the last command.
       recoverSeeks: 0,
-      ' The playlist item whose end this member asked the group to move on from.
-      nextAskedFor: "",
+      ' The load (syncPlayPlayer's loadCount) whose end this member asked the group to move on
+      ' from: an item that restarts is a new load, so its next end is asked again.
+      nextAskedForLoad: 0,
       ' Whether the viewer was told the group cannot be reached, so it is said once.
       toldUnreachable: false,
       ' The viewer picked a time offset: the next settled reading is judged by the tighter bar.

@@ -1835,6 +1835,26 @@ namespace tests
       m.assertEqual(m.kindOf(m.decide(player, group, 10300&)), "")
     end function
 
+    @it("the same item restarted and finished again asks the group for the next one again")
+    function _()
+      player = m.playingAt(m.at65s, 10000&)
+      group = m.playingLine()
+      syncPlayPlayer.finished(player, 10100&)
+      first = m.decide(player, group, 10100&)
+      m.assertEqual(first.action.what, "next")
+      syncPlayConverge.applied(player, group, first.action, 10100&)
+      syncPlayGroup.requestArrived(group, "ask", "next", group.ask.id)
+      ' The group answers with the same item again: a new load of it, played to its end.
+      syncPlayPlayer.told(player, "load", "group", 0&, 11000&)
+      syncPlayPlayer.mounted(player, 0&, 11500&)
+      syncPlayPlayer.nodeState(player, "playing", 11900&)
+      syncPlayPlayer.reading(player, m.at65s, 12000&)
+      syncPlayPlayer.finished(player, 12100&)
+      second = m.decide(player, group, 12100&)
+      m.assertEqual(m.kindOf(second), "ask")
+      m.assertEqual(second.action.what, "next")
+    end function
+
     @it("on the playlist's last item the member leaves the player once it has asked")
     function _()
       player = m.playingAt(m.at65s, 10000&)

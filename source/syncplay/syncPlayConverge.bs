@@ -214,7 +214,7 @@ namespace syncPlayConverge
       if action.where = true then group.whereAskedAtMs = nowMs
     else if kind = "ask"
       syncPlayGroup.requestSent(group, "ask", action.what, nowMs)
-      if action.what = "next" then group.nextAskedFor = group.playingItemId
+      if action.what = "next" then group.nextAskedForLoad = player.loadCount
       if action.waitOnMe = true then group.askedWait = true
       if action.landing = true
         group.landingAsked = true
@@ -613,7 +613,7 @@ namespace syncPlayConverge
     end if
     if player.activity = "finished"
       ' The group moves on together: the server answers every member with the next item.
-      asked = group.nextAskedFor = group.playingItemId
+      asked = group.nextAskedForLoad = player.loadCount
       if not asked or (slot.state = "failed" and slot.what = "next") then return { kind: "ask", what: "next" }
       ' On the playlist's last item the server answers nothing, so this member leaves the player.
       if ctx.isLastItem = true then return { kind: "leave" }
