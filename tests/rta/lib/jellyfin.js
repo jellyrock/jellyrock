@@ -407,23 +407,29 @@ export const getHero = (session, parentId) =>
   findMovie(session, RTA_CONFIG.heroMovie, { parentId });
 
 /**
- * First movie (by SortName) on a server, with its title: `{ id, name }` (or `{ '', '' }`).
- * Resolved at runtime so a take never assumes a specific title exists on a given demo server
- * (for example the cast-to-another-server take needs a real movie + name on the TARGET
- * server, which may differ from RTA_CONFIG.heroMovie). The name feeds the cast's
- * `itemName` switch-prompt arg. With `parentId`, the first movie of that library: the one a
- * grid walk to index 0 opens, as `findMovie` reads an index.
+ * First movie (by SortName) on a server, with its title and where it sits in the list:
+ * `{ id, name, index }` (or `{ '', '', 0 }`). Resolved at runtime so a take never assumes a
+ * specific title exists on a given demo server (for example the cast-to-another-server take
+ * needs a real movie + name on the TARGET server, which may differ from RTA_CONFIG.heroMovie).
+ * The name feeds the cast's `itemName` switch-prompt arg. With `parentId`, the first movie of
+ * that library, and `index` is the tile a grid walk opens for it, as `findMovie` reads an index.
+ *
+ * A library that groups movies into collections answers this query with the collections in
+ * place of their movies (type `BoxSet`), and a collection's id names no video. So the first
+ * entry of type `Movie` is taken, not the first entry.
  */
 export async function firstMovie(session, { parentId } = {}) {
   const url =
     `${session.serverUrl}/Items?UserId=${session.userId}` +
     (parentId ? `&ParentId=${parentId}` : '') +
-    `&IncludeItemTypes=Movie&Recursive=true&SortBy=SortName&SortOrder=Ascending&Limit=1`;
+    `&IncludeItemTypes=Movie&Recursive=true&SortBy=SortName&SortOrder=Ascending`;
   // Throws on a failed request; the empty result below means the server answered and
   // the library has no movies. See the module header.
   const data = await getJson(url, tokenHeader(session.token));
-  const item = data?.Items?.[0];
-  return item ? { id: item.Id, name: item.Name } : { id: '', name: '' };
+  const items = data?.Items || [];
+  const index = items.findIndex((i) => i.Type === 'Movie');
+  if (index < 0) return { id: '', name: '', index: 0 };
+  return { id: items[index].Id, name: items[index].Name, index };
 }
 
 /**
