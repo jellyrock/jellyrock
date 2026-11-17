@@ -30,7 +30,7 @@
     "lint-staged": "17.6.0",
     "markdownlint-cli2": "0.24.1",
     "patch-package": "8.0.1",
-    "prettier": "3.9.10",
+    "prettier": "3.10.1",
     "rimraf": "6.1.4",
     "roku-deploy": "3.18.4",
     "roku-test-automation": "2.2.2",
