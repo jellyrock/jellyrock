@@ -96,12 +96,6 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 ### Medium
 
-#### `homerows-spec-asserts-nothing`
-
-- **area**: [`components/home/HomeRows.bs`](../../components/home/HomeRows.bs) (`buildSectionPlan`)
-- **issue**: A suite once verified nothing: its assertions were `m.assertTrue(true)`, and every test called an undeclared `callFunc`, which runs nothing and raises nothing ([`components/CLAUDE.md`](../../components/CLAUDE.md)). The assertions, the `<interface>` declaration and the per-test build are fixed. The test configs now load `callfunc-interface` through `bsconfig-tests-base.json`, and `npm run validate` checks `bsconfig-tests.json`, so an undeclared `callFunc` in a spec fails the build. What is left: `buildSectionPlan()` has no direct test. [`homeSlots.spec.bs`](../../tests/source/unit/utils/homeSlots.spec.bs) covers the slot count, the settings fields, `user.SaveUserHomeSections()` and `user.hasHomeSectionData()`.
-- **direction**: Add a plan-level case for `buildSectionPlan()` once the seam exists, or extract the plan builder into `source/` as a pure function.
-
 #### `homerows-geometry-invariant-ungated`
 
 - **area**: [`components/home/HomeRows.bs`](../../components/home/HomeRows.bs) (`setRowItemSize`, `applyPendingRowRemovals`, `rowStructureChanged`), [`tests/rta/`](../../tests/rta/)
