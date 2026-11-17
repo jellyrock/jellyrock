@@ -876,9 +876,10 @@ sub applyQueue(reason as string, queueItems as object, lastUpdateMs as longinteg
     m.claimedStart = invalid
   else
     if not newPlaylist then queueManager.callFunc("startCurrentFresh")
-    ' The start opened below replaces the claim's, as for any newer press.
+    ' A play this viewer handed over keeps the start its press opened, and the player this
+    ' launch mounts takes it (syncPlayQueue.opensPlaybackStart). Any other launch opens one.
+    if syncPlayQueue.opensPlaybackStart(action, hasOpenClaim()) then queueManager.callFunc("beginPlaybackStart", "")
     m.claimedStart = invalid
-    queueManager.callFunc("beginPlaybackStart", "")
     queueManager.callFunc("playQueue")
   end if
   m.comparison.ownWrite = false

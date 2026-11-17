@@ -366,6 +366,16 @@ namespace syncPlayQueue
     return "launch"
   end function
 
+  ' Whether performing the load opens a playback start of its own. A launch that answers a play
+  ' this viewer handed to the group keeps the start the press opened, so the spinner's text and
+  ' the start's time limit count from the press. A reload in place opens none: the mounted
+  ' player took the press's start.
+  ' @param action - loadAction's answer
+  ' @param hasOpenClaim - whether the start a handed play opened is still open
+  function opensPlaybackStart(action as string, hasOpenClaim as boolean) as boolean
+    return action = "launch" and not hasOpenClaim
+  end function
+
   ' Whether a fetched play queue still applies: the member is in the group and still following, and
   ' no newer update arrived while the items were in flight (that one applies its own).
   ' @param state - the membership state

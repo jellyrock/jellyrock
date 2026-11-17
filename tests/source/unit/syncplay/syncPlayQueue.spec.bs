@@ -570,6 +570,26 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("opensPlaybackStart()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a launch with no play of this viewer's waiting opens a start")
+    function _()
+      m.assertTrue(syncPlayQueue.opensPlaybackStart("launch", false))
+    end function
+
+    @it("a launch that answers this viewer's own play keeps the start its press opened")
+    function _()
+      m.assertFalse(syncPlayQueue.opensPlaybackStart("launch", true))
+    end function
+
+    @it("a reload in place opens none, with or without a play waiting")
+    function _()
+      m.assertFalse(syncPlayQueue.opensPlaybackStart("remount", false))
+      m.assertFalse(syncPlayQueue.opensPlaybackStart("remount", true))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("appliesFetchedQueue()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
