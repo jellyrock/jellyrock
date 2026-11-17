@@ -1,0 +1,254 @@
+import "pkg:/source/GridView/libraryGrid.bs"
+import "pkg:/source/utils/headerStrip.bs"
+
+namespace tests
+
+  ' libraryGrid: every library grid cell comes from a shape, a count of cells per row and
+  ' a count of text lines. These pin what every count in the table has to satisfy, so a
+  ' width that breaks the 3 pixel grid, overruns the header strip or crowds the focus ring
+  ' fails here, before anyone sees it on a TV.
+  @suite("libraryGrid - the library grid's derived cell")
+  class LibraryGridTests extends tests.BaseTestSuite
+
+    private function everyCell() as object
+      cells = []
+      for each shape in [libraryGrid.SHAPE_PORTRAIT, libraryGrid.SHAPE_SQUARE]
+        for columns = libraryGrid.MIN_COLUMNS to libraryGrid.MAX_COLUMNS
+          for textLines = 0 to 2
+            cells.push({ name: `${shape} ${columns} ${textLines}`, shape: shape, cell: libraryGrid.cell(shape, columns, textLines) })
+          end for
+        end for
+      end for
+      return cells
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("cell() - what every count holds to")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("puts every number on the 3 pixel grid")
+    function _()
+      for each entry in m.everyCell()
+        c = entry.cell
+        for each value in [c.itemSize[0], c.itemSize[1], c.rowHeights[0], c.itemSpacing[0], c.itemSpacing[1], c.rowPitch]
+          m.assertEqual(value mod 3, 0, entry.name)
+        end for
+      end for
+    end function
+
+    @it("ends a row within 6 pixels of the header strip's right edge, never past it")
+    function _()
+      for each entry in m.everyCell()
+        c = entry.cell
+        rowWidth = c.columns * c.itemSize[0] + (c.columns - 1) * c.itemSpacing[0]
+        m.assertTrue(rowWidth <= headerStrip.WIDTH, entry.name)
+        m.assertTrue(headerStrip.WIDTH - rowWidth <= 6, entry.name)
+      end for
+    end function
+
+    @it("never puts cells closer than the focus ring needs")
+    function _()
+      for each entry in m.everyCell()
+        m.assertTrue(entry.cell.itemSpacing[0] >= libraryGrid.MIN_GAP, entry.name)
+        m.assertTrue(entry.cell.itemSpacing[1] >= libraryGrid.MIN_GAP, entry.name)
+      end for
+    end function
+
+    @it("keeps the row as tall as the slot and the shape's ratio")
+    function _()
+      for each entry in m.everyCell()
+        c = entry.cell
+        m.assertEqual(c.rowHeights[0], c.itemSize[1], entry.name)
+        if entry.shape = libraryGrid.SHAPE_SQUARE
+          m.assertEqual(c.itemSize[1], c.itemSize[0], entry.name)
+        else
+          m.assertEqual(c.itemSize[1] * 2, c.itemSize[0] * 3, entry.name)
+        end if
+      end for
+    end function
+
+    @it("draws smaller cells as a row holds more of them")
+    function _()
+      for each shape in [libraryGrid.SHAPE_PORTRAIT, libraryGrid.SHAPE_SQUARE]
+        for columns = libraryGrid.MIN_COLUMNS + 1 to libraryGrid.MAX_COLUMNS
+          wider = libraryGrid.cell(shape, columns - 1, 1).itemSize[0]
+          m.assertTrue(libraryGrid.cell(shape, columns, 1).itemSize[0] < wider, `${shape} ${columns}`)
+        end for
+      end for
+    end function
+
+    @it("grows the row gap by one line slot for each line of text")
+    function _()
+      for each shape in [libraryGrid.SHAPE_PORTRAIT, libraryGrid.SHAPE_SQUARE]
+        one = libraryGrid.cell(shape, 6, 1)
+        two = libraryGrid.cell(shape, 6, 2)
+        m.assertEqual(two.itemSpacing[1] - one.itemSpacing[1], libraryGrid.TEXT_LINE_HEIGHT, shape)
+      end for
+    end function
+
+    @it("makes the row gap equal the column gap when a cell shows no text")
+    function _()
+      for each entry in m.everyCell()
+        if entry.name.right(2) = " 0" then m.assertEqual(entry.cell.itemSpacing[1], entry.cell.itemSpacing[0], entry.name)
+      end for
+    end function
+
+    @it("keeps six portrait cells at the size approved with the header strip")
+    function _()
+      c = libraryGrid.cell(libraryGrid.SHAPE_PORTRAIT, 6, 1)
+
+      m.assertEqual(c.itemSize, [252, 378])
+      m.assertEqual(c.itemSpacing, [42, 69])
+    end function
+
+    @it("draws a count out of range as the nearest one in range")
+    function _()
+      m.assertEqual(libraryGrid.cell(libraryGrid.SHAPE_PORTRAIT, 1, 1).columns, libraryGrid.MIN_COLUMNS)
+      m.assertEqual(libraryGrid.cell(libraryGrid.SHAPE_PORTRAIT, 40, 1).columns, libraryGrid.MAX_COLUMNS)
+    end function
+
+    @it("draws an unknown shape as a portrait")
+    @params("wide")
+    @params(invalid)
+    function _(shape)
+      m.assertEqual(libraryGrid.cell(shape, 7, 1), libraryGrid.cell(libraryGrid.SHAPE_PORTRAIT, 7, 1))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("minColumns() and choices()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("offers every count under the header strip")
+    function _()
+      m.assertEqual(libraryGrid.minColumns(libraryGrid.SHAPE_PORTRAIT, headerStrip.CONTENT_TOP), 3)
+      m.assertEqual(libraryGrid.choices(libraryGrid.SHAPE_PORTRAIT, headerStrip.CONTENT_TOP), [3, 4, 5, 6, 7, 8, 9, 10, 11])
+    end function
+
+    @it("starts at the first count whose whole poster shows when the grid starts lower")
+    ' From y 438, four to a row is a poster 621 tall that ends one pixel past the screen
+    function _()
+      m.assertEqual(libraryGrid.minColumns(libraryGrid.SHAPE_PORTRAIT, 438), 5)
+      m.assertEqual(libraryGrid.choices(libraryGrid.SHAPE_PORTRAIT, 438)[0], 5)
+    end function
+
+    @it("shows one whole poster at every count it offers")
+    function _()
+      for each top in [headerStrip.CONTENT_TOP, 438, 600]
+        for each shape in [libraryGrid.SHAPE_PORTRAIT, libraryGrid.SHAPE_SQUARE]
+          for each columns in libraryGrid.choices(shape, top)
+            bottom = top + libraryGrid.POSTER_TOP_OFFSET + libraryGrid.cell(shape, columns, 1).itemSize[1]
+            m.assertTrue(bottom <= libraryGrid.SCREEN_HEIGHT, `${shape} ${columns} at ${top}`)
+          end for
+        end for
+      end for
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resolveColumns()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("honors a saved count in range")
+    @params("3", 3)
+    @params("7", 7)
+    @params("11", 11)
+    @params(" 9 ", 9)
+    function _(saved, expected)
+      m.assertEqual(libraryGrid.resolveColumns(saved, libraryGrid.SHAPE_PORTRAIT, headerStrip.CONTENT_TOP), expected)
+    end function
+
+    @it("draws the shape's default for anything else")
+    @params(invalid)
+    @params("")
+    @params("2")
+    @params("12")
+    @params("7.5")
+    @params("large")
+    function _(saved)
+      m.assertEqual(libraryGrid.resolveColumns(saved, libraryGrid.SHAPE_PORTRAIT, headerStrip.CONTENT_TOP), libraryGrid.DEFAULT_PORTRAIT_COLUMNS)
+      m.assertEqual(libraryGrid.resolveColumns(saved, libraryGrid.SHAPE_SQUARE, headerStrip.CONTENT_TOP), libraryGrid.DEFAULT_SQUARE_COLUMNS)
+    end function
+
+    @it("raises a saved count to the floor of a grid that starts lower")
+    function _()
+      m.assertEqual(libraryGrid.resolveColumns("3", libraryGrid.SHAPE_PORTRAIT, 438), 5)
+      m.assertEqual(libraryGrid.resolveColumns("8", libraryGrid.SHAPE_PORTRAIT, 438), 8)
+    end function
+
+    @it("saves a view's count under its own key")
+    function _()
+      m.assertEqual(libraryGrid.settingKey("Movies"), "columns_movies")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("imageSizeFor()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("asks for an image at least as large as the cell, in the cell's shape, at every count")
+    function _()
+      for each entry in m.everyCell()
+        cellSize = entry.cell.itemSize
+        image = libraryGrid.imageSizeFor(entry.shape, cellSize[0])
+        m.assertTrue(image.width >= cellSize[0], entry.name)
+        m.assertTrue(image.height >= cellSize[1], entry.name)
+        m.assertEqual(image.width = image.height, cellSize[0] = cellSize[1], entry.name)
+      end for
+    end function
+
+    @it("asks for no more than three sizes of a shape, however many counts there are")
+    function _()
+      for each shape in [libraryGrid.SHAPE_PORTRAIT, libraryGrid.SHAPE_SQUARE]
+        sizes = {}
+        for columns = libraryGrid.MIN_COLUMNS to libraryGrid.MAX_COLUMNS
+          cellSize = libraryGrid.cell(shape, columns, 1).itemSize
+          sizes[libraryGrid.imageSizeFor(shape, cellSize[0]).width.toStr()] = true
+        end for
+        m.assertEqual(sizes.count(), 3, shape)
+      end for
+    end function
+
+    @it("keeps the genre rows' poster at the size it had")
+    function _()
+      m.assertEqual(libraryGrid.imageSizeFor(libraryGrid.SHAPE_PORTRAIT, 213), { width: 295, height: 440 })
+    end function
+
+    @it("takes the shape it is given, not the one a cell's size suggests")
+    function _()
+      ' A square cell going from 273 to 231 pixels can be read at 231 by 273 between the two writes
+      m.assertEqual(libraryGrid.imageSizeFor(libraryGrid.SHAPE_SQUARE, 231), { width: 280, height: 280 })
+      m.assertEqual(libraryGrid.imageSizeFor(libraryGrid.SHAPE_PORTRAIT, 228), { width: 295, height: 440 })
+      m.assertEqual(libraryGrid.imageSizeFor("wide", 228), { width: 295, height: 440 }, "an unknown shape is a portrait")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("rowsFor()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("counts every row whose slot starts above the screen's edge")
+    function _()
+      ' From y 168 a 447 pixel pitch shows two rows and the top of a third
+      c = libraryGrid.cell(libraryGrid.SHAPE_PORTRAIT, 6, 1)
+
+      m.assertEqual(c.rowPitch, 447)
+      m.assertEqual(libraryGrid.rowsFor(c, 168), 3)
+    end function
+
+    @it("counts a row that ends exactly at the edge once")
+    function _()
+      c = { rowPitch: 300 }
+
+      m.assertEqual(libraryGrid.rowsFor(c, 180), 3)
+    end function
+
+    @it("never builds fewer than two rows")
+    ' With one row a MarkupGrid clips the poster at the slot's bottom and draws the focus
+    ' ring around the slot, 22 pixels above the poster
+    function _()
+      tall = { rowPitch: 915 }
+
+      m.assertEqual(libraryGrid.rowsFor(tall, 168), 2)
+      m.assertEqual(libraryGrid.rowsFor(tall, 1080), 2)
+    end function
+
+  end class
+
+end namespace

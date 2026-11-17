@@ -282,6 +282,7 @@
 (?:ffmpeg-tagged)\.
 (?:FHD)\.
 (?:filesystem)\.
+(?:Finamp)\.
 (?:flac)\.
 (?:FLAC)\.
 (?:FLACs)\.
@@ -412,6 +413,7 @@
 (?:mka)\.
 (?:MKV)\.
 (?:mkv)\.
+(?:Moonfin)\.
 (?:MP3)\.
 (?:mp4)\.
 (?:mpv-shim)\.
@@ -799,6 +801,7 @@
 (?:webp)\.
 (?:whitespace)\.
 (?:Whitespace)\.
+(?:Wholphin)\.
 (?:Wikimedia)\.
 (?:WIP)\.
 (?:worklist)\.

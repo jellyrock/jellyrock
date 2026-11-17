@@ -110,59 +110,6 @@ class TVShowPresenter extends GridPresenterBase
     return options
   end function
 
-  ' Configure grid layout and positioning for TV show views
-  override function getGridConfig(currentView as string, _layout as string) as object
-    viewLower = LCase(currentView)
-
-    if viewLower = libraryTab.SHOWS
-      ' Full grid view - rowHeights > itemSize to always leave space for titles
-      return {
-        translation: [headerStrip.LEFT, headerStrip.CONTENT_TOP],
-        itemSize: [libraryGrid.POSTER_WIDTH, libraryGrid.POSTER_HEIGHT],
-        rowHeights: [libraryGrid.POSTER_HEIGHT],
-        itemSpacing: [libraryGrid.POSTER_COLUMN_GAP, libraryGrid.POSTER_ROW_GAP],
-        numRows: "3",
-        numColumns: "6",
-        imageDisplayMode: "scaleToZoom"
-      }
-    else if viewLower = libraryTab.NETWORKS
-      ' Full grid view - rowHeights > itemSize to always leave space for titles
-      return {
-        translation: [headerStrip.LEFT, headerStrip.CONTENT_TOP],
-        itemSize: [libraryGrid.POSTER_WIDTH, libraryGrid.POSTER_HEIGHT],
-        rowHeights: [libraryGrid.POSTER_HEIGHT],
-        itemSpacing: [libraryGrid.POSTER_COLUMN_GAP, libraryGrid.POSTER_ROW_GAP],
-        numRows: "3",
-        numColumns: "6",
-        imageDisplayMode: "scaleToZoom"
-      }
-    else if viewLower = libraryTab.GENRES
-      ' genres - smaller posters. scaleToZoom (matching MoviePresenter) so 2:3 posters
-      ' fill the genre RowList cell with no crop (the cell is 2:3) and the watched/unplayed
-      ' badge anchors to the image corner rather than a letterbox bar.
-      return {
-        translation: [headerStrip.LEFT, headerStrip.CONTENT_TOP],
-        itemSize: [230, 315],
-        rowHeights: [315],
-        itemSpacing: [libraryGrid.SQUARE_COLUMN_GAP, libraryGrid.SQUARE_ROW_GAP],
-        numRows: "4",
-        numColumns: "7",
-        imageDisplayMode: "scaleToZoom"
-      }
-    else
-      ' Default: standard grid
-      return {
-        translation: [headerStrip.LEFT, headerStrip.CONTENT_TOP],
-        itemSize: [libraryGrid.POSTER_WIDTH, libraryGrid.POSTER_HEIGHT],
-        rowHeights: [libraryGrid.POSTER_HEIGHT],
-        itemSpacing: [libraryGrid.POSTER_COLUMN_GAP, libraryGrid.POSTER_ROW_GAP],
-        numRows: "3",
-        numColumns: "6",
-        imageDisplayMode: "scaleToZoom"
-      }
-    end if
-  end function
-
   ' TV shows don't have presentation view
   override function shouldShowPresentationInfo(_currentView as string, _layout as string) as boolean
     return false

@@ -353,12 +353,6 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 - **issue**: The OSD store screenshot is softer than the original HDMI capture. Roku's developer screenshot (`/plugin_inspect`) captures only the SceneGraph UI plane, as a fixed-quality JPEG, and never the video plane. So the full-resolution film frame injected behind the OSD (pulled from the stream with `ffmpeg`) is softened on the round trip. A mild sharpening filter helps; it is fine for a store asset but not crisp.
 - **direction**: Composite offline so the frame never goes through the device. Capture the paused OSD twice, over white and over black backdrops, solve per pixel for the UI layer's color and alpha, then composite it over the `ffmpeg` frame. JPEG edges may leave halos around text, so weigh that before building. Surfaced in #621.
 
-#### `grid-titles-ignores-hidealways`
-
-- **area**: [`components/ItemGrid/GridItem.bs`](../../components/ItemGrid/GridItem.bs), [`components/ItemGrid/BaseGridView.bs`](../../components/ItemGrid/BaseGridView.bs) (`configureGrid`, the `gridTitles` and `showItemTitles` fields)
-- **issue**: `GridItem` takes title visibility from `gridTitles` (the raw `itemGridTitles` setting). `configureGrid()` sets `showItemTitles` to `"hidealways"` when a presenter shows the presentation-info panel (only a movie library's Movies tab in the presentation layout: `shouldShowPresentationInfo` takes the view and the layout), but nothing reads `showItemTitles`. So there, titles can show under tiles that were meant to hide them. The poster grid layout and the other tabs are unaffected: they never show the panel.
-- **direction**: Decide whether `hidealways` should win in the presentation view. If yes, have `GridItem` read `showItemTitles`, or fold the presentation rule into `gridTitles` and delete the unused field.
-
 #### `tvshow-library-placeholder`
 
 - **area**: [`source/utils/placeholderImage.bs`](../../source/utils/placeholderImage.bs), [`resources/icons/tv.svg`](../../resources/icons/tv.svg), [`resources/placeholders/placeholders.json`](../../resources/placeholders/placeholders.json)
