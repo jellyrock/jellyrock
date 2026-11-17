@@ -184,9 +184,9 @@ end sub
 ' Sizes and positions every child to the current cell dimensions. The focus slot is
 ' rowItemSize/itemSize; the poster fills it at libraryGrid.POSTER_TOP_OFFSET so the poster
 ' overflows the slot bottom and the focus border (drawn behind it) reads with a top margin
-' and no overlap. The title sits libraryGrid.TEXT_TOP_GAP below the poster, kept outside the
-' focus border because the container sets rowHeights/itemSize taller than the slot (the
-' focus border pins to the slot, not the cell's full bounding box).
+' and no overlap. The title sits libraryGrid.TEXT_TOP_GAP below the poster, outside the
+' focus border, in room the container leaves under the slot: a MarkupGrid's row gap
+' (itemSpacing), a RowList's rowHeights set taller than the slot.
 sub updateLayout(w as float, h as float)
   setPosterRect(0, libraryGrid.POSTER_TOP_OFFSET, w, h)
   m.genreLabel.translation = [GENRE_LABEL_INSET, libraryGrid.POSTER_TOP_OFFSET + GENRE_LABEL_INSET]

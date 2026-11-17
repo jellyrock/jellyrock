@@ -648,7 +648,7 @@ it('a screen with one view still has a page menu, for its grid: a network in a T
   if ((await getActiveVal('#itemGrid.content.getChildCount()')) < 1)
     testCtx.skip('the TV library lists no networks');
 
-  // A network folder has one view, no tabs and no layouts: its menu is its grid's count alone.
+  // A network folder has one view, no tabs and no layouts: its menu is its grid's count and the titles.
   await pressGridTile(0);
   await waitFor('parentItem.id', (id) => typeof id === 'string' && id !== '' && id !== tvId, {
     label: 'the network opened',
@@ -663,7 +663,7 @@ it('a screen with one view still has a page menu, for its grid: a network in a T
   await waitPageMenu();
   expect(await dialogRows(), "the grid's two entries, then All settings").toEqual([
     'Items per row (7)',
-    'Item Titles (Shown)',
+    'Item Titles (Enabled)',
     'All settings',
   ]);
 
