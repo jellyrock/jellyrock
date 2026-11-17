@@ -5,6 +5,7 @@ import {
   mixPlan,
   parseStepList,
   seededRandom,
+  slowSummary,
   stuckSummary,
 } from './soak-mix.js';
 
@@ -144,5 +145,19 @@ describe('stuckSummary: the stuck-seek term of the SUMMARY line', () => {
         { label: '9:replay', count: 2 },
       ]),
     ).toBe('stuck=3 at 4:scrub 9:replay');
+  });
+});
+
+describe('slowSummary: the slow-seek term of the SUMMARY line', () => {
+  it('reads slow=0 when no step had a slow seek', () => {
+    expect(slowSummary([])).toBe('slow=0');
+  });
+  it('totals the counts and names the steps', () => {
+    expect(
+      slowSummary([
+        { label: '3:seek', count: 1 },
+        { label: '7:pause', count: 2 },
+      ]),
+    ).toBe('slow=3 at 3:seek 7:pause');
   });
 });

@@ -1443,9 +1443,11 @@ namespace tests
       m.manager.callFunc("playerEvent", { kind: "localSeek", position: 60 })
       m.manager.callFunc("playerEvent", { kind: "state", state: "buffering", position: 60 })
       m.assertEqual(m.manager.sync.trackerPhase, "seeking")
+      m.assertEqual(m.manager.sync.slowSeeks, 0)
       sleep(syncPlayPlayback.SEEK_SETTLE_MS + 200)
       result = m.manager.callFunc("playerEvent", { kind: "state", state: "buffering", position: 60 })
       m.assertTrue(result.following)
+      m.assertEqual(m.manager.sync.slowSeeks, 1)
       m.assertEqual(m.manager.sync.trackerPhase, "seeking")
       m.assertTrue(m.manager.callFunc("seekInFlight"))
     end function

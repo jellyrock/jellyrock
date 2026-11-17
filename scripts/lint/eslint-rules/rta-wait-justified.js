@@ -188,6 +188,10 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // only grows, so "above the count read before" cannot revert. `syncplay-reload.spec.js` waits on it
   // for a reload's Ready, which a group command answering the reload's Buffering can come before.
   'syncPlayManager.sync.readiesSent',
+  // `SyncPlayManager.converge` counts each seek still buffering when its landing budget ran out, and
+  // `publish` writes the count; it only grows, so "above the count read before" cannot revert.
+  // `syncplay-correction.spec.js` waits on it for the seek it gave a short budget.
+  'syncPlayManager.sync.slowSeeks',
   // The same record's emission time (ODC lowercases the key): it only grows, since each command
   // that replaces `lastCommand` was emitted later (`syncPlayState.acceptsCommand` drops a command
   // from before the playing item changed), so "newer than the one read before" cannot revert.

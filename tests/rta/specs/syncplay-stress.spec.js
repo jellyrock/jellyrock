@@ -63,6 +63,7 @@ import {
   nextStep,
   parseStepList,
   seededRandom,
+  slowSummary,
   stuckSummary,
 } from '../lib/soak-mix.js';
 
@@ -394,6 +395,7 @@ async function snapshot() {
     readies: sync?.readiessent,
     unreachable: sync?.unreachablenotices,
     stuck: sync?.stuckseeks,
+    slow: sync?.slowseeks,
     pauseLandedMs: sync?.pauselandedms,
     resumeLagMs: sync?.resumelagms,
     resumeLagSampleMs: sync?.resumelagsamplems,
@@ -593,6 +595,7 @@ describe.skipIf(ROUNDS <= 0)('SyncPlay stress', () => {
       const counts = { ok: 0, frozen: 0, error: 0 };
       const frozenSteps = [];
       const stuckSteps = [];
+      const slowSteps = [];
       const errorSteps = [];
       let state = 'playing';
       let summary;
@@ -613,6 +616,10 @@ describe.skipIf(ROUNDS <= 0)('SyncPlay stress', () => {
         // recovery can free it before the window closes.
         const stuckSeeks = (end.stuck ?? 0) - (before.stuck ?? 0);
         if (stuckSeeks > 0) stuckSteps.push({ label: `${index}:${name}`, count: stuckSeeks });
+        // Counted, never failed: a seek that outlasted its budget is told to the group as a stall,
+        // which is the app doing its job on a slow seek.
+        const slowSeeks = (end.slow ?? 0) - (before.slow ?? 0);
+        if (slowSeeks > 0) slowSteps.push({ label: `${index}:${name}`, count: slowSeeks });
         record({
           index,
           step: name,
@@ -627,6 +634,7 @@ describe.skipIf(ROUNDS <= 0)('SyncPlay stress', () => {
           readies: (end.readies ?? 0) - (before.readies ?? 0),
           toldUnreachable,
           stuckSeeks,
+          slowSeeks,
           loads: (end.loads ?? 0) - (before.loads ?? 0),
           positionBefore: before.position,
           end,
@@ -730,7 +738,7 @@ describe.skipIf(ROUNDS <= 0)('SyncPlay stress', () => {
           `SUMMARY case=mix seed=${SEED} engine=${engine} steps=${ROUNDS} ok=${counts.ok} ` +
           `frozen=${counts.frozen}${frozenSteps.length ? ` at ${frozenSteps.join(' ')}` : ''} ` +
           `error=${counts.error}${errorSteps.length ? ` at ${errorSteps.join(' ')}` : ''} ` +
-          `${stuckSummary(stuckSteps)}` +
+          `${stuckSummary(stuckSteps)} ${slowSummary(slowSteps)}` +
           `${hasStopped ? ' (stopped: the member did not recover)' : ''}`;
         console.log(summary);
         record({ summary });

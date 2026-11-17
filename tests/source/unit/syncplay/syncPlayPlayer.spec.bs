@@ -698,6 +698,43 @@ namespace tests
       m.assertTrue(syncPlayPlayer.takeSlowEdge(player))
     end function
 
+    @it("a seek with a shortened budget is slow once that budget has passed, well before the normal one")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "seek", "hold", 1000000000&, 1100&)
+      syncPlayPlayer.shortenSeekBudget(player, 200&)
+      syncPlayPlayer.nodeState(player, "buffering", 1150&)
+      syncPlayPlayer.advance(player, 1299&)
+      m.assertFalse(syncPlayPlayer.takeSlowEdge(player))
+      syncPlayPlayer.advance(player, 1300&)
+      m.assertTrue(syncPlayPlayer.takeSlowEdge(player))
+      m.assertEqual(player.activity, "seeking")
+    end function
+
+    @it("the seek written after a shortened one has the normal budget again")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.told(player, "seek", "hold", 1000000000&, 1100&)
+      syncPlayPlayer.shortenSeekBudget(player, 200&)
+      syncPlayPlayer.told(player, "seek", "hold", 2000000000&, 5000&)
+      syncPlayPlayer.nodeState(player, "buffering", 5050&)
+      syncPlayPlayer.advance(player, 5200&)
+      m.assertFalse(syncPlayPlayer.takeSlowEdge(player))
+      syncPlayPlayer.advance(player, 5000& + syncPlayPlayback.SEEK_SETTLE_MS)
+      m.assertTrue(syncPlayPlayer.takeSlowEdge(player))
+    end function
+
+    @it("shortening a budget does nothing when no seek is in flight")
+    function _()
+      player = m.playingAt60()
+      syncPlayPlayer.shortenSeekBudget(player, 200&)
+      m.assertEqual(player.seekBudgetMs, syncPlayPlayback.SEEK_SETTLE_MS)
+      syncPlayPlayer.told(player, "seek", "hold", 1000000000&, 1100&)
+      syncPlayPlayer.nodeState(player, "buffering", 1150&)
+      syncPlayPlayer.advance(player, 1400&)
+      m.assertFalse(syncPlayPlayer.takeSlowEdge(player))
+    end function
+
     @it("a seek's full buffer is noted once, and forgotten by its landing or a new seek")
     function _()
       player = m.playingAt60()

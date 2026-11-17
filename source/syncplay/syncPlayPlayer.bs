@@ -83,6 +83,9 @@ namespace syncPlayPlayer
       seekWrittenAtMs: 0&,
       seekOwner: "",
       seekSlow: false,
+      ' How long the seek in flight may take to land before it is slow. Back to the normal
+      ' budget at each seek written, so a shortened one lasts one seek.
+      seekBudgetMs: syncPlayPlayback.SEEK_SETTLE_MS,
       slowTold: false,
       ' When the seek in flight was first seen at a full buffer, or invalid.
       bufferFullAtMs: invalid,
@@ -146,6 +149,7 @@ namespace syncPlayPlayer
       player.seekFromTicks = positionAt(player, nowMs)
       player.seekWrittenAtMs = nowMs
       player.seekOwner = owner
+      player.seekBudgetMs = syncPlayPlayback.SEEK_SETTLE_MS
       player.seekSlow = false
       player.slowTold = false
       player.bufferFullAtMs = invalid
@@ -369,6 +373,13 @@ namespace syncPlayPlayer
     if player.activity = "seeking" and not isValid(player.bufferFullAtMs) then player.bufferFullAtMs = nowMs
   end sub
 
+  ' Gives the seek in flight a shorter landing budget, for a device spec to make one seek
+  ' outlast its budget. Nothing in the app calls it outside an RTA build. It does nothing with no
+  ' seek in flight, and the next seek written has the normal budget again.
+  sub shortenSeekBudget(player as object, budgetMs as longinteger)
+    if player.activity = "seeking" and budgetMs > 0 then player.seekBudgetMs = budgetMs
+  end sub
+
   ' True once per seek, the first time it is asked after the seek turned slow.
   function takeSlowEdge(player as object) as boolean
     if not player.seekSlow or player.slowTold then return false
@@ -431,7 +442,7 @@ namespace syncPlayPlayer
   function nextDeadlineMs(player as object) as dynamic
     activity = player.activity
     since& = syncPlayTime.asLong(player.sinceMs)
-    if activity = "seeking" and not player.seekSlow then return since& + syncPlayPlayback.SEEK_SETTLE_MS
+    if activity = "seeking" and not player.seekSlow then return since& + syncPlayTime.asLong(player.seekBudgetMs)
     if activity = "arrived" then return since& + ARRIVAL_READING_MS
     if activity = "pausing" or activity = "resuming" then return since& + syncPlayPlayback.PAUSE_CONFIRM_MS
     if activity = "stalling" then return since& + syncPlayPlayback.STALL_MS

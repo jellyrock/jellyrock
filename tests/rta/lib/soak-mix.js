@@ -150,3 +150,13 @@ export function stuckSummary(steps) {
   const total = steps.reduce((sum, step) => sum + step.count, 0);
   return `stuck=${total}${total > 0 ? ` at ${steps.map((step) => step.label).join(' ')}` : ''}`;
 }
+
+/**
+ * The `slow=` term of the mix's SUMMARY line: the seeks that outlasted their landing budget over the
+ * run, each told to the group as a stall, and the steps they happened in as `<index>:<step>`. Counted, never failed.
+ * @param {{ label: string, count: number }[]} steps the steps with a slow seek and how many each had
+ */
+export function slowSummary(steps) {
+  const total = steps.reduce((sum, step) => sum + step.count, 0);
+  return `slow=${total}${total > 0 ? ` at ${steps.map((step) => step.label).join(' ')}` : ''}`;
+}

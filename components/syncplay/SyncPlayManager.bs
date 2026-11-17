@@ -132,6 +132,9 @@ sub ensureReady()
   ' Times the comparison recovered a seek stuck at a full buffer (the recovery seek, and the reload
   ' when that sticks too), for the specs: the player's fault, counted so a soak can report it.
   m.stuckSeeks = 0
+  ' Seeks still buffering when their landing budget ran out, each told to the group as a stall, for the
+  ' specs: a slow device is not a fault, so a spec reads this to tell a stall it expects from one it does not.
+  m.slowSeeks = 0
   ' Times a reopened session socket found this member in a group (onSocketReopened), for the specs.
   m.socketReopens = 0
   ' A reopened socket's burst has not reached the server yet (onTimeSyncResults).
@@ -980,7 +983,22 @@ sub playerFact(evt as object)
     m.log.info("pause landed", "afterMs", m.pauseLandedMs.toStr(), "owner", player.pauseOwner)
   end if
   syncPlayConverge.playerFact(m.comparison, evt, m.loadStartTicks, nowMs&)
+  #if ENABLE_RTA
+    if evt.kind = "localSeek" then applySeekBudgetHook(player)
+  #end if
 end sub
+
+#if ENABLE_RTA
+  ' A spec asked for the member's next seek of its own to have a short landing budget: the seek
+  ' written a moment ago takes it, once, unless the group wrote it.
+  sub applySeekBudgetHook(player as object)
+    budgetMs = m.global.rtaSyncPlaySeekBudgetMs
+    if player.seekOwner = "group" or budgetMs <= 0 then return
+    syncPlayPlayer.shortenSeekBudget(player, syncPlayTime.asLong(budgetMs))
+    m.global.rtaSyncPlaySeekBudgetMs = 0
+    m.log.info("seek budget shortened for a spec", "budgetMs", budgetMs)
+  end sub
+#end if
 
 ' The player model's learned resume lag, or its last sample, for the specs: a soak's record says
 ' what each resume was written against. Invalid with no sample yet.
@@ -1120,6 +1138,7 @@ sub publish()
       readiesSent: m.readiesSent,
       unreachableNotices: m.unreachableNotices,
       stuckSeeks: m.stuckSeeks,
+      slowSeeks: m.slowSeeks,
       socketReopens: m.socketReopens,
       pauseLandedMs: m.pauseLandedMs,
       framesRescued: m.framesRescued,
@@ -1358,6 +1377,8 @@ sub converge()
     nowMs& = syncPlayTime.nowMs()
     syncPlayPlayer.advance(player, nowMs&)
     if syncPlayPlayer.takeSlowEdge(player)
+      m.slowSeeks++
+      hasActed = true
       m.log.warn("seek still buffering past its limit", "state", m.playerState, "bufferPercent", playerBufferPercent(), "isTranscoded", player.isTranscoded, "targetTicks", syncPlayTime.asLong(player.seekTargetTicks).toStr())
     end if
     syncPlayGroup.advance(group, syncPlayTime.asLong(policy.requestLimitMs), nowMs&)
@@ -1426,6 +1447,9 @@ sub carryOut(action as object)
     if action.stuck = true then m.log.warn("seek stuck at a full buffer, writing it again", "targetTicks", syncPlayTime.asLong(action.targetTicks).toStr(), "isTranscoded", player.isTranscoded, "owner", action.owner)
     if action.silent = true then m.log.info("playing node sent no reading", "activity", player.activity, "clock", player.clock.kind)
     syncPlayConverge.applied(player, group, action, nowMs&)
+    #if ENABLE_RTA
+      if kind = "seek" then applySeekBudgetHook(player)
+    #end if
     if not isValid(host)
       m.log.warn("the comparison's write found no player", "kind", kind)
       return

@@ -618,7 +618,8 @@ it("the remote's play/pause during a group Seek pauses the group and does not we
 // field the gear's picker sets, so `VideoPlayerView.onSyncPlayPicked` runs as it does for a viewer.
 // Each pick waits for `sync.correctionsDone` to count the correction it started: a drift reading,
 // the toast and the node's state can all still show the pick before. The first raise is the gear's
-// smallest step. Nothing here puts the member exactly in step (the normal bars leave a resume up to
+// smallest step. A pick's seek that outlasts its budget is told to the group as a stall, so the group
+// waits and its Unpause is expected then; `sync.slowSeeks` tells the two apart. Nothing here puts the member exactly in step (the normal bars leave a resume up to
 // `SKIP_TO_SYNC_MIN_MS` behind, and a seek lands a little late), so each pick is sized to cross the
 // bar from where the member can be: one step up from a member not ahead, then two steps down from
 // wherever the second raise's seek landed. One step down is the same bar the other way (`Abs`),
@@ -685,29 +686,58 @@ it('a time offset picked in the gear corrects the drift at once, without an Unpa
     },
   );
   const unpausedAt = await getGlobalVal('syncPlayManager.sync.lastCommand.emittedatms');
+  const slowBefore = await getGlobalVal('syncPlayManager.sync.slowSeeks');
+  expect(typeof slowBefore, 'the slow-seek count was read').toBe('number');
+  // A pick's seek that outlasted its budget ends the picks: the group waited for it, and the
+  // member corrects by seeking no more until a group Seek lands (`syncPlayPlayer.endSeek`).
+  const aPickSeekWasSlow = async () => {
+    const slow = await getGlobalVal('syncPlayManager.sync.slowSeeks');
+    expect(typeof slow, 'the slow-seek count was read after a pick').toBe('number');
+    return slow > slowBefore;
+  };
+  let heldTheGroup;
   try {
     // Raised twice: behind past the bar, so the node seeks ahead. The toast is read on the first
     // only, since the second's could be the first's still on screen.
     await pickAndWaitForCorrection(PICK_STEP_MS, { toast: true });
-    await pickAndWaitForCorrection(2 * PICK_STEP_MS);
-    // Lowered: ahead past the bar, so the node holds until the group arrives, and lands in step
-    // (a hold resumes on time). A reading from before the hold is ahead past the bar, so it cannot
-    // pass this wait.
-    await pickAndWaitForCorrection(0);
-    await waitFor(
-      'syncPlayManager.sync.playbackDiffMs',
-      (v) => typeof v === 'number' && Math.abs(v) <= PICK_BAR_MS,
-      { read: getGlobalVal, timeout: 20000, label: 'the hold brought the node back in step' },
-    );
+    heldTheGroup = await aPickSeekWasSlow();
+    if (!heldTheGroup) {
+      await pickAndWaitForCorrection(2 * PICK_STEP_MS);
+      heldTheGroup = await aPickSeekWasSlow();
+    }
+    if (!heldTheGroup) {
+      // Lowered: ahead past the bar, so the node holds until the group arrives, and lands in step
+      // (a hold resumes on time). A reading from before the hold is ahead past the bar, so it
+      // cannot pass this wait.
+      await pickAndWaitForCorrection(0);
+      await waitFor(
+        'syncPlayManager.sync.playbackDiffMs',
+        (v) => typeof v === 'number' && Math.abs(v) <= PICK_BAR_MS,
+        { read: getGlobalVal, timeout: 20000, label: 'the hold brought the node back in step' },
+      );
+    }
   } finally {
     // Only when a failure left it raised: a pick of the value in force still arms a check.
     if ((await getGlobalVal('user.settings.playbackSyncPlayTimeOffsetMs')) !== 0)
       await pickTimeOffset(0);
   }
-  expect(
-    await getGlobalVal('syncPlayManager.sync.lastCommand.emittedatms'),
-    'no Unpause came in between: the picks alone corrected it',
-  ).toBe(unpausedAt);
+  if (heldTheGroup) {
+    await waitFor('syncPlayManager.groupState', (g) => g === 'Playing', {
+      read: getGlobalVal,
+      timeout: 15000,
+      label: 'a pick seek ran past its budget and the group waited for this Roku, then played',
+    });
+    await waitFor('state', (s) => s === 'playing', {
+      read: playerState,
+      timeout: 15000,
+      label: 'the node playing after a pick seek ran past its budget and the group waited',
+    });
+  } else {
+    expect(
+      await getGlobalVal('syncPlayManager.sync.lastCommand.emittedatms'),
+      'no Unpause came in between: the picks alone corrected it',
+    ).toBe(unpausedAt);
+  }
   expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
 });
 
