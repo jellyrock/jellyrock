@@ -274,6 +274,87 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("A membership the server lost")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a NotInGroup the member never asked for joins the group again, and says nothing yet")
+    function _()
+      posts = m.capturePosts()
+      m.joinGroupWithServer()
+      m.manager.notice = invalid
+      syncPlayFrames.send(m.manager, m.update("NotInGroup", invalid))
+      m.assertTrue(m.lastPostUrl(posts).instr("/SyncPlay/Join") >= 0, "the last post is a Join")
+      if posts.getChildCount() > 0 then m.assertEqual(m.lastPost(posts).body, FormatJson({ "GroupId": "g1" }))
+      m.assertInvalid(m.manager.notice, "nothing is said until the group answers")
+      m.assertFalse(m.manager.inGroup, "out of the group until the server says otherwise")
+    end function
+
+    @it("the group's answer tells the viewer they are back, following as before")
+    function _()
+      m.capturePosts()
+      m.joinGroupWithServer()
+      syncPlayFrames.send(m.manager, m.update("NotInGroup", invalid))
+      m.answerJoin()
+      m.assertEqual(m.manager.notice.kind, "rejoined")
+      m.assertEqual(m.manager.notice.groupName, "Movie night")
+      m.assertTrue(m.manager.inGroup)
+      m.assertTrue(m.manager.following)
+    end function
+
+    @it("a member that had stopped following comes back not following")
+    function _()
+      m.capturePosts()
+      m.haltWithServer()
+      syncPlayFrames.send(m.manager, m.update("NotInGroup", invalid))
+      m.manager.notice = invalid
+      m.answerJoin()
+      m.assertTrue(m.manager.inGroup)
+      m.assertFalse(m.manager.following)
+      m.assertEqual(m.manager.notice.kind, "rejoined", "told it is back, and not told of a halt it never saw")
+    end function
+
+    @it("a group that ended meanwhile is said once, by its name")
+    function _()
+      m.capturePosts()
+      m.joinGroupWithServer()
+      syncPlayFrames.send(m.manager, m.update("NotInGroup", invalid))
+      syncPlayFrames.send(m.manager, m.update("GroupDoesNotExist", invalid))
+      m.assertEqual(m.manager.notice.kind, "lostGroup")
+      m.assertEqual(m.manager.notice.groupName, "Movie night")
+      m.assertFalse(m.manager.inGroup)
+      ' The next join is an ordinary one.
+      m.answerJoin()
+      m.assertEqual(m.manager.notice.kind, "joined")
+    end function
+
+    @it("a Leave the viewer asked for is not undone by a NotInGroup")
+    function _()
+      posts = m.capturePosts()
+      m.joinGroupWithServer()
+      m.manager.callFunc("leave")
+      syncPlayFrames.send(m.manager, m.update("NotInGroup", invalid))
+      m.assertTrue(m.lastPostUrl(posts).instr("/SyncPlay/Leave") >= 0, "no Join follows the Leave")
+      m.assertEqual(m.manager.notice.kind, "left")
+      m.assertFalse(m.manager.inGroup)
+    end function
+
+    @it("a membership lost again and again stops being joined again")
+    function _()
+      posts = m.capturePosts()
+      m.joinGroupWithServer()
+      for i = 1 to 3
+        syncPlayFrames.send(m.manager, m.update("NotInGroup", invalid))
+        m.assertTrue(m.lastPostUrl(posts).instr("/SyncPlay/Join") >= 0, "joined again, time " + i.toStr())
+        m.answerJoin()
+      end for
+      count = posts.getChildCount()
+      syncPlayFrames.send(m.manager, m.update("NotInGroup", invalid))
+      m.assertEqual(posts.getChildCount(), count, "no Join the fourth time")
+      m.assertEqual(m.manager.notice.kind, "left")
+      m.assertFalse(m.manager.inGroup)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("The viewer's time offset")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -470,6 +551,21 @@ namespace tests
     end sub
 
     private sub joinGroupWithServer()
+      m.joinGroup()
+      m.enableServer()
+    end sub
+
+    ' The URL of the last post captured, "" when there is none.
+    private function lastPostUrl(posts as object) as string
+      if posts.getChildCount() = 0 then return ""
+      return m.lastPost(posts).url
+    end function
+
+    ' The server's GroupJoined for a Join this member posted. With a server set the join would
+    ' start a real clock sync, whose Task answers on a thread no spec can serve, so the server
+    ' is taken away for the frame and put back after it.
+    private sub answerJoin()
+      m.global.server.serverUrl = ""
       m.joinGroup()
       m.enableServer()
     end sub

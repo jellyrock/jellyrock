@@ -139,6 +139,13 @@ sub ensureReady()
   m.socketReopens = 0
   ' A reopened socket's burst has not reached the server yet (onTimeSyncResults).
   m.reopenUnanswered = false
+  ' This member asked to leave (leave), so a NotInGroup that follows is its own doing.
+  m.leaveAsked = false
+  ' A membership the server dropped that is being joined again (syncPlayState.rejoinsAfterLoss):
+  ' { groupId, groupName, following }, until the server answers the Join.
+  m.rejoin = invalid
+  ' When each rejoin was asked, on the device clock, for the limit on them.
+  m.rejoinTimesMs = []
   ' How long the last pause took to stop the node, for the specs (playerFact).
   m.pauseLandedMs = 0&
   ' What the comparison works from: the player and group models (syncPlayConverge.newComparison).
@@ -186,6 +193,7 @@ function leave() as boolean
   ensureReady()
   if not m.state.inGroup then return false
   m.log.info("leaving group", "groupId", m.state.groupId)
+  m.leaveAsked = true
   return post("Leave", invalid)
 end function
 
@@ -615,6 +623,8 @@ sub onGroupUpdate(update as object)
   previousPlayingItemId = m.state.playingItemId
   previousQueueChangedAtMs = m.state.playbackQueueAtMs
   wasInGroup = m.state.inGroup
+  wasFollowing = m.state.following
+  previousGroupId = m.state.groupId
   previousGroupName = m.state.groupName
   m.state = syncPlayState.applyGroupUpdate(m.state, update)
   startsItem = updateType = "PlayQueue" and syncPlayQueue.changesPlayingItem(update.reason, previousPlayingItemId, m.state.playingItemId)
@@ -642,7 +652,16 @@ sub onGroupUpdate(update as object)
   m.log.info("group update", "type", updateType, "groupId", m.state.groupId, "state", m.state.groupState)
 
   if updateType = "GroupJoined"
-    notify("joined", m.state.groupName, "")
+    ' A join this member asked for after the server dropped it says so, and a member that had
+    ' stopped following comes back that way (below, once the join is set up).
+    rejoined = isValid(m.rejoin) and m.rejoin.groupId = m.state.groupId
+    haltsAgain = rejoined and not m.rejoin.following
+    m.rejoin = invalid
+    if rejoined
+      notify("rejoined", m.state.groupName, "")
+    else
+      notify("joined", m.state.groupName, "")
+    end if
     setUserSetting(STALE_GROUP_KEY, m.state.groupId + "|" + m.state.groupName)
     m.staleGroupName = ""
     m.joinAwaitsQueue = true
@@ -652,7 +671,23 @@ sub onGroupUpdate(update as object)
     m.lastCommand = invalid
     m.failedBursts = 0
     startTimeSync(FIRST_SYNC_ROUNDS)
+    if haltsAgain then haltFollowing("joined again a group it was not following", false)
   else if updateType = "GroupLeft" or updateType = "NotInGroup"
+    ' The server dropped a membership this member never gave up: join the group again.
+    if syncPlayState.rejoinsAfterLoss(updateType, wasInGroup, m.leaveAsked, m.rejoinTimesMs, syncPlayTime.nowMs())
+      m.log.info("the server no longer holds the membership: joining the group again", "groupId", previousGroupId, "wasFollowing", wasFollowing)
+      dropClaimedPlay("the server dropped the membership")
+      leaveLocally()
+      m.rejoinTimesMs.push(syncPlayTime.nowMs())
+      if join(previousGroupId)
+        m.rejoin = { groupId: previousGroupId, groupName: previousGroupName, following: wasFollowing }
+        return
+      end if
+      ' No Join could be posted: the member is out, and is told so as before.
+      notify("left", previousGroupName, "")
+      unsetUserSetting(STALE_GROUP_KEY)
+      return
+    end if
     ' NotInGroup also answers a request made outside any group: nothing to tell then. A
     ' GroupLeft for a membership a Home exit left behind names the group from the registry.
     if wasInGroup
@@ -670,7 +705,14 @@ sub onGroupUpdate(update as object)
   else if updateType = "UserLeft"
     notify("userLeft", m.state.groupName, update.userName)
   else if updateType = "GroupDoesNotExist" or updateType = "LibraryAccessDenied" or updateType = "CreateGroupDenied" or updateType = "JoinGroupDenied"
-    notify(updateType, "", "")
+    if isValid(m.rejoin)
+      ' The group this member was joining again is gone, or will not take it back.
+      notify("lostGroup", m.rejoin.groupName, "")
+      m.rejoin = invalid
+      unsetUserSetting(STALE_GROUP_KEY)
+    else
+      notify(updateType, "", "")
+    end if
     dropClaimedPlay(updateType)
     endUnansweredRefollow()
   else if updateType = "PlayQueue"
@@ -1079,6 +1121,8 @@ sub leaveLocally()
   m.state = syncPlayState.newState()
   syncPlayOffset.reset(m.estimator)
   m.reopenUnanswered = false
+  m.leaveAsked = false
+  m.rejoin = invalid
   m.lastCommand = invalid
   m.owedLoad = invalid
   m.expectingRemount = false

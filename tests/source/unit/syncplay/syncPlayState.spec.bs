@@ -220,5 +220,30 @@ namespace tests
       m.assertEqual(state.playbackQueueAtMs, 1792788447000&)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("rejoinsAfterLoss()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a NotInGroup a member never asked for is joined again")
+    function _()
+      m.assertTrue(syncPlayState.rejoinsAfterLoss("NotInGroup", true, false, [], 1000000&))
+    end function
+
+    @it("a GroupLeft, a NotInGroup outside a group and a leave the member asked for are not")
+    function _()
+      m.assertFalse(syncPlayState.rejoinsAfterLoss("GroupLeft", true, false, [], 1000000&))
+      m.assertFalse(syncPlayState.rejoinsAfterLoss("NotInGroup", false, false, [], 1000000&))
+      m.assertFalse(syncPlayState.rejoinsAfterLoss("NotInGroup", true, true, [], 1000000&))
+    end function
+
+    @it("the limit counts only the rejoins inside the window")
+    function _()
+      now& = 10000000&
+      inside = [now& - 1000&, now& - 2000&, now& - 3000&]
+      m.assertFalse(syncPlayState.rejoinsAfterLoss("NotInGroup", true, false, inside, now&), "three inside the window")
+      aged = [now& - syncPlayState.REJOIN_WINDOW_MS, now& - 2000&, now& - 3000&]
+      m.assertTrue(syncPlayState.rejoinsAfterLoss("NotInGroup", true, false, aged, now&), "one of the three has aged out")
+    end function
+
   end class
 end namespace
