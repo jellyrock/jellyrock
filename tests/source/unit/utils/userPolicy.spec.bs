@@ -40,6 +40,13 @@ namespace tests
       m.assertTrue(userPolicy.hasLiveTvAccess(policy))
     end function
 
+    @it("is true for a JellyfinUserPolicy node the server never filled")
+    function _()
+      ' The node the app holds before sign-in and after sign-out, and after a sign-in whose
+      ' answer carried no policy. It must read as the transformer's default, not as denied.
+      m.assertTrue(userPolicy.hasLiveTvAccess(CreateObject("roSGNode", "JellyfinUserPolicy")))
+    end function
+
   end class
 
 end namespace
