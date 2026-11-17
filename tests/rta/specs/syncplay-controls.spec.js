@@ -33,6 +33,7 @@ import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
 import { captureRawUI } from '../capture.js';
 import {
+  getActiveVal,
   getGlobalVal,
   getVal,
   getVals,
@@ -1267,4 +1268,158 @@ it('the gear shows the group rows while following, and its Leave Group leaves wi
     after.titles.some((t) => t === 'Leave Group'),
     'no group rows outside a group',
   ).toBe(false);
+});
+
+/**
+ * A new group the REST member made and this Roku joined, with nothing queued. The cases below
+ * each start from one, so none depends on what the case before it left.
+ * @param {string} name the group's name, which finds it in the server's list
+ * @returns {Promise<string>} the group's id
+ */
+async function freshGroup(name) {
+  await managerCall('leave').catch(() => {});
+  await waitFor('syncPlayManager.inGroup', (v) => v === false, {
+    read: getGlobalVal,
+    timeout: 20000,
+    label: 'the Roku out of the group before',
+  });
+  await syncPlay(member, 'Leave').catch(() => {});
+  await syncPlay(member, 'New', { GroupName: name });
+  // The REST member never reports Ready: without this the group waits on it for good.
+  await syncPlay(member, 'SetIgnoreWait', { IgnoreWait: true });
+  const id = (await listGroups(member)).find((g) => g.GroupName === name)?.GroupId;
+  expect(id, `the member created ${name}`).toBeTruthy();
+  await managerCall('join', id);
+  await waitFor('syncPlayManager.inGroup', (v) => v === true, {
+    read: getGlobalVal,
+    timeout: 20000,
+    label: `the Roku in ${name}`,
+  });
+  return id;
+}
+const queueHero = () =>
+  syncPlay(member, 'SetNewQueue', {
+    PlayingQueue: [heroId],
+    PlayingItemPosition: 0,
+    StartPositionTicks: 0,
+  });
+const waitHomeBehindPlayer = (label) =>
+  waitFor('subtype()', (v) => v === 'Home', {
+    read: getActiveVal,
+    timeout: 20000,
+    interval: 250,
+    label,
+  });
+const serverGroup = async (id) => (await listGroups(member)).find((g) => g.GroupId === id);
+
+it("another member's Stop closes this Roku's player and leaves it in the group, still following", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  // The case above leaves the gear menu open over a video that plays on as the viewer's own.
+  await press(ecp.Key.Back);
+  await waitDialogClosed('the gear menu closed', { timeout: 10000 });
+  await stopPlayback();
+  await waitHomeBehindPlayer("Home, once the viewer's own video is closed");
+
+  await freshGroup('RTA stop party');
+  await queueHero();
+  await waitMediaPlaying("the group's item", 90000);
+  await waitFor('syncPlayManager.sync.lastCommand.command', (v) => v === 'Unpause', {
+    read: getGlobalVal,
+    timeout: 30000,
+    label: "the group's Unpause after this member's first-frame Ready",
+  });
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 30000,
+    label: 'the node playing before the Stop',
+  });
+
+  await syncPlay(member, 'Stop');
+  await waitFor('syncPlayManager.sync.lastCommand.command', (v) => v === 'Stop', {
+    read: getGlobalVal,
+    timeout: 20000,
+    label: "the group's Stop reached this Roku",
+  });
+  await waitHomeBehindPlayer('the player closed on the Stop');
+  expect(await getGlobalVal('syncPlayManager.inGroup'), 'a Stop keeps the membership').toBe(true);
+  expect(await getGlobalVal('syncPlayManager.following'), 'and the follow').toBe(true);
+});
+
+it("a fetch of the group's queue that fails once is tried again, and the item plays", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  await freshGroup('RTA retry party');
+  // A player left open would satisfy the playing wait below before this group's item loads.
+  expect(await getActiveVal('subtype()'), 'no player open before the queue').toBe('Home');
+  const loadsBefore = await getGlobalVal('syncPlayManager.sync.loadCount');
+  expect(typeof loadsBefore, 'the load count was read').toBe('number');
+  try {
+    await failRequests([{ prefix: 'syncplay-queue-', kind: 'timeout', times: 1 }]);
+    await queueHero();
+    // The first fetch failed, so a load performed at all is the second try's.
+    await waitFor('syncPlayManager.sync.loadCount', (n) => n > loadsBefore, {
+      read: getGlobalVal,
+      timeout: 30000,
+      label: "the group's queue loaded on the second try",
+    });
+    await waitMediaPlaying("the group's item, loaded on the second try", 90000);
+    expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+  } finally {
+    await failRequests([]);
+  }
+  // Back halts and closes the player, so the next case starts from Home.
+  await stopPlayback();
+  await waitHomeBehindPlayer('Home, after the retried load is closed');
+});
+
+it("a group's queue that cannot be loaded stops this Roku following, so the group does not wait on it", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const id = await freshGroup('RTA unloadable party');
+  expect(await getActiveVal('subtype()'), 'no player open before the queue').toBe('Home');
+  try {
+    // An answer with no items: the group's playing item is not in it, which no retry can fix.
+    await failRequests([{ prefix: 'syncplay-queue-', kind: 'empty', times: 1 }]);
+    await queueHero();
+    await waitFor('syncPlayManager.following', (v) => v === false, {
+      read: getGlobalVal,
+      timeout: 20000,
+      label: 'the Roku no longer following the queue it could not load',
+    });
+  } finally {
+    await failRequests([]);
+  }
+  expect(await getGlobalVal('syncPlayManager.inGroup'), 'still a member').toBe(true);
+  // Neither member holds the group now: the REST member ignores waits, and so does a member
+  // that stopped following. The server plays on.
+  await expect
+    .poll(async () => (await serverGroup(id))?.State, { timeout: 15000, interval: 500 })
+    .toBe('Playing');
+  expect(await getActiveVal('subtype()'), 'no player opened').toBe('Home');
+});
+
+it('reset() leaves the group on the server, which ends a group this Roku was the last member of', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const id = await freshGroup('RTA reset party');
+  // The REST member leaves first, so this Roku's Leave is what ends the group.
+  await syncPlay(member, 'Leave');
+  // Both members sign in as one user and the list names users, so it cannot count them. A
+  // group with no member is deleted: still listed means this Roku is in it.
+  expect(Boolean(await serverGroup(id)), 'the group lives on with this Roku in it').toBe(true);
+  // Sign-out and a server switch call this (`userAuth.bs`).
+  await managerCall('reset');
+  await expect
+    .poll(async () => Boolean(await serverGroup(id)), { timeout: 15000, interval: 500 })
+    .toBe(false);
+  expect(await getGlobalVal('syncPlayManager.inGroup'), 'out of the group locally').toBe(false);
 });
