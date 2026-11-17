@@ -1397,15 +1397,15 @@ sub setRowItemSize()
     m.sizeClock.mark()
   #end if
 
-  homeSections = m.top.content.getChildren(-1, 0)
-  newSizeArray = CreateObject("roArray", homeSections.count(), false)
-  newRowHeights = CreateObject("roArray", homeSections.count(), false)
-  newRowSpacings = CreateObject("roArray", homeSections.count(), false)
+  rows = m.top.content.getChildren(-1, 0)
+  newSizeArray = CreateObject("roArray", rows.count(), false)
+  newRowHeights = CreateObject("roArray", rows.count(), false)
+  newRowSpacings = CreateObject("roArray", rows.count(), false)
 
   interRowSpacing = 60
 
-  for i = 0 to homeSections.count() - 1
-    section = homeSections[i]
+  for i = 0 to rows.count() - 1
+    section = rows[i]
     slotSize = isValid(section.cursorSize) ? section.cursorSize : rowSlotSize.WIDE
     newSizeArray[i] = slotSize
 
