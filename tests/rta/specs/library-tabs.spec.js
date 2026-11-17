@@ -120,11 +120,11 @@ for (const [collectionType, contentTab, savedTab] of [
       currentView: savedTab,
       drawn: savedTab,
     });
-    const [mode, titleVisible] = await getVals([
-      '#overhang.#tabBar.mode',
+    const [slotWidth, titleVisible] = await getVals([
+      '#overhang.#tabBar.slotWidth',
       '#overhang.#title.visible',
     ]);
-    expect(mode, 'a library scrolls its tabs').toBe('scrolling');
+    expect(slotWidth, 'the strip has a slot to scroll in').toBeGreaterThan(0);
     expect(titleVisible, 'the tabs replace the title').toBe(false);
   });
 }

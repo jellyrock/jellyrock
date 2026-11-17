@@ -281,6 +281,18 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // until the viewer acts or the screen changes: terminal, not a pulse. Read against the app
   // source 2026-10-26, every write site.
   '#overhang.#status.text',
+  // `JROverhang.onCurrentUserChanged` is the only writer: true when the scene, binding a
+  // screen (`JRScene.applyOverhangUserDropdown`), hands it the signed-in user's name, false
+  // when it hands an empty one. It holds for the screen's whole visit: terminal, not a
+  // pulse. Read against the app source 2026-11-17, every write site.
+  '#overhang.#userDropdown.visible',
+  // `JRDropdown.sizeTriggerButton` is the only writer, run when the trigger renders or its
+  // name, avatar or maxWidth changes; each value holds until the next such change, which the
+  // scene makes only when it binds a screen: terminal, not a pulse. The trigger's text is set
+  // by `JROverhang.onCurrentUserChanged` alone, at the same binding. Read against the app
+  // source 2026-11-17, every write site.
+  '#overhang.#userDropdown.triggerWidth',
+  '#overhang.#userDropdown.triggerText',
   // `SearchScreen.init` sets the help text, `showHelpText` replaces it with "No results for …"
   // for an answered empty search (submitted, or live while the keyboard is open), and
   // `onQueryChanged` writes the help text back only when the viewer empties the query. Each

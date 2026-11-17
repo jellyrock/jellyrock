@@ -1073,12 +1073,11 @@ sub registerOverhangData(group as object)
     m.overhang.status = group.overhangStatus
     group.observeField("overhangStatus", "updateOverhangStatus")
 
-    ' Logo / icons / user-dropdown: projected from the view's declared fields so they update in
-    ' the SAME frame as tabs/title (no transition flicker). Screens declare these; they never poke
-    ' the overhang node directly. currentUser is derived from the global user so screens only say
-    ' whether the dropdown shows.
-    m.overhang.isLogoVisible = group.isLogoVisible
-    group.observeField("isLogoVisible", "updateOverhangLogo")
+    ' Logo / icons / user-dropdown: set in the SAME frame as tabs/title (no transition flicker).
+    ' The wordmark shows only before sign-in, on screens with no tabs or title, so it is the
+    ' scene's to decide, as the cluster is below. currentUser is derived from the global user
+    ' so screens only say whether the dropdown shows.
+    m.overhang.isLogoVisible = not user.IsAuthenticated()
 
     m.overhang.isClockVisible = resolveClockVisible(group.isClockVisible)
     group.observeField("isClockVisible", "updateOverhangClock")
@@ -1104,7 +1103,6 @@ sub unregisterOverhangData(group as object)
     group.unobserveField("overhangStatus")
     group.unobserveField("overhangTabs")
     group.unobserveField("isOverhangVisible")
-    group.unobserveField("isLogoVisible")
     group.unobserveField("isClockVisible")
     group.unobserveField("shouldShowUserDropdown")
     m.overhang.unobserveField("selectedTabId")
@@ -1117,10 +1115,6 @@ end sub
 
 sub updateOverhangStatus(msg)
   m.overhang.status = msg.getData()
-end sub
-
-sub updateOverhangLogo(msg)
-  m.overhang.isLogoVisible = msg.getData()
 end sub
 
 sub updateOverhangClock(msg)
@@ -1159,16 +1153,15 @@ sub updateOverhangTabs(msg)
   projectOverhangTabs(msg.getRoSGNode())
 end sub
 
-' The one projection of a screen's tabs onto the overhang: the selection, the mode, then
-' the tabs, together and in that order, at bind and whenever the tabs change. The bar
-' reads the selection and the mode when the tabs arrive, so tabs sent alone would be
+' The one projection of a screen's tabs onto the overhang: the selection, then the tabs,
+' together and in that order, at bind and whenever the tabs change. The bar reads the
+' selection when the tabs arrive, so tabs sent alone would be
 ' drawn with the previous screen's selection. A screen therefore sets selectedTabId
 ' before overhangTabs. Once bound, the selection written here comes back through
 ' onOverhangTabSelected to the screen's own selectedTabId, so a screen's handler ignores
 ' the tab it already shows.
 sub projectOverhangTabs(group as object)
   m.overhang.selectedTabId = group.selectedTabId
-  m.overhang.tabMode = group.tabMode
   m.overhang.tabs = group.overhangTabs
 end sub
 
@@ -1222,7 +1215,9 @@ sub onOverhangIconAction()
   openClusterRoute(id)
 end sub
 
-' Open the screen a cluster icon stands for, and note the icon on the screen being left.
+' Open the screen a cluster icon stands for, and note the icon on the screen being left. The
+' icon for the screen already on show does nothing, as a selected tab does: the screen's
+' underlined title already says where the viewer is.
 sub openClusterRoute(id as string)
   path = ""
   if id = "search"
@@ -1234,6 +1229,8 @@ sub openClusterRoute(id as string)
     m.log.warn("overhang icon with no route", id)
     return
   end if
+  active = routeOfActiveView()
+  if isValid(active) and active.path = path then return
   view = getActiveView()
   if isValid(view) and view.isSubType("JRScreen") then view.overhangReturnIcon = id
   routerNavigate(path)

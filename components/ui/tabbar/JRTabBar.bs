@@ -14,7 +14,7 @@ sub init()
   m.scrollAnimation.duration = tabStrip.SCROLL_SECONDS
   m.scrollInterpolator = m.top.findNode("scrollInterpolator")
   m.focusedTabIndex = 0
-  ' The strip's scroll offset (scrolling mode), and whether the slot's clip is set
+  ' The strip's scroll offset, and whether the slot's clip is set
   m.windowOffset = 0
   m.isWindowed = false
 
@@ -28,7 +28,6 @@ sub init()
   ' rule in components/CLAUDE.md.
   m.top.observeField("tabs", "onTabsChanged")
   m.top.observeField("focusedTabIndex", "onFocusedTabIndexChanged")
-  m.top.observeField("mode", "onSlotChanged")
   m.top.observeField("slotWidth", "onSlotChanged")
 end sub
 
@@ -66,8 +65,6 @@ sub onTabsChanged()
     tabNode = CreateObject("roSGNode", "JRTab")
     tabNode.tabTitle = tabData.title
     tabNode.tabId = tabData.id
-    if isValidAndNotEmpty(tabData.icon) then tabNode.tabIcon = tabData.icon
-    if isValidAndNotEmpty(tabData.selectedIcon) then tabNode.tabSelectedIcon = tabData.selectedIcon
 
     ' Mark the first tab as selected by default if no selection exists
     if m.top.selectedTabId = "" and tabData.id = tabs[0].id
@@ -115,7 +112,7 @@ sub onTabReady()
 end sub
 
 ' ============================================
-' SCROLLING MODE
+' THE STRIP IN ITS SLOT
 ' ============================================
 
 sub onSlotChanged()
@@ -131,12 +128,13 @@ function activeTabIndex() as integer
   return 0
 end function
 
-' Scrolling mode: clips the strip to its slot, moves it to where tabStrip.window puts the
-' active tab, and dims a tab the slot's edge cuts. A focus move slides (`animate`); anything
-' else jumps. Fixed mode, or a strip not yet sized, has no clip and never moves.
+' Clips the strip to its slot, moves it to where tabStrip.window puts the active tab, and
+' dims a tab the slot's edge cuts. A focus move slides (`animate`); anything else jumps. A
+' strip with no slot yet, or not yet sized, has no clip and never moves; one that fits its
+' slot never moves either.
 sub applyWindow(animate as boolean)
   slotWidth = m.top.slotWidth
-  if m.top.mode <> "scrolling" or slotWidth <= 0 or not m.top.isReady
+  if slotWidth <= 0 or not m.top.isReady
     clearWindow()
     return
   end if
@@ -199,11 +197,7 @@ function tabsMatchExisting(tabs as object) as boolean
 
   for i = 0 to tabs.count() - 1
     existing = m.tabContainer.getChild(i)
-    icon = ""
-    if isValidAndNotEmpty(tabs[i].icon) then icon = tabs[i].icon
-    selectedIcon = ""
-    if isValidAndNotEmpty(tabs[i].selectedIcon) then selectedIcon = tabs[i].selectedIcon
-    if existing.tabId <> tabs[i].id or existing.tabTitle <> tabs[i].title or existing.tabIcon <> icon or existing.tabSelectedIcon <> selectedIcon
+    if existing.tabId <> tabs[i].id or existing.tabTitle <> tabs[i].title
       return false
     end if
   end for
@@ -339,7 +333,6 @@ sub onDestroy()
   m.top.unobserveField("tabs")
   m.top.unobserveField("focusedTabIndex")
   m.top.unobserveField("focusedChild")
-  m.top.unobserveField("mode")
   m.top.unobserveField("slotWidth")
   for i = 0 to m.tabContainer.getChildCount() - 1
     m.tabContainer.getChild(i).unobserveField("isReady")

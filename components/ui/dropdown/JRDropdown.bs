@@ -2,7 +2,6 @@ import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/pixelGrid.bs"
 import "pkg:/source/utils/textMetrics.bs"
 
-const TRIGGER_LABEL_MAX_WIDTH = 300 ' A longer name ellipsizes; the row's title keeps its room
 const TRIGGER_PART_GAP = 9 ' Between the avatar, the name and the chevron
 
 sub init()
@@ -42,6 +41,7 @@ sub init()
   m.top.observeField("triggerIconBlendColor", "onTriggerIconBlendColorChanged")
   m.top.observeField("items", "onItemsChanged")
   m.top.observeField("selectedItemId", "onSelectedItemChanged")
+  m.top.observeField("maxWidth", "onMaxWidthChanged")
 end sub
 
 ' ============================================
@@ -69,6 +69,14 @@ sub onTriggerIconChanged()
   end if
 end sub
 
+' The box may be wider or narrower now: measure the name afresh, as a new name is
+sub onMaxWidthChanged()
+  m.triggerLabel.width = 0
+  if m.top.renderTracking = "full"
+    sizeTriggerButton()
+  end if
+end sub
+
 sub onTriggerIconBlendColorChanged()
   m.triggerIcon.blendColor = m.top.triggerIconBlendColor
 end sub
@@ -87,12 +95,20 @@ sub sizeTriggerButton()
   ' land on whole pixels at 720p, and cap a long one
   labelWidth = snapToGrid(-int(-m.triggerLabel.localBoundingRect().width))
   if labelWidth = 0 then return ' not rendered yet: onRenderComplete runs this again
-  if labelWidth > TRIGGER_LABEL_MAX_WIDTH then labelWidth = TRIGGER_LABEL_MAX_WIDTH
+  padding = m.top.padding
+  ' With a maxWidth, the name gets what the box has left after its other parts, on the grid
+  if m.top.maxWidth > 0
+    others = padding * 2 + TRIGGER_PART_GAP + m.triggerChevron.width
+    if m.triggerIcon.visible then others += m.triggerIcon.width + TRIGGER_PART_GAP
+    labelCap = m.top.maxWidth - others
+    labelCap -= labelCap mod 3
+    if labelCap < 0 then labelCap = 0
+    if labelWidth > labelCap then labelWidth = labelCap
+  end if
   m.triggerLabel.width = labelWidth
 
   ' Place the parts left to right, each centered on the box's middle. A label's caps sit
   ' above its box's middle (capsAboveCenter), so the name drops that far, rounded onto the grid.
-  padding = m.top.padding
   contentHeight = m.triggerLabel.height
   if m.triggerIcon.visible and m.triggerIcon.height > contentHeight then contentHeight = m.triggerIcon.height
   buttonHeight = contentHeight + (padding * 2)
@@ -375,6 +391,7 @@ sub onDestroy()
   m.top.unobserveField("triggerIconBlendColor")
   m.top.unobserveField("items")
   m.top.unobserveField("selectedItemId")
+  m.top.unobserveField("maxWidth")
   m.top.unobserveField("focusedChild")
 
   m.top.unobserveField("renderTracking")

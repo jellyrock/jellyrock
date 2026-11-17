@@ -1,6 +1,6 @@
 /**
- * A scrolling tab strip on a real device: eight long tabs put on Home's overhang over ODC
- * (`tabMode = "scrolling"`), so no test screen ships in the app. Focus walks the strip one
+ * A scrolling tab strip on a real device: eight long tabs put on Home's overhang over ODC,
+ * so no test screen ships in the app. Focus walks the strip one
  * tab at a time; each stop is captured and its geometry recorded. A bench, so it runs only
  * when asked for:
  *
@@ -133,9 +133,6 @@ it.skipIf(!BENCH_ENABLED)('scrolls a strip of eight tabs by the rule', async () 
   await assertSeedTookEffect(expectedServer, 'tab-strip');
   await waitHome();
 
-  // A library shows no logo, so its tabs start at the left edge: hide Home's for the same slot
-  await odc.setValue({ base: 'scene', keyPath: '#overhang.isLogoVisible', value: false });
-  await odc.setValue({ base: 'scene', keyPath: '#overhang.tabMode', value: 'scrolling' });
   await odc.setValue({ base: 'scene', keyPath: '#overhang.tabs', value: TABS });
   await waitFor('#overhang.#tabBar.isReady', (v) => v === true, {
     timeout: 10000,
@@ -234,27 +231,30 @@ it.skipIf(!BENCH_ENABLED)('scrolls a strip of eight tabs by the rule', async () 
   const left = await stop('left-the-strip');
   expect(left.offset).toBe(0);
 
-  // Back to a fixed bar, as on the way from a library to Home: the clip comes off and the tabs
-  // draw whole again
-  await odc.setValue({ base: 'scene', keyPath: '#overhang.tabMode', value: 'fixed' });
+  // Back to two tabs that fit, as Home's do: the strip sits at its start, nothing is dimmed,
+  // and both tabs draw whole inside the clip
   await odc.setValue({ base: 'scene', keyPath: '#overhang.tabs', value: TABS.slice(0, 2) });
   await waitFor('#overhang.#tabBar.isReady', (v) => v === true, {
     timeout: 10000,
     interval: 250,
-    label: 'the fixed tabs sized',
+    label: 'the two tabs sized',
   });
-  await captureRawUI('tab-strip-fixed-again');
-  const [clip, tracking0, tracking1, opacity0] = await getVals([
+  await waitSlideEnded();
+  await captureRawUI('tab-strip-fits');
+  const [clip, offsetX, tracking0, tracking1, opacity0, opacity1] = await getVals([
     '#overhang.#tabClip.clippingRect',
+    '#overhang.#tabContainer.translation',
     `${TAB(0)}.renderTracking`,
     `${TAB(1)}.renderTracking`,
     `${TAB(0)}.opacity`,
+    `${TAB(1)}.opacity`,
   ]);
-  record.fixedAgain = { clip, tracking0, tracking1, opacity0 };
+  record.fits = { clip, offsetX, tracking0, tracking1, opacity0, opacity1 };
   // Not an empty clip: that stops the tabs drawing (seen on a Roku Stick, 2026-11-12)
-  expect(clip.width).toBeGreaterThan(left.slotWidth);
+  expect(clip.width).toBe(left.slotWidth);
+  expect(offsetX[0]).toBe(0);
   expect([tracking0, tracking1]).toEqual(['full', 'full']);
-  expect(opacity0).toBe(1);
+  expect([opacity0, opacity1]).toEqual([1, 1]);
 
   fs.writeFileSync(
     path.join(RAW_CAPTURE_DIR, 'tab-strip.json'),

@@ -65,11 +65,11 @@ sub init()
 
   m.top.isOptionsAvailable = false
 
-  ' Page title in the overhang, as Settings declares its own. The logo is hidden here
-  ' (JRGroup's default), so the title starts at x=96. While the keyboard is closed, the
-  ' overhang's status after the title carries the submitted query, the way a grid's title
-  ' carries "Filtered by"; while it is open, the box above the keys does, with the count.
+  ' Page title in the overhang, as Settings declares its own. While the keyboard is closed,
+  ' the overhang's status after the title carries the submitted query; while it is open, the
+  ' box above the keys does, with the count. The user menu shows here as on Home and Settings.
   m.top.overhangTitle = translate(translationKeys.ButtonSearch)
+  m.top.shouldShowUserDropdown = true
   m.searchStatusQuery = ""
 
   ' Show the app-wide overhang, so this screen uses the same chrome path as every other
@@ -1162,13 +1162,6 @@ sub onFailureNarrationDue()
   narrateDialogOpening("", m.searchFailedText.text, m.searchRetryButton.text)
 end sub
 
-' JRScreen hook: the overhang's search icon, pressed on the search screen, reopens the
-' keyboard instead of navigating to search again. The gear is left to the scene.
-function onOverhangAction(id as string) as boolean
-  if id <> "search" then return false
-  m.top.isExpanded = true
-  return true
-end function
 
 ' ============================================================================
 ' KEYBOARD EDGE ESCAPES

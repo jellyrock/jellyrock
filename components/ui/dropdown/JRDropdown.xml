@@ -8,8 +8,8 @@
     <Group id="triggerContent">
       <Poster id="triggerIcon" visible="false" width="42" height="42" loadWidth="42" loadHeight="42" loadDisplayMode="limitSize" />
       <!-- The trigger hugs its text: width 0 sizes the label to the text, and
-           sizeTriggerButton rounds it up onto the 3 px grid and caps it at
-           TRIGGER_LABEL_MAX_WIDTH, where it ellipsizes by
+           sizeTriggerButton rounds it up onto the 3 px grid and caps it so the box
+           fits maxWidth, where it ellipsizes by
            character (no ellipsizeOnBoundary: whole-word ellipsizing drops a too-long
            single word entirely and renders a bare "...", #798). The height matches the
            avatar, so both center on the box's middle. -->
@@ -35,6 +35,9 @@
     <field id="padding" type="integer" value="15" />
     <!-- The trigger box is at least this tall, its content centered (the overhang row's height). -->
     <field id="minHeight" type="integer" value="0" />
+    <!-- The trigger box is at most this wide, 0 for no limit: a longer name ellipsizes. The
+         overhang sets it from the line its user menu never crosses (overhangRow.menuMaxWidth). -->
+    <field id="maxWidth" type="integer" value="0" />
 
     <!-- Output -->
     <field id="triggerWidth" type="integer" value="0" />

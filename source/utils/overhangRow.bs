@@ -23,6 +23,11 @@ namespace overhangRow
   const TEXT_DROP = 3
   const BADGE_SIZE = 18 ' A dot on a glyph's top-right for something waiting there (SyncPlay's groups to join)
   const RIGHT_EDGE = 1824 ' The 5% action-safe right edge: the clock's digits end here
+  ' The line between the row's two sides. The tabs, or the title and its status, may always
+  ' run to here; the user menu never crosses it, and a name too long to fit ends in an
+  ' ellipsis. A short name leaves its room to the tabs. With SyncPlay shown it allows the
+  ' name 300 pixels.
+  const LINE_X = 1068
   ' The clock's digits until the clock reports their width (Clock.textWidth, at its first tick):
   ' "8:48" measured 99 px wide at 1080p on a Stick 4K (2026-10-25), so this covers two hour digits.
   const CLOCK_PROVISIONAL_WIDTH = 126
@@ -59,6 +64,19 @@ namespace overhangRow
     if clusterWidth > 0 then edge -= clusterWidth + ELEMENT_GAP
     if dropdownWidth > 0 then edge -= dropdownWidth + ELEMENT_GAP
     width = edge - barX
+    if width <= 0 then return 0
+    return width - (width mod 3)
+  end function
+
+  ' The widest the user menu may be: from an element gap right of LINE_X to the gap before the
+  ' cluster (`clusterWidth`, 0 when hidden), else the clock. The clock counts as at least
+  ' CLOCK_PROVISIONAL_WIDTH wide, as in tabSlotWidth, so a name is not cut differently from one
+  ' minute to the next. On the grid, and 0 when nothing is left.
+  function menuMaxWidth(clockWidth as integer, clockShown as boolean, clusterWidth as integer) as integer
+    if clockWidth < CLOCK_PROVISIONAL_WIDTH then clockWidth = CLOCK_PROVISIONAL_WIDTH
+    edge = leftOfClock(clockWidth, clockShown)
+    if clusterWidth > 0 then edge -= clusterWidth + ELEMENT_GAP
+    width = edge - (LINE_X + ELEMENT_GAP)
     if width <= 0 then return 0
     return width - (width mod 3)
   end function

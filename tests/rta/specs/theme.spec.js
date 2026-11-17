@@ -36,6 +36,7 @@ import {
   waitFocusInside,
   waitFor,
   walkOverhangRowTo,
+  focusIsInOverhangRow,
 } from '../lib/steps.js';
 
 // The menu labels this file walks by are English.
@@ -192,8 +193,9 @@ it('a preset picked in Settings applies at once when search opens over Settings,
     label: 'the first menu entry',
   });
   await press(ecp.Key.Up);
-  // Wait for any overhang icon before walking, so no Right can reach the Settings menu if Up is slow.
-  await waitFocused((f) => f?.node?.subtype === 'JROverhangIcon', {
+  // Wait for the row (the user menu on Settings) before walking, so no Right can reach the
+  // Settings menu if Up is slow.
+  await waitFocused(focusIsInOverhangRow, {
     timeout: 8000,
     interval: 250,
     label: 'the row from Settings',

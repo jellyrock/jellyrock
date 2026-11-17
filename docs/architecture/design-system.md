@@ -31,7 +31,7 @@ related-files:
   - components/ItemGrid/LibraryHeaderStrip.bs
   - components/ItemGrid/LibraryHeaderStrip.xml
   - source/utils/headerStrip.bs
-last-reviewed: 2026-11-16
+last-reviewed: 2026-11-17
 ---
 
 # Design system
@@ -60,15 +60,15 @@ The 9-patch borders encode the same state. `border-3px.9.png` is for static pane
 
 ## The overhang row
 
-One row, the same elements in the same order on every screen that shows them (`JROverhang`): the logo, the screen's tabs or its title in their place, the user dropdown, the fixed cluster (SyncPlay, Search, Settings), the clock. What rides in the overhang is decided by one rule: **the overhang holds what every screen has; a screen holds what only it has.** A control one screen alone has (a library's layout, sort and filter) belongs on that screen, next to the state it changes.
+One row, the same elements in the same order on every screen that shows them (`JROverhang`): the logo (before sign-in only), the screen's tabs or its title in their place, the user dropdown, the fixed cluster (SyncPlay, Search, Settings), the clock. Every signed-in screen starts its tabs or title at the left edge (x 96), so nothing moves sideways between screens. What rides in the overhang is decided by one rule: **the overhang holds what every screen has; a screen holds what only it has.** A control one screen alone has (a library's layout, sort and filter) belongs on that screen, next to the state it changes.
 
 | Element | Size | Rule |
 |---|---|---|
 | Icon button (`JROverhangIcon`) | a 78 pixel square focus box around the 42 pixel glyph; the row lays out by 60 pixel slots 6 apart, so the box overhangs its slot by 9 and overlaps its invisible neighbors | The focus ring is the 6 pixel border; the resting glyph is `colorTextSecondary`, focused `colorTextPrimary`, disabled `colorTextDisabled` in both states |
 | SyncPlay icon (the cluster's first entry) | the same box; an 18 pixel badge (`overhangRow.BADGE_SIZE`) on the glyph's top-right | One icon is the membership's state and its control. In a group, the filled `groups` glyph is drawn in `colorSecondary`, focused or not; its outlined variant differs from the filled one only by two small holes, which nobody tells apart at ten feet. Outside a group, while a group exists to join, a `colorSecondary` dot sits on the white glyph (`JROverhangIcon.hasBadge`), as the jellyfin-web toolbar marks it. The two states differ in shape (a tinted glyph or a dot), not in color alone, so they hold in any theme. An account whose SyncPlay access is None never sees it: Search and Settings keep their place at the right. Neither does anyone until the server's push channel to the Roku is known; without one (an HTTPS server with no companion plugin) the icon is shown disabled (`isDisabled`, a gray glyph) with no dot, and a press explains that the plugin is needed. A press opens a dialog, never a route |
-| Tab (`JRTab`) | the Large font in a 78 pixel box, 15 pixels at the sides (`TAB_PADDING`, so the focus border sits 9 pixels clear of the text), a 42 pixel glyph, a 6 pixel icon gutter | The glyph is outlined until the tab is selected, then filled; the 6 pixel underline under glyph and text is `colorSecondary` |
-| User dropdown (`JRDropdown`) | a 42 pixel avatar, the name, a 24 pixel chevron, 9 pixels apart, in a 78 pixel box with 9 pixels at the sides | The box hugs its content, the name's width rounded up onto the grid; a name past 300 pixels is cut with an ellipsis. The name drops 3 pixels in its box, as a text box does (below) |
-| Logo | 180 by 39 at y 51 | Its capitals and baseline sit on the tab text's |
+| Tab (`JRTab`) | the Large font in a 78 pixel box, 15 pixels at the sides (`TAB_PADDING`, so the focus border sits 9 pixels clear of the text) | Text only: few views have a symbol a viewer reads at a glance, and a glyph costs a tab's width. The 6 pixel underline under the selected tab's text is `colorSecondary` |
+| User dropdown (`JRDropdown`) | a 42 pixel avatar, the name, a 24 pixel chevron, 9 pixels apart, in a 78 pixel box with 9 pixels at the sides | The box hugs its content, the name's width rounded up onto the grid; the box never crosses the row's line (below), so a long name is cut with an ellipsis. The name drops 3 pixels in its box, as a text box does (below) |
+| Logo | 180 by 39 at y 51 | Shown while no user is signed in (the sign-in screens, which have no tabs or title), decided by `JRScene`, not declared by a screen. Its capitals and baseline sit on the tab text's |
 | Text box (tabs, the title, the clock) | the row's 78 pixels, 3 pixels below the row's top (y 30 to 108) | A label centers its line box, and caps and digits sit about 7% of the font size above that box's middle, so text in this box centers on the row's line. The title takes the same box as a tab's text, so it sits where the tabs' text does |
 | Title (`JROverhang` `title`) | the Large font in primary color in the tabs' place, shown on a screen with no tabs, with a 6 pixel `colorSecondary` line under its text (`overhangRow.TITLE_UNDERLINE`) | The name of what was opened and nothing else: a library screen's count and what narrows it are on its header strip. The line is a selected tab's underline, placed by the same arithmetic (`underlineTop` in `source/utils/textMetrics.bs`), so the row marks where the viewer is the same way with tabs or without. It is as wide as the text, never wider than the title's slot, and not focusable |
 | Status (`JROverhang` `status`) | the Large font in secondary color, 9 pixels (`TITLE_STATUS_GAP`) after the title's text, taking what the slot has left | A screen's state next to its name, never a control: the search screen's submitted query while its keyboard is closed. Scrolls when long; hidden when the title alone fills the slot |
@@ -78,12 +78,9 @@ One row, the same elements in the same order on every screen that shows them (`J
 
 ### A tab strip that can outgrow its slot
 
-`JRTabBar` has two modes, and a screen declares one with its tabs (`tabMode`).
+Every tab strip (`JRTabBar`) is clipped to its slot, the span from its left edge to the gap before the user dropdown or the cluster, and follows one rule. A strip that fits never moves, so Home's two tabs and a long library's eight behave alike.
 
-- **Fixed** is the default, and Home's: a small set that fits in every language. The tabs are laid out and never move.
-- **Scrolling** is for a set that long translations or more views can push past the row. The strip is clipped to its slot, the span from its left edge to the gap before the cluster.
-
-A scrolling strip follows one rule. The **active tab** is the focused tab while the bar has focus, and the selected tab otherwise. It sits at the start of the slot with a little of the tab before it showing, and the strip never scrolls past its last tab. So a strip that fits never moves. On one that does not, each Left or Right press moves the strip one tab until it reaches an end, and the strip returns to the selected tab when focus leaves the bar. Right from the last tab and Left from the first leave the strip for the cluster, as in fixed mode.
+The rule: the **active tab** is the focused tab while the bar has focus, and the selected tab otherwise. It sits at the start of the slot with a little of the tab before it showing, and the strip never scrolls past its last tab. So a strip that fits never moves. On one that does not, each Left or Right press moves the strip one tab until it reaches an end, and the strip returns to the selected tab when focus leaves the bar. Right from the last tab and Left from the first leave the strip for the next element in the row.
 
 A tab the slot's edge cuts is drawn dimmed, which tells the viewer more tabs lie that way. There is no fade: the overhang sits over a backdrop, so a painted gradient would show as a band, and a fade to transparent needs a `MaskGroup`, which a player without OpenGL draws unmasked.
 
@@ -91,7 +88,13 @@ Only a focus move slides the strip. A new set of tabs, a new screen and a change
 
 The rule is one pure function, `tabStrip.window` in `source/utils/tabStrip.bs`, with the peek width, the cut tab's opacity and the slide's length beside it.
 
-Left and Right walk the row as one and wrap at both ends; Down returns to the screen; Up from a screen's top enters the row at the element used last on that visit, else the first shown (the selected tab on Home, the first cluster icon elsewhere). The cluster shows on every screen once a user is signed in, except a player, which has no now-playing control to come back to; the dropdown shows on Home only. A screen's own controls stay on the screen: the search screen's query box lives in its keyboard overlay, and while the keyboard is closed the overhang shows the submitted query as dim status text after the title. A library's sort and filter are on its header strip, which sits between the row and the content: Up from the content's top lands on the strip, and Up from the strip enters the row.
+### The line between the row's two sides
+
+The tabs, or the title and its status, may always run to the row's line (`overhangRow.LINE_X`, x 1068), which leaves them more than half the row. The user dropdown never crosses it: `overhangRow.menuMaxWidth` gives the dropdown its widest box (`JRDropdown.maxWidth`), and a name too long for it ends in an ellipsis (300 pixels of name with SyncPlay shown and the clock at its allowance). A short name leaves its room to the tabs. The limit counts the clock at its allowance, as the tab slot does, so a name is not cut afresh each minute.
+
+The dropdown shows on Home, Settings and Search only (`shouldShowUserDropdown`). A name has no known width, so the screens that need their room for tabs, a library above all, leave it out.
+
+Left and Right walk the row as one and wrap at both ends; Down returns to the screen; Up from a screen's top enters the row at the element used last on that visit, else the first shown (the selected tab on a screen with tabs, the dropdown on Settings and Search, the first cluster icon elsewhere). The cluster shows on every screen once a user is signed in, except a player, which has no now-playing control to come back to. A cluster icon for the screen on show (Search on Search, Settings on Settings) does nothing, as a selected tab does: the screen's underlined title already says where the viewer is. A screen's own controls stay on the screen: the search screen's query box lives in its keyboard overlay, and while the keyboard is closed the overhang shows the submitted query as dim status text after the title. A library's sort and filter are on its header strip, which sits between the row and the content: Up from the content's top lands on the strip, and Up from the strip enters the row.
 
 ## The library header strip
 
@@ -142,12 +145,11 @@ The list dialog (`JRListDialog`) is the first to use it. The subtitle panel and 
 | `TextButton` with the Medium font (the subtitle panel) | 24 pixels (`iconSize`, the default) | 12 pixels (`iconGutter`, the default) | The sizes the app's buttons were drawn at |
 | A header strip chip, Medium font | 30 pixels | 9 pixels | A 63/45 asset at 30 draws about 21 pixels of ink, the font's cap height. A glyph whose ink is narrow is pinned larger so its side padding matches its neighbor's (`sort` is 63/51) |
 | `IconButton` (details, the players' controls) | a 63 pixel square load box, drawn 1:1 from a 63 pixel canvas | caption below | The box sets the plate (123 pixels) and the row's overflow budget (`ICON_BUTTON_ICON_SIZE` in `buttonOverflow.bs`). A smaller canvas is not scaled up and gives a narrower plate, so its icons are built at 63 in `icons.json` |
-| A tab with the Large font | 42 pixels | 6 pixels | A 42 pixel poster of a 63/45 asset pads exactly 6 pixels itself, so 12 pixels stays visible |
 | An overhang icon button | 42 pixels in a 78 pixel square box | none | The glyph is the content |
 
-**Density.** Every overhang glyph (the tabs', the cluster's, the avatar fallback `person`) is pinned in `icons.json` at 63/45: a 63 pixel canvas with the glyph's longer side 45 pixels, so the shape fills about 71% of its poster. Both numbers are on the grid, and so is everything that follows from them: the HD copy is 42/30, and a 42 pixel poster draws the canvas at exactly two thirds, a 30 pixel glyph with 6 pixels of padding each side. The pipeline's default 96/54 fills 56%, which draws visibly smaller at the same poster size (measured 2026-10-25: `home` at the default drew 22 pixels of ink in a 42 pixel poster where `search` drew 32). Pin 63/45 when adding a glyph to the overhang.
+**Density.** Every overhang glyph (the cluster's, the avatar fallback `person`) is pinned in `icons.json` at 63/45: a 63 pixel canvas with the glyph's longer side 45 pixels, so the shape fills about 71% of its poster. Both numbers are on the grid, and so is everything that follows from them: the HD copy is 42/30, and a 42 pixel poster draws the canvas at exactly two thirds, a 30 pixel glyph with 6 pixels of padding each side. The pipeline's default 96/54 fills 56%, which draws visibly smaller at the same poster size (measured 2026-10-25: `home` at the default drew 22 pixels of ink in a 42 pixel poster where `search` drew 32). Pin 63/45 when adding a glyph to the overhang.
 
-**Fill.** Outlined by default; the recorded exceptions are the fill rules in the icon README. A navigation destination's glyph follows selection: outlined while not selected, filled while selected, never tied to focus (rule 8 there).
+**Fill.** Outlined by default; the recorded exceptions are the fill rules in the icon README.
 
 ## Where the numbers are enforced
 

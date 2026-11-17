@@ -392,12 +392,10 @@ sub calculateFontScaleFactor()
 
 end sub
 
-' Shared handler for menu actions from both the OptionsSlider and the user dropdown.
-' OPEN_SEARCH / OPEN_SETTINGS are not handled here: Home navigates to those routes directly
-' (navigateTo runs on the render thread, which main.bs is not). Only the session-ending
-' actions remain. Each tears down the routed Home (resetRouter) and re-enters the login flow
-' in place (reenterLogin), with no `goto appStart`, since the pre-login flow is routed and driven
-' by the same unified event loop.
+' The user menu's actions (Home, Settings and Search show it), all session-ending. Each tears
+' down the routed stack (resetRouter) and re-enters the login flow in place (reenterLogin),
+' with no `goto appStart`, since the pre-login flow is routed and driven by the same unified
+' event loop.
 sub handleMenuAction(actionId as string)
   if actionId = HomeAction.CHANGE_SERVER
     startLoadingSpinner()

@@ -172,7 +172,6 @@ sub init()
   m.view = ""
   m.isFavoriteTab = false
   m.layout = libraryLayout.GRID
-  m.top.tabMode = "scrolling"
 
   ' TV Guide state (LiveTV only)
   m.tvGuide = invalid

@@ -32,7 +32,6 @@ Pass `--filled` to `npm run icons:add` (or store an `_filled.svg` variant) only 
 | 5 | Rating glyph | Inline rating display | `star`: filled is the industry standard for ratings |
 | 6 | Playback action button | Composes the filled `play` | `resume` (an arc plus the play triangle), to match the standalone `play` |
 | 7 | Toggle on-state | Paired with an outlined off-state | `heart` (the on-state of the `ItemDetails` Favorite button), `groups` (the cluster's SyncPlay icon, filled in both states because its outlined variant differs from the filled one only by two small holes: its on-state is the glyph drawn in `colorSecondary`, as `IconButton`'s selected state is), `favorite_selected` (the favorite mark on the TV guide's program picture: outlined geometry, marked by a hard-coded red), `checkbox_checked` (a checklist row's ticked box, with the outlined `checkbox` as its off-state) |
-| 8 | Selected overhang tab | A tab's glyph is outlined while the tab is not selected and filled while it is; fill follows selection, never focus (the navigation convention, JellyRock's choice 2026-10-25) | `home` (with `home_outline`), `heart` (with `heart_outline`) |
 
 **Choosing the fill for a new icon:**
 
@@ -43,7 +42,6 @@ Does it represent a person OR a content-type subject?              → --filled 
 Does it live in images/placeholders/ (item-type representation)?   → --filled (Rule 4)
 Is it a star used for ratings?                                     → --filled (Rule 5)
 Does it visually compose `play` for a playback action?             → --filled (Rule 6)
-Is it the selected state of an overhang tab's glyph?               → --filled (Rule 8)
 Is it the on-state of a toggle paired with an outlined off-state?  → --filled (Rule 7)
 Otherwise:                                                         → outlined (default)
 ```
@@ -138,8 +136,6 @@ A few icons in `resources/icons/` aren't Material Symbols. The build treats them
 
 - **`tomato-fresh.svg` and `tomato-rotten.svg`**, from Wikimedia Commons ([fresh](https://commons.wikimedia.org/wiki/File:Rotten_Tomatoes.svg), [rotten](https://commons.wikimedia.org/wiki/File:Rotten_Tomatoes_rotten.svg)). Both are PD-textlogo, which is public domain: "consists only of simple geometric shapes or text". `components/ui/label/metadata/CriticRating.bs` uses them to show Rotten Tomatoes scores. The trademark belongs to Fandango Media. JellyRock uses the icons only to attribute the scores they stand for, as media clients commonly do, never as its own branding.
 
-- **`home.svg` and `home_outline.svg`** are Material's `home` (filled and outlined) with the roof line carried past the walls: two 91-unit strokes with round caps along the middle of the roof line, from (90, -500.85) to (300, -658.35) and from (870, -500.85) to (660, -658.35) on Material's 960 grid, the same thickness as the outline. The first hand-edited glyph in the set (2026-10-25): the stock `home` reads as a box with a notch at 42 pixels. Each file says so in a comment, and `npm run icons:add` refuses to overwrite an existing file; to refresh from Material, redo the edit, never only re-fetch.
-
 To add a non-Material SVG, put it in `resources/icons/`, add a row to the [Provenance](#provenance) table and set its fill colors in the SVG (the white fill from `npm run icons:add` applies only to fetched Material Symbols). `npm run icons:build` then renders its PNGs through the same pipeline.
 
 ## License & attribution
@@ -192,9 +188,6 @@ this table automatically.
 | `check-black.svg` | `check` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `check-white.svg` | `check` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `favorite_selected.svg` | `favorite` (hand-edited fill `#FF0000`) | Rounded | 500 | 0 | `24px` | 2026-05-09 |
-| `home.svg` | `home` (hand-edited: roof line extended, fill 1) | Rounded | 500 | 1 | `24px` | 2026-10-25 |
-| `home_outline.svg` | `home` (hand-edited: roof line extended, fill 0) | Rounded | 500 | 0 | `24px` | 2026-10-25 |
-| `heart_outline.svg` | `favorite` | Rounded | 500 | 0 | `24px` | 2026-10-25 |
 | `heart.svg` | `favorite` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `album.svg` | `album` | Rounded | 500 | 1 | `24px` | 2026-05-10 |
 | `artist_filled.svg` | `account_box` | Rounded | 500 | 1 | `24px` | 2026-05-10 |
