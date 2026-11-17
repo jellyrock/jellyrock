@@ -1171,17 +1171,17 @@ The member stays inside the server's 500 ms tolerance and nothing hangs, but `sy
 
 Not checked: whether the picture really runs ahead or the node's `position` over-reads after a resume. No camera measurement exists, and the reading alone cannot tell them apart. Measure the position across a short pause and resume on that Stick first. Closes with either a hold that converges there, or a threshold per device class, with the measurement that justifies it.
 
-#### A SyncPlay join the server records can leave the Roku's icon inactive, intermittently `[fid: syncplay-join-frame-never-seen]` `[captured 2026-11-01]`
+#### A SyncPlay join on a 12.2 server once left the Roku's icon inactive, cause unknown `[fid: syncplay-join-frame-never-seen]` `[captured 2026-11-01]`
 
-A SyncPlay join in the RTA specs occasionally never turns the icon active, though the server records the join. On 10.10.7 (Stick 4K, 2026-11-01) the server logged `joined group`, `syncplay-menu` timed out on "the icon turns active on the join" with `last=false`, and the next case's direct join failed the same way, so the fault lasted the run. The same wait failed in earlier matrix runs that day on 10.9.11 and 12.2. It did not recur in 11 later `syncplay-menu` runs, 9 of them with the console captured.
+A SyncPlay join in the RTA specs occasionally never turned the icon active, though the server recorded the join. The cause on servers before 10.11 is found and fixed; one sighting is left unexplained.
 
-A later failure on 10.10.7 had the console captured (2026-11-01, `syncplay-correction`'s setup): the session socket opened, `SyncPlay/Join` answered 204, and no `GroupJoined` reached the app before the wait ended. So the frame is lost or never sent, not misread after arrival. All 10 of that spec's cases skipped with its setup. Joins after the next relaunch worked.
+**Found and fixed (10.9 and 10.10).** A probe that relaunches the app and joins once per launch lost 6 of 15 first joins on 10.10.7, then 2 of 15 (Streaming Stick 4K, 2026-11-17), and none of 15 on 10.11.11. In each lost round the server's session list showed this device's session with no socket (`SupportsMediaControl` false) while the Roku's socket was open and receiving keep-alive frames. `SessionManager.GetSessionInfo()` at `v10.10.7` and `v10.9.11` looks the session up and stores a new one in two steps; `v10.11.0` uses one atomic step. The receiver now announces the session before each connect and checks it after the attach (`RemoteControlTask.announceSession`, `remoteProtocol.socketSessionState`). With both, 30 of 30 joins arrived on 10.9.11 and on 10.10.7, with no reopen needed.
 
-Not checked: whether the server sent the frame, or to which socket; and whether a viewer can hit this outside the test sign-in (`authenticateForPush`). If they can, pressing OK on a group gives no feedback for as long as it lasts.
+**Left: the 12.2 sighting.** The same wait failed once in a matrix run on 12.2 (2026-11-01), with no console kept. A 12.x server creates sessions in one step, so the cause above does not explain it. It has not been seen on a 12.x server since: 15 of 15 joins arrived on 12.4.0 with the probe (2026-11-17).
 
-Closes with the server's side of a failure and either a fix, or a proof it comes from the test's sign-in. Whichever way it goes, decide what a viewer sees when the frame never comes.
+Not checked: a cast or a remote-control command on 10.9 or 10.10 before the fix (the same push path, so it should have been lost the same way); a join pressed in the 2 s between the attach and the check on a launch the announce did not cover.
 
-Seen again 2026-11-07 on 10.9.11 (Stick 4K, `syncplay-controls`' setup, "the Roku in the group", `last=false`): 2 of 3 runs that day failed the same way and the third passed, while 10.7.7, 10.8.13, 10.10.7, 10.11.11, 12.0.0 and 12.4.0 each passed once.
+Close it when a run of the join probe on a 12.2 server shows no lost join, or the 12.2 loss is seen again with a console and explained.
 
 #### Roku's analyzer still flags the custom locale folder and a deprecated API `[fid: analyzer-remaining-warnings]` `[captured 2026-11-01]`
 
