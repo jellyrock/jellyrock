@@ -268,6 +268,13 @@ In a code comment or a diagnostic string, where markdown does not render, use th
 
 ### Low
 
+#### `user-policy-xml-defaults-diverge`
+
+- **area**: [`components/data/jellyfin/JellyfinUserPolicy.xml`](../../components/data/jellyfin/JellyfinUserPolicy.xml), [`source/data/SessionDataTransformer.bs`](../../source/data/SessionDataTransformer.bs) (`transformUserPolicy`)
+- **issue**: A `JellyfinUserPolicy` node the server never filled carries the XML field defaults: the one `setGlobals()` and `user.Logout()` create, or the one `transformUserPolicy` returns when the server sends no policy. Those differ from the fallbacks `transformUserPolicy` applies at sign-in. Only `enableLiveTvAccess` is aligned (`true`). The playback, transcoding, remuxing, downloading, device, remote-access, sharing and preference fields have no XML value, so they read `false` on that node and `true` after sign-in. `AudioPlayerView` already reads `enableAudioPlaybackTranscoding`. No sign-in path reaches a never-filled policy today, so the first feature to gate on one of these fields inherits the wrong answer silently.
+- **severity**: Low. Unreachable on today's sign-in paths, and the fix is mechanical.
+- **direction**: Give each XML field the default `transformUserPolicy` uses, so a never-filled node and a sign-in agree. Add a spec that compares a fresh node's fields with the transformer's output for an empty policy object, so the two cannot drift again.
+
 #### `playerhostview-second-subsystem`
 
 - **area**: [`components/video/PlayerHostView.bs`](../../components/video/PlayerHostView.bs):
