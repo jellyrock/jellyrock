@@ -990,14 +990,6 @@ Measured 2026-11-16 on a Streaming Stick 4K against Jellyfin 12.4.0 (two joins p
 
 Not built with `dabe5d11` because it adds state: the verdict has to be keyed on the version and the cap, and dropped when the gear's bitrate pick changes, or a stale one re-encodes a stream the server could have copied. Closes when a second player of the same version starts capped with no restart, shown by a unit case and a device run.
 
-#### The app once left to Roku's home screen mid-load with `EXIT_USER_NAV` and no crash, cause unknown `[fid: app-exit-user-nav-mid-restart-unexplained]` `[captured 2026-11-18]`
-
-On 2026-11-17, during a throwaway probe that repeated `syncplay-controls`' two restart cases on a Stick 4K, the app left to Roku's home screen as a restart's load began: the console ends with `EXIT_USER_NAV`, with no crash trace; the OS media player went from `play` to closed, and the device's time since boot shows no reboot. The probe sent no key then, and no other run appears in the run ledgers for that minute. Seen once in 200 rounds. Whether a person's remote sent Home was asked and not answered.
-
-To close: on a second sighting, read what the app and the ECP key log say in the seconds before the exit. If the remote is confirmed, close this as not a defect.
-
-Why not now: one sighting, and nothing in the console says what sent the app home.
-
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -1185,7 +1177,9 @@ Not checked: whether the picture really runs ahead or the node's `position` over
 
 Revised 2026-11-17: the cause of the low-end Stick's occasional holds is found and fixed. On that device the first position reading after a resume reaches the app up to a few hundred milliseconds stale (12 of 40 resumes read 163 to 254 ms behind and the next reading 206 to 307 ms better, with no correction written), and the learner sampled that reading, so three stale samples in five pulled the learned lag toward zero. The learner now keeps the earlier-saying of a resume's first two readings (`syncPlayPlayer.learnResumeLag`). Measured the same day on the low-end Stick, 40 member-driven resumes against Jellyfin 12.4.0: 0 holds (10 before), resting drift 19 ms ahead to 20 ms behind, learned lag -331 to -355 ms. `syncplay-controls` on a Streaming Stick 4K: 20 of 20 runs.
 
-Still open: a stream's first resume on the low-end Stick, where the learner starts empty (three holds were seen on 2026-11-17 before this change, and that case was not measured after it). Starting a new stream from the last stream's samples was tried with a first version of this change and dropped: together they failed 4 of 20 `syncplay-controls` runs on the Stick 4K, and it was never measured alone. Closes with a measurement of a new stream's first resume on the low-end Stick, and a fix if it still holds.
+Revised 2026-11-18: a new stream now starts from the lag the last stream on its playback path learned (`syncPlayPlayer.adoptPathLag`). Measured on the low-end Stick against Jellyfin 12.4.0, 21 loads alternating a direct play and a transcode, each followed by one pause and resume from the other member. Before: 3 or 4 holds after the start of every load, 66 in all, because each stream learned its lag again and a lag below zero needs two samples. After: 14 in all, 9 of them on the first five loads while both paths were learned, then 4 single holds over the last 16 loads; every load ended within 131 ms of the group, and the member's own resume held 0 times in 20 before and after. A Streaming Stick 4K held on 3 of 21 loads before and 2 after; an Ultra held on none before.
+
+Still open: the first loads on each path after joining a group still learn in the viewer's sight on the low-end Stick, and about one load in four after that holds once. Carrying the lag had failed `syncplay-controls` on the Stick 4K when it was bundled with a learner shape since dropped (4 of 20 runs, 2026-11-17), so this change owes 20 clean runs there, and the Ultra's run after the change. Closes when those pass, with a decision on whether the single holds are worth more work.
 
 #### A SyncPlay join on a 12.2 server once left the Roku's icon inactive, cause unknown `[fid: syncplay-join-frame-never-seen]` `[captured 2026-11-01]`
 
@@ -1248,13 +1242,15 @@ An H.264 source caps the H.264 codec profile at `1920x1080` in `buildPlaybackInf
 
 `mediaNumber` in `source/utils/misc.bs` reads a long integer through a float, so a large value loses its low digits (94848001 reads as 94848000, found 2026-11-04). It is harmless for the values it serves today, but wrong for bitrate and byte values; `reencodeCheck.bitsPerSecond` was added to avoid it. Decide whether `mediaNumber` should keep integers whole, and check its callers.
 
-#### A SyncPlay catch-up freezes about 3 s whatever the seek needs: size its lead from the file's keyframe times `[fid: syncplay-catch-up-lead-from-keyframes]` `[captured 2026-11-12]`
+#### A SyncPlay catch-up's learned lead misses on a file with sparse keyframes: size it from the file's keyframe times `[fid: syncplay-catch-up-lead-from-keyframes]` `[captured 2026-11-12]`
 
-A SyncPlay catch-up seeks ahead of the group by a fixed 3 s lead (`syncPlayPlayback.CATCH_UP_LEAD_MS`) and holds for whatever the seek did not use, so every catch-up freezes the picture for about 3 s. The player seeks exactly, so seek time depends on how far the target sits past its keyframe: on a Stick 4K it was 421 ms plus 235 ms per second past the keyframe (94 direct-play seeks, 2026-11-11), which means most seeks need about 1 s.
+A SyncPlay catch-up seeks ahead of the group by a lead it learns from the stream's last five landed seeks (the slowest plus a margin, between `syncPlayPlayback.CATCH_UP_LEAD_MS` and `CATCH_UP_LEAD_MAX_MS`), and holds for whatever the seek did not use. The player seeks exactly, so seek time depends on how far the target sits past its keyframe, not on the seeks before it: on a Stick 4K it was 421 ms plus 235 ms per second past the keyframe (94 direct-play seeks, 2026-11-11).
 
-With the file's keyframe times, `syncPlayConverge.catchUp()` could size each lead as the seek's own time plus a margin: one jump and a shorter freeze. Not done with the lead change because it needs its own design. The 12.4.0 server's API has no keyframe data (its OpenAPI description, searched 2026-11-12), so the app would read the file's own index, per container.
+On a file with sparse keyframes the learned lead is wrong in both directions. Measured 2026-11-18 on a Streaming Stick 4K (Jellyfin 12.4.0, a 100 Mbps direct play with keyframes about 8 s apart, 20 catch-ups made by a throwaway probe): 6 seeks whose target sat just before a keyframe took 7.8 to 8.3 s against a lead of 3.0 to 3.9 s, so each outlasted its lead and the whole group waited on the member; the 2 whose target sat just after one took 1.1 s; the other 12 took 2.6 to 3.4 s, all under the 6 s lead a slow seek before had taught, and the picture then stayed frozen 2.7 to 3.5 s. Every round ended within 50 ms of the group, and the member never asked the group to come to it.
 
-Not checked: other server versions, transcodes (HLS segment boundaries), and what parsing an index costs on the device. Closes with a measured design, or a recorded no.
+With the file's keyframe times, `syncPlayConverge.catchUp()` could size each lead as the seek's own time plus a margin, or move the target to the next keyframe: one jump, a shorter freeze and no group wait. It needs its own design. The 12.4.0 server's API has no keyframe data (its OpenAPI description, searched 2026-11-12), so the app would read the file's own index, per container.
+
+Not checked: other server versions, transcodes (HLS segment boundaries), what parsing an index costs on the device, and how common keyframes this far apart are in real libraries. Closes with a measured design, or a recorded no.
 
 #### Rename negatively worded settings to positive names, with migrations `[fid: positive-setting-names]` `[captured 2026-11-14]`
 
@@ -1271,20 +1267,6 @@ Cast commands (play, navigate, transport, route, message) still travel from the 
 Not seen with cast commands, and not tried. Why not now: the SyncPlay fix was sized to the frames that showed the fault, and a cast command's seams are main-thread code, so it cannot use the manager's road.
 
 Closes with a device run that sends cast commands back to back in a long loop and either shows none is held, or moves them to a numbered hand-off (`syncPlayInbox` is the model: the main loop would apply each number once and check the field again on a timer).
-
-#### One SyncPlay seek past its landing budget stops the member from seeking, and the budget has thin headroom `[fid: syncplay-one-slow-seek-stops-seeking]` `[captured 2026-11-17]`
-
-A SyncPlay member's seek that is still buffering when its landing budget runs out (`syncPlayPlayback.SEEK_SETTLE_MS`, 3 s) is kept as given up, even when it lands a moment later (`syncPlayPlayer.endSeek`: "the next one would be as slow"). From then on `syncPlayConverge.catchUp` writes no seek for this member: when it falls behind, it asks the group to seek to its own position, so every member is pulled back to it. Only a seek that lands in time clears this, and only a group Seek can be that seek.
-
-The rule was built for a file where every seek is slow (decision of 2026-11-01, a 100 Mbps direct play). It also fires on one marginal seek. On 2026-11-16 (Streaming Stick 4K, Jellyfin 12.4.0) 1 of 121 of the member's own seeks outlasted the budget: a direct play, 81% buffered at 3 s, on a file whose other seeks landed in time. The budget was set from "up to 2.6 s from the seek write to `playing`" (2026-10-23), so its headroom is thin.
-
-The device case "a correction seek that outlasts its budget holds the group once, and the member seeks again only after a group Seek lands" (`syncplay-correction.spec.js`) pins today's behavior, using the switch `m.global.rtaSyncPlaySeekBudgetMs`, compiled into RTA builds alone. A change here changes that case.
-
-Two questions, to answer together from data: is 3 s the right budget, and should one slow seek be enough to stop seeking (the alternatives are two in a row, or trying a seek again after some time). The mixed soak now records `slowSeeks` per step and `slow=` on its summary, so the 2,000-step soak gives the rate.
-
-Not checked: the rate on the low-end Stick, over HTTPS or on a transcode; how long real seeks take past 3 s (the app logs that a seek was slow, not by how much).
-
-Closes with a decision on the budget and on the give-up rule, made from the soak's `slow=` numbers.
 
 #### The early-Logger fix sits on a local branch with no PR `[fid: logger-rebind-branch-unshipped]` `[captured 2026-11-17]`
 

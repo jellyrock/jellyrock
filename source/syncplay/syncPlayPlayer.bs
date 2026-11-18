@@ -106,6 +106,11 @@ namespace syncPlayPlayer
       ' in steady play.
       resumeLagMs: 0&,
       resumeLagSamples: { landing: [], steady: [] },
+      ' The samples of every stream so far, per playback path and kind of stop. How late a
+      ' resume lands belongs to the device and the path, not the stream, so a new stream starts
+      ' from what the last one on its path learned (adoptPathLag) and does not learn it again
+      ' in the viewer's sight.
+      resumeLagByPath: { direct: { landing: [], steady: [] }, transcode: { landing: [], steady: [] } },
       resumeLagLastSampleMs: invalid,
       resumeLagLastKind: "",
       ' Whether the clock still runs from a landing's first reading, and the kind of the stop
@@ -230,7 +235,7 @@ namespace syncPlayPlayer
     player.lastSeekGaveUp = false
     player.seekSamples = []
     player.lastLandingTicks = invalid
-    ' A new stream resumes in its own time.
+    ' Nothing is known of a new stream's resumes until the player says its path (streamFacts).
     player.resumeLagMs = 0&
     player.resumeLagSamples = { landing: [], steady: [] }
     player.stopKind = ""
@@ -258,8 +263,29 @@ namespace syncPlayPlayer
 
   ' What the player says of its stream: each fact is kept only when it is given.
   sub streamFacts(player as object, isTranscoded as dynamic, durationSeconds as dynamic)
-    if isValid(isTranscoded) then player.isTranscoded = isTranscoded
+    if isValid(isTranscoded)
+      isNewPath = not isValid(player.isTranscoded) or player.isTranscoded <> isTranscoded
+      player.isTranscoded = isTranscoded
+      if isNewPath then adoptPathLag(player)
+    end if
     if isValid(durationSeconds) then player.durationSeconds = durationSeconds
+  end sub
+
+  ' The stream's path is known: its resumes are learned with the path's samples from here on.
+  ' Any sample the stream gave before its path was told joins them, and a node already stopped
+  ' is resumed by the lag they give.
+  sub adoptPathLag(player as object)
+    kept = player.resumeLagByPath.direct
+    if player.isTranscoded = true then kept = player.resumeLagByPath.transcode
+    early = player.resumeLagSamples
+    for each kind in ["landing", "steady"]
+      for each sample in early[kind]
+        kept[kind].push(sample)
+        if kept[kind].count() > RESUME_LAG_SAMPLES then kept[kind].shift()
+      end for
+    end for
+    player.resumeLagSamples = kept
+    if player.stopKind <> "" then player.resumeLagMs = lagInUse(kept[player.stopKind])
   end sub
 
   ' The player left.
