@@ -61,20 +61,16 @@ const TEXTURE_BUFFER_ROWS = 2
 sub initTextureManager(contentRoot as object, itemSize as dynamic, focusXOffset as dynamic, rowItemSpacing as dynamic)
   if not isValid(contentRoot) then return
 
-  visibleWidth = calculateTextureVisibleWidth(itemSize, focusXOffset)
-  itemSpacing = calculateTextureItemSpacing(rowItemSpacing)
-
   if not contentRoot.hasField("loadedRowRange")
     contentRoot.addFields({
       loadedRowRange: [-1, -1, -1, -1],
       focusedColumns: [],
-      textureVisibleWidth: visibleWidth,
-      textureItemSpacing: itemSpacing
+      textureVisibleWidth: calculateTextureVisibleWidth(itemSize, focusXOffset),
+      textureItemSpacing: calculateTextureItemSpacing(rowItemSpacing)
     })
   else
     ' Fields may already exist from a previous init: update layout values
-    contentRoot.textureVisibleWidth = visibleWidth
-    contentRoot.textureItemSpacing = itemSpacing
+    updateTextureLayout(contentRoot, itemSize, focusXOffset, rowItemSpacing)
   end if
 
   ' textureManagerState is managed separately from the batch addFields because
@@ -96,6 +92,22 @@ sub initTextureManager(contentRoot as object, itemSize as dynamic, focusXOffset 
   if isValid(m.top)
     cellLoad.attach(contentRoot, m.top.subtype())
   end if
+end sub
+
+' Brings the content root's layout values (textureVisibleWidth, textureItemSpacing) in step
+' with the list's geometry, for a list laid out again after initTextureManager (Home's rows,
+' when the Row Layout setting changes). Does nothing before initTextureManager.
+'
+' @param contentRoot - the RowList's root ContentNode (m.top.content)
+' @param itemSize - RowList itemSize field ([containerWidth, containerHeight])
+' @param focusXOffset - RowList focusXOffset field (array like [96] or empty [])
+' @param rowItemSpacing - RowList rowItemSpacing field (flat [x,y] or nested [[x,y]])
+sub updateTextureLayout(contentRoot as object, itemSize as dynamic, focusXOffset as dynamic, rowItemSpacing as dynamic)
+  if not isValid(contentRoot) or not contentRoot.hasField("textureVisibleWidth") then return
+  contentRoot.setFields({
+    textureVisibleWidth: calculateTextureVisibleWidth(itemSize, focusXOffset),
+    textureItemSpacing: calculateTextureItemSpacing(rowItemSpacing)
+  })
 end sub
 
 ' Calculates the usable row width for determining how many items fit on screen.

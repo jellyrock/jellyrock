@@ -1,0 +1,98 @@
+namespace tests
+
+  ' JRScreen hands a screen coming back on top the settings written while it was covered
+  ' (onSettingsChanged), through the real base screen (SettingsChangesProbe records them).
+  @suite("JRScreen - settings changed while covered")
+  class JRScreenSettingsChangesTests extends tests.BaseTestSuite
+
+    private mountedIn as object
+    private screen as object
+    private previousView as object
+    private previousSettings as object
+
+    ' beforeEach, not setup: every test writes settings and moves focus (tests/CLAUDE.md). The
+    ' user gets a fresh settings node (auto-sync off, so nothing reaches the registry), put
+    ' back afterwards.
+    protected override sub beforeEach()
+      super.beforeEach()
+      if not m.global.doesExist("activeRoutedView") then m.global.addField("activeRoutedView", "node", false)
+      m.previousView = m.global.activeRoutedView
+      m.previousSettings = m.global.user.settings
+      m.global.user.settings = CreateObject("roSGNode", "JellyfinUserSettings")
+
+      m.mountedIn = m.top.getScene()
+      m.screen = CreateObject("roSGNode", "SettingsChangesProbe")
+      m.mountedIn.appendChild(m.screen)
+    end sub
+
+    protected override sub afterEach()
+      m.mountedIn.removeChild(m.screen)
+      m.global.user.settings = m.previousSettings
+      m.global.activeRoutedView = m.previousView
+      m.previousSettings = invalid
+      m.previousView = invalid
+      m.screen = invalid
+      m.mountedIn = invalid
+      super.afterEach()
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("onViewResume")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("hands over the settings written while covered")
+    function _()
+      m.screen.callFunc("onViewOpen", {})
+      m.global.user.settings.itemGridShowItemCount = false
+      m.global.user.settings.uiRowLayout = "fullwidth"
+      m.screen.callFunc("onViewResume", {})
+
+      deliveries = m.screen.deliveries
+      m.assertEqual(deliveries.count(), 1)
+      m.assertEqual(deliveries[0].count(), 2)
+      m.assertTrue(inArray(deliveries[0], "itemGridShowItemCount"))
+      m.assertTrue(inArray(deliveries[0], "uiRowLayout"))
+    end function
+
+    @it("does not call the hook when nothing was written")
+    function _()
+      m.screen.callFunc("onViewOpen", {})
+      m.screen.callFunc("onViewResume", {})
+      m.assertEqual(m.screen.deliveries.count(), 0)
+    end function
+
+    @it("hands over a change once, not again on the next resume")
+    function _()
+      m.screen.callFunc("onViewOpen", {})
+      m.global.user.settings.itemGridReset = true
+      m.screen.callFunc("onViewResume", {})
+      m.screen.callFunc("onViewResume", {})
+      m.assertEqual(m.screen.deliveries.count(), 1)
+    end function
+
+    @it("leaves out what was written before the screen opened")
+    function _()
+      m.global.user.settings.itemGridReset = true
+      m.screen.callFunc("onViewOpen", {})
+      m.global.user.settings.uiShowBackdrop = "disabled"
+      m.screen.callFunc("onViewResume", {})
+
+      m.assertEqual(m.screen.deliveries, [["uiShowBackdrop"]])
+    end function
+
+    @it("reports nothing after the settings node was replaced, and the new node's writes next")
+    function _()
+      m.screen.callFunc("onViewOpen", {})
+      m.global.user.settings = CreateObject("roSGNode", "JellyfinUserSettings")
+      m.global.user.settings.itemGridReset = true
+      m.screen.callFunc("onViewResume", {})
+      m.assertEqual(m.screen.deliveries.count(), 0, "a replaced node is a new start")
+
+      m.global.user.settings.uiRowLayout = "fullwidth"
+      m.screen.callFunc("onViewResume", {})
+      m.assertEqual(m.screen.deliveries, [["uiRowLayout"]])
+    end function
+
+  end class
+
+end namespace

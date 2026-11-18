@@ -123,6 +123,8 @@ sub init()
   m.openFilterCategory = invalid
   ' A filter changed while another screen covered this one: reload when it is shown again
   m.isFilterReloadDue = false
+  ' The titles changed while another screen covered this one: draw again when it is shown
+  m.isRelayoutDue = false
   m.headerStrip.observeField("chipAction", "onStripChipAction")
 
   ' Grid run state. Each run gets its own LoadItemsTask2 node (startGridRun), so the query
@@ -274,11 +276,14 @@ sub onScreenShown()
     ' loaded, our cached grid is stale: re-fetch so deleted items don't linger as
     ' selectable ghosts. A grid that shows favorites does the same when a favorite toggled
     ' (see favoritesStale). Unchanged tokens = no reload, so the resume stays cheap.
+    ' A reload draws the grid again too, so it covers a relayout that is due.
     scene = m.top.getScene()
+    isRelayoutDue = m.isRelayoutDue
+    m.isRelayoutDue = false
     if isValid(scene) and (scene.contentVersion <> m.lastContentVersion or favoritesStale() or m.isFilterReloadDue)
       reloadGridItems()
-    else if titlesSettingChanged()
-      ' Settings or another library's menu changed the titles: same items, drawn again
+    else if isRelayoutDue
+      ' The titles changed while covered (onSettingsChanged): same items, drawn again
       relayoutGrid()
     else
       ' The runway may have run short while another screen was up: a later page failed, or
@@ -291,7 +296,6 @@ sub onScreenShown()
 
   ' Clear global backdrop - we handle our own backdrops
   m.global.sceneManager.callFunc("setBackgroundImage", "")
-  reapplyPresentationBackdropSetting()
 
   ' Re-activate voice capture. The voiceBox loses its active connection to the
   ' Roku firmware while this screen is suspended ("detach" removes the node from the
@@ -838,7 +842,7 @@ sub applyPresentationBackdropSetting()
   if not m.isPresentationBackdropShown then m.presentationBackdrop.uri = ""
 end sub
 
-' Settings opens over this view, so the setting may have changed while it was covered. A pane
+' The Backdrop Images setting changed while this view was covered (onSettingsChanged). A pane
 ' shown again gets the focused item's image, or the library's when nothing is focused yet.
 sub reapplyPresentationBackdropSetting()
   if not isValid(m.presenter) or m.presenter.getBackdropMode(m.view, m.layout) <> "presentation" then return
@@ -1885,7 +1889,7 @@ function titlesEntry() as object
 end function
 
 ' Save the app-wide titles setting and redraw this grid with it. Other libraries pick it
-' up when they are next shown (titlesSettingChanged).
+' up when they are next shown (onSettingsChanged).
 sub applyTitles(value as string)
   setUserSetting("itemGridShowTitles", value = "true")
   relayoutGrid()
@@ -1917,6 +1921,31 @@ sub onPageSettingChanged(id as string, value as string)
     applyTitles(value)
   else if id = DEFAULT_TAB_KEY
     applyDefaultTab(value)
+  end if
+end sub
+
+' JRScreen hook: settings written while this screen was covered. The ones read once in init
+' apply here; the titles leave a redraw to onScreenShown (m.isRelayoutDue), which a reload
+' there covers.
+sub onSettingsChanged(names as object)
+  userSettings = m.global.user.settings
+  if inArray(names, "itemGridReset") then m.resetGrid = userSettings.itemGridReset
+  if inArray(names, "itemGridShowItemCount") and m.showItemCount <> userSettings.itemGridShowItemCount
+    m.showItemCount = userSettings.itemGridShowItemCount
+    refreshStripCount()
+  end if
+  if inArray(names, "itemGridShowTitles") and titlesSettingChanged() then m.isRelayoutDue = true
+  if inArray(names, "uiShowBackdrop") then reapplyPresentationBackdropSetting()
+end sub
+
+' Write the strip again for the item count setting. Only a loaded grid or the guide shows a
+' count; a load still running writes the strip when it lands, and the Genres row list has none.
+sub refreshStripCount()
+  if not isValid(m.presenter) or m.top.loadState <> "loaded" then return
+  if m.presenter.showsTVGuide(m.view)
+    updateStrip(invalid)
+  else if m.genreList.opacity <> 1
+    updateStrip(m.selectedFavoriteItem)
   end if
 end sub
 

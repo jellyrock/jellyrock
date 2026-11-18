@@ -10,7 +10,7 @@ related-files:
   - components/home/HomeRows.bs
   - source/utils/listTheme.bs
   - source/utils/textureManager.bs
-last-reviewed: 2026-11-16
+last-reviewed: 2026-11-18
 ---
 
 # `RowList` and grid item layout, and the focus indicator
@@ -67,7 +67,7 @@ Cells free their poster texture when the user is not about to see it, and load i
 
 **Rows:** `loadedRowRange = [bufferStart, visibleStart, visibleEnd, bufferEnd]` holds the visible rows plus `TEXTURE_BUFFER_ROWS` (2) on each side. A cell in a buffer row keeps its texture; a cell outside the range follows `renderTracking`.
 
-**Columns:** a window applies only on a `RowList` row with more than `TEXTURE_BUFFER_THRESHOLD` (20) items, and only while that row is visible. The window is exactly 20 columns: the visible slots (`calculateTextureVisibleItemCount`, which counts a partly visible slot) plus the rest of the budget split left and right, the odd item going right. It wraps, because `JRRowList` uses `fixedFocusWrap`, so at column 0 the left half is the row's tail: the item drawn in the `focusXOffset` gap, one Left press away. The geometry is `isColumnInTextureWindow`, and its unit tests assert column sets read off a device, so change the tests only with a new device reading. Every shape loads 20: portrait and square show 7 and buffer 6 left and 7 right; wide shows 4 and buffers 8 and 8.
+**Columns:** a window applies only on a `RowList` row with more than `TEXTURE_BUFFER_THRESHOLD` (20) items, and only while that row is visible. The window is exactly 20 columns: the visible slots (`calculateTextureVisibleItemCount`, which counts a partly visible slot) plus the rest of the budget split left and right, the odd item going right. It wraps, because `JRRowList` uses `fixedFocusWrap`, so at column 0 the left half is the row's tail: the item drawn in the `focusXOffset` gap, one Left press away. The geometry is `isColumnInTextureWindow`, and its unit tests assert column sets read off a device, so change the tests only with a new device reading. Every shape loads 20: portrait and square show 7 and buffer 6 left and 7 right; wide shows 4 and buffers 8 and 8. The visible width the count starts from (`textureVisibleWidth`, the list's `itemSize` less its `focusXOffset`) is written by `initTextureManager`, and again by `updateTextureLayout` when a list is laid out again after it: Home's rows when the Row Layout setting changes (`applyRowLayoutSetting`).
 
 **The cell pool bounds memory, not the item count.** `RowList` creates cells only around the focus (28 to 30 on a row of 32 or 100 items), and a texture can only live on a cell. A buffer row has no 20-column cap, yet on a 100-item row it held 7 textures across its 8 cells. So counting evictions by items predicts too many: a cell `RowList` reuses for another item takes the new poster without passing through `unloadTexture`, and `unloadsWindow` reads below "items that left the window".
 

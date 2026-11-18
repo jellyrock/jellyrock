@@ -78,9 +78,9 @@ afterAll(async () => {
 
 /**
  * Playback settings a spec in this file seeds to force a particular server
- * decision. Listed here because they have to be CLEARED again: seedHome resets
- * only the sticky `display.*` keys, so anything else written into the user's
- * section survives into every later test in the run.
+ * decision. Listed here because they have to be CLEARED again: seedHome puts the
+ * user back on default settings, but a spec after this one that lands through
+ * another seed would get whatever this file wrote last.
  *
  * That matters more than it looks. `rta-run.js` snapshots and restores the whole
  * registry around the RUN, so nothing leaks between runs, but within one run a
