@@ -58,27 +58,31 @@ const hasTitle = (t) => typeof t === 'string' && t.length > 0;
 let session;
 let moviesId;
 let backdropIndex = -1;
+let backdropMovieId;
 
 /**
- * The grid index of the first movie (by SortName, as the grid sorts) that has a backdrop, or -1.
- * Runs the query `findMovie` runs; a failed request throws, so -1 only means the server
- * answered and no movie qualifies.
+ * The first movie (by SortName, as the grid sorts) that has a backdrop: its grid index, -1 when
+ * none, and its id. Runs the query `findMovie` runs; a failed request throws, so -1 only means
+ * the server answered and no movie qualifies.
  */
-async function firstBackdropMovieIndex(sess, parentId) {
+async function firstBackdropMovie(sess, parentId) {
   const url =
     `${sess.serverUrl}/Items?UserId=${sess.userId}&ParentId=${parentId}` +
     `&IncludeItemTypes=Movie&Recursive=true&SortBy=SortName&SortOrder=Ascending`;
   const data = await getJson(url, tokenHeader(sess.token));
   const items = data?.Items || [];
-  return items.findIndex(
+  const index = items.findIndex(
     (i) => Array.isArray(i.BackdropImageTags) && i.BackdropImageTags.length > 0,
   );
+  return { index, id: items[index]?.Id };
 }
 
 beforeAll(async () => {
   session = await authenticate(RTA_CONFIG.server);
   moviesId = libraryIdFor(await getLibraries(session), 'movies');
-  if (moviesId) backdropIndex = await firstBackdropMovieIndex(session, moviesId);
+  if (moviesId) {
+    ({ index: backdropIndex, id: backdropMovieId } = await firstBackdropMovie(session, moviesId));
+  }
 });
 
 const NO_BACKDROP_MOVIE = 'no movie with a backdrop in the "movies" library';
@@ -172,10 +176,10 @@ async function openSettingsFromGrid() {
 }
 
 /**
- * Pick a Backdrop Images mode in Settings, then Back out to the grid Settings was opened from:
- * Back lands on the gear, and Down returns to the grid.
+ * Pick a Backdrop Images mode in Settings, then Back out to the screen Settings was opened from,
+ * where focus returns to the gear. The grid under it has applied the setting by then.
  */
-async function chooseModeAndReturnToGrid(mode) {
+async function chooseModeAndBackToGear(mode) {
   await pickSettingsRadioOption(['User Interface', 'General'], 'uiShowBackdrop', mode);
   await press(ecp.Key.Back);
   await waitFocusInside('#settingsMenu', { label: 'the menu after the pick' });
@@ -190,6 +194,11 @@ async function chooseModeAndReturnToGrid(mode) {
     interval: 250,
     label: 'the gear again, back on the grid',
   });
+}
+
+/** chooseModeAndBackToGear, then Down returns to the grid. */
+async function chooseModeAndReturnToGrid(mode) {
+  await chooseModeAndBackToGear(mode);
   await returnToLibraryGrid('after Settings');
 }
 
@@ -242,4 +251,31 @@ it('hides the pane when details mode is chosen over the grid, and Back from an i
     label: 'backdrop cleared on Back to the grid',
     timeout: 5000,
   });
+});
+
+// The way back on: the pane the grid hid comes back with the focused movie's image, applied as
+// Back uncovers the grid (BaseGridView.onSettingsChanged), not left empty until the next focus.
+it('shows the pane again, with the focused movie, when backdrops are turned on over the grid', async (testCtx) => {
+  if (!moviesId) testCtx.skip('server has no "movies" library');
+  if (backdropIndex < 0) testCtx.skip(NO_BACKDROP_MOVIE);
+  const ctx = { libraries: await getLibraries(session) };
+  await launchHome('disabled', 'backdrops turned on over the grid');
+  await navLibraryGrid(ctx);
+  await focusGridTile(backdropIndex);
+  expect(await getActiveVal('#presentationBackdrop.visible'), 'the pane hidden at first').toBe(
+    false,
+  );
+
+  await openSettingsFromGrid();
+  // Read at the gear, before focus goes back to the grid: a focus there draws the pane too
+  await chooseModeAndBackToGear('enabled');
+  expect(await getActiveVal('#itemGrid.itemFocused'), 'the same movie in focus').toBe(
+    backdropIndex,
+  );
+  expect(await getActiveVal('#presentationBackdrop.visible'), 'the pane shown on return').toBe(
+    true,
+  );
+  expect(await getActiveVal('#presentationBackdrop.uri'), "the focused movie's image").toContain(
+    `Items/${backdropMovieId}/Images/Backdrop`,
+  );
 });
