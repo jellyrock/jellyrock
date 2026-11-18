@@ -1297,6 +1297,14 @@ Nothing was counted stuck in 20 catch-up rounds on the Ultra the same day, so no
 
 Not checked: files past 100 Mbps, the low-end Stick on a heavy file it can direct play, and whether time at a full buffer grows with the distance past the keyframe as the whole seek does. Closes with a learned wait and its device run, or a recorded no with a measurement that shows the headroom holds.
 
+#### A second SyncPlay seek inside one pause leaves a Roku that lands short behind, and its resume reloads the stream `[fid: syncplay-second-seek-in-a-pause-leaves-short-lander-behind]` `[captured 2026-11-18]` `[pinned]`
+
+A SyncPlay member whose seeks land short asks the group to come to where it stands once per pause (`syncPlayConverge.landingAsk`, `group.landingAsked`, made whole on the group's next `Unpause` or `Stop`). When the group is sought a second time during the same pause and the member lands short again, it has no ask left: it sends a Ready naming the group's point, where it does not stand. When the group resumes it is behind by the shortfall, its catch-up seek lands short too and reads as fallen back, and the stream is loaded again while the group waits. The cycle ran two or three times before the member played.
+
+Measured 2026-11-18 on a low-end Streaming Stick, a direct play, member-driven mix soaks at the merge of `main` into the branch: 3 of 77 group resumes in 700 steps on Jellyfin 12.0.0 left the Stick with no picture for 18 to 20 s (steps 145, 160 and 316 of the seed 1 member list), and the first 170 steps on 12.4.0 failed at the same two steps, 145 and 160. Each followed two seeks by the other member inside one pause; at the resume the Stick stood 3.8 to 5.7 s short of the group's point. The same 170 steps passed on a Streaming Stick 4K on 12.0.0, and 700 on an Ultra on 10.11.11, where seeks land on their target.
+
+Not checked: whether the engine before the rewrite does the same on that Stick (its stress tool cannot run these steps), and a member that transcodes. A fix has to keep two members with different sync frames from pulling the group back in turns, which is why the ask is one per pause. Reproduce with `RTA_STRESS_CASE=mix` and `RTA_STRESS_STEPS=member-pause,member-seek-paused,member-seek-paused,dwell-paused,member-unpause` repeated, on the low-end Stick. Closes with a fix that passes those steps there and a soak, or a recorded no.
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`

@@ -71,3 +71,15 @@ While you follow a group, the gear in the player's controls has three more rows 
 - **"That group no longer exists."** The group ended before you joined. Open the **SyncPlay** icon again to see the groups there are now.
 - **Your Roku sounds a little behind everyone else, every time.** Your TV or sound system may be adding a delay. Raise **SyncPlay Time Offset** in **Settings → Playback** in small steps (try 100) until the sound lines up.
 - **A seek ends a few seconds before where you aimed.** Some Roku devices can only start playing from certain points in a video. When one is in the group, JellyRock moves the whole group back to the nearest point that device can start from, so everyone stays in step.
+
+## Known limits
+
+These are the rough edges we know of, each with the device and date it was measured on.
+
+- **Small differences are left alone.** JellyRock corrects your Roku only when it plays more than 150 milliseconds ahead of the group or 400 milliseconds behind it. Inside that range a correction would be more noticeable than the difference.
+- **A seek can leave the picture frozen for several seconds.** Now and then Roku's own media player stops on the old frame after a seek while the sound and the group wait. JellyRock sends the seek again after 10 seconds, and the video then plays. It happened 3 times in about 8,500 group seeks on a Streaming Stick 4K (2026-11-16).
+- **A video with a very high bitrate can make the group wait when one Roku catches up.** When your Roku falls behind it jumps ahead to rejoin the group. On a 100 Mbps test video that jump took up to 8 seconds on a Streaming Stick 4K and up to 10 on an Ultra, and the whole group paused until it landed, in about one catch-up in four (2026-11-18). Ordinary videos land in a second or two.
+- **A low-end Roku holds the picture a few times at the start of each video.** On a low-end Streaming Stick the picture holds three or four times for under half a second each as a new video starts, while JellyRock learns how that device resumes (2026-11-18). After that it stays in step.
+- **Two seeks during one pause can leave a low-end Roku without a picture for about 20 seconds.** When someone seeks twice while the group is paused, a low-end Streaming Stick can end up a few seconds short of the group. When the group resumes, that Roku loads its video again, and the others wait while it does. It happened on 3 of 77 resumes in a test that seeks often (2026-11-18). Other Roku models tested did not do it.
+- **A video that fails mid-stream takes a while to recover.** When a stream broke while a group was playing, Roku took 54 seconds to report it on a Streaming Stick 4K (2026-11-16). On Jellyfin 12.1 or later the group plays on without you after 30 seconds, and your Roku rejoins once its video loads again. On an older server the group waits for you.
+- **A video can fail to start in a group.** Three times in testing a video stopped loading before its first frame, and JellyRock showed **Error During Playback** about a minute later (2026-11-12 and 2026-11-17, Streaming Stick 4K). We have not found the cause.
