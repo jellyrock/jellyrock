@@ -52,6 +52,13 @@ const BEHIND_OFFSET_MS = 1000;
 // Past the Unpause's own lead by more than `SKIP_TO_SYNC_MIN_MS`, so every resume seeks. The lead
 // can reach most of a second, which is why `BEHIND_OFFSET_MS` does not always do it.
 const RESUME_SEEKS_OFFSET_MS = 2000;
+// Pause and unpause rounds in a row. Before the pause position was reckoned, each round left this
+// member 50 to 115 ms further ahead, so a hold correction ran by the second or third (Stick 4K,
+// 2026-11-10).
+const PAUSE_ROUNDS = 5;
+// Where the drift must sit after those rounds: inside the hold's bar with room to spare. Twelve
+// such rounds settled within 13 ms on a remote member's pause (same device and date).
+const PAUSE_ROUND_DRIFT_MS = 100;
 
 let session;
 let member;
@@ -75,8 +82,6 @@ const setOffset = (value) =>
 const player = () => readPlayer(heroId);
 const playerState = () => player()('state');
 const playerPosition = () => player()('position');
-const setPlayerControl = (value) =>
-  odc.setValue({ base: 'scene', keyPath: `#${heroId}.control`, value });
 const waitLastCommand = (name) =>
   waitFor('syncPlayManager.sync.lastCommand.command', (v) => v === name, {
     read: getGlobalVal,
@@ -121,21 +126,58 @@ async function correctionSeekOut() {
   }
   return undefined;
 }
+const slowSeeks = async () => {
+  const count = await getGlobalVal('syncPlayManager.sync.slowSeeks');
+  expect(typeof count, 'the slow-seek count was read').toBe('number');
+  return count;
+};
+// `m.global.rtaSyncPlaySeekBudgetMs` (RTA builds only): the member's next seek of its own gets this
+// landing budget, once. Far under any real seek, so that seek outlasts it.
+const SHORT_SEEK_BUDGET_MS = 200;
+const armSlowSeek = () =>
+  odc.setValue({ base: 'global', keyPath: 'rtaSyncPlaySeekBudgetMs', value: SHORT_SEEK_BUDGET_MS });
+// The slow seeks a landed group Seek has answered (`landGroupSeek`). The count starts at zero with
+// the app, which `beforeAll` relaunches.
+let slowSeeksAnswered = 0;
+/**
+ * Has the other member seek the group, and waits for the Unpause that follows this Roku's landing.
+ * After a seek that outlasted its budget the member stops correcting by seeking
+ * (`syncPlayPlayer.endSeek`), until a seek lands in time, and only the group can ask for that one.
+ */
+async function landGroupSeek() {
+  const before = await getGlobalVal('syncPlayManager.sync.lastCommand.emittedatms');
+  const at = await playerPosition();
+  const target = at > 120 ? at - 60 : at + 60;
+  await syncPlay(member, 'Seek', { PositionTicks: Math.round(target * 10_000_000) });
+  await waitFor(
+    'syncPlayManager.sync.lastCommand',
+    (c) => c?.command === 'Unpause' && typeof c.emittedatms === 'number' && c.emittedatms > before,
+    { read: getGlobalVal, timeout: 30000, label: "the group's Unpause after its Seek landed here" },
+  );
+  await waitPlaying();
+  slowSeeksAnswered = await slowSeeks();
+}
+/** One resume that reads behind the group: the phase of the correction's seek, or undefined. */
+async function resumeBehind() {
+  await setOffset(0);
+  await syncPlay(member, 'Pause');
+  await waitPaused();
+  await syncPlay(member, 'Unpause');
+  await waitLastCommand('Unpause');
+  await waitPlaying();
+  await setOffset(BEHIND_OFFSET_MS);
+  return correctionSeekOut();
+}
 /**
  * Plays on from a resume, reading behind the group, until a correction's seek is out. Two
  * notifications decide the check, so an offset raised after the second leaves it spent: resume
- * again rather than fail on that timing.
+ * again rather than fail on that timing. A seek that outlasted its budget since the last group
+ * Seek is answered first, or no correction would seek at all.
  */
 async function forceCorrectionSeek() {
   for (let attempt = 0; attempt < 4; attempt++) {
-    await setOffset(0);
-    await syncPlay(member, 'Pause');
-    await waitPaused();
-    await syncPlay(member, 'Unpause');
-    await waitLastCommand('Unpause');
-    await waitPlaying();
-    await setOffset(BEHIND_OFFSET_MS);
-    if (await correctionSeekOut()) return;
+    if ((await slowSeeks()) > slowSeeksAnswered) await landGroupSeek();
+    if (await resumeBehind()) return;
   }
   throw new Error('no correction went out in four resumes');
 }
@@ -159,16 +201,8 @@ async function expectStaysPaused() {
   const t0 = Date.now();
   while (Date.now() - t0 < 3500) expect(await playerState(), 'still paused').toBe('paused');
 }
-/**
- * The drift past the threshold first, so a reading from before the correction cannot pass; then
- * back inside it, and moving, since a frozen node keeps its last reading.
- */
-async function expectCorrected(isOff, label) {
-  await waitFor('syncPlayManager.sync.playbackDiffMs', (v) => typeof v === 'number' && isOff(v), {
-    read: getGlobalVal,
-    timeout: 10000,
-    label,
-  });
+/** After a correction: the drift inside the thresholds, and the node moving and still playing. */
+async function expectBackInStep() {
   await waitDriftInside();
   await waitPlaying();
   const before = await playerPosition();
@@ -256,70 +290,81 @@ it('a group pause leaves the drift unknown, and a member ahead of the group land
     label: 'the drift unknown while the group is paused',
   });
   await syncPlay(member, 'Unpause');
-  // The firing time is fixed when the command is scheduled, so the node still starts early.
   await waitLastCommand('Unpause');
+  // The offset stays until the node plays, so it resumes early by the offset: the comparison
+  // places the resume on the clock again at every event, and would resume on time if the offset
+  // were taken back before then.
+  await waitPlaying();
+  const correctionsBefore = await getGlobalVal('syncPlayManager.sync.correctionsDone');
   await setOffset(0);
-  await expectCorrected((v) => v < -THRESHOLD_MS, 'this member reading ahead of the group');
+  // The member now sits ahead of the group by the offset. The comparison holds it at its first
+  // reading, before a drift that large is ever published, so the case waits for the correction
+  // itself and then for the member in step.
+  await waitFor('syncPlayManager.sync.correctionsDone', (v) => v > correctionsBefore, {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: 'the correction for the member ahead of the group, run to its end',
+  });
+  await expectBackInStep();
 });
 
 it('a member behind the group lands in step', async (testCtx) => {
   skipWithoutPush(testCtx);
-  await syncPlay(member, 'Pause');
-  await waitPaused();
-  await syncPlay(member, 'Unpause');
-  await waitLastCommand('Unpause');
-  await waitPlaying();
-  await setOffset(BEHIND_OFFSET_MS);
-  await expectCorrected((v) => v > BEHIND_THRESHOLD_MS, 'this member reading behind the group');
+  // The drift past the threshold shows only until the seek is written, when the offset lands after
+  // the resume's first reading. The seek's own phase lasts, and the helper resumes again when the
+  // two readings were spent first.
+  await forceCorrectionSeek();
+  await expectBackInStep();
   await setOffset(0);
 });
 
-it("a member's own stall recovery keeps its place, with the drift unknown until the group's next command", async (testCtx) => {
-  skipWithoutPush(testCtx);
-  // Twice the group's highest ping decides the server's recovery branch. A real client's ping sends
-  // the Unpause to the others alone, so this member's last command stays the one before the stall.
-  await syncPlay(member, 'Ping', { Ping: 20 });
-  const lastEmitted = () => getGlobalVal('syncPlayManager.sync.lastCommand.emittedAtMs');
-  const commandBeforeStall = await lastEmitted();
-  // The node stops moving, and the manager hears the buffering the host would pass on.
-  await setPlayerControl('pause');
-  const frozenAt = await playerPosition();
-  await managerCall('playerEvent', { kind: 'state', state: 'buffering', position: frozenAt });
-  await waitFor('syncPlayManager.sync.trackerPhase', (v) => v === 'rebuffering', {
-    read: getGlobalVal,
-    timeout: 5000,
-    label: 'the stall reported to the server',
-  });
-  // The group waits while the stall lasts: long enough that a wrong reading is seconds off.
-  const stalled = Date.now();
-  while (Date.now() - stalled < 3000) await playerPosition();
-  await setPlayerControl('resume');
-  await waitPlaying();
-  // Two notifications decide a correction: this outlasts them, the seek and its hold.
-  const positions = [];
-  const recovered = Date.now();
-  while (Date.now() - recovered < 6000) positions.push(await playerPosition());
-  const longestStep = Math.max(...positions.slice(1).map((p, i) => p - positions[i]));
-  expect(longestStep, 'no jump after the recovery').toBeLessThan(2);
-  // A server before 12.1 answers with a corrective Seek, a command that says where the group is.
-  const heardNoCommand = (await lastEmitted()) === commandBeforeStall;
-  const drift = await getGlobalVal('syncPlayManager.sync.playbackDiffMs');
-  if (heardNoCommand)
-    expect([undefined, null], 'no drift to read until the next command').toContain(drift);
-  // The server computes the group's position into its Pause, so that is the group's own word.
+/**
+ * One group pause and unpause, then the member settled: played on long enough for the check's two
+ * readings, any correction they started run to its end, and the tracker back at rest. Without the
+ * gate the next Pause lands inside a correction's seek, whose jump also satisfies a wait on the
+ * position alone, and the rounds then measure the corrections they caused.
+ */
+async function pauseRound() {
   await syncPlay(member, 'Pause');
-  await waitLastCommand('Pause');
-  const groupAt =
-    Number(await getGlobalVal('syncPlayManager.sync.lastCommand.positionTicks')) / 10_000_000;
   await waitPaused();
-  expect(
-    Math.abs((await playerPosition()) - groupAt),
-    "this member's distance from the group, in seconds",
-  ).toBeLessThan(1);
   await syncPlay(member, 'Unpause');
   await waitLastCommand('Unpause');
   await waitPlaying();
+  const from = await playerPosition();
+  await waitFor('position', (p) => p > from + 1.5, {
+    read: playerPosition,
+    timeout: 10000,
+    label: 'the node playing on after the round',
+  });
+  await waitFor('syncPlayManager.sync.correctionInFlight', (v) => v === false, {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: 'no correction under way after the round',
+  });
+  await waitFor('syncPlayManager.sync.trackerPhase', (v) => v === 'ready', {
+    read: getGlobalVal,
+    timeout: 10000,
+    label: 'the tracker at rest after the round',
+  });
+  await waitPlaying();
   await waitDriftInside();
+}
+
+it('pause rounds leave this member in step, with no correction', async (testCtx) => {
+  skipWithoutPush(testCtx);
+  await setOffset(0);
+  // The round before the count: whatever the last case left (an offset taken back a moment ago) is put
+  // right by this Unpause, its seek or its correction.
+  await pauseRound();
+  const before = await getGlobalVal('syncPlayManager.sync.correctionsDone');
+  expect(typeof before, 'the corrections count is published').toBe('number');
+  for (let round = 0; round < PAUSE_ROUNDS; round++) await pauseRound();
+  const drift = await getGlobalVal('syncPlayManager.sync.playbackDiffMs');
+  expect(await getGlobalVal('syncPlayManager.sync.correctionsDone'), 'no correction ran').toBe(
+    before,
+  );
+  expect(typeof drift, 'the drift is read').toBe('number');
+  expect(Math.abs(drift), 'the drift after the rounds').toBeLessThan(PAUSE_ROUND_DRIFT_MS);
 });
 
 it("the viewer's Play key during a correction's seek pauses the group at the landing, and a second press plays on", async (testCtx) => {
@@ -374,24 +419,81 @@ it("another member's Pause during a correction's hold brings up the OSD", async 
 it('a resume that seeks reports no stall, so the group does not wait', async (testCtx) => {
   skipWithoutPush(testCtx);
   // Above the setting's range: a keypad cannot reach this, and it makes the seek happen.
-  await setOffset(RESUME_SEEKS_OFFSET_MS);
   const phases = new Set();
   const groupStates = new Set();
+  const sampleFor = async (ms) => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) {
+      phases.add(await getGlobalVal('syncPlayManager.sync.trackerPhase'));
+      groupStates.add(await getGlobalVal('syncPlayManager.groupState'));
+    }
+  };
+  const slowBefore = await slowSeeks();
+  await setOffset(RESUME_SEEKS_OFFSET_MS);
+  // Sampled from the offset on: the comparison judges the drift at every reading and seeks at
+  // once.
+  await sampleFor(5000);
   for (let round = 0; round < 4; round++) {
     await syncPlay(member, 'Pause');
     await waitPaused();
     await syncPlay(member, 'Unpause');
-    const t0 = Date.now();
-    while (Date.now() - t0 < 8000) {
-      phases.add(await getGlobalVal('syncPlayManager.sync.trackerPhase'));
-      groupStates.add(await getGlobalVal('syncPlayManager.groupState'));
-    }
+    await sampleFor(8000);
   }
   await setOffset(0);
   expect(phases.has('seeking') || phases.has('landing'), 'a resume did seek').toBe(true);
-  expect(phases.has('rebuffering'), 'no stall reported').toBe(false);
-  expect(groupStates.has('Waiting'), 'the group never waited').toBe(false);
   expect(groupStates.has('Playing'), 'the read saw the group').toBe(true);
+  if ((await slowSeeks()) > slowBefore) {
+    // A seek that outlasted its budget is a stall the group is told about, so it waits and then
+    // plays on: the case checks the recovery instead of silence. The member seeks no more until a
+    // group Seek lands, so that comes first.
+    await landGroupSeek();
+    await waitGroup('Playing');
+    await waitDriftInside();
+  } else {
+    expect(phases.has('rebuffering'), 'no stall reported').toBe(false);
+    expect(groupStates.has('Waiting'), 'the group never waited').toBe(false);
+  }
+});
+
+// The slow path, made to happen: about one seek in a hundred outlasts its budget on its own, too
+// few for a run to meet. `armSlowSeek` gives the correction's seek a budget it cannot make.
+it('a correction seek that outlasts its budget holds the group once, and the member still corrects by a seek of its own after', async (testCtx) => {
+  skipWithoutPush(testCtx);
+  const slowBefore = await slowSeeks();
+  const readiesBefore = await getGlobalVal('syncPlayManager.sync.readiesSent');
+  expect(typeof readiesBefore, 'the Ready count was read').toBe('number');
+  try {
+    await armSlowSeek();
+    await forceCorrectionSeek();
+    await waitFor('syncPlayManager.sync.slowSeeks', (v) => v > slowBefore, {
+      read: getGlobalVal,
+      timeout: 15000,
+      label: "the correction's seek counted as slow",
+    });
+    expect(await getGlobalVal('rtaSyncPlaySeekBudgetMs'), 'the short budget was used once').toBe(0);
+    // The group heard of the stall and waited for this member's Ready.
+    await waitFor('syncPlayManager.sync.readiesSent', (v) => v > readiesBefore, {
+      read: getGlobalVal,
+      timeout: 20000,
+      label: "this member's Ready after its slow seek",
+    });
+    await waitGroup('Playing');
+    await waitPlaying();
+    expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+    // Behind again, and a seek of its own goes out: one slow seek that landed is one sample of
+    // what a seek takes here, not a reason to stop seeking (`syncPlayConverge.seeksTooSlow`).
+    // A resume can spend its check before the offset is raised, so it is tried again, as
+    // `forceCorrectionSeek` does, with no group Seek in between.
+    let sought;
+    for (let attempt = 0; attempt < 4 && !sought; attempt++) sought = await resumeBehind();
+    expect(sought, 'a correction seek after a slow one').toBeTruthy();
+  } finally {
+    await odc.setValue({ base: 'global', keyPath: 'rtaSyncPlaySeekBudgetMs', value: 0 });
+    await setOffset(0);
+  }
+  await waitGroup('Playing');
+  await waitPlaying();
+  await waitDriftInside();
 });
 
 it('a correction whose seek would run off the item is skipped, with no jump back', async (testCtx) => {

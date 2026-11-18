@@ -14,11 +14,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // to import at all. `odc.getValue` and the ECP calls are driven by the restart tests;
 // `shippedRtaFlagMismatch` is pure and never reaches any of this.
 const getValue = vi.fn();
+const setValue = vi.fn();
 const getActiveApp = vi.fn();
 const sendKeypress = vi.fn();
 const sendLaunchChannel = vi.fn();
 vi.mock('roku-test-automation', () => ({
-  odc: { getValue: (...a) => getValue(...a) },
+  odc: { getValue: (...a) => getValue(...a), setValue: (...a) => setValue(...a) },
   ecp: {
     sendKeypress: (...a) => sendKeypress(...a),
     sendLaunchChannel: (...a) => sendLaunchChannel(...a),

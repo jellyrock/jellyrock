@@ -2,16 +2,23 @@
 <!--
   SyncPlayManager: the SyncPlay coordinator, one instance on m.global.syncPlayManager, created
   by setGlobalNodes(). Render-thread owned, so the player, the host and the queue are cheap to
-  reach and a Timer fires where the command is applied. It holds the membership state
-  (syncPlayState), the clock-offset estimate (syncPlayOffset) and the ready tracker
-  (syncPlayPlayback); frames arrive on `frame` from remoteDispatch.dispatchSyncPlay on the main
-  thread, and player events arrive through playerEvent() from PlayerHostView and VideoPlayerView.
+  reach and a Timer fires where an action is carried out. It holds the membership state
+  (syncPlayState), the clock-offset estimate (syncPlayOffset) and the comparison's two models
+  (syncPlayConverge); frames arrive on `frames` straight from the receiver task
+  (RemoteControlTask.sendSyncPlayFrame), and player events arrive through playerEvent() from PlayerHostView and VideoPlayerView.
 -->
 <component name="SyncPlayManager" extends="Node">
   <interface>
-    <!-- A normalized SyncPlay frame (syncPlayMessage's "syncplaycommand" or "syncplayupdate").
-         alwaysNotify: two identical frames are two frames. -->
-    <field id="frame" type="assocarray" alwaysNotify="true" onChange="onFrame" />
+    <!-- The receiver task's last few normalized SyncPlay frames (syncPlayMessage's "syncplaycommand"
+         or "syncplayupdate"), numbered: { epoch, entries: [{ seq, sentS, sentMs, frame }] }
+         (syncPlayInbox). The manager applies each number once, so a notification that is merged
+         or lost costs nothing: the next write or inboxTimer carries the frame. -->
+    <field id="frames" type="assocarray" alwaysNotify="true" onChange="onFrames" />
+
+    <!-- The receiver task writes true each time the session socket opens again after a drop
+         (RemoteControlTask.tellSyncPlaySocketReopened). In a group, the manager then asks the
+         server whether the membership still stands. -->
+    <field id="socketReopened" type="boolean" alwaysNotify="true" onChange="onSocketReopened" />
 
     <!-- Published state, written together once per change. The player and the host read
          `following`; the group menu (phase D) and an ODC spec read the rest. -->
@@ -27,8 +34,8 @@
     <field id="groupState" type="string" value="" />
     <!-- { offsetMs, delayMs, hasEstimate, lastCommand, trackerPhase, playingItemId, playingItemIndex,
          playlistCount, loadNotice, playbackDiffMs (how far behind the group this member sits, ms, invalid
-         until an Unpause is in force; refreshed at each position notification in RTA builds only, otherwise whenever something else publishes), extraOffsetMs (the
-         viewer's time offset setting), loadCount (the loads performed for queue frames, a monotonic count), correctionsDone (the drift corrections that ran to their resume, a monotonic count), groupSeeks (the Seek commands the group sent while this member followed, a monotonic count), readiesSent (the Ready reports this member sent, a monotonic count), repeatMode and shuffleMode (the group's, in the server's words,
+         unless the node plays with a measured position and the group plays; refreshed after every event in RTA builds only, otherwise whenever something else publishes), extraOffsetMs (the
+         viewer's time offset setting), loadCount (the loads performed for queue frames, a monotonic count), correctionsDone (the corrections of this member's own that ended, a monotonic count), picksSettled (the time offset picks the comparison found the member already in step for, so no correction ran, a monotonic count), groupSeeks (the Seek commands the group sent while this member followed, a monotonic count), readiesSent (the Ready reports this member sent, a monotonic count), framesRescued (the frames that did not arrive with their own notification, a monotonic count), slowSeeks (the seeks still buffering when their landing budget ran out, each told to the group as a stall, a monotonic count), socketReopens (the times a reopened socket found this member in a group and it asked the server, a monotonic count), repeatMode and shuffleMode (the group's, in the server's words,
          from the last queue update) } -->
     <field id="sync" type="assocarray" />
     <!-- Something the viewer is told: { kind, groupName, userName }; a confirmPlay notice also
@@ -79,9 +86,9 @@
          position when the manager knows it, else the player's own (syncPlayHooks.reloadStart). -->
     <function name="reloadStart" />
     <!-- { kind: "mounted" | "reloaded" | "state" | "position" | "finished" | "unmounted", state,
-         position, startSeconds } from the host and the player, position in the Video node's float
-         seconds; "reloaded" (the player loading its stream again in place) carries the
-         startSeconds it reloads from. -->
+         position, startSeconds, isTranscoded } from the host and the player, position in the Video
+         node's float seconds; "reloaded" (the player loading its stream again in place) carries
+         the startSeconds it reloads from; a "position" says whether the stream is a transcode. -->
     <function name="playerEvent" />
     <!-- control({ kind: "pause" | "unpause" | "seek" | "next" | "previous" | "repeat" | "shuffle" |
          "timeOffset", position, mode }): a control the viewer pressed while following, posted to the
@@ -99,17 +106,12 @@
     <function name="seekInFlight" />
   </interface>
   <children>
-    <!-- The one scheduled command: a new command replaces a pending one. -->
-    <Timer id="commandTimer" repeat="false" />
     <!-- The next time-sync burst while in a group. -->
     <Timer id="syncTimer" repeat="false" />
-    <!-- The seek-settle budget: Ready goes out with the position in hand when it fires. -->
-    <Timer id="readyTimer" repeat="false" />
-    <!-- Confirms a pause took while the group is paused: re-pauses a player that plays on. -->
-    <Timer id="pauseTimer" repeat="false" />
-    <!-- A drift correction's resume: fires when the group reaches where the member paused, after
-         a seek ahead when it was behind (syncPlayPlayback.correctionPlan). Until the node reports
-         `paused`, it ends a correction whose pause never lands. -->
-    <Timer id="correctionTimer" repeat="false" />
+    <!-- The comparison's one timer: the next moment it has something to decide (converge). -->
+    <Timer id="convergeTimer" repeat="false" />
+    <!-- Reads `frames` again while a group may be sending: a frame whose notification never came
+         is applied within a second. -->
+    <Timer id="inboxTimer" repeat="true" duration="1" />
   </children>
 </component>

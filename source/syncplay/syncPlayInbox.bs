@@ -1,0 +1,78 @@
+' How SyncPlay frames travel from the receiver task to the manager without depending on one
+' notification per frame. The receiver numbers each frame and writes the last few together
+' (push); the manager applies every number it has not seen, in order (take). A notification that
+' is merged, late or lost then costs nothing: the next write, or the manager's own repeating
+' check of the field, carries the frame. Pure: no node, no clock (the callers pass the time).
+namespace syncPlayInbox
+
+  ' Frames written together. One lost notification needs two; the rest is margin.
+  const WINDOW = 4
+  ' A frame applied later than this after the receiver stamped it gets a log line.
+  const LATE_MS = 2000
+
+  ' --- the receiver's side ---
+
+  ' @param epoch - names this receiver run, so a manager that outlives it starts counting again
+  function newOutbox(epoch as string) as object
+    return { epoch: epoch, nextSeq: 1, entries: [] }
+  end function
+
+  ' Number and stamp a frame, and answer the batch to write: the last WINDOW frames, oldest
+  ' first. The time is the device clock in whole seconds and milliseconds, two Integers: a
+  ' LongInteger does not survive every hand-off between threads.
+  function push(outbox as object, frame as object, sentS as integer, sentMs as integer) as object
+    outbox.entries.push({ seq: outbox.nextSeq, sentS: sentS, sentMs: sentMs, frame: frame })
+    outbox.nextSeq++
+    if outbox.entries.count() > WINDOW then outbox.entries.shift()
+    entries = []
+    entries.append(outbox.entries)
+    return { epoch: outbox.epoch, entries: entries }
+  end function
+
+  ' --- the manager's side ---
+
+  function newInbox() as object
+    return { epoch: "", lastSeq: 0 }
+  end function
+
+  ' The entries of a batch not yet taken, oldest first, and how many numbers before them were
+  ' never seen (more notifications lost in a row than the window covers).
+  ' Answers an AA: `entries`, each as push made it, and `missed`, a count.
+  function take(inbox as object, batch as dynamic) as object
+    taken = { entries: [], missed: 0 }
+    if not isBatch(batch) then return taken
+    if batch.epoch <> inbox.epoch
+      inbox.epoch = batch.epoch
+      inbox.lastSeq = 0
+    end if
+    for each entry in batch.entries
+      if isEntry(entry) and entry.seq > inbox.lastSeq
+        taken.missed += entry.seq - inbox.lastSeq - 1
+        inbox.lastSeq = entry.seq
+        taken.entries.push(entry)
+      end if
+    end for
+    return taken
+  end function
+
+  ' How long after the receiver stamped an entry the clock reads nowS and nowMs.
+  function ageMs(entry as object, nowS as integer, nowMs as integer) as integer
+    return (nowS - entry.sentS) * 1000 + (nowMs - entry.sentMs)
+  end function
+
+  function isBatch(batch as dynamic) as boolean
+    if type(batch) <> "roAssociativeArray" then return false
+    if type(batch.epoch) <> "roString" and type(batch.epoch) <> "String" then return false
+    return type(batch.entries) = "roArray"
+  end function
+
+  function isEntry(entry as dynamic) as boolean
+    if type(entry) <> "roAssociativeArray" then return false
+    return isWhole(entry.seq) and isWhole(entry.sentS) and isWhole(entry.sentMs)
+  end function
+
+  function isWhole(value as dynamic) as boolean
+    return type(value) = "roInt" or type(value) = "Integer" or type(value) = "roInteger"
+  end function
+
+end namespace

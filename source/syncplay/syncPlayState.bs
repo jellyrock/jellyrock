@@ -36,6 +36,30 @@ namespace syncPlayState
     }
   end function
 
+  ' How many times a lost membership is joined again inside REJOIN_WINDOW_MS. Past it the
+  ' connection is dropping over and over, and each rejoin makes the group wait for this member
+  ' to load, so the member stays out and is told.
+  const REJOIN_LIMIT = 3
+  const REJOIN_WINDOW_MS = 600000
+
+  ' Whether a membership the server no longer holds is joined again. The server answers
+  ' NotInGroup to a member it dropped without that member asking: its session socket closed, or
+  ' the server restarted. A Leave this member asked for is not undone, and neither is a
+  ' GroupLeft, which the server sends for a leave it carried out.
+  ' @param updateType - the update that ended the membership
+  ' @param wasInGroup - whether this member held a membership when it arrived
+  ' @param leaveAsked - whether this member asked to leave
+  ' @param rejoinTimesMs - when earlier rejoins were asked, on the device clock
+  ' @param nowMs - the device clock now
+  function rejoinsAfterLoss(updateType as string, wasInGroup as boolean, leaveAsked as boolean, rejoinTimesMs as object, nowMs as longinteger) as boolean
+    if updateType <> "NotInGroup" or not wasInGroup or leaveAsked then return false
+    recent = 0
+    for each askedAtMs in rejoinTimesMs
+      if nowMs - askedAtMs < REJOIN_WINDOW_MS then recent++
+    end for
+    return recent < REJOIN_LIMIT
+  end function
+
   ' Apply one parsed SyncPlayGroupUpdate (kind "syncplayupdate"). Returns the state, mutated in
   ' place; a GroupLeft or NotInGroup returns a fresh one. Toast-only types (UserJoined and UserLeft
   ' among them) change nothing.

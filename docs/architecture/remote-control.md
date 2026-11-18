@@ -3,24 +3,22 @@ topic: remote-control
 related-files:
   - components/remotecontrol/RemoteControlTask.bs
   - components/remotecontrol/RemoteControlTask.xml
-  - components/websocket/WebSocketClient.xml
   - components/websocket/web_socket_client/WebSocketClient.brs
-  - components/websocket/web_socket_client/WebSocketClientTask.brs
   - components/websocket/README.md
   - source/remotecontrol/remoteCommand.bs
   - source/remotecontrol/remoteProtocol.bs
   - source/utils/backoff.bs
   - source/remotecontrol/remoteDispatch.bs
+  - source/syncplay/syncPlayInbox.bs
   - source/replayRoute.bs
   - source/utils/deviceCapabilities.bs
   - source/main.bs
   - source/utils/globals.bs
   - source/api/userAuth.bs
   - components/home/Home.bs
-  - scripts/lint/socket-thread-release-check.js
   - scripts/lint/socket-auth-binding-check.js
   - docs/architecture/remote-control-longpoll-contract.md
-last-reviewed: 2026-11-08
+last-reviewed: 2026-11-16
 ---
 
 # Remote control: cast to JellyRock
@@ -58,32 +56,43 @@ The socket is I/O, so it lives on a Task thread. But the seams a command drives 
                                                                                              └─ transport→ getActiveView().handleTransport(evt)
 ```
 
-- **[`RemoteControlTask`](../../components/remotecontrol/RemoteControlTask.bs)** owns the adopted `WebSocketClient` node, itself a nested Task ([its README](../../components/websocket/README.md)). It parses each frame, answers keepalive requests, reconnects with backoff and hands normalized commands to the main thread. It never dispatches, and it never logs the socket URL, which carries the token.
+- **[`RemoteControlTask`](../../components/remotecontrol/RemoteControlTask.bs)** runs the adopted `WebSocketClient` object on its own thread ([its README](../../components/websocket/README.md)). It parses each frame, answers keepalive requests, reconnects with backoff and hands normalized commands on. It never dispatches, and it never logs the socket URL, which carries the token.
 - **`remoteCommand.bs` and `remoteProtocol.bs`** are pure: no node, no socket, no `m.global`. They hold the wire-protocol parser and the transport helpers (the HTTP check, URL builders, the keepalive frame), and have unit tests in `tests/source/unit/remotecontrol/`. The reconnect delay comes from the shared `backoff.nextDelayMs` ([`backoff.bs`](../../source/utils/backoff.bs)), which the TV guide's retries use too.
 - **`remoteDispatch.bs`** is the main-thread adapter, the one place a remote command calls the deep-link and player seams. Voice uses the same `dispatchTransport`: the `roInputEvent` branch in `main.bs` calls it, so voice and cast control the player identically.
 
 The command rides a field on the Task node, `dispatchCommand`, which the main loop observes. A Task-node field observed on a port delivers; an `m.global` field observed on a port does not (the delivery defect noted in `main.bs`). That is why the field lives on the Task.
+
+**SyncPlay frames do not take that road.** The receiver writes them straight to the SyncPlay manager's `frames` field (`RemoteControlTask.sendSyncPlayFrame`), which the manager observes on the render thread, so they never wait on the main loop. The server sends a command and a group update back to back, and on the one-field road a frame has reached the manager about 20 seconds late, after the frame written behind it (seen five times, 2026-11-11 to 2026-11-15, on a Streaming Stick 4K). So the hand-off does not count on one notification per frame, the same idea as the API pool's ([api.md](api.md#the-coalescing-problem-why-children-not-fields)):
+
+- The receiver numbers and stamps each frame and writes the last few together ([`syncPlayInbox.push`](../../source/syncplay/syncPlayInbox.bs)).
+- The manager applies each number once, in order (`syncPlayInbox.take`), whichever write brings it.
+- While a group may be sending, the manager's `inboxTimer` reads the field again every second, so a frame whose notification never came still lands.
+- A frame that arrived any way but with its own notification, or more than two seconds after its stamp, gets a `SyncPlay frame late` warning naming its number, its age and what brought it. That line is how a late frame is located.
+
+Cast commands keep the one-field road: they rarely arrive back to back, and their seams are main-thread code.
 
 ## Lifecycle
 
 `setGlobalNodes` (phase 2) creates the Task node on `m.global` but does not start it, because it needs the session token.
 
 - **Start:** `Home`'s first-run block launches it with `launchTask()` after sign-in, next to the capabilities POST and the pairing report ([below](#cold-launch-pairing-report-668)), and right after it the SyncPlay manager's `leaveStaleMembership`, so a membership the last session left behind is ended with the receiver up to carry the server's answer ([playback.md](playback.md#syncplay-the-player-follows-the-group)). First run is per Home instance, so the receiver restarts on each fresh sign-in, including after a server switch. The node is app-wide and never replaced: `main.bs` observes its `dispatchCommand` once at start-up, so a new node would go unheard. A new Home with no sign-out since the last one relaunches the node while it runs, which Roku ignores, and the one receiver keeps listening. The `no-same-node-relaunch` suppression on that launch records this.
-- **Stop:** `SignOut` in `source/api/userAuth.bs`, the one teardown point for sign-out and server switch (a switch reaches `SignOut(false)` once the new server answers its probe). So the socket never outlives a session. `StopRemoteControlReceiver()` stops the receiver, then the live `WebSocketClient` child the receiver publishes on `socketNode`. The child needs its own stop, because stopping the receiver kills its thread before its own `closeSocket()` cleanup can run. A STOP does not wait for the thread to end, so the child is copied into a local first: the receiver may still be clearing that field, and a dot on `invalid` would crash sign-out.
-- **Commands that arrive after sign-out are dropped.** For the same reason, a command already queued on the main thread's port still drains after `SignOut`. `remoteDispatch.dispatch` drops any command while `user.IsAuthenticated()` is false, with a console line. It belongs to the session that ended: kept, a route command would open after the next sign-in, and a `DisplayContent` would open the old session's item for whoever signs in next. A cold-launch cast is not affected, because the plugin wakes the app with a Roku launch, not through the receiver ([below](#cold-launch-pairing-report-668)).
+- **Stop:** `SignOut` in `source/api/userAuth.bs`, the one teardown point for sign-out and server switch (a switch reaches `SignOut(false)` once the new server answers its probe). So the socket never outlives a session. `StopRemoteControlReceiver()` stops the receiver, and the socket goes with its thread: the client is an object on that thread, not a task of its own.
+- **Commands that arrive after sign-out are dropped.** For the same reason, a command already queued on the main thread's port still drains after `SignOut`. `remoteDispatch.dispatch` drops any command while `user.IsAuthenticated()` is false, with a console line, and the SyncPlay manager drops a frame the same way (`applyFrame`). It belongs to the session that ended: kept, a route command would open after the next sign-in, and a `DisplayContent` would open the old session's item for whoever signs in next. A cold-launch cast is not affected, because the plugin wakes the app with a Roku launch, not through the receiver ([below](#cold-launch-pairing-report-668)).
 
-### Releasing socket threads
+### The socket runs on the receiver's own thread
 
-Each connect attempt creates a fresh `WebSocketClient` node, and its Task thread must be released when the connection ends, since a Task thread survives dropped references (the #728 leak class). Two mechanisms cover it:
+`connectAndPump()` creates the adopted client as a plain object, runs it once per pass (it waits a moment for the socket, reads what the socket holds and decodes every complete frame) and then handles every event that pass produced, in order. Nothing crosses a thread between the socket and `handleFrame`.
 
-- **`closeSocket()` stops the child once the connection has ended.** It runs on every reconnect, and it also covers an error raised while the socket is still open, which the loop's own exit never sees. It sends no close frame: on every path that reaches it the client has already left `OPEN`, and the STOP would kill the sending thread anyway. The teardown is abrupt by design ([`remotecontrol-socket-abrupt-teardown`](tech-debt.md#remotecontrol-socket-abrupt-teardown)).
-- **The adopted socket loop exits by itself** once its connection reaches `CLOSED` and its event port is drained (a single-connection contract; see the modification list in its README). This reclaims a child left behind by a receiver that died without running `closeSocket()`.
+The client once ran in a Task of its own and handed each message to the receiver through a node field the receiver waited on. Twice in a 2,000-step SyncPlay soak (2026-11-15, Streaming Stick 4K) a frame was held before the receiver had it and released when the next frame arrived, about 17 seconds later; the same kind of hand-off, one hop further on, had held frames before (see Threading above). With the client on the receiver's thread there is no hand-off left, one thread fewer, and no socket thread to release (the #728 leak class no longer applies here). Decision `syncplay-socket-runs-in-receiver` records it.
 
-The receiver wakes on `on_close` or `on_error`, but the adopted loop releases its thread on `ready_state = CLOSED`. Those are different signals. They line up only because every `_close()` path in the client posts one of the two, and nothing enforces that. So the receiver also observes `ready_state` and treats `CLOSED` as the end, but only for a socket that opened: `ready_state` reads `CLOSED` before `open()` is called, and the Task seeds `m.top.ready_state` from it at start-up, so an ungated check would tear down every connection before it opened. `on_close` and `on_error` stay the fast path: an error raised while the socket is `OPEN` or `CLOSING` arrives up to `_CLOSING_DELAY` (30 seconds) before the client forces `CLOSED`. Whichever signal comes first wins, with the same result.
+- **A reconnect is told to SyncPlay.** Every `on_open` after the first in a receiver run marks a reconnect, but the tell waits for the server's first keep-alive request after that open (`RemoteControlTask.tellSyncPlaySocketReopened`, which writes the manager's `socketReopened` field). Jellyfin accepts the socket before it attaches it to the session and drops what it would push in between, and the keep-alive request follows the attach. Frames the server sent while the socket was down are lost, and `remoteChannelStatus` does not change on a quick reconnect, so the manager is told directly and asks the server whether its group still stands (`SyncPlayManager.onSocketReopened`). A server that no longer holds the membership answers `NotInGroup`, and the manager then joins the same group again, a limited number of times (`syncPlayState.rejoinsAfterLoss`); a group that ended meanwhile is told to the viewer once.
+- **Before 10.11 the receiver announces the session, then checks it.** Those servers look a device's session up and create a missing one in two steps, so the socket connect and another request arriving together can each create one, and the socket can end up on a session the server no longer uses: keep-alive frames arrive and nothing the server pushes does. So before each connect the receiver posts the device's capabilities and waits for the answer (`RemoteControlTask.announceSession`), which creates the session first. After the attach it reads the server's session list once (`remoteProtocol.socketSessionState`) and reopens the socket when the server lists this device with no socket, a limited number of times in a row. From 10.11 the server creates sessions in one step, and neither runs (`remoteProtocol.checksSocketSession`).
+- **The end of a connection** is `on_close` or `on_error`, with `ready_state = CLOSED` as a backstop for a socket that opened (`isTerminalSocketEvent`). Every `_close()` path in the client posts one of the first two today, and nothing enforces that.
+- **`closeSocket()`** drops the client and closes its TCP socket (`release()`). It sends no close frame: on every path that reaches it the client has already left `OPEN`. The teardown is abrupt by design ([`remotecontrol-socket-abrupt-teardown`](tech-debt.md#remotecontrol-socket-abrupt-teardown)).
 
-Jellyfin ends a session with a `WebSocket` close frame (code `1000`, reason `System Shutdown`), not by dropping the connection; measured against 10.11.11 with a raw upgrade that mirrors the adopted client's. That is why `on_close`, not `on_error`, is the terminal event. A close frame raises no error, so the socket goes from `OPEN` to `CLOSING` and reaches `CLOSED` (emitting `on_close`) only after `_CLOSING_DELAY`, by which time the event port is long idle. The adopted loop's exit test has to be ordered for that, or the receiver never learns the socket died.
+Jellyfin ends a session with a `WebSocket` close frame (code `1000`, reason `System Shutdown`), not by dropping the connection; measured against 10.11.11 with a raw upgrade that mirrors the adopted client's. That is why `on_close`, not `on_error`, is the terminal event. A close frame raises no error, so the socket goes from `OPEN` to `CLOSING` and reaches `CLOSED` (emitting `on_close`) only after `_CLOSING_DELAY`.
 
-Both mechanisms rely on a connection that ends. A connect that never completes is weaker. On a non-blocking socket, Roku's `connect()` reports only that the attempt started, and the adopted client never re-checks `isConnected()` or `eConnRefused()`, so it sits in `CONNECTING` until the handshake write fails. The receiver blocks on the same socket, so this costs one thread, not a growing number. No test can reach the ordering inside the adopted loop, so `npm run lint:socket-thread-release` checks it.
+A connect that never completes is weaker. On a non-blocking socket, Roku's `connect()` reports only that the attempt started, and the adopted client never re-checks `isConnected()` or `eConnRefused()`, so it sits in `CONNECTING` until the handshake write fails.
 
 Reconnects back off exponentially from 1 second to a 30-second cap. A connection that stayed up 30 seconds or more resets the backoff. The receiver re-reads the token before each reconnect and stops if it changed. When the server sends `ForceKeepAlive`, the receiver sends a `KeepAlive` at once and then every half of the requested interval, so the server does not reap the session.
 
@@ -151,7 +160,7 @@ The advertised commands are the navigation and messaging ones JellyRock acts on:
 | `GeneralCommand{DisplayMessage}` | `message` | With `TimeoutMs`, a **toast** (`Header` and `Text`). Without it, a **dialog** that stays until the user presses OK. |
 | `Playstate{Pause, Unpause, Stop, NextTrack, PreviousTrack, Seek, Rewind, FastForward, PlayPause}` | `transport` | `getActiveView().handleTransport(evt)` on the active player |
 | `ForceKeepAlive` | `keepalive` | The receiver sends `KeepAlive` on the interval. Never reaches the main thread. |
-| `SyncPlayCommand{Unpause, Pause, Stop, Seek}` | `syncplaycommand` | Parsed by `syncPlayMessage.parseCommand` (`source/syncplay/`): the command name, `When` and `EmittedAt` in ms, the position in ticks, the playlist item and group. `remoteDispatch.dispatchSyncPlay` writes it to the SyncPlay manager node's `frame` field, or drops it with a console line while no manager exists. |
+| `SyncPlayCommand{Unpause, Pause, Stop, Seek}` | `syncplaycommand` | Parsed by `syncPlayMessage.parseCommand` (`source/syncplay/`): the command name, `When` and `EmittedAt` in ms, the position in ticks, the playlist item and group. `RemoteControlTask.sendSyncPlayFrame` writes it, numbered, to the SyncPlay manager node's `frames` field (see Threading above), or drops it with a log line while no manager exists. |
 | `SyncPlayGroupUpdate{GroupJoined, GroupLeft, UserJoined, UserLeft, StateUpdate, PlayQueue, NotInGroup, GroupDoesNotExist, LibraryAccessDenied, CreateGroupDenied, JoinGroupDenied}` | `syncplayupdate` | Parsed by `syncPlayMessage.parseGroupUpdate` into the group info, the queue or the state; the same hand-off as the command. One parser covers every server line from 10.7.0: the shapes are unchanged and enums travel as names on every line. |
 | `GeneralCommand{volume, directional, SendKey, …}`, `KeepAlive`, `Sessions`, `RefreshProgress`, `UserDataChanged`, anything unknown | `ignore` | Dropped, never an error, so a hostile, future or unknown frame cannot break the receiver |
 

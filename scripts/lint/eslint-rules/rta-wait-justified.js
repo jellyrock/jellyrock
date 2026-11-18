@@ -156,18 +156,18 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // and Playing are held until the next request to the group. `syncplay-controls.spec.js`
   // waits on them after the Roku's own Play key.
   'syncPlayManager.groupState',
-  // `SyncPlayManager.scheduleCommand` sets the last group command and publishes it; each later
+  // `SyncPlayManager.onCommand` sets the last group command and publishes it; each later
   // command is newer, so its `emittedAtMs` never returns to an earlier value within a membership.
   // `syncplay-controls.spec.js` waits for it to differ from a value read before a key press.
   'syncPlayManager.sync.lastCommand.emittedAtMs',
   // The whole command, read in one piece so its name, `emittedAtMs` and position belong to one
-  // command. `SyncPlayManager.scheduleCommand` replaces it on each command, so a Seek is
+  // command. `SyncPlayManager.onCommand` replaces it on each command, so a Seek is
   // overwritten by the Unpause that follows it (the Seek is not terminal): the one wait on it
   // (`syncplay-controls.spec.js`'s Replay case) accepts the Seek or that Unpause, both
-  // carrying the replay's position. Read against the app source 2026-11-01 (scheduleCommand,
-  // onCommand's halted branch, the join and leave resets).
+  // carrying the replay's position. Read against the app source 2026-11-14 (onCommand, its
+  // halted branch, the join and leave resets).
   'syncPlayManager.sync.lastCommand',
-  // `SyncPlayManager.scheduleCommand` sets the last group command and publishes it; it holds until
+  // `SyncPlayManager.onCommand` sets the last group command and publishes it; it holds until
   // the group's next command, and in the `beforeAll` of `syncplay-controls.spec.js` nothing sends
   // one between the Unpause and the first case.
   'syncPlayManager.sync.lastCommand.command',
@@ -175,19 +175,28 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // only grows, so "above the count read before" cannot revert. `syncplay-controls.spec.js` waits
   // on it for the first restart's load.
   'syncPlayManager.sync.loadCount',
-  // `SyncPlayManager.onCorrectionTimer` counts each drift correction that ran to its resume, and
+  // `SyncPlayManager.converge` counts each correction of this member's own once it has ended, and
   // `publish` writes the count; it only grows, so "above the count read before" cannot revert.
   // `syncplay-controls.spec.js` waits on it after each time offset pick.
   'syncPlayManager.sync.correctionsDone',
-  // `SyncPlayManager.publish` writes whether a drift correction is under way (`m.correction` set
-  // when one starts, dropped when it ends or a command replaces it). The waited-for `false` is
+  // `SyncPlayManager.carryOut` counts each time offset pick the comparison found the member
+  // already in step (the `settled` action, once per pick since `applied` clears `pickPending`),
+  // and `publish` writes the count; it only grows, so "above the count read before" cannot
+  // revert. `syncplay-controls.spec.js` waits on it, beside `correctionsDone`, after each pick.
+  'syncPlayManager.sync.picksSettled',
+  // `SyncPlayManager.publish` writes whether a correction is under way (`correctionInFlight`: the
+  // player model holds a seek or a pause owned by a hold). The waited-for `false` is
   // terminal: it holds until the next drift arms a correction, which the step's own seek is what
   // would cause, so a tick cannot miss it. `syncplay-reload.spec.js` waits on it before that seek.
   'syncPlayManager.sync.correctionInFlight',
-  // `SyncPlayManager.report` counts each Ready this member sends, and `publish` writes the count; it
+  // `SyncPlayManager.sendRequest` counts each Ready this member sends, and `publish` writes the count; it
   // only grows, so "above the count read before" cannot revert. `syncplay-reload.spec.js` waits on it
   // for a reload's Ready, which a group command answering the reload's Buffering can come before.
   'syncPlayManager.sync.readiesSent',
+  // `SyncPlayManager.converge` counts each seek still buffering when its landing budget ran out, and
+  // `publish` writes the count; it only grows, so "above the count read before" cannot revert.
+  // `syncplay-correction.spec.js` waits on it for the seek it gave a short budget.
+  'syncPlayManager.sync.slowSeeks',
   // The same record's emission time (ODC lowercases the key): it only grows, since each command
   // that replaces `lastCommand` was emitted later (`syncPlayState.acceptsCommand` drops a command
   // from before the playing item changed), so "newer than the one read before" cannot revert.
@@ -213,14 +222,21 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // (`followAgain`, a join) or a halt (`haltFollowing`, a leave) moves: false holds until the next
   // follow. `syncplay-menu.spec.js` waits on it after Back during a catch-up's load.
   'syncPlayManager.following',
-  // `SyncPlayManager.checkSettle` publishes the drift from the group on every position
-  // notification while an Unpause is in force (every 0.5 s, in RTA builds only: `#if ENABLE_RTA`), and a group command or a Buffering
-  // report clears it. Past its thresholds the manager corrects it, and it then holds inside them,
+  // `SyncPlayManager.publish` writes `groupId` from the membership state, which only a GroupJoined
+  // or a GroupLeft/NotInGroup frame moves: a group's id holds until this member leaves it.
+  // `syncplay-menu.spec.js` waits on it to know a join of one group arrived, where the icon and
+  // the group's name can still be an earlier group's.
+  'syncPlayManager.groupId',
+  // `SyncPlayManager.publishedDriftMs` gives the drift from the group, published after every event
+  // in RTA builds (`#if ENABLE_RTA` in `converge`); it is unknown unless the node plays with a
+  // measured position and the group plays. Past its thresholds the manager corrects it, and it then holds inside them,
   // so "inside the thresholds" is recurrent, not a pulse. `syncplay-controls.spec.js` and
   // `syncplay-correction.spec.js` wait on it.
   'syncPlayManager.sync.playbackDiffMs',
-  // `SyncPlayManager.publish` writes the ready tracker's phase. `rebuffering` holds until the node
-  // next plays, which `syncplay-correction.spec.js` writes itself after waiting on it.
+  // `SyncPlayManager.publish` writes what the player is doing (`trackerPhase`, from the player
+  // model's activity). The waited-for `ready` covers playing and paused alike, so it holds until
+  // the next load, seek or stall. `syncplay-correction.spec.js` and `syncplay-reload.spec.js`
+  // wait on it.
   'syncPlayManager.sync.trackerPhase',
   // `AppWaitHost.publish` rewrites the whole map on each wait's begin and end, and nothing else
   // writes it: an empty map holds until the next wait begins. `syncplay-menu.spec.js` waits on

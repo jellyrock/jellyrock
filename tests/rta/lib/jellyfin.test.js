@@ -29,6 +29,7 @@ import {
   authenticateForPush,
   findEpisodeWithNext,
   findMovie,
+  firstMovie,
   getBuffer,
   getJson,
   getLibraries,
@@ -123,6 +124,27 @@ describe('a failed request is never an empty result', () => {
       id: '',
       backdropUrl: '',
     });
+  });
+
+  it('firstMovie skips the collections a grouping library lists in place of its movies', async () => {
+    routes['/Items'] = [
+      200,
+      {
+        Items: [
+          { Name: 'A Collection', Id: 'c1', Type: 'BoxSet' },
+          { Name: 'B Collection', Id: 'c2', Type: 'BoxSet' },
+          { Name: 'Die Hard', Id: 'm1', Type: 'Movie' },
+        ],
+      },
+    ];
+    await expect(firstMovie(session(), { parentId: 'lib' })).resolves.toEqual({
+      id: 'm1',
+      name: 'Die Hard',
+      index: 2,
+    });
+
+    routes['/Items'] = [200, { Items: [{ Name: 'A Collection', Id: 'c1', Type: 'BoxSet' }] }];
+    await expect(firstMovie(session())).resolves.toEqual({ id: '', name: '', index: 0 });
   });
 
   it('records the failure into the run record, so the cause outlives the frame', async () => {

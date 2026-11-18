@@ -137,6 +137,10 @@ namespace tests
       m.assertEqual(syncPlayMenu.toastFor({ kind: "userJoined", userName: "bob" }).arg, "bob")
       m.assertEqual(syncPlayMenu.toastFor({ kind: "left", groupName: "g" }).toastType, "info")
       m.assertEqual(syncPlayMenu.toastFor({ kind: "leftStale", groupName: "g" }).key, translationKeys.MessageSyncPlayLeftStaleGroup)
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "rejoined", groupName: "g" }).key, translationKeys.MessageSyncPlayRejoinedGroup)
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "rejoined", groupName: "g" }).toastType, "success")
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "lostGroup", groupName: "g" }).key, translationKeys.MessageSyncPlayLostGroup)
+      m.assertEqual(syncPlayMenu.toastFor({ kind: "lostGroup", groupName: "g" }).arg, "g")
       m.assertEqual(syncPlayMenu.toastFor({ kind: "groupStarted", groupName: "g" }).toastType, "info")
       m.assertEqual(syncPlayMenu.toastFor({ kind: "playedToGroup", groupName: "g" }).key, translationKeys.MessageSyncPlayPlayedToGroup)
       m.assertEqual(syncPlayMenu.toastFor({ kind: "followingAgain", groupName: "g" }).arg, "g")
@@ -175,6 +179,13 @@ namespace tests
         m.assertEqual(many.toastType, "info")
         m.assertEqual(many.params, ["Movie night", "4"])
       end if
+    end function
+
+    @it("a group that cannot be reached is a warning toast that the app is still trying")
+    function _()
+      toast = syncPlayMenu.toastFor({ kind: "unreachable", groupName: "Movie night" })
+      m.assertEqual(toast.key, translationKeys.MessageSyncPlayGroupUnreachable)
+      m.assertEqual(toast.toastType, "warning")
     end function
 
     @it("a time offset pick's correction is an info toast that the member is syncing")

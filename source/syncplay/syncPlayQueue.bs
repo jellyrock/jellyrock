@@ -110,11 +110,11 @@ namespace syncPlayQueue
   end function
 
   ' Whether the mounted player is already playing the group's item (SyncPlayManager.keepsPlayingFor): the
-  ' member follows, a player host is mounted and none is owed a reload, and the ready tracker has
-  ' left "idle". Only a mount of the group's item moves the tracker (a mount of anything else
-  ' halts), and an unmount returns it to idle, so a host the member joined over, or one between
+  ' member follows, a player host is mounted and none is owed a reload, and the player has
+  ' left "idle". A mount moves it (a mount of anything but the group's item halts, so the member
+  ' no longer follows), and an unmount returns it to idle, so a host the member joined over, or one between
   ' two mounts, is not counted.
-  ' @param trackerPhase - the ready tracker's phase (syncPlayPlayback.newReadyTracker)
+  ' @param trackerPhase - what the player is doing (SyncPlayManager.trackerPhase)
   function playerIsOnGroupItem(following as boolean, hasPlayer as boolean, expectingRemount as boolean, trackerPhase as string) as boolean
     return following and hasPlayer and not expectingRemount and trackerPhase <> "idle"
   end function
@@ -276,7 +276,7 @@ namespace syncPlayQueue
   '     it goes out again.
   '   - "": a different item, another reason, or a restart that has begun to play: a load.
   ' @param loadInFlight - a load is owed, or a reload was asked for and the player has not mounted
-  ' @param trackerPhase - the ready tracker's phase
+  ' @param trackerPhase - what the player is doing (SyncPlayManager.trackerPhase)
   ' @param loadFromStart - the load in flight starts at the item's start (within the Ready
   '   tolerance of it), or has no start yet (owed, not performed: it starts where the group is,
   '   which for a restart is the start)
@@ -364,6 +364,16 @@ namespace syncPlayQueue
     if not isValid(owedLoad) then return ""
     if hasPlayer then return "remount"
     return "launch"
+  end function
+
+  ' Whether performing the load opens a playback start of its own. A launch that answers a play
+  ' this viewer handed to the group keeps the start the press opened, so the spinner's text and
+  ' the start's time limit count from the press. A reload in place opens none: the mounted
+  ' player took the press's start.
+  ' @param action - loadAction's answer
+  ' @param hasOpenClaim - whether the start a handed play opened is still open
+  function opensPlaybackStart(action as string, hasOpenClaim as boolean) as boolean
+    return action = "launch" and not hasOpenClaim
   end function
 
   ' Whether a fetched play queue still applies: the member is in the group and still following, and

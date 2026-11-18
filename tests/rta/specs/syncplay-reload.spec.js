@@ -228,8 +228,13 @@ it('a second pick while the first reload loads reloads from where the stream was
     testCtx.skip(
       'the server has no command channel to this Roku (https without the companion plugin)',
     );
-  const positionBefore = await player()('position');
-  expect(positionBefore, 'the stream partway in before the picks').toBeGreaterThan(5);
+  // The picks need a stream partway in, so that a reload from 0 can be told from one that kept
+  // its place: wait for it rather than count on the case before having left it there.
+  const positionBefore = await waitFor('position', (v) => typeof v === 'number' && v > 5, {
+    read: player(),
+    timeout: 30000,
+    label: 'the stream partway in before the picks',
+  });
   const seeksBefore = await groupSeeks();
   const readiesBefore = await getGlobalVal('syncPlayManager.sync.readiesSent');
   const pick = () =>

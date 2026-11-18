@@ -1,0 +1,15 @@
+' Hands a SyncPlay frame to a manager node the way the receiver task does: as a numbered batch
+' on its `frames` field. Each call continues the numbers of the batch the node holds.
+namespace syncPlayFrames
+
+  sub send(manager as object, frame as dynamic)
+    seq = 1
+    held = manager.frames
+    if isValid(held) and isValid(held.entries) and held.entries.count() > 0
+      seq = held.entries[held.entries.count() - 1].seq + 1
+    end if
+    now = CreateObject("roDateTime")
+    manager.frames = { epoch: "spec", entries: [{ seq: seq, sentS: now.AsSeconds(), sentMs: now.GetMilliseconds(), frame: frame }] }
+  end sub
+
+end namespace

@@ -1,15 +1,20 @@
+import "pkg:/components/websocket/web_socket_client/ByteUtil.brs"
+import "pkg:/components/websocket/web_socket_client/Logger.brs"
+import "pkg:/components/websocket/web_socket_client/WebSocketClient.brs"
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/remotecontrol/remoteCommand.bs"
 import "pkg:/source/remotecontrol/remoteProtocol.bs"
+import "pkg:/source/syncplay/syncPlayInbox.bs"
 import "pkg:/source/utils/backoff.bs"
+import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/serverCapabilities.bs"
 
 ' Remote-control receiver (#666): the ws:// "Cast to JellyRock" listener. See RemoteControlTask.xml
-' for the lifecycle/threading overview. This task owns the vendored WebSocketClient node and runs the
-' Jellyfin session socket off the render thread: open -> parse frames -> answer keepalive -> marshal
-' commands to the main thread -> reconnect with backoff. It never dispatches (that's remoteDispatch on
+' for the lifecycle/threading overview. This task runs the vendored WebSocketClient object on its own
+' thread, so a frame goes from the socket to handleFrame with no hand-off between threads: open ->
+' parse frames -> answer keepalive -> marshal commands -> reconnect with backoff. It never dispatches (that's remoteDispatch on
 ' the main thread) and never logs the socket url (it carries the auth token).
 sub init()
   m.log = new log.Logger("RemoteControl")
@@ -20,9 +25,11 @@ end sub
 ' token exists). Selects the transport by server scheme: an http:// server uses the ws:// session
 ' socket (#666); an https:// server can't ws:// (Roku has no socket TLS) so it probes for the companion
 ' plugin and, if present, runs the long-poll command channel (#667). SignOut sets control="STOP",
-' terminating this thread.
+' terminating this thread, and the socket it holds with it.
 sub runReceiver()
   serverUrl = m.global.server.serverUrl
+  ' A new run numbers its SyncPlay frames from 1 under a new name (sendSyncPlayFrame).
+  m.syncPlayOutbox = invalid
 
   ' The channel's state starts unknown for each run; the transport below settles it.
   setChannelStatus(serverCapabilities.STATUS_UNKNOWN)
@@ -60,9 +67,19 @@ sub runWsReceiver(serverUrl as string)
   m.port = CreateObject("roMessagePort")
   ' Set at the first on_open: until then a close says nothing about a channel this run has had.
   m.socketHasOpened = false
+  m.reopenAwaitsAttach = false
+  ' The session check (remoteProtocol.checksSocketSession): whether this server needs it, the
+  ' request it makes, and how many reopens in a row it has caused.
+  m.checksSession = remoteProtocol.checksSocketSession(m.global.server.version)
+  m.sessionCheckUrl = remoteProtocol.buildSessionCheckUrl(serverUrl, m.global.device.serverDeviceName)
+  m.sessionCheckReopens = 0
 
   attempt = 0
   while true
+    ' Before 10.11 the server ends its session when the last socket closes, and the connect below
+    ' would create the next one alongside whatever else arrives then. Announcing first means the
+    ' session exists when the socket asks for it, with this device's capabilities on it.
+    if m.checksSession then announceSession(serverUrl)
     wasStable = connectAndPump(url)
 
     ' The socket closed. Reconnect unless the session is gone. SignOut(false) (logout AND server
@@ -93,9 +110,14 @@ sub runWsReceiver(serverUrl as string)
   end while
 end sub
 
-' Open the socket and pump events until it closes or errors. Sends a KeepAlive whenever the wait
-' times out at the interval Jellyfin's ForceKeepAlive requested (0 = block until an event, before any
-' ForceKeepAlive arrives). Marshals each dispatchable command to the main thread. Returns on close.
+' Open the socket and pump it until it closes or errors. The client is a plain object on this
+' thread: each pass runs it (it waits a moment for the socket, reads what the socket holds and
+' decodes every complete frame), then handles every event that pass produced, in order. The wait
+' inside run() paces this loop: a few passes a second while the socket is quiet. Nothing
+' crosses a thread between the socket and handleFrame. A frame handed from a socket task to this
+' one through a node field reached it seconds late, when the next frame arrived (decision
+' `syncplay-socket-runs-in-receiver`). Sends a KeepAlive at the interval Jellyfin's ForceKeepAlive
+' requested. Returns on close.
 ' Returns TRUE when the connection was ESTABLISHED and STABLE (it opened and stayed up at least
 ' STABLE_SESSION_MS), so runWsReceiver can reset its reconnect backoff. A never-opened socket, or one
 ' that opened but dropped sooner than that (a flap), returns FALSE so the backoff keeps climbing.
@@ -103,18 +125,9 @@ end sub
 function connectAndPump(url as string) as boolean
   STABLE_SESSION_MS = 30000
 
-  m.ws = CreateObject("roSGNode", "WebSocketClient")
-  ' Publish the child so SignOut can stop it: an external STOP on this task kills the thread
-  ' before closeSocket() can run. Published on the line after CreateObject so the window in which a
-  ' STOP could miss this child is as small as it can be (and bounded anyway: the vendored socket
-  ' loop self-exits once its connection reaches CLOSED).
-  m.top.socketNode = m.ws
-  m.ws.observeField("on_open", m.port)
-  m.ws.observeField("on_message", m.port)
-  m.ws.observeField("on_close", m.port)
-  m.ws.observeField("on_error", m.port)
-  ' Terminal backstop (#728): see the ready_state arm of the pump loop below.
-  m.ws.observeField("ready_state", m.port)
+  m.ws = WebSocketClient()
+  m.wsEvents = CreateObject("roMessagePort")
+  m.ws.set_message_port(m.wsEvents)
 
   ' Bind this socket to the SAME Jellyfin DeviceId the REST API advertises. 10.7.x binds from the
   ' query string. 10.8 to 10.10 authenticate with this header, but the `deviceId` query param
@@ -132,70 +145,145 @@ function connectAndPump(url as string) as boolean
   ' behavior instead of failing. It must not be api_key on 10.8.0+: that is legacy authorization,
   ' disabled by default from Jellyfin 12.0, so the fallback would silently stop authenticating.
   ' Must be set BEFORE `open`: the client reads its headers when it builds the handshake.
-  m.ws.headers = ["Authorization", buildAuthHeader(false)]
+  m.ws.set_headers(["Authorization", buildAuthHeader(false)])
 
   m.log.info("opening session socket") ' never log url: it carries the auth token
-  m.ws.open = url
+  m.ws.open(url)
 
   sessionTimer = invalid ' marks when the socket opened; invalid => never opened (an unstable attempt)
-  m.keepAliveIntervalMs = 0 ' set when a ForceKeepAlive arrives; 0 => wait() blocks indefinitely
+  m.keepAliveIntervalMs = 0 ' set when a ForceKeepAlive arrives; 0 => no KeepAlive is due
+  m.keepAliveTimer = CreateObject("roTimespan")
+  heldBytes = 0
   while true
-    msg = wait(m.keepAliveIntervalMs, m.port)
-    if type(msg) = "roSGNodeEvent"
-      field = msg.getField()
-      if field = "on_message"
-        handleFrame(msg.getData())
-      else if field = "on_open"
+    m.ws.run()
+    ' Bytes the pass read and did not decode: part of a frame still arriving, or data the client
+    ' cannot read as a frame. Logged when the count changes, so a frame stuck here shows.
+    if m.ws._data_size <> heldBytes
+      heldBytes = m.ws._data_size
+      if heldBytes > 0 then m.log.info("socket holds bytes not yet decoded", "bytes", heldBytes)
+    end if
+    while true
+      event = m.wsEvents.GetMessage()
+      if not isValid(event) then exit while
+      if event.id = "on_message"
+        handleFrame(event.data)
+      else if event.id = "on_open"
         m.log.info("socket open")
+        ' An open after the first is a reconnect. The server accepts the socket before it attaches it
+        ' to the session and drops what it would push in between, so SyncPlay is told at the server's
+        ' first keep-alive request, which follows the attach (see handleFrame).
+        m.reopenAwaitsAttach = m.socketHasOpened
         m.socketHasOpened = true
+        ' Armed here, started at the server's keep-alive request, which follows the attach.
+        m.sessionCheckArmed = m.checksSession and m.sessionCheckUrl <> "" and m.sessionCheckReopens < remoteProtocol.SESSION_CHECK_LIMIT
+        m.sessionCheckTimer = invalid
         setChannelStatus(serverCapabilities.STATUS_AVAILABLE)
         sessionTimer = CreateObject("roTimespan")
-      else if isTerminalSocketEvent(field, msg, isValid(sessionTimer))
-        m.log.info("socket", field)
+      else if isTerminalSocketEvent(event, isValid(sessionTimer))
+        m.log.info("socket", event.id)
         closeSocket()
         return isValid(sessionTimer) and sessionTimer.TotalMilliseconds() >= STABLE_SESSION_MS
       end if
-    else
-      ' wait() timed out -> keepalive tick (only reachable once an interval is set).
-      if m.keepAliveIntervalMs > 0 then m.ws.send = [remoteProtocol.keepAliveFrame()]
+    end while
+    if m.keepAliveIntervalMs > 0 and m.keepAliveTimer.TotalMilliseconds() >= m.keepAliveIntervalMs then sendKeepAlive()
+    if isValid(m.sessionCheckTimer) and m.sessionCheckTimer.TotalMilliseconds() >= remoteProtocol.SESSION_CHECK_DELAY_MS
+      m.sessionCheckTimer = invalid
+      if socketIsOffItsSession()
+        ' Reopened at once, as a stable session that blipped: the next connect lands on the
+        ' session the server uses, which exists by now.
+        closeSocket()
+        return true
+      end if
     end if
   end while
   return false ' unreachable (the loop only exits via the terminal-event return); satisfies the analyzer
 end function
 
-' True when this event means the connection is over, so the pump loop should tear down and let
-' runWsReceiver reconnect. Two signals, because the receiver and the vendored socket loop key off
-' DIFFERENT ones:
+' Posts this device's capabilities and waits for the answer, which makes the server create the
+' device's session if it holds none. Blocks this thread for the request. A failure is logged and
+' the connect goes on: the session check after the attach is the net under it.
+sub announceSession(serverUrl as string)
+  req = CreateObject("roUrlTransfer")
+  port = CreateObject("roMessagePort")
+  req.SetMessagePort(port)
+  req.SetUrl(serverUrl + "/Sessions/Capabilities/Full")
+  req.AddHeader("Authorization", buildAuthHeader())
+  req.AddHeader("Content-Type", "application/json")
+  code = 0
+  if req.AsyncPostFromString(FormatJson(getDeviceCapabilities()))
+    event = wait(5000, port)
+    if type(event) = "roUrlEvent"
+      code = event.GetResponseCode()
+    else
+      req.AsyncCancel()
+    end if
+  end if
+  if code < 200 or code >= 300 then m.log.warn("could not announce the session before the socket connect", "httpCode", code)
+end sub
+
+' Asks the server whether this device's session has the socket (remoteProtocol.socketSessionState).
+' True only when the server lists the device with no socket: the socket is then on a session
+' the server stopped using, and nothing it pushes arrives. Blocks this thread for the request.
+function socketIsOffItsSession() as boolean
+  answer = httpGet(m.sessionCheckUrl, 5000)
+  state = remoteProtocol.socketSessionState(answer.code, answer.body, m.global.device.serverDeviceName)
+  if state = remoteProtocol.SESSION_DETACHED
+    m.sessionCheckReopens++
+    m.log.warn("the server's session has no socket; reopening the socket", "reopensInARow", m.sessionCheckReopens)
+    return true
+  end if
+  if state = remoteProtocol.SESSION_ATTACHED then m.sessionCheckReopens = 0
+  m.log.info("session check", "state", state, "httpCode", answer.code)
+  return false
+end function
+
+sub sendKeepAlive()
+  m.ws.send([remoteProtocol.keepAliveFrame()])
+  m.keepAliveTimer.Mark()
+end sub
+
+' True when this event of the client's means the connection is over, so the pump loop should tear
+' down and let runWsReceiver reconnect. Two signals:
 '
-' - on_close / on_error: the fast path, and the only one that fires for an error raised while the
-'   socket is still OPEN or CLOSING (a failed read, a rejected handshake). That lands here at once,
-'   ~30s before _CLOSING_DELAY would force the client to CLOSED.
-' - ready_state = CLOSED: the backstop. The vendored task loop releases its Task thread on that
-'   transition (#728), but the receiver would otherwise only ever wake on on_close/on_error. Those
-'   coincide in the client today (every _close() path in WebSocketClient.brs posts one of the two),
-'   yet nothing enforces it, and no lint can see it (it is a property of the vendored CLIENT, not of
-'   the files lint:socket-thread-release reads). Without this arm, an upstream re-sync that broke the
-'   coincidence would leave the pump blocked forever on a socket whose thread is already gone: no
-'   crash, no failing test, cast silently dead.
+' - on_close / on_error: the usual ones, and the only ones for an error raised while the socket is
+'   still OPEN or CLOSING (a failed read, a rejected handshake), about 30 s before the client's
+'   _CLOSING_DELAY would force it to CLOSED.
+' - ready_state = CLOSED: the backstop. Every _close() path in WebSocketClient.brs posts one of the
+'   two above today, yet nothing enforces it, and without this arm an upstream re-sync that broke
+'   it would leave the pump running a dead socket forever: no crash, no failing test, cast silently
+'   dead.
 '
-' The second arm depends on `opened`. ready_state is CLOSED before open() is ever called AND
-' the task seeds m.top.ready_state from it at startup, so an ungated test would race that seed and
-' tear down every connection before it could open. Whichever signal arrives first wins; because
-' _close() posts ready_state before on_close, the backstop usually wins the normal server-close path;
-' the outcome is identical either way.
-function isTerminalSocketEvent(field as string, msg as object, opened as boolean) as boolean
-  if field = "on_close" or field = "on_error" then return true
-  return field = "ready_state" and opened and msg.getData() = m.ws.STATE_CLOSED
+' The second arm depends on `opened`: the client is CLOSED before open() and after a refused
+' connect, where on_error already ends the attempt.
+function isTerminalSocketEvent(event as object, opened as boolean) as boolean
+  if event.id = "on_close" or event.id = "on_error" then return true
+  return event.id = "ready_state" and opened and event.data = m.ws.STATE.CLOSED
 end function
 
 ' Parse one inbound frame and either answer a keepalive or marshal a dispatchable command.
 sub handleFrame(data as object)
   if not isValid(data) or not isValidAndNotEmpty(data.message) then return
   envelope = parseJson(data.message)
-  if not isValid(envelope) then return
+  if not isValid(envelope)
+    m.log.warn("socket frame is not JSON, ignored", "chars", data.message.len())
+    return
+  end if
+  ' Every frame that reaches the receiver, by type and size: a frame the server sent that has no
+  ' line here never got this far.
+  m.log.info("socket frame", "messageType", envelope.MessageType, "chars", data.message.len())
 
   command = remoteCommand.parseMessage(envelope)
   kind = command.kind
+
+  if remoteProtocol.reopenIsToldNow(m.reopenAwaitsAttach, kind)
+    m.reopenAwaitsAttach = false
+    tellSyncPlaySocketReopened()
+  end if
+
+  if kind = "keepalive" and m.sessionCheckArmed = true
+    m.sessionCheckArmed = false
+    m.sessionCheckTimer = CreateObject("roTimespan")
+  end if
 
   if kind = "keepalive"
     ' Jellyfin asks us to keep the session alive; send one now and poll on HALF the requested
@@ -203,7 +291,7 @@ sub handleFrame(data as object)
     intervalMs = command.intervalSeconds * 1000 / 2
     if intervalMs < 1000 then intervalMs = 1000
     m.keepAliveIntervalMs = intervalMs
-    m.ws.send = [remoteProtocol.keepAliveFrame()]
+    sendKeepAlive()
     return
   end if
 
@@ -227,31 +315,52 @@ sub logDroppedSyncPlayFrame(command as object)
   m.log.warn("SyncPlay frame not understood, ignored", "messageType", messageType, "subtype", remoteCommand.syncPlaySubtype(command))
 end sub
 
-' Marshal a normalized command to the main thread. Drops the bulky original 'raw' Data first (a whole
+' Marshal a normalized command to the thread that acts on it. Drops the bulky original 'raw' Data first (a whole
 ' ItemIds list for a series/album can be large): the normalized fields carry everything the main
 ' thread needs. Shared by both transports; callers gate out keepalive/ignore before calling.
+' A SyncPlay frame goes straight to the SyncPlay manager; everything else to the main thread.
 sub marshalCommand(command as object)
   command.delete("raw")
+  if command.kind = "syncplaycommand" or command.kind = "syncplayupdate"
+    sendSyncPlayFrame(command)
+    return
+  end if
   m.top.dispatchCommand = command
 end sub
 
-' Best-effort teardown of the socket child + its observers.
+' Write a SyncPlay frame to the manager's `frames` field, numbered and with the frames before
+' it (syncPlayInbox), so the manager needs no notification per frame: the server sends a command
+' and a group update back to back, and a frame handed over one write at a time has reached the
+' manager seconds late. One crossing to the render thread per frame. The outbox is built here,
+' on the thread that uses it, once per run of the receiver.
+sub sendSyncPlayFrame(command as object)
+  now = CreateObject("roDateTime")
+  if not isValid(m.syncPlayOutbox)
+    m.syncPlayManager = m.global.syncPlayManager
+    m.syncPlayOutbox = syncPlayInbox.newOutbox(now.AsSeconds().toStr() + "." + now.GetMilliseconds().toStr())
+  end if
+  if not isValid(m.syncPlayManager)
+    m.log.warn("SyncPlay frame dropped: no manager", "kind", command.kind)
+    return
+  end if
+  m.syncPlayManager.frames = syncPlayInbox.push(m.syncPlayOutbox, command, now.AsSeconds(), now.GetMilliseconds())
+end sub
+
+' Tell the SyncPlay manager a reconnected session socket can receive pushes (its `socketReopened`
+' field). Called at the server's first keep-alive request after the open, not at the open itself.
+sub tellSyncPlaySocketReopened()
+  manager = m.global.syncPlayManager
+  if isValid(manager) then manager.socketReopened = true
+end sub
+
+' Drop the client and its socket. This only runs after the connection is already terminal, so no
+' close frame is owed; teardown is abrupt by design (see `remotecontrol-socket-abrupt-teardown` in
+' tech-debt.md for the graceful-close direction and why it is not worth the sequencing today).
 sub closeSocket()
   if not isValid(m.ws) then return
-  m.ws.unobserveField("on_open")
-  m.ws.unobserveField("on_message")
-  m.ws.unobserveField("on_close")
-  m.ws.unobserveField("on_error")
-  m.ws.unobserveField("ready_state")
-  ' STOP releases the child's thread: dropping the reference alone leaves its loop running.
-  ' No close frame is requested here. This only runs after the connection is already terminal (the
-  ' client has left OPEN in every path that gets us here), so `close = [1000]` had nothing to send
-  ' even before the STOP, and a STOP on the next line kills the thread that would deliver it
-  ' anyway. Teardown is abrupt by design; see `remotecontrol-socket-abrupt-teardown` in tech-debt.md
-  ' for the graceful-close direction and why it is not worth the sequencing today.
-  m.ws.control = "STOP"
-  m.top.socketNode = invalid
+  m.ws.release()
   m.ws = invalid
+  m.wsEvents = invalid
 end sub
 
 ' HTTPS long-poll transport (#667). Roku can't ws:// a secure server, so on https we consume the

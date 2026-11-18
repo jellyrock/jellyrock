@@ -196,6 +196,10 @@ sub init()
   m.reencodeCheckTimer = m.top.findNode("reencodeCheckTimer")
   m.reencodeCheckTimer.observeField("fire", "onReencodeCheckDue")
   m.groupSeekFallbackTimer.observeField("fire", "onGroupSeekOverdue")
+  ' The trick-play bar is the Video node's own, and the node pauses itself while the viewer scrubs,
+  ' with no write of this player's. A SyncPlay member's manager has to hear of it, or it takes that
+  ' pause for one to undo (onTrickPlayBarVisibleChanged).
+  m.top.trickPlayBar.observeField("visible", "onTrickPlayBarVisibleChanged")
   m.bufferPercentage = 0 ' Track whether content is being loaded
   m.isPlayReported = false
   ' The stream on the node has reached `playing` since its load began, so its position is real
@@ -542,7 +546,15 @@ sub pausePlayer(showOsd as boolean)
   else if not writeNode
     m.osd.playbackState = "paused"
   end if
-  if writeNode then m.top.control = "pause"
+  if writeNode then writeGroupTimedPause()
+end sub
+
+' Writes the node's pause and tells a followed SyncPlay group's manager the moment it was written
+' (kind "pauseWritten"): the manager works out where the node stopped from that time, so nothing
+' may sit between the write and the notice.
+sub writeGroupTimedPause()
+  m.top.control = "pause"
+  syncPlayHooks.notify({ kind: "pauseWritten" })
 end sub
 
 sub resumePlayer()
@@ -835,9 +847,9 @@ end sub
 sub reloadInPlace(startTicks as dynamic, audioIndex as integer, subtitleIndex as integer)
   if isValid(startTicks) then m.global.queueManager.callFunc("setCurrentStartingPoint", startTicks, true)
   ' A group hears of it before the stop, so its Buffering goes out now and the stop's own states
-  ' reach a tracker that is already loading. Before the first frame the tracker is still loading
-  ' from the start the load began with, and the server holds its Buffering, so there is nothing to
-  ' tell (syncPlayPlayback.trackPlayerEvent).
+  ' reach a player model that is already loading. Before the first frame the model is still
+  ' loading from the start the load began with, and the server holds its Buffering, so there is
+  ' nothing to tell (syncPlayPlayer.reloaded).
   if m.hasStreamPlayed and isValid(startTicks) then syncPlayHooks.notify({ kind: "reloaded", startSeconds: startTicks / 10000000# })
   m.hasStreamPlayed = false
   ' A stop can surface as `finished`: PlayerHostView must not advance or exit on it.
@@ -1911,7 +1923,7 @@ sub onPositionChanged()
 
   ' A SyncPlay member confirms a seek landed from a position notification, never at the
   ' `playing` edge (syncPlayPlayback.bs). Nothing is sent while not following.
-  syncPlayHooks.notify({ kind: "position", position: m.top.position, duration: effectiveDuration })
+  syncPlayHooks.notify({ kind: "position", position: m.top.position, duration: effectiveDuration, scrubbing: m.top.trickPlayBar.visible, isTranscoded: m.top.isTranscoded })
 
   ' Without the content.length fallback (see getEffectiveDuration), progressPercentage stays
   ' pinned at 0 on live-transcoded MKV, and since the OSD only observes progressPercentage,
@@ -2368,6 +2380,12 @@ sub restartPlaybackTimer(seconds as float)
   m.playbackTimer.control = "start"
 end sub
 
+' The viewer opened or closed the trick-play bar: a SyncPlay member's manager leaves a node the
+' viewer is scrubbing alone. Nothing is sent while not following.
+sub onTrickPlayBarVisibleChanged()
+  syncPlayHooks.notify({ kind: "scrub", scrubbing: m.top.trickPlayBar.visible })
+end sub
+
 ' No group Seek answered the OK on the trick-play bar in time (it was refused or lost), so the bar
 ' would stay up. Only this path writes the node: a local seek that overlaps a group Seek can wedge it.
 ' The manager is told of the seek first, so a group Seek that comes next waits for it
@@ -2403,8 +2421,9 @@ end sub
 ' Starts the re-encode check for the stream handed to the player (reencodeCheck.bs): the server
 ' may be re-encoding the video at a bitrate the device's video buffer cannot hold, which a first
 ' request cannot rule out. It runs on a timer from the handoff, not from `playing`: a stream like that
-' never leaves buffering. It stands down for a stream the server does not transcode, Live TV, and a
-' load that already asked for a re-encode. In a SyncPlay group its restart is a reload like any other
+' never leaves buffering. The first read is due a second after the handoff, and each later one a
+' second after the last found nothing to judge, up to reencodeCheck.MAX_ATTEMPTS. It stands down
+' for a stream the server does not transcode, Live TV, and a load that already asked for a re-encode. In a SyncPlay group its restart is a reload like any other
 ' (reloadInPlace).
 '
 ' @param {dynamic} capBps - LoadVideoContentTask's reencodeCapBps for this load: 0 or invalid for none
@@ -2462,7 +2481,7 @@ sub onReencodeSessionRead(res as object, ctx as object)
   else if verdict = ReencodeVerdict.LATER
     m.log.info("The server shows no transcode to judge yet; reading again", "attempt", ctx.attempt, "itemId", ctx.itemId)
     m.reencodeAttempt = ctx.attempt + 1
-    m.reencodeCheckTimer.duration = reencodeCheck.SECOND_CHECK_SECONDS
+    m.reencodeCheckTimer.duration = reencodeCheck.NEXT_CHECK_SECONDS
     m.reencodeCheckTimer.control = "start"
   else
     ' An unreadable answer says how it failed (no answer, an HTTP status); every other reason is the decision's own.
@@ -2617,6 +2636,8 @@ sub bufferCheck()
       host = m.top.getParent()
       if isValid(host) then host.callFunc("onLiveStreamStalled")
     else
+      m.log.warn("buffer check stopped a stalled stream", "bufferPercent", percentage, "followsSyncPlay", syncPlayHooks.following())
+      logStalledNode()
       ' If buffering has stopped Display dialog
       showPlaybackErrorDialog(translate(translationKeys.ErrorItemDataFailed))
 
@@ -2625,6 +2646,19 @@ sub bufferCheck()
     end if
   end if
 
+end sub
+
+' What the node says as the buffer check gives up on it, for the next reader of a console: a stall
+' is rare and cannot be forced, so each one has to explain itself. `playReported` false is a load
+' that never reached its first `playing`.
+sub logStalledNode()
+  status = m.top.bufferingStatus
+  m.log.warn("stalled stream buffer", "isUnderrun", status.isUnderrun, "prebufferDone", status.prebufferDone, "lastPercent", m.bufferPercentage, "contentLoaded", m.isContentLoaded)
+  positionInfo = m.top.positionInfo
+  videoPosition = "none"
+  if isValid(positionInfo) and isValid(positionInfo.video) then videoPosition = positionInfo.video.toStr()
+  m.log.warn("stalled stream node", "control", m.top.control, "position", m.top.position.toStr(), "videoPosition", videoPosition, "hasStreamInfo", isValid(m.top.streamInfo))
+  m.log.warn("stalled stream reports", "playReported", m.isPlayReported, "errorCode", m.top.errorCode)
 end sub
 
 ' A "playing" node whose position has not moved for a stall window: a frozen or black screen with no
@@ -2978,6 +3012,7 @@ sub onDestroy()
   m.top.unobserveField("subtitleTrack")
   m.top.unobserveField("globalCaptionMode")
   m.top.unobserveField("position")
+  m.top.trickPlayBar.unobserveField("visible")
 
   ' One line per live mount: the steps its progress was built from, the evidence for tuning
   ' LIVE_PROGRESS_MAX_STEP_MS. A largest step near that cap, or a smallest jump right above it,
@@ -3165,6 +3200,9 @@ function handleTransport(evt as object) as object
       if viewerPaused and syncPlayHooks.control({ kind: "unpause" }) then return { status: "success" }
       if not viewerPaused and m.top.state = "paused" then return { status: "error.redundant" }
     end if
+    ' A SyncPlay group's resume that ends a pause the viewer saw closes the OSD at once, as their
+    ' own resume does (the comparison's resume action marks the verb), never left to its timeout.
+    if evt.fromGroup = true and evt.hideOsd = true then handleHideAction(false)
     ' A buffering node writes nothing and still reports success: it plays once it has buffered, and
     ' a control "play" written during a seek's buffering wedges it in `buffering` for good
     ' (measured on a Streaming Stick 4K, 2026-10-23). See voiceTransport.playControl().
@@ -3190,10 +3228,10 @@ function handleTransport(evt as object) as object
       return { status: "success" }
     end if
     ' A SyncPlay group's pause is this viewer's pause too, so it shows the OSD as the Play key
-    ' does (syncPlayPlayback.applyPlan marks the verb), even on a node already paused for the group.
+    ' does (the comparison's pause action marks the verb), even on a node already paused for the group.
     if evt.showOsd = true then showPausedOsd()
     if m.top.state = "paused" then return { status: "error.redundant" }
-    m.top.control = "pause"
+    writeGroupTimedPause()
     return { status: "success" }
   end if
 

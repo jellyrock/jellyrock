@@ -216,7 +216,7 @@ A baseline is a filter over the ledger, never a deleted file. Each line carries 
 | `deviceKey` | Which Roku: the lock's `sha256(device-id)`, never an address | Devices are not interchangeable. `null` when the lock couldn't identify the device |
 | `outcome` | `passed`, `failed`, `interrupted`, `crashed` or `blocked` | The only key about the run itself, not the invocation |
 
-`assertions` (`{ <screen>: <count> }`) records how much each content assertion checked. A content assertion can check forty pairings or four and pass either way, so watch the count across a series; nothing asserts a floor on it, because fixture churn would make that fail for the wrong reason.
+`assertions` (`{ <screen>: <count> }`) records how much each content assertion checked. A content assertion can check forty pairings or four and pass either way, so watch the count across a series; nothing asserts a floor on it, because fixture churn would make that fail for the wrong reason. A case can also land a number it measured there, under its own name: `resumeWithGroupJoinMs` is the time from the OK press on Resume with Group to the member being in step, taken on the test machine's clock.
 
 ### Reading a baseline out of it
 
@@ -527,7 +527,7 @@ When GitHub is unreachable or you aren't signed in, a run warns and proceeds wit
 
 ## Stress a SyncPlay race (`syncplay-stress`)
 
-[`syncplay-stress.spec.js`](../../tests/rta/specs/syncplay-stress.spec.js) repeats one input that races the player's own seek and counts how each round ends. It is skipped unless `RTA_STRESS_ROUNDS` is set, so a normal run pays nothing for it. It needs a server with a push channel to the Roku, and a second member of the same account over REST, as [`syncplay-controls.spec.js`](../../tests/rta/specs/syncplay-controls.spec.js) does.
+[`syncplay-stress.spec.js`](../../tests/rta/specs/syncplay-stress.spec.js) repeats one input that races the player's own seek and counts how each round ends, or mixes many inputs in a seeded order (the `mix` case, below). It is skipped unless `RTA_STRESS_ROUNDS` is set, so a normal run pays nothing for it. It needs a server with a push channel to the Roku, and a second member of the same account over REST, as [`syncplay-controls.spec.js`](../../tests/rta/specs/syncplay-controls.spec.js) does.
 
 ```bash
 RTA_STRESS_ROUNDS=40 RTA_STRESS_CASE=scrub npm run test:rta -- syncplay-stress
@@ -537,6 +537,27 @@ RTA_STRESS_ROUNDS=40 RTA_STRESS_CASE=scrub npm run test:rta -- syncplay-stress
 - Each round ends as `ok`, `frozen` (the node is not playing and the group is not Playing when the settle window ends) or `paused` (the group is Paused). A frozen round fails the test after the run; a paused round is only reported.
 - Vitest hides a passing test's console output, so each round line and the closing `SUMMARY` line (the counts, plus the bar's minimum, median and maximum close time for the scrub cases) go to `.device-runs/syncplay-stress-<case>.log`, which is gitignored. The run prints the path, and a red run carries the `SUMMARY` in its failure message. The test also fails when the rounds counted are not `RTA_STRESS_ROUNDS`.
 - One pass of a race proves little. Count rounds, and read the summary rather than the verdict.
+
+### The mixed soak (`RTA_STRESS_CASE=mix`)
+
+The `mix` case draws a seeded order of steps and checks after each that this member is at rest where the group is. A step is drawn only from those that start in the state the last one ended in, so the same seed gives the same order on every run.
+
+```bash
+RTA_STRESS_ROUNDS=150 RTA_STRESS_CASE=mix RTA_STRESS_SEED=1 npm run test:rta -- syncplay-stress
+```
+
+- `RTA_STRESS_STEPS` replays a chosen order: a comma-separated list of step names, run in that order instead of the seeded pick. The list is the whole run, so its length is the step count and `RTA_STRESS_ROUNDS` is not needed. Every name must be in `MIX_STEPS` and start in the state the step before it ended in, from a playing group, or the run fails before it starts. For example, `RTA_STRESS_STEPS=key-pause,member-unpause,scrub RTA_STRESS_CASE=mix npm run test:rta -- syncplay-stress`. After a step that froze or threw, the member is recovered to playing, so a later listed step that needs a paused group errors too.
+- A step that throws (a wait that times out inside it, for example) ends as `error`, not as a failed run: its record carries `error` with the message, the member is recovered as after a frozen step, and the run goes on. The `SUMMARY` line counts `error=` and lists the steps as it does for `frozen`, and the test still fails at the end when any step threw or froze.
+- The steps are in `MIX_STEPS` in [`tests/rta/lib/soak-mix.js`](../../tests/rta/lib/soak-mix.js): another member's pause, resume and seek (playing or paused), the Play key, a scrub, Replay, the race pairs above, a time offset pick, a step to the group's other item, a halt with Back and a follow again, a SyncPlay request made late or lost, and a dwell with nothing happening.
+- At rest means `atRest()` in the same file. Playing: the node plays, no correction is under way, the scrub bar is down and the drift is inside the correction bars. Paused: the node is paused with the OSD up. Either way the member still follows.
+- A step that is not at rest when its window ends counts as `frozen` and fails the run. So does a step during which the viewer was told the group cannot be reached (`toldUnreachable` in its record): no step of the mix fails a request three times, so that notice means a request's result never counted. Its record keeps every reading of the window and what each queued item's player node answered. The run then brings the group back to playing and goes on, or stops if that does not settle.
+- A step during which the app recovered a seek stuck at a full buffer is counted in the record's `stuckSeeks` and on the `SUMMARY` line as `stuck=`, with the steps listed as for `frozen`. It does not fail the run, because the fault is in Roku's player and the recovery can free the video before the window closes. Read a count above zero from the console's `seek stuck at a full buffer` line.
+- A step during which a seek of this member's own was still buffering when its landing budget ran out is counted in the record's `slowSeeks` and on the `SUMMARY` line as `slow=`, with the steps listed as for `stuck`. The app told the group it was buffering, so the group waited for this Roku: that is the app doing its job on a slow seek, and it does not fail the run. The same counter, `sync.slowSeeks`, lets the SyncPlay specs tell that wait from one they did not expect.
+- Each step is one JSON line in `.device-runs/syncplay-stress-mix-seed<seed>-comparison-<start time>.jsonl`: how long it took to settle, how long the node was not playing, every drift reading, and how many corrections, group Seeks, Ready reports and loads it caused.
+- The run's device console holds the rest: `request answered` and `request failed` carry how long each SyncPlay request took, and `unpause reaches this member` how long a paused member waits for the group. The next run replaces `console.log` in the run folder, so copy it out after each run.
+- A clean run's console has no `Compiling 'JellyRock'` line between its first `SyncPlayManager` line and its last: the run's own compiles come before the steps (two, or three when the run deploys) and after them (two). One between them is another session's deploy, and the run is void.
+- `RTA_STRESS_POLL_MS` sets how often a step is sampled (100 by default). Each sample is seven reads the app answers on its render thread, so a run at 1000 checks that the sampling is not what a result measures.
+- The group's second item can take another playback path than the first (a transcode beside a direct play), so read a measurement per item (`end.itemIndex`).
 
 ## Notes
 

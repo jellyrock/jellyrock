@@ -8,7 +8,7 @@ The Rooibos test framework, with `@suite`, `@describe` and `@it` annotations. Se
 - `tests/source/integration/`: component interactions, real I/O allowed, with subfolders `registry/` and `migration/`.
 - `tests/source/mocks/`: mock data and stubs.
 - `tests/source/shared/`: shared test helpers.
-- `tests/components/`: test-only components, which the test builds map to `components/tests`. Use one when a suite must run inside a component scope (`@SGNode`) and the real component has side effects in `init()`: `WebSocketClientHarness` loads the vendored socket client's scripts without the Task that starts a socket loop.
+- `tests/components/`: test-only components, which the test builds map to `components/tests`. Use one when a suite must run inside a component scope (`@SGNode`) and the real component has side effects in `init()`: `WebSocketClientHarness` loads the adopted socket client's scripts on a plain node, where the component that uses them is a Task.
 - `tests/scripts/unit/`: **Vitest** unit tests for the Node build and lint tooling under [`scripts/`](../scripts/). A different framework (Vitest, not Rooibos) and runtime (Node, not Roku), so the rules below don't apply; see [`docs/dev/scripts-development.md`](../docs/dev/scripts-development.md).
 - `tests/rta/`: **RTA functional tests** (roku-test-automation). Node ESM under Vitest that drives a real device from outside (ECP and ODC) and checks each screen loads. Not Rooibos, so the rules below don't apply: it has its own [`tests/rta/CLAUDE.md`](rta/CLAUDE.md), and the how-to is [`docs/dev/rta-tests.md`](../docs/dev/rta-tests.md).
 

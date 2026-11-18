@@ -113,7 +113,68 @@ namespace remoteProtocol
     return hasOpened and not wasStable
   end function
 
+  ' Whether a frame is the moment to tell SyncPlay that a reconnected socket can receive pushes.
+  ' The server accepts the socket before it attaches it to the session and drops what it would
+  ' push in between. Its keep-alive request follows the attach, so that frame is the first proof.
+  '
+  ' @param awaitsAttach - a reconnect's open happened and has not been told yet
+  ' @param frameKind - the kind remoteCommand.parseMessage gave the frame
+  function reopenIsToldNow(awaitsAttach as boolean, frameKind as string) as boolean
+    return awaitsAttach and frameKind = "keepalive"
+  end function
+
   ' What to do with a plugin probe's answer (see probeOutcome).
+  ' --- the session check (http servers before 10.11) ---
+  ' Before 10.11 Jellyfin looks a device's session up and creates a missing one in two steps, so
+  ' two requests that arrive together (the socket connect and the capabilities report at launch,
+  ' or a playback report at a reconnect) can each create one. The socket can then sit on a session
+  ' the server no longer uses: its keep-alives arrive, and nothing the server pushes does. The
+  ' server's session list shows it, so the receiver asks once per attach and reopens the socket.
+
+  ' How long after the attach the receiver asks: past the requests that raced the connect.
+  const SESSION_CHECK_DELAY_MS = 2000
+  ' Reopens in a row before the receiver stops asking, so a server that never shows the socket
+  ' cannot make it reconnect for good. A check that finds the socket starts the count again.
+  const SESSION_CHECK_LIMIT = 2
+  const SESSION_ATTACHED = "attached"
+  const SESSION_DETACHED = "detached"
+  const SESSION_UNKNOWN = "unknown"
+
+  ' Whether this server needs the check. An unknown version gets none.
+  ' @param serverVersion - the connected server's version string
+  function checksSocketSession(serverVersion as dynamic) as boolean
+    if not isValidAndNotEmpty(serverVersion) then return false
+    return not versionChecker(serverVersion, "10.11.0")
+  end function
+
+  ' The request that lists this device's sessions, "" when a part is missing.
+  function buildSessionCheckUrl(serverUrl as dynamic, deviceId as dynamic) as string
+    if not isHttpServer(serverUrl) or not isValidAndNotEmpty(deviceId) then return ""
+    return serverUrl + "/Sessions?deviceId=" + deviceId
+  end function
+
+  ' What the server's session list says about this device's socket: attached when a session of
+  ' this device takes media commands (it has an open socket), detached when the device is listed
+  ' and none does, unknown for anything else (a failed request, a body that is not a list, a
+  ' list without the device). Only detached reopens the socket.
+  ' @param httpCode - the answer's status
+  ' @param body - the answer's text
+  ' @param deviceId - this app's DeviceId
+  function socketSessionState(httpCode as integer, body as dynamic, deviceId as dynamic) as string
+    if httpCode <> 200 or not isValidAndNotEmpty(body) or not isValidAndNotEmpty(deviceId) then return SESSION_UNKNOWN
+    sessions = parseJson(body)
+    if type(sessions) <> "roArray" then return SESSION_UNKNOWN
+    listed = false
+    for each session in sessions
+      if type(session) = "roAssociativeArray" and isValid(session.DeviceId) and session.DeviceId = deviceId
+        listed = true
+        if isValid(session.SupportsMediaControl) and session.SupportsMediaControl = true then return SESSION_ATTACHED
+      end if
+    end for
+    if listed then return SESSION_DETACHED
+    return SESSION_UNKNOWN
+  end function
+
   const PROBE_AVAILABLE = "available"
   const PROBE_UNAVAILABLE = "unavailable"
   const PROBE_RETRY = "retry"

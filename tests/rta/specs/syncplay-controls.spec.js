@@ -20,6 +20,7 @@ import { afterAll, beforeAll, it, expect } from 'vitest';
 import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import {
+  appSession,
   authenticate,
   authenticateForPush,
   commandChannelAvailable,
@@ -32,9 +33,11 @@ import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
 import { captureRawUI } from '../capture.js';
 import {
+  getActiveVal,
   getGlobalVal,
   getVal,
   getVals,
+  openTrickPlayBar,
   press,
   readPlayer,
   scrollFocus,
@@ -230,6 +233,86 @@ it("after the group's unpause this member settles within the correction threshol
   );
 });
 
+// Longer than the player's 10 s report while paused and its read-back (`playbackCheckIn`), and
+// than the window the frozen-position check and the buffer check judge a still position over.
+const HELD_PAUSE_MS = 25000;
+// By this long into the pause the pause report has gone out and one paused check-in has passed.
+const SERVER_PAUSED_BY_MS = 12000;
+
+it("a group pause held past the paused check-in stays paused on the node and on the server's session, and the Unpause plays on in step", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const deviceId = await getGlobalVal('device.serverDeviceName');
+  await syncPlay(member, 'Pause');
+  await waitFor('state', (s) => s === 'paused', {
+    read: playerState,
+    timeout: 10000,
+    label: "the node paused on the group's pause",
+  });
+  const pausedAt = await playerPosition();
+  expect(typeof pausedAt, 'a position was read at the pause').toBe('number');
+
+  // Not a wait: every sample over the window has to show the pause still held. A playback
+  // watchdog that took the still position for a stall would stop or reload the stream, and a
+  // lost pause report would leave the server's session playing.
+  const samples = [];
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < HELD_PAUSE_MS) {
+    const roku = await appSession(member, deviceId);
+    samples.push({
+      atMs: Date.now() - startedAt,
+      state: await playerState(),
+      position: await playerPosition(),
+      following: await getGlobalVal('syncPlayManager.following'),
+      serverPaused: roku.PlayState?.IsPaused,
+      serverItem: roku.NowPlayingItem?.Id,
+    });
+    await sleep(1000);
+  }
+  const late = samples.filter((s) => s.atMs >= SERVER_PAUSED_BY_MS);
+  expect(late.length, 'samples were taken after the paused check-in').toBeGreaterThanOrEqual(5);
+  expect(
+    samples.filter((s) => s.state !== 'paused'),
+    'the node stays paused for the whole pause',
+  ).toEqual([]);
+  expect(
+    samples.filter((s) => typeof s.position !== 'number' || Math.abs(s.position - pausedAt) > 0.5),
+    'the node stays where the pause left it',
+  ).toEqual([]);
+  expect(
+    samples.filter((s) => s.following !== true),
+    'this member follows the group for the whole pause',
+  ).toEqual([]);
+  expect(
+    late.filter((s) => s.serverPaused !== true || s.serverItem !== heroId),
+    "the server's session shows this item paused once the check-in has passed",
+  ).toEqual([]);
+
+  await syncPlay(member, 'Unpause');
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 15000,
+    label: "the node playing on the group's unpause after the held pause",
+  });
+  await waitFor('#osd.visible', (v) => v === false, {
+    read: osdVisible,
+    timeout: 10000,
+    label: 'the OSD down again after the held pause',
+  });
+  await waitFor(
+    'syncPlayManager.sync.playbackDiffMs',
+    (v) => typeof v === 'number' && v >= -150 && v <= 400,
+    {
+      read: getGlobalVal,
+      timeout: 20000,
+      label:
+        "this member's drift from the group inside the correction thresholds after the held pause",
+    },
+  );
+});
+
 it("the Roku's Play key pauses the whole group, and a second press has it playing again", async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(
@@ -261,20 +344,47 @@ it("the Roku's Play key pauses the whole group, and a second press has it playin
   });
 });
 
+it("another member's Unpause closes the OSD this member's Play key opened, without its timeout", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  // The OSD hides by itself once no key was pressed for `inactiveTimeout` (5 s, on the OSD's
+  // instance in VideoPlayerView.xml). The Play key below is the last key, so an OSD that is
+  // down sooner than that after it was closed by the group's resume, not by the timeout.
+  const OSD_TIMEOUT_MS = 5000;
+  const keyAt = Date.now();
+  await press(ecp.Key.Play);
+  await waitFor('syncPlayManager.groupState', (s) => s === 'Paused', {
+    read: getGlobalVal,
+    timeout: 10000,
+    label: "the group paused on this member's Play key",
+  });
+  expect(await osdVisible(), 'the OSD up on the Play key').toBe(true);
+  await syncPlay(member, 'Unpause');
+  await waitFor('#osd.visible', (v) => v === false, {
+    read: osdVisible,
+    timeout: 15000,
+    label: "the OSD down on the member's Unpause",
+  });
+  const downAfterMs = Date.now() - keyAt;
+  expect(downAfterMs, 'the OSD closed before its own timeout could have closed it').toBeLessThan(
+    OSD_TIMEOUT_MS,
+  );
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 15000,
+    label: "the node playing on the member's Unpause",
+  });
+});
+
 it('a trickplay scrub confirmed with OK seeks the whole group, and this member lands at the target', async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(
       'the server has no command channel to this Roku (https without the companion plugin)',
     );
   const before = await playerPosition();
-  // Trick mode steps once per press it sees: presses sent back to back read as one (the bar's
-  // text stayed at the current position, Stick 4K, 2026-10-28), so each gets the library's wait.
-  await ecp.sendKeypressSequence([ecp.Key.Right, ecp.Key.Right, ecp.Key.Right], { wait: 400 });
-  await waitFor('trickPlayBar.visible', (v) => v === true, {
-    read: barVisible,
-    timeout: 10000,
-    label: 'the trick-play bar up after three Right presses',
-  });
+  await openTrickPlayBar(heroId);
   await press(ecp.Key.Ok);
   // Three Right presses read about 30 s ahead on a Stick 4K (2026-10-28); the server's Seek
   // lands this member there, and the bar closes through that Seek.
@@ -307,12 +417,7 @@ it('a scrub confirmed with OK whose Seek the server never answers still closes t
   // group command comes back: the bar must close by its own fallback.
   await failRequests([{ prefix: 'syncPlaySeek', kind: 'http', status: 403, times: 1 }]);
   try {
-    await ecp.sendKeypressSequence([ecp.Key.Right, ecp.Key.Right, ecp.Key.Right], { wait: 400 });
-    await waitFor('trickPlayBar.visible', (v) => v === true, {
-      read: barVisible,
-      timeout: 10000,
-      label: 'the trick-play bar up after three Right presses',
-    });
+    await openTrickPlayBar(heroId);
     await press(ecp.Key.Ok);
     // Shorter than the fallback timer: until then nothing may seek this member. A local seek
     // written at once (the old behavior) shows as the bar closing or the node buffering.
@@ -512,13 +617,15 @@ it("the remote's play/pause during a group Seek pauses the group and does not we
 // the node reads behind and seeks ahead (with a toast, since nothing the viewer pressed looks like a
 // jump); lowered, it reads ahead and holds. The pick is written to the OSD's `syncPlayPick`, the
 // field the gear's picker sets, so `VideoPlayerView.onSyncPlayPicked` runs as it does for a viewer.
-// Each pick waits for `sync.correctionsDone` to count the correction it started: a drift reading,
-// the toast and the node's state can all still show the pick before. The first raise is the gear's
-// smallest step. Nothing here puts the member exactly in step (the normal bars leave a resume up to
-// `SKIP_TO_SYNC_MIN_MS` behind, and a seek lands a little late), so each pick is sized to cross the
-// bar from where the member can be: one step up from a member not ahead, then two steps down from
-// wherever the second raise's seek landed. One step down is the same bar the other way (`Abs`),
-// which the unit rows pin.
+// Each pick waits for the app's answer to it: `sync.correctionsDone` counting the correction it
+// started, or `sync.picksSettled` counting the verdict that the member already rests in step, so
+// there is nothing to correct. A drift reading, the toast and the node's state can all still show
+// the pick before either. The first raise is the gear's smallest step. A pick's seek that outlasts
+// its budget is told to the group as a stall, so the group waits and its Unpause is expected then;
+// `sync.slowSeeks` tells the two apart. Nothing here puts the member exactly in step (the normal
+// bars leave a resume up to `SKIP_TO_SYNC_MIN_MS` behind, and a seek lands a little late), and a
+// member resting more than the bar on the far side absorbs a step. So a pick can settle without a
+// correction, and the case asks only that each pick is answered and the member ends in step.
 // `syncPlayPlayback.PICK_CORRECTION_MS`: a check a pick armed corrects past this, either way.
 const PICK_BAR_MS = 50;
 // `playbackSettingsMenu.TIME_OFFSET_STEP_MS`: the gear's smallest pick, under the normal bars.
@@ -533,33 +640,44 @@ const pickTimeOffset = (ms) =>
     keyPath: `#${heroId}.#osd.syncPlayPick`,
     value: { kind: 'timeOffset', value: ms },
   });
-const correctionsDone = () => getGlobalVal('syncPlayManager.sync.correctionsDone');
-// Picks `ms` and waits for the correction it started to run to its resume, playing again.
-async function pickAndWaitForCorrection(ms, { toast = false } = {}) {
-  const before = await correctionsDone();
+// Both counts in one read, so a wait compares a pair read together. Each only rises.
+const pickAnswers = async () => {
+  const done = await getGlobalVal('syncPlayManager.sync.correctionsDone');
+  const settled = await getGlobalVal('syncPlayManager.sync.picksSettled');
+  expect(typeof done, 'the correction count was read').toBe('number');
+  expect(typeof settled, 'the settled-pick count was read').toBe('number');
+  return { done, settled };
+};
+// Picks `ms` and waits for the app's answer: a correction run to its resume, playing again, or the
+// verdict that the member was already in step. Returns which one it was.
+async function pickAndWaitForAnswer(ms, { toast = false } = {}) {
+  const before = await pickAnswers();
   await pickTimeOffset(ms);
   expect(
     await getGlobalVal('user.settings.playbackSyncPlayTimeOffsetMs'),
     'the pick was saved',
   ).toBe(ms);
-  if (toast)
+  const answer = await waitFor(
+    'syncPlayManager.sync.picksSettled',
+    (a) => a.done > before.done || a.settled > before.settled,
+    {
+      read: pickAnswers,
+      timeout: 20000,
+      label: `the app's answer to the pick of ${ms} ms: a correction run to its resume, or in step`,
+    },
+  );
+  const corrected = answer.done > before.done;
+  // The toast is raised only for a seek a pick caused, so a pick found in step shows none.
+  if (toast && corrected)
     await waitToast('Syncing with the group', {
       label: `the toast for the seek after the pick of ${ms} ms`,
     });
-  await waitFor(
-    'syncPlayManager.sync.correctionsDone',
-    (v) => typeof v === 'number' && v > before,
-    {
-      read: getGlobalVal,
-      timeout: 20000,
-      label: `the correction the pick of ${ms} ms started, run to its resume`,
-    },
-  );
   await waitFor('state', (s) => s === 'playing', {
     read: playerState,
     timeout: 15000,
     label: `playing again after the pick of ${ms} ms`,
   });
+  return corrected;
 }
 it('a time offset picked in the gear corrects the drift at once, without an Unpause', async (testCtx) => {
   if (!pushAvailable)
@@ -581,29 +699,58 @@ it('a time offset picked in the gear corrects the drift at once, without an Unpa
     },
   );
   const unpausedAt = await getGlobalVal('syncPlayManager.sync.lastCommand.emittedatms');
+  const slowBefore = await getGlobalVal('syncPlayManager.sync.slowSeeks');
+  expect(typeof slowBefore, 'the slow-seek count was read').toBe('number');
+  // A pick's seek that outlasted its budget ends the picks: the group waited for it, and the
+  // member corrects by seeking no more until a group Seek lands (`syncPlayPlayer.endSeek`).
+  const aPickSeekWasSlow = async () => {
+    const slow = await getGlobalVal('syncPlayManager.sync.slowSeeks');
+    expect(typeof slow, 'the slow-seek count was read after a pick').toBe('number');
+    return slow > slowBefore;
+  };
+  let heldTheGroup;
   try {
     // Raised twice: behind past the bar, so the node seeks ahead. The toast is read on the first
     // only, since the second's could be the first's still on screen.
-    await pickAndWaitForCorrection(PICK_STEP_MS, { toast: true });
-    await pickAndWaitForCorrection(2 * PICK_STEP_MS);
-    // Lowered: ahead past the bar, so the node holds until the group arrives, and lands in step
-    // (a hold resumes on time). A reading from before the hold is ahead past the bar, so it cannot
-    // pass this wait.
-    await pickAndWaitForCorrection(0);
-    await waitFor(
-      'syncPlayManager.sync.playbackDiffMs',
-      (v) => typeof v === 'number' && Math.abs(v) <= PICK_BAR_MS,
-      { read: getGlobalVal, timeout: 20000, label: 'the hold brought the node back in step' },
-    );
+    await pickAndWaitForAnswer(PICK_STEP_MS, { toast: true });
+    heldTheGroup = await aPickSeekWasSlow();
+    if (!heldTheGroup) {
+      await pickAndWaitForAnswer(2 * PICK_STEP_MS);
+      heldTheGroup = await aPickSeekWasSlow();
+    }
+    if (!heldTheGroup) {
+      // Lowered: ahead past the bar, so the node holds until the group arrives, and lands in step
+      // (a hold resumes on time). A reading from before the hold is ahead past the bar, so it
+      // cannot pass this wait.
+      await pickAndWaitForAnswer(0);
+      await waitFor(
+        'syncPlayManager.sync.playbackDiffMs',
+        (v) => typeof v === 'number' && Math.abs(v) <= PICK_BAR_MS,
+        { read: getGlobalVal, timeout: 20000, label: 'the hold brought the node back in step' },
+      );
+    }
   } finally {
     // Only when a failure left it raised: a pick of the value in force still arms a check.
     if ((await getGlobalVal('user.settings.playbackSyncPlayTimeOffsetMs')) !== 0)
       await pickTimeOffset(0);
   }
-  expect(
-    await getGlobalVal('syncPlayManager.sync.lastCommand.emittedatms'),
-    'no Unpause came in between: the picks alone corrected it',
-  ).toBe(unpausedAt);
+  if (heldTheGroup) {
+    await waitFor('syncPlayManager.groupState', (g) => g === 'Playing', {
+      read: getGlobalVal,
+      timeout: 15000,
+      label: 'a pick seek ran past its budget and the group waited for this Roku, then played',
+    });
+    await waitFor('state', (s) => s === 'playing', {
+      read: playerState,
+      timeout: 15000,
+      label: 'the node playing after a pick seek ran past its budget and the group waited',
+    });
+  } else {
+    expect(
+      await getGlobalVal('syncPlayManager.sync.lastCommand.emittedatms'),
+      'no Unpause came in between: the picks alone settled it',
+    ).toBe(unpausedAt);
+  }
   expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
 });
 
@@ -901,6 +1048,149 @@ it('a second same-item NextItem right after a RepeatOne restart does not reload 
   });
 });
 
+// Restarts the playing item for the group under RepeatOne (a same-item NextItem) and returns once
+// this Roku has started loading it, so the caller's next request reaches a member mid-load.
+async function restartAndCatchTheLoad() {
+  await syncPlay(member, 'SetRepeatMode', { Mode: 'RepeatOne' });
+  await waitFor('syncPlayManager.sync.repeatMode', (v) => v === 'RepeatOne', {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: "the group's RepeatOne reached this Roku",
+  });
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 30000,
+    label: 'playing before the restart',
+  });
+  const playingItemId = await getGlobalVal('syncPlayManager.sync.playingItemId');
+  const loadsBefore = await getGlobalVal('syncPlayManager.sync.loadCount');
+  expect(typeof loadsBefore, 'the manager counts its loads').toBe('number');
+  await syncPlay(member, 'NextItem', { PlaylistItemId: playingItemId });
+  await waitFor('syncPlayManager.sync.loadCount', (v) => v > loadsBefore, {
+    read: getGlobalVal,
+    timeout: 20000,
+    interval: 50,
+    label: 'the restart loading on this Roku',
+  });
+  return { loadsBefore };
+}
+async function repeatOffAgain() {
+  await syncPlay(member, 'SetRepeatMode', { Mode: 'RepeatNone' });
+  await waitFor('syncPlayManager.sync.repeatMode', (v) => v === 'RepeatNone', {
+    read: getGlobalVal,
+    timeout: 15000,
+    label: 'repeat off again for the cases after',
+  });
+}
+
+it("another member's Pause while this Roku loads a restart leaves it paused with the OSD up, and the Unpause plays on", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const { loadsBefore } = await restartAndCatchTheLoad();
+  await syncPlay(member, 'Pause');
+  await waitFor('syncPlayManager.sync.lastCommand.command', (v) => v === 'Pause', {
+    read: getGlobalVal,
+    timeout: 20000,
+    label: "the group's Pause reached this Roku during its load",
+  });
+  await waitFor('state', (s) => s === 'paused', {
+    read: playerState,
+    timeout: 90000,
+    label: 'the node paused once the restart loaded',
+  });
+  await waitFor('#osd.visible', (v) => v === true, {
+    read: osdVisible,
+    timeout: 10000,
+    label: "the OSD up on the group's pause",
+  });
+  await waitFor('syncPlayManager.groupState', (v) => v === 'Paused', {
+    read: getGlobalVal,
+    timeout: 30000,
+    label: "the group paused after this member's Ready",
+  });
+  await syncPlay(member, 'Unpause');
+  await waitFor('syncPlayManager.sync.lastCommand.command', (v) => v === 'Unpause', {
+    read: getGlobalVal,
+    timeout: 20000,
+    label: "the group's Unpause reached this Roku",
+  });
+  // The server's last Pause names a point past where this member stopped, so the Unpause finds it
+  // behind and it catches up.
+  await waitFor(
+    'syncPlayManager.sync.playbackDiffMs',
+    (v) => typeof v === 'number' && v >= -150 && v <= 400,
+    {
+      read: getGlobalVal,
+      timeout: 45000,
+      label: 'this member in step with the group after the unpause',
+    },
+  );
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 15000,
+    label: "the node playing on the group's unpause",
+  });
+  await waitFor('#osd.visible', (v) => v === false, {
+    read: osdVisible,
+    timeout: 10000,
+    label: 'the OSD down again after the unpause',
+  });
+  expect(
+    (await getGlobalVal('syncPlayManager.sync.loadCount')) - loadsBefore,
+    'the item was loaded once',
+  ).toBe(1);
+  expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+  await repeatOffAgain();
+});
+
+it("another member's Seek while this Roku loads a restart moves it there with one group Seek", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const seeksBefore = await getGlobalVal('syncPlayManager.sync.groupSeeks');
+  expect(typeof seeksBefore, 'the manager counts the group Seeks it took').toBe('number');
+  const { loadsBefore } = await restartAndCatchTheLoad();
+  const target = 120;
+  await syncPlay(member, 'Seek', { PositionTicks: target * 10_000_000 });
+  await waitFor('syncPlayManager.sync.lastCommand.command', (v) => v === 'Seek', {
+    read: getGlobalVal,
+    timeout: 20000,
+    interval: 50,
+    label: "the group's Seek reached this Roku during its load",
+  });
+  // The group plays on once this member's Ready at the Seek's point is accepted.
+  await waitFor('syncPlayManager.sync.lastCommand.command', (v) => v === 'Unpause', {
+    read: getGlobalVal,
+    timeout: 90000,
+    label: "the group's Unpause after the Seek",
+  });
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 30000,
+    label: 'playing after the Seek',
+  });
+  await waitFor('position', (v) => typeof v === 'number' && v >= target, {
+    read: playerPosition,
+    timeout: 30000,
+    label: "the node playing from the Seek's target",
+  });
+  expect(await playerPosition(), "near the Seek's target, not past it").toBeLessThan(target + 60);
+  // A Ready the server finds off the point is answered with another Seek: one means none was.
+  expect(
+    (await getGlobalVal('syncPlayManager.sync.groupSeeks')) - seeksBefore,
+    'group Seeks this member took',
+  ).toBe(1);
+  expect(
+    (await getGlobalVal('syncPlayManager.sync.loadCount')) - loadsBefore,
+    'the item was loaded once',
+  ).toBe(1);
+  expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+  await repeatOffAgain();
+});
+
 // Opens the OSD gear and returns the number of rows and a reader for a row's title.
 async function openGear() {
   await waitOsdUp('the OSD up for the gear', { itemId: heroId });
@@ -990,4 +1280,158 @@ it('the gear shows the group rows while following, and its Leave Group leaves wi
     after.titles.some((t) => t === 'Leave Group'),
     'no group rows outside a group',
   ).toBe(false);
+});
+
+/**
+ * A new group the REST member made and this Roku joined, with nothing queued. The cases below
+ * each start from one, so none depends on what the case before it left.
+ * @param {string} name the group's name, which finds it in the server's list
+ * @returns {Promise<string>} the group's id
+ */
+async function freshGroup(name) {
+  await managerCall('leave').catch(() => {});
+  await waitFor('syncPlayManager.inGroup', (v) => v === false, {
+    read: getGlobalVal,
+    timeout: 20000,
+    label: 'the Roku out of the group before',
+  });
+  await syncPlay(member, 'Leave').catch(() => {});
+  await syncPlay(member, 'New', { GroupName: name });
+  // The REST member never reports Ready: without this the group waits on it for good.
+  await syncPlay(member, 'SetIgnoreWait', { IgnoreWait: true });
+  const id = (await listGroups(member)).find((g) => g.GroupName === name)?.GroupId;
+  expect(id, `the member created ${name}`).toBeTruthy();
+  await managerCall('join', id);
+  await waitFor('syncPlayManager.inGroup', (v) => v === true, {
+    read: getGlobalVal,
+    timeout: 20000,
+    label: `the Roku in ${name}`,
+  });
+  return id;
+}
+const queueHero = () =>
+  syncPlay(member, 'SetNewQueue', {
+    PlayingQueue: [heroId],
+    PlayingItemPosition: 0,
+    StartPositionTicks: 0,
+  });
+const waitHomeBehindPlayer = (label) =>
+  waitFor('subtype()', (v) => v === 'Home', {
+    read: getActiveVal,
+    timeout: 20000,
+    interval: 250,
+    label,
+  });
+const serverGroup = async (id) => (await listGroups(member)).find((g) => g.GroupId === id);
+
+it("another member's Stop closes this Roku's player and leaves it in the group, still following", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  // The case above leaves the gear menu open over a video that plays on as the viewer's own.
+  await press(ecp.Key.Back);
+  await waitDialogClosed('the gear menu closed', { timeout: 10000 });
+  await stopPlayback();
+  await waitHomeBehindPlayer("Home, once the viewer's own video is closed");
+
+  await freshGroup('RTA stop party');
+  await queueHero();
+  await waitMediaPlaying("the group's item", 90000);
+  await waitFor('syncPlayManager.sync.lastCommand.command', (v) => v === 'Unpause', {
+    read: getGlobalVal,
+    timeout: 30000,
+    label: "the group's Unpause after this member's first-frame Ready",
+  });
+  await waitFor('state', (s) => s === 'playing', {
+    read: playerState,
+    timeout: 30000,
+    label: 'the node playing before the Stop',
+  });
+
+  await syncPlay(member, 'Stop');
+  await waitFor('syncPlayManager.sync.lastCommand.command', (v) => v === 'Stop', {
+    read: getGlobalVal,
+    timeout: 20000,
+    label: "the group's Stop reached this Roku",
+  });
+  await waitHomeBehindPlayer('the player closed on the Stop');
+  expect(await getGlobalVal('syncPlayManager.inGroup'), 'a Stop keeps the membership').toBe(true);
+  expect(await getGlobalVal('syncPlayManager.following'), 'and the follow').toBe(true);
+});
+
+it("a fetch of the group's queue that fails once is tried again, and the item plays", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  await freshGroup('RTA retry party');
+  // A player left open would satisfy the playing wait below before this group's item loads.
+  expect(await getActiveVal('subtype()'), 'no player open before the queue').toBe('Home');
+  const loadsBefore = await getGlobalVal('syncPlayManager.sync.loadCount');
+  expect(typeof loadsBefore, 'the load count was read').toBe('number');
+  try {
+    await failRequests([{ prefix: 'syncplay-queue-', kind: 'timeout', times: 1 }]);
+    await queueHero();
+    // The first fetch failed, so a load performed at all is the second try's.
+    await waitFor('syncPlayManager.sync.loadCount', (n) => n > loadsBefore, {
+      read: getGlobalVal,
+      timeout: 30000,
+      label: "the group's queue loaded on the second try",
+    });
+    await waitMediaPlaying("the group's item, loaded on the second try", 90000);
+    expect(await getGlobalVal('syncPlayManager.following'), 'still following').toBe(true);
+  } finally {
+    await failRequests([]);
+  }
+  // Back halts and closes the player, so the next case starts from Home.
+  await stopPlayback();
+  await waitHomeBehindPlayer('Home, after the retried load is closed');
+});
+
+it("a group's queue that cannot be loaded stops this Roku following, so the group does not wait on it", async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const id = await freshGroup('RTA unloadable party');
+  expect(await getActiveVal('subtype()'), 'no player open before the queue').toBe('Home');
+  try {
+    // An answer with no items: the group's playing item is not in it, which no retry can fix.
+    await failRequests([{ prefix: 'syncplay-queue-', kind: 'empty', times: 1 }]);
+    await queueHero();
+    await waitFor('syncPlayManager.following', (v) => v === false, {
+      read: getGlobalVal,
+      timeout: 20000,
+      label: 'the Roku no longer following the queue it could not load',
+    });
+  } finally {
+    await failRequests([]);
+  }
+  expect(await getGlobalVal('syncPlayManager.inGroup'), 'still a member').toBe(true);
+  // Neither member holds the group now: the REST member ignores waits, and so does a member
+  // that stopped following. The server plays on.
+  await expect
+    .poll(async () => (await serverGroup(id))?.State, { timeout: 15000, interval: 500 })
+    .toBe('Playing');
+  expect(await getActiveVal('subtype()'), 'no player opened').toBe('Home');
+});
+
+it('reset() leaves the group on the server, which ends a group this Roku was the last member of', async (testCtx) => {
+  if (!pushAvailable)
+    testCtx.skip(
+      'the server has no command channel to this Roku (https without the companion plugin)',
+    );
+  const id = await freshGroup('RTA reset party');
+  // The REST member leaves first, so this Roku's Leave is what ends the group.
+  await syncPlay(member, 'Leave');
+  // Both members sign in as one user and the list names users, so it cannot count them. A
+  // group with no member is deleted: still listed means this Roku is in it.
+  expect(Boolean(await serverGroup(id)), 'the group lives on with this Roku in it').toBe(true);
+  // Sign-out and a server switch call this (`userAuth.bs`).
+  await managerCall('reset');
+  await expect
+    .poll(async () => Boolean(await serverGroup(id)), { timeout: 15000, interval: 500 })
+    .toBe(false);
+  expect(await getGlobalVal('syncPlayManager.inGroup'), 'out of the group locally').toBe(false);
 });

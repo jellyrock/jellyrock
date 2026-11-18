@@ -200,7 +200,8 @@ Ruled out: **forbidding partial supersede in notes and routing it to an ADR.** C
 ## decision-id: ws-socket-thread-release
 
 **date**: 2026-07-31
-**status**: accepted
+**status**: superseded
+**superseded-by**: `syncplay-socket-runs-in-receiver`
 **related-files**: `components/vendor/BrightWebSocket/web_socket_client/WebSocketClientTask.brs`, `components/remotecontrol/RemoteControlTask.bs`, `source/api/userAuth.bs`, `scripts/lint/socket-thread-release-check.js`, `docs/architecture/remote-control.md`
 
 A Roku OS Task thread is not released by dropping the node reference, so the vendored `WebSocketClient` — one fresh node per connect attempt — leaked a thread per reconnect toward the 100-thread hard cap (the `&h29` class in #728). Three mechanisms now release it, and the node is **single-connection** as a result: reopening after close needs a fresh one. The load-bearing detail is *where* the loop's exit test sits. `m.ws.run()` both performs the CLOSED transition and posts the final `ready_state`/`on_close`/`on_error` messages to the port, so a drained-port observation taken before `run()` says nothing about what `run()` then enqueued — an exit test placed after `run()` releases the thread with the terminal events still queued, `m.top.on_close` never lands, and `RemoteControlTask.connectAndPump` blocks forever instead of reconnecting. The test therefore sits at the head of the loop body, armed by a flag set after `run()`. `SignOut` reads the published `socketNode` into a local before stopping it, because `control = "STOP"` does not join the receiver thread and re-reading the field races `closeSocket()` clearing it.
@@ -2640,7 +2641,7 @@ The HLS playlist is sized against Roku's byte limit from the server's own `Trans
 **partially-superseded-by**: `syncplay-reload-reports-its-start` (its SyncPlay group skip)
 **related-files**: `components/video/VideoPlayerView.bs`, `source/utils/reencodeCheck.bs`
 
-A re-encode the server runs above the buffer bitrate is found from the server's own session and restarted once with the cap. Jellyfin copies video only when the requested bitrate is at or above the source's, so the request keeps a high bitrate for a source above the cap, and a server that cannot copy re-encodes at it: measured 2026-11-04 on a Roku Ultra with `NVENC`, 4K HEVC re-encodes at 140 Mbps with 1 s segments never left buffering, at 95 Mbps and below they played. About 4 s after the stream reaches the player, the session's `TranscodingInfo` says whether the video is copied and at what bitrate; a 120 Mbps re-encode was restarted at 94.7 Mbps and played, and an 89 Mbps copy was left alone. The restart is the re-encode retry (`retryPlayback(PlaybackErrorRetry.REENCODE_VIDEO)`), which keeps the resume point of a stream that never played. Its flag stays for the rest of the version's playback (`retryFlagsWith`), so every later reload of that version, an audio, subtitle or quality pick included, also asks for a re-encode and runs no check: a load has a cap only when even its shortest segment overflows the buffer at the source bitrate, so a copy would overflow too. Skipped in a SyncPlay group, where the reload's Ready would carry position 0. Ruled out: predicting the server's copy decision before the request (it repeats server rules that differ by version); always applying the cap (every source above about 86 Mbps would be re-encoded, copies included).
+A re-encode the server runs above the buffer bitrate is found from the server's own session and restarted once with the cap. Jellyfin copies video only when the requested bitrate is at or above the source's, so the request keeps a high bitrate for a source above the cap, and a server that cannot copy re-encodes at it: measured 2026-11-04 on a Roku Ultra with `NVENC`, 4K HEVC re-encodes at 140 Mbps with 1 s segments never left buffering, at 95 Mbps and below they played. The session's `TranscodingInfo` says whether the video is copied and at what bitrate; a 120 Mbps re-encode was restarted at 94.7 Mbps and played, and an 89 Mbps copy was left alone. The first read comes 1 s after the stream reaches the player and repeats each second while the session shows nothing to judge, eight reads at most. It was 4 s with one repeat until 2026-11-16, when a Streaming Stick 4K against Jellyfin 12.4.0 showed the encode on the session 1.5 s into a SyncPlay group's wait, and the group waited through the rest. The restart is the re-encode retry (`retryPlayback(PlaybackErrorRetry.REENCODE_VIDEO)`), which keeps the resume point of a stream that never played. Its flag stays for the rest of the version's playback (`retryFlagsWith`), so every later reload of that version, an audio, subtitle or quality pick included, also asks for a re-encode and runs no check: a load has a cap only when even its shortest segment overflows the buffer at the source bitrate, so a copy would overflow too. Skipped in a SyncPlay group, where the reload's Ready would carry position 0. Ruled out: predicting the server's copy decision before the request (it repeats server rules that differ by version); always applying the cap (every source above about 86 Mbps would be re-encoded, copies included).
 
 ## decision-id: playing-stall-shares-buffer-window
 
@@ -2778,6 +2779,16 @@ The overhang's icon cluster and the SyncPlay mark on the OSD sit a fixed gap (`o
 
 Ruled out: a fixed slot in both bars (`slot`), and leaving the overhang's old fixed slot beside a measured OSD mark (`leave`), both for the dead space; measuring the widest string the format can produce once, which would stop the movement but was declined as not worth it. Operator: `measure`, 2026-11-06; shipped in #1335.
 
+## decision-id: syncplay-pause-position-reckoned
+
+**date**: 2026-11-10
+**status**: accepted
+**related-files**: `source/syncplay/syncPlayPlayback.bs`, `components/syncplay/SyncPlayManager.bs`, `components/video/VideoPlayerView.bs`
+
+After a pause, a SyncPlay member's `Unpause` resumes off the command's `When` by the lead the pause left, and its seek check reads a reckoned position, not the node's. A `Video` node's `position` and `positionInfo` move only on a position notification, every half second, and read stale while paused, so the manager works out where a pause stopped the node: the last known position in the current run of playing, run forward to the instant the player reports writing the pause (`syncPlayPlayback.newPausePosition`, the `pauseWritten` player event). This departs from jellyfin-web, which resumes at `When` after seeking back to the `Pause`'s position. Measured on a Stick 4K against a 12.4 server (2026-11-10): before, each pause left the member 50 to 115 ms further ahead until the 150 ms correction froze the picture, and one `Unpause` in 14 wrote a seek for a member that was in step; after, 20 rounds had no correction and no seek.
+
+Ruled out: the seek back that jellyfin-web makes on a `Pause`, since a seek on a paused node resumes it; reading the paused position from the node, since it reads stale; lowering `SETTLE_CORRECTION_MS`, which freezes the picture after nearly every pause and leaves the cause; taking the pause's time in the manager before the player writes it, which rests on nothing sitting between the two. A pause with no known position (after a stall, a seek or a load, before a notification) keeps the old behavior. Re-evaluate if Roku makes `position` live while paused, or if a camera measurement shows the node's own clocks mislead.
+
 ## decision-id: backdrop-owner-declared
 
 **date**: 2026-11-12
@@ -2811,6 +2822,37 @@ A translation key is renamed only through `npm run update-translations -- --rena
 The merge cannot carry Weblate work on `Old` made since the last release: it exists only on `weblate`, under a key `main` dropped. So the rename refuses while any exists. It fetches `weblate`, finds the last release with `findAncestor()` (the merge's own lookup, moved to `scripts/lib/locale-files.cjs`), and compares each old key against it. It also refuses when `weblate` cannot be read; `--skip-weblate-check` overrides both. Rejected: a committed rename record that release prep applies to the Weblate side. It closes the window from the rename to the Weblate sync too, but adds state and a new path through release prep for a rare event. The rename check costs neither.
 
 Keys are named for what the string is for, not its first words. A setting description is `SettingDesc` plus a short name for the setting; followup `positive-setting-names` renames the negatively worded settings first, then derives these from `settingName` again. First applied to 75 machine-named keys, moving 695 cells with none lost.
+
+## decision-id: syncplay-frames-numbered-handoff
+
+**date**: 2026-11-15
+**status**: accepted
+**related-files**: `source/syncplay/syncPlayInbox.bs`, `components/remotecontrol/RemoteControlTask.bs`, `components/syncplay/SyncPlayManager.bs`
+
+SyncPlay frames go from the receiver task straight to the SyncPlay manager, numbered and with the last few frames in every write, and the manager checks the field again every second while a group may be sending. Before, each frame rode `dispatchCommand` to the main thread, one write and one notification per frame, and five times a frame reached the manager about 20 seconds late (2026-11-11 to 2026-11-15, Streaming Stick 4K); in the one sighting traced end to end it arrived after the frame written behind it. Three traced runs on 2026-11-15 (9,004 frames, one with random delays at both hops) never showed it, so the hop was removed and the hand-off made not to depend on a notification at all, as the API pool does for requests.
+
+Ruled out: the straight write alone, which has nothing to catch a miss on the new hop and no line to say one happened; and a child node per frame, the API pool's own shape, which gives the same guarantee for a node made and removed per frame. Cast commands stay on the old road (followup `cast-commands-one-notification-each`). Worth checking again if a `SyncPlay frame late` warning ever names a rescue: that would show which notification is the one that goes missing.
+
+## decision-id: syncplay-socket-runs-in-receiver
+
+**date**: 2026-11-15
+**status**: accepted
+**supersedes**: `ws-socket-thread-release`
+**related-files**: `components/remotecontrol/RemoteControlTask.bs`, `components/websocket/web_socket_client/WebSocketClient.brs`, `source/api/userAuth.bs`, `scripts/lint/socket-auth-binding-check.js`
+
+The receiver task runs the adopted socket client as an object on its own thread; the client's Task wrapper and the `socketNode` field are gone. The numbered hand-off (`syncplay-frames-numbered-handoff`) did not end the late frame: a 2,000-step soak on it (2026-11-15, Streaming Stick 4K) held the group's "Playing" update about 17 seconds at steps 867 and 1989, and neither printed the late-frame warning, so both were held before the receiver had them. The one hand-off left there was the wrapper's: a node field written per message, with the receiver waiting on a port for it, the same shape as the hop already removed. Running the client in the receiver leaves no hand-off between the socket and `handleFrame`, and one thread fewer.
+
+What the old decision guarded is moot, not dropped: there is no socket Task thread to release, so its three mechanisms and `lint:socket-thread-release` went with the wrapper. Ruled out: numbering the wrapper's messages and checking its field every second (a second copy of the numbering, inside adopted code, and a crossing per second for good), and a time stamp alone (it locates, it fixes nothing). If a frame is late again with no late-frame warning, the hold is in the socket or the server, and a capture on the server side is the next step.
+
+## decision-id: syncplay-catch-up-fell-back-reloads
+
+**date**: 2026-11-15
+**status**: accepted
+**related-files**: `source/syncplay/syncPlayConverge.bs`, `source/syncplay/syncPlayPlayer.bs`, `source/syncplay/syncPlayGroup.bs`
+
+A catch-up seek that lands nearer to where it started than to its target is followed by one reload of the stream at the group's point, and a member measured in step again may ask the group to wait once more. On a transcode a few seconds old, a seek some seconds ahead came back playing from the stream's start in about 200 ms (traced 2026-11-15, Streaming Stick 4K). Both catch-ups went that way, so the member asked the group to come to it and the whole group jumped back about 13 seconds; the next time, with the ask spent, the member played on about 10.5 seconds behind. A run of `item-step, lost-seek, lost-seek` ten times failed 5 of 5 on the transcoded item before the change and passed 30 of 30 after it, with the reload written five times and no group seek.
+
+Why the node refuses that seek is not known (the server's log was not read). The reload costs that member, and the group that waits for it, some seconds: the step settled in about 19 seconds against about 11.5. Ruled out: letting the ask repeat with no reload (the group is pulled back every time), and a longer wait before the second seek (11 seconds into a stream the same seek still fell back).
 
 ## decision-id: home-rows-policy-gated
 

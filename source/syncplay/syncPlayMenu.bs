@@ -155,6 +155,8 @@ namespace syncPlayMenu
     if isValidAndNotEmpty(notice.userName) then userName = notice.userName
     if kind = "joined" then return { key: translationKeys.MessageSyncPlayJoinedGroup, toastType: "success", arg: groupName }
     if kind = "left" then return { key: translationKeys.MessageSyncPlayLeftGroup, toastType: "info", arg: groupName }
+    if kind = "rejoined" then return { key: translationKeys.MessageSyncPlayRejoinedGroup, toastType: "success", arg: groupName }
+    if kind = "lostGroup" then return { key: translationKeys.MessageSyncPlayLostGroup, toastType: "warning", arg: groupName }
     if kind = "leftStale" then return { key: translationKeys.MessageSyncPlayLeftStaleGroup, toastType: "info", arg: groupName }
     if kind = "userJoined" then return { key: translationKeys.MessageSyncPlayUserJoined, toastType: "info", arg: userName }
     if kind = "userLeft" then return { key: translationKeys.MessageSyncPlayUserLeft, toastType: "info", arg: userName }
@@ -171,6 +173,7 @@ namespace syncPlayMenu
     if kind = "resumeFailed" then return { key: translationKeys.MessageSyncPlayResumeFailed, toastType: "warning", arg: groupName }
     if kind = "syncing" then return { key: translationKeys.MessageSyncPlaySyncingWithGroup, toastType: "info", arg: "" }
     if kind = "halted" then return { key: translationKeys.MessageSyncPlayStoppedFollowing, toastType: "warning", arg: groupName }
+    if kind = "unreachable" then return { key: translationKeys.MessageSyncPlayGroupUnreachable, toastType: "warning", arg: "" }
     if kind = "GroupDoesNotExist" then return { key: translationKeys.MessageSyncPlayGroupDoesNotExist, toastType: "error", arg: "" }
     if kind = "LibraryAccessDenied" then return { key: translationKeys.MessageSyncPlayLibraryAccessDenied, toastType: "error", arg: "" }
     if kind = "CreateGroupDenied" then return { key: translationKeys.MessageSyncPlayCreateGroupDenied, toastType: "error", arg: "" }

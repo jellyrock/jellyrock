@@ -1361,6 +1361,31 @@ export const readPlayer = (itemId) => async (keyPath) =>
   ).value;
 
 /**
+ * Opens the trick-play bar on the playing video with three Right presses, one library wait apart:
+ * trick mode steps once per press it sees, and presses sent back to back read as one (Stick 4K,
+ * 2026-10-28). The OSD stays up until five seconds after the last key press (`inactiveTimeout` in
+ * `VideoPlayerView.xml`), and while it is up the player sends Right to the OSD and the bar does
+ * not open. So the presses wait for the OSD to be down first: a step that leaves it up over
+ * playing video (the Play key's pause, then another member's resume) is otherwise pressed at
+ * too early.
+ * @param {string} itemId the playing item, which the player node is stamped with
+ */
+export async function openTrickPlayBar(itemId) {
+  const read = readPlayer(itemId);
+  await waitFor('#osd.visible', (v) => v === false, {
+    read,
+    timeout: 15000,
+    label: 'the OSD down before the Right presses, so they reach the trick-play bar',
+  });
+  await ecp.sendKeypressSequence([ecp.Key.Right, ecp.Key.Right, ecp.Key.Right], { wait: 400 });
+  await waitFor('trickPlayBar.visible', (v) => v === true, {
+    read,
+    timeout: 10000,
+    label: 'the trick-play bar up after three Right presses',
+  });
+}
+
+/**
  * Wait for the OSD to come up after playback starts.
  *
  * Found when `osd` + `trickplay` failed on a Roku Stick `3600X` (720p UI) while the

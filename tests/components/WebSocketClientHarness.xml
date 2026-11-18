@@ -2,7 +2,6 @@
 <!--
   WebSocketClientHarness (test builds only): a plain Node that loads the vendored WebSocket
   client's scripts, so WebSocketClient.spec.bs can run inside a component scope with @SGNode.
-  The client's own component extends Task and starts its socket loop in init(), which a test
-  node would inherit as a thread that never ends.
+  The component that uses those scripts, RemoteControlTask, is a Task: a suite cannot run in it.
 -->
 <component name="WebSocketClientHarness" extends="Node" />

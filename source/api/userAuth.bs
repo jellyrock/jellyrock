@@ -71,28 +71,15 @@ function AboutMe(id = "" as string)
   return GetApi().GetUser(id)
 end function
 
-' #666/#728: stop the ws:// remote-control receiver and the socket child it published. This ends the
-' listener thread and releases the socket's Task thread. Split out of SignOut so it can be unit
-' tested: SignOut's remaining body writes real (non-`test-`) registry sections and reaches for the
-' router and the session, none of which a Rooibos suite can stand up, but this block is pure node
-' manipulation. See tests/source/unit/api/stopRemoteControlReceiver.spec.bs.
-'
-' Parent first (so a receiver still winding down can't spawn a replacement socket), then the
-' published child. STOP kills the receiver mid-loop, so its own closeSocket() teardown never runs.
-' STOP is not a join: the receiver can still be mid-connectAndPump here, so a child created but not
-' yet published to socketNode is missed. That window is bounded, not permanent: the vendored socket
-' loop self-exits once its connection reaches CLOSED.
+' #666: stop the remote-control receiver. This ends its thread, and with it the session socket the
+' thread holds: the socket client is an object on that thread, not a task of its own. Split out of
+' SignOut so it can be unit tested: SignOut's remaining body writes real (non-`test-`) registry
+' sections and reaches for the router and the session, none of which a Rooibos suite can stand up.
+' See tests/source/unit/api/stopRemoteControlReceiver.spec.bs.
 sub StopRemoteControlReceiver()
   remoteControlTask = m.global.remoteControlTask
   if not isValid(remoteControlTask) then return
-
   remoteControlTask.control = "STOP"
-  ' Snapshot before dotting into it. Re-reading the field for the test and again for the write
-  ' would race the receiver's own closeSocket(), which clears it, and a dot on invalid crashes the
-  ' caller. (Each dot on a render-thread-owned node is a separate rendezvous, too.)
-  socketNode = remoteControlTask.socketNode
-  if isValid(socketNode) then socketNode.control = "STOP"
-  remoteControlTask.socketNode = invalid
 end sub
 
 sub SignOut(deleteSavedEntry = true as boolean)

@@ -240,7 +240,8 @@ end sub
 ' ===========================================================================
 sub onPlayerStateChange()
   state = LCase(m.view.state)
-  syncPlayHooks.notify({ kind: "state", state: state, position: m.view.position })
+  ' With whether the viewer is scrubbing: the Video node pauses itself for the trick-play bar.
+  syncPlayHooks.notify({ kind: "state", state: state, position: m.view.position, scrubbing: m.view.trickPlayBar.visible })
   if state = "playing" then onStillWatchingPlaying()
   if state <> "finished" then return
 

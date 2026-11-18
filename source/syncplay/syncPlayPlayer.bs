@@ -1,0 +1,635 @@
+' The SyncPlay player model, pure: what the Video node is doing and where it is, kept from what
+' the node was told and what it has reported. The node's own fields cannot answer either question:
+' its state lags a write by tens of milliseconds, its position moves only on a notification every
+' half second, reads stale while paused, and reads a seek's target before the node has moved.
+'
+' The model is fed five kinds of fact, each with the device clock at that moment:
+'   - told: a verb written to the node, and who asked for it (the group, a hold, the viewer).
+'   - nodeState: the node's `state` changed.
+'   - reading: a position notification.
+'   - mounted, reloaded, unmounted, finished: the player's own lifecycle.
+'   - advance: time passed, which ends an activity that outlasted its limit.
+'
+' Nothing here decides what to do. syncPlayConverge compares this model with the group's and asks
+' for at most one action. Every time is a LongInteger: epoch milliseconds or Jellyfin ticks
+' (decision syncplay-time-longinteger).
+namespace syncPlayPlayer
+
+  ' How long after `playing` the first position notification may take before the arrival is
+  ' counted as unread. It came 7 to 42 ms after `playing` on 22 seeks (Stick 4K, 2026-11-10).
+  const ARRIVAL_READING_MS = 250
+  ' The band a resume's sample must fall in to be learned from, and how many resumes the lag in
+  ' use is the median of. A sample is how late the resume took effect, less how far the node ran
+  ' on past the stop the model took, so it can be below zero. Across 900 resumes on a Stick 4K it
+  ' ran from -141 to 91 ms, and across 61 on a low-end Stick from -388 to -31 ms (2026-11-13).
+  const RESUME_LAG_MIN_MS = -500
+  const RESUME_LAG_MAX_MS = 150
+  const RESUME_LAG_SAMPLES = 5
+  ' How many of the stream's last landed seeks are kept: a catch-up's lead and whether the
+  ' member's seeks are too slow to catch up alone are read from them (syncPlayConverge.catchUp).
+  const SEEK_SAMPLES = 5
+
+  ' Activities:
+  '   "none"      no player.
+  '   "loading"   a load was told or a player mounted; no first frame yet.
+  '   "seeking"   a seek was written and the node has not reported `playing` since. It stays in
+  '               flight however long it takes: once it outlasts its budget while buffering it
+  '               is also `seekSlow`, a stall the group should hear of, and still not a node
+  '               to write to. When it lands, however late, its time is one more sample.
+  '   "arrived"   the first frame of a load, or a seek's `playing`: the next notification says
+  '               where the node landed. A seek lands up to seconds off its target, so the target
+  '               is never taken for the landing.
+  '   "pausing"   a pause was written and `paused` has not come.
+  '   "resuming"  a resume was written and `playing` has not come.
+  '   "playing"   the node plays.
+  '   "paused"    the node is paused.
+  '   "stalling"  the node buffers after playing, for less than the stall bar.
+  '   "stalled"   it has buffered past the bar.
+  '   "finished"  the item ended.
+  '
+  ' Clock kinds:
+  '   "running"   at `ticks` at `atMs` and playing since (`measured` true from a notification,
+  '               false when reckoned from a resume).
+  '   "stopped"   paused at `ticks`.
+  '   "seeking"   between a seek's write and its landing.
+  '   "unknown"   nothing says where the node is.
+  function newPlayer() as object
+    return {
+      activity: "none",
+      sinceMs: 0&,
+      nodeState: "",
+      clock: { kind: "unknown", ticks: 0&, atMs: 0&, measured: false },
+      pauseOwner: "",
+      ' The viewer has the trick-play bar up. The Video node pauses itself for a scrub with no
+      ' write of the player's, so a pause nobody wrote while this holds is the scrub's.
+      scrubbing: false,
+      ' A seek was written under the viewer's open bar. The bar stays drawn until a moment
+      ' after the landing, and the viewer is no longer scrubbing meanwhile.
+      barClosing: false,
+      pauseWrites: 0,
+      pauseWrittenAtMs: 0&,
+      pauseTicks: invalid,
+      ' A pause was written at a load's first frame, and that frame's reading has not come.
+      awaitsFirstFrameReading: false,
+      arrivedFrom: "",
+      loadStartTicks: 0&,
+      ' Counts the loads: one per stream this player started on. The server is told of each
+      ' once (syncPlayConverge's Buffering for a load).
+      loadCount: 0,
+      ' A load was told and its player has not mounted yet: that mount is the same load.
+      loadTold: false,
+      toldUnmount: false,
+      seekTargetTicks: 0&,
+      ' Where the node stood as the seek in flight, or the last one, was written; invalid when
+      ' no reading said.
+      seekFromTicks: invalid,
+      seekWrittenAtMs: 0&,
+      seekOwner: "",
+      seekSlow: false,
+      ' How long the seek in flight may take to land before it is slow. Back to the normal
+      ' budget at each seek written, so one set for a seek lasts that seek.
+      seekBudgetMs: syncPlayPlayback.SEEK_SETTLE_MS,
+      slowTold: false,
+      ' When the seek in flight was first seen at a full buffer, or invalid.
+      bufferFullAtMs: invalid,
+      lastSeekMs: 0&,
+      ' The last seek never landed: its budget ran out with the node not even buffering.
+      lastSeekGaveUp: false,
+      ' How long each of the stream's last few landed seeks took, oldest first.
+      seekSamples: [],
+      lastLandingTicks: invalid,
+      ' How late a resume from the stop the node is now in takes effect, in ms: the median of
+      ' the last few resumes from a stop of the same kind, each read off the first position
+      ' reading after it. The comparison writes a resume this much early
+      ' (syncPlayConverge.lineAction). It is kept per kind of stop because the two differ: a
+      ' node stopped straight after a landing resumes later against the model than one stopped
+      ' in steady play.
+      resumeLagMs: 0&,
+      resumeLagSamples: { landing: [], steady: [] },
+      resumeLagLastSampleMs: invalid,
+      resumeLagLastKind: "",
+      ' Whether the clock still runs from a landing's first reading, and the kind of the stop
+      ' the last pause made: "landing" (no reading since the landing's) or "steady".
+      clockFromLanding: false,
+      stopKind: "",
+      ' The stream's path and length, as the player last said them: whether it is a transcode
+      ' (invalid until it has said) and its length in seconds (0 while unknown). A new stream
+      ' forgets both (mounted).
+      isTranscoded: invalid,
+      durationSeconds: 0,
+      resumeWrittenAtMs: 0&,
+      ' Where the node stood when the resume was written, while the readings that say how late
+      ' the resume was are awaited; how many have come since that resume; and whether the first
+      ' one's sample was kept, for the second to replace.
+      resumeFromTicks: invalid,
+      resumeReadings: 0,
+      resumeSampleKept: false
+    }
+  end function
+
+  ' --- facts in ---
+
+  ' A verb was written to the node at nowMs.
+  ' @param verb - "load", "stop", "pause", "resume" or "seek"
+  ' @param owner - who asked: "group", "hold" (a correction's wait for the group) or "viewer"
+  ' @param targetTicks - a seek's target, or a load's start; ignored otherwise
+  sub told(player as object, verb as string, owner as string, targetTicks as dynamic, nowMs as longinteger)
+    if verb = "load"
+      ' The player now mounted, if any, unmounts for the new one: that unmount is the load's.
+      player.toldUnmount = player.activity <> "none"
+      ' Every load told is a load of its own, one that replaces a load still in flight included.
+      player.loadCount++
+      player.loadTold = true
+      enter(player, "loading", nowMs)
+      player.loadStartTicks = 0&
+      if syncPlayTime.isWholeNumber(targetTicks) then player.loadStartTicks = syncPlayTime.asLong(targetTicks)
+      setClock(player, "unknown", 0&, nowMs, false)
+    else if verb = "stop"
+      player.toldUnmount = player.activity <> "none"
+    else if verb = "pause"
+      toldPause(player, owner, nowMs)
+    else if verb = "resume"
+      if player.activity = "paused"
+        enter(player, "resuming", nowMs)
+        player.resumeWrittenAtMs = nowMs
+      end if
+    else if verb = "seek"
+      if player.activity = "none" or player.activity = "loading" or player.activity = "finished" then return
+      player.seekTargetTicks = syncPlayTime.asLong(targetTicks)
+      player.seekFromTicks = positionAt(player, nowMs)
+      player.seekWrittenAtMs = nowMs
+      player.seekOwner = owner
+      player.seekBudgetMs = syncPlayPlayback.SEEK_SETTLE_MS
+      player.seekSlow = false
+      player.slowTold = false
+      player.bufferFullAtMs = invalid
+      ' A seek written under the bar answers the scrub, and the node closes the bar by itself.
+      if player.scrubbing
+        player.scrubbing = false
+        player.barClosing = true
+      end if
+      ' A seek starts the node afresh, so pause writes are counted from its landing.
+      player.pauseWrites = 0
+      player.pauseOwner = ""
+      player.pauseTicks = invalid
+      enter(player, "seeking", nowMs)
+      setClock(player, "seeking", 0&, nowMs, false)
+    end if
+  end sub
+
+  ' A pause is written once. A second write while the first is landing, or on a node already
+  ' paused, moves nothing: it only says who the pause now belongs to (the group's Pause coming
+  ' back for the viewer's own, or the group pausing a node a hold had stopped).
+  sub toldPause(player as object, owner as string, nowMs as longinteger)
+    activity = player.activity
+    if activity = "paused" or activity = "pausing"
+      player.pauseOwner = owner
+      return
+    end if
+    if activity <> "playing" and activity <> "arrived" and activity <> "stalling" and activity <> "stalled" then return
+    player.pauseOwner = owner
+    player.pauseWrites++
+    player.pauseWrittenAtMs = nowMs
+    ' A load paused at its first frame has no reading yet: the one that arrives as the pause
+    ' lands says where the node stood (reading).
+    player.awaitsFirstFrameReading = activity = "arrived" and player.arrivedFrom = "load"
+    player.stopKind = "steady"
+    if player.clockFromLanding or player.activity = "arrived" then player.stopKind = "landing"
+    player.resumeLagMs = lagInUse(player.resumeLagSamples[player.stopKind])
+    ' Where the write stopped the node: the running clock read at the write.
+    player.pauseTicks = positionAt(player, nowMs)
+    enter(player, "pausing", nowMs)
+  end sub
+
+  ' The viewer opened or closed the trick-play bar.
+  sub scrub(player as object, isScrubbing as boolean)
+    if player.barClosing
+      ' The bar a seek is closing still reads as up until it is gone.
+      if isScrubbing then return
+      player.barClosing = false
+    end if
+    player.scrubbing = isScrubbing
+    if isScrubbing and player.activity = "paused" and player.pauseOwner = "" then player.pauseOwner = "scrub"
+    if not isScrubbing and player.pauseOwner = "scrub" then player.pauseOwner = ""
+  end sub
+
+  ' A player mounted for a load.
+  ' @param startTicks - where the load was asked to start, or invalid for the item's start
+  sub mounted(player as object, startTicks as dynamic, nowMs as longinteger)
+    player.toldUnmount = false
+    player.nodeState = ""
+    player.pauseOwner = ""
+    player.scrubbing = false
+    player.barClosing = false
+    player.pauseWrites = 0
+    player.pauseTicks = invalid
+    player.seekSlow = false
+    player.slowTold = false
+    player.bufferFullAtMs = invalid
+    player.lastSeekMs = 0&
+    player.lastSeekGaveUp = false
+    player.seekSamples = []
+    player.lastLandingTicks = invalid
+    ' A new stream resumes in its own time.
+    player.resumeLagMs = 0&
+    player.resumeLagSamples = { landing: [], steady: [] }
+    player.stopKind = ""
+    player.clockFromLanding = false
+    player.resumeLagLastSampleMs = invalid
+    player.isTranscoded = invalid
+    player.durationSeconds = 0
+    player.loadStartTicks = 0&
+    if syncPlayTime.isWholeNumber(startTicks) then player.loadStartTicks = syncPlayTime.asLong(startTicks)
+    ' The mount of a load already told is that load; any other mount is a load of its own.
+    if not player.loadTold then player.loadCount++
+    player.loadTold = false
+    enter(player, "loading", nowMs)
+    setClock(player, "unknown", 0&, nowMs, false)
+  end sub
+
+  ' The player loads its stream again in place (a track, quality or version change, a retry). What
+  ' was learned about the old stream's seeks does not carry over.
+  sub reloaded(player as object, startTicks as dynamic, nowMs as longinteger)
+    if player.activity = "none" then return
+    ' A retry before the first frame is the same load: the server has its Buffering already.
+    player.loadTold = player.activity = "loading"
+    mounted(player, startTicks, nowMs)
+  end sub
+
+  ' What the player says of its stream: each fact is kept only when it is given.
+  sub streamFacts(player as object, isTranscoded as dynamic, durationSeconds as dynamic)
+    if isValid(isTranscoded) then player.isTranscoded = isTranscoded
+    if isValid(durationSeconds) then player.durationSeconds = durationSeconds
+  end sub
+
+  ' The player left.
+  ' @returns true when the model had told it to (a stop, or a load that replaces it), false when
+  '   the viewer or a fault took it away
+  function unmounted(player as object, nowMs as longinteger) as boolean
+    wasTold = player.toldUnmount
+    player.toldUnmount = false
+    player.nodeState = ""
+    ' A load in flight keeps waiting for its own player.
+    if wasTold and player.activity = "loading" then return true
+    enter(player, "none", nowMs)
+    setClock(player, "unknown", 0&, nowMs, false)
+    player.pauseOwner = ""
+    player.scrubbing = false
+    player.barClosing = false
+    return wasTold
+  end function
+
+  sub finished(player as object, nowMs as longinteger)
+    if player.activity = "none" then return
+    enter(player, "finished", nowMs)
+    setClock(player, "unknown", 0&, nowMs, false)
+  end sub
+
+  ' The node's `state` changed.
+  sub nodeState(player as object, state as string, nowMs as longinteger)
+    player.nodeState = state
+    activity = player.activity
+    if activity = "none" or activity = "finished" then return
+    if state <> "playing" and state <> "paused" and state <> "buffering" then return
+
+    if activity = "loading"
+      if state = "playing" then arrive(player, "load", nowMs)
+      if state = "paused" then pausedUnknown(player, nowMs)
+    else if activity = "seeking"
+      if state = "playing" then arrive(player, "seek", nowMs)
+      if state = "paused"
+        endSeek(player, nowMs, false, invalid)
+        pausedUnknown(player, nowMs)
+      end if
+    else if activity = "arrived"
+      if state = "buffering" then stall(player, nowMs)
+      if state = "paused" then pausedUnknown(player, nowMs)
+    else if activity = "pausing"
+      ' `buffering` is the node passing through on its way to `paused`.
+      if state = "paused" then pauseLanded(player, nowMs)
+    else if activity = "resuming"
+      if state = "playing"
+        enter(player, "playing", nowMs)
+        ' A resume from a known stop starts the run there: it predicted the next notification
+        ' to within 26 ms in 9 resumes (Stick 4K, 2026-11-10).
+        if player.clock.kind = "stopped"
+          ' The node starts moving the learned lag after the write, so the run is reckoned from
+          ' then. The first reading says how late this resume was (reading).
+          stop& = syncPlayTime.asLong(player.clock.ticks)
+          startsAt& = syncPlayTime.asLong(player.resumeWrittenAtMs) + syncPlayTime.asLong(player.resumeLagMs)
+          setClock(player, "running", stop& + syncPlayTime.msToTicks(nowMs - startsAt&), nowMs, false)
+          player.resumeFromTicks = stop&
+          player.resumeReadings = 0
+          player.resumeSampleKept = false
+        else
+          setClock(player, "unknown", 0&, nowMs, false)
+        end if
+        player.pauseOwner = ""
+      end if
+    else if activity = "playing"
+      ' Any state change ends the run the clock described, so a stall is never counted as played.
+      if state = "buffering" then stall(player, nowMs)
+      if state = "paused" then pausedUnknown(player, nowMs)
+    else if activity = "paused"
+      if state = "playing"
+        enter(player, "playing", nowMs)
+        setClock(player, "unknown", 0&, nowMs, false)
+        player.pauseOwner = ""
+      end if
+    else if activity = "stalling" or activity = "stalled"
+      if state = "playing"
+        enter(player, "playing", nowMs)
+        setClock(player, "unknown", 0&, nowMs, false)
+      end if
+      if state = "paused" then pausedUnknown(player, nowMs)
+    end if
+  end sub
+
+  ' A position notification.
+  sub reading(player as object, positionTicks as longinteger, nowMs as longinteger)
+    if player.activity = "arrived"
+      ' A seek's first reading says where the node was when it began playing, and can reach the
+      ' model well after that: the node played on meanwhile, so the run starts at the `playing`
+      ' state, not at the reading's arrival. Past one notification interval it is a later
+      ' reading, taken as it comes.
+      runsFromMs& = nowMs
+      if player.arrivedFrom = "seek"
+        endSeek(player, nowMs, false, positionTicks)
+        arrivedAtMs& = syncPlayTime.asLong(player.sinceMs)
+        if nowMs - arrivedAtMs& <= syncPlayPlayback.LANDING_READING_MAX_MS then runsFromMs& = arrivedAtMs&
+      end if
+      enter(player, "playing", nowMs)
+      setClock(player, "running", positionTicks, runsFromMs&, true)
+      player.clockFromLanding = true
+    else if player.activity = "playing"
+      player.clockFromLanding = false
+      ' A resume is learned from its first reading at once, since a hold written on that reading
+      ' ends the run, and again from its second: the first can reach the model a few hundred
+      ' milliseconds stale on a low-end device (learnResumeLag keeps the earlier of the two).
+      if isValid(player.resumeFromTicks)
+        player.resumeReadings++
+        learnResumeLag(player, positionTicks, nowMs)
+        if player.resumeReadings >= 2 then player.resumeFromTicks = invalid
+      end if
+      setClock(player, "running", positionTicks, nowMs, true)
+    else if player.awaitsFirstFrameReading and (player.activity = "pausing" or player.activity = "paused")
+      ' The first frame's own reading, a moment behind the pause written at that frame: it is
+      ' where the node stopped. Taken once, and only while the pause is still landing.
+      player.awaitsFirstFrameReading = false
+      if nowMs - syncPlayTime.asLong(player.pauseWrittenAtMs) <= syncPlayPlayback.PAUSE_LANDED_MS
+        if player.activity = "pausing"
+          player.pauseTicks = positionTicks
+        else
+          setClock(player, "stopped", positionTicks, nowMs, false)
+        end if
+      end if
+    end if
+    ' Any other activity: the field reads a seek's target, or the position from before a pause.
+  end sub
+
+  ' The seek in flight was seen at a full buffer: kept the first time, as when that began. A
+  ' seek that lands plays within seconds of it, and one that never does stays there for good.
+  sub bufferFull(player as object, nowMs as longinteger)
+    if player.activity = "seeking" and not isValid(player.bufferFullAtMs) then player.bufferFullAtMs = nowMs
+  end sub
+
+  ' Gives the seek in flight its own landing budget: a catch-up's is its lead, since the group
+  ' has nothing to hear of while the seek is on schedule, and a device spec shortens one to make
+  ' a seek outlast it. It does nothing with no seek in flight, and the next seek written has the
+  ' normal budget again.
+  sub setSeekBudget(player as object, budgetMs as longinteger)
+    if player.activity = "seeking" and budgetMs > 0 then player.seekBudgetMs = budgetMs
+  end sub
+
+  ' True once per seek, the first time it is asked after the seek turned slow.
+  function takeSlowEdge(player as object) as boolean
+    if not player.seekSlow or player.slowTold then return false
+    player.slowTold = true
+    return true
+  end function
+
+  ' Time passed: end an activity that outlasted its limit.
+  sub advance(player as object, nowMs as longinteger)
+    due = nextDeadlineMs(player)
+    if not isValid(due) or nowMs < syncPlayTime.asLong(due) then return
+    activity = player.activity
+    if activity = "seeking"
+      ' The seek's budget ran out with no `playing`. A node still buffering is still seeking: a
+      ' write now could leave it buffering for good, so it stays in flight, marked slow so the
+      ' group hears of the stall. A node that never answered the seek is left where its state
+      ' says, with nothing known of its position.
+      if player.nodeState = "buffering"
+        player.seekSlow = true
+        return
+      end if
+      endSeek(player, nowMs, true, invalid)
+      if player.nodeState = "paused"
+        pausedUnknown(player, nowMs)
+      else
+        enter(player, "playing", nowMs)
+        setClock(player, "unknown", 0&, nowMs, false)
+      end if
+    else if activity = "arrived"
+      ' No notification came: the node plays, and where it landed is not known.
+      if player.arrivedFrom = "seek" then endSeek(player, nowMs, false, invalid)
+      enter(player, "playing", nowMs)
+      setClock(player, "unknown", 0&, nowMs, false)
+    else if activity = "pausing"
+      ' The write did not take: the node is where its state says.
+      player.pauseTicks = invalid
+      player.pauseOwner = ""
+      if player.nodeState = "buffering"
+        stall(player, nowMs)
+      else
+        enter(player, "playing", nowMs)
+        setClock(player, "unknown", 0&, nowMs, false)
+      end if
+    else if activity = "resuming"
+      ' A node that left `paused` and buffers is resuming slowly: a stall, and a second resume
+      ' written to it could leave it buffering for good. One still paused did not take the
+      ' write, and is where it was.
+      if player.nodeState = "buffering"
+        stall(player, nowMs)
+      else
+        enter(player, "paused", nowMs)
+      end if
+    else if activity = "stalling"
+      enter(player, "stalled", nowMs)
+    end if
+  end sub
+
+  ' The device-clock time at which advance has something to do, or invalid.
+  function nextDeadlineMs(player as object) as dynamic
+    activity = player.activity
+    since& = syncPlayTime.asLong(player.sinceMs)
+    if activity = "seeking" and not player.seekSlow then return since& + syncPlayTime.asLong(player.seekBudgetMs)
+    if activity = "arrived" then return since& + ARRIVAL_READING_MS
+    if activity = "pausing" or activity = "resuming" then return since& + syncPlayPlayback.PAUSE_CONFIRM_MS
+    if activity = "stalling" then return since& + syncPlayPlayback.STALL_MS
+    return invalid
+  end function
+
+  ' --- facts out ---
+
+  ' Where the node is at nowMs, in ticks, or invalid when not known: a running clock run forward
+  ' (no further than one late notification allows), or a stopped clock as it stands.
+  function positionAt(player as object, nowMs as longinteger) as dynamic
+    clock = player.clock
+    if clock.kind = "stopped" then return syncPlayTime.asLong(clock.ticks)
+    if clock.kind <> "running" then return invalid
+    ageMs& = nowMs - syncPlayTime.asLong(clock.atMs)
+    if ageMs& < 0 or ageMs& > syncPlayPlayback.PAUSE_ESTIMATE_MAX_AGE_MS then return invalid
+    return syncPlayTime.asLong(clock.ticks) + syncPlayTime.msToTicks(ageMs&)
+  end function
+
+  ' Whether a write is in flight on the node, so nothing but a stop may be written to it.
+  function isInFlight(player as object) as boolean
+    activity = player.activity
+    return activity = "loading" or activity = "seeking" or activity = "arrived" or activity = "pausing" or activity = "resuming"
+  end function
+
+  ' --- internals ---
+
+  sub enter(player as object, activity as string, nowMs as longinteger)
+    player.activity = activity
+    player.sinceMs = nowMs
+    ' Only an unbroken run from a resume to a reading says how late the resume was.
+    player.resumeFromTicks = invalid
+  end sub
+
+  ' A reading on the unbroken run after a resume from a known stop: the time since the write, less
+  ' the media played since, is how late the resume took effect. It is below zero when the node ran
+  ' on past the stop the model took, which a pause's own `paused` state does not show. A reading
+  ' reaches the model some time after the position it carries was true, never before, so it can
+  ' only make a resume look later than it was: of a resume's first two readings the one that
+  ' says earlier is kept. The lag in use is the median of the last few, so one late reading does
+  ' not move it, and a sample outside the cap is dropped.
+  sub learnResumeLag(player as object, positionTicks as longinteger, nowMs as longinteger)
+    playedMs& = syncPlayTime.ticksToMs(positionTicks - syncPlayTime.asLong(player.resumeFromTicks))
+    sampleMs& = nowMs - syncPlayTime.asLong(player.resumeWrittenAtMs) - playedMs&
+    samples = player.resumeLagSamples[player.stopKind]
+    if not isValid(samples) then return
+    if player.resumeReadings >= 2 and player.resumeSampleKept
+      ' The first reading's sample stands unless this one says the resume was earlier.
+      if sampleMs& >= syncPlayTime.asLong(player.resumeLagLastSampleMs) then return
+      samples.pop()
+    end if
+    player.resumeLagLastSampleMs = sampleMs&
+    player.resumeLagLastKind = player.stopKind
+    player.resumeSampleKept = sampleMs& >= RESUME_LAG_MIN_MS and sampleMs& <= RESUME_LAG_MAX_MS
+    if player.resumeSampleKept
+      samples.push(sampleMs&)
+      if samples.count() > RESUME_LAG_SAMPLES then samples.shift()
+    end if
+    player.resumeLagMs = lagInUse(samples)
+  end sub
+
+  ' The lag a resume is written by, from the samples kept for one kind of stop. A device whose
+  ' node runs on past its stops says so every time (61 of 61 resumes on a low-end Stick), so a
+  ' lag below zero is used only once at least two samples are kept and all are below zero: their
+  ' median. On any other device a sample below zero is one resume's noise (about one in five on
+  ' a Stick 4K), and the lag is the median of the samples at or above zero, 0 with none.
+  function lagInUse(samples as dynamic) as longinteger
+    if not isValid(samples) or samples.count() = 0 then return 0&
+    late = []
+    for each sample in samples
+      if syncPlayTime.asLong(sample) >= 0 then late.push(sample)
+    end for
+    if late.count() = 0 and samples.count() >= 2 then return medianOf(samples)
+    return medianOf(late)
+  end function
+
+  ' The slowest of the stream's recent landed seeks, in ms, or 0 with none: what the next
+  ' catch-up's lead has to cover.
+  function slowestSeekMs(player as object) as longinteger
+    slowest& = 0&
+    for each sample in player.seekSamples
+      if syncPlayTime.asLong(sample) > slowest& then slowest& = syncPlayTime.asLong(sample)
+    end for
+    return slowest&
+  end function
+
+  ' What a seek on this stream takes as a rule: the median of the recent landed seeks, or
+  ' invalid until two have landed, since one seek says nothing of the next.
+  function typicalSeekMs(player as object) as dynamic
+    if player.seekSamples.count() < 2 then return invalid
+    return medianOf(player.seekSamples)
+  end function
+
+  ' The median of a list of ms values, or 0 for none.
+  function medianOf(samples as dynamic) as longinteger
+    if not isValid(samples) or samples.count() = 0 then return 0&
+    sorted = []
+    sorted.append(samples)
+    sorted.sort()
+    mid = sorted.count() \ 2
+    median& = syncPlayTime.asLong(sorted[mid])
+    if sorted.count() mod 2 = 0 then median& = (syncPlayTime.asLong(sorted[mid - 1]) + median&) \ 2
+    return median&
+  end function
+
+  sub setClock(player as object, kind as string, ticks as longinteger, nowMs as longinteger, measured as boolean)
+    player.clock = { kind: kind, ticks: ticks, atMs: nowMs, measured: measured }
+  end sub
+
+  sub arrive(player as object, origin as string, nowMs as longinteger)
+    player.bufferFullAtMs = invalid
+    player.arrivedFrom = origin
+    enter(player, "arrived", nowMs)
+  end sub
+
+  sub stall(player as object, nowMs as longinteger)
+    enter(player, "stalling", nowMs)
+    setClock(player, "unknown", 0&, nowMs, false)
+  end sub
+
+  ' The node is paused and nothing says where: a pause no write of the model's explains, or one
+  ' that landed with no clock to stop.
+  sub pausedUnknown(player as object, nowMs as longinteger)
+    enter(player, "paused", nowMs)
+    setClock(player, "unknown", 0&, nowMs, false)
+    player.pauseTicks = invalid
+    player.pauseWrites = 0
+    ' A stop nothing is known of has no lag learned for it.
+    player.stopKind = ""
+    player.resumeLagMs = 0&
+    ' A node that pauses itself while a seek's bar is still drawn is the viewer scrubbing again.
+    if player.barClosing
+      player.barClosing = false
+      player.scrubbing = true
+    end if
+    if player.scrubbing and player.pauseOwner = "" then player.pauseOwner = "scrub"
+  end sub
+
+  ' The pause's `paused` state came. The stop is known when the clock ran at the write and the
+  ' state came within the landing limit of it (26 to 40 ms measured, Stick 4K, 2026-11-10).
+  sub pauseLanded(player as object, nowMs as longinteger)
+    ticks = player.pauseTicks
+    landedInTime = nowMs - syncPlayTime.asLong(player.pauseWrittenAtMs) <= syncPlayPlayback.PAUSE_LANDED_MS
+    enter(player, "paused", nowMs)
+    player.pauseWrites = 0
+    player.pauseTicks = invalid
+    if syncPlayTime.isWholeNumber(ticks) and landedInTime
+      setClock(player, "stopped", syncPlayTime.asLong(ticks), nowMs, false)
+    else
+      setClock(player, "unknown", 0&, nowMs, false)
+    end if
+  end sub
+
+  ' The seek in flight is over: how long it took, whether it was given up, and where it landed
+  ' (invalid when no notification said). One that landed is a sample, however long it took: the
+  ' next catch-up is given that long, and one slow seek among fast ones changes nothing else.
+  sub endSeek(player as object, nowMs as longinteger, gaveUp as boolean, landingTicks as dynamic)
+    player.lastSeekMs = nowMs - syncPlayTime.asLong(player.seekWrittenAtMs)
+    player.lastSeekGaveUp = gaveUp
+    if not gaveUp
+      player.seekSamples.push(player.lastSeekMs)
+      if player.seekSamples.count() > SEEK_SAMPLES then player.seekSamples.shift()
+    end if
+    player.seekSlow = false
+    player.slowTold = false
+    player.bufferFullAtMs = invalid
+    player.lastLandingTicks = landingTicks
+  end sub
+
+end namespace

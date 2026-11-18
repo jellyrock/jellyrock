@@ -106,9 +106,11 @@ sub setGlobalNodes()
   ' rtaSignInCount: how many sign-ins were sent, so a spec can tell one sign-in from two.
   ' Specs write the first two and read the count. rtaEmptyUserList: the user picker's list
   ' comes back empty, as on a server that lists no users with none saved on this device
-  ' (buildPublicUserList), which the demo server never is.
+  ' (buildPublicUserList), which the demo server never is. rtaSyncPlaySeekBudgetMs:
+  ' SyncPlayManager gives the member's next seek of its own this landing budget in
+  ' milliseconds, once, then sets the field back to 0, so a spec can make that seek slow.
   #if ENABLE_RTA
-    m.global.addFields({ rtaSkeletonHoldMs: 0, rtaFailRequests: [], rtaGridPageSize: 0, rtaHeldRequests: 0, rtaForceStillWatching: false, rtaSignInHoldMs: 0, rtaSignInHoldAt: "", rtaSignInCount: 0, rtaEmptyUserList: false })
+    m.global.addFields({ rtaSkeletonHoldMs: 0, rtaFailRequests: [], rtaGridPageSize: 0, rtaHeldRequests: 0, rtaForceStillWatching: false, rtaSignInHoldMs: 0, rtaSignInHoldAt: "", rtaSignInCount: 0, rtaEmptyUserList: false, rtaSyncPlaySeekBudgetMs: 0 })
   #end if
 
   ' First, so it exists before any launch below could need it.

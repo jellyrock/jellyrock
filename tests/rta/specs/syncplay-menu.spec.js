@@ -21,6 +21,7 @@ import {
   authenticate,
   authenticateForPush,
   commandChannelAvailable,
+  firstMovie,
   getHero,
   getJson,
   getLibraries,
@@ -34,6 +35,7 @@ import { hardRelaunch } from '../lib/driver.js';
 import { focusIsInHomeContent } from '../lib/home-list.js';
 import { focusOverhangIcon, startPlayback } from '../lib/nav.js';
 import { failRequests } from '../lib/failRequests.js';
+import { recordAssertion } from '../../../scripts/run-record.js';
 import {
   focusIsInside,
   getActiveVal,
@@ -94,8 +96,15 @@ beforeAll(async () => {
   // manager never learns of the group, so the second test skips visibly rather than wait.
   pushAvailable = await commandChannelAvailable(session);
   const libraries = await getLibraries(session);
-  const hero = await getHero(session, libraryIdFor(libraries, 'movies'));
-  ctx = { heroIndex: hero.index, heroId: hero.id, session, libraries };
+  const moviesId = libraryIdFor(libraries, 'movies');
+  const hero = await getHero(session, moviesId);
+  // A server without the configured hero title is walked to its first movie, so the id and the
+  // tile are that movie's: an empty id would make moviesOtherThanHero() return the group's own
+  // video, and tile 0 can be a collection on a library that groups its movies.
+  const fallback = hero.id ? hero : await firstMovie(session, { parentId: moviesId });
+  const heroId = fallback.id;
+  expect(heroId, 'a movie in the movies library for the group to play').toBeTruthy();
+  ctx = { heroIndex: fallback.index, heroId, session, libraries };
   // A group a previous run left behind would double the rows this spec counts.
   await syncPlay(member, 'Leave').catch(() => {});
   const expectedServer = await seedHome(session, LOCALE);
@@ -561,6 +570,7 @@ it('while halted the menu offers Resume with Group, which opens the player follo
     'Resume with Group',
     'Leave Group',
   ]);
+  const resumePressedAt = Date.now();
   await press(ecp.Key.Ok);
   await waitDialogClosed('resume menu closed', { timeout: 10000 });
   await waitFor('subtype()', (v) => v === 'PlayerHostView', {
@@ -572,14 +582,34 @@ it('while halted the menu offers Resume with Group, which opens the player follo
   await waitToast(`Following ${GROUP_NAME} again.`, { label: 'the following-again toast' });
   await waitMediaPlaying("the group's item, resumed", 60000);
   expect(await getGlobalVal('syncPlayManager.following')).toBe(true);
-  // The group kept playing while this member was halted, so the resume lands past the start. A
-  // load that starts partway in still reads 0 at its first playing (playback.md), so this waits.
-  await waitFor('position', (v) => typeof v === 'number' && v > 5, {
-    read: readPlayer(ctx.heroId),
-    timeout: 15000,
-    interval: 250,
-    label: 'resumed at the group position, not from zero',
+  // The group kept playing while this member was halted. A load that starts partway in reads 0 at
+  // its first playing (playback.md), and a fixed mark fails when the group itself is near its
+  // start, so "at the group position" is the member in step with a playing group. The 45 s budget
+  // covers one restarted load: it restarts once for the re-encode cap.
+  await waitFor('syncPlayManager.groupState', (s) => s === 'Playing', {
+    read: getGlobalVal,
+    timeout: 45000,
+    label: 'the group playing, for the resumed member to catch up to',
   });
+  // `syncPlayPlayback.SETTLE_CORRECTION_MS` ahead and `SKIP_TO_SYNC_MIN_MS` behind: past them
+  // the manager corrects, so within them is in step with the group.
+  await waitFor(
+    'syncPlayManager.sync.playbackDiffMs',
+    (v) => typeof v === 'number' && v >= -150 && v <= 400,
+    {
+      read: getGlobalVal,
+      timeout: 45000,
+      label: "this member's drift from the group inside the correction thresholds",
+    },
+  );
+  // The gates above pass on a join of any length inside their budgets, so the time from the
+  // press to in step goes in the run's ledger line, where a series of runs shows it growing.
+  recordAssertion({ name: 'resumeWithGroupJoinMs', verified: Date.now() - resumePressedAt });
+  const resumed = readPlayer(ctx.heroId);
+  expect(await resumed('state'), 'playing, in step with the group').toBe('playing');
+  const position = await resumed('position');
+  expect(typeof position, 'a position was read').toBe('number');
+  expect(position, 'resumed past zero').toBeGreaterThan(0);
 
   // Back halts again, leaving the state the next case starts from.
   await stopPlayback();
@@ -667,13 +697,14 @@ it("a halted member's play led by the group's video catches up and adds the rest
   // The case above leaves the Roku halted in the group, the group still on the hero alone.
   expect(await getGlobalVal('syncPlayManager.following'), 'halted by its Back').toBe(false);
   expect(await getGlobalVal('syncPlayManager.sync.playlistCount'), 'the hero alone').toBe(1);
-  // The group's video, read off the details screen the case above left open: ctx.heroId is
-  // empty on a server without the configured hero title, which the suite reaches by its index.
+  // The group's video, read off the details screen the case above left open. It is the movie the
+  // walk opened, so it also checks ctx.heroId names that movie on a server without the hero title.
   expect(await getActiveVal('subtype()'), "on the details screen of the group's video").toBe(
     'ItemDetails',
   );
   const groupVideo = await getActiveVal('itemContent.id');
   expect(groupVideo, "the group's video id was read").toBeTruthy();
+  expect(groupVideo, 'ctx.heroId is the movie the walk opened').toBe(ctx.heroId);
   const other = (await moviesOtherThanHero(2)).find((id) => id !== groupVideo);
   // A Play All whose first video is the group's: the demo library has no collection that starts
   // with the hero, so the queue a launcher would build is set as one would, and started the way
@@ -936,7 +967,7 @@ it("a cast while the halted member's confirm is up asks about the cast instead, 
   );
 });
 
-it('a cast while halted follows the group again, and a cast over its player ends the start it opened', async (testCtx) => {
+it("a cast while halted asks first, and Cancel leaves the cast's details screen with the remote; confirmed, it follows the group again, and a cast over its player ends the start it opened", async (testCtx) => {
   if (!pushAvailable)
     testCtx.skip(
       'the server has no command channel to this Roku (https without the companion plugin)',
@@ -948,6 +979,38 @@ it('a cast while halted follows the group again, and a cast over its player ends
   expect(await getGlobalVal('syncPlayManager.following'), 'halted by its Back').toBe(false);
   const [first, second] = await moviesOtherThanHero(2);
   const roku = await appSession(member, await getGlobalVal('device.serverDeviceName'));
+
+  // Cancelled first, from Home: the cast plays nothing and the group's playback stands. A cast
+  // opens its video's details screen on the way to the player (`JRScene.onDeepLinkResolved`), so
+  // that screen is what the question is asked over and what keeps the remote, one Back from Home.
+  await backOutToHome();
+  await waitHome();
+  await playOnSession(member, roku.Id, [first]);
+  await waitFor('#jrDialog.id', (v) => v === 'jrDialog', {
+    timeout: 20000,
+    label: "the confirm dialog for a halted member's cast over Home",
+  });
+  await press(ecp.Key.Ok);
+  await waitDialogClosed('the cast confirm closed by Cancel', { timeout: 10000 });
+  await waitFocusInside('#buttons', {
+    label: "the focus on the cast's details buttons after the cancelled cast",
+    timeout: 10000,
+    interval: 250,
+  });
+  expect(await getActiveVal('subtype()'), "on the cast's details screen, no player opened").toBe(
+    'ItemDetails',
+  );
+  expect(await getGlobalVal('syncPlayManager.following'), 'still halted').toBe(false);
+  expect(await getGlobalVal('syncPlayManager.playHeld'), 'nothing held').toBe(false);
+  await waitFor('#appWaitHost.openWaits', (v) => v && Object.keys(v).length === 0, {
+    read: getVal,
+    timeout: 10000,
+    label: 'no start left open after the cancelled cast',
+  });
+  await press(ecp.Key.Back);
+  await waitFocusInHomeContent({
+    label: "Home, one Back from the cancelled cast's details screen",
+  });
 
   // Halted: the cast is held for the viewer's confirmation, as any halted member's play is, since
   // it replaces what the whole group is watching. Confirmed, it follows the group again and goes
@@ -1110,14 +1173,19 @@ it('a membership the app exit left behind is remembered, and ended at the next l
     { base: 'global', keyPath: 'syncPlayManager', funcName: 'join', funcParams: [group.GroupId] },
     { timeout: 10000 },
   );
-  await waitFor('#overhang.#cluster.#syncplayIcon.isActive', isActive, {
-    label: 'the icon turns active on the join',
+  // The case before this one leaves the Roku in a group of the same name, with the icon active.
+  // Only this group's id says this join arrived.
+  const joinedId = group.GroupId.replaceAll('-', '');
+  await waitFor('syncPlayManager.groupId', (v) => v === joinedId, {
+    read: getGlobalVal,
+    label: "this group's join reached the Roku",
     timeout: 20000,
   });
-  const before = (await odc.readRegistry())?.values?.[session.userId] ?? {};
-  expect(before.syncPlayGroup, 'the registry remembers the group while in it').toContain(
-    GROUP_NAME,
+  expect(await getVal('#overhang.#cluster.#syncplayIcon.isActive'), 'the icon is active').toBe(
+    true,
   );
+  const before = (await odc.readRegistry())?.values?.[session.userId] ?? {};
+  expect(before.syncPlayGroup, 'the registry remembers this group while in it').toContain(joinedId);
 
   // The app exit: nothing posts Leave. Home's first run then leaves whatever the registry
   // remembers, before Home finishes mounting, and forgets it.
