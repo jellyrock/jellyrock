@@ -21,13 +21,14 @@ namespace tests
       return player
     end function
 
-    ' Resumes a paused player at `atMs`: the node plays 10 ms later, and its first reading, 500 ms
-    ' after the write, shows the resume took effect `lagMs` late.
+    ' Resumes a paused player at `atMs`: the node plays 10 ms later, and its readings, 500 and
+    ' 1000 ms after the write, show the resume took effect `lagMs` late. The second is the sample.
     private sub resumeCycle(player as object, atMs as longinteger, lagMs as longinteger)
       stop& = syncPlayTime.asLong(player.clock.ticks)
       syncPlayPlayer.told(player, "resume", "group", invalid, atMs)
       syncPlayPlayer.nodeState(player, "playing", atMs + 10)
       syncPlayPlayer.reading(player, stop& + (500& - lagMs) * 10000&, atMs + 500)
+      syncPlayPlayer.reading(player, stop& + (1000& - lagMs) * 10000&, atMs + 1000)
     end sub
 
     ' Pauses a playing player at `atMs`, 100 ms after a reading, landed 30 ms later.
@@ -428,7 +429,7 @@ namespace tests
       m.assertEqual(syncPlayPlayer.positionAt(player, 5110&), m.at60s + 3000000& + 1100000&)
     end function
 
-    @it("the first reading after a resume says how late the resume took effect")
+    @it("the first reading after a resume says how late the resume took effect, and a second that says earlier takes its place")
     function _()
       player = m.pausedAfter300()
       m.assertEqual(player.resumeLagMs, 0&)
@@ -437,9 +438,69 @@ namespace tests
       ' 519 ms after the write the node has played 480 ms: the resume took effect 39 ms late.
       syncPlayPlayer.reading(player, m.at60s + 3000000& + 4800000&, 5519&)
       m.assertEqual(player.resumeLagMs, 39&)
-      ' Only the first reading is a sample.
-      syncPlayPlayer.reading(player, m.at60s + 3000000& + 9000000&, 6019&)
+      ' 1019 ms after the write it has played 990 ms: 29 ms late, in place of the first sample.
+      syncPlayPlayer.reading(player, m.at60s + 3000000& + 9900000&, 6019&)
+      m.assertEqual(player.resumeLagMs, 29&)
+      m.assertEqual(player.resumeLagSamples.landing.count(), 1)
+      ' No later reading is a sample.
+      syncPlayPlayer.reading(player, m.at60s + 3000000& + 14000000&, 6519&)
+      m.assertEqual(player.resumeLagMs, 29&)
+      m.assertEqual(player.resumeLagSamples.landing.count(), 1)
+    end function
+
+    @it("a second reading that says the resume was later than the first said changes nothing")
+    function _()
+      player = m.pausedAfter300()
+      syncPlayPlayer.told(player, "resume", "group", invalid, 5000&)
+      syncPlayPlayer.nodeState(player, "playing", 5010&)
+      syncPlayPlayer.reading(player, m.at60s + 3000000& + 4800000&, 5519&)
       m.assertEqual(player.resumeLagMs, 39&)
+      ' The second reading reaches the model 80 ms late: 119 ms by itself.
+      syncPlayPlayer.reading(player, m.at60s + 3000000& + 9800000&, 6099&)
+      m.assertEqual(player.resumeLagMs, 39&)
+      m.assertEqual(syncPlayTime.asLong(player.resumeLagLastSampleMs), 39&)
+      m.assertEqual(player.resumeLagSamples.landing.count(), 1)
+    end function
+
+    @it("a stale first reading after a resume is replaced by what the second says")
+    function _()
+      player = m.pausedAfter300()
+      syncPlayPlayer.told(player, "resume", "group", invalid, 5000&)
+      syncPlayPlayer.nodeState(player, "playing", 5010&)
+      ' The first reading reaches the model 100 ms stale: it alone says 61 ms late.
+      syncPlayPlayer.reading(player, m.at60s + 3000000& + 4390000&, 5500&)
+      m.assertEqual(syncPlayTime.asLong(player.resumeLagLastSampleMs), 61&)
+      m.assertEqual(player.resumeLagSamples.landing.count(), 1)
+      ' The second is true: 1000 ms after the write the node has played 1039 ms.
+      syncPlayPlayer.reading(player, m.at60s + 3000000& + 10390000&, 6000&)
+      m.assertEqual(syncPlayTime.asLong(player.resumeLagLastSampleMs), -39&)
+      m.assertEqual(player.resumeLagSamples.landing.count(), 1)
+      m.assertEqual(syncPlayTime.asLong(player.resumeLagSamples.landing[0]), -39&)
+    end function
+
+    @it("a first reading too stale to keep still leaves the second its sample")
+    function _()
+      player = m.pausedAfter300()
+      syncPlayPlayer.told(player, "resume", "group", invalid, 5000&)
+      syncPlayPlayer.nodeState(player, "playing", 5010&)
+      ' 300 ms stale: 261 ms late by itself, outside the band.
+      syncPlayPlayer.reading(player, m.at60s + 3000000& + 2390000&, 5500&)
+      m.assertEqual(player.resumeLagSamples.landing.count(), 0)
+      syncPlayPlayer.reading(player, m.at60s + 3000000& + 10390000&, 6000&)
+      m.assertEqual(player.resumeLagSamples.landing.count(), 1)
+      m.assertEqual(syncPlayTime.asLong(player.resumeLagSamples.landing[0]), -39&)
+    end function
+
+    @it("a resume held again on its first reading keeps that reading's sample")
+    function _()
+      player = m.pausedAfter300()
+      syncPlayPlayer.told(player, "resume", "group", invalid, 5000&)
+      syncPlayPlayer.nodeState(player, "playing", 5010&)
+      syncPlayPlayer.reading(player, m.at60s + 3000000& + 6800000&, 5500&)
+      syncPlayPlayer.told(player, "pause", "hold", invalid, 5510&)
+      syncPlayPlayer.nodeState(player, "paused", 5540&)
+      m.assertEqual(player.resumeLagSamples.landing.count(), 1)
+      m.assertEqual(syncPlayTime.asLong(player.resumeLagSamples.landing[0]), -180&)
     end function
 
     @it("a resume runs the clock from the write plus the lag learned")

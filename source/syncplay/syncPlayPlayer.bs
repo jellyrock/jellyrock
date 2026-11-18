@@ -118,8 +118,12 @@ namespace syncPlayPlayer
       isTranscoded: invalid,
       durationSeconds: 0,
       resumeWrittenAtMs: 0&,
-      ' Where the node stood when the resume was written, while its first reading is awaited.
-      resumeFromTicks: invalid
+      ' Where the node stood when the resume was written, while the readings that say how late
+      ' the resume was are awaited; how many have come since that resume; and whether the first
+      ' one's sample was kept, for the second to replace.
+      resumeFromTicks: invalid,
+      resumeReadings: 0,
+      resumeSampleKept: false
     }
   end function
 
@@ -315,6 +319,8 @@ namespace syncPlayPlayer
           startsAt& = syncPlayTime.asLong(player.resumeWrittenAtMs) + syncPlayTime.asLong(player.resumeLagMs)
           setClock(player, "running", stop& + syncPlayTime.msToTicks(nowMs - startsAt&), nowMs, false)
           player.resumeFromTicks = stop&
+          player.resumeReadings = 0
+          player.resumeSampleKept = false
         else
           setClock(player, "unknown", 0&, nowMs, false)
         end if
@@ -357,7 +363,14 @@ namespace syncPlayPlayer
       player.clockFromLanding = true
     else if player.activity = "playing"
       player.clockFromLanding = false
-      if isValid(player.resumeFromTicks) then learnResumeLag(player, positionTicks, nowMs)
+      ' A resume is learned from its first reading at once, since a hold written on that reading
+      ' ends the run, and again from its second: the first can reach the model a few hundred
+      ' milliseconds stale on a low-end device (learnResumeLag keeps the earlier of the two).
+      if isValid(player.resumeFromTicks)
+        player.resumeReadings++
+        learnResumeLag(player, positionTicks, nowMs)
+        if player.resumeReadings >= 2 then player.resumeFromTicks = invalid
+      end if
       setClock(player, "running", positionTicks, nowMs, true)
     else if player.awaitsFirstFrameReading and (player.activity = "pausing" or player.activity = "paused")
       ' The first frame's own reading, a moment behind the pause written at that frame: it is
@@ -480,25 +493,34 @@ namespace syncPlayPlayer
   sub enter(player as object, activity as string, nowMs as longinteger)
     player.activity = activity
     player.sinceMs = nowMs
-    ' Only an unbroken run from a resume to its first reading says how late the resume was.
+    ' Only an unbroken run from a resume to a reading says how late the resume was.
     player.resumeFromTicks = invalid
   end sub
 
-  ' The first reading after a resume from a known stop: the time since the write, less the media
-  ' played since, is how late the resume took effect. It is below zero when the node ran on past
-  ' the stop the model took, which a pause's own `paused` state does not show. The lag in use is the median of the last
-  ' few, so one late reading does not move it, and a sample outside the cap is dropped.
+  ' A reading on the unbroken run after a resume from a known stop: the time since the write, less
+  ' the media played since, is how late the resume took effect. It is below zero when the node ran
+  ' on past the stop the model took, which a pause's own `paused` state does not show. A reading
+  ' reaches the model some time after the position it carries was true, never before, so it can
+  ' only make a resume look later than it was: of a resume's first two readings the one that
+  ' says earlier is kept. The lag in use is the median of the last few, so one late reading does
+  ' not move it, and a sample outside the cap is dropped.
   sub learnResumeLag(player as object, positionTicks as longinteger, nowMs as longinteger)
     playedMs& = syncPlayTime.ticksToMs(positionTicks - syncPlayTime.asLong(player.resumeFromTicks))
     sampleMs& = nowMs - syncPlayTime.asLong(player.resumeWrittenAtMs) - playedMs&
-    player.resumeFromTicks = invalid
-    player.resumeLagLastSampleMs = sampleMs&
-    player.resumeLagLastKind = player.stopKind
-    if sampleMs& < RESUME_LAG_MIN_MS or sampleMs& > RESUME_LAG_MAX_MS then return
     samples = player.resumeLagSamples[player.stopKind]
     if not isValid(samples) then return
-    samples.push(sampleMs&)
-    if samples.count() > RESUME_LAG_SAMPLES then samples.shift()
+    if player.resumeReadings >= 2 and player.resumeSampleKept
+      ' The first reading's sample stands unless this one says the resume was earlier.
+      if sampleMs& >= syncPlayTime.asLong(player.resumeLagLastSampleMs) then return
+      samples.pop()
+    end if
+    player.resumeLagLastSampleMs = sampleMs&
+    player.resumeLagLastKind = player.stopKind
+    player.resumeSampleKept = sampleMs& >= RESUME_LAG_MIN_MS and sampleMs& <= RESUME_LAG_MAX_MS
+    if player.resumeSampleKept
+      samples.push(sampleMs&)
+      if samples.count() > RESUME_LAG_SAMPLES then samples.shift()
+    end if
     player.resumeLagMs = lagInUse(samples)
   end sub
 

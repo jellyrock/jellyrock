@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-17
+last-updated: 2026-11-18
 ---
 
 # Progress
@@ -958,6 +958,8 @@ Revised 2026-11-16 for the comparison engine: the functions the first text named
 
 Not checked: how long a pause takes to land on the low-end Stick. `PAUSE_LANDED_MS` (250) rests on the Stick 4K alone, and a device whose pause lands later gets no stopped position from it. The manager logs each landing (`pause landed`, `afterMs`), so a run there reads it off the console.
 
+Added 2026-11-17: the same gap hides the manager's count of time offset picks found in step (`sync.picksSettled`, counted in `carryOut`). The comparison answers `settled` only with a clock estimate, and the manager's estimate fills only from `onTimeSyncResults`, which needs a real time sync, so no unit case fails without the increment. The device case in `syncplay-controls.spec.js` accepts a settled pick and does not require one. The seam below would need a way to give the manager an estimate too.
+
 Not done now because the manager-level case needs a design choice: a seam for the requests (a stub for `sendRequest`, or a request sink the spec can read) and a host stub for the writes.
 
 Closes with: a manager-level case that drives a player event and a group command through `playerEvent` and `onCommand` and reads the action carried out, or a recorded reason no seam is worth it; and the pause's landing time read on the low-end Stick.
@@ -1170,6 +1172,10 @@ A hold that should close a small lead on a SyncPlay member can leave the lead wh
 The member stays inside the server's 500 ms tolerance and nothing hangs, but `syncPlayPlayback.SETTLE_CORRECTION_MS` promises 150 ms ahead, the viewer sees up to two freezes for no gain, and `syncplay-controls` fails its drift bound on that Stick.
 
 Not checked: whether the picture really runs ahead or the node's `position` over-reads after a resume. No camera measurement exists, and the reading alone cannot tell them apart. Measure the position across a short pause and resume on that Stick first. Closes with either a hold that converges there, or a threshold per device class, with the measurement that justifies it.
+
+Revised 2026-11-17: the cause of the low-end Stick's occasional holds is found and fixed. On that device the first position reading after a resume reaches the app up to a few hundred milliseconds stale (12 of 40 resumes read 163 to 254 ms behind and the next reading 206 to 307 ms better, with no correction written), and the learner sampled that reading, so three stale samples in five pulled the learned lag toward zero. The learner now keeps the earlier-saying of a resume's first two readings (`syncPlayPlayer.learnResumeLag`). Measured the same day on the low-end Stick, 40 member-driven resumes against Jellyfin 12.4.0: 0 holds (10 before), resting drift 19 ms ahead to 20 ms behind, learned lag -331 to -355 ms. `syncplay-controls` on a Streaming Stick 4K: 20 of 20 runs.
+
+Still open: a stream's first resume on the low-end Stick, where the learner starts empty (three holds were seen on 2026-11-17 before this change, and that case was not measured after it). Starting a new stream from the last stream's samples was tried with a first version of this change and dropped: together they failed 4 of 20 `syncplay-controls` runs on the Stick 4K, and it was never measured alone. Closes with a measurement of a new stream's first resume on the low-end Stick, and a fix if it still holds.
 
 #### A SyncPlay join on a 12.2 server once left the Roku's icon inactive, cause unknown `[fid: syncplay-join-frame-never-seen]` `[captured 2026-11-01]`
 
