@@ -990,6 +990,14 @@ Measured 2026-11-16 on a Streaming Stick 4K against Jellyfin 12.4.0 (two joins p
 
 Not built with `dabe5d11` because it adds state: the verdict has to be keyed on the version and the cap, and dropped when the gear's bitrate pick changes, or a stale one re-encodes a stream the server could have copied. Closes when a second player of the same version starts capped with no restart, shown by a unit case and a device run.
 
+#### The app once left to Roku's home screen mid-load with `EXIT_USER_NAV` and no crash, cause unknown `[fid: app-exit-user-nav-mid-restart-unexplained]` `[captured 2026-11-18]`
+
+On 2026-11-17, during a throwaway probe that repeated `syncplay-controls`' two restart cases on a Stick 4K, the app left to Roku's home screen as a restart's load began: the console ends with `EXIT_USER_NAV`, with no crash trace; the OS media player went from `play` to closed, and the device's time since boot shows no reboot. The probe sent no key then, and no other run appears in the run ledgers for that minute. Seen once in 200 rounds. Whether a person's remote sent Home was asked and not answered.
+
+To close: on a second sighting, read what the app and the ECP key log say in the seconds before the exit. If the remote is confirmed, close this as not a defect.
+
+Why not now: one sighting, and nothing in the console says what sent the app home.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -1287,6 +1295,25 @@ Checked 2026-11-17 on a Streaming Stick 4K: the new `LogManager.spec.bs` cases f
 Not done now: it was found during SyncPlay work and kept off PR #1355. Its PR goes through `/pr` from a Claude session started in that worktree. `/pr`'s decision pass should record the choice not to buffer lines written before the manager exists.
 
 Close it when the branch's PR is open.
+
+#### A load in a SyncPlay group can fail to reach a first frame, and the buffer check ends it with a playback error `[fid: syncplay-load-never-reaches-first-frame]` `[captured 2026-11-18]`
+
+Three sightings, all while following a group: a soak on 2026-11-12; on 2026-11-17 a direct-play restart at a full buffer in `syncplay-controls` ("another member's Seek while this Roku loads a restart"), and a transcode restarting for the re-encode at 33% in `syncplay-menu` (Resume with Group). The viewer sees Error During Playback after the buffer check's window.
+
+Root cause not confirmed. In the direct-play sighting SyncPlay wrote nothing to the node before the stall, and the server resumed the group only by its own give-up (`waited 30273 ms … giving up` in its log). 40 plus 200 rounds of the two restart cases on a Stick 4K at `7329cf94` (2026-11-17) did not reproduce it.
+
+Since `28e49f7c` the buffer check logs the node when it stops a stream (`stalled stream buffer`, `stalled stream node`, `stalled stream reports`). To close: read those lines in every soak console, and decide the fix from the next sighting.
+
+Options weighed and not built:
+
+- Reload once a load stuck at a full buffer (`syncPlayConverge.seekIsStuck()` covers seeks only). It treats a result whose cause is unknown, misses the 33% sighting, and nothing forces a stuck load on a device to prove it (followup `rta-cannot-stall-video-stream`).
+- Loop the full `syncplay-controls` spec with a throwaway node trace: about nine hours of device time.
+
+Healthy loads, for a threshold (Stick 4K, direct play, 2026-11-17, 417 loads): buffering 2.4 s at most, at a full buffer 0.41 s at most; a seek sat at a full buffer 0.57 s at most (395 seeks).
+
+Not checked: why the node stalls; whether plain playback outside a group stalls the same way; how long a healthy transcode load buffers.
+
+Why not now: the cause is unknown and the stall cannot be forced.
 
 ### api
 
