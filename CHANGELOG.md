@@ -25,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Translations
 
-- 4,561 new or updated strings in 94 languages by translators on [Weblate](https://translate.jellyrock.app/projects/jellyrock/roku/)
+- 4,567 new or updated strings in 94 languages by Charles Ewert on [Weblate](https://translate.jellyrock.app/projects/jellyrock/roku/)
 
 ### Dependencies
 
