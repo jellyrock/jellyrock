@@ -1,0 +1,46 @@
+import "pkg:/source/home/homeRowLayout.bs"
+
+namespace tests
+
+  ' Where Home's row lists sit for the Row Layout setting (source/home/homeRowLayout.bs), the one
+  ' mapping HomeRows and FavoritesRows apply.
+  @suite("homeRowLayout - Home row lists by Row Layout")
+  class HomeRowLayoutTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("fields")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("runs full width to the screen's edges, the focus on the action safe zone")
+    function _()
+      m.assertEqual(homeRowLayout.fields("fullwidth"), {
+        translation: [0, 126],
+        itemSize: [1920, rowSlotSize.ROW_HEIGHT_PORTRAIT],
+        focusXOffset: [96],
+        rowLabelOffset: [96, 18]
+      })
+    end function
+
+    @it("insets the original layout, with no focus offset")
+    function _()
+      m.assertEqual(homeRowLayout.fields("original"), {
+        translation: [111, 126],
+        itemSize: [1703, rowSlotSize.ROW_HEIGHT_PORTRAIT],
+        focusXOffset: [],
+        rowLabelOffset: [0, 18]
+      })
+    end function
+
+    @it("treats any value but fullwidth as the original layout")
+    function _()
+      m.assertEqual(homeRowLayout.fields("").translation, [111, 126])
+    end function
+
+    @it("gives no fields for an unset value, leaving the list's own")
+    function _()
+      m.assertEqual(homeRowLayout.fields(invalid), {})
+    end function
+
+  end class
+
+end namespace

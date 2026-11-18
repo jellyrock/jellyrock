@@ -3,6 +3,7 @@ import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/home/homeRowFailure.bs"
+import "pkg:/source/home/homeRowLayout.bs"
 import "pkg:/source/home/homeScreenLoad.bs"
 import "pkg:/source/home/homeSections.bs"
 import "pkg:/source/home/latestRows.bs"
@@ -36,7 +37,9 @@ sub init()
 
   m.top.content = CreateObject("roSGNode", "ContentNode")
 
-  updateSize()
+  ' The Row Layout last applied (applyRowLayoutSetting); none yet
+  m.appliedRowLayout = invalid
+  applyRowLayoutSetting()
   initTextureManager(m.top.content, m.top.itemSize, m.top.focusXOffset, m.top.rowItemSpacing)
 
   m.top.setfocus(true)
@@ -197,30 +200,17 @@ sub loadLibraries()
   startParallelLoads()
 end sub
 
-' Lay the rows out by the Row Layout setting (uiRowLayout). Run from init, and again by Home
-' when the setting changed while Home was covered (Home.onSettingsChanged).
-sub updateSize()
-  uiRowLayout = m.global.user.settings.uiRowLayout
+' Lay the rows out by the Row Layout setting (uiRowLayout): from init, and again by Home when
+' the setting was written while Home was covered (Home.onSettingsChanged). A layout already
+' applied is left as it is, so a write of the same value costs nothing.
+sub applyRowLayoutSetting()
+  rowLayout = m.global.user.settings.uiRowLayout
+  if isValid(m.appliedRowLayout) and m.appliedRowLayout = textOrEmpty(rowLayout) then return
+  m.appliedRowLayout = textOrEmpty(rowLayout)
 
-  if isValid(uiRowLayout)
-    if uiRowLayout = "fullwidth"
-      m.top.translation = [0, 126]
-      ' itemSize height = tallest possible row (PORTRAIT slot + text area).
-      ' Per-row rowHeights overrides this for each actual row.
-      m.top.itemSize = [1920, rowSlotSize.ROW_HEIGHT_PORTRAIT]
-      ' align with edge of "action" safe zone
-      m.top.focusXOffset = [96]
-      m.top.rowLabelOffset = [96, 18]
-    else
-      ' original layout
-      m.top.translation = [111, 126]
-      m.top.itemSize = [1703, rowSlotSize.ROW_HEIGHT_PORTRAIT]
-      ' reset to defaults
-      m.top.focusXOffset = []
-      m.top.rowLabelOffset = [0, 18]
-    end if
-  end if
-
+  m.top.setFields(homeRowLayout.fields(rowLayout))
+  ' The texture window sizes itself from this geometry (a no-op before init's initTextureManager)
+  updateTextureLayout(m.top.content, m.top.itemSize, m.top.focusXOffset, m.top.rowItemSpacing)
   m.top.visible = true
 end sub
 

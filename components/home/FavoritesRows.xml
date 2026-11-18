@@ -5,7 +5,7 @@
     <field id="quickPlayNode" type="node" />
     <function name="loadFavorites" />
     <!-- Lay the rows out by the Row Layout setting (uiRowLayout): init, and Home when it changes -->
-    <function name="updateSize" />
+    <function name="applyRowLayoutSetting" />
     <function name="onDestroy" />
   </interface>
 </component>

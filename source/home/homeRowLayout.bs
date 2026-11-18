@@ -1,0 +1,33 @@
+import "pkg:/source/constants/itemAspectRatio.bs"
+import "pkg:/source/utils/misc.bs"
+
+' Where Home's row lists sit for the Row Layout setting (uiRowLayout). HomeRows and
+' FavoritesRows both apply it (applyRowLayoutSetting); it lives in source/ so they share one
+' mapping and a Rooibos suite can reach it.
+namespace homeRowLayout
+
+  ' The row list fields for `uiRowLayout`, for one setFields: "fullwidth" runs the rows to the
+  ' screen's edges with the focus on the action safe zone, any other value is the original
+  ' inset layout. An unset value gives no fields, leaving the list's own.
+  '
+  ' itemSize's height is the tallest row (a portrait slot and its text); each row's own
+  ' rowHeights overrides it.
+  function fields(uiRowLayout as dynamic) as object
+    if not isValid(uiRowLayout) then return {}
+    if uiRowLayout = "fullwidth"
+      return {
+        translation: [0, 126],
+        itemSize: [1920, rowSlotSize.ROW_HEIGHT_PORTRAIT],
+        focusXOffset: [96],
+        rowLabelOffset: [96, 18]
+      }
+    end if
+    return {
+      translation: [111, 126],
+      itemSize: [1703, rowSlotSize.ROW_HEIGHT_PORTRAIT],
+      focusXOffset: [],
+      rowLabelOffset: [0, 18]
+    }
+  end function
+
+end namespace
