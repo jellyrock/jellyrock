@@ -1075,9 +1075,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     let gitLog;
     try {
       // Custom delimiters separate commits; %H = full hash, %an = author name, %ae = author
-      // email, %B = message.
+      // email, %B = message, %P = parent hashes.
       gitLog = execSync(
-        `git log ${range} --pretty=format:"COMMIT_START%H%nCOMMIT_AUTHOR%n%an%n%ae%nCOMMIT_MSG_START%n%B%nCOMMIT_END" --first-parent`,
+        `git log ${range} --pretty=format:"COMMIT_START%H%nCOMMIT_PARENTS%n%P%nCOMMIT_AUTHOR%n%an%n%ae%nCOMMIT_MSG_START%n%B%nCOMMIT_END" --first-parent`,
         { encoding: 'utf8' },
       ).trim();
     } catch (error) {
@@ -1095,6 +1095,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
         // Extract hash and message
         const lines = commitBlock.split('\n');
         const commitHash = lines[0].trim();
+        const parentsIndex = lines.findIndex((l) => l === 'COMMIT_PARENTS');
+        const parentCount =
+          parentsIndex === -1
+            ? 0
+            : lines[parentsIndex + 1].trim().split(/\s+/).filter(Boolean).length;
         const authorIndex = lines.findIndex((l) => l === 'COMMIT_AUTHOR');
         const authorName = authorIndex === -1 ? '' : lines[authorIndex + 1].trim();
         const authorEmail = authorIndex === -1 ? '' : lines[authorIndex + 2].trim();
@@ -1106,6 +1111,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
         // Get all message lines between markers, filter empty lines, take first non-empty line
         const messageLines = lines.slice(msgStartIndex + 1, msgEndIndex).filter((l) => l.trim());
         const firstLine = messageLines[0] || '';
+
+        // A merge made by hand (an update from main, a custom subject) changes nothing
+        // itself, and its subject varies. Only a PR's merge commit becomes a line.
+        if (parentCount > 1 && !/^Merge pull request #\d+ from /.test(firstLine)) return null;
 
         // Now process this first line as before
         const line = `${commitHash} ${firstLine}`;
@@ -1203,8 +1212,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
           // Weblate's own commits: the Translations section counts what they changed.
           !msg.match(/\busing weblate\b/) &&
           !msg.match(/^update translation files$/) &&
-          !msg.match(/^merge branch ['"]?main['"]? of https:\/\/github\.com\//) &&
-          !msg.match(/^merge branch ['"]?master['"]? of https:\/\/github\.com\//) &&
           !commit.isReleasePrep &&
           commit.message.length > 0
         );
