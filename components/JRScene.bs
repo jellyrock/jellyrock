@@ -1273,7 +1273,7 @@ sub openPageMenu(focusEntryId = "" as string, isFromIcon = false as boolean)
   end for
 
   m.pageMenu = { view: view, entries: entries, ids: menu.ids, isFromIcon: isFromIcon }
-  m.pageMenuDialog = showOverflowMenu(translate(translationKeys.LabelSettings), menu.labels, "onPageMenuResult", anchor, invalid, focusIndex)
+  m.pageMenuDialog = showOverflowMenu(translate(translationKeys.LabelSettings), menu.labels, "onPageMenuResult", anchor, menu.icons, focusIndex)
   claimPageDialogForScreen(view)
 end sub
 

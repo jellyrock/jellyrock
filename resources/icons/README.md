@@ -216,3 +216,8 @@ this table automatically.
 | `chevron_down.svg` | `keyboard_arrow_down` | Rounded | 500 | 0 | `24px` | 2026-11-15 |
 | `sort.svg` | `swap_vert` | Rounded | 500 | 0 | `24px` | 2026-11-15 |
 | `filter.svg` | `filter_list` | Rounded | 500 | 0 | `24px` | 2026-11-15 |
+| `layout.svg` | `space_dashboard` | Rounded | 500 | 0 | `24px` | 2026-11-18 |
+| `itemsPerRow.svg` | `grid_view` | Rounded | 500 | 0 | `24px` | 2026-11-18 |
+| `itemTitles.svg` | `title` | Rounded | 500 | 0 | `24px` | 2026-11-18 |
+| `defaultTab.svg` | `push_pin` | Rounded | 500 | 0 | `24px` | 2026-11-18 |
+| `settings_menu.svg` | `settings` | Rounded | 500 | 0 | `24px` | 2026-11-18 (a copy of `settings.svg` at the default density, for the page menu's **All settings** row; `settings` itself is pinned to the overhang's 63/45) |

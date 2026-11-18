@@ -36,6 +36,20 @@ namespace tests
       m.assertEqual(menu.labels, ["Layout (Grid)", "Default tab (Genres)", "All settings"])
     end function
 
+    @it("gives each row its entry's icon, an empty one where the entry has none, and All settings the gear")
+    function _()
+      layout = m.layoutEntry("grid")
+      layout.icon = "pkg:/images/icons/layout_$$RES$$.png"
+      menu = pageSettings.menuRows([layout, m.defaultTabEntry("genres")])
+
+      m.assertEqual(menu.icons, ["pkg:/images/icons/layout_$$RES$$.png", "", pageSettings.ALL_SETTINGS_ICON])
+    end function
+
+    @it("has no icons when it has no rows")
+    function _()
+      m.assertEqual(pageSettings.menuRows([]).icons, [])
+    end function
+
     @it("shows the value of an option whose id is the empty string")
     function _()
       menu = pageSettings.menuRows([m.defaultTabEntry("")])

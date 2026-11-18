@@ -55,6 +55,11 @@ const DEFAULT_TAB_KEY = "defaultTab"
 const COLUMNS_KEY = "columns"
 ' The page setting for the app-wide Item Titles setting
 const TITLES_KEY = "titles"
+' Each page setting's glyph in the gear menu, at the menu's density
+const ICON_LAYOUT = "pkg:/images/icons/layout_$$RES$$.png"
+const ICON_COLUMNS = "pkg:/images/icons/itemsPerRow_$$RES$$.png"
+const ICON_TITLES = "pkg:/images/icons/itemTitles_$$RES$$.png"
+const ICON_DEFAULT_TAB = "pkg:/images/icons/defaultTab_$$RES$$.png"
 
 sub init()
   m.log = new log.Logger("BaseGridView")
@@ -1808,7 +1813,7 @@ function pageSettingsEntries() as object
   entries = []
   layouts = offeredLayouts()
   if layouts.count() > 1
-    entries.push({ id: "layout", title: translate(translationKeys.LabelLayout), options: layouts, selected: m.layout })
+    entries.push({ id: "layout", title: translate(translationKeys.LabelLayout), options: layouts, selected: m.layout, icon: ICON_LAYOUT })
   end if
   if showsItemGrid()
     entries.push(columnsEntry())
@@ -1849,7 +1854,8 @@ function columnsEntry() as object
     title: translate(translationKeys.LabelItemsPerRow),
     options: options,
     selected: drawn,
-    isSelectedProvisional: drawn <> savedColumnsSetting()
+    isSelectedProvisional: drawn <> savedColumnsSetting(),
+    icon: ICON_COLUMNS
   }
 end function
 
@@ -1873,7 +1879,8 @@ function titlesEntry() as object
       { id: "false", title: translate(translationKeys.LabelDisabled) },
       { id: "true", title: translate(translationKeys.LabelEnabled) }
     ],
-    selected: selected
+    selected: selected,
+    icon: ICON_TITLES
   }
 end function
 
@@ -1937,7 +1944,8 @@ function defaultTabEntry() as object
     title: translate(translationKeys.LabelDefaultTab),
     options: options,
     selected: gridQuery.resolveOffered(saved, m.offeredViews, ""),
-    valueTitle: offeredViewTitle(resolveDefaultTab(saved).tab)
+    valueTitle: offeredViewTitle(resolveDefaultTab(saved).tab),
+    icon: ICON_DEFAULT_TAB
   }
 end function
 
