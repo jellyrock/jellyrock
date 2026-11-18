@@ -11,6 +11,11 @@ concurrency:
 
 jobs:
   validate-and-prepare:
+    # Skip the pushes this workflow makes itself (the translation merge, the version
+    # bump): the run that made them already finished release prep, and running it again
+    # would lock Weblate and repeat the merge and push-back. Every later job needs this
+    # one, so they skip too. A push by a person still runs it.
+    if: github.actor != 'jellyrock[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:

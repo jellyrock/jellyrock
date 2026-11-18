@@ -30,6 +30,20 @@ const summaryReminder = (version) =>
   `<!-- No summary yet: run /release-summary ${version} before you publish -->`;
 const SUMMARY_REMINDER = /^<!-- No summary yet: [^\n]*-->[ \t]*$/m;
 
+// Translations is no PR-title type: its one line is counted from the locale files
+// (translationLine), and it comes last, above Dependencies.
+const DEPENDENCIES_AT = CHANGELOG_SECTIONS.indexOf('Dependencies');
+const SECTION_ORDER = [
+  ...CHANGELOG_SECTIONS.slice(0, DEPENDENCIES_AT),
+  'Translations',
+  ...CHANGELOG_SECTIONS.slice(DEPENDENCIES_AT),
+];
+
+const WEBLATE_URL = 'https://translate.jellyrock.app/projects/jellyrock/roku/';
+const LOCALE_DIR = 'locale/custom/';
+// main's own language: written by developers, never a translation.
+const SOURCE_LOCALE = `${LOCALE_DIR}en_US.json`;
+
 class ChangelogSyncer {
   constructor() {
     this.changelogPath = 'CHANGELOG.md';
@@ -183,6 +197,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     const latestTag = this.getLatestTag();
     this.attachAuthors(commits, latestTag, 'HEAD');
     const sections = this.categorizeCommits(commits);
+    sections.Translations = this.translationLines(latestTag, 'HEAD');
     const unreleasedContent = this.buildUnreleasedContent(
       sections,
       latestTag,
@@ -250,6 +265,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
       // No unreleased section, create new release entry
       this.attachAuthors(commits, previousTag, `v${version}`);
       const sections = this.categorizeCommits(commits);
+      sections.Translations = this.translationLines(previousTag, `v${version}`);
       const releaseContent = this.buildReleaseContent(
         version,
         compareUrl,
@@ -387,6 +403,70 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   botFromEmail(email = '') {
     const bot = email.match(/^\d+\+([^@]+\[bot\])@users\.noreply\.github\.com$/);
     return bot ? bot[1] : null;
+  }
+
+  /**
+   * The Translations section's line: how many strings the range adds or changes across
+   * the locale files, and who translated them. Read from the files, not from commit
+   * subjects, so it reads the same on the release branch (Weblate's commits, which
+   * squash several languages under one language's subject) and on main (one squash
+   * commit). A string counts when its text is new to its file: a removed key, or a key
+   * renamed with its translation, adds nothing. Empty when nothing was translated.
+   *
+   * Credit comes from the `Co-authored-by` trailers of the commits that touched a
+   * translation, which Weblate writes per translator and a squash merge keeps. Weblate
+   * itself and bots are left out: an anonymous suggestion accepted in Weblate arrives as
+   * one of them, so a line that names no one credits "translators on Weblate".
+   */
+  translationLines(fromTag, toRef) {
+    if (!fromTag) return [];
+    const git = (...args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 1 << 28 });
+    const read = (ref, path) => {
+      try {
+        return JSON.parse(git('show', `${ref}:${path}`));
+      } catch {
+        return {};
+      }
+    };
+    const changed = git('diff', '--name-only', fromTag, toRef, '--', LOCALE_DIR)
+      .split('\n')
+      .filter((path) => path.endsWith('.json') && path !== SOURCE_LOCALE);
+
+    let strings = 0;
+    let languages = 0;
+    for (const path of changed) {
+      const before = read(fromTag, path);
+      const known = new Set(Object.values(before));
+      const added = Object.entries(read(toRef, path)).filter(
+        ([key, text]) =>
+          typeof text === 'string' && text && text !== before[key] && !known.has(text),
+      ).length;
+      if (added === 0) continue;
+      strings += added;
+      languages++;
+    }
+    if (strings === 0) return [];
+
+    const bodies = git(
+      'log',
+      '--format=%B',
+      `${fromTag}..${toRef}`,
+      '--',
+      LOCALE_DIR,
+      `:!${SOURCE_LOCALE}`,
+    );
+    const translators = new Set();
+    for (const [, name, email] of bodies.matchAll(/^Co-authored-by:\s*(.+?)\s*<([^>]*)>\s*$/gim)) {
+      if (/\[bot\]$/i.test(name) || /@weblate\.org$/i.test(email)) continue;
+      translators.add(name);
+    }
+
+    const plural = (n, word) => `${n.toLocaleString('en-US')} ${word}${n === 1 ? '' : 's'}`;
+    // Weblate is always named, so the line says where to help translate.
+    const who = translators.size > 0 ? [...translators].join(', ') : 'translators';
+    return [
+      `- ${plural(strings, 'new or updated string')} in ${plural(languages, 'language')} by ${who} on [Weblate](${WEBLATE_URL})`,
+    ];
   }
 
   /**
@@ -921,7 +1001,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   buildUnreleasedContent(sections, fromTag = null, newContributors = []) {
     let content = '\n## [Unreleased]\n';
 
-    for (const sectionName of CHANGELOG_SECTIONS) {
+    for (const sectionName of SECTION_ORDER) {
       let items = sections[sectionName];
 
       // Consolidate dependencies before adding to content
@@ -941,7 +1021,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   buildReleaseContent(version, compareUrl, date, sections, fromTag = null, newContributors = []) {
     let content = `\n## [${version}](${compareUrl}) - ${date}\n`;
 
-    for (const sectionName of CHANGELOG_SECTIONS) {
+    for (const sectionName of SECTION_ORDER) {
       let items = sections[sectionName];
 
       // Consolidate dependencies before adding to content
@@ -1120,6 +1200,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
           !msg.includes('update en_us translation file') &&
           !msg.includes('en_us translation file') &&
           !msg.includes('update api docs') &&
+          // Weblate's own commits: the Translations section counts what they changed.
+          !msg.match(/\busing weblate\b/) &&
+          !msg.match(/^update translation files$/) &&
           !msg.match(/^merge branch ['"]?main['"]? of https:\/\/github\.com\//) &&
           !msg.match(/^merge branch ['"]?master['"]? of https:\/\/github\.com\//) &&
           !commit.isReleasePrep &&

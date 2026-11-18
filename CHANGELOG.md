@@ -23,6 +23,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - (ui) Star from the overhang no longer crashes the app ([#1372](https://github.com/jellyrock/jellyrock/pull/1372)) by [@cewert](https://github.com/cewert)
 - (syncplay) Reload where the group is; load a mid-reload restart ([#1354](https://github.com/jellyrock/jellyrock/pull/1354)) by [@cewert](https://github.com/cewert)
 
+### Translations
+
+- 4,561 new or updated strings in 94 languages by translators on [Weblate](https://translate.jellyrock.app/projects/jellyrock/roku/)
+
 ### Dependencies
 
 - Update lint-staged from v17.6.0 to v17.6.1 ([#1395](https://github.com/jellyrock/jellyrock/pull/1395)) by [@renovate[bot]](https://github.com/apps/renovate)
