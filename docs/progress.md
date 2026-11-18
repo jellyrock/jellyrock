@@ -1177,9 +1177,9 @@ Not checked: whether the picture really runs ahead or the node's `position` over
 
 Revised 2026-11-17: the cause of the low-end Stick's occasional holds is found and fixed. On that device the first position reading after a resume reaches the app up to a few hundred milliseconds stale (12 of 40 resumes read 163 to 254 ms behind and the next reading 206 to 307 ms better, with no correction written), and the learner sampled that reading, so three stale samples in five pulled the learned lag toward zero. The learner now keeps the earlier-saying of a resume's first two readings (`syncPlayPlayer.learnResumeLag`). Measured the same day on the low-end Stick, 40 member-driven resumes against Jellyfin 12.4.0: 0 holds (10 before), resting drift 19 ms ahead to 20 ms behind, learned lag -331 to -355 ms. `syncplay-controls` on a Streaming Stick 4K: 20 of 20 runs.
 
-Revised 2026-11-18: a new stream now starts from the lag the last stream on its playback path learned (`syncPlayPlayer.adoptPathLag`). Measured on the low-end Stick against Jellyfin 12.4.0, 21 loads alternating a direct play and a transcode, each followed by one pause and resume from the other member. Before: 3 or 4 holds after the start of every load, 66 in all, because each stream learned its lag again and a lag below zero needs two samples. After: 14 in all, 9 of them on the first five loads while both paths were learned, then 4 single holds over the last 16 loads; every load ended within 131 ms of the group, and the member's own resume held 0 times in 20 before and after. A Streaming Stick 4K held on 3 of 21 loads before and 2 after; an Ultra held on none before.
+Revised 2026-11-18: a new stream now starts from the lag the last stream on its playback path learned (`syncPlayPlayer.adoptPathLag`). Measured on the low-end Stick against Jellyfin 12.4.0, 21 loads alternating a direct play and a transcode, each followed by one pause and resume from the other member. Before: 3 or 4 holds after the start of every load, 66 in all, because each stream learned its lag again and a lag below zero needs two samples. After: 14 in all, 9 of them on the first five loads while both paths were learned, then 4 single holds over the last 16 loads; every load ended within 131 ms of the group, and the member's own resume held 0 times in 20 before and after. A Streaming Stick 4K held on 3 of 21 loads before and 2 after; an Ultra held on none before or after.
 
-Still open: the first loads on each path after joining a group still learn in the viewer's sight on the low-end Stick, and about one load in four after that holds once. Carrying the lag had failed `syncplay-controls` on the Stick 4K when it was bundled with a learner shape since dropped (4 of 20 runs, 2026-11-17), so this change owes 20 clean runs there, and the Ultra's run after the change. Closes when those pass, with a decision on whether the single holds are worth more work.
+Still open: the first loads on each path after joining a group still learn in the viewer's sight on the low-end Stick, and about one load in four after that holds once. Carrying the lag had failed `syncplay-controls` on the Stick 4K when it was bundled with a learner shape since dropped (4 of 20 runs, 2026-11-17), so this change owes 20 clean runs there. Closes when those pass, with a decision on whether the single holds are worth more work.
 
 #### A SyncPlay join on a 12.2 server once left the Roku's icon inactive, cause unknown `[fid: syncplay-join-frame-never-seen]` `[captured 2026-11-01]`
 
@@ -1296,6 +1296,14 @@ Healthy loads, for a threshold (Stick 4K, direct play, 2026-11-17, 417 loads): b
 Not checked: why the node stalls; whether plain playback outside a group stalls the same way; how long a healthy transcode load buffers.
 
 Why not now: the cause is unknown and the stall cannot be forced.
+
+#### The SyncPlay stuck-seek wait has under 2 s of headroom over a healthy seek on an Ultra `[fid: syncplay-stuck-seek-wait-thin-headroom]` `[captured 2026-11-18]`
+
+The comparison writes a seek again once the node has sat at a full buffer for `stuckFullBufferMs` (10 s, `syncPlayConverge.defaultPolicy`), on the reading that a healthy seek never waits that long. On an Ultra a healthy seek comes close: measured 2026-11-18 against Jellyfin 12.4.0 on a 100 Mbps direct play with keyframes about 8 s apart, 60 plain seeks all landed, 47 of them filled the buffer first, and the longest then sat full for 8.2 s (median 2.8 s); whole seeks ran 2.8 to 11.9 s. On a Streaming Stick 4K the longest on the same file was 6.4 s (2026-11-16). A healthy seek that passed 10 s would be written twice, and a group seek that sticks twice reloads the stream.
+
+Nothing was counted stuck in 20 catch-up rounds on the Ultra the same day, so no viewer-facing fault is shown yet. The direction that fits the other limits here is a wait the member learns from the stream's own healthy seeks, with the fixed number as its floor, in place of a larger fixed number.
+
+Not checked: files past 100 Mbps, the low-end Stick on a heavy file it can direct play, and whether time at a full buffer grows with the distance past the keyframe as the whole seek does. Closes with a learned wait and its device run, or a recorded no with a measurement that shows the headroom holds.
 
 ### api
 
