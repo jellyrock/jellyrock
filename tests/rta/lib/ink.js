@@ -35,16 +35,23 @@ const INK_MIN_BRIGHTNESS = 96;
 /** Highest minus lowest channel at or below this counts as gray (text, glyphs). */
 const INK_MAX_CHROMA = 48;
 
-/** Home at rest: the logo, both tabs, the user dropdown, the cluster and the clock. */
+/** Home at rest: both tabs, the user dropdown, the cluster and the clock. */
 export const HOME_INK_TARGETS = [
-  { name: 'logo', keyPath: '#overhang.#logo' },
-  { name: 'tab 0 glyph', keyPath: '#overhang.#tabContainer.0.#buttonIcon' },
   { name: 'tab 0 text', keyPath: '#overhang.#tabContainer.0.#buttonText' },
-  { name: 'tab 1 glyph', keyPath: '#overhang.#tabContainer.1.#buttonIcon' },
   { name: 'tab 1 text', keyPath: '#overhang.#tabContainer.1.#buttonText' },
   { name: 'avatar', keyPath: '#overhang.#userDropdown.#triggerIcon', anyColor: true },
   { name: 'user name', keyPath: '#overhang.#userDropdown.#triggerLabel' },
   { name: 'chevron', keyPath: '#overhang.#userDropdown.#triggerChevron' },
+  { name: 'search', keyPath: '#overhang.#cluster.#searchIcon.#buttonIcon' },
+  { name: 'settings', keyPath: '#overhang.#cluster.#settingsIcon.#buttonIcon' },
+  { name: 'clock', keyPath: '#overhang.#clock.#clockGroup' },
+];
+
+/** A library: its first three tabs, the cluster and the clock (no dropdown). */
+export const LIBRARY_INK_TARGETS = [
+  { name: 'tab 0 text', keyPath: '#overhang.#tabContainer.0.#buttonText' },
+  { name: 'tab 1 text', keyPath: '#overhang.#tabContainer.1.#buttonText' },
+  { name: 'tab 2 text', keyPath: '#overhang.#tabContainer.2.#buttonText' },
   { name: 'search', keyPath: '#overhang.#cluster.#searchIcon.#buttonIcon' },
   { name: 'settings', keyPath: '#overhang.#cluster.#settingsIcon.#buttonIcon' },
   { name: 'clock', keyPath: '#overhang.#clock.#clockGroup' },

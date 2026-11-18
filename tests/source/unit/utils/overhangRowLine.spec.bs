@@ -1,0 +1,95 @@
+namespace tests
+
+  ' overhangRow.LINE_X and menuMaxWidth: the line between the row's two sides. The tabs, or
+  ' the title, may always run to the line; the user menu never crosses it, whatever the name.
+  @suite("overhangRow.menuMaxWidth - the user menu never crosses the line")
+  class OverhangRowLineTests extends tests.BaseTestSuite
+
+    ' The cluster with SyncPlay, Search and Settings, and with Search and Settings alone
+    private clusters = [192, 126]
+
+    ' Where the menu's box would start at its widest, right against the cluster
+    private function menuLeft(clockWidth as integer, clockShown as boolean, clusterWidth as integer) as integer
+      clusterX = overhangRow.leftOfClock(clockWidth, clockShown) - clusterWidth
+      return clusterX - overhangRow.ELEMENT_GAP - overhangRow.menuMaxWidth(clockWidth, clockShown, clusterWidth)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the line")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves the tabs at least half the row")
+    function _()
+      half = 96 + (overhangRow.RIGHT_EDGE - 96) \ 2
+      m.assertTrue(overhangRow.LINE_X >= half, "line at " + (overhangRow.LINE_X).toStr())
+    end function
+
+    @it("is on the grid")
+    function _()
+      m.assertEqual(overhangRow.LINE_X mod 3, 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the menu at its widest")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("starts an element gap right of the line with the clock at its allowance")
+    function _()
+      for each clusterWidth in m.clusters
+        for each clockWidth in [0, overhangRow.CLOCK_PROVISIONAL_WIDTH]
+          left = m.menuLeft(clockWidth, true, clusterWidth)
+          m.assertTrue(left >= overhangRow.LINE_X + overhangRow.ELEMENT_GAP and left < overhangRow.LINE_X + overhangRow.ELEMENT_GAP + 3, "cluster " + clusterWidth.toStr() + ", clock " + clockWidth.toStr() + ": menu at " + left.toStr())
+        end for
+      end for
+    end function
+
+    ' The limit counts the clock at its allowance so a name is not cut afresh each minute, so
+    ' narrower digits leave the menu right of the line by the difference
+    @it("never crosses the line for digits narrower than the allowance")
+    function _()
+      for each clusterWidth in m.clusters
+        for each clockWidth in [60, 99, 125]
+          left = m.menuLeft(clockWidth, true, clusterWidth)
+          m.assertTrue(left >= overhangRow.LINE_X + overhangRow.ELEMENT_GAP, "cluster " + clusterWidth.toStr() + ", clock " + clockWidth.toStr() + ": menu at " + left.toStr())
+        end for
+      end for
+    end function
+
+    @it("narrows for digits wider than the allowance, so it still never crosses the line")
+    function _()
+      wide = overhangRow.CLOCK_PROVISIONAL_WIDTH + 30
+      m.assertTrue(m.menuLeft(wide, true, 192) >= overhangRow.LINE_X + overhangRow.ELEMENT_GAP)
+      m.assertEqual(overhangRow.menuMaxWidth(wide, true, 192), overhangRow.menuMaxWidth(0, true, 192) - 30)
+    end function
+
+    @it("holds still while the digits change width under the allowance")
+    function _()
+      unmeasured = overhangRow.menuMaxWidth(0, true, 192)
+      for each clockWidth in [60, 99, 125]
+        m.assertEqual(overhangRow.menuMaxWidth(clockWidth, true, 192), unmeasured, "clock " + clockWidth.toStr())
+      end for
+    end function
+
+    @it("allows the name 300 pixels with SyncPlay shown and the clock at its allowance")
+    function _()
+      ' The trigger's parts beside the name: 9 padding, a 42 avatar and a 9 gap, then a 9 gap,
+      ' a 24 chevron and 9 padding
+      m.assertEqual(overhangRow.menuMaxWidth(0, true, 192) - 102, 300)
+    end function
+
+    @it("takes the clock's room when the clock is hidden")
+    function _()
+      m.assertEqual(overhangRow.menuMaxWidth(0, false, 192), overhangRow.menuMaxWidth(0, true, 192) + overhangRow.CLOCK_PROVISIONAL_WIDTH + overhangRow.CLOCK_GAP)
+    end function
+
+    @it("is on the grid")
+    function _()
+      for each clusterWidth in m.clusters
+        m.assertEqual(overhangRow.menuMaxWidth(0, true, clusterWidth) mod 3, 0)
+        m.assertEqual(overhangRow.menuMaxWidth(0, false, clusterWidth) mod 3, 0)
+      end for
+    end function
+
+  end class
+
+end namespace

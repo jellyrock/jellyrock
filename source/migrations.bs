@@ -35,7 +35,7 @@ const HOMESECTION_CLEANUP_VERSION = "2.13.0"
 ' the grid's layout (presentation or grid) became a setting of its own. The library tabs work
 ' ships in the next minor release; if `main` releases this number first, raise it to the
 ' release this work ships in.
-const LIBRARY_TAB_MIGRATION_VERSION = "3.5.0"
+const LIBRARY_TAB_MIGRATION_VERSION = "3.6.0"
 
 ' Run all necessary registry migrations on the "global" JellyRock registry section
 sub runGlobalMigrations()
