@@ -1,13 +1,16 @@
 {
   "ButtonCancel": "sisti",
   "ButtonOk": "ie",
+  "LabelAlbumArtists": "lo albuma larpra",
   "LabelAlbums": "lo albuma",
   "LabelAll": "ro",
   "LabelArtists": "lo larpra",
   "LabelAudio": "sance",
+  "LabelAuto": "zmiku",
   "LabelPersonKindActor": "tigni",
   "LabelPersonKindAlbumArtist": "albuma larpra",
   "LabelPersonKindArtist": "larpra",
   "LabelPhotoAlbums": "lo pixra albuma",
-  "LabelPlaylists": "lo zgipor"
+  "LabelPlaylists": "lo zgipor",
+  "LabelRepeatRowAll": "ro"
 }
