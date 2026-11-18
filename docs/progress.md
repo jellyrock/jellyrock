@@ -1063,6 +1063,14 @@ Home video and music video libraries draw portrait cells in the library grid, wh
 
 Low impact: a short window and no lasting harm. Not fixed in that PR because the fix needs the presenter to say which views draw the genre rows; today `onItemDataLoaded` decides from the data, since music genres use the grid. Close it by giving presenters that answer and having `showsItemGrid()` ask it.
 
+#### What the screen reader says when OK on the icon for the screen on show does nothing is unchecked `[fid: overhang-inert-icon-screen-reader]` `[captured 2026-11-17]`
+
+Since the library screens' piece 12 (branch `feat/overhang-consistency`), a cluster icon whose route is the screen on show does nothing: `JRScene.openClusterRoute` returns early for Search on the search screen and Settings on Settings. Nobody has checked what the Roku screen reader (audio guide) says when OK lands on that icon: it may say nothing, which leaves a blind viewer unsure the press was read. Check on a device with the screen reader on; if it is silent, give the press a cue (for example announce that this is the current screen), without adding a visible mark the operator ruled out.
+
+#### Star does what the settings icon does on Home and libraries, but leaves Settings and does nothing on Search and details `[fid: star-key-one-rule]` `[captured 2026-11-17]`
+
+Star (the options key) does different things on different screens. On a library and on Home it does what the settings icon does (`BaseGridView.onOptionsKey`, `Home.onOptionsKey`, both calling `JRScene.openPageMenu`); on Settings it leaves the screen (`settings.bs` `onOptionsKey` calls `leaveScreen()`); on Search and details it does nothing (`isOptionsAvailable` false). Piece 12 of the library screens made Home match libraries and left the rest undecided. Decide one rule for Star across signed-in screens (most likely: what the settings icon does, everywhere) and apply it, with an RTA case per screen in `overhang-cluster.spec.js`.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`

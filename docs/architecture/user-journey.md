@@ -10,7 +10,7 @@ related-files:
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
   - source/utils/playKind.bs
-last-reviewed: 2026-11-13
+last-reviewed: 2026-11-17
 ---
 
 # The user journey
@@ -95,7 +95,7 @@ The Home route has `clearStackOnResolve`, so opening it drops the sign-in screen
 
 ## Home
 
-`components/home/Home.xml` extends `JRScreen`. Its children are a `VoiceTextEditBox` for voice search, `HomeRows` (the rows) and an `OptionsSlider` (the side menu). Its overhang tabs are **Home**, which shows `HomeRows`, and **Favorites**, which shows `FavoritesRows`.
+`components/home/Home.xml` extends `JRScreen`. Its children are a `VoiceTextEditBox` for voice search and `HomeRows` (the rows). Its overhang tabs are **Home**, which shows `HomeRows`, and **Favorites**, which shows `FavoritesRows`. Star does what the settings icon does (`Home.onOptionsKey()`).
 
 `HomeRows` builds rows for Continue Watching, Next Up, On Now, My Media, Active Recordings and "Recently Added in" each library, in the order the user's home sections set. Each section loads through its own `LoadItemsTask` (started with `replaceTask`), except the "Recently Added in" rows, which `LoadLatestRowsTask` loads together over `apiPipeline`. `HomeRow` is a `ContentNode`: the data for one row, not a view.
 

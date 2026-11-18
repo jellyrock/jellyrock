@@ -2,11 +2,13 @@
  * The overhang cluster (Search, SyncPlay, Settings) is on every screen, and the row's keys are the
  * scene's, not Home's: Up from a screen's top enters the row, Right walks it, OK on the gear
  * opens Settings, and Back lands on the gear again, on a library screen and on details as
- * on Home. Settings' own Up enters the row too. On the search screen, Up from the keyboard's
- * top row enters the row and the search icon reopens the keyboard instead of navigating.
- * Each screen of a chain keeps its own icon to come back to, a theme reload from Settings
- * returns to the screen Settings was opened from, and the search screen's submitted query
- * shows as the overhang's status. A player shows no cluster.
+ * on Home. Settings' own Up enters the row too, at the user menu Home, Settings and Search
+ * show. On the search screen, Up from the keyboard's top row enters the row, and an icon for
+ * the screen on show does nothing. Star on Home opens Settings, as the gear does, and Back
+ * from a Settings that Star opened returns to where Star was pressed, not the gear. Each screen
+ * of a chain keeps its own icon to come back to, a theme reload from Settings returns to the
+ * screen Settings was opened from, and the search screen's submitted query shows as the
+ * overhang's status. A player shows no cluster.
  */
 import { beforeAll, it, expect } from 'vitest';
 import { ecp, odc } from 'roku-test-automation';
@@ -26,6 +28,7 @@ import {
   submitSearchFromKeyboard,
   waitPageMenu,
   waitSearchResults,
+  waitSettingsScreen,
 } from '../lib/nav.js';
 import {
   getActiveVal,
@@ -39,6 +42,7 @@ import {
   waitFor,
   waitHome,
   enterOverhangRow,
+  waitFocusInHomeContent,
   walkFocusUntil,
 } from '../lib/steps.js';
 
@@ -47,6 +51,7 @@ const LOCALE = RTA_CONFIG.languages[0];
 const atSyncPlayIcon = (f) => f?.node?.id === 'syncplayIcon';
 const atSearchIcon = (f) => f?.node?.id === 'searchIcon';
 const atSettingsIcon = (f) => f?.node?.id === 'settingsIcon';
+const atUserMenu = (f) => f?.node?.id === 'userDropdown';
 
 let session;
 let ctx;
@@ -62,9 +67,9 @@ async function freshApp(label) {
   await assertSeedTookEffect(expectedServer, label);
 }
 
-/** Up until the row's first icon holds focus: a screen with no tabs enters the row there (a
- * library has tabs and enters at its tab bar: enterOverhangRow). The first icon is SyncPlay,
- * since the test account may use it. */
+/** Up until the row's first icon holds focus: a screen with no tabs and no user menu enters
+ * the row there (a library has tabs and enters at its tab bar: enterOverhangRow). The first
+ * icon is SyncPlay, since the test account may use it. */
 async function enterRow(label) {
   await waitFocused(atSyncPlayIcon, {
     timeout: 15000,
@@ -77,6 +82,16 @@ async function enterRow(label) {
 /** Along the row to an icon (`walkOverhangRowTo`), named for the step's failure message. */
 const walkRowTo = (iconId, label) => walkOverhangRowTo(iconId, { label: `${iconId} on ${label}` });
 const walkToGear = (label) => walkRowTo('settingsIcon', label);
+
+/** Up until the user menu holds focus: Settings and Search enter the row there. */
+async function enterRowAtUserMenu(label) {
+  await waitFocused(atUserMenu, {
+    timeout: 15000,
+    interval: 350,
+    action: walkFocusUntil(ecp.Key.Up, atUserMenu),
+    label: `the user menu from ${label}`,
+  });
+}
 
 /**
  * Right to the gear, OK, Settings up, Back: the gear holds focus again on the screen left.
@@ -126,17 +141,17 @@ it('Settings: Up enters the row, the gear there does nothing, Back from the row 
   const viewId = await getActiveVal('id');
 
   await press(ecp.Key.Up);
-  await waitFocused(atSyncPlayIcon, {
+  await waitFocused(atUserMenu, {
     timeout: 8000,
     interval: 250,
-    label: 'the row from Settings',
+    label: 'the row from Settings, at the user menu',
   });
   await press(ecp.Key.Down);
   await waitFocusInside('#settingsMenu', { label: 'the settings menu after Down from the row' });
 
-  // The gear on Settings is a navigation to the route on screen: the router reuses the view
-  // and the gear keeps focus, so the one Back below still reaches Home (a stacked Settings
-  // would take two).
+  // The gear on Settings is the icon for the screen on show, so it does nothing: no
+  // navigation and no menu, the gear keeps focus, and the one Back below still reaches Home
+  // (a stacked Settings would take two).
   await press(ecp.Key.Up);
   await walkToGear('Settings');
   await press(ecp.Key.Ok);
@@ -174,10 +189,10 @@ it('Star from the row on Settings closes Settings in one press, as it does on th
   await navSettings();
   await waitFocusInside('#settingsMenu', { label: 'the settings menu' });
   await press(ecp.Key.Up);
-  await waitFocused(atSyncPlayIcon, {
+  await waitFocused(atUserMenu, {
     timeout: 8000,
     interval: 250,
-    label: 'the row from Settings',
+    label: 'the row from Settings, at the user menu',
   });
 
   await press(ecp.Key.Option);
@@ -221,37 +236,84 @@ it('Star on a library that is closed but still the active view is dropped', asyn
   );
 });
 
-it('Star from the row on Home opens its panel', async () => {
+// Star opens Settings from the screen, not from the gear, so Back returns to where Star was
+// pressed: the gear is focused again only when it was the gear that was pressed
+// (JRScene.openClusterRoute's isFromIcon).
+it("Star on Home's rows opens Settings, and Back returns to the rows, not the gear", async () => {
+  await freshApp('overhang-cluster star home rows');
+  await waitHome();
+  await waitFocusInHomeContent({ label: "Home's rows before Star" });
+
+  await press(ecp.Key.Option);
+  await waitSettingsScreen();
+  await press(ecp.Key.Back);
+  await waitHome();
+  // A row list holds focus, so the overhang row does not.
+  await waitFocusInHomeContent({ label: "Home's rows after Back from Settings, not the gear" });
+});
+
+it("Star on a library's grid, then All settings: Back returns to the grid, not the gear", async () => {
+  await freshApp('overhang-cluster star library grid');
+  await navLibraryGrid(ctx);
+  await waitFocusInside('#itemGrid', { label: 'the grid before Star' });
+
+  await press(ecp.Key.Option);
+  const rows = await waitPageMenu('the page menu, opened by Star on the grid');
+  // All settings is the last row: Up from the first wraps to it.
+  await press(ecp.Key.Up);
+  await waitFor('#optionList.itemFocused', (n) => n === rows - 1, {
+    label: 'All settings, the last row',
+    timeout: 8000,
+  });
+  await press(ecp.Key.Ok);
+  await waitSettingsScreen();
+
+  await press(ecp.Key.Back);
+  await waitFocusInside('#itemGrid', {
+    label: 'the grid after Back from Settings',
+    timeout: 20000,
+  });
+});
+
+// Home declares no page entries, so Star does what the gear does there: it opens Settings.
+it('Star from the row on Home opens Settings, as the gear does', async () => {
   await freshApp('overhang-cluster star home');
   await waitHome();
   await focusOverhangIcon('settingsIcon');
 
   await press(ecp.Key.Option);
-  await waitFocusInside('#options', { label: "Home's panel, opened from the row" });
-  expect(await getActiveVal('subtype()')).toBe('Home');
+  await waitFor('subtype()', (v) => v === 'Settings', {
+    read: getActiveVal,
+    timeout: 20000,
+    interval: 250,
+    label: 'Settings, opened by Star on Home',
+  });
 });
 
-it('search: Up from the keyboard enters the row, and the search icon reopens the keyboard', async () => {
+it('search: Up from the keyboard enters the row, and the search icon there does nothing', async () => {
   await freshApp('overhang-cluster search');
   await openSearchKeyboard();
   expect(await getVal('#overhang.#cluster.visible'), 'the cluster shows on search').toBe(true);
   expect(await getVal('#overhang.#clock.visible'), 'the clock shows on search').toBe(true);
 
-  await enterRow('the keyboard');
+  await enterRowAtUserMenu('the keyboard');
   expect(await getActiveVal('isExpanded'), 'the overlay stays open under the row').toBe(true);
 
   await press(ecp.Key.Down);
   await waitFocusInside('#kbd', { label: 'the keyboard after Down from the row' });
-  await enterRow('the keyboard again');
+  await enterRowAtUserMenu('the keyboard again');
 
-  // The search icon on the search screen reopens the keyboard; it does not navigate.
+  // The search icon on the search screen is the icon for the screen on show: it does nothing,
+  // and keeps focus. The peek chip above the results is the way back to the keyboard.
   const viewId = await getActiveVal('id');
   await walkRowTo('searchIcon', 'the search screen');
   await press(ecp.Key.Ok);
-  // Focus returns to the column it last left the overlay from, so ask for the overlay.
-  await waitFocusInside('#overlay', { label: 'the overlay, reopened by the search icon' });
+  await waitFocused(atSearchIcon, {
+    timeout: 8000,
+    interval: 250,
+    label: 'the search icon, still focused after OK',
+  });
   expect(await getActiveVal('id'), 'still the search screen').toBe(viewId);
-  expect(await getActiveVal('isExpanded'), 'the overlay is open').toBe(true);
 });
 
 /**
@@ -301,7 +363,7 @@ it('each screen keeps its own icon: library, search icon, search, gear, then Bac
   });
   await waitFocusInside('#kbd', { label: 'the search keyboard' });
 
-  await enterRow('the keyboard');
+  await enterRowAtUserMenu('the keyboard');
   await walkToGear('search');
   await press(ecp.Key.Ok);
   await waitFor('#versionLabel.text', (t) => typeof t === 'string' && /^v/.test(t), {
@@ -354,30 +416,117 @@ it('search: the submitted query shows after the title, and again after Back from
   expect(await getVal('#overhang.#status.visible'), 'the status shows again').toBe(true);
 });
 
-// locale/custom/en_US.json LabelEveryoneOnThisDevice.
-const DEVICE_WIDE_STATUS = 'Everyone on this device';
-
-it('Settings: the status names the signed-in user, and everyone on the device inside Global', async () => {
-  await freshApp('overhang-cluster settings status');
+// Home, Settings and Search carry the same set on the right: the user menu, then the cluster.
+// The user menu names who is signed in, so Settings has no status after its title.
+it('Settings and Search show the user menu, and Settings no status, at the top and inside Global', async () => {
+  await freshApp('overhang-cluster user menu');
   await navSettings();
   await waitFocusInside('#settingsMenu', { label: 'the settings menu' });
   const userName = await getGlobalVal('user.name');
   expect(typeof userName === 'string' && userName !== '', 'a signed-in user name to compare').toBe(
     true,
   );
-  await waitFor('#overhang.#status.text', (t) => t === userName, {
-    label: "the user's name as the status",
+  await waitFor('#overhang.#userDropdown.visible', (v) => v === true, {
+    label: 'the user menu on Settings',
   });
+  expect(await getVal('#overhang.#userDropdown.triggerText'), 'the menu names the user').toBe(
+    userName,
+  );
+  expect(await getVal('#overhang.#status.visible'), 'no status on Settings').toBe(false);
 
-  // Global is the menu's first group; Right opens it.
+  // Global is the menu's first group; Right opens it. It used to say "Everyone on this device"
+  // as the status; its own description says so now.
   await press(ecp.Key.Right);
-  await waitFor('#overhang.#status.text', (t) => t === DEVICE_WIDE_STATUS, {
-    label: 'the device-wide status inside Global',
+  await waitFocusInside('#settingsMenu', { label: 'the Global group' });
+  expect(await getVal('#overhang.#status.visible'), 'no status inside Global').toBe(false);
+
+  await press(ecp.Key.Back);
+  await waitFocusInside('#settingsMenu', { label: 'the settings menu again' });
+  await enterRowAtUserMenu('Settings');
+  await walkRowTo('searchIcon', 'Settings');
+  await press(ecp.Key.Ok);
+  await waitFor('subtype()', (v) => v === 'SearchScreen', {
+    read: getActiveVal,
+    timeout: 20000,
+    interval: 250,
+    label: 'search, opened from Settings',
+  });
+  await waitFor('#overhang.#userDropdown.visible', (v) => v === true, {
+    label: 'the user menu on Search',
+  });
+});
+
+// A name far wider than its room. Set on the global user, which the scene reads each time it
+// binds a screen, so the next screen shows it; the run's relaunch puts the real one back.
+const LONG_NAME = 'Maximiliana Alexandra Featherstonehaugh-Worthington of Somewhere';
+// overhangRow.LINE_X plus ELEMENT_GAP: the user menu's box never starts left of this.
+const MENU_MIN_X = 1068 + 6;
+
+/** On the screen on show: the user menu has taken the long name at its widest, starts right
+ * of the line, and whatever is left of it (the tab strip's slot, or the title) ends before it. */
+async function assertMenuStopsAtTheLine(label) {
+  await waitFor('#overhang.#userDropdown.triggerWidth', (w) => w > 0, {
+    label: `the user menu sized on ${label}`,
+  });
+  const menuMax = await getVal('#overhang.#userDropdown.maxWidth');
+  await waitFor('#overhang.#userDropdown.triggerWidth', (w) => w === menuMax, {
+    label: `the long name at the menu's limit on ${label}`,
+  });
+  const menu = await getVal('#overhang.#userDropdown.sceneBoundingRect()');
+  expect(menu.x, `the menu starts right of the line on ${label}`).toBeGreaterThanOrEqual(
+    MENU_MIN_X,
+  );
+  if (await getVal('#overhang.#tabBar.visible')) {
+    const bar = await getVal('#overhang.#tabBar.translation');
+    const slot = await getVal('#overhang.#tabBar.slotWidth');
+    expect(bar[0] + slot, `the tab slot ends before the menu on ${label}`).toBeLessThanOrEqual(
+      menu.x - 6,
+    );
+  } else {
+    const title = await getVal('#overhang.#title.translation');
+    const titleWidth = await getVal('#overhang.#title.maxWidth');
+    expect(title[0] + titleWidth, `the title ends before the menu on ${label}`).toBeLessThanOrEqual(
+      menu.x - 6,
+    );
+  }
+}
+
+it('a long user name ends at the line on Settings, Search and Home', async () => {
+  await freshApp('overhang-cluster long name');
+  await waitHome();
+  await odc.setValue({ base: 'global', keyPath: 'user.name', value: LONG_NAME });
+
+  await navSettings();
+  await waitFor('#overhang.#userDropdown.triggerText', (t) => t === LONG_NAME, {
+    label: 'the long name on Settings',
+  });
+  await assertMenuStopsAtTheLine('Settings');
+  if (CAPTURE) await captureRawUI('overhang-long-name-settings');
+
+  await enterRowAtUserMenu('Settings');
+  await walkRowTo('searchIcon', 'Settings');
+  await press(ecp.Key.Ok);
+  await waitFor('subtype()', (v) => v === 'SearchScreen', {
+    read: getActiveVal,
+    timeout: 20000,
+    interval: 250,
+    label: 'search, opened from Settings',
+  });
+  await assertMenuStopsAtTheLine('Search');
+  if (CAPTURE) await captureRawUI('overhang-long-name-search');
+
+  // Back from the row leaves each screen in one press
+  await press(ecp.Key.Back);
+  await waitFor('subtype()', (v) => v === 'Settings', {
+    read: getActiveVal,
+    timeout: 20000,
+    interval: 250,
+    label: 'back on Settings',
   });
   await press(ecp.Key.Back);
-  await waitFor('#overhang.#status.text', (t) => t === userName, {
-    label: "the user's name again at the top",
-  });
+  await waitHome();
+  await assertMenuStopsAtTheLine('Home');
+  if (CAPTURE) await captureRawUI('overhang-long-name-home');
 });
 
 it('the audio player shows no cluster: leaving a player through it would strand the music', async () => {

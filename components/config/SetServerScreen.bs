@@ -19,8 +19,6 @@ sub init()
   ' onScanForServersComplete sets the precise focus target (picker vs. textbox) once the SSDP
   ' scan returns.
   m.top.isOptionsAvailable = true
-  ' Overhang config: declarative field projected onto the overhang by JRScene (registerOverhangData).
-  m.top.isLogoVisible = true
 
   m.top.findNode("prompt").text = translate(translationKeys.LabelConnectToServer)
   m.top.findNode("serverPickerHint").text = translate(translationKeys.LabelServerPickerHint)

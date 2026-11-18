@@ -917,6 +917,7 @@ objection entirely.
 
 **date**: 2026-08-16
 **status**: accepted
+**partially-superseded-by**: one-overhang-signed-in (how wide the user name may be)
 **related-files**: `components/ui/dropdown/JRDropdown.xml`, `components/ui/dropdown/JRDropdown.bs`, `components/JROverhang.bs`
 
 The overhang user menu's trigger label keeps a fixed `width="150"`, and long usernames
@@ -2969,6 +2970,27 @@ Ruled out: keeping sort and filter behind the Star key, or listing them in the S
 **related-files**: `source/GridView/libraryGrid.bs`, `components/ItemGrid/GridItem.bs`
 
 A library grid cell asks the server for the smallest of three fixed image sizes per shape that covers it (`libraryGrid.imageSizeFor`: portrait 180 by 270, 295 by 440, 564 by 846; square 280, 440, 564), and scales it to its own size as it loads. It used to ask for 295 by 440 at every size, which drew 324 to 564 pixel cells enlarged. A size per count was measured on the 512 MB Stick (2026-11-16) and rejected: the first request for a size the server has not made was far slower for every image (11 per row took 11.4 s to fill the first time, then about 2.8 s), and nine counts and two shapes would pay that eighteen times for about a tenth less time at the densest count. Three sizes pay it three times per shape.
+
+## decision-id: one-overhang-signed-in
+
+**date**: 2026-11-17
+**status**: accepted
+**partially-supersedes**: overhang-username-trigger-stays-fixed-width (how wide the user name may be)
+**related-files**: `components/JROverhang.bs`, `components/JRScene.bs`, `source/utils/overhangRow.bs`, `components/ui/tabbar/JRTabBar.bs`, `components/ui/tabbar/JRTab.bs`, `components/ui/dropdown/JRDropdown.bs`, `components/home/Home.bs`
+
+The overhang reads the same on every signed-in screen. Tabs are text everywhere: few views have a symbol a viewer reads at a glance, and a glyph costs a tab's width, so Home's glyphs and the tab's glyph support went. Every strip follows the one scrolling rule, and a strip that fits never moves, so the fixed mode Home used went too. The logo shows only before sign-in, decided by `JRScene` from sign-in state as the cluster is, so every signed-in screen starts at x 96. A cluster icon for the screen on show does nothing, as a selected tab does, and Star on Home does what the settings icon does; Home's side panel, whose entries the row already had, is gone.
+
+The user menu shows on Home, Settings and Search only, and never crosses the row's line (`overhangRow.LINE_X`, x 1068): a name has no known width, and the room is worth more to tabs, which keep more than half the row. A long name ends in an ellipsis; a short one leaves its room to the tabs. Ruled out: the menu on every signed-in screen (a long name would take library tabs' room), a line at exactly half the row (it gives names more room than the 300 pixel cap did), a mark on the own-screen icon (the underlined title already says it, a tint means a SyncPlay group), and Settings' status line (the menu names the user).
+
+## decision-id: page-menu-row-glyphs
+
+**date**: 2026-11-18
+**status**: accepted
+**related-files**: `source/utils/pageSettings.bs`, `components/ItemGrid/BaseGridView.bs`, `components/JRScene.bs`, `resources/icons/README.md`
+
+The settings icon's page menu gives every row a glyph, as the player's gear menu does, so the app's two settings menus read one way: they are the same overflow menu (`showOverflowMenu`). A page entry declares an optional `icon`, and **All settings** is always the gear (`pageSettings.ALL_SETTINGS_ICON`, the `settings_menu` copy at the menu's density). A library's rows: Layout `space_dashboard`, Items per row `grid_view`, Item Titles `title`, Default tab `push_pin`. The first two are both square, so they fill the same box: `icons:build` fits a glyph by its longest side, so a wide glyph draws shorter beside square ones. A pin says which tab the library opens on.
+
+Ruled out: plain text rows, the pattern a 2026-11-16 survey found inside other Jellyfin clients' view options (the player menu's precedent won); `view_quilt` with `view_module`, which looked alike, and `view_module` alone draws short and wide; `dashboard`, a 2×2 of tiles like `grid_view`; `tab`, which shows a tab rather than the choice; `bookmark`, which reads as save-for-later beside Favorites.
 
 ## Migrated to ADRs
 

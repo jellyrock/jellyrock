@@ -14,8 +14,6 @@ sub init()
   m.log.verbose("Initializing UserSelect component")
 
   m.top.isOptionsAvailable = false
-  ' Overhang config: declarative field projected onto the overhang by JRScene (registerOverhangData).
-  m.top.isLogoVisible = true
   m.heading = m.top.findNode("selectUserLabel")
   m.heading.text = translate(translationKeys.LabelSelectAUser)
   m.emptyMessage = m.top.findNode("emptyMessage")
