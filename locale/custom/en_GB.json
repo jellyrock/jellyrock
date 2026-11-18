@@ -1,6 +1,9 @@
 {
   "ButtonCancel": "Cancel",
+  "ButtonContinueWatching": "Continue Watching",
   "ButtonDelete": "Delete",
+  "ButtonDetails": "Details",
+  "ButtonExit": "Exit",
   "ButtonManualLogin": "Manual Login",
   "ButtonOk": "OK",
   "ButtonPlay": "Play",
