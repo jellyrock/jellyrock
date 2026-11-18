@@ -41,7 +41,7 @@
  *
  * Weblate runs one repository operation per component at a time and answers any other
  * with HTTP 423, naming the running one's `task_url` when the token may read it. Our
- * own lock causes one: locking queues a Weblate commit (`get_lock_change` →
+ * own lock causes one: locking queues a Weblate commit (`get_lock_change` calls
  * `queue_commit_pending`), so the push sent right after can race it. The push-back to
  * the weblate branch causes another, through Weblate's webhook update, before our
  * pull. Weblate retries its own tasks on this conflict; `operation()` does the same.
