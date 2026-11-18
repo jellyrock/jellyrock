@@ -261,14 +261,12 @@ sub renderMediaItem(itemData as object, itemType as string)
   m.genreBackdrop.visible = false
   m.genreLabel.visible = false
 
-  ' Watched / unplayed-count badges, honoring the user setting (matches JRRowItem and
-  ' the former GridItemSmall; the former GridItem ignored this setting).
-  if not m.global.user.settings.uiTvShowsDisableUnwatchedCount
-    if itemData.isWatched
-      m.itemPoster.isWatched = true
-    else if itemData.unplayedItemCount > 0
-      m.itemPoster.unplayedCount = itemData.unplayedItemCount
-    end if
+  ' Watched / unplayed-count badges. The poster honors the user's setting when it draws them
+  ' (JRPoster.isWatchBadgeDisabled), as it does for JRRowItem.
+  if itemData.isWatched
+    m.itemPoster.isWatched = true
+  else if itemData.unplayedItemCount > 0
+    m.itemPoster.unplayedCount = itemData.unplayedItemCount
   end if
 
   ' Alternate-versions badge (bottom-left). Independent of the watched-badge setting; see

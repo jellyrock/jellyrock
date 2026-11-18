@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SettingsChangesProbe (test builds only): a JRScreen that records each list of names
+  JRScreen hands its onSettingsChanged, so JRScreenSettingsChanges.spec.bs can check the
+  delivery against the real base screen.
+-->
+<component name="SettingsChangesProbe" extends="JRScreen">
+  <interface>
+    <!-- One entry per onSettingsChanged call: the names it was given -->
+    <field id="deliveries" type="array" />
+  </interface>
+</component>

@@ -94,6 +94,36 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("updateTextureLayout()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("brings the layout values in step with new geometry, keeping the state")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      initTextureManager(root, [1703, 441], [], [20, 0])
+      activateTextureManager(root)
+
+      updateTextureLayout(root, [1920, 441], [96], [30, 0])
+
+      m.assertEqual(root.textureVisibleWidth, 1824)
+      m.assertEqual(root.textureItemSpacing, 30)
+      m.assertEqual(root.textureManagerState, "active", "a layout change is not a re-init")
+    end function
+
+    @it("adds nothing to a content root initTextureManager has not set up")
+    function _()
+      root = CreateObject("roSGNode", "ContentNode") as dynamic
+      updateTextureLayout(root, [1920, 441], [96], [30, 0])
+      m.assertFalse(root.hasField("textureVisibleWidth"))
+    end function
+
+    @it("handles invalid contentRoot gracefully")
+    function _()
+      updateTextureLayout(invalid, [1920, 441], [96], [30, 0])
+      m.assertTrue(true)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("activateTextureManager()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

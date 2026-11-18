@@ -12,11 +12,13 @@ namespace tests
     private badge as object
     private count as object
     private checkmark as object
+    private previousDisableCount as boolean
 
     protected override sub beforeEach()
       super.beforeEach()
-      ' JRPoster.init() reads this to decide whether the badge exists at all.
+      ' The poster reads this each time it draws the watch badge
       settings = m.global.user.settings
+      m.previousDisableCount = settings.uiTvShowsDisableUnwatchedCount
       settings.uiTvShowsDisableUnwatchedCount = false
 
       m.poster = CreateObject("roSGNode", "JRPoster")
@@ -26,12 +28,45 @@ namespace tests
     end sub
 
     protected override sub afterEach()
+      m.global.user.settings.uiTvShowsDisableUnwatchedCount = m.previousDisableCount
       m.checkmark = invalid
       m.count = invalid
       m.badge = invalid
       m.poster = invalid
       super.afterEach()
     end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("Disable Unwatched Count, changed after the poster was built")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' A cell keeps its poster across binds, so a setting read once when it was built would
+    ' outlive a change to it
+    @it("hides the badge of the next item once the setting is turned on")
+    function _()
+      m.global.user.settings.uiTvShowsDisableUnwatchedCount = true
+      m.poster.callFunc("resetBadge")
+      m.poster.unplayedCount = 3
+      m.poster.isWatched = true
+
+      m.assertFalse(m.badge.visible, "no badge")
+      m.assertEqual(m.count.text, "", "no count written")
+      m.assertFalse(m.checkmark.visible, "no checkmark")
+    end function
+
+    @it("draws the badge of the next item once the setting is turned off")
+    function _()
+      m.global.user.settings.uiTvShowsDisableUnwatchedCount = true
+      m.poster.unplayedCount = 3
+      m.assertFalse(m.badge.visible, "precondition: no badge while the setting is on")
+
+      m.global.user.settings.uiTvShowsDisableUnwatchedCount = false
+      m.poster.callFunc("resetBadge")
+      m.poster.unplayedCount = 4
+
+      m.assertTrue(m.badge.visible, "badge shown")
+      m.assertEqual(m.count.text, "4")
+    end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("resetBadge")

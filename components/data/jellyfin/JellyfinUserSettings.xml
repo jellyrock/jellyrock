@@ -114,5 +114,8 @@
     <!-- Exported functions callable via callFunc() -->
     <function name="enableAutoSync" />
     <function name="disableAutoSync" />
+    <!-- The mark as it stands, and the settings written since a mark: { mark, names } (JRScreen's onSettingsChanged) -->
+    <function name="changeMark" />
+    <function name="changedSince" />
   </interface>
 </component>
