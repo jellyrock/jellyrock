@@ -67,6 +67,8 @@ export function stubHistory({ execSync, execFileSync }, history) {
     if (file === 'git' && args[0] === 'rev-parse') return 'f'.repeat(40) + '\n';
     if (file === 'git' && args.includes('--format=%cI')) return '2026-01-01T00:00:00+00:00\n';
     if (file === 'git' && args.includes('--format=%an')) return earlierNames.join('\n') + '\n';
+    // No locale file changed, so no Translations line (changelog-syncer-translations.test.js).
+    if (file === 'git' && args[0] === 'diff' && args.includes('--name-only')) return '';
     if (file === 'gh' && args.some((a) => /\/compare\/|\/commits\?sha=/.test(a))) {
       return Object.entries(logins)
         .map(([hash, login]) => `${hash}\t${login ?? ''}`)

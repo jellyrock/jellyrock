@@ -20,7 +20,7 @@ related-files:
   - scripts/lib/translation-formats.cjs
   - .github/workflows/jellyrock-bot.yml
   - .github/workflows/release-management.yml
-last-reviewed: 2026-11-14
+last-reviewed: 2026-11-17
 ---
 
 # Translations (i18n)
@@ -296,13 +296,13 @@ Translations are crowdsourced on a self-hosted Weblate (`translate.jellyrock.app
 | When | Workflow | What moves |
 |---|---|---|
 | Every push to `main`, except the bot's own | `jellyrock-bot.yml` | `en_US.json` and `languages.json`, from `main` to `weblate`, so translators see new keys |
-| Release prep (push to `release-X.Y.Z`) | `release-management.yml`, job `merge-translations` | Every locale file, both ways |
+| Release prep (push to `release-X.Y.Z`, except the bot's own) | `release-management.yml`, job `merge-translations` | Every locale file, both ways |
 
 **The `weblate` branch is always far "behind" `main`, and that is expected.** Nothing ever merges `main` into it: both workflows copy files, so `main`'s commits never enter its history and GitHub's behind count only grows. Weblate reads only `locale/`, which the two workflows keep in step; the rest of the branch is old code that nothing builds. Re-cutting the branch from `main` to reset the count would also delete the `Translations-Release` marker the next merge needs (see [The merge rules](#the-merge-rules)).
 
 Release prep, in order:
 
-1. **Lock and flush Weblate.** `scripts/weblate-sync.js lock-and-flush` locks the component and makes Weblate commit and push what it holds, so the branch read next is complete and nothing lands on it mid-merge. It refuses a component that is already locked (by an admin, or by Weblate itself after a repository error), and fails without the `WEBLATE_TOKEN` secret: the push-back in step 5 is only safe under this lock.
+1. **Lock and flush Weblate.** `scripts/weblate-sync.js lock-and-flush` locks the component and makes Weblate commit and push what it holds, so the branch read next is complete and nothing lands on it mid-merge. It refuses a component that is already locked (by an admin, or by Weblate itself after a repository error), and fails without the `WEBLATE_TOKEN` secret: the push-back in step 5 is only safe under this lock. **A busy repository is waited out, not a failure:** locking queues a Weblate commit that holds the repository, so the push sent right after can get HTTP 423, and the script retries (as Weblate does with its own tasks) for up to about three minutes.
 2. **Cherry-pick translator commits** (`Translated using Weblate (…)`), each keeping the `Co-authored-by` trailers Weblate wrote for its translators.
 3. **Merge key by key, three-way:** `npm run translations:merge -- release` (rules below).
 4. **Seed** whatever is still missing from other Jellyfin clients (next section). This comes after the merge, so a translator's work always wins. It is optional: if a source can't be fetched, the release goes ahead without it.
@@ -311,7 +311,7 @@ Release prep, in order:
 
 The job also checks the branch, runs `lint:translations` and pushes the release branch before step 5.
 
-**Translator credit** needs nothing extra. Release PRs are squash-merged with the PR body as the message, and GitHub appends a `Co-authored-by` trailer for every author and co-author of the PR's commits, so each cherry-picked translator is credited on `main`. Checked 2026-10-04 on a throwaway repo with the same squash settings, merged both with `gh pr merge --squash` and from the web page.
+**Translator credit** needs nothing extra. Release PRs are squash-merged with the PR body as the message, and GitHub appends a `Co-authored-by` trailer for every author and co-author of the PR's commits, so each cherry-picked translator is credited on `main`. Checked 2026-10-04 on a throwaway repo with the same squash settings, merged both with `gh pr merge --squash` and from the web page. The Translations section of the changelog reads those trailers for its credit, and counts the strings from the locale files ([Changelog](../admin/changelog.md#where-an-entry-comes-from)).
 
 ### The merge rules
 
