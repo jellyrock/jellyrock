@@ -1263,14 +1263,17 @@ export function overhangWalkKey(focused, iconId) {
   return ecp.Key.Right;
 }
 
-/** Whether focus is on an element of the overhang row: a cluster icon, or the tab bar. */
+/** Whether focus is on an element of the overhang row: a cluster icon, the tab bar, or the
+ * user menu (Home, Settings and Search). */
 export const focusIsInOverhangRow = (f) =>
-  f?.node?.subtype === 'JROverhangIcon' || f?.node?.subtype === 'JRTabBar';
+  f?.node?.subtype === 'JROverhangIcon' ||
+  f?.node?.subtype === 'JRTabBar' ||
+  f?.node?.subtype === 'JRDropdown';
 
 /**
  * From a screen's top: Up until the overhang row holds focus. Where it lands is the screen's
  * to say (`overhangRow.entryElement`): the tab bar on a screen with tabs (Home, a library),
- * else the first cluster icon. A caller that needs one of them walks on from there
+ * else the user menu where it shows (Settings, Search), else the first cluster icon. A caller that needs one of them walks on from there
  * (`walkOverhangRowTo`).
  */
 export async function enterOverhangRow(label) {

@@ -11,8 +11,7 @@ import "pkg:/source/utils/pixelGrid.bs"
 import "pkg:/source/utils/textMetrics.bs"
 import "pkg:/source/utils/translate.bs"
 
-const OVERHANG_LEFT = 96 ' The 5% action-safe left edge: the logo, or the tabs without one
-const TABS_X_WITH_LOGO = 360 ' The tabs' text (or the title) starts here when the logo shows
+const OVERHANG_LEFT = 96 ' The 5% action-safe left edge: the logo, the tabs' text, the title
 const LOGO_Y = 51 ' The wordmark's caps and baseline sit on the tab text's (baseline at design y 81)
 const TITLE_MIN_WIDTH = 120 ' The title keeps at least this, whatever the dropdown's width
 const DROPDOWN_PROVISIONAL_WIDTH = 198 ' Until the trigger reports its width
@@ -55,7 +54,7 @@ sub init()
   m.userDropdown.observeField("requestFocusReturn", "onUserDropdownFocusReturn")
   m.userDropdown.observeField("selectedAction", "onUserMenuAction")
 
-  ' The tab bar (the active screen's views, one selected; Home: Home, Favorites) is created
+  ' The tab bar (the active screen's views, one selected) is created
   ' on the first non-empty tabs and kept for reuse (onTabsChanged).
   m.tabBar = invalid
 
@@ -348,14 +347,14 @@ sub onLayoutInputChanged()
 end sub
 
 ' Places the row from both edges in. From the left: the tab bar, or the title in its
-' place, at the logo's right. From the right: the cluster against the clock's slot (or the
-' safe edge with the clock hidden), the dropdown before the cluster. The title takes what
-' is left between, and scrolls when the text is longer.
+' place. From the right: the cluster against the clock's slot (or the safe edge with the
+' clock hidden), the dropdown before the cluster, never left of overhangRow.LINE_X. The
+' title takes what is left between, and ends in an ellipsis when the text is longer. The
+' logo shows only on a screen with neither (before sign-in), so nothing is placed after it.
 sub layout()
   if not isValid(m.cluster) or not isValid(m.userDropdown) then return
 
   tabsX = OVERHANG_LEFT
-  if isValid(m.logo) then tabsX = TABS_X_WITH_LOGO
   if isValid(m.tabBar)
     ' A tab's box is the row's text box, so its caps, not the box, center on the row. The
     ' text starts at tabsX because the tab pads TAB_PADDING.
@@ -375,6 +374,10 @@ sub layout()
   end if
 
   leftOfDropdown = leftOfCluster
+  clusterWidth = 0
+  if m.cluster.visible then clusterWidth = m.cluster.barWidth
+  maxWidth = overhangRow.menuMaxWidth(m.clock.textWidth, not m.isClockHidden, clusterWidth)
+  if m.userDropdown.maxWidth <> maxWidth then m.userDropdown.maxWidth = maxWidth
   if m.userDropdown.visible
     triggerWidth = m.userDropdown.triggerWidth
     if triggerWidth <= 0 then triggerWidth = DROPDOWN_PROVISIONAL_WIDTH
@@ -386,8 +389,6 @@ sub layout()
   ' A scrolling tab strip's slot: the same span, but measured from a clock allowance that
   ' holds still (overhangRow.tabSlotWidth), so the strip does not shift when the digits do
   if isValid(m.tabBar)
-    clusterWidth = 0
-    if m.cluster.visible then clusterWidth = m.cluster.barWidth
     dropdownWidth = 0
     if m.userDropdown.visible
       dropdownWidth = m.userDropdown.triggerWidth
@@ -479,7 +480,6 @@ sub onTabsChanged()
   end if
 
   m.tabBar.visible = true
-  m.tabBar.mode = m.top.tabMode
   layout()
 
   ' Sync current selection before setting tabs (so the correct tab starts selected)
