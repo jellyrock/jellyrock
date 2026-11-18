@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Dependencies
+
+- Update eslint from v10.14.0 to v10.15.0 ([#1380](https://github.com/jellyrock/jellyrock/pull/1380)) by [@renovate[bot]](https://github.com/apps/renovate)
+
 ## [3.5.0](https://github.com/jellyrock/jellyrock/compare/v3.4.0...v3.5.0) - 2026-11-18
 
 ### Summary
