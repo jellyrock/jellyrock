@@ -36,6 +36,15 @@
  * `task_url`) is handled too, as project-level operations answer that way. Rather
  * than trust either, `lock-and-flush` then reads the documented repository status:
  * it succeeds only when nothing is left to commit or push.
+ *
+ * ## A busy repository is waited out, not a failure
+ *
+ * Weblate runs one repository operation per component at a time and answers any other
+ * with HTTP 423, naming the running one's `task_url` when the token may read it. Our
+ * own lock causes one: locking queues a Weblate commit (`get_lock_change` →
+ * `queue_commit_pending`), so the push sent right after can race it. The push-back to
+ * the weblate branch causes another, through Weblate's webhook update, before our
+ * pull. Weblate retries its own tasks on this conflict; `operation()` does the same.
  */
 import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -44,11 +53,16 @@ const DEFAULT_URL = 'https://translate.jellyrock.app';
 const DEFAULT_COMPONENT = 'jellyrock/roku';
 
 export class WeblateError extends Error {
-  constructor(message) {
+  constructor(message, { status, data } = {}) {
     super(message);
     this.name = 'WeblateError';
+    this.status = status;
+    this.data = data;
   }
 }
+
+// Weblate's answer while another operation holds the component's repository.
+const HTTP_BUSY = 423;
 
 /** A tiny client over `fetch`, injectable for tests. */
 export function client({
@@ -81,21 +95,47 @@ export function client({
     if (!res.ok && res.status !== 202) {
       throw new WeblateError(
         `${method} ${target} → HTTP ${res.status}: ${data.detail ?? text.slice(0, 200)}`,
+        { status: res.status, data },
       );
     }
     return { status: res.status, data };
   }
 
-  /** Run a repository operation; wait for it if Weblate queued it. */
-  async function operation(name, { attempts = 60, intervalMs = 5000 } = {}) {
-    const { data } = await call('POST', 'repository', { operation: name });
-    if (data.result === false) throw new WeblateError(`Weblate ${name} reported failure`);
-    if (!data.task_url) return;
+  /** Poll a Weblate task until it completes; false when it never did. */
+  async function waitForTask(taskUrl, attempts, intervalMs) {
     for (let i = 0; i < attempts; i++) {
-      const task = (await call('GET', data.task_url)).data;
-      if (task.completed) return;
+      if ((await call('GET', taskUrl)).data.completed) return true;
       await wait(intervalMs);
     }
+    return false;
+  }
+
+  /**
+   * Run a repository operation; wait for it if Weblate queued it. A busy repository
+   * (HTTP 423) is retried: locking queues a Weblate commit, and a push to the weblate
+   * branch starts a webhook update, either of which can hold it for a moment.
+   */
+  async function operation(name, { attempts = 60, intervalMs = 5000, busyAttempts = 36 } = {}) {
+    let data;
+    for (let tries = 1; ; tries++) {
+      try {
+        ({ data } = await call('POST', 'repository', { operation: name }));
+        break;
+      } catch (e) {
+        if (!(e instanceof WeblateError) || e.status !== HTTP_BUSY) throw e;
+        if (tries >= busyAttempts) {
+          throw new WeblateError(
+            `Weblate ${name}: the repository stayed busy with another operation after ${tries} tries`,
+          );
+        }
+        // Weblate names the operation holding the repository when the token may see it.
+        if (e.data?.task_url) await waitForTask(e.data.task_url, attempts, intervalMs);
+        else await wait(intervalMs);
+      }
+    }
+    if (data.result === false) throw new WeblateError(`Weblate ${name} reported failure`);
+    if (!data.task_url) return;
+    if (await waitForTask(data.task_url, attempts, intervalMs)) return;
     throw new WeblateError(
       `Weblate ${name} did not finish within ${(attempts * intervalMs) / 1000}s`,
     );

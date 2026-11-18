@@ -33,7 +33,7 @@ git checkout -b release-1.21.3
 git push origin release-1.21.3
 ```
 
-A branch named `release-X.Y.Z` starts `release-management.yml`, which:
+A branch named `release-X.Y.Z` starts `release-management.yml` on every push you make to it (not the pushes the workflow makes itself), which:
 
 1. Checks the version is in `x.y.z` form and greater than the latest release, and that each registry migration added since that release is numbered for this one. If not, it stops with an error.
 2. Merges translations from Weblate into the branch, fills gaps from other Jellyfin clients, and sends the result back to Weblate. See [Weblate sync](../architecture/translations.md#weblate-sync) for the steps and the `WEBLATE_TOKEN` it needs.
