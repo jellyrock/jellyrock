@@ -92,6 +92,11 @@ namespace tests
       m.assertEqual(m.dropdown.padding, 15)
     end function
 
+    @it("maxWidth defaults to no limit, not to 0, which is a limit with no room")
+    function _()
+      m.assertEqual(m.dropdown.maxWidth, -1)
+    end function
+
     @it("triggerWidth defaults to 0")
     function _()
       m.assertEqual(m.dropdown.triggerWidth, 0)

@@ -39,7 +39,8 @@
     <field id="loadingKind" type="string" value="plain" />
     <field id="isLoading" type="boolean" alwaysNotify="true" value="true" onchange="onIsLoadingChanged" />
     <field id="exit" type="boolean" alwaysNotify="true" />
-    <!-- Session-reset bridge. Routed views (Home) set this to a HomeAction id; main.bs
+    <!-- Session-reset bridge. The overhang's user menu (Home, Settings and Search) sets this
+         to a HomeAction id through JRScene; main.bs
          observes it on the main thread (an m.global field + port does not deliver, the relay
          defect, but a scene field + port does, like `exit`) and re-enters the login flow
          IN PLACE via handleMenuAction -> resetRouter + reenterLogin (no `goto appStart`; the

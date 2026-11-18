@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The top bar, one row: logo (Home only), the tab bar (the screen's views as text buttons
-  with a glyph, one selected) or the title in its place, then the user dropdown (Home only),
-  the fixed cluster (SyncPlay when the account may use it, Search, Settings) and the clock. The cluster is the same on every
-  screen that shows it; a screen's own controls live on the screen. Left and Right walk tab
-  bar, dropdown and cluster as one row that wraps at both ends; Down returns to the screen.
+  The top bar, one row: the logo (before sign-in only), the tab bar (the screen's views as
+  text buttons, one selected) or the title in its place, then the user dropdown (Home,
+  Settings and Search), the fixed cluster (SyncPlay when the account may use it, Search,
+  Settings) and the clock. The cluster is the same on every screen that shows it; a screen's
+  own controls live on the screen. Left and Right walk tab bar, dropdown and cluster as one
+  row that wraps at both ends; Down returns to the screen.
 -->
 <component name="JROverhang" extends="Group">
   <children>
-    <!-- Logo -->
     <!-- Logo, title: placed by JROverhang.bs (LOGO_Y, layout()) -->
     <Poster id="logo" uri="pkg:/images/branding/logo.png" height="39" width="180" />
     <!-- Title: shown when the screen has no tabs, at the tab bar's place -->
@@ -33,13 +33,12 @@
     <field id="status" type="string" onChange="onStatusChanged" />
     <field id="isVisible" value="true" type="boolean" onChange="onIsVisibleChanged" />
     <field id="isMoveAnimationDisabled" value="false" type="boolean" />
+    <!-- The wordmark: JRScene shows it while no user is signed in (the sign-in screens),
+         which have no tabs or title, and hides it on every signed-in screen. -->
     <field id="isLogoVisible" value="true" type="boolean" onChange="onIsLogoVisibleChanged" />
-    <!-- The tab bar's entries: { id, title, icon, selectedIcon }, projected from the active view's
-         overhangTabs. Empty hides the tab bar and shows the title in its place. -->
+    <!-- The tab bar's entries: { id, title }, projected from the active view's overhangTabs.
+         Empty hides the tab bar and shows the title in its place. -->
     <field id="tabs" type="array" onChange="onTabsChanged" />
-    <!-- How the tab bar treats its tabs, projected from the active view's tabMode: "fixed"
-         (the default) or "scrolling" (JRTabBar.mode). Read when tabs is set, so set it first. -->
-    <field id="tabMode" type="string" value="fixed" />
     <field id="selectedTabId" type="string" alwaysNotify="true" />
     <!-- Whether the fixed cluster shows: JRScene sets it from the signed-in state, so the
          cluster is on every screen that shows the overhang once a user is signed in, except

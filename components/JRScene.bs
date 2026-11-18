@@ -98,7 +98,8 @@ sub init()
   m.syncPlayDialog = invalid
   m.syncPlayRows = invalid
   ' The settings icon's page menu or its picker, whichever is up (openPageMenu), and what
-  ' it was built from: { view, entries, ids } for the menu, plus { entry, values } for a picker.
+  ' it was built from: { view, entries, ids, isFromIcon } for the menu, { view, entry, values,
+  ' isFromIcon } for a picker.
   m.pageMenuDialog = invalid
   m.pageMenu = invalid
   ' The pressed-action wait of the menu's group-list fetch, and the count that names each fetch.
@@ -1073,12 +1074,11 @@ sub registerOverhangData(group as object)
     m.overhang.status = group.overhangStatus
     group.observeField("overhangStatus", "updateOverhangStatus")
 
-    ' Logo / icons / user-dropdown: projected from the view's declared fields so they update in
-    ' the SAME frame as tabs/title (no transition flicker). Screens declare these; they never poke
-    ' the overhang node directly. currentUser is derived from the global user so screens only say
-    ' whether the dropdown shows.
-    m.overhang.isLogoVisible = group.isLogoVisible
-    group.observeField("isLogoVisible", "updateOverhangLogo")
+    ' Logo / icons / user-dropdown: set in the SAME frame as tabs/title (no transition flicker).
+    ' The wordmark shows only before sign-in, on screens with no tabs or title, so it is the
+    ' scene's to decide, as the cluster is below. currentUser is derived from the global user
+    ' so screens only say whether the dropdown shows.
+    m.overhang.isLogoVisible = not user.IsAuthenticated()
 
     m.overhang.isClockVisible = resolveClockVisible(group.isClockVisible)
     group.observeField("isClockVisible", "updateOverhangClock")
@@ -1104,7 +1104,6 @@ sub unregisterOverhangData(group as object)
     group.unobserveField("overhangStatus")
     group.unobserveField("overhangTabs")
     group.unobserveField("isOverhangVisible")
-    group.unobserveField("isLogoVisible")
     group.unobserveField("isClockVisible")
     group.unobserveField("shouldShowUserDropdown")
     m.overhang.unobserveField("selectedTabId")
@@ -1117,10 +1116,6 @@ end sub
 
 sub updateOverhangStatus(msg)
   m.overhang.status = msg.getData()
-end sub
-
-sub updateOverhangLogo(msg)
-  m.overhang.isLogoVisible = msg.getData()
 end sub
 
 sub updateOverhangClock(msg)
@@ -1159,16 +1154,15 @@ sub updateOverhangTabs(msg)
   projectOverhangTabs(msg.getRoSGNode())
 end sub
 
-' The one projection of a screen's tabs onto the overhang: the selection, the mode, then
-' the tabs, together and in that order, at bind and whenever the tabs change. The bar
-' reads the selection and the mode when the tabs arrive, so tabs sent alone would be
+' The one projection of a screen's tabs onto the overhang: the selection, then the tabs,
+' together and in that order, at bind and whenever the tabs change. The bar reads the
+' selection when the tabs arrive, so tabs sent alone would be
 ' drawn with the previous screen's selection. A screen therefore sets selectedTabId
 ' before overhangTabs. Once bound, the selection written here comes back through
 ' onOverhangTabSelected to the screen's own selectedTabId, so a screen's handler ignores
 ' the tab it already shows.
 sub projectOverhangTabs(group as object)
   m.overhang.selectedTabId = group.selectedTabId
-  m.overhang.tabMode = group.tabMode
   m.overhang.tabs = group.overhangTabs
 end sub
 
@@ -1216,14 +1210,19 @@ sub onOverhangIconAction()
     return
   end if
   if id = "settings"
-    openPageMenu()
+    openPageMenu("", true)
     return
   end if
   openClusterRoute(id)
 end sub
 
-' Open the screen a cluster icon stands for, and note the icon on the screen being left.
-sub openClusterRoute(id as string)
+' Open the screen a cluster icon stands for. The icon for the screen already on show does
+' nothing, as a selected tab does: the screen's underlined title already says where the
+' viewer is. `isFromIcon` is whether the icon itself was pressed: the screen being left then
+' notes it, so the viewer comes back to the icon. Star opens the same route from the screen
+' (Home.onOptionsKey, BaseGridView.onOptionsKey), and the viewer comes back to where Star
+' was pressed.
+sub openClusterRoute(id as string, isFromIcon = true as boolean)
   path = ""
   if id = "search"
     path = "/search"
@@ -1234,8 +1233,10 @@ sub openClusterRoute(id as string)
     m.log.warn("overhang icon with no route", id)
     return
   end if
+  active = routeOfActiveView()
+  if isValid(active) and active.path = path then return
   view = getActiveView()
-  if isValid(view) and view.isSubType("JRScreen") then view.overhangReturnIcon = id
+  if isFromIcon and isValid(view) and view.isSubType("JRScreen") then view.overhangReturnIcon = id
   routerNavigate(path)
 end sub
 
@@ -1252,7 +1253,9 @@ end sub
 
 ' The one way the page menu opens.
 ' @param {string} focusEntryId - the row to focus, for Back from that entry's picker
-sub openPageMenu(focusEntryId = "" as string)
+' @param {boolean} isFromIcon - the settings icon was pressed, rather than Star on the
+'   screen: Settings, if it opens, then returns to the icon (openClusterRoute)
+sub openPageMenu(focusEntryId = "" as string, isFromIcon = false as boolean)
   view = activeOpenScreen()
   entries = invalid
   if isValid(view) then entries = view.callFunc("pageSettingsEntries")
@@ -1260,7 +1263,7 @@ sub openPageMenu(focusEntryId = "" as string)
   anchor = m.overhang.callFunc("iconAnchor", "settings")
   if menu.ids.count() = 0 or not isValid(anchor)
     ' Back from a picker asked for the menu again: with nothing to show, it only closes.
-    if focusEntryId = "" then openClusterRoute("settings")
+    if focusEntryId = "" then openClusterRoute("settings", isFromIcon)
     return
   end if
 
@@ -1269,8 +1272,8 @@ sub openPageMenu(focusEntryId = "" as string)
     if menu.ids[i] = focusEntryId then focusIndex = i
   end for
 
-  m.pageMenu = { view: view, entries: entries, ids: menu.ids }
-  m.pageMenuDialog = showOverflowMenu(translate(translationKeys.LabelSettings), menu.labels, "onPageMenuResult", anchor, invalid, focusIndex)
+  m.pageMenu = { view: view, entries: entries, ids: menu.ids, isFromIcon: isFromIcon }
+  m.pageMenuDialog = showOverflowMenu(translate(translationKeys.LabelSettings), menu.labels, "onPageMenuResult", anchor, menu.icons, focusIndex)
   claimPageDialogForScreen(view)
 end sub
 
@@ -1299,7 +1302,7 @@ sub onPageMenuResult()
   if rowId = "" or not isActivePageMenuView(menu.view) then return
 
   if rowId = pageSettings.ALL_SETTINGS
-    openClusterRoute("settings")
+    openClusterRoute("settings", menu.isFromIcon)
     return
   end if
 
@@ -1309,7 +1312,7 @@ sub onPageMenuResult()
   focusIndex = list.selectedIndex
   if focusIndex < 0 then focusIndex = 0
   ' Straight from this handler: the picker takes over from the menu, focus target included.
-  m.pageMenu = { view: menu.view, entry: entry, values: list.values }
+  m.pageMenu = { view: menu.view, entry: entry, values: list.values, isFromIcon: menu.isFromIcon }
   m.pageMenuDialog = showListDialog(list.title, list.labels, "onPageSettingPicked", focusIndex, list.selectedIndex)
   claimPageDialogForScreen(menu.view)
 end sub
@@ -1322,7 +1325,7 @@ sub onPageSettingPicked()
 
   outcome = pageSettings.pickOutcome(dialog.result, picker.entry, picker.values)
   if outcome.action = pageSettings.PICK_REOPEN
-    openPageMenu(picker.entry.id)
+    openPageMenu(picker.entry.id, picker.isFromIcon)
   else if outcome.action = pageSettings.PICK_CHANGE
     picker.view.callFunc("onPageSettingChanged", picker.entry.id, outcome.value)
   end if

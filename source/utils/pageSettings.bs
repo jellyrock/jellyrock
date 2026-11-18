@@ -7,34 +7,40 @@ import "pkg:/source/utils/translate.bs"
 '
 ' A screen only declares them (JRScreen.pageSettingsEntries) and is told what was picked
 ' (JRScreen.onPageSettingChanged); JRScene.openPageMenu presents the menu and the picker.
-' An entry is { id, title, options: [{ id, title }], selected, valueTitle, pickerTitle }:
+' An entry is { id, title, options: [{ id, title }], selected, valueTitle, pickerTitle, icon }:
 ' titles are translated text, and `selected` is the id of the option in force. `valueTitle`
 ' is optional: the value the menu row shows when the selected option's own title does not
 ' read well there. `pickerTitle` is optional too: the heading of the entry's list when
 ' it has more to say than the entry's title, as an app-wide setting offered on a page
 ' does. `isSelectedProvisional` is optional and true when the selected option is what the
 ' screen draws but not what is saved (a library's count per row raised to a layout's
-' floor), so picking it is a change. This file is the part of that with no node in it.
+' floor), so picking it is a change. `icon` is optional: the glyph the entry's menu row wears in
+' its gutter, as the player's gear rows do, a pkg: URI at the menu's density. This file is the
+' part of that with no node in it.
 namespace pageSettings
 
   ' The menu row that opens the Settings screen.
   const ALL_SETTINGS = "allSettings"
+  ' Its glyph: the settings icon at the menu's density (settings_ itself is the overhang's)
+  const ALL_SETTINGS_ICON = "pkg:/images/icons/settings_menu_$$RES$$.png"
 
   ' menuRows: the menu for a screen's entries, All settings last.
   '
   ' A row reads as the player's gear rows do: the entry's title with the selected option's
   ' title after it, or the entry's `valueTitle` when it has one. The Default tab entry
   ' uses it: its first option says where the tab comes from ("Default (Movies)"), which
-  ' would read as brackets inside brackets on the row, so the row names the tab alone. No usable entry means no menu ({ labels: [], ids: [] }), and the
-  ' settings icon opens Settings in one press.
+  ' would read as brackets inside brackets on the row, so the row names the tab alone. Each
+  ' row wears its entry's `icon`, and All settings the gear; an entry with none leaves its
+  ' gutter empty. No usable entry means no menu, and the settings icon opens Settings in
+  ' one press.
   '
   ' Past about three entries the menu gets long for something hanging off an icon: move
   ' them into one Page settings dialog behind a single row here.
   '
   ' @param entries - a screen's pageSettingsEntries()
-  ' @return {object} { labels: [string], ids: [string] }
+  ' @return {object} { labels: [string], ids: [string], icons: [string] }
   function menuRows(entries as dynamic) as object
-    menu = { labels: [], ids: [] }
+    menu = { labels: [], ids: [], icons: [] }
     if type(entries) <> "roArray" then return menu
 
     for each entry in entries
@@ -45,12 +51,14 @@ namespace pageSettings
         if value <> "" then label = translate(translationKeys.LabelSettingWithValue, [label, value])
         menu.labels.push(label)
         menu.ids.push(entry.id)
+        menu.icons.push(textOrEmpty(entry.icon))
       end if
     end for
     if menu.ids.count() = 0 then return menu
 
     menu.labels.push(translate(translationKeys.LabelAllSettings))
     menu.ids.push(pageSettings.ALL_SETTINGS)
+    menu.icons.push(pageSettings.ALL_SETTINGS_ICON)
     return menu
   end function
 
