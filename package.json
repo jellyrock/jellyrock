@@ -1,7 +1,7 @@
 {
   "name": "jellyrock",
   "type": "module",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "description": "Roku client for Jellyfin media server",
   "dependencies": {
     "@rokucommunity/bslib": "0.1.1",
@@ -27,10 +27,10 @@
     "js-yaml": "5.5.0",
     "jshint": "2.13.6",
     "jsonc-parser": "3.3.1",
-    "lint-staged": "17.6.0",
+    "lint-staged": "17.6.1",
     "markdownlint-cli2": "0.24.1",
     "patch-package": "8.0.1",
-    "prettier": "3.9.10",
+    "prettier": "3.10.1",
     "rimraf": "6.1.4",
     "roku-deploy": "3.18.4",
     "roku-test-automation": "2.2.2",

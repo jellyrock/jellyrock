@@ -20,9 +20,13 @@ function fakeWeblate({
   status = { needs_commit: false, needs_push: false },
   failPull = false,
   locked = false,
+  busy = 0,
+  busyTask = false,
 } = {}) {
   const calls = [];
   let polls = 0;
+  let busyLeft = busy;
+  let busyPolls = 0;
   const fetchImpl = async (url, { method, body }) => {
     const path = url.replace('https://w.test/api/components/jellyrock/roku', '');
     calls.push(`${method} ${path}${body ? ` ${body}` : ''}`);
@@ -32,12 +36,25 @@ function fakeWeblate({
       text: async () => JSON.stringify(data),
     });
     if (path === '/repository/' && method === 'POST') {
+      // Weblate's answer while another operation holds the repository (its own commit
+      // queued by the lock, or an update a webhook started).
+      if (busyLeft > 0) {
+        busyLeft--;
+        return json(
+          {
+            detail: 'Another repository operation is already in progress.',
+            ...(busyTask ? { task_url: 'https://w.test/api/tasks/busy/' } : {}),
+          },
+          423,
+        );
+      }
       if (failPull && body.includes('pull')) return json({ result: false });
       return queued
         ? json({ task_url: 'https://w.test/api/tasks/1/' }, 202)
         : json({ result: true });
     }
     if (url === 'https://w.test/api/tasks/1/') return json({ completed: ++polls >= 2 });
+    if (url === 'https://w.test/api/tasks/busy/') return json({ completed: ++busyPolls >= 3 });
     if (path === '/repository/') return json(status);
     if (path === '/lock/' && method === 'GET') return json({ locked });
     if (path === '/lock/') return json({ locked: JSON.parse(body).lock });
@@ -91,12 +108,45 @@ describe('lockAndFlush', () => {
     const { api } = fakeWeblate({ status: { needs_commit: false, needs_push: true } });
     await expect(lockAndFlush(api)).rejects.toThrow(WeblateError);
   });
+
+  // Locking queues a Weblate commit that holds the repository, so a push sent right
+  // after can find it busy (HTTP 423). Release prep 44227874488 failed on exactly this.
+  it('retries a push that finds the repository busy', async () => {
+    const { calls, api } = fakeWeblate({ busy: 2 });
+    await lockAndFlush(api);
+    expect(calls.filter((c) => c === 'POST /repository/ {"operation":"push"}')).toHaveLength(3);
+  });
+
+  it('waits for the operation holding the repository before retrying', async () => {
+    const { calls, api } = fakeWeblate({ busy: 1, busyTask: true });
+    await lockAndFlush(api);
+    expect(calls.slice(2, 7)).toEqual([
+      'POST /repository/ {"operation":"push"}',
+      'GET https://w.test/api/tasks/busy/',
+      'GET https://w.test/api/tasks/busy/',
+      'GET https://w.test/api/tasks/busy/',
+      'POST /repository/ {"operation":"push"}',
+    ]);
+  });
+
+  it('gives up when the repository stays busy, and says so', async () => {
+    const { api } = fakeWeblate({ busy: Infinity });
+    await expect(lockAndFlush(api)).rejects.toThrow(/stayed busy/);
+  });
 });
 
 describe('pullAndUnlock', () => {
   it('pulls, then unlocks', async () => {
     const { calls, api } = fakeWeblate();
     await pullAndUnlock(api);
+    expect(calls.at(-1)).toBe('POST /lock/ {"lock":false}');
+  });
+
+  it('retries a pull that finds the repository busy', async () => {
+    // The push-back to the weblate branch starts a webhook update in Weblate.
+    const { calls, api } = fakeWeblate({ busy: 1 });
+    await pullAndUnlock(api);
+    expect(calls.filter((c) => c === 'POST /repository/ {"operation":"pull"}')).toHaveLength(2);
     expect(calls.at(-1)).toBe('POST /lock/ {"lock":false}');
   });
 

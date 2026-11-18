@@ -2854,6 +2854,26 @@ A catch-up seek that lands nearer to where it started than to its target is foll
 
 Why the node refuses that seek is not known (the server's log was not read). The reload costs that member, and the group that waits for it, some seconds: the step settled in about 19 seconds against about 11.5. Ruled out: letting the ask repeat with no reload (the group is pulled back every time), and a longer wait before the second seek (11 seconds into a stream the same seek still fell back).
 
+## decision-id: home-rows-policy-gated
+
+**date**: 2026-11-17
+**status**: accepted
+**related-files**: `source/home/homeSections.bs`, `source/utils/userPolicy.bs`, `components/home/HomeRows.bs`, `source/utils/searchOutcome.bs`
+
+A Home section the user's policy denies is left out of the section plan (`homeSections.plan`), never shown as a failed row. For a user without Live TV access, On Now and Active Recordings are dropped: the server refuses their reads (403 on both, probed 2026-11-17 against 12.4.0 with a temporary restricted user; 10.7.7 answered 200 with no items), so the failure tile's retry could never succeed. The check moved from `searchOutcome.canSearchLiveTv` to `userPolicy.hasLiveTvAccess`, shared by Home and Search. `jellyfin-web` and `jellyfin-androidtv` skip On Now the same way.
+
+Ruled out: **treating a 403 as "remove the row"**. It sends a read on every Home load that can only fail, misses older servers that answer instead of refusing, and reverses `home-row-failure-tile` for one status. Accepted: the policy is read at sign-in, so an access change made mid-session shows after the next sign-in. Re-evaluate if users report that delay.
+
+## decision-id: changelog-translations-from-locale-files
+
+**date**: 2026-11-17
+**status**: accepted
+**related-files**: scripts/changelog-syncer.js, docs/admin/changelog.md
+
+Translations get one changelog section, last above Dependencies, fed by no PR-title type. `translationLines()` writes one line counting the strings new to each translated locale file (every one but `en_US`) since the previous tag, so the draft notes, built on the release branch, and the final notes, rebuilt from `main` after the squash merge, agree. Ruled out: placing `Translated using Weblate (…)` commits by their subject. Weblate squashes several languages under the subject of one and names itself the author, and the commits leave `main`'s history with the `release-prep` squash, so translations showed in the draft as a Changed line credited to `@weblate`, then vanished from the published notes. This adds a section to [ADR 0042](adr/0042-pr-title-type-places-changelog.md)'s list without changing its rule that a PR's title type places a PR's line.
+
+Credit is the names in the `Co-authored-by` trailers of the commits that touched a translation, minus Weblate and bots. An anonymous suggestion accepted in Weblate arrives as one of those, so a line with no names credits "translators", and every line ends "on Weblate", linked, so the notes always say where to help. Re-evaluate if the count misleads: most of 3.5.0's 4,567 strings came from the other-client imports, not from Weblate.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

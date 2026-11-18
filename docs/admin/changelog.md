@@ -13,7 +13,13 @@ The repo squash-merges, so every PR becomes one commit on `main` whose first lin
 - **The credit** after "by" is the PR's author, never the commit's: a merge commit names whoever merged it, and a squash commit can carry an email linked to no account. A commit with no PR is credited to the GitHub account its email is linked to, or to its git name, unlinked, when there is none. A bot links to its app page, since `github.com/<bot>` can be an unrelated account. A combined dependency line credits each author once.
 - **A PR an app opened**, an AI agent's included, credits that app, the same rule for every agent. GitHub's own notes differ for its Copilot agent: they credit the person who started it, "with @Copilot".
 
-The sections, in order: Added, Changed, Fixed, Removed, Dependencies. **New Contributors** follows them: everyone whose first merged PR or commit on `main` is in that release, oldest first. Bots are never listed.
+The sections, in order: Added, Changed, Fixed, Removed, Translations, Dependencies. **New Contributors** follows them: everyone whose first merged PR or commit on `main` is in that release, oldest first. Bots are never listed.
+
+**Translations** is the one section no PR title feeds. It is a single line counting the strings the release adds or changes across the translated locale files (every file in `locale/custom/` but `en_US.json`), and the number of languages they're in. It is counted from the files, so it reads the same on the release branch, where the commits from Weblate sit, and on `main`, where the release PR's squash commit carries them. A commit from Weblate (`Translated using Weblate (…)`) never gets a line of its own: Weblate squashes several languages under the subject of one, and names itself the author. A string counts only when its text is new to its file, so a removed key, or a key renamed with its translation, adds nothing. The credit is the names in the `Co-authored-by` trailers of the commits that touched a translation, which Weblate writes per translator and a squash merge keeps. Weblate itself and bots are left out of the names. A suggestion someone made anonymously in Weblate arrives as one of them, so a line with no names credits "translators". Every line ends "on Weblate", linked to the project, so the notes always say where to help translate:
+
+```text
+- 4,567 new or updated strings in 94 languages by translators on [Weblate](https://translate.jellyrock.app/projects/jellyrock/roku/)
+```
 
 A login is written as a link (`[@login](https://github.com/login)`), because in a repo file `@login` is plain text. The release notes turn each person's link back into `@login`, which GitHub shows as a mention.
 

@@ -1,0 +1,92 @@
+import "pkg:/source/home/homeSections.bs"
+
+namespace tests
+
+  ' Contract tests for which sections Home shows, in which order (source/home/homeSections.bs).
+  '
+  ' Wrong in one direction, Home shows a row the server will refuse to fill, and the viewer
+  ' sees a "couldn't load" tile that no retry can fix (On Now and Active Recordings for a user
+  ' without Live TV access). Wrong in the other, a row the viewer chose goes missing.
+  @suite("homeSections - Home section plan")
+  class HomeSectionsTests extends tests.BaseTestSuite
+
+    private function types(plan as object) as object
+      result = []
+      for each section in plan
+        result.push(section.type)
+      end for
+      return result
+    end function
+
+    private function defaultLayout() as object
+      ' JellyRock's own default (user.getDefaultHomeSections), the layout a restricted user
+      ' hit the bug with.
+      return {
+        homeSection0: "smalllibrarytiles",
+        homeSection1: "resume",
+        homeSection2: "nextup",
+        homeSection3: "activerecordings",
+        homeSection4: "livetv",
+        homeSection5: "latestmedia",
+        homeSection6: "none",
+        homeSection7: "none",
+        homeSection8: "none",
+        homeSection9: "none"
+      }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("plan")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps every chosen section, in slot order, for a user with Live TV access")
+    function _()
+      plan = homeSections.plan(m.defaultLayout(), { enableLiveTvAccess: true })
+      m.assertEqual(m.types(plan), ["smalllibrarytiles", "resume", "nextup", "activerecordings", "livetv", "latestmedia"])
+    end function
+
+    @it("leaves out On Now and Active Recordings for a user without Live TV access")
+    function _()
+      plan = homeSections.plan(m.defaultLayout(), { enableLiveTvAccess: false })
+      m.assertEqual(m.types(plan), ["smalllibrarytiles", "resume", "nextup", "latestmedia"])
+    end function
+
+    @it("keeps each section's slot index when another is left out")
+    function _()
+      plan = homeSections.plan(m.defaultLayout(), { enableLiveTvAccess: false })
+      m.assertEqual(plan[3], { type: "latestmedia", settingIndex: 5 })
+    end function
+
+    @it("keeps the Live TV sections when the policy is missing")
+    function _()
+      plan = homeSections.plan(m.defaultLayout(), invalid)
+      m.assertEqual(m.types(plan), ["smalllibrarytiles", "resume", "nextup", "activerecordings", "livetv", "latestmedia"])
+    end function
+
+    @it("reads a section name in any case, as the server may store it")
+    function _()
+      layout = m.defaultLayout()
+      layout.homeSection3 = "ActiveRecordings"
+      layout.homeSection4 = "LiveTv"
+      plan = homeSections.plan(layout, { enableLiveTvAccess: false })
+      m.assertEqual(m.types(plan), ["smalllibrarytiles", "resume", "nextup", "latestmedia"])
+    end function
+
+    @it("skips empty and missing slots")
+    function _()
+      plan = homeSections.plan({ homeSection0: "none", homeSection2: "nextup" }, { enableLiveTvAccess: true })
+      m.assertEqual(plan, [{ type: "nextup", settingIndex: 2 }])
+    end function
+
+    @it("reads the JellyfinUserSettings and JellyfinUserPolicy nodes the app holds")
+    function _()
+      settings = CreateObject("roSGNode", "JellyfinUserSettings")
+      settings.setFields(m.defaultLayout())
+      policy = CreateObject("roSGNode", "JellyfinUserPolicy")
+      policy.enableLiveTvAccess = false
+      m.assertEqual(m.types(homeSections.plan(settings, policy)), ["smalllibrarytiles", "resume", "nextup", "latestmedia"])
+    end function
+
+  end class
+
+end namespace

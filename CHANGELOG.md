@@ -7,27 +7,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [3.5.0](https://github.com/jellyrock/jellyrock/compare/v3.4.0...v3.5.0) - 2026-11-18
+
+### Summary
+
+Adds an Only on item details option for backdrops, so they skip browsing and show on an item's page. Fixes the wrong audio track playing in MKV and MP4 files, a crash on Star from the overhang, and Live TV rows that never loaded for users without Live TV access. The list below has 1 more fix.
+
 ### Added
 
 - (ui) Item-details-only backdrops; Movies pane obeys the setting ([#1365](https://github.com/jellyrock/jellyrock/pull/1365)) by [@cewert](https://github.com/cewert)
 
 ### Changed
 
-- (translations) Translate 134 more strings from other clients ([#1389](https://github.com/jellyrock/jellyrock/pull/1389)) by [@cewert](https://github.com/cewert)
-- (translations) Translate 93 more strings from other clients ([#1388](https://github.com/jellyrock/jellyrock/pull/1388)) by [@cewert](https://github.com/cewert)
-- (translations) Translate 41 more strings from other Jellyfin clients ([#1386](https://github.com/jellyrock/jellyrock/pull/1386)) by [@cewert](https://github.com/cewert)
-- (translations) Rename 75 keys by role, keeping translations ([#1385](https://github.com/jellyrock/jellyrock/pull/1385)) by [@cewert](https://github.com/cewert)
 - Gate namespaced constant access and spec code at build time ([#1376](https://github.com/jellyrock/jellyrock/pull/1376)) by [@cewert](https://github.com/cewert)
 
 ### Fixed
 
+- (home) Hide the Live TV rows from users without Live TV access ([#1403](https://github.com/jellyrock/jellyrock/pull/1403)) by [@cewert](https://github.com/cewert)
 - (playback) Play and name the audio track picked in an `MP4` ([#1383](https://github.com/jellyrock/jellyrock/pull/1383)) by [@cewert](https://github.com/cewert)
 - (playback) Play the MKV audio track the viewer picked ([#1382](https://github.com/jellyrock/jellyrock/pull/1382)) by [@cewert](https://github.com/cewert)
 - (ui) Star from the overhang no longer crashes the app ([#1372](https://github.com/jellyrock/jellyrock/pull/1372)) by [@cewert](https://github.com/cewert)
 - (syncplay) Reload where the group is; load a mid-reload restart ([#1354](https://github.com/jellyrock/jellyrock/pull/1354)) by [@cewert](https://github.com/cewert)
 
+### Translations
+
+- 4,567 new or updated strings in 94 languages by Charles Ewert on [Weblate](https://translate.jellyrock.app/projects/jellyrock/roku/)
+
 ### Dependencies
 
+- Update lint-staged from v17.6.0 to v17.6.1 ([#1395](https://github.com/jellyrock/jellyrock/pull/1395)) by [@renovate[bot]](https://github.com/apps/renovate)
+- Update prettier from v3.9.10 to v3.10.1 ([#1363](https://github.com/jellyrock/jellyrock/pull/1363)) by [@renovate[bot]](https://github.com/apps/renovate)
 - Update dotenv from v18.0.9 to v18.0.10 ([#1342](https://github.com/jellyrock/jellyrock/pull/1342)) by [@renovate[bot]](https://github.com/apps/renovate)
 - Update actions/setup-java action to v6.2.0 ([#1347](https://github.com/jellyrock/jellyrock/pull/1347)) by [@renovate[bot]](https://github.com/apps/renovate)
 - Docs lint (patch) ([#1362](https://github.com/jellyrock/jellyrock/pull/1362)) by [@renovate[bot]](https://github.com/apps/renovate)

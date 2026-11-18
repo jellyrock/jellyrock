@@ -1,0 +1,37 @@
+import "pkg:/source/constants/homeSlots.bs"
+import "pkg:/source/utils/userPolicy.bs"
+
+' Which sections Home shows, in which order. HomeRows builds its rows from this plan; it lives
+' in source/ so a Rooibos suite can reach it (same move as source/home/homeRowFailure.bs).
+namespace homeSections
+
+  ' The sections the viewer's layout asks for, in slot order, less any the user's policy
+  ' denies. A denied section is left out rather than shown failed: the server refuses its read
+  ' every time, so its row could only ever show a "couldn't load" tile that no retry fixes.
+  '
+  ' @param userSettings - the homeSection0 to homeSection<SLOT_COUNT - 1> fields (a
+  '   JellyfinUserSettings node, or an AA in tests)
+  ' @param policy - m.global.user.policy, or invalid
+  ' @return {roArray} of { type: string, settingIndex: integer }
+  function plan(userSettings as object, policy as dynamic) as object
+    withLiveTv = userPolicy.hasLiveTvAccess(policy)
+    result = []
+    for i = 0 to homeSlots.SLOT_COUNT - 1
+      sectionName = LCase(userSettings["homeSection" + i.toStr()] ?? "none")
+      if sectionName = "none" then continue for
+      if not withLiveTv and homeSections.needsLiveTv(sectionName) then continue for
+      result.push({ type: sectionName, settingIndex: i })
+    end for
+    return result
+  end function
+
+  ' Whether a section reads Live TV: On Now (/LiveTv/Programs/Recommended) and Active
+  ' Recordings (/LiveTv/Recordings).
+  '
+  ' @param sectionName - a lowercased section type
+  ' @return {boolean}
+  function needsLiveTv(sectionName as string) as boolean
+    return sectionName = "livetv" or sectionName = "activerecordings"
+  end function
+
+end namespace
