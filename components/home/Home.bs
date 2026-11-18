@@ -61,6 +61,14 @@ function onOptionsKey() as boolean
   return true
 end function
 
+' JRScreen hook: settings written while Home was covered. Row Layout is read when the rows are
+' built, so the rows on show are laid out again (applyRowLayoutSetting leaves a layout already
+' applied as it is). The other Home settings are read by each load, and the refresh that
+' onScreenShown runs picks them up.
+sub onSettingsChanged(names as object)
+  if inArray(names, "uiRowLayout") and isValid(m.activeContent) then m.activeContent.callFunc("applyRowLayoutSetting")
+end sub
+
 sub refresh()
   if not isValid(m.activeContent) then return
 

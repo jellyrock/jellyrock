@@ -1,0 +1,13 @@
+sub init()
+  m.top.deliveries = []
+end sub
+
+sub onSettingsChanged(names as object)
+  deliveries = m.top.deliveries
+  deliveries.push(names)
+  m.top.deliveries = deliveries
+end sub
+
+' Nothing to release: the probe starts no Task and observes nothing.
+sub onDestroy()
+end sub

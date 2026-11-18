@@ -8,9 +8,74 @@
  * is [`registry.js`](registry.js)'s job: it snapshots the whole registry before
  * any of this runs, so nothing here needs a matching "and undo it" list.
  */
+import fs from 'node:fs';
 import { odc } from 'roku-test-automation';
 
 export const GLOBAL = 'JellyRock';
+
+/** The settings node the app saves every setting from (JellyfinUserSettings.onSettingChanged). */
+const SETTINGS_XML = new URL(
+  '../../../components/data/jellyfin/JellyfinUserSettings.xml',
+  import.meta.url,
+);
+
+/**
+ * Fields of JellyfinUserSettings.xml that are not saved under their own name, as
+ * JellyfinUserSettings.init leaves them out of the observer that saves: `displaySettings` is
+ * saved as `display.*` keys (cleared by name below), the other two are never saved.
+ */
+export const UNSAVED_FIELDS = ['displaySettings', 'isLoaded', 'loadedAt'];
+
+/**
+ * The registry keys the app saves settings under, from the fields of JellyfinUserSettings.xml,
+ * split by section as the app's isGlobalSetting splits them: a `global` name goes to the
+ * global section, the rest to the user's.
+ *
+ * @param {string} xmlText - JellyfinUserSettings.xml
+ * @returns {{ user: string[], global: string[] }}
+ */
+export function settingKeys(xmlText) {
+  const keys = { user: [], global: [] };
+  for (const [, name] of xmlText.matchAll(/<field\s+id="([^"]+)"/g)) {
+    if (UNSAVED_FIELDS.includes(name)) continue;
+    keys[name.startsWith('global') ? 'global' : 'user'].push(name);
+  }
+  return keys;
+}
+
+/**
+ * The deletes (null = delete the key) that put a user back on default settings, as the app's own
+ * Reset does: every saved setting in both sections, and the per-library `display.*` keys.
+ * A seed lays its own values over these, so a value it sets still wins.
+ *
+ * Without this, a setting a spec wrote (by seeding it, or by changing it in the running app,
+ * which saves it) reaches every spec after it: the registry is restored only when the whole run
+ * ends. A library's view is the costly case: one left on Genres renders into #genreList, with
+ * no #itemGrid, and breaks the next movie-grid nav.
+ */
+async function defaultSettingsValues(userId) {
+  const keys = settingKeys(fs.readFileSync(SETTINGS_XML, 'utf8'));
+  const nulls = (names) => Object.fromEntries(names.map((name) => [name, null]));
+  const reg = await odc.readRegistry().catch(() => null);
+  const displayKeys = Object.keys(reg?.values?.[userId] || {}).filter((key) =>
+    key.startsWith('display.'),
+  );
+  return { [GLOBAL]: nulls(keys.global), [userId]: nulls([...keys.user, ...displayKeys]) };
+}
+
+/**
+ * Write a signed-in seed: `globalValues` and `userValues` laid over default settings
+ * (defaultSettingsValues), in one registry write.
+ */
+async function writeSignedInSeed(userId, globalValues, userValues) {
+  const defaults = await defaultSettingsValues(userId);
+  await odc.writeRegistry({
+    values: {
+      [GLOBAL]: { ...defaults[GLOBAL], ...globalValues },
+      [userId]: { ...defaults[userId], ...userValues },
+    },
+  });
+}
 
 /**
  * Prove a seed actually survived the relaunch.
@@ -70,53 +135,26 @@ export async function assertSeedTookEffect(expectedServer, label, { landing = nu
 }
 
 /**
- * Clear all sticky per-library view settings (`display.<libraryId>.*` keys in the
- * user's registry section) so a screen starts from the presenter DEFAULT view.
- * Library views are sticky (set by the grid options dialog, persisted to registry),
- * so without this a view seeded for one screen leaks into the next. For example, a
- * Genres-view screen would leave the Movies library in Genres (which renders into
- * #genreList, no #itemGrid), breaking the next movie-grid nav. Reset-then-seed
- * makes every capture deterministic regardless of run order or prior device state.
+ * Seed registry to land logged-in on Home as the demo user, in `locale`, on default settings
+ * (defaultSettingsValues). A spec that wants a setting writes it after this seed.
  */
-async function clearDisplaySettings(session) {
-  const reg = await odc.readRegistry().catch(() => null);
-  const userSection = reg?.values?.[session.userId] || {};
-  const nulls = {};
-  for (const key of Object.keys(userSection)) {
-    if (key.startsWith('display.')) nulls[key] = null; // null = delete the key
-  }
-  if (Object.keys(nulls).length) {
-    await odc.writeRegistry({ values: { [session.userId]: nulls } });
-  }
-}
-
-/** Seed registry to land logged-in on Home as the demo user, in `locale`. */
 export async function seedHome(session, locale) {
-  await odc.writeRegistry({
-    values: {
-      [GLOBAL]: {
-        server: session.serverUrl,
-        active_user: session.userId,
-        globalRememberMe: 'true',
-        globalTranslationLocale: locale,
-      },
-      [session.userId]: {
-        authToken: session.token,
-        serverId: session.serverId,
-        username: session.username,
-        primaryImageTag: session.primaryImageTag,
-        translationLocale: locale,
-        // Back to the app's default (null deletes the key): the registry is restored only
-        // when the whole run ends, so a mode one spec chose would reach every spec after it.
-        // A spec that wants a mode writes it after this seed (backdrop-mode.spec.js).
-        uiShowBackdrop: null,
-        // Likewise the titles setting, which a library's page menu can change (page-settings.spec.js)
-        itemGridShowTitles: null,
-      },
+  await writeSignedInSeed(
+    session.userId,
+    {
+      server: session.serverUrl,
+      active_user: session.userId,
+      globalRememberMe: 'true',
+      globalTranslationLocale: locale,
     },
-  });
-  // Reset sticky library views to defaults; view-dependent screens re-seed after.
-  await clearDisplaySettings(session);
+    {
+      authToken: session.token,
+      serverId: session.serverId,
+      username: session.username,
+      primaryImageTag: session.primaryImageTag,
+      translationLocale: locale,
+    },
+  );
   return session.serverUrl;
 }
 
@@ -153,25 +191,23 @@ export function savedServerEntry(session) {
  */
 export async function seedHomeWithSavedServers(primary, sessions, locale) {
   const savedServers = { serverList: sessions.map(savedServerEntry) };
-  await odc.writeRegistry({
-    values: {
-      [GLOBAL]: {
-        server: primary.serverUrl,
-        active_user: primary.userId,
-        globalRememberMe: 'true',
-        globalTranslationLocale: locale,
-        saved_servers: JSON.stringify(savedServers),
-      },
-      [primary.userId]: {
-        authToken: primary.token,
-        serverId: primary.serverId,
-        username: primary.username,
-        primaryImageTag: primary.primaryImageTag,
-        translationLocale: locale,
-      },
+  await writeSignedInSeed(
+    primary.userId,
+    {
+      server: primary.serverUrl,
+      active_user: primary.userId,
+      globalRememberMe: 'true',
+      globalTranslationLocale: locale,
+      saved_servers: JSON.stringify(savedServers),
     },
-  });
-  await clearDisplaySettings(primary);
+    {
+      authToken: primary.token,
+      serverId: primary.serverId,
+      username: primary.username,
+      primaryImageTag: primary.primaryImageTag,
+      translationLocale: locale,
+    },
+  );
   return primary.serverUrl;
 }
 
