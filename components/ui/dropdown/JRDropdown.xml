@@ -35,9 +35,11 @@
     <field id="padding" type="integer" value="15" />
     <!-- The trigger box is at least this tall, its content centered (the overhang row's height). -->
     <field id="minHeight" type="integer" value="0" />
-    <!-- The trigger box is at most this wide, 0 for no limit: a longer name ellipsizes. The
-         overhang sets it from the line its user menu never crosses (overhangRow.menuMaxWidth). -->
-    <field id="maxWidth" type="integer" value="0" />
+    <!-- The trigger box is at most this wide, -1 for no limit (dropdownTrigger.NO_LIMIT): a
+         longer name ellipsizes. 0 is a limit too, with no room for the name, which then keeps
+         one grid step. The overhang sets it from the line its user menu never crosses
+         (overhangRow.menuMaxWidth). -->
+    <field id="maxWidth" type="integer" value="-1" />
 
     <!-- Output -->
     <field id="triggerWidth" type="integer" value="0" />

@@ -4,7 +4,8 @@
  * opens Settings, and Back lands on the gear again, on a library screen and on details as
  * on Home. Settings' own Up enters the row too, at the user menu Home, Settings and Search
  * show. On the search screen, Up from the keyboard's top row enters the row, and an icon for
- * the screen on show does nothing. Star on Home opens Settings, as the gear does. Each screen
+ * the screen on show does nothing. Star on Home opens Settings, as the gear does, and Back
+ * from a Settings that Star opened returns to where Star was pressed, not the gear. Each screen
  * of a chain keeps its own icon to come back to, a theme reload from Settings returns to the
  * screen Settings was opened from, and the search screen's submitted query shows as the
  * overhang's status. A player shows no cluster.
@@ -27,6 +28,7 @@ import {
   submitSearchFromKeyboard,
   waitPageMenu,
   waitSearchResults,
+  waitSettingsScreen,
 } from '../lib/nav.js';
 import {
   getActiveVal,
@@ -40,6 +42,7 @@ import {
   waitFor,
   waitHome,
   enterOverhangRow,
+  waitFocusInHomeContent,
   walkFocusUntil,
 } from '../lib/steps.js';
 
@@ -231,6 +234,45 @@ it('Star on a library that is closed but still the active view is dropped', asyn
   expect(await getActiveVal('subtype()'), 'the app still answers, on the same view').toBe(
     'BaseGridView',
   );
+});
+
+// Star opens Settings from the screen, not from the gear, so Back returns to where Star was
+// pressed: the gear is focused again only when it was the gear that was pressed
+// (JRScene.openClusterRoute's isFromIcon).
+it("Star on Home's rows opens Settings, and Back returns to the rows, not the gear", async () => {
+  await freshApp('overhang-cluster star home rows');
+  await waitHome();
+  await waitFocusInHomeContent({ label: "Home's rows before Star" });
+
+  await press(ecp.Key.Option);
+  await waitSettingsScreen();
+  await press(ecp.Key.Back);
+  await waitHome();
+  // A row list holds focus, so the overhang row does not.
+  await waitFocusInHomeContent({ label: "Home's rows after Back from Settings, not the gear" });
+});
+
+it("Star on a library's grid, then All settings: Back returns to the grid, not the gear", async () => {
+  await freshApp('overhang-cluster star library grid');
+  await navLibraryGrid(ctx);
+  await waitFocusInside('#itemGrid', { label: 'the grid before Star' });
+
+  await press(ecp.Key.Option);
+  const rows = await waitPageMenu('the page menu, opened by Star on the grid');
+  // All settings is the last row: Up from the first wraps to it.
+  await press(ecp.Key.Up);
+  await waitFor('#optionList.itemFocused', (n) => n === rows - 1, {
+    label: 'All settings, the last row',
+    timeout: 8000,
+  });
+  await press(ecp.Key.Ok);
+  await waitSettingsScreen();
+
+  await press(ecp.Key.Back);
+  await waitFocusInside('#itemGrid', {
+    label: 'the grid after Back from Settings',
+    timeout: 20000,
+  });
 });
 
 // Home declares no page entries, so Star does what the gear does there: it opens Settings.

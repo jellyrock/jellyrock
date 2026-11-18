@@ -71,7 +71,8 @@ namespace overhangRow
   ' The widest the user menu may be: from an element gap right of LINE_X to the gap before the
   ' cluster (`clusterWidth`, 0 when hidden), else the clock. The clock counts as at least
   ' CLOCK_PROVISIONAL_WIDTH wide, as in tabSlotWidth, so a name is not cut differently from one
-  ' minute to the next. On the grid, and 0 when nothing is left.
+  ' minute to the next. On the grid, and 0 when nothing is left, which JRDropdown.maxWidth
+  ' reads as a limit with no room, never as no limit (dropdownTrigger.NO_LIMIT).
   function menuMaxWidth(clockWidth as integer, clockShown as boolean, clusterWidth as integer) as integer
     if clockWidth < CLOCK_PROVISIONAL_WIDTH then clockWidth = CLOCK_PROVISIONAL_WIDTH
     edge = leftOfClock(clockWidth, clockShown)

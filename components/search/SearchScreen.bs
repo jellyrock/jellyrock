@@ -1162,7 +1162,6 @@ sub onFailureNarrationDue()
   narrateDialogOpening("", m.searchFailedText.text, m.searchRetryButton.text)
 end sub
 
-
 ' ============================================================================
 ' KEYBOARD EDGE ESCAPES
 ' ============================================================================

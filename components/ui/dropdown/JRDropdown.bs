@@ -1,3 +1,4 @@
+import "pkg:/source/utils/dropdownTrigger.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/pixelGrid.bs"
 import "pkg:/source/utils/textMetrics.bs"
@@ -92,19 +93,13 @@ sub sizeTriggerButton()
   if not isValid(m.triggerLabel) then return
 
   ' Give the name its width rounded up onto the 3 px grid, so the chevron and the box edges
-  ' land on whole pixels at 720p, and cap a long one
-  labelWidth = snapToGrid(-int(-m.triggerLabel.localBoundingRect().width))
-  if labelWidth = 0 then return ' not rendered yet: onRenderComplete runs this again
+  ' land on whole pixels at 720p, and cut a long one to what maxWidth leaves after the box's
+  ' other parts (dropdownTrigger.labelWidth)
   padding = m.top.padding
-  ' With a maxWidth, the name gets what the box has left after its other parts, on the grid
-  if m.top.maxWidth > 0
-    others = padding * 2 + TRIGGER_PART_GAP + m.triggerChevron.width
-    if m.triggerIcon.visible then others += m.triggerIcon.width + TRIGGER_PART_GAP
-    labelCap = m.top.maxWidth - others
-    labelCap -= labelCap mod 3
-    if labelCap < 0 then labelCap = 0
-    if labelWidth > labelCap then labelWidth = labelCap
-  end if
+  others = padding * 2 + TRIGGER_PART_GAP + m.triggerChevron.width
+  if m.triggerIcon.visible then others += m.triggerIcon.width + TRIGGER_PART_GAP
+  labelWidth = dropdownTrigger.labelWidth(-int(-m.triggerLabel.localBoundingRect().width), m.top.maxWidth, others)
+  if labelWidth = 0 then return ' not rendered yet: onRenderComplete runs this again
   m.triggerLabel.width = labelWidth
 
   ' Place the parts left to right, each centered on the box's middle. A label's caps sit
