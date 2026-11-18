@@ -1899,6 +1899,12 @@ Not reported upstream yet: a report is a public post, so it waits for the operat
 
 When it moves: if the release guards both functions, delete the patch and its test. Otherwise regenerate the patch on any version bump with `npx patch-package roku-test-automation`, since its filename pins 2.2.2. A bump the patch still applies to only warns about the mismatch. One it no longer applies to fails `npm ci` on CI, while a local install prints the error and carries on without the patch, and `rta-closed-socket-guard.test.js` then fails in `test:scripts`.
 
+#### RTA specs still clear the settings they wrote by hand, which the signed-in seeds now reset `[fid: rta-hand-setting-cleanups-redundant]` `[captured 2026-11-18]`
+
+Since the settings-reach-screen work (2026-11-18), `seedHome` and `seedHomeWithSavedServers` in `tests/rta/lib/seed.js` put the user back on default settings before each seed: every field of `JellyfinUserSettings.xml` in its registry section, and the `display.*` keys. Before that, specs cleaned up the settings they wrote by hand, and four still do: `dialogs.spec.js` (`PLAYBACK_SETTING_KEYS`, `seedPlaybackSettings(null)` in `afterAll`), `theme.spec.js` (`clearThemeKeys`, before each seed and in `afterAll`), `still-watching.spec.js` (an `afterAll` deleting `playbackPlayNextEpisode`) and `playback-advance.spec.js` (one deleting it and `playbackCinemaMode`).
+
+They were kept because a spec after them that lands through a seed that signs nobody in (`seedUserSelect`, `seedServerSelect`) and then signs in through the UI would still see the setting. To close: check which specs after these four land that way and whether any reads a playback or theme setting; if none does, remove the hand cleanups (and the comments explaining them), then run the full `npm run test:rta` to prove the seed reset carries them. Not done in the same change because it widens a fix PR into four unrelated specs.
+
 ### docs
 
 #### Add the observed-field clause to `async.md`'s rendezvous cost model — but measure the grid path first. `[fid: async-md-observed-field-clause]` `[captured 2026-08-10]`
