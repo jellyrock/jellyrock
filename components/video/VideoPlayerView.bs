@@ -2637,6 +2637,7 @@ sub bufferCheck()
       if isValid(host) then host.callFunc("onLiveStreamStalled")
     else
       m.log.warn("buffer check stopped a stalled stream", "bufferPercent", percentage, "followsSyncPlay", syncPlayHooks.following())
+      logStalledNode()
       ' If buffering has stopped Display dialog
       showPlaybackErrorDialog(translate(translationKeys.ErrorItemDataFailed))
 
@@ -2645,6 +2646,19 @@ sub bufferCheck()
     end if
   end if
 
+end sub
+
+' What the node says as the buffer check gives up on it, for the next reader of a console: a stall
+' is rare and cannot be forced, so each one has to explain itself. `playReported` false is a load
+' that never reached its first `playing`.
+sub logStalledNode()
+  status = m.top.bufferingStatus
+  m.log.warn("stalled stream buffer", "isUnderrun", status.isUnderrun, "prebufferDone", status.prebufferDone, "lastPercent", m.bufferPercentage, "contentLoaded", m.isContentLoaded)
+  positionInfo = m.top.positionInfo
+  videoPosition = "none"
+  if isValid(positionInfo) and isValid(positionInfo.video) then videoPosition = positionInfo.video.toStr()
+  m.log.warn("stalled stream node", "control", m.top.control, "position", m.top.position.toStr(), "videoPosition", videoPosition, "hasStreamInfo", isValid(m.top.streamInfo))
+  m.log.warn("stalled stream reports", "playReported", m.isPlayReported, "errorCode", m.top.errorCode)
 end sub
 
 ' A "playing" node whose position has not moved for a stall window: a frozen or black screen with no
