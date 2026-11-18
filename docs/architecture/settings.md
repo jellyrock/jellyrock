@@ -174,7 +174,7 @@ Writing to the field is the whole interface: saving, type conversion and observe
 
 ### Reaching a screen that was covered
 
-The same handler keeps a record of which settings were written, whether or not auto-sync saves them, and `changedSince(mark)` reads it. `JRScreen` hands a screen coming back on top the settings written while it was covered (`onSettingsChanged(names)`), so a screen that read a setting once applies the new value in place ([navigation.md](navigation.md#a-setting-changed-while-a-screen-was-covered)). A screen does not observe the setting fields itself: this node is shared, a screen's `unobserveField` at teardown could remove another component's observer (above), and a covered screen would redraw while nobody sees it. Reading a setting where it is used (each load, each cell drawn) needs none of this.
+The same handler keeps a record of which settings were written, whether or not auto-sync saves them: `changeMark()` gives the count as it stands, and `changedSince(mark)` the settings written after a mark. `JRScreen` hands a screen coming back on top the settings written while it was covered (`onSettingsChanged(names)`), so a screen that read a setting once applies the new value in place ([navigation.md](navigation.md#a-setting-changed-while-a-screen-was-covered)). A screen does not observe the setting fields itself: this node is shared, a screen's `unobserveField` at teardown could remove another component's observer (above), and a covered screen would redraw while nobody sees it. Reading a setting where it is used (each load, each cell drawn) needs none of this.
 
 ## Loading at sign-in: `user.Login()` in `source/utils/session.bs`
 

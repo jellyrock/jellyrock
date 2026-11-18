@@ -63,7 +63,13 @@ sub disableAutoSync()
   m.log.info("Auto-sync disabled")
 end sub
 
-' The settings written since `mark`, a value an earlier call returned (0 before any), as
+' The mark as it stands: what changedSince reports the writes after. JRScreen takes it when a
+' screen opens (markSettingsSeen).
+function changeMark() as integer
+  return m.changeCount
+end function
+
+' The settings written since `mark`, a value changeMark or an earlier call returned, as
 ' { mark, names }: the mark to pass next time, and each setting's name once. A write counts
 ' even when it stores the value already held, so a reader compares the value with what it
 ' last used before acting. JRScreen hands the names to a screen coming back on top

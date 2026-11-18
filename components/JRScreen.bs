@@ -145,8 +145,8 @@ sub markSettingsSeen()
   m.settingsNode = currentSettingsNode()
   m.settingsMark = 0
   if not isValid(m.settingsNode) then return
-  changes = m.settingsNode.callFunc("changedSince", 0)
-  if isValid(changes) then m.settingsMark = changes.mark
+  mark = m.settingsNode.callFunc("changeMark")
+  if isValid(mark) then m.settingsMark = mark
 end sub
 
 ' Hand onSettingsChanged the settings written since this screen last took note, when there are

@@ -23,6 +23,17 @@ namespace tests
     @describe("changedSince")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+    @it("gives the mark changedSince reports the writes after")
+    function _()
+      m.assertEqual(m.settingsNode.callFunc("changeMark"), 0, "no write yet")
+      m.settingsNode.itemGridReset = true
+      mark = m.settingsNode.callFunc("changeMark")
+      m.assertEqual(mark, m.settingsNode.callFunc("changedSince", 0).mark)
+
+      m.settingsNode.uiRowLayout = "fullwidth"
+      m.assertEqual(m.settingsNode.callFunc("changedSince", mark).names, ["uiRowLayout"])
+    end function
+
     @it("reports nothing on a node no setting was written to")
     function _()
       changes = m.settingsNode.callFunc("changedSince", 0)
@@ -32,7 +43,7 @@ namespace tests
 
     @it("names each setting written after the mark, once")
     function _()
-      start = m.settingsNode.callFunc("changedSince", 0).mark
+      start = m.settingsNode.callFunc("changeMark")
       m.settingsNode.itemGridShowItemCount = true
       m.settingsNode.itemGridReset = true
       m.settingsNode.itemGridShowItemCount = false
@@ -46,7 +57,7 @@ namespace tests
     @it("leaves out what was written before the mark")
     function _()
       m.settingsNode.itemGridReset = true
-      mark = m.settingsNode.callFunc("changedSince", 0).mark
+      mark = m.settingsNode.callFunc("changeMark")
       m.settingsNode.uiRowLayout = "fullwidth"
 
       changes = m.settingsNode.callFunc("changedSince", mark)
@@ -65,7 +76,7 @@ namespace tests
     @it("counts a write of the value already held")
     function _()
       m.settingsNode.itemGridReset = true
-      mark = m.settingsNode.callFunc("changedSince", 0).mark
+      mark = m.settingsNode.callFunc("changeMark")
       m.settingsNode.itemGridReset = true
 
       m.assertEqual(m.settingsNode.callFunc("changedSince", mark).names, ["itemGridReset"])
