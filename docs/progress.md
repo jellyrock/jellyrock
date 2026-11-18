@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-18: update(syncplay): Stay in step with a new engine; rejoin a lost group
 - 2026-11-18: ci: Wait out a busy Weblate repository; count translations in the changelog
 - 2026-11-17: fix(home): Hide the Live TV rows from users without Live TV access
 - 2026-11-15: chore(tooling): Refuse to run checks on a stale install
