@@ -5,7 +5,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [3.5.0](https://github.com/jellyrock/jellyrock/compare/v3.4.0...v3.5.0) - 2026-11-18
+
+### Summary
+
+Adds an Only on item details option for backdrops, so they skip browsing and show on an item's page. Fixes the wrong audio track playing in MKV and MP4 files, a crash on Star from the overhang, and Live TV rows that never loaded for users without Live TV access. The list below has 1 more fix.
 
 ### Added
 
