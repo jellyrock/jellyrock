@@ -311,7 +311,7 @@ Release prep, in order:
 
 The job also checks the branch, runs `lint:translations` and pushes the release branch before step 5.
 
-**Translator credit** needs nothing extra. Release PRs are squash-merged with the PR body as the message, and GitHub appends a `Co-authored-by` trailer for every author and co-author of the PR's commits, so each cherry-picked translator is credited on `main`. Checked 2026-10-04 on a throwaway repo with the same squash settings, merged both with `gh pr merge --squash` and from the web page.
+**Translator credit** needs nothing extra. Release PRs are squash-merged with the PR body as the message, and GitHub appends a `Co-authored-by` trailer for every author and co-author of the PR's commits, so each cherry-picked translator is credited on `main`. Checked 2026-10-04 on a throwaway repo with the same squash settings, merged both with `gh pr merge --squash` and from the web page. The Translations section of the changelog reads those trailers for its credit, and counts the strings from the locale files ([Changelog](../admin/changelog.md#where-an-entry-comes-from)).
 
 ### The merge rules
 
