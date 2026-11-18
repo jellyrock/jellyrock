@@ -66,6 +66,8 @@ sub init()
   m.skeletonRowsCreated = false
 end sub
 
+' Lay the rows out by the Row Layout setting (uiRowLayout). Run from init, and again by Home
+' when the setting changed while Home was covered (Home.onSettingsChanged).
 sub updateSize()
   uiRowLayout = m.global.user.settings.uiRowLayout
 

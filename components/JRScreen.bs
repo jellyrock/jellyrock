@@ -22,6 +22,21 @@ end sub
 sub onScreenHidden()
 end sub
 
+' Called when the screen comes back on top after settings were written while it was covered:
+' in Settings, or in another screen's page menu. `names` lists each changed setting once
+' (fields of m.global.user.settings). It runs before onScreenShown. A screen that reads a
+' setting once, in init, overrides this to apply the new value in place, keeping its scroll
+' position and focus. Three rules for an override:
+'   - A value the screen already uses must cost nothing: compare with it before acting, or
+'     apply it in a way that leaves an unchanged screen as it is. A name is listed for any
+'     write, the same value included, and for a change the screen made and applied itself.
+'   - Apply what is cheap here. Leave a redraw or a reload to onScreenShown with a flag, so
+'     the screen does one of them, not both.
+'   - Ignore names it does not read.
+' A theme or language change rebuilds every screen instead (settings.performSettingsExit).
+sub onSettingsChanged(_names as object)
+end sub
+
 ' Function called when the screen is being permanently removed by SceneManager
 ' Override this to clean up resources: task nodes, observers, large data structures
 ' Parent components are responsible for calling onDestroy() on children that need it
@@ -60,16 +75,19 @@ end sub
 ' their own onScreenShown / onRouteUpdate overrides.
 function onViewOpen(_params = {} as object) as dynamic
   m.global.activeRoutedView = m.top
+  markSettingsSeen()
   m.isShowFocusPending = true
   showScreenKeepingDialogFocus()
   return promises.resolve(invalid)
 end function
 
 ' Router: a previously-suspended view has returned to the top of the stack (goBack
-' uncovered it). Re-publish it as the active routed view, then restore via onScreenShown.
+' uncovered it). Re-publish it as the active routed view, hand it the settings changed while it
+' was covered, then restore via onScreenShown.
 function onViewResume(_params = {} as object) as dynamic
   m.isCoverPending = false
   m.global.activeRoutedView = m.top
+  deliverSettingsChanges()
   m.isShowFocusPending = true
   showScreenKeepingDialogFocus()
   return promises.resolve(invalid)
@@ -120,6 +138,37 @@ function ownedOpenDialog() as dynamic
   if not isValid(dialog) or not dialog.hasField("owner") then return invalid
   if not isInside(dialog.owner, m.top) or dialogHasAnswered(dialog) then return invalid
   return dialog
+end function
+
+' Note the settings as they stand now: deliverSettingsChanges reports the writes after this.
+sub markSettingsSeen()
+  m.settingsNode = currentSettingsNode()
+  m.settingsMark = 0
+  if not isValid(m.settingsNode) then return
+  changes = m.settingsNode.callFunc("changedSince", 0)
+  if isValid(changes) then m.settingsMark = changes.mark
+end sub
+
+' Hand onSettingsChanged the settings written since this screen last took note, when there are
+' any. A settings node replaced since (a sign-in or sign-out) is a new start, with nothing to
+' report: those rebuild the screens anyway.
+sub deliverSettingsChanges()
+  settings = currentSettingsNode()
+  if not isValid(settings) or not isValid(m.settingsNode) or not m.settingsNode.isSameNode(settings)
+    markSettingsSeen()
+    return
+  end if
+  changes = settings.callFunc("changedSince", m.settingsMark)
+  if not isValid(changes) then return
+  m.settingsMark = changes.mark
+  if changes.names.count() > 0 then onSettingsChanged(changes.names)
+end sub
+
+' The signed-in user's settings node (m.global.user.settings), or invalid.
+function currentSettingsNode() as dynamic
+  localUser = m.global.user
+  if not isValid(localUser) then return invalid
+  return localUser.settings
 end function
 
 ' Run onScreenShown without letting it take the focus from an open overlay dialog. Every screen's

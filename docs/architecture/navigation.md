@@ -70,12 +70,13 @@ Scene
 
 ### `JRScreen`
 
-Screens implement three functions, and `JRScreen.bs` supplies the defaults:
+Screens implement four functions, and `JRScreen.bs` supplies the defaults:
 
 | Function | When it runs | Default |
 |---|---|---|
 | `onScreenShown()` | The view opens, or comes back on top | Restores focus from `lastFocus`, else focuses the view |
 | `onScreenHidden()` | The view is covered or closed | Nothing |
+| `onSettingsChanged(names)` | The view comes back on top after settings were written while it was covered, before `onScreenShown()` | Nothing |
 | `onDestroy()` | The view is closed for good | `abandonApiPromises()` |
 
 SceneGraph does not chain an override to the base `onDestroy()`. For a screen that calls `fetchAsync`, the `auto-abandon-promises` BSC plugin injects `abandonApiPromises()` into the screen's own `onDestroy()`, and fails the build when the screen has none. A screen that reaches the API pool through a shared `source/` helper is not detected; its header lists that limit.
@@ -88,14 +89,24 @@ sgRouter drives its views through `onViewOpen`, `onViewResume`, `onViewSuspend` 
 
 | Router callback | What `JRScreen` does |
 |---|---|
-| `onViewOpen` (first time on top) | Sets `m.global.activeRoutedView` to itself, then `onScreenShown()` |
-| `onViewResume` (back on top after being covered) | The same |
+| `onViewOpen` (first time on top) | Sets `m.global.activeRoutedView` to itself, notes the settings as they stand, then `onScreenShown()` |
+| `onViewResume` (back on top after being covered) | The same, except that between the two it hands `onSettingsChanged()` the settings written since it last took note, when there are any ([a setting changed while covered](#a-setting-changed-while-a-screen-was-covered)) |
 | `onViewSuspend` (covered by a new view) | `saveLastFocus()` stores the deepest focused node in `lastFocus`, then marks the view covered. The view is still visible, so `onScreenHidden()` waits for `hideCovered()` |
 | `hideCovered()` (called by `JRScene`, not the router) | Hides the view. If it was covered, ends the open dialog the view or a component inside it opened ([dialogs.md](dialogs.md#presenting-and-tearing-down)), then runs `onScreenHidden()` ([the screen swap](#the-screen-swap)) |
 | `beforeViewClose` (closed for good) | `onScreenHidden()`, then `onDestroy()`, then abandons an open dialog the view or a component inside it opened, unless it has answered ([dialogs.md](dialogs.md#presenting-and-tearing-down)) |
 | `handleFocus` | `restoreScreenFocus()`, unless the call is only a notice ([focus management](#focus-management)) |
 
 `activeRoutedView` is set before `onScreenShown()` runs, because the overhang controller, the playback code and the options key all find the screen on show through it. `getActiveView()` in `source/utils/misc.bs` returns it.
+
+#### A setting changed while a screen was covered
+
+Settings opens over any screen, and the screen under it is suspended, not rebuilt, so a setting that screen read once in `init()` would stay as it was until the screen was opened again. A library's page menu can change an app-wide setting too (Item Titles), with other libraries suspended under it. So every screen that comes back on top is told which settings were written while it was covered:
+
+- **The record.** `JellyfinUserSettings.onSettingChanged` already sees every write to a setting. It also counts them and keeps, for each setting, the count at its last write, whether or not auto-sync saves it. `changedSince(mark)` returns `{ mark, names }`: the settings written after `mark`, and the mark to pass next. The library display settings (`displaySettings`) are not part of it.
+- **The delivery.** `JRScreen` takes a mark in `onViewOpen`. In `onViewResume` it asks for the names written since, moves the mark on and calls `onSettingsChanged(names)` when the list is not empty, before `onScreenShown()`. A settings node replaced since the mark (a sign-in or sign-out) is a new start with nothing to report; both rebuild the screens anyway.
+- **The screen applies.** An override compares each value with what it last used, or applies it in a way that leaves an unchanged screen as it is: a name is listed for any write, the same value included, and for a change the screen made and applied itself. It applies what is cheap at once, and leaves a redraw or a reload to its `onScreenShown()` with a flag, so it does one of them, not both. `BaseGridView` applies the item count, Return to Top and the presentation pane's backdrop at once, and marks the titles for a redraw (`m.isRelayoutDue`), which a reload due for another reason covers. `Home` lays its rows out again for Row Layout.
+
+A theme or language change keeps its rebuild instead: `settings.performSettingsExit` reloads Home and the screen Settings was opened from (`JRScene.reloadRoutedHome`), so every node is built with the new colors and strings. The scene's own backdrop mode is not a screen's: Settings calls `JRScene.refreshBackdropSetting` when Backdrop Images changes.
 
 > **Never set `m.top.id` on a routed view.** sgRouter uses the view's `id` as its history id, and changing it breaks `goBack`.
 

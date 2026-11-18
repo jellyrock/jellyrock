@@ -1,0 +1,90 @@
+namespace tests
+
+  ' JellyfinUserSettings.changedSince: the record of setting writes that JRScreen reads to tell
+  ' a screen coming back on top which settings changed while it was covered.
+  @suite("JellyfinUserSettings - changedSince")
+  class JellyfinUserSettingsChangesTests extends tests.BaseTestSuite
+
+    private settingsNode as object
+
+    ' beforeEach, not setup: every test writes settings (tests/CLAUDE.md). A fresh node has
+    ' auto-sync off, so nothing here reaches the registry.
+    protected override sub beforeEach()
+      super.beforeEach()
+      m.settingsNode = CreateObject("roSGNode", "JellyfinUserSettings")
+    end sub
+
+    protected override sub afterEach()
+      m.settingsNode = invalid
+      super.afterEach()
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("changedSince")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reports nothing on a node no setting was written to")
+    function _()
+      changes = m.settingsNode.callFunc("changedSince", 0)
+      m.assertEqual(changes.mark, 0)
+      m.assertEqual(changes.names.count(), 0)
+    end function
+
+    @it("names each setting written after the mark, once")
+    function _()
+      start = m.settingsNode.callFunc("changedSince", 0).mark
+      m.settingsNode.itemGridShowItemCount = true
+      m.settingsNode.itemGridReset = true
+      m.settingsNode.itemGridShowItemCount = false
+
+      changes = m.settingsNode.callFunc("changedSince", start)
+      m.assertEqual(changes.names.count(), 2)
+      m.assertTrue(inArray(changes.names, "itemGridShowItemCount"))
+      m.assertTrue(inArray(changes.names, "itemGridReset"))
+    end function
+
+    @it("leaves out what was written before the mark")
+    function _()
+      m.settingsNode.itemGridReset = true
+      mark = m.settingsNode.callFunc("changedSince", 0).mark
+      m.settingsNode.uiRowLayout = "fullwidth"
+
+      changes = m.settingsNode.callFunc("changedSince", mark)
+      m.assertEqual(changes.names, ["uiRowLayout"])
+    end function
+
+    @it("reports nothing past the mark it returned last")
+    function _()
+      m.settingsNode.itemGridReset = true
+      first = m.settingsNode.callFunc("changedSince", 0)
+      second = m.settingsNode.callFunc("changedSince", first.mark)
+      m.assertEqual(second.mark, first.mark)
+      m.assertEqual(second.names.count(), 0)
+    end function
+
+    @it("counts a write of the value already held")
+    function _()
+      m.settingsNode.itemGridReset = true
+      mark = m.settingsNode.callFunc("changedSince", 0).mark
+      m.settingsNode.itemGridReset = true
+
+      m.assertEqual(m.settingsNode.callFunc("changedSince", mark).names, ["itemGridReset"])
+    end function
+
+    ' Saved or not, a screen needs to know: a reset rewrites the settings with auto-sync off
+    @it("counts a write while auto-sync is off")
+    function _()
+      m.settingsNode.callFunc("disableAutoSync")
+      m.settingsNode.uiRowLayout = "fullwidth"
+      m.assertEqual(m.settingsNode.callFunc("changedSince", 0).names, ["uiRowLayout"])
+    end function
+
+    @it("leaves out the library display settings")
+    function _()
+      m.settingsNode.displaySettings = { "lib1": { "sort": "SortName" } }
+      m.assertEqual(m.settingsNode.callFunc("changedSince", 0).names.count(), 0)
+    end function
+
+  end class
+
+end namespace

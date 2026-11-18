@@ -5,6 +5,8 @@
     <field id="quickPlayNode" type="node" />
     <function name="updateHomeRows" />
     <function name="loadLibraries" />
+    <!-- Lay the rows out by the Row Layout setting (uiRowLayout): init, and Home when it changes -->
+    <function name="updateSize" />
     <function name="onDestroy" />
     <function name="updateBackdropForFocusedItem" />
   </interface>

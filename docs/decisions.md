@@ -2940,6 +2940,16 @@ The settings icon's page menu gives every row a glyph, as the player's gear menu
 
 Ruled out: plain text rows, the pattern a 2026-11-16 survey found inside other Jellyfin clients' view options (the player menu's precedent won); `view_quilt` with `view_module`, which looked alike, and `view_module` alone draws short and wide; `dashboard`, a 2×2 of tiles like `grid_view`; `tab`, which shows a tab rather than the choice; `bookmark`, which reads as save-for-later beside Favorites.
 
+## decision-id: settings-changed-while-covered
+
+**date**: 2026-11-18
+**status**: accepted
+**related-files**: `components/JRScreen.bs`, `components/data/jellyfin/JellyfinUserSettings.bs`, `components/ItemGrid/BaseGridView.bs`, `components/home/Home.bs`
+
+A screen covered while a setting changes (Settings opened over it, or another library's page menu) is told when it comes back. `JellyfinUserSettings.onSettingChanged` records each setting write, saved or not, and `JRScreen.onViewResume` hands the screen's `onSettingsChanged(names)` the settings written since it last took note, before `onScreenShown()`. The screen compares each with what it last used, applies cheap changes in place and leaves a redraw to `onScreenShown()` with a flag. This replaces the checks each screen made by hand on every show (`titlesSettingChanged`, the presentation backdrop reapplied on every show).
+
+Ruled out: a screen observing `m.global.user.settings` fields itself (the node is shared, so an `unobserveField` at teardown can remove another component's observer, as `ObserverRegistry.spec.bs` records, and a covered screen would redraw while nobody sees it); rebuilding the screen under Settings on every change, as a theme change does (loses the scroll position and focus, and fetches again); keeping the record on the scene beside `contentVersion` (the scene never sees a setting write; the settings node sees every one). A theme or language change keeps its rebuild, since colors and strings are set when each node is built.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
