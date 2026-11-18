@@ -1,6 +1,4 @@
 enum HomeAction
-  OPEN_SEARCH = "openSearch"
-  OPEN_SETTINGS = "openSettings"
   CHANGE_USER = "changeUser"
   CHANGE_SERVER = "changeServer"
   SIGN_OUT = "signOut"

@@ -1,7 +1,4 @@
-import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/overhangRow.bs"
-
-const TAB_ICON_GUTTER = 6 ' The 63/45 canvas pads exactly 6 px at the glyph size: 12 px visible to the text
 
 sub init()
   ' TextButton.init() has already run: m.buttonBackground, m.buttonBorder, m.buttonText are set
@@ -17,9 +14,6 @@ sub init()
   m.top.padding = overhangRow.TAB_PADDING
   m.top.minHeight = overhangRow.ROW_HEIGHT
 
-  ' The glyph matches the overhang's icon buttons
-  m.top.iconSize = overhangRow.GLYPH_SIZE
-  m.top.iconGutter = TAB_ICON_GUTTER
   m.top.shouldSnapToGrid = true
 
   ' Unfocused state: transparent background/border so only text is visible
@@ -61,13 +55,6 @@ sub onRenderComplete()
   setSizeAndCenterText()
 end sub
 
-' Draws the glyph for the selection state: the filled one while selected, else the outlined
-sub onTabIconChanged()
-  uri = m.top.tabIcon
-  if m.top.isButtonSelected and isValidAndNotEmpty(m.top.tabSelectedIcon) then uri = m.top.tabSelectedIcon
-  if m.top.icon <> uri then m.top.icon = uri
-end sub
-
 ' Overrides TextButton.onFocusChanged to use the virtual isFocused field.
 ' Individual tabs never receive real Roku focus; JRTabBar manages focus
 ' externally via the isFocused field.
@@ -93,6 +80,5 @@ end sub
 
 ' Called when isFocused or isButtonSelected changes; updates all visual state
 sub onStateChanged()
-  onTabIconChanged()
   onFocusChanged()
 end sub

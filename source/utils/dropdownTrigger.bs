@@ -1,0 +1,22 @@
+import "pkg:/source/utils/pixelGrid.bs"
+
+' The width of JRDropdown's trigger name. Pure, so its edges can be tested without a render.
+namespace dropdownTrigger
+
+  ' JRDropdown.maxWidth when the box has no limit. 0 is a limit: no room for the name.
+  const NO_LIMIT = -1
+
+  ' The name's width: its measured width rounded up onto the grid, cut to what `maxWidth`
+  ' leaves after the box's other parts (`otherWidth`: padding, avatar, chevron, gaps). A cut
+  ' name keeps at least one grid step, because a Label of width 0 sizes itself to its text and
+  ' would draw the whole name. A negative maxWidth is no limit. 0 for a name not yet measured.
+  function labelWidth(textWidth as integer, maxWidth as integer, otherWidth as integer) as integer
+    width = snapToGrid(textWidth)
+    if width = 0 or maxWidth <= dropdownTrigger.NO_LIMIT then return width
+    cap = floorToGrid(maxWidth - otherWidth)
+    if cap < PIXEL_GRID then cap = PIXEL_GRID
+    if width > cap then return cap
+    return width
+  end function
+
+end namespace

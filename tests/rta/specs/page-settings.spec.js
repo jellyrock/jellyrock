@@ -113,6 +113,15 @@ it('the gear on a movie library opens a menu under it: its page entries, then Al
     'Default tab (Movies)',
     'All settings',
   ]);
+  const icons = await getVals([0, 1, 2, 3, 4].map((i) => `#optionList.content.${i}.icon`));
+  expect(icons, 'each row wears its glyph, All settings the gear').toEqual([
+    'pkg:/images/icons/layout_$$RES$$.png',
+    'pkg:/images/icons/itemsPerRow_$$RES$$.png',
+    'pkg:/images/icons/itemTitles_$$RES$$.png',
+    'pkg:/images/icons/defaultTab_$$RES$$.png',
+    'pkg:/images/icons/settings_menu_$$RES$$.png',
+  ]);
+  if (process.env.RTA_CAPTURE) await captureRawUI('page-settings-menu');
   expect(await getVal('#optionList.itemFocused'), 'focus opens on the first entry').toBe(0);
 
   // The icon is in the overhang row, with nothing above it: the menu hangs below.

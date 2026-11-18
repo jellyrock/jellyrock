@@ -1,0 +1,56 @@
+import "pkg:/source/utils/dropdownTrigger.bs"
+
+namespace tests
+
+  @suite("dropdownTrigger.labelWidth - the trigger's name within the box's maxWidth")
+  class DropdownTriggerLabelWidthTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("with no limit")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("gives the name its measured width, rounded up onto the grid")
+    function _()
+      m.assertEqual(dropdownTrigger.labelWidth(400, dropdownTrigger.NO_LIMIT, 102), 402)
+    end function
+
+    @it("treats any negative maxWidth as no limit")
+    function _()
+      m.assertEqual(dropdownTrigger.labelWidth(400, -7, 102), 402)
+    end function
+
+    @it("leaves an unmeasured name at 0, so the caller waits for the render")
+    function _()
+      m.assertEqual(dropdownTrigger.labelWidth(0, 300, 102), 0)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("with a maxWidth")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("leaves a name that fits as it is")
+    function _()
+      m.assertEqual(dropdownTrigger.labelWidth(150, 402, 102), 150)
+    end function
+
+    @it("cuts a longer name to what the box has left after its other parts")
+    function _()
+      m.assertEqual(dropdownTrigger.labelWidth(500, 402, 102), 300)
+    end function
+
+    @it("cuts it down onto the grid")
+    function _()
+      m.assertEqual(dropdownTrigger.labelWidth(500, 403, 102), 300)
+    end function
+
+    ' A Label of width 0 sizes itself to its text, so a cap of 0 would draw the whole name:
+    ' the opposite of no room.
+    @it("never cuts a name below one grid step, even with no room for it")
+    function _()
+      m.assertEqual(dropdownTrigger.labelWidth(500, 0, 102), 3)
+      m.assertEqual(dropdownTrigger.labelWidth(500, 60, 102), 3)
+    end function
+
+  end class
+
+end namespace

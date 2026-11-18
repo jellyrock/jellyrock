@@ -429,8 +429,8 @@ namespace tests
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("does not run for a section already on the migration's version")
-    @params("3.5.0")
     @params("3.6.0")
+    @params("3.7.0")
     function _(lastRunVersion)
       testUserId = "test-library-tab-008"
       reg = m.userSection(testUserId, lastRunVersion)
@@ -445,8 +445,9 @@ namespace tests
     end function
 
     @it("runs for a section below the migration's version")
+    @params("3.5.0")
+    @params("3.5.1")
     @params("3.4.0")
-    @params("3.4.1")
     @params("3.3.1")
     @params("2.13.0")
     function _(lastRunVersion)
