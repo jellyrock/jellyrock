@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update lint-staged from v17.6.0 to v17.6.1 ([#1395](https://github.com/jellyrock/jellyrock/pull/1395)) by [@renovate[bot]](https://github.com/apps/renovate)
 - Update prettier from v3.9.10 to v3.10.1 ([#1363](https://github.com/jellyrock/jellyrock/pull/1363)) by [@renovate[bot]](https://github.com/apps/renovate)
 - Update dotenv from v18.0.9 to v18.0.10 ([#1342](https://github.com/jellyrock/jellyrock/pull/1342)) by [@renovate[bot]](https://github.com/apps/renovate)
 - Update actions/setup-java action to v6.2.0 ([#1347](https://github.com/jellyrock/jellyrock/pull/1347)) by [@renovate[bot]](https://github.com/apps/renovate)
