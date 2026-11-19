@@ -13,11 +13,20 @@ import { RTA_CONFIG } from '../config.js';
 import { authenticate } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
-import { selectHomeTab, waitPageMenu } from '../lib/nav.js';
+import { captureRawUI } from '../capture.js';
+import {
+  navSettings,
+  selectHomeTab,
+  settingsMenuTitles,
+  waitPageMenu,
+  waitSettingsMenuHas,
+  walkSettingsMenuTo,
+} from '../lib/nav.js';
 import {
   getActiveVal,
   getActiveVals,
   getVal,
+  getVals,
   homeListId,
   press,
   scrollFocus,
@@ -29,6 +38,7 @@ import {
   walkOverhangRowTo,
 } from '../lib/steps.js';
 
+const CAPTURE = process.env.RTA_CAPTURE === '1';
 const LOCALE = RTA_CONFIG.languages[0];
 const atSettingsIcon = (f) => f?.node?.id === 'settingsIcon';
 
@@ -99,6 +109,12 @@ it("Home's gear lists Home's settings with their values, then All settings; Favo
     'Rewatching Next Up (Disabled)',
     'All settings',
   ]);
+  // Each row wears its glyph in the gutter, as the player's settings menu does
+  const icons = await getVals([0, 1, 2, 3, 4, 5].map((i) => `#optionList.content.${i}.icon`));
+  ['rowLayout_', 'episodeImages_', 'rowSize_', 'maxDays_', 'rewatching_', 'settings_menu_'].forEach(
+    (glyph, i) => expect(icons[i], `row ${i}'s glyph`).toContain(glyph),
+  );
+  if (CAPTURE) await captureRawUI('homeMenu');
   await press(ecp.Key.Back);
   await waitDialogClosed('the Home menu closed');
   await waitFocused(atSettingsIcon, { timeout: 8000, interval: 250, label: 'back on the gear' });
@@ -111,6 +127,7 @@ it("Home's gear lists Home's settings with their values, then All settings; Favo
     'Row Layout (Full Width)',
     'All settings',
   ]);
+  if (CAPTURE) await captureRawUI('homeMenuFavorites');
 });
 
 it("Row Layout picked from Home's menu lays the rows out again in place and saves it", async () => {
@@ -156,4 +173,96 @@ it("Max Days Next Up picked from Home's menu is saved and reloads Home's rows", 
   expect((await dialogRows())[3], 'the menu names the new value').toBe(
     'Max Days Next Up (30 days)',
   );
+});
+
+/** In Home's open menu: open row `menuRow`'s list, wait for its first row, and return its rows. */
+async function openList(label, menuRow, firstRow) {
+  await scrollFocus({
+    keyPath: '#optionList.itemFocused',
+    target: menuRow,
+    forwardKey: ecp.Key.Down,
+    backKey: ecp.Key.Up,
+    label: `${label}: the menu row`,
+  });
+  await press(ecp.Key.Ok);
+  await waitFor('#optionList.content.0.title', (t) => t === firstRow, {
+    label: `${label}: the list`,
+    timeout: 10000,
+  });
+  return dialogRows();
+}
+
+it("each of Home's lists offers its setting's choices, the one in force focused", async () => {
+  await launchHome('the Home lists');
+  await openHomeMenu('Home');
+
+  expect(await openList('Row Layout', 0, 'Original'), 'Row Layout').toEqual([
+    'Original',
+    'Full Width',
+  ]);
+  if (CAPTURE) await captureRawUI('homeRowLayoutList');
+  await press(ecp.Key.Back);
+  await waitPageMenu('the menu again');
+
+  expect(await openList('Episode Images', 1, 'Use Web Client Setting'), 'Episode Images').toEqual([
+    'Use Web Client Setting',
+    'Use Episode Image',
+    'Use Show Image',
+  ]);
+  if (CAPTURE) await captureRawUI('homeEpisodeImagesList');
+  await press(ecp.Key.Back);
+  await waitPageMenu('the menu again');
+
+  expect(await openList('Home Row Size', 2, '8'), 'Home Row Size').toEqual([
+    '8',
+    '16',
+    '24',
+    '32',
+    '48',
+    '64',
+    '100',
+  ]);
+  expect(await getVal('#optionList.itemFocused'), 'the default, 32, in focus').toBe(3);
+  if (CAPTURE) await captureRawUI('homeRowSizeList');
+  await press(ecp.Key.Back);
+  await waitPageMenu('the menu again');
+
+  expect(await openList('Max Days Next Up', 3, 'No limit'), 'Max Days Next Up').toEqual([
+    'No limit',
+    '7 days',
+    '14 days',
+    '30 days',
+    '60 days',
+    '90 days',
+    '180 days',
+    '365 days',
+  ]);
+  if (CAPTURE) await captureRawUI('homeMaxDaysList');
+  await press(ecp.Key.Back);
+  await waitPageMenu('the menu again');
+
+  expect(await openList('Rewatching Next Up', 4, 'Disabled'), 'Rewatching Next Up').toEqual([
+    'Disabled',
+    'Enabled',
+  ]);
+});
+
+it("Settings holds Home's settings in User Interface's Home group", async () => {
+  await launchHome('the Home group in Settings');
+  await navSettings();
+  await walkSettingsMenuTo('User Interface');
+  await press(ecp.Key.Right);
+  await waitSettingsMenuHas('Home', 'the User Interface group');
+  await walkSettingsMenuTo('Home');
+  await press(ecp.Key.Right);
+  await waitSettingsMenuHas('Row Layout', 'the Home group');
+  if (CAPTURE) await captureRawUI('settingsHomeGroup');
+  expect(await settingsMenuTitles(), 'the Home group').toEqual([
+    'Episode Images Next Up',
+    'Home Row Size',
+    'Max Days Next Up',
+    'Rewatching Next Up',
+    'Row Layout',
+    "Use Web Client's Home Section Arrangement",
+  ]);
 });
