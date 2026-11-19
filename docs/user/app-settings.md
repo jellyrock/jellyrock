@@ -545,10 +545,9 @@ Settings relating to how the application looks.
     - [Grid View Settings](#user-interface-libraries-general-grid-view-settings)
       - [Item Count](#itemGridShowItemCount)
       - [Item Titles](#itemGridShowTitles)
+    - [Community and Critical Ratings](#uiMoviesShowRatings)
     - [Hide Taglines](#uiDetailsHideTagline)
     - [Return to Top](#itemGridReset)
-  - [Movies](#user-interface-libraries-movies)
-    - [Community and Critical Ratings](#uiMoviesShowRatings)
   - [Photos](#user-interface-libraries-photos)
     - [Slideshow](#photosSlideshow)
     - [Random Order](#photosRandom)
@@ -808,6 +807,18 @@ Settings relating to the appearance of Library pages.
 
 Settings relating to the appearance of pages in all Libraries.
 
+<h5 id="uiMoviesShowRatings">Community and Critical Ratings</h5>
+
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-libraries">Libraries</a> › <a href="#user-interface-libraries-general">General</a> › <a href="#uiMoviesShowRatings">Community and Critical Ratings</a>
+
+Show community and critic ratings on details screens, in a library's Grid with details layout and in the player.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `uiMoviesShowRatings` |
+| Type | `bool` |
+| Default | `true` |
+
 <h5 id="uiDetailsHideTagline">Hide Taglines</h5>
 
 <a href="#user-interface">User Interface</a> › <a href="#user-interface-libraries">Libraries</a> › <a href="#user-interface-libraries-general">General</a> › <a href="#uiDetailsHideTagline">Hide Taglines</a>
@@ -859,24 +870,6 @@ Show each item's title under its poster.
 | Property | Value |
 | --- | --- |
 | Setting Name | `itemGridShowTitles` |
-| Type | `bool` |
-| Default | `true` |
-
-#### Movies
-
-<a id="user-interface-libraries-movies"></a>
-
-Settings relating to the appearance of pages in Movie Libraries.
-
-<h5 id="uiMoviesShowRatings">Community and Critical Ratings</h5>
-
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-libraries">Libraries</a> › <a href="#user-interface-libraries-movies">Movies</a> › <a href="#uiMoviesShowRatings">Community and Critical Ratings</a>
-
-Ratings for how good a movie is.
-
-| Property | Value |
-| --- | --- |
-| Setting Name | `uiMoviesShowRatings` |
 | Type | `bool` |
 | Default | `true` |
 
@@ -932,7 +925,7 @@ Blur images of unwatched episodes.
 
 <a href="#user-interface">User Interface</a> › <a href="#user-interface-libraries">Libraries</a> › <a href="#user-interface-libraries-tv-shows">TV Shows</a> › <a href="#uiTvShowsDisableCommunityRating">Disable Community Rating for Episodes</a>
 
-Hide the star and community rating for episodes of a TV show. This is to prevent spoilers of an upcoming good/bad episode.
+Hide the community and critic ratings of episodes, on their details screens and in the player, so a rating cannot spoil an upcoming episode.
 
 | Property | Value |
 | --- | --- |

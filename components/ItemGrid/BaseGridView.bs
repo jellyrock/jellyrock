@@ -1918,8 +1918,8 @@ sub onPageSettingChanged(id as string, value as string)
 end sub
 
 ' JRScreen hook: settings written while this screen was covered. The ones read once in init
-' apply here; the titles leave a redraw to onScreenShown (m.isRelayoutDue), which a reload
-' there covers.
+' apply here, and so do the ones the Grid with details pane reads as it draws; the titles leave
+' a redraw to onScreenShown (m.isRelayoutDue), which a reload there covers.
 sub onSettingsChanged(names as object)
   userSettings = m.global.user.settings
   if inArray(names, "itemGridReset") then m.resetGrid = userSettings.itemGridReset
@@ -1929,6 +1929,15 @@ sub onSettingsChanged(names as object)
   end if
   if inArray(names, "itemGridShowTitles") and titlesSettingChanged() then m.isRelayoutDue = true
   if inArray(names, "uiShowBackdrop") then reapplyPresentationBackdropSetting()
+  if inArray(names, "uiDetailsHideTagline") or inArray(names, "uiMoviesShowRatings") then redrawPresentationInfo()
+end sub
+
+' Draw the Grid with details pane again for the item in focus: it reads Hide Taglines and the
+' ratings setting as it draws. The presenter draws nothing on a layout without the pane.
+sub redrawPresentationInfo()
+  if isValid(m.presenter) and isValid(m.selectedFavoriteItem)
+    m.presenter.onItemFocused(m.selectedFavoriteItem, m.view, m.layout)
+  end if
 end sub
 
 ' Write the strip again for the item count setting. Only a loaded grid or the guide shows a

@@ -1,0 +1,43 @@
+import "pkg:/source/utils/ratingsDisplay.bs"
+
+namespace tests
+
+  ' The one rule for whether ratings show (source/utils/ratingsDisplay.bs), which the details
+  ' screen, the player and the Grid with details pane all follow.
+  @suite("ratingsDisplay - whether ratings show")
+  class RatingsDisplayTests extends tests.BaseTestSuite
+
+    private function settings(showRatings as dynamic, hideEpisodeRatings as dynamic) as object
+      return { uiMoviesShowRatings: showRatings, uiTvShowsDisableCommunityRating: hideEpisodeRatings }
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isShown")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("shows ratings on any item while the ratings setting is on")
+    function _()
+      m.assertTrue(ratingsDisplay.isShown(m.settings(true, false), false))
+      m.assertTrue(ratingsDisplay.isShown(m.settings(true, false), true))
+    end function
+
+    @it("hides ratings on every item, episodes included, while the ratings setting is off")
+    function _()
+      m.assertFalse(ratingsDisplay.isShown(m.settings(false, false), false))
+      m.assertFalse(ratingsDisplay.isShown(m.settings(false, false), true))
+    end function
+
+    @it("hides an episode's ratings, and only an episode's, while the episode setting is on")
+    function _()
+      m.assertFalse(ratingsDisplay.isShown(m.settings(true, true), true))
+      m.assertTrue(ratingsDisplay.isShown(m.settings(true, true), false))
+    end function
+
+    @it("shows ratings while either setting is unset, as their defaults do")
+    function _()
+      m.assertTrue(ratingsDisplay.isShown(m.settings(invalid, invalid), true))
+    end function
+
+  end class
+
+end namespace

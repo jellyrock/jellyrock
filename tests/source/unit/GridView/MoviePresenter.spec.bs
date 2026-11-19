@@ -144,6 +144,26 @@ namespace tests
       m.assertEqual(config.translation[1] > headerStrip.CONTENT_TOP, expected, "the grid drops for the panel only in presentation")
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("paneTagline()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("gives the item's first tagline")
+    function _()
+      m.assertEqual(m.presenter.paneTagline({ taglines: ["In space no one can hear you scream.", "b"] }, { uiDetailsHideTagline: false }), "In space no one can hear you scream.")
+    end function
+
+    @it("gives none while Hide Taglines is on, as the details screen does")
+    function _()
+      m.assertEqual(m.presenter.paneTagline({ taglines: ["In space no one can hear you scream."] }, { uiDetailsHideTagline: true }), "")
+    end function
+
+    @it("gives none for an item with no tagline")
+    function _()
+      m.assertEqual(m.presenter.paneTagline({ taglines: [] }, { uiDetailsHideTagline: false }), "")
+      m.assertEqual(m.presenter.paneTagline({}, { uiDetailsHideTagline: false }), "")
+    end function
+
   end class
 
 end namespace
