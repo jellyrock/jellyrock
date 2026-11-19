@@ -1220,8 +1220,8 @@ end sub
 ' nothing, as a selected tab does: the screen's underlined title already says where the
 ' viewer is. `isFromIcon` is whether the icon itself was pressed: the screen being left then
 ' notes it, so the viewer comes back to the icon. Star opens the same route from the screen
-' (Home.onOptionsKey, BaseGridView.onOptionsKey), and the viewer comes back to where Star
-' was pressed.
+' (JRScreen.onOptionsKey, through openSettingsIconFromStar), and the viewer comes back to
+' where Star was pressed.
 sub openClusterRoute(id as string, isFromIcon = true as boolean)
   path = ""
   if id = "search"
@@ -1276,6 +1276,16 @@ sub openPageMenu(focusEntryId = "" as string, isFromIcon = false as boolean)
   m.pageMenuDialog = showOverflowMenu(translate(translationKeys.LabelSettings), menu.labels, "onPageMenuResult", anchor, menu.icons, focusIndex)
   claimPageDialogForScreen(view)
 end sub
+
+' Star on a screen that gives it no meaning of its own does what the settings icon does
+' (JRScreen.onOptionsKey): the page's menu, or Settings. Only where the icon is on show: before
+' sign-in and on a player there is none, and Star there does nothing.
+' @return {boolean} whether the icon's action ran
+function openSettingsIconFromStar() as boolean
+  if not m.overhang.visible or m.overhang.isClusterVisible <> true then return false
+  openPageMenu()
+  return true
+end function
 
 ' The page's dialogs belong to the screen they are about, so they end when another screen
 ' covers it (JRScreen.endOwnedDialog), although the scene presents them.

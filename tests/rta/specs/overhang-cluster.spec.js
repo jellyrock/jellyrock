@@ -4,8 +4,9 @@
  * opens Settings, and Back lands on the gear again, on a library screen and on details as
  * on Home. Settings' own Up enters the row too, at the user menu Home, Settings and Search
  * show. On the search screen, Up from the keyboard's top row enters the row, and an icon for
- * the screen on show does nothing. Star on Home opens Settings, as the gear does, and Back
- * from a Settings that Star opened returns to where Star was pressed, not the gear. Each screen
+ * the screen on show does nothing. Star does what the gear does wherever the gear shows (the
+ * page's menu on Home and a library, Settings on details and search; Settings itself leaves),
+ * and Back from a Settings that Star opened returns to where Star was pressed. Each screen
  * of a chain keeps its own icon to come back to, a theme reload from Settings returns to the
  * screen Settings was opened from, and the search screen's submitted query shows as the
  * overhang's status. A player shows no cluster.
@@ -296,6 +297,39 @@ it("Star from the row on Home opens Home's menu, as the gear does", async () => 
   await press(ecp.Key.Back);
   await waitDialogClosed("Back closed Home's menu");
   expect(await getActiveVal('subtype()'), 'and Back left Home open').toBe('Home');
+});
+
+// Details and search declare no page entries, so Star does what the gear does there: Settings.
+it('Star on details opens Settings, and Back returns to details, not the gear', async () => {
+  await freshApp('overhang-cluster star details');
+  await navMovieDetails(ctx);
+  const viewId = await getActiveVal('id');
+  await waitFocusInside(viewId, { label: 'details before Star' });
+
+  await press(ecp.Key.Option);
+  await waitSettingsScreen();
+  await press(ecp.Key.Back);
+  // The same screen's id: a details screen built again would have another
+  await waitFocusInside(viewId, {
+    label: 'focus on the same details screen after Back, not the gear',
+    timeout: 20000,
+  });
+});
+
+it('Star on the search keyboard opens Settings, and Back returns to search', async () => {
+  await freshApp('overhang-cluster star search');
+  await openSearchKeyboard();
+
+  await press(ecp.Key.Option);
+  await waitSettingsScreen();
+  await press(ecp.Key.Back);
+  await waitFor('subtype()', (v) => v === 'SearchScreen', {
+    read: getActiveVal,
+    timeout: 20000,
+    interval: 250,
+    label: 'back on search',
+  });
+  await waitFocusInside('#kbd', { label: 'the keyboard again after Back, not the gear' });
 });
 
 it('search: Up from the keyboard enters the row, and the search icon there does nothing', async () => {

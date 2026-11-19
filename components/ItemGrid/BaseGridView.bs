@@ -2136,13 +2136,6 @@ end function
 ' Key Events
 ' ============================================================================
 
-' JRScreen hook: Star does what the settings icon does, from the overhang row as from the
-' grid: this page's menu, or Settings on a screen that declares no page settings.
-function onOptionsKey() as boolean
-  m.top.getScene().callFunc("openPageMenu")
-  return true
-end function
-
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
 

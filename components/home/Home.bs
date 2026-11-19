@@ -55,12 +55,6 @@ sub init()
   m.top.shouldShowUserDropdown = true
 end sub
 
-' JRScreen hook: Star does what the settings icon does, as on a library: Home's menu.
-function onOptionsKey() as boolean
-  m.top.getScene().callFunc("openPageMenu")
-  return true
-end function
-
 ' JRScreen hook: the settings icon's menu (homePageSettings.entries). settings.json is read
 ' when the menu first opens and kept for Home's life.
 function pageSettingsEntries() as object

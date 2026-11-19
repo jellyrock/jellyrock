@@ -75,7 +75,7 @@
     <function name="routerGoBack" />
     <!-- A screen whose Star key does what the settings icon does calls this: the page menu
          where the screen declares page settings, Settings where it declares none -->
-    <function name="openPageMenu" />
+    <function name="openSettingsIconFromStar" />
     <!-- Test hook, in every build: set from BrightScript console to test toasts. Format: "type|message"
          Example: m.top.getScene().testToast = "error|Something went wrong" -->
     <field id="testToast" type="string" value="" alwaysNotify="true" />
