@@ -103,7 +103,7 @@ it("Home's gear lists Home's settings with their values, then All settings; Favo
   await openHomeMenu('Home');
   expect(await dialogRows(), 'the Home tab menu, at the default settings').toEqual([
     'Row Layout (Full Width)',
-    'Episode Images Next Up (Use Web Client Setting)',
+    'Episode Images Next Up (Web client)',
     'Home Row Size (32)',
     'Max Days Next Up (No limit)',
     'Rewatching Next Up (Disabled)',

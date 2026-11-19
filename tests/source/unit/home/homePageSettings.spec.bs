@@ -55,6 +55,18 @@ namespace tests
       m.assertEqual(entries[4].selected, "false")
     end function
 
+    @it("names Episode Images' value on its row with one word, the list keeping the full titles")
+    function _()
+      settings = m.settings()
+      for each pair in [["webclient", "Web client"], ["episode", "Episode"], ["show", "Show"]]
+        settings.uiGeneralEpisodeImages = pair[0]
+        entry = homePageSettings.entries(GetConfigTree(), settings, "home")[1]
+        m.assertEqual(entry.valueTitle, pair[1], pair[0])
+        m.assertEqual(pageSettings.menuRows([entry]).labels[0], "Episode Images Next Up (" + pair[1] + ")")
+        m.assertEqual(entry.options[0].title, "Use Web Client Setting", "the list keeps Settings' words")
+      end for
+    end function
+
     @it("offers nothing without settings.json")
     function _()
       m.assertEqual(homePageSettings.entries(invalid, m.settings(), "home"), [])

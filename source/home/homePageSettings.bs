@@ -30,7 +30,8 @@ namespace homePageSettings
     if type(tree) <> "roArray" then return list
     homePageSettings.add(list, tree, "uiRowLayout", settings.uiRowLayout, homePageSettings.ICON_ROW_LAYOUT)
     if tabId = "home"
-      homePageSettings.add(list, tree, "uiGeneralEpisodeImages", settings.uiGeneralEpisodeImages, homePageSettings.ICON_EPISODE_IMAGES)
+      episodeImages = homePageSettings.add(list, tree, "uiGeneralEpisodeImages", settings.uiGeneralEpisodeImages, homePageSettings.ICON_EPISODE_IMAGES)
+      if isValid(episodeImages) then episodeImages.valueTitle = homePageSettings.episodeImagesValue(episodeImages.selected)
       homePageSettings.add(list, tree, "uiHomeRowLimit", settings.uiHomeRowLimit, homePageSettings.ICON_ROW_SIZE, homePageSettings.rowLimitSteps())
       homePageSettings.add(list, tree, "uiDetailsMaxDaysNextUp", settings.uiDetailsMaxDaysNextUp, homePageSettings.ICON_MAX_DAYS, homePageSettings.maxDaysSteps())
       homePageSettings.add(list, tree, "uiDetailsEnableRewatchingNextUp", settings.uiDetailsEnableRewatchingNextUp, homePageSettings.ICON_REWATCHING)
@@ -60,9 +61,22 @@ namespace homePageSettings
     return translatePlural(translationKeys.LabelDayCount, days, [days.toStr()])
   end function
 
-  sub add(list as object, tree as object, name as string, current as dynamic, icon as string, steps = invalid as dynamic)
+  ' Episode Images' value on its menu row: a word for the image's source, since the options'
+  ' own titles ("Use Web Client Setting") are cut at the menu's width. "" for an unknown id,
+  ' and the row then shows the option's title.
+  function episodeImagesValue(optionId as string) as string
+    if optionId = "webclient" then return translate(translationKeys.LabelImageSourceWebClient)
+    if optionId = "episode" then return translate(translationKeys.LabelImageSourceEpisode)
+    if optionId = "show" then return translate(translationKeys.LabelImageSourceShow)
+    return ""
+  end function
+
+  ' Build the entry for the setting `name`, add it to `list`, and return it (invalid when the
+  ' setting cannot be offered).
+  function add(list as object, tree as object, name as string, current as dynamic, icon as string, steps = invalid as dynamic) as dynamic
     entry = pageSettings.settingEntry(findConfigTreeKey(name, tree), current, icon, steps)
     if isValid(entry) then list.push(entry)
-  end sub
+    return entry
+  end function
 
 end namespace
