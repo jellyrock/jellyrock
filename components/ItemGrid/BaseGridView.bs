@@ -35,6 +35,7 @@ import "pkg:/source/utils/headerStrip.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/languageFilters.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/pageSettings.bs"
 import "pkg:/source/utils/paging.bs"
 import "pkg:/source/utils/sessionFilters.bs"
 import "pkg:/source/utils/skeleton.bs"
@@ -54,7 +55,7 @@ const DEFAULT_TAB_KEY = "defaultTab"
 ' The page setting for how many cells a row holds
 const COLUMNS_KEY = "columns"
 ' The page setting for the app-wide Item Titles setting
-const TITLES_KEY = "titles"
+const TITLES_KEY = "itemGridShowTitles"
 ' Each page setting's glyph in the gear menu, at the menu's density
 const ICON_LAYOUT = "pkg:/images/icons/layout_$$RES$$.png"
 const ICON_COLUMNS = "pkg:/images/icons/itemsPerRow_$$RES$$.png"
@@ -1821,7 +1822,8 @@ function pageSettingsEntries() as object
   end if
   if showsItemGrid()
     entries.push(columnsEntry())
-    entries.push(titlesEntry())
+    titles = titlesEntry()
+    if isValid(titles) then entries.push(titles)
   end if
   if type(m.offeredViews) = "roArray" and m.offeredViews.count() > 1
     entries.push(defaultTabEntry())
@@ -1869,29 +1871,20 @@ function savedColumnsSetting() as string
 end function
 
 ' The titles entry: the app-wide Item Titles setting, offered here because a pick shows on
-' this grid at once. Its list says it applies to every library, and its options are the
-' Settings screen's own words in its order, so the setting reads one way in both places.
-function titlesEntry() as object
-  title = translate(translationKeys.LabelItemTitles)
-  selected = "false"
-  if m.top.showItemTitles then selected = "true"
-  return {
-    id: TITLES_KEY,
-    title: title,
-    pickerTitle: translate(translationKeys.LabelAppliesToAllLibraries, [title]),
-    options: [
-      { id: "false", title: translate(translationKeys.LabelDisabled) },
-      { id: "true", title: translate(translationKeys.LabelEnabled) }
-    ],
-    selected: selected,
-    icon: ICON_TITLES
-  }
+' this grid at once. It reads as Settings shows it (pageSettings.settingEntry), its value is
+' the one this grid was drawn with, and its list says it applies to every library.
+function titlesEntry() as dynamic
+  tree = GetConfigTree()
+  if not isValid(tree) then return invalid
+  entry = pageSettings.settingEntry(findConfigTreeKey(TITLES_KEY, tree), m.top.showItemTitles, ICON_TITLES)
+  if isValid(entry) then entry.pickerTitle = translate(translationKeys.LabelAppliesToAllLibraries, [entry.title])
+  return entry
 end function
 
 ' Save the app-wide titles setting and redraw this grid with it. Other libraries pick it
 ' up when they are next shown (onSettingsChanged).
 sub applyTitles(value as string)
-  setUserSetting("itemGridShowTitles", value = "true")
+  setUserSetting(TITLES_KEY, value = "true")
   relayoutGrid()
   focusContent()
 end sub

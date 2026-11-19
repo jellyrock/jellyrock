@@ -239,12 +239,20 @@ it('Star on a library that is closed but still the active view is dropped', asyn
 // Star opens Settings from the screen, not from the gear, so Back returns to where Star was
 // pressed: the gear is focused again only when it was the gear that was pressed
 // (JRScene.openClusterRoute's isFromIcon).
-it("Star on Home's rows opens Settings, and Back returns to the rows, not the gear", async () => {
+it("Star on Home's rows, then All settings: Back returns to the rows, not the gear", async () => {
   await freshApp('overhang-cluster star home rows');
   await waitHome();
   await waitFocusInHomeContent({ label: "Home's rows before Star" });
 
   await press(ecp.Key.Option);
+  const rows = await waitPageMenu("Home's menu, opened by Star on the rows");
+  // All settings is the last row: Up from the first wraps to it.
+  await press(ecp.Key.Up);
+  await waitFor('#optionList.itemFocused', (n) => n === rows - 1, {
+    label: 'All settings, the last row',
+    timeout: 8000,
+  });
+  await press(ecp.Key.Ok);
   await waitSettingsScreen();
   await press(ecp.Key.Back);
   await waitHome();
@@ -275,19 +283,19 @@ it("Star on a library's grid, then All settings: Back returns to the grid, not t
   });
 });
 
-// Home declares no page entries, so Star does what the gear does there: it opens Settings.
-it('Star from the row on Home opens Settings, as the gear does', async () => {
+// Star from the row does what the gear does on Home: Home's menu, and Back closes it.
+it("Star from the row on Home opens Home's menu, as the gear does", async () => {
   await freshApp('overhang-cluster star home');
   await waitHome();
   await focusOverhangIcon('settingsIcon');
 
   await press(ecp.Key.Option);
-  await waitFor('subtype()', (v) => v === 'Settings', {
-    read: getActiveVal,
-    timeout: 20000,
-    interval: 250,
-    label: 'Settings, opened by Star on Home',
-  });
+  await waitPageMenu("Home's menu, opened by Star from the row");
+  expect(await getActiveVal('subtype()'), 'the app is still on Home').toBe('Home');
+
+  await press(ecp.Key.Back);
+  await waitDialogClosed("Back closed Home's menu");
+  expect(await getActiveVal('subtype()'), 'and Back left Home open').toBe('Home');
 });
 
 it('search: Up from the keyboard enters the row, and the search icon there does nothing', async () => {

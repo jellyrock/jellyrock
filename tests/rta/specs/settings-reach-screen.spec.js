@@ -108,9 +108,9 @@ it('a row layout changed in Settings lays Home out again when Back returns there
     'full width to begin with (the default)',
   ).toEqual([0, 126]);
 
-  // Home offers no page settings, so its gear opens Settings in one press
+  // Home's gear opens its own menu first; All settings is its last row
   await walkOverhangRowTo('settingsIcon', { label: 'the gear on Home' });
-  await openSettingsFromGear();
+  await openSettingsFromGear({ pageMenu: true });
   await writeSetting('uiRowLayout', 'original');
   await backToGear('the gear again, over Home');
 
