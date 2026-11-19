@@ -2992,6 +2992,36 @@ A screen covered while a setting changes (Settings opened over it, or another li
 
 Ruled out: a screen observing `m.global.user.settings` fields itself (the node is shared, so an `unobserveField` at teardown can remove another component's observer, as `ObserverRegistry.spec.bs` records, and a covered screen would redraw while nobody sees it); rebuilding the screen under Settings on every change, as a theme change does (loses the scroll position and focus, and fetches again); keeping the record on the scene beside `contentVersion` (the scene never sees a setting write; the settings node sees every one). A theme or language change keeps its rebuild, since colors and strings are set when each node is built.
 
+## decision-id: page-menu-flat-no-entry-cap
+
+**date**: 2026-11-18
+**status**: accepted
+**related-files**: `source/utils/pageSettings.bs`, `source/home/homePageSettings.bs`, `components/JRScene.bs`
+
+The settings icon's page menu stays one flat list whatever the count of entries: a library offers up to four, Home five (Row Layout, Episode Images Next Up, Home Row Size, Max Days Next Up, Rewatching Next Up). Every entry is then one press from the icon, and the menu reads like the player's settings menu. An app-wide setting is offered on a page when a pick visibly changes that page, and its entry is built from the setting's own `settings.json` entry (`pageSettings.settingEntry()`), so it reads as in Settings; an integer setting is offered as steps with the value in force placed among them, as the player's Maximum Bitrate is.
+
+Ruled out: moving a page's entries into one Page settings dialog past about three (the plan's first rule), which puts every Home setting two presses deep for a list that still fits the screen; a number-entry dialog for integer settings, which is slower with a remote than a list and is what Settings is for.
+
+## decision-id: ratings-one-setting-episode-spoiler
+
+**date**: 2026-11-18
+**status**: accepted
+**related-files**: `source/utils/ratingsDisplay.bs`, `components/ItemDetails.bs`, `components/video/OSD.bs`, `source/GridView/MoviePresenter.bs`
+
+Community and Critical Ratings (`uiMoviesShowRatings`) is one app-wide setting: it shows or hides community and critic ratings on every details screen, in Grid with details and in the player. It sat under Libraries › Movies and read as a movie setting, while the details screen already applied it to every item type. Disable Community Rating for Episodes (`uiTvShowsDisableCommunityRating`) also hides an episode's ratings, on its details screen as in the player, where only the player obeyed it before. One rule, `ratingsDisplay.isShown`, serves all three. The setting names are unchanged, so nothing is migrated. A viewer with ratings off now has them off in the player on episodes too.
+
+Ruled out: each setting covering its own item type (movies, then series, seasons and episodes) with every other type always showing ratings, which would bring ratings back on shows for a viewer who had turned them off.
+
+## decision-id: star-does-settings-icon
+
+**date**: 2026-11-18
+**status**: accepted
+**related-files**: `components/JRScreen.bs`, `components/JRScene.bs`, `components/settings/settings.bs`
+
+On a signed-in screen, Star does what the overhang's settings icon does, unless the screen gives Star a meaning of its own. `JRScreen.onOptionsKey` opens the screen's slide-out panel when it has one (the server list, the photo viewer), and otherwise calls `JRScene.openSettingsIconFromStar`, which opens the page's menu or Settings while the cluster shows; before sign-in and on a player Star does nothing. Settings keeps Star as its way out (`leaveScreen()`), so Star toggles Settings. Details and search, where Star did nothing, now open Settings.
+
+Ruled out: Star doing nothing on Settings, as its own settings icon does there, which would leave the key dead on the one screen where users press it to go back; a per-screen override on each screen, which Home and the library had, and which left details and search behind.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
