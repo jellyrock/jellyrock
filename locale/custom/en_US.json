@@ -823,7 +823,7 @@
   "SettingDescVideoCodecSupport": "Enable or disable Direct Play support for certain codecs.",
   "SettingDescVideoProfileLevelSupport": "Attempt Direct Play of potentially unsupported profile levels",
   "SettingDisplayLanguage": "Display Language",
-  "SettingHomeRowSize": "Home Row Size",
+  "SettingHomeRowSize": "Max Items per Row",
   "SettingHomeUseWebArrangement": "Use Web Client's Home Section Arrangement",
   "SettingSigninScreenLanguage": "Sign-in Screen Language"
 }

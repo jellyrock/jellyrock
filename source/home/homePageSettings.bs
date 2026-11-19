@@ -44,7 +44,7 @@ namespace homePageSettings
     return inArray(["uiRowLayout", "uiGeneralEpisodeImages", "uiHomeRowLimit", "uiDetailsMaxDaysNextUp", "uiDetailsEnableRewatchingNextUp"], name)
   end function
 
-  ' The Home Row Size steps: how many items a Recently Added, On Now or Active Recordings row
+  ' The Max Items per Row (uiHomeRowLimit) steps: how many items a Recently Added, On Now or Active Recordings row
   ' loads, inside the setting's 1 to 100.
   function rowLimitSteps() as object
     return { values: [8, 16, 24, 32, 48, 64, 100] }

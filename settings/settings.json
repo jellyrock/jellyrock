@@ -978,7 +978,16 @@
             "descriptionKey": "SettingDescEpisodeImages"
           },
           {
-            "title": "Home Row Size",
+            "title": "Max Days Next Up",
+            "description": "Set the maximum amount of days a show should stay in the 'Next Up' list without watching it.",
+            "settingName": "uiDetailsMaxDaysNextUp",
+            "type": "integer",
+            "default": "0",
+            "titleKey": "LabelMaxDaysNextUp",
+            "descriptionKey": "SettingDescMaxDaysNextUp"
+          },
+          {
+            "title": "Max Items per Row",
             "description": "Sets how many items the Recently Added, On Now and Active Recordings rows load; Continue Watching and Next Up always show your full list. Higher values load more slowly, especially on older devices or with many libraries. Applies next time Home loads.",
             "settingName": "uiHomeRowLimit",
             "type": "integer",
@@ -987,15 +996,6 @@
             "max": 100,
             "titleKey": "SettingHomeRowSize",
             "descriptionKey": "SettingDescHomeRowSize"
-          },
-          {
-            "title": "Max Days Next Up",
-            "description": "Set the maximum amount of days a show should stay in the 'Next Up' list without watching it.",
-            "settingName": "uiDetailsMaxDaysNextUp",
-            "type": "integer",
-            "default": "0",
-            "titleKey": "LabelMaxDaysNextUp",
-            "descriptionKey": "SettingDescMaxDaysNextUp"
           },
           {
             "title": "Rewatching Next Up",

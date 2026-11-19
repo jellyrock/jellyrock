@@ -104,7 +104,7 @@ it("Home's gear lists Home's settings with their values, then All settings; Favo
   expect(await dialogRows(), 'the Home tab menu, at the default settings').toEqual([
     'Row Layout (Full Width)',
     'Episode Images Next Up (Web client)',
-    'Home Row Size (32)',
+    'Max Items per Row (32)',
     'Max Days Next Up (No limit)',
     'Rewatching Next Up (Disabled)',
     'All settings',
@@ -213,7 +213,7 @@ it("each of Home's lists offers its setting's choices, the one in force focused"
   await press(ecp.Key.Back);
   await waitPageMenu('the menu again');
 
-  expect(await openList('Home Row Size', 2, '8'), 'Home Row Size').toEqual([
+  expect(await openList('Max Items per Row', 2, '8'), 'Max Items per Row').toEqual([
     '8',
     '16',
     '24',
@@ -259,8 +259,8 @@ it("Settings holds Home's settings in User Interface's Home group", async () => 
   if (CAPTURE) await captureRawUI('settingsHomeGroup');
   expect(await settingsMenuTitles(), 'the Home group').toEqual([
     'Episode Images Next Up',
-    'Home Row Size',
     'Max Days Next Up',
+    'Max Items per Row',
     'Rewatching Next Up',
     'Row Layout',
     "Use Web Client's Home Section Arrangement",

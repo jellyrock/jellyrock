@@ -535,8 +535,8 @@ Settings relating to how the application looks.
     - [Text - Secondary](#uiThemeColorTextSecondary)
 - [Home](#user-interface-home)
   - [Episode Images Next Up](#uiGeneralEpisodeImages)
-  - [Home Row Size](#uiHomeRowLimit)
   - [Max Days Next Up](#uiDetailsMaxDaysNextUp)
+  - [Max Items per Row](#uiHomeRowLimit)
   - [Rewatching Next Up](#uiDetailsEnableRewatchingNextUp)
   - [Row Layout](#uiRowLayout)
   - [Use Web Client's Home Section Arrangement](#uiHomeUseWebArrangement)
@@ -733,19 +733,6 @@ What type of images to use for Episodes shown in the 'Next Up' and 'Continue Wat
 | Default | `webclient` |
 | Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Use Web Client Setting</td><td><code>webclient</code></td></tr><tr><td>Use Episode Image</td><td><code>episode</code></td></tr><tr><td>Use Show Image</td><td><code>show</code></td></tr></tbody></table> |
 
-<h4 id="uiHomeRowLimit">Home Row Size</h4>
-
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-home">Home</a> › <a href="#uiHomeRowLimit">Home Row Size</a>
-
-Sets how many items the Recently Added, On Now and Active Recordings rows load; Continue Watching and Next Up always show your full list. Higher values load more slowly, especially on older devices or with many libraries. Applies next time Home loads.
-
-| Property | Value |
-| --- | --- |
-| Setting Name | `uiHomeRowLimit` |
-| Type | `integer` |
-| Default | `32` |
-| Range | `1` to `100` |
-
 <h4 id="uiDetailsMaxDaysNextUp">Max Days Next Up</h4>
 
 <a href="#user-interface">User Interface</a> › <a href="#user-interface-home">Home</a> › <a href="#uiDetailsMaxDaysNextUp">Max Days Next Up</a>
@@ -757,6 +744,19 @@ Set the maximum amount of days a show should stay in the 'Next Up' list without 
 | Setting Name | `uiDetailsMaxDaysNextUp` |
 | Type | `integer` |
 | Default | `0` |
+
+<h4 id="uiHomeRowLimit">Max Items per Row</h4>
+
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-home">Home</a> › <a href="#uiHomeRowLimit">Max Items per Row</a>
+
+Sets how many items the Recently Added, On Now and Active Recordings rows load; Continue Watching and Next Up always show your full list. Higher values load more slowly, especially on older devices or with many libraries. Applies next time Home loads.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `uiHomeRowLimit` |
+| Type | `integer` |
+| Default | `32` |
+| Range | `1` to `100` |
 
 <h4 id="uiDetailsEnableRewatchingNextUp">Rewatching Next Up</h4>
 

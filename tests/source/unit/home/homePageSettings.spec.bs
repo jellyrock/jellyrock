@@ -84,7 +84,7 @@ namespace tests
     @describe("steps")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("keeps every Home Row Size step inside the setting's range, ascending")
+    @it("keeps every Max Items per Row step inside the setting's range, ascending")
     function _()
       setting = findConfigTreeKey("uiHomeRowLimit", GetConfigTree())
       previous = -1
@@ -95,7 +95,7 @@ namespace tests
       end for
     end function
 
-    @it("includes the Home Row Size default as a step")
+    @it("includes the Max Items per Row default as a step")
     function _()
       setting = findConfigTreeKey("uiHomeRowLimit", GetConfigTree())
       m.assertArrayContains(homePageSettings.rowLimitSteps().values, Int(Val(setting.default)))

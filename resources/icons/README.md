@@ -221,8 +221,8 @@ this table automatically.
 | `itemTitles.svg` | `title` | Rounded | 500 | 0 | `24px` | 2026-11-18 |
 | `defaultTab.svg` | `push_pin` | Rounded | 500 | 0 | `24px` | 2026-11-18 |
 | `settings_menu.svg` | `settings` | Rounded | 500 | 0 | `24px` | 2026-11-18 (a copy of `settings.svg` at the default density, for the page menu's **All settings** row; `settings` itself is pinned to the overhang's 63/45) |
-| `rowLayout.svg` | `view_day` | Rounded | 500 | 0 | `24px` | 2026-11-19 |
 | `episodeImages.svg` | `image` | Rounded | 500 | 0 | `24px` | 2026-11-19 |
-| `rowSize.svg` | `numbers` | Rounded | 500 | 0 | `24px` | 2026-11-19 |
 | `maxDays.svg` | `date_range` | Rounded | 500 | 0 | `24px` | 2026-11-19 |
-| `rewatching.svg` | `history` | Rounded | 500 | 0 | `24px` | 2026-11-19 |
+| `rowLayout.svg` | `width_full` | Rounded | 500 | 0 | `24px` | 2026-11-19 |
+| `rowSize.svg` | `format_list_numbered` | Rounded | 500 | 0 | `24px` | 2026-11-19 |
+| `rewatching.svg` | `replay` | Rounded | 500 | 0 | `24px` | 2026-11-19 |

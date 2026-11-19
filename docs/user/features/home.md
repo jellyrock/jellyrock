@@ -24,7 +24,7 @@ Select the settings icon at the top right of Home, or press **Star** (`*`) on yo
 
 - **Row Layout**: rows that run to the screen's edges, or the original inset rows.
 - **Episode Images Next Up**: in Continue Watching and Next Up, the episode's own image, the show's, or whichever your web client is set to show.
-- **Home Row Size**: how many items Recently Added, On Now and Active Recordings show.
+- **Max Items per Row**: the most items Recently Added, On Now and Active Recordings show. It is not how many fit on screen: a row scrolls to show the rest.
 - **Max Days Next Up**: how long a show stays in Next Up after you last watched it.
 - **Rewatching Next Up**: whether Next Up shows episodes you've already watched.
 
@@ -35,8 +35,8 @@ Pick a new value and Home shows it at once. On the **Favorites** tab, the menu o
 All of Home's settings are in **Settings › User Interface › Home**:
 
 - [Episode Images Next Up](../app-settings.md#uiGeneralEpisodeImages)
-- [Home Row Size](../app-settings.md#uiHomeRowLimit)
 - [Max Days Next Up](../app-settings.md#uiDetailsMaxDaysNextUp)
+- [Max Items per Row](../app-settings.md#uiHomeRowLimit)
 - [Rewatching Next Up](../app-settings.md#uiDetailsEnableRewatchingNextUp)
 - [Row Layout](../app-settings.md#uiRowLayout)
 - [Use Web Client's Home Section Arrangement](../app-settings.md#uiHomeUseWebArrangement)
