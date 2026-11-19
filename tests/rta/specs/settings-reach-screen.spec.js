@@ -118,6 +118,6 @@ it('a row layout changed in Settings lays Home out again when Back returns there
     `${list}.translation`,
     `${list}.focusXOffset`,
   ]);
-  expect(translation, 'the rows moved in from the edge').toEqual([111, 126]);
+  expect(translation, 'the rows moved in from the edge, under the tabs').toEqual([96, 126]);
   expect(focusXOffset, 'and the focus offset follows').toEqual([]);
 });

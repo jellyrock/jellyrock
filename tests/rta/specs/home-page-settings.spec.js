@@ -144,7 +144,7 @@ it("Row Layout picked from Home's menu lays the rows out again in place and save
     `${list}.translation`,
     `${list}.focusXOffset`,
   ]);
-  expect(translation, 'the rows moved in from the edge').toEqual([111, 126]);
+  expect(translation, 'the rows moved in from the edge, under the tabs').toEqual([96, 126]);
   expect(focusXOffset, 'and the focus offset follows').toEqual([]);
   expect(await readSetting('uiRowLayout'), 'saved as Settings saves it').toBe('original');
 });
