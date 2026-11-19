@@ -1092,6 +1092,12 @@ Use Web Client's Home Section Arrangement (`uiHomeUseWebArrangement`) is read on
 
 Since the settings-changed-while-covered work (2026-11-18), `JRPoster` reads Disable Unwatched Count (`uiTvShowsDisableUnwatchedCount`) when it draws the watch badge instead of once in `init`, so every cell bound after a change is right in both directions (a cell resets its badge and sets it again on each bind; `JRPoster.spec.bs` covers it). Cells already on a covered screen when the setting changes keep the badge they drew until they are bound again: a library's grid keeps its cells across a redraw in place (`GridItem.bs`, no bind on `relayoutGrid`), so its visible cells change only on scroll, reload or reopening. Not checked on a device: whether Home's refresh on return (`updateHomeRows`) binds its visible cells again. To close: check Home and a library on a device after the change; if visible cells stay stale, give the screens' `onSettingsChanged` a way to redraw their cells' badges (a rebind of the visible range, or a poster function the cell calls), without a reload that loses the place.
 
+#### The settings icon's menu can show its first open after a cold start before its glyphs have drawn `[fid: page-menu-glyphs-late-first-open]` `[captured 2026-11-19]`
+
+The settings icon's menu (`showOverflowMenu`, `JRListDialog` rows with an `icons` gutter) can open with its glyphs not yet drawn the first time each glyph loads after a cold start. Seen on a Streaming Stick 4K on 2026-11-18 with Home's menu: a capture right after the menu opened showed the labels and an empty gutter, including the existing All settings gear (`pageSettings.ALL_SETTINGS_ICON`); one second later every glyph had drawn, and later opens drew them at once. A second cold-start run caught them already drawn, so the delay varies. The library's menu loads its glyphs the same way, so this is not specific to Home.
+
+Not measured: how long the gap lasts on each device class, and whether a viewer notices it. To close: measure the gap on the 512 MB Stick and the Ultra; if it is visible, load the menu's glyphs before the menu shows (a `Poster` `loadStatus` wait in the dialog, or warming the textures once after sign-in), or record that it is accepted.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
