@@ -522,13 +522,8 @@ Settings relating to how the application looks.
 - [General](#user-interface-general)
   - [Display Language](#translationLocale)
   - [Backdrop Images](#uiShowBackdrop)
-  - [Episode Images Next Up](#uiGeneralEpisodeImages)
   - [Fallback Fonts](#uiFontFallback)
   - [Hide Clock](#uiDesignHideClock)
-  - [Home Row Size](#uiHomeRowLimit)
-  - [Max Days Next Up](#uiDetailsMaxDaysNextUp)
-  - [Rewatching Next Up](#uiDetailsEnableRewatchingNextUp)
-  - [Row Layout](#uiRowLayout)
   - [Theme](#uiTheme)
   - [Custom Theme Colors](#user-interface-general-custom-theme-colors)
     - [Background - Primary](#uiThemeColorBackgroundPrimary)
@@ -538,6 +533,12 @@ Settings relating to how the application looks.
     - [Text - Disabled](#uiThemeColorTextDisabled)
     - [Text - Primary](#uiThemeColorTextPrimary)
     - [Text - Secondary](#uiThemeColorTextSecondary)
+- [Home](#user-interface-home)
+  - [Episode Images Next Up](#uiGeneralEpisodeImages)
+  - [Home Row Size](#uiHomeRowLimit)
+  - [Max Days Next Up](#uiDetailsMaxDaysNextUp)
+  - [Rewatching Next Up](#uiDetailsEnableRewatchingNextUp)
+  - [Row Layout](#uiRowLayout)
   - [Use Web Client's Home Section Arrangement](#uiHomeUseWebArrangement)
 - [Libraries](#user-interface-libraries)
   - [General](#user-interface-libraries-general)
@@ -560,7 +561,7 @@ Settings relating to how the application looks.
 
 <a id="user-interface-general"></a>
 
-Settings relating to the appearance of the Home screen and the program in general.
+Settings relating to the appearance of the app in general.
 
 <h4 id="translationLocale">Display Language</h4>
 
@@ -587,19 +588,6 @@ Show backdrop images everywhere, only when an item is open, or never. Turning th
 | Default | `enabled` |
 | Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Enabled</td><td><code>enabled</code></td></tr><tr><td>Only on item details</td><td><code>details</code></td></tr><tr><td>Disabled</td><td><code>disabled</code></td></tr></tbody></table> |
 
-<h4 id="uiGeneralEpisodeImages">Episode Images Next Up</h4>
-
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#uiGeneralEpisodeImages">Episode Images Next Up</a>
-
-What type of images to use for Episodes shown in the 'Next Up' and 'Continue Watching' sections.
-
-| Property | Value |
-| --- | --- |
-| Setting Name | `uiGeneralEpisodeImages` |
-| Type | `radio` |
-| Default | `webclient` |
-| Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Use Web Client Setting</td><td><code>webclient</code></td></tr><tr><td>Use Episode Image</td><td><code>episode</code></td></tr><tr><td>Use Show Image</td><td><code>show</code></td></tr></tbody></table> |
-
 <h4 id="uiFontFallback">Fallback Fonts</h4>
 
 <a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#uiFontFallback">Fallback Fonts</a>
@@ -624,56 +612,6 @@ Hide all clocks in JellyRock. JellyRock will need to be closed and reopened for 
 | Type | `bool` |
 | Default | `false` |
 
-<h4 id="uiHomeRowLimit">Home Row Size</h4>
-
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#uiHomeRowLimit">Home Row Size</a>
-
-Sets how many items the Recently Added, On Now and Active Recordings rows load; Continue Watching and Next Up always show your full list. Higher values load more slowly, especially on older devices or with many libraries. Applies next time Home loads.
-
-| Property | Value |
-| --- | --- |
-| Setting Name | `uiHomeRowLimit` |
-| Type | `integer` |
-| Default | `32` |
-| Range | `1` to `100` |
-
-<h4 id="uiDetailsMaxDaysNextUp">Max Days Next Up</h4>
-
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#uiDetailsMaxDaysNextUp">Max Days Next Up</a>
-
-Set the maximum amount of days a show should stay in the 'Next Up' list without watching it.
-
-| Property | Value |
-| --- | --- |
-| Setting Name | `uiDetailsMaxDaysNextUp` |
-| Type | `integer` |
-| Default | `0` |
-
-<h4 id="uiDetailsEnableRewatchingNextUp">Rewatching Next Up</h4>
-
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#uiDetailsEnableRewatchingNextUp">Rewatching Next Up</a>
-
-Show already watched episodes in 'Next Up' sections.
-
-| Property | Value |
-| --- | --- |
-| Setting Name | `uiDetailsEnableRewatchingNextUp` |
-| Type | `bool` |
-| Default | `false` |
-
-<h4 id="uiRowLayout">Row Layout</h4>
-
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#uiRowLayout">Row Layout</a>
-
-Choose how rows are displayed throughout the app.
-
-| Property | Value |
-| --- | --- |
-| Setting Name | `uiRowLayout` |
-| Type | `radio` |
-| Default | `fullwidth` |
-| Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Original</td><td><code>original</code></td></tr><tr><td>Full Width</td><td><code>fullwidth</code></td></tr></tbody></table> |
-
 <h4 id="uiTheme">Theme</h4>
 
 <a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#uiTheme">Theme</a>
@@ -686,18 +624,6 @@ Select a color theme. Choose 'Custom' to manually set individual colors.
 | Type | `radio` |
 | Default | `jellyrock` |
 | Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>JellyRock</td><td><code>jellyrock</code></td></tr><tr><td>JellyRock (Black)</td><td><code>jellyrock-black</code></td></tr><tr><td>Emerald</td><td><code>emerald</code></td></tr><tr><td>Ember</td><td><code>ember</code></td></tr><tr><td>Rose</td><td><code>rose</code></td></tr><tr><td>Ocean</td><td><code>ocean</code></td></tr><tr><td>Dusk</td><td><code>dusk</code></td></tr><tr><td>Midnight</td><td><code>midnight</code></td></tr><tr><td>High Contrast</td><td><code>high-contrast</code></td></tr><tr><td>Custom</td><td><code>custom</code></td></tr></tbody></table> |
-
-<h4 id="uiHomeUseWebArrangement">Use Web Client's Home Section Arrangement</h4>
-
-<a href="#user-interface">User Interface</a> › <a href="#user-interface-general">General</a> › <a href="#uiHomeUseWebArrangement">Use Web Client's Home Section Arrangement</a>
-
-Make the arrangement of the Roku home view sections match the web client's home screen. JellyRock will need to be closed and reopened for change to take effect.
-
-| Property | Value |
-| --- | --- |
-| Setting Name | `uiHomeUseWebArrangement` |
-| Type | `bool` |
-| Default | `true` |
 
 #### Custom Theme Colors
 
@@ -788,6 +714,87 @@ Subtitles, hints, and less prominent text.
 | Setting Name | `uiThemeColorTextSecondary` |
 | Type | `text` |
 | Default | `A8A8A8` |
+
+### Home
+
+<a id="user-interface-home"></a>
+
+Settings relating to what the Home screen shows and how its rows are laid out.
+
+<h4 id="uiGeneralEpisodeImages">Episode Images Next Up</h4>
+
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-home">Home</a> › <a href="#uiGeneralEpisodeImages">Episode Images Next Up</a>
+
+What type of images to use for Episodes shown in the 'Next Up' and 'Continue Watching' sections.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `uiGeneralEpisodeImages` |
+| Type | `radio` |
+| Default | `webclient` |
+| Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Use Web Client Setting</td><td><code>webclient</code></td></tr><tr><td>Use Episode Image</td><td><code>episode</code></td></tr><tr><td>Use Show Image</td><td><code>show</code></td></tr></tbody></table> |
+
+<h4 id="uiHomeRowLimit">Home Row Size</h4>
+
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-home">Home</a> › <a href="#uiHomeRowLimit">Home Row Size</a>
+
+Sets how many items the Recently Added, On Now and Active Recordings rows load; Continue Watching and Next Up always show your full list. Higher values load more slowly, especially on older devices or with many libraries. Applies next time Home loads.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `uiHomeRowLimit` |
+| Type | `integer` |
+| Default | `32` |
+| Range | `1` to `100` |
+
+<h4 id="uiDetailsMaxDaysNextUp">Max Days Next Up</h4>
+
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-home">Home</a> › <a href="#uiDetailsMaxDaysNextUp">Max Days Next Up</a>
+
+Set the maximum amount of days a show should stay in the 'Next Up' list without watching it.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `uiDetailsMaxDaysNextUp` |
+| Type | `integer` |
+| Default | `0` |
+
+<h4 id="uiDetailsEnableRewatchingNextUp">Rewatching Next Up</h4>
+
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-home">Home</a> › <a href="#uiDetailsEnableRewatchingNextUp">Rewatching Next Up</a>
+
+Show already watched episodes in 'Next Up' sections.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `uiDetailsEnableRewatchingNextUp` |
+| Type | `bool` |
+| Default | `false` |
+
+<h4 id="uiRowLayout">Row Layout</h4>
+
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-home">Home</a> › <a href="#uiRowLayout">Row Layout</a>
+
+Choose how the rows on Home and its Favorites tab are laid out.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `uiRowLayout` |
+| Type | `radio` |
+| Default | `fullwidth` |
+| Options | <table cellspacing="0" cellpadding="0"><thead><tr><th align="left">Name</th><th align="left">ID</th></tr></thead><tbody><tr><td>Original</td><td><code>original</code></td></tr><tr><td>Full Width</td><td><code>fullwidth</code></td></tr></tbody></table> |
+
+<h4 id="uiHomeUseWebArrangement">Use Web Client's Home Section Arrangement</h4>
+
+<a href="#user-interface">User Interface</a> › <a href="#user-interface-home">Home</a> › <a href="#uiHomeUseWebArrangement">Use Web Client's Home Section Arrangement</a>
+
+Make the arrangement of the Roku home view sections match the web client's home screen. JellyRock will need to be closed and reopened for change to take effect.
+
+| Property | Value |
+| --- | --- |
+| Setting Name | `uiHomeUseWebArrangement` |
+| Type | `bool` |
+| Default | `true` |
 
 ### Libraries
 
