@@ -34,8 +34,8 @@ namespace pageSettings
   ' gutter empty. No usable entry means no menu, and the settings icon opens Settings in
   ' one press.
   '
-  ' Past about three entries the menu gets long for something hanging off an icon: move
-  ' them into one Page settings dialog behind a single row here.
+  ' The menu is flat, whatever the count (a library offers up to four entries, Home five), so
+  ' every entry is one press from the icon.
   '
   ' @param entries - a screen's pageSettingsEntries()
   ' @return {object} { labels: [string], ids: [string], icons: [string] }
