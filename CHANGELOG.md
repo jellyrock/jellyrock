@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update vitest from v5.1.0 to v5.1.1 ([#1409](https://github.com/jellyrock/jellyrock/pull/1409)) by [@renovate[bot]](https://github.com/apps/renovate)
 - Update actions/setup-java action to v6.3.0 ([#1399](https://github.com/jellyrock/jellyrock/pull/1399)) by [@renovate[bot]](https://github.com/apps/renovate)
 - Update eslint from v10.14.0 to v10.15.0 ([#1380](https://github.com/jellyrock/jellyrock/pull/1380)) by [@renovate[bot]](https://github.com/apps/renovate)
 
