@@ -23,12 +23,13 @@ import { RTA_CONFIG } from '../config.js';
 import { authenticate, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
-import { openLibraryByType } from '../lib/nav.js';
+import { openLibraryByType, waitPageMenu } from '../lib/nav.js';
 import { failRequests } from '../lib/failRequests.js';
 import {
   getActiveVal,
   getVal,
   press,
+  waitDialogClosed,
   waitFor,
   waitFocusInside,
   walkFocusInto,
@@ -73,12 +74,13 @@ it('a failed first page shows Try again, keeps focus on it, and pressing it load
   expect(await getActiveVal('#loadFailed.visible')).toBe(true);
   expect(await getActiveVal('#emptyText.visible')).toBe(false);
 
-  // Closing the options dialog without a change hands focus back to what the grid shows:
+  // Closing the page menu without a change hands focus back to what the grid shows:
   // Try again, not the empty grid behind it.
   await press(ecp.Key.Option);
-  await waitFocusInside('#options', { label: 'options dialog opened' });
+  await waitPageMenu('the page menu over the failed grid');
   await press(ecp.Key.Back);
-  await waitFocusInside('#retryButton', { label: 'Try again focused after the options dialog' });
+  await waitDialogClosed('Back closed the page menu');
+  await waitFocusInside('#retryButton', { label: 'Try again focused after the page menu' });
 
   // Out to the alpha menu and back lands on Try again too.
   await press(ecp.Key.Left);

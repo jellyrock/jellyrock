@@ -79,6 +79,18 @@ import { calleeName, walkAst } from './_shared.js';
  */
 const VERIFIED_SETTLE_KEYPATHS = new Set([
   '#buttons.buttonFocused',
+  // `LibraryHeaderStrip.onContentChanged` sets it from what `BaseGridView.updateStrip` hands
+  // over on a focus move or a load, and it holds until the next one. Terminal, not a pulse.
+  // Read against the app source 2026-11-15.
+  '#headerStrip.#title.text',
+  // The same write as the title's: `onContentChanged` sets it from `updateStrip`, which says
+  // what narrows the tab at a letter press, a voice search and a load. It holds until the next
+  // one. Terminal. Read against the app source 2026-11-16.
+  '#headerStrip.#narrowedBy.text',
+  // `LibraryHeaderStrip.applyChip` sets it from what `BaseGridView.updateStripChips` hands over
+  // at a load or a voice search, and nothing else writes it. Terminal. Read against the app
+  // source 2026-11-16.
+  '#headerStrip.#filterChip.visible',
   // Not an app field: the title of the picker's content node, which `sign-in-waits.spec.js`
   // sets as a marker over ODC. `SetServerScreen.onScanForServersComplete` replaces the content
   // with a fresh node whose title is empty, and nothing writes the old node again, so "the
@@ -122,6 +134,22 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // gate is `navSubtitlePanel`, which only runs on a fixture whose user can manage
   // subtitles (see `subtitlePanel` in tests/rta/screens.js).
   '#subtitlePanel.visible',
+  // `ItemDetails.updateFavoriteButton` sets it from the item on content load, and
+  // `ItemDetails.toggleFavorite` writes it once, after the server's answer (or reverts it on a
+  // failure). Nothing else writes it, so each state holds until the next press: terminal, not a
+  // pulse. Because the write follows the response, `false` after an unfavorite also means the
+  // server has applied it. Read against the app source 2026-11-12.
+  '#favoriteButton.isButtonSelected',
+  // `JRTabBar.onTabReady` sets it true once every tab has sized, and only a tabs change that
+  // rebuilds the tabs sets it false again: terminal for a given set of tabs. Read against the
+  // app source 2026-11-12. `tab-strip.spec.js` waits on it after setting the tabs.
+  '#overhang.#tabBar.isReady',
+  // The Animation that slides a scrolling tab strip. `JRTabBar.applyWindow` starts it in the
+  // same handler that moves focus, and `stopped` then holds until the next key: terminal.
+  // It also reads `stopped` before any slide, so `tab-strip.spec.js` waits on it only after
+  // it has seen the focus change that would have started one. Read against the app source
+  // 2026-11-12.
+  '#overhang.#scrollAnimation.state',
   // `JROverhangIconBar` writes the cluster icon's `isActive` when it builds the entry and in
   // `updateEntry`, both from `JRScene.applySyncPlayIcon` on each inGroup change and screen
   // change: terminal, held until the membership changes again. `syncplay-menu.spec.js` waits
@@ -269,6 +297,22 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // until the viewer acts or the screen changes: terminal, not a pulse. Read against the app
   // source 2026-10-26, every write site.
   '#overhang.#status.text',
+  // `JROverhang.onCurrentUserChanged` is the only writer: true when the scene, binding a
+  // screen (`JRScene.applyOverhangUserDropdown`), hands it the signed-in user's name, false
+  // when it hands an empty one. It holds for the screen's whole visit: terminal, not a
+  // pulse. Read against the app source 2026-11-17, every write site.
+  '#overhang.#userDropdown.visible',
+  // `JRDropdown.sizeTriggerButton` is the only writer of the width, run when the trigger
+  // renders or its name, avatar or maxWidth changes. The name changes only when the scene binds
+  // a screen. maxWidth can change after that: `JROverhang.layout` sets it on every layout
+  // input, and the SyncPlay icon arriving once the push channel's status is known
+  // (`JRScene.applySyncPlayIcon`), or the clock shown or hidden, narrows or widens it, so a
+  // long name's width can step once after the screen opens. Each value holds until the next
+  // such input: terminal, not a pulse, so a poll for the final value still sees it. The
+  // trigger's text is set by `JROverhang.onCurrentUserChanged` alone, at the binding. Read
+  // against the app source 2026-11-18, every write site.
+  '#overhang.#userDropdown.triggerWidth',
+  '#overhang.#userDropdown.triggerText',
   // `SearchScreen.init` sets the help text, `showHelpText` replaces it with "No results for …"
   // for an answered empty search (submitted, or live while the keyboard is open), and
   // `onQueryChanged` writes the help text back only when the viewer empties the query. Each
@@ -335,6 +379,18 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // a pulse. Read against the app source 2026-10-23.
   '#optionList.content.0.title',
   '#optionList.itemFocused',
+  // Roku's MarkupGrid sets it as focus moves between cells. BaseGridView writes it only
+  // through jumpToItem and animateToItem (jumpToFirstItem, on Replay), and it then holds
+  // until the next key or the next content swap: terminal, not a pulse. The grid keeps its
+  // last value while unfocused, so gate on focus inside `#itemGrid` first. Read against
+  // the app source 2026-11-15.
+  '#itemGrid.itemFocused',
+  // `BaseGridView.configureBackdrop` sets it on each load to whether the view on show draws
+  // the presentation panel, and only an empty or a failed load clears it after that: held
+  // until the layout, the view or the content changes, so a poll cannot miss it. Read
+  // against the app source 2026-11-12 (`configureBackdrop` and the two clears in the load
+  // handlers).
+  '#presentationInfo.visible',
   '#osd.visible',
   '#quickConnectCode.text',
   '#scrollContent.translation',
@@ -374,6 +430,15 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   'audioPlayer.state',
   'itemId',
   'loadState',
+  // A screen's selected tab, read off the active view. BaseGridView and Home write it only
+  // through a tab press (the overhang proxies the bar's selection) and once when a library
+  // opens, so it holds until the next tab press. Read 2026-11-12 against JRScene's
+  // onOverhangTabSelected and BaseGridView.openLibrary.
+  'selectedTabId',
+  // The library a grid screen shows, read off the active view. BaseGridView.loadLibraryFromRoute
+  // sets `parentItem` once, when the screen opens, so the id holds for the screen's life and
+  // changes only when another screen becomes the active one. Read 2026-11-12.
+  'parentItem.id',
   // Roku's `Video.position`, read off the player by id. While the video plays it only
   // climbs, so a `>= target` predicate stays true once true. Read 2026-10-02 against the
   // one gate using it (playback-notifications.spec.js, which seeks before it waits). A

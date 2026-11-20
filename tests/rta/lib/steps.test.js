@@ -80,6 +80,7 @@ const {
   walkFocusInto,
   walkHomeToFirstRow,
   overhangWalkKey,
+  focusIsInOverhangRow,
   walkOverhangRowTo,
   waitHome,
   waitLandingSettled,
@@ -2779,5 +2780,18 @@ describe('assertOneScreenShowing — one routed view on screen', () => {
   it('throws when the census has no viewTarget, rather than passing on nothing', async () => {
     storeNodeReferences.mockResolvedValue({ flatTree: census([], { withTarget: false }) });
     await expect(assertOneScreenShowing('home')).rejects.toThrow('no viewTarget in the scene');
+  });
+});
+
+describe('focusIsInOverhangRow — every element Up can land on in the row', () => {
+  it('counts a cluster icon, the tab bar and the user menu', () => {
+    for (const subtype of ['JROverhangIcon', 'JRTabBar', 'JRDropdown']) {
+      expect(focusIsInOverhangRow({ node: { subtype } })).toBe(true);
+    }
+  });
+
+  it('does not count content, or a failed read', () => {
+    expect(focusIsInOverhangRow({ node: { subtype: 'RowList' } })).toBe(false);
+    expect(focusIsInOverhangRow(null)).toBe(false);
   });
 });

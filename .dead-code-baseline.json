@@ -1,7 +1,6 @@
 {
   "//": "Dead code awaiting removal (#1072). The dead-code BSC plugin skips these entries and fails on any that is no longer dead, so this file cannot hold a stale entry. An added entry is a deliberate deferral, decided in review: never add one to silence a new finding. Delete the code, or mark it kept (see docs/architecture/build-and-tooling.md#dead-code).",
   "entries": [
-    "field components/Buttons/TextSizeTask.xml TextSizeTask.fontName",
     "field components/data/jellyfin/DeviceInfo.xml DeviceInfo.audioCodecs",
     "field components/data/jellyfin/DeviceInfo.xml DeviceInfo.canPlay4K",
     "field components/data/jellyfin/DeviceInfo.xml DeviceInfo.maxVideoHeight",

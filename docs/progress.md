@@ -490,10 +490,6 @@ It runs `m.view.unobserveField("state")` before `m.view.control = "stop"`, and [
 
 (#750). Jellyfin's `SubtitleManager.SearchSubtitles(Video, …)` returns an empty list unless `video.VideoType` is `VideoFile` — so an ISO image or DVD / Blu-ray folder always gets "no subtitles found" — read at the `v10.7.0`, `v10.7.7`, `v10.8.13`, `v10.9.11`, `v10.10.7`, `v10.11.11` and `v12.0` tags, unchanged. `ItemDetails` does not gate the button on the targeted version's `VideoType` (its only `VideoType = "VideoFile"` check is `buildVideoDropdownItems`), so the user is told to check provider setup when setup is fine. Documented for users in [`manage-subtitles.md`](user/features/manage-subtitles.md). **Decide:** hide the button for a non-`VideoFile` version, or keep the doc as the answer. A code change, so it needs device testing — kept out of #750's docs pass for that reason.
 
-#### `ItemGridOptions` commits View / Sort / Filter on the key RELEASE, so a press guard would break selection. `[fid: item-grid-options-commits-on-key-release]` `[captured 2026-09-19]`
-
-`onKeyEvent` ignores its `press` argument; the focused list consumes the OK press and only the release reaches the dialog, which is where it commits (console-verified 2026-09-19 on a Stick 4K). The one-line `if not press then return false` would therefore make selection never commit. The correct fix drives selection from the lists' `itemSelected` rather than key events. No user-visible bug once page deliveries stop pulling focus into the open dialog (fixed separately); releases also re-run the Down branch's `jumpToItem = 0`, harmless while focus is stable.
-
 #### Posters and Continue Watching can show a different version's progress than the one that would play (#933 follow-up; the DISPLAY half of the version-choice work, split out 2026-09-17 by user call). `[fid: posters-show-other-version-progress]` `[captured 2026-09-19]`
 
 The playback half shipped: `versionResume.chooseResumeSource()` is the single chooser for the details screen, quick play and casts, so all of them resume the same version (most recently played, unless the in-progress versions sit within 30 s of each other, where the best version for the device among them wins — recorded as `version-resume-near-level`); episodes a queue arrives at start fresh instead (`episode-queue-starts-fresh`). What is still unresolved is DISPLAY: a library poster and the Continue Watching row bind the item's OWN `UserData`, so with an alternate in progress the bar can belong to a version other than the one Play would start, and with ONLY an alternate in progress a poster shows no bar at all. **Not a scope call to make in passing:** a per-tile `GET /UserItems/{id}/UserData` is one request per tile, exactly the crossing cost [`async.md`](architecture/async.md) warns about in a grid, and the cheap alternative — preferring the item's own version when positions are near-level — would AMEND `version-resume-near-level` rather than merely narrow it. **Also weigh (user idea, 2026-09-19): a visual cue that another version of an episode or movie is available**, on the tiles and episode rows where the choice otherwise stays hidden until the details screen; capture what those screens show today on 12.0 and 10.11 before designing it (UI screenshots work — only playback cannot be captured). **Fix shape:** weigh the options and MEASURE a per-tile read on a real grid before choosing; the signals available without any request are the item's own position and the server's source order.
@@ -983,6 +979,123 @@ Measured 2026-11-16 on a Streaming Stick 4K against Jellyfin 12.4.0 (two joins p
 
 Not built with `dabe5d11` because it adds state: the verdict has to be keyed on the version and the cap, and dropped when the gear's bitrate pick changes, or a stale one re-encodes a stream the server could have copied. Closes when a second player of the same version starts capped with no restart, shown by a unit case and a device run.
 
+#### The photo viewer's Slideshow and Random settings should mean auto-advance and shuffle, so every combination works `[fid: photo-viewer-shuffle-autoplay-model]` `[captured 2026-11-05]`
+
+The photo viewer treats Slideshow and Random as two advance modes, and Slideshow wins when both are on: `PhotoDetails.nextSlide` checks `m.slideshow` first, and Random picks a fresh random index on each tick (repeats allowed) while Left and Right still walk the album in order. The library-tab work (ADR 0056) moved the two toggles to **Settings → User Interface → Libraries → Photos** (`photosSlideshow`, `photosRandom`), where a user can turn both on, so the Random Order description now says it has no effect while Slideshow is on. Album Shuffle (`QueueManager.launchPhotoAlbum`) sets both flags, so it probably plays in order today; not checked on a device.
+
+The agreed model: Slideshow means start playing automatically (off opens the album paused on the first photo; Play already pauses and resumes), and Random means Shuffle: shuffle the album's order once, no repeats, and have the slideshow and Left/Right walk that order. Every combination then means something, and the registry keys stay as they are. Close it by changing `PhotoDetails` to that model with a spec, rewording the two descriptions in `settings/settings.json` and `docs/user/features/photos.md`, and checking album Shuffle on a device. Why not now: it changes the viewer's behavior and needs a photo-album fixture (see `slideshow-wait-untested-no-album`).
+
+#### A music library has no Favorites tab: build one as rows per kind `[fid: music-library-favorites-tab]` `[captured 2026-11-12]`
+
+A movie or TV library has a Favorites tab since the library tabs work: its content tab's view with favorites fixed on (decision `library-tab-view-plus-fixed`). A music library has no one content tab (Albums, Album Artists and Artists are peers), so it got no tab and keeps the Favorites filter on each of its tabs.
+
+Build it as rows per kind (albums, album artists, artists, songs), the way Home's Favorites tab is (`FavoritesRows`), not as one grid. Not done with the tabs work because it is a new surface with its own loading, not a view with a filter fixed on. To close: `MusicPresenter.getOptions()` lists a `favorites` tab, the grid view draws it as rows, the Favorites filter leaves the lists it covers, and `docs/user/features/favorites.md` says so.
+
+#### The TV guide filtered to Favorites does not refresh after a channel's favorite changes elsewhere `[fid: guide-favorites-filter-goes-stale]` `[captured 2026-11-13]`
+
+A Live TV library's guide, filtered to Favorites, keeps its old channel list after a channel is added to or removed from favorites elsewhere (for example from the player while watching it) and the viewer comes back. The favorites counter (decision `favorite-toggles-bump-version`) cannot cover it: `BaseGridView.favoritesStale()` reads `m.gridQuery`, which the guide path never builds, and a reload would do nothing anyway, because `BaseGridView.showTVGuide()` returns early when the guide already exists. Found by reading the code on 2026-11-12, not run on a device.
+
+To close: give the guide a refresh of its own channel list (`Schedule` already reloads channels when its filter changes), call it on resume when the guide's filter is Favorites and `favoritesVersion` moved, and add an RTA case that toggles a channel favorite through the server and checks the guide on return.
+
+#### Home's Favorites tab refetches on every return even when no favorite changed `[fid: home-favorites-skip-unchanged-reload]` `[captured 2026-11-13]`
+
+Home's Favorites tab reloads from the server on every return to Home (`Home.refresh()` calls `FavoritesRows.loadFavorites()`), even when no favorite changed. Since decision `favorite-toggles-bump-version`, every favorite toggle bumps `JRScene.favoritesVersion` through `favorites.request()`, so Home could skip the request when the counter has not moved since its last load, as `BaseGridView.favoritesStale()` does for the library grids. The win is one fewer request per return to Home while its Favorites tab is up; `FavoritesRows` already updates rows in place, so the viewer's place is kept either way.
+
+Not done with the library fix because Home works correctly today; this is a cost saving. To close: record the counter when `FavoritesRows` loads, skip `loadFavorites()` in `Home.refresh()` when it has not moved, and check that a favorite toggled from a details screen still shows on return to Home.
+
+#### Move the app's other lists onto the position line `[fid: position-line-across-lists]` `[captured 2026-11-15]`
+
+`ListPosition` (`components/ui/listposition/`, rule in `docs/architecture/design-system.md`, "A list that hides rows: the position line") is the one way a clipped list says it has more rows: "3 of 12" between two arrowheads lit by the rows hidden that way. Only `JRListDialog` uses it. Two older counters draw the count alone, each by hand: `SubtitlePanel.updateListCounter` and `SearchSuggestionList.updateCounter`. (Home's rows use Roku's own `showRowCounter`, which stays.) The Settings lists and `OverviewDialog`'s scrolling text have no cue at all.
+
+Why not now: each surface needs its own placement and a look on a device, and the piece that added the line was the list dialog's.
+
+Closes when each of those shows the position line (the overview dialog: the arrowheads without a count), or records why it does not. Also try a half row showing at the cut edge of a list as a second cue: it was set aside because nobody had tried Roku's `itemClippingRect` on a device.
+
+#### The Replay key has no one rule outside playback `[fid: replay-key-one-rule-outside-playback]` `[captured 2026-11-15]`
+
+Outside playback the Replay key means "back to the start", but three ways. On Home and the Favorites rows it jumps to the first item of the focused row, sideways (`HomeRows.onKeyEvent`, `FavoritesRows.onKeyEvent`). In a library grid it jumps to item 0. On a library's Genres tab it jumps to the first row, upward. The persistence split of the library screens work made a library's Replay go to the first item from anywhere on the screen, the letter rail included (`BaseGridView.jumpToFirstItem()`), and removed the legacy branch that cleared the letter and the voice text. That settled the library and nothing else, on purpose.
+
+Decide once: which way a row list goes; whether Replay from the letter rail should move focus to the grid, as it does now; what it does on the TV guide, where it does nothing today; and whether screens without it (details, search, settings) get it. Then apply the rule everywhere and write it into `docs/architecture/design-system.md`.
+
+Why not now: it is a design choice for the operator across several screens, and the piece that surfaced it changes one.
+
+#### The TV guide needs a component of its own in place of Roku's `TimeGrid` `[fid: custom-tv-guide-component]` `[captured 2026-11-15]`
+
+The TV guide draws on Roku's own `TimeGrid` (`JRTimeGrid` in `components/liveTv/schedule.bs`), which limits what it can show and how it lays out. The library header strip worked around three of its limits: the row count is set by hand (`scheduleGrid.numRows`, seven on screen and three below the edge so logos load ahead), a fast run of Down presses still outruns that buffer, and the details pane and its picture are placed by fixed numbers. A component of the app's own would own its rows, its loading and its layout.
+
+Why not now: it is a rewrite of the guide, with its own design and device work. What the library screen and the guide exchange is small and would stay: the favorites filter, the search term, `isAtTop()` and `focusedSummary`. Closes when a custom guide component replaces `JRTimeGrid`, or the idea is dropped.
+
+#### A portrait poster is three sizes across Home, the library grid and the Genres rows `[fid: one-portrait-poster-size]` `[captured 2026-11-15]`
+
+Three screens draw a portrait poster at three sizes: Home's rows at 234 by 351 (`itemAspectRatio.PORTRAIT`), the library grid at 252 by 378 (`libraryGrid.POSTER_WIDTH`), and the Genres tab's rows at 213 by 320 (`genreList` in `BaseGridView.xml`). The library grid was 264 by 396 until the header strip took room above it, so the sizes were never one. Raised by the operator while judging the strip's layout (2026-11-15).
+
+Why not now: one size changes Home and every row list, each with its own row heights and focus chrome (`docs/architecture/list-grid-item-layout.md`), and needs its own captures. Closes when the three share one constant, or the difference is recorded as intended.
+
+#### Hear the library header strip, its Sort menu and its Filter checklist with the screen reader on `[fid: header-strip-screen-reader-check]` `[captured 2026-11-15]`
+
+The library header strip has not been heard with the screen reader on. To check by ear, on a movie library: the Sort and Filter chips say their label and value ("Sort: Title", the direction, "Filter: 2"); the Sort menu says which field is in force and reads the Order row's direction in words; the Filter menu reads each category with what is set; a Filter checklist says "Checked" and "Not checked" as a row is ticked. The strip's title and metadata are not focusable, so also check whether a focused poster still names its item.
+
+Why not now: it needs a person listening to a device. It belongs to the screen reader epic (issue 759). Closes when the check is done and anything it finds is fixed or filed.
+
+#### The letter rail's filter cannot be reached inside the safe zone, and whether the rail should jump is undecided `[fid: letter-rail-filter-outside-safe-zone]` `[captured 2026-11-16]`
+
+The library letter rail is a filter: a press reloads the tab with `NameStartsWith` (`BaseGridView.onAlphaSelectedChanged()`, `LoadItemsTask2`), under any sort. It is drawn at x 52, outside the 5% zone, and nothing inside the zone offers the letters, so a TV that clips the margin loses the filter. `docs/architecture/design-system.md` ("The letter rail: the one thing in the margin") records that as an accepted gap, corrected on 2026-11-15 from a sentence that called the rail a jump.
+
+Two changes to weigh together, since each alters what the rail is for:
+
+1. **A "Starts with" category in the Filter menu.** The letters become reachable inside the zone and the rail becomes a true shortcut. Clear filters already clears the letter, and the strip already shows it.
+2. **The rail jumps to the letter when the tab is sorted by name,** in place of filtering, as several other media clients' letter rails do. It needs the index of a letter's first item and paging to an arbitrary place in the grid, and a rule for the rail under any other sort.
+
+Why not now: both are design choices for the operator, and the second needs a paging design. See also `library-grid-alpha-menu-trim`, which needs the same per-letter knowledge.
+
+Not checked: whether any TV in use clips x 52.
+
+#### A library with tabs never shows its own name `[fid: tabbed-library-hides-its-name]` `[captured 2026-11-16]`
+
+A library with tabs never shows its own name. Its first tab is the type's word (`MoviePresenter` labels it with `LabelMovies`, the TV presenter with its own), and the overhang hides the title while tabs show (`JROverhang.onTabsChanged()`), so two movie libraries look the same once open. A screen with no tabs shows its name as the overhang title, underlined as a selected tab is, so the gap is only on tabbed libraries. Found while reviewing the library header strip (2026-11-16).
+
+One answer to weigh: label the first tab with the library's own name.
+
+Why not now: it changes what a tab is called on every tabbed library, and needs its own captures and a rule for a long name in the tab strip. Closes when a tabbed library shows its name, or the gap is recorded as intended.
+
+#### Grid with details is offered only on a movie library's Movies tab `[fid: grid-with-details-beyond-movies]` `[captured 2026-11-16]`
+
+Grid with details (the presentation layout) is offered only on a movie library's Movies tab, so a layout only movies get reads as unfinished. Offer it on Shows, Collections and Favorites. Each needs the fields its page asks the server for (each presenter's `configureLoadTask()`) and a look at what its details panel shows. Deferred by piece 10 of the library redesign (ADR 0061): it is a pull request of its own after the redesign lands on `main`.
+
+#### Library grids have no List layout `[fid: library-list-layout]` `[captured 2026-11-16]`
+
+Add the third kind of library layout, List: a cell with the poster, the title, facts and the overview beside it, where Items per row sets the column count (one wide row per line at the largest, two columns in the middle; whether it goes to three is a bench call). It needs an overview on every page of items, so measure the page cost first (`docs/dev/measuring-performance.md`). ADR 0061 reserves the stored id `list`. Deferred by piece 10 of the library redesign: its own pull request after the redesign lands on `main`.
+
+#### Home video and music video libraries draw portrait cells where Home draws them wide `[fid: wide-cells-home-and-music-videos]` `[captured 2026-11-16]`
+
+Home video and music video libraries draw portrait cells in the library grid, while Home's Latest rows draw the same items wide (`latestRows.slotSizeFor`), so a library looks different on Home and when opened (read from the code, not seen on a device). Add a wide shape to `libraryGrid` (one row of widths, one shared rule for which libraries get it). Capture a real home video library first. Deferred by piece 10 of the library redesign: its own pull request after the redesign lands on `main`.
+
+#### A library's page menu describes the previous tab while a new tab loads `[fid: page-menu-describes-previous-tab-while-loading]` `[captured 2026-11-17]`
+
+`BaseGridView.showsItemGrid()` decides whether a library's page menu offers Items per row and Item Titles from `genreList.opacity`, which changes only when a load lands. So while a tab switch loads, the menu describes the previous tab's surface. Switching to a movie or TV library's Genres tab still offers Items per row until the genre rows draw, and a pick there saves an unused `columns_genres` and reloads. Switching from Genres back, the entry is missing until the first page arrives. Found in the review of PR 1400 (2026-11-16), read from the code.
+
+Low impact: a short window and no lasting harm. Not fixed in that PR because the fix needs the presenter to say which views draw the genre rows; today `onItemDataLoaded` decides from the data, since music genres use the grid. Close it by giving presenters that answer and having `showsItemGrid()` ask it.
+
+#### What the screen reader says when OK on the icon for the screen on show does nothing is unchecked `[fid: overhang-inert-icon-screen-reader]` `[captured 2026-11-17]`
+
+Since the library screens' piece 12 (branch `feat/overhang-consistency`), a cluster icon whose route is the screen on show does nothing: `JRScene.openClusterRoute` returns early for Search on the search screen and Settings on Settings. Nobody has checked what the Roku screen reader (audio guide) says when OK lands on that icon: it may say nothing, which leaves a blind viewer unsure the press was read. Check on a device with the screen reader on; if it is silent, give the press a cue (for example announce that this is the current screen), without adding a visible mark the operator ruled out.
+
+#### Star does what the settings icon does on Home and libraries, but leaves Settings and does nothing on Search and details `[fid: star-key-one-rule]` `[captured 2026-11-17]`
+
+Star (the options key) does different things on different screens. On a library and on Home it does what the settings icon does (`BaseGridView.onOptionsKey`, `Home.onOptionsKey`, both calling `JRScene.openPageMenu`); on Settings it leaves the screen (`settings.bs` `onOptionsKey` calls `leaveScreen()`); on Search and details it does nothing (`isOptionsAvailable` false). Piece 12 of the library screens made Home match libraries and left the rest undecided. Decide one rule for Star across signed-in screens (most likely: what the settings icon does, everywhere) and apply it, with an RTA case per screen in `overhang-cluster.spec.js`.
+
+#### Use Web Client's Home Section Arrangement changes nothing until the next sign-in `[fid: web-arrangement-applies-at-sign-in-only]` `[captured 2026-11-18]`
+
+Use Web Client's Home Section Arrangement (`uiHomeUseWebArrangement`) is read only by `user.LoadUserPreferences` in `source/utils/session.bs`, at sign-in, where it decides whether the server's `homesection*` display preferences fill `homeSection0..9`. Changing it in Settings does nothing until the next sign-in or launch: Home's `onSettingsChanged` (since the settings-changed-while-covered hook) cannot apply it, because the server's preferences are not kept after sign-in. To close: on a change, fetch the display preferences again (or keep them from sign-in), rebuild the section settings, and have Home rebuild its rows (its section plan is built once per `HomeRows`, in `loadLibraries`). Found by the audit for the settings-changed-while-covered work (2026-11-18). A Home page entry for it (the planned Home page settings) needs this first.
+
+#### A details screen opened with the clock hidden never ticks Ends At once the clock is turned on `[fid: details-ends-at-misses-clock-turned-on]` `[captured 2026-11-18]`
+
+`ItemDetails.init` observes the overhang clock's `minutes` only when the clock is shown (`uiDesignHideClock` off), so a details screen built with the clock hidden never ticks its Ends At line after the clock is turned on in Settings: the line itself is rebuilt on return (the item reloads on every show and `populate*` reads the setting), but it keeps the minute it was drawn at. Low impact. Not fixed with the settings-changed-while-covered work (2026-11-18) because the fix is more than "always observe": the clock is the overhang's shared node, and `ItemDetails.onDestroy` calls `m.clock.unobserveField("minutes")`, the shape `ObserverRegistry.spec.bs` shows can remove another component's observer, so observing it on more screens widens that. To close: decide how `ItemDetails` follows the clock without an unobserve on a shared node (a scoped observer once that is measured, or a field the scene relays), then observe whatever the setting and gate the handler on it.
+
+#### Disable Unwatched Count reaches cells bound after the change, not the cells already on screen `[fid: watch-badge-stale-on-visible-cells]` `[captured 2026-11-18]`
+
+Since the settings-changed-while-covered work (2026-11-18), `JRPoster` reads Disable Unwatched Count (`uiTvShowsDisableUnwatchedCount`) when it draws the watch badge instead of once in `init`, so every cell bound after a change is right in both directions (a cell resets its badge and sets it again on each bind; `JRPoster.spec.bs` covers it). Cells already on a covered screen when the setting changes keep the badge they drew until they are bound again: a library's grid keeps its cells across a redraw in place (`GridItem.bs`, no bind on `relayoutGrid`), so its visible cells change only on scroll, reload or reopening. Not checked on a device: whether Home's refresh on return (`updateHomeRows`) binds its visible cells again. To close: check Home and a library on a device after the change; if visible cells stay stale, give the screens' `onSettingsChanged` a way to redraw their cells' badges (a rebind of the visible range, or a poster function the cell calls), without a reload that loses the place.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -1305,6 +1418,10 @@ A SyncPlay member whose seeks land short asks the group to come to where it stan
 Measured 2026-11-18 on a low-end Streaming Stick, a direct play, member-driven mix soaks at the merge of `main` into the branch: 3 of 77 group resumes in 700 steps on Jellyfin 12.0.0 left the Stick with no picture for 18 to 20 s (steps 145, 160 and 316 of the seed 1 member list), and the first 170 steps on 12.4.0 failed at the same two steps, 145 and 160. Each followed two seeks by the other member inside one pause; at the resume the Stick stood 3.8 to 5.7 s short of the group's point. The same 170 steps passed on a Streaming Stick 4K on 12.0.0, and 700 on an Ultra on 10.11.11, where seeks land on their target.
 
 Not checked: whether the engine before the rewrite does the same on that Stick (its stress tool cannot run these steps), and a member that transcodes. A fix has to keep two members with different sync frames from pulling the group back in turns, which is why the ask is one per pause. Reproduce with `RTA_STRESS_CASE=mix` and `RTA_STRESS_STEPS=member-pause,member-seek-paused,member-seek-paused,dwell-paused,member-unpause` repeated, on the low-end Stick. Closes with a fix that passes those steps there and a soak, or a recorded no.
+
+#### Write a library's default tab back to the server's display preferences `[fid: library-default-tab-write-back]` `[captured 2026-11-13]`
+
+The library screens' default tab reads the web client's pick (`landing-<libraryId>`, or `landing-livetv`, in the `usersettings` display preferences, client `emby`) at sign-in, and keeps a Roku pick in the registry (`display.<libraryId>.defaultTab`, decision `library-default-tab-precedence`). Nothing is written back, so a pick made in the gear menu's Default tab entry stays on this Roku. Writing it back would make one pick follow the user across clients, but it would also change what the web opens on, so it needs a design call first: whether the Roku's pick replaces the web's or stays an override, and what the gear entry's first option then means. A write would POST the whole `DisplayPreferences` record with one key changed, as the web does. Deferred from piece 07 of the library screens work, by design.
 
 ### api
 
@@ -1867,6 +1984,12 @@ Both functions call a method on `m.clientSockets[id]` without checking it, and `
 Not reported upstream yet: a report is a public post, so it waits for the operator's yes.
 
 When it moves: if the release guards both functions, delete the patch and its test. Otherwise regenerate the patch on any version bump with `npx patch-package roku-test-automation`, since its filename pins 2.2.2. A bump the patch still applies to only warns about the mismatch. One it no longer applies to fails `npm ci` on CI, while a local install prints the error and carries on without the patch, and `rta-closed-socket-guard.test.js` then fails in `test:scripts`.
+
+#### RTA specs still clear the settings they wrote by hand, which the signed-in seeds now reset `[fid: rta-hand-setting-cleanups-redundant]` `[captured 2026-11-18]`
+
+Since the settings-reach-screen work (2026-11-18), `seedHome` and `seedHomeWithSavedServers` in `tests/rta/lib/seed.js` put the user back on default settings before each seed: every field of `JellyfinUserSettings.xml` in its registry section, and the `display.*` keys. Before that, specs cleaned up the settings they wrote by hand, and four still do: `dialogs.spec.js` (`PLAYBACK_SETTING_KEYS`, `seedPlaybackSettings(null)` in `afterAll`), `theme.spec.js` (`clearThemeKeys`, before each seed and in `afterAll`), `still-watching.spec.js` (an `afterAll` deleting `playbackPlayNextEpisode`) and `playback-advance.spec.js` (one deleting it and `playbackCinemaMode`).
+
+They were kept because a spec after them that lands through a seed that signs nobody in (`seedUserSelect`, `seedServerSelect`) and then signs in through the UI would still see the setting. To close: check which specs after these four land that way and whether any reads a playback or theme setting; if none does, remove the hand cleanups (and the comments explaining them), then run the full `npm run test:rta` to prove the seed reset carries them. Not done in the same change because it widens a fix PR into four unrelated specs.
 
 ### docs
 

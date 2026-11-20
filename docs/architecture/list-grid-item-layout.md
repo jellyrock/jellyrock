@@ -6,10 +6,11 @@ related-files:
   - components/ui/rowitem/JRRowItem.bs
   - components/ItemGrid/GridItem.bs
   - components/ItemGrid/BaseGridView.xml
+  - source/GridView/libraryGrid.bs
   - components/home/HomeRows.bs
   - source/utils/listTheme.bs
   - source/utils/textureManager.bs
-last-reviewed: 2026-10-10
+last-reviewed: 2026-11-18
 ---
 
 # `RowList` and grid item layout, and the focus indicator
@@ -18,7 +19,9 @@ How a custom item component (the `itemComponentName` of a `RowList` or `MarkupGr
 
 ## The one thing that bites everyone
 
-> **The focus indicator is pinned to the item's poster slot (`rowItemSize` or `itemSize`) only when `rowHeights` is set taller than that slot. Without `rowHeights`, the indicator wraps the item component's whole bounding box, including a title placed below the poster, so it reaches past the image and covers the title.**
+> **On a `RowList`, the focus indicator is pinned to the item's poster slot (`rowItemSize`) only when `rowHeights` is set taller than that slot. Without `rowHeights`, the indicator wraps the item component's whole bounding box, including a title placed below the poster, so it reaches past the image and covers the title.**
+
+A `MarkupGrid` differs: it frames the poster with `rowHeights` equal to `itemSize`, and the title's room comes from the row gap. See [The library grid's cells](#the-library-grids-cells).
 
 The indicator is Roku's built-in 9-patch: the app only recolors it (`focusBitmapBlendColor`) and supplies no bitmap. It is drawn behind the items, since `drawFocusFeedbackOnTop` defaults to false.
 
@@ -27,13 +30,13 @@ The indicator is Roku's built-in 9-patch: the app only recolors it (`focusBitmap
 For an item component that shows a poster with a title below it:
 
 1. **`rowItemSize`** is the poster slot, the area the focus indicator frames.
-2. **`rowHeights`** (`RowList`) is the slot height plus a title area. Setting it taller than `rowItemSize` is what pins the indicator to the slot and leaves the title outside it. A `MarkupGrid` gets the same from its presenter's `rowHeights` and `itemSize`.
+2. **`rowHeights`** (`RowList`) is the slot height plus a title area. Setting it taller than `rowItemSize` is what pins the indicator to the slot and leaves the title outside it. A `MarkupGrid` keeps `rowHeights` equal to `itemSize` and puts the title in `itemSpacing` instead (see [The library grid's cells](#the-library-grids-cells)).
 
    **One `rowHeights` entry covers every row, but keep `itemSize.y` equal to it anyway.** Roku's [`RowList` reference](https://gitlab.com/rokudev/dev-doc/-/blob/v2.0/docs/REFERENCES/scenegraph/list-and-grid-nodes/rowlist.md) says rows past the end of the array fall back to `itemSize.y`, unlike `rowItemSize`, `rowLabelOffset` and `rowItemSpacing`, which repeat their last value. Measured 2026-08-09 on an Ultra, it repeats like the others: `rowHeights="[415]"` with `itemSize.y` forced to `200` left rows 2 and 3 at a 455-pixel pitch, not 240. So the app relies on behavior the docs do not promise, and a second `rowHeights` entry would bring the documented fallback back. Keeping the two equal is correct under either reading.
 3. **The poster fills the slot.** The two item components do it two ways:
-   - `GridItem` places the poster `POSTER_TOP_OFFSET` below the slot's top, so it runs past the slot's bottom and the indicator, drawn behind, shows a clear margin above the image.
+   - `GridItem` places the poster `libraryGrid.POSTER_TOP_OFFSET` below the slot's top, so it runs past the slot's bottom and the indicator, drawn behind, shows a clear margin above the image.
    - `JRRowItem` places the poster at the slot's origin, the same size as the slot.
-4. **The title sits below the poster**, in the title area `rowHeights` added, outside the indicator: at `POSTER_TOP_OFFSET` plus the poster height plus `TITLE_GAP` in `GridItem`, and at the poster height plus `FOCUS_PADDING` in `JRRowItem`.
+4. **The title sits below the poster**, in the title area `rowHeights` added, outside the indicator: at `libraryGrid.POSTER_TOP_OFFSET` plus the poster height plus `libraryGrid.TEXT_TOP_GAP` in `GridItem`, and at the poster height plus `FOCUS_PADDING` in `JRRowItem`.
 
 ## Don't hand-roll focus chrome in a custom row
 
@@ -64,7 +67,7 @@ Cells free their poster texture when the user is not about to see it, and load i
 
 **Rows:** `loadedRowRange = [bufferStart, visibleStart, visibleEnd, bufferEnd]` holds the visible rows plus `TEXTURE_BUFFER_ROWS` (2) on each side. A cell in a buffer row keeps its texture; a cell outside the range follows `renderTracking`.
 
-**Columns:** a window applies only on a `RowList` row with more than `TEXTURE_BUFFER_THRESHOLD` (20) items, and only while that row is visible. The window is exactly 20 columns: the visible slots (`calculateTextureVisibleItemCount`, which counts a partly visible slot) plus the rest of the budget split left and right, the odd item going right. It wraps, because `JRRowList` uses `fixedFocusWrap`, so at column 0 the left half is the row's tail: the item drawn in the `focusXOffset` gap, one Left press away. The geometry is `isColumnInTextureWindow`, and its unit tests assert column sets read off a device, so change the tests only with a new device reading. Every shape loads 20: portrait and square show 7 and buffer 6 left and 7 right; wide shows 4 and buffers 8 and 8.
+**Columns:** a window applies only on a `RowList` row with more than `TEXTURE_BUFFER_THRESHOLD` (20) items, and only while that row is visible. The window is exactly 20 columns: the visible slots (`calculateTextureVisibleItemCount`, which counts a partly visible slot) plus the rest of the budget split left and right, the odd item going right. It wraps, because `JRRowList` uses `fixedFocusWrap`, so at column 0 the left half is the row's tail: the item drawn in the `focusXOffset` gap, one Left press away. The geometry is `isColumnInTextureWindow`, and its unit tests assert column sets read off a device, so change the tests only with a new device reading. Every shape loads 20: portrait and square show 7 and buffer 6 left and 7 right; wide shows 4 and buffers 8 and 8. The visible width the count starts from (`textureVisibleWidth`, the list's `itemSize` less its `focusXOffset`) is written by `initTextureManager`, and again by `updateTextureLayout` when a list is laid out again after it: Home's rows when the Row Layout setting changes (`applyRowLayoutSetting`).
 
 **The cell pool bounds memory, not the item count.** `RowList` creates cells only around the focus (28 to 30 on a row of 32 or 100 items), and a texture can only live on a cell. A buffer row has no 20-column cap, yet on a 100-item row it held 7 textures across its 8 cells. So counting evictions by items predicts too many: a cell `RowList` reuses for another item takes the new poster without passing through `unloadTexture`, and `unloadsWindow` reads below "items that left the window".
 
@@ -83,6 +86,25 @@ After an unload Roku reports the poster's `loadStatus` as `failed`. That is the 
 - [`JRRowItem`](../../components/ui/rowitem/JRRowItem.bs) with [`HomeRows`](../../components/home/HomeRows.bs): `setRowItemSize()` in `HomeRows` sets each row's `rowHeights` to the slot plus a 90-pixel text area (library tiles get the slot only), and `JRRowItem` puts its title `FOCUS_PADDING` below the poster. `SearchRow` and `FavoritesRows` do the same in their `applyRowSizes()`.
 - [`GridItem`](../../components/ItemGrid/GridItem.bs) in the genre `RowList` (`genreList` in [`BaseGridView.xml`](../../components/ItemGrid/BaseGridView.xml)): `rowItemSize="[[213, 320]]"` and `rowHeights="[415]"`, with `itemSize="[1702, 415]"` to match. The comment above the list in the markup says why those numbers.
 - Roku's [`RowList` sample](https://gitlab.com/rokudev/samples/-/tree/master/ux%20components/lists%20and%20grids/RowListExample) uses `rowItemSize=[536,308]` with the poster inset to 512×288, another way to keep the indicator off the image.
+
+## The library grid's cells
+
+Every library grid cell comes from `libraryGrid.cell(shape, columns, textLines)` in [`libraryGrid.bs`](../../source/GridView/libraryGrid.bs). A presenter declares a shape (`getGridShape`), an image mode (`getImageDisplayMode`) and where the grid starts (`getGridTop`); `GridPresenterBase.getGridConfig()` builds the rest. No presenter holds a cell's pixels. The grid starts at y 168 (`headerStrip.CONTENT_TOP`), under the [header strip](design-system.md#the-library-header-strip), except in the presentation layout.
+
+- **The viewer picks how many cells a row holds,** 3 to 11 (`MIN_COLUMNS`, `MAX_COLUMNS`), from the library's page menu. It is saved per library and view as `columns_<view>`. Until then a portrait grid draws 7 and a square grid 6. `resolveColumns()` raises a count to `minColumns(shape, top)`, the first count whose whole poster shows above the screen's edge, without rewriting what was saved. That is why the presentation layout starts at 5.
+- **Each count has one designed width** (`widths()`): the widest cell on the 3 pixel grid whose row spans the header strip with gaps of at least `MIN_GAP`. The height follows the shape, and the column gap is what the span leaves. The row gap holds the text lines under a poster, or equals the column gap with titles off. 12 is out: no width on the grid spans the strip.
+- **`MIN_GAP` is 18 because of the focus ring.** The ring sits 12 pixels outside the poster on every side and is drawn behind the neighbors (read off Roku Ultra captures at 300, 234 and 168 wide, 2026-11-16). At 18 it keeps the same 6 pixels of air outside it as inside.
+- **The ring frames the poster with `rowHeights` equal to `itemSize`,** unlike a `RowList`. The title sits in the row gap: `TEXT_TOP_GAP` under the poster, a line of `TEXT_LINE_HEIGHT`, then `TEXT_BOTTOM_GAP` to the next poster.
+- **The grid builds every row whose slot starts above the screen's edge, and never fewer than two** (`rowsFor()`). A grid built with one row clipped the poster at the slot's bottom and drew the ring around the slot instead.
+- **A cell asks for the smallest of three fixed image sizes per shape that covers it** (`imageSizeFor()`). Fixed sizes, because the server's first request at a size it has not made is slow for every image in a library; a size per count would pay that nine times. The cell scales what it gets to its own size as it loads (`loadWidth`, `loadHeight`).
+
+**A change to the count, the titles or the layout redraws the grid in place** (`BaseGridView.relayoutGrid()`): the same items, the same item in focus, nothing fetched again. The grid takes its new geometry while it holds no content, then gets the same content back. Sizes written to a grid that holds items drew overlapping cells when tried (2026-11-16). A cell the grid keeps on its item gets no new bind, so each `GridItem` observes the view's `showItemTitles` itself, and `applyTitleVisibility()` is the one rule for whether a title shows.
+
+**The grid's focus style is `vertFocusAnimationStyle="fixed"`, which Roku's `ArrayGrid` reference does not list** (it lists `floatingFocus`, `fixedFocusWrap` and `fixedFocus`). Measured on a Stick 4K on 2026-11-16, it behaves as `fixedFocus`: Down scrolls the grid and focus stays on the top row. So a last row that shows only partly never takes focus.
+
+At 7 per row the second row's titles end inside the 5% zone. At 6 and fewer they draw in the bottom margin (Roku Ultra captures, 2026-11-15 and 2026-11-16). That is accepted: the header strip names the focused item inside the zone, so a title under a poster is a convenience for the rows not in focus.
+
+These sizes are the library grid's alone. Home's rows use 234 by 351 (`itemAspectRatio.PORTRAIT`) and the Genres rows 213 by 320.
 
 ## Why this doc exists
 

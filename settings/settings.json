@@ -1049,35 +1049,18 @@
                     "description": "Show item count in the library and index of selected item.",
                     "settingName": "itemGridShowItemCount",
                     "type": "bool",
-                    "default": "false",
+                    "default": "true",
                     "titleKey": "LabelItemCount",
                     "descriptionKey": "SettingDescShowItemCount"
                   },
                   {
                     "title": "Item Titles",
-                    "description": "Select when to show titles.",
-                    "settingName": "itemGridTitles",
-                    "type": "radio",
-                    "default": "showalways",
-                    "options": [
-                      {
-                        "title": "Show On Hover",
-                        "id": "showonhover",
-                        "titleKey": "LabelShowOnHover"
-                      },
-                      {
-                        "title": "Always Show",
-                        "id": "showalways",
-                        "titleKey": "LabelAlwaysShow"
-                      },
-                      {
-                        "title": "Always Hide",
-                        "id": "hidealways",
-                        "titleKey": "LabelAlwaysHide"
-                      }
-                    ],
+                    "description": "Show each item's title under its poster.",
+                    "settingName": "itemGridShowTitles",
+                    "type": "bool",
+                    "default": "true",
                     "titleKey": "LabelItemTitles",
-                    "descriptionKey": "LabelSelectWhenToShowTitles"
+                    "descriptionKey": "SettingDescShowItemTitles"
                   }
                 ],
                 "titleKey": "LabelGridViewSettings",
@@ -1117,31 +1100,36 @@
                 "default": "true",
                 "titleKey": "LabelCommunityAndCriticalRatings",
                 "descriptionKey": "SettingDescMoviesShowRatings"
-              },
-              {
-                "title": "Default View",
-                "description": "Default view for Movie Libraries.",
-                "settingName": "itemGridMovieDefaultView",
-                "type": "radio",
-                "default": "moviesgrid",
-                "options": [
-                  {
-                    "title": "Movies (Presentation)",
-                    "id": "Movies",
-                    "titleKey": "LabelMoviesPresentation"
-                  },
-                  {
-                    "title": "Movies (Grid)",
-                    "id": "MoviesGrid",
-                    "titleKey": "LabelMoviesGrid"
-                  }
-                ],
-                "titleKey": "LabelDefaultView",
-                "descriptionKey": "LabelDefaultViewForMovieLibraries"
               }
             ],
             "titleKey": "LabelMovies",
             "descriptionKey": "SettingDescMovies"
+          },
+          {
+            "title": "Photos",
+            "description": "Settings for viewing photos.",
+            "children": [
+              {
+                "title": "Slideshow",
+                "description": "Advance to the next photo automatically.",
+                "settingName": "photosSlideshow",
+                "type": "bool",
+                "default": "false",
+                "titleKey": "LabelSlideshow",
+                "descriptionKey": "MessageAdvanceToTheNextPhoto"
+              },
+              {
+                "title": "Random Order",
+                "description": "Advance to a random photo automatically. Has no effect while Slideshow is on.",
+                "settingName": "photosRandom",
+                "type": "bool",
+                "default": "false",
+                "titleKey": "LabelRandomOrder",
+                "descriptionKey": "MessageAdvanceToARandomPhoto"
+              }
+            ],
+            "titleKey": "LabelPhotos",
+            "descriptionKey": "MessageSettingsForViewingPhotos"
           },
           {
             "title": "TV Shows",

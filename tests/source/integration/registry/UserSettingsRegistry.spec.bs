@@ -83,10 +83,10 @@ namespace tests
 
       m.global.user.id = testUserId
 
-      setUserSetting("displayLiveTvLanding", "")
+      setUserSetting("playbackAudioLanguageCustom", "")
 
       reg = CreateObject("roRegistrySection", testUserId)
-      value = reg.read("displayLiveTvLanding")
+      value = reg.read("playbackAudioLanguageCustom")
       m.assertTrue(type(value) = "roString" or type(value) = "String")
       m.assertEqual(value, "")
 
@@ -229,9 +229,9 @@ namespace tests
       stringSettings = {
         uiRowLayout: "landscape",
         uiGeneralEpisodeImages: "always",
-        itemGridTitles: "showalways",
-        itemGridMovieDefaultView: "moviesgrid",
-        displayLiveTvLanding: "guide"
+        playbackPlayNextEpisode: "enabled",
+        playbackPreferredMultichannelCodec: "eac3",
+        playbackAudioLanguageCustom: "fre"
       }
 
       for each key in stringSettings
@@ -259,7 +259,7 @@ namespace tests
       setUserSetting("uiDesignHideClock", true) ' Boolean
       setUserSetting("uiRowLayout", "landscape") ' String
       setUserSetting("uiFontFallback", false) ' Boolean
-      setUserSetting("itemGridTitles", "showalways") ' String
+      setUserSetting("playbackPlayNextEpisode", "enabled") ' String
       setSetting("globalRememberMe", true) ' Boolean - global setting (goes to test-global when user ID starts with "test-")
 
       ' Load the way user.Login() does
@@ -275,8 +275,8 @@ namespace tests
       m.assertEqual(type(settings.uiFontFallback), "roBoolean")
       m.assertEqual(settings.uiFontFallback, false)
 
-      m.assertEqual(type(settings.itemGridTitles), "roString")
-      m.assertEqual(settings.itemGridTitles, "showalways")
+      m.assertEqual(type(settings.playbackPlayNextEpisode), "roString")
+      m.assertEqual(settings.playbackPlayNextEpisode, "enabled")
 
       ' Global settings have XML default values when not loaded from registry
       ' A user's own section holds no global settings: user.Login() reads them via LoadGlobals()
@@ -361,10 +361,10 @@ namespace tests
       setSetting("globalRememberMe", true) ' Global setting (goes to test-global in debug mode)
       setUserSetting("uiDesignHideClock", false)
       setUserSetting("uiRowLayout", "landscape")
-      setUserSetting("itemGridTitles", "showalways")
-      setUserSetting("itemGridMovieDefaultView", "moviesgrid")
+      setUserSetting("playbackPlayNextEpisode", "enabled")
+      setUserSetting("playbackPreferredMultichannelCodec", "eac3")
       setUserSetting("uiFontFallback", true)
-      setUserSetting("displayLiveTvLanding", "guide")
+      setUserSetting("playbackAudioLanguageCustom", "fre")
       setUserSetting("uiHomeUseWebArrangement", false)
 
       ' Verify user settings exist in user registry section
@@ -372,10 +372,10 @@ namespace tests
       m.assertFalse(reg.exists("globalRememberMe")) ' Global setting should not be in user section
       m.assertTrue(reg.exists("uiDesignHideClock"))
       m.assertTrue(reg.exists("uiRowLayout"))
-      m.assertTrue(reg.exists("itemGridTitles"))
-      m.assertTrue(reg.exists("itemGridMovieDefaultView"))
+      m.assertTrue(reg.exists("playbackPlayNextEpisode"))
+      m.assertTrue(reg.exists("playbackPreferredMultichannelCodec"))
       m.assertTrue(reg.exists("uiFontFallback"))
-      m.assertTrue(reg.exists("displayLiveTvLanding"))
+      m.assertTrue(reg.exists("playbackAudioLanguageCustom"))
       m.assertTrue(reg.exists("uiHomeUseWebArrangement"))
 
       ' Verify count (7 user settings, not 8)

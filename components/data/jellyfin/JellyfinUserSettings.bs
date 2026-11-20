@@ -14,6 +14,11 @@ sub init()
   ' of those writes may be persisted back.
   m.isAutoSyncEnabled = false
 
+  ' The change record changedSince reads: a count of setting writes, and for each setting
+  ' the count at its last write.
+  m.changeCount = 0
+  m.changedAt = {}
+
   ' Every setting is observed ONCE, here, for the life of the node; enableAutoSync and
   ' disableAutoSync only flip the flag above. Do not toggle the observers instead:
   ' m.top.unobserveField can remove observers OTHER components hold on the field, and
@@ -58,6 +63,25 @@ sub disableAutoSync()
   m.log.info("Auto-sync disabled")
 end sub
 
+' The mark as it stands: what changedSince reports the writes after. JRScreen takes it when a
+' screen opens (markSettingsSeen).
+function changeMark() as integer
+  return m.changeCount
+end function
+
+' The settings written since `mark`, a value changeMark or an earlier call returned, as
+' { mark, names }: the mark to pass next time, and each setting's name once. A write counts
+' even when it stores the value already held, so a reader compares the value with what it
+' last used before acting. JRScreen hands the names to a screen coming back on top
+' (onSettingsChanged). The library display settings (displaySettings) are not included.
+function changedSince(mark as integer) as object
+  names = []
+  for each name in m.changedAt
+    if m.changedAt[name] > mark then names.push(name)
+  end for
+  return { mark: m.changeCount, names: names }
+end function
+
 ' Called when any individual setting field changes
 ' Observer is the single source of truth for registry sync
 ' IMPORTANT: Only syncs to registry - does not modify the node (prevents recursion)
@@ -69,9 +93,14 @@ end sub
 ' - Understanding what users have customized
 ' - "Reset all settings" feature can delete entire registry section
 sub onSettingChanged(event as object)
+  fieldName = event.getField()
+  ' Recorded whether or not it is saved: a screen covered while a setting changed needs to
+  ' know either way (changedSince).
+  m.changeCount++
+  m.changedAt[fieldName] = m.changeCount
+
   if not m.isAutoSyncEnabled then return
 
-  fieldName = event.getField()
   newValue = event.getData()
 
   ' Route to appropriate registry section based on setting type
@@ -237,13 +266,14 @@ sub deleteLibraryFromRegistry(libraryId as string)
     return
   end if
 
-  ' Known display setting keys
-  possibleKeys = ["sortField", "filter", "landing", "sortAscending", "filterOptions", "view"]
-
-  for each key in possibleKeys
-    registryKey = "display." + libraryId + "." + key
-    ' Delete directly from registry - data was already removed from m.top.displaySettings
-    registryDelete(registryKey, localUser.id)
+  ' Every key the library has, by its prefix: a key can carry a view in its name
+  ' (libraryLayout.settingKey), so no list of names covers them. Deleted straight from the
+  ' registry: the data has already left m.top.displaySettings.
+  prefix = "display." + libraryId + "."
+  stored = RegistryReadAll(localUser.id)
+  if not isValid(stored) then return
+  for each registryKey in stored
+    if registryKey.left(prefix.len()) = prefix then registryDelete(registryKey, localUser.id)
   end for
 end sub
 

@@ -51,6 +51,8 @@ import {
   sweepBudget,
   sleep,
   walkOverhangRowTo,
+  focusIsInside,
+  waitDialogClosed,
 } from './steps.js';
 
 /**
@@ -115,11 +117,8 @@ export async function focusOverhangIcon(iconId) {
  *    the overhang element used last, which can be an icon to the tab bar's right, so the key is
  *    chosen from the focused node: Up while still in Home's rows, Left from anywhere else in the
  *    overhang.
- * 2. Onto the tab. The bar keeps its focused index internally (its `focusedTabIndex` field is
- *    input-only), so the index is read off the tabs' own `isFocused`. The walk re-reads after
- *    every press and presses at most once per tick; the bar updates `isFocused` inside its key
- *    handler, with no animation between, so a read never lags a press it follows.
- * 3. OK, then the incoming list in the scene and focus inside it (`onTabChanged` focuses it).
+ * 2. Onto the tab, and OK (`pressBarTab`).
+ * 3. The incoming list in the scene and focus inside it (`onTabChanged` focuses it).
  */
 export async function selectHomeTab(tabId) {
   const wantSubtype = tabId === 'favorites' ? 'FavoritesRows' : 'HomeRows';
@@ -137,6 +136,29 @@ export async function selectHomeTab(tabId) {
     label: 'overhang tab bar focused',
   });
 
+  await pressBarTab(bar, tabId);
+  await waitFor('subtype()', (v) => v === wantSubtype, {
+    read: async () => {
+      const id = await homeListId({ timeout: 1000 }).catch(() => undefined);
+      return id ? getVal(`${id}.subtype()`) : undefined;
+    },
+    timeout: 10000,
+    interval: 300,
+    label: `${wantSubtype} in the scene after selecting the "${tabId}" tab`,
+  });
+  await waitFocusInHomeContent({ label: `focus inside ${wantSubtype}` });
+}
+
+/**
+ * With focus on the tab bar `bar` (what `waitFocused` returned), walk along it to the tab
+ * `tabId` and press OK. Shared by `selectHomeTab` and `selectLibraryTab`.
+ *
+ * The bar keeps its focused index internally (its `focusedTabIndex` field is input-only), so
+ * the index is read off the tabs' own `isFocused`. The walk re-reads after every press and
+ * presses at most once per tick; the bar updates `isFocused` inside its key handler, with no
+ * animation between, so a read never lags a press it follows.
+ */
+async function pressBarTab(bar, tabId) {
   const tabs = await getVal(`${bar.keyPath}.tabs`);
   const target = Array.isArray(tabs) ? tabs.findIndex((t) => t.id === tabId) : -1;
   // eslint-disable-next-line no-restricted-syntax -- a fail-fast naming its cause, not a timeout
@@ -156,18 +178,49 @@ export async function selectHomeTab(tabId) {
     interval: 400,
     label: `tab "${tabId}" focused`,
   });
-
   await press(ecp.Key.Ok);
-  await waitFor('subtype()', (v) => v === wantSubtype, {
-    read: async () => {
-      const id = await homeListId({ timeout: 1000 }).catch(() => undefined);
-      return id ? getVal(`${id}.subtype()`) : undefined;
-    },
+}
+
+/** The ids of the tabs the overhang shows, in order; `[]` when it shows a title instead. */
+export async function overhangTabIds() {
+  const [visible, tabs] = await getVals(['#overhang.#tabBar.visible', '#overhang.#tabBar.tabs']);
+  if (visible !== true || !Array.isArray(tabs)) return [];
+  return tabs.map((t) => t.id);
+}
+
+/** The id of the one tab the overhang draws selected, or `null` when none or several are. */
+export async function overhangSelectedTab() {
+  const ids = await overhangTabIds();
+  const flags = await getVals(ids.map((_, i) => `#overhang.#tabContainer.${i}.isButtonSelected`));
+  const selected = ids.filter((_, i) => flags[i] === true);
+  return selected.length === 1 ? selected[0] : null;
+}
+
+/**
+ * On a library with tabs, with focus in its content: Up into the tab bar, along it to the
+ * tab `tabId`, OK. Returns once the screen shows that tab (`selectedTabId`, which holds
+ * until the next tab press). It does not wait for the tab's load or for focus: a caller
+ * asserts those, since where focus goes at the press is part of what a tab press does.
+ *
+ * Up reaches the bar only from the content's top (`BaseGridView.onKeyEvent`), so call it
+ * from a freshly opened or freshly loaded grid.
+ */
+export async function selectLibraryTab(tabId) {
+  const inBar = (f) => f?.node?.subtype === 'JRTabBar';
+  const bar = await waitFocused(inBar, {
     timeout: 10000,
-    interval: 300,
-    label: `${wantSubtype} in the scene after selecting the "${tabId}" tab`,
+    interval: 400,
+    action: walkFocusUntil(ecp.Key.Up, inBar),
+    label: `the tab bar, for the "${tabId}" tab`,
   });
-  await waitFocusInHomeContent({ label: `focus inside ${wantSubtype}` });
+
+  await pressBarTab(bar, tabId);
+  await waitFor('selectedTabId', (v) => v === tabId, {
+    read: getActiveVal,
+    timeout: 8000,
+    interval: 250,
+    label: `the library showing its "${tabId}" tab`,
+  });
 }
 
 /**
@@ -189,6 +242,50 @@ export async function navSettings() {
     timeout: 20000,
   });
   await sleep(1000); // let the settings menu + panels paint before capture
+}
+
+/** The Settings screen is up: its version label is the gate. */
+export async function waitSettingsScreen() {
+  await waitFor('#versionLabel.text', (t) => typeof t === 'string' && /^v/.test(t), {
+    label: 'settings version label',
+    timeout: 20000,
+  });
+}
+
+/**
+ * The gear's page menu is up (JRScene.openPageMenu): its rows are built and focus is on its
+ * list. Returns the row count; the last row is All settings.
+ */
+export async function waitPageMenu(label = 'the page menu') {
+  await waitFor('#optionList.content.getChildCount()', (n) => typeof n === 'number' && n > 1, {
+    label: `${label}: rows`,
+    timeout: 10000,
+  });
+  await waitFocusInside('#optionList', {
+    label: `${label}: focused`,
+    timeout: 5000,
+    interval: 250,
+  });
+  return getVal('#optionList.content.getChildCount()');
+}
+
+/**
+ * OK on the gear, which already holds focus, through to the Settings screen. On a screen with
+ * page settings (`pageMenu`: a movie library on its Movies tab) the gear opens its menu
+ * first, and All settings is the last row: Up from the first row wraps to it.
+ */
+export async function openSettingsFromGear({ pageMenu = false } = {}) {
+  await press(ecp.Key.Ok);
+  if (pageMenu) {
+    const rows = await waitPageMenu('the gear menu');
+    await press(ecp.Key.Up);
+    await waitFor('#optionList.itemFocused', (n) => n === rows - 1, {
+      label: 'All settings, the last row',
+      timeout: 8000,
+    });
+    await press(ecp.Key.Ok);
+  }
+  await waitSettingsScreen();
 }
 
 /**
@@ -1087,7 +1184,7 @@ async function walkHomeRowsTo(list, { row, col }, collectionType) {
  * number chosen for other call sites, the drift that cost `waitFocusInside` six sites
  * their intervals in Phase 2.
  */
-async function waitGridLoaded(label, timeout = 20000) {
+export async function waitGridLoaded(label, timeout = 20000) {
   let state;
   await waitFor(
     'loadState',
@@ -1243,27 +1340,6 @@ export async function navMusicDetail(ctx) {
 export async function navPlaylistDetails(ctx) {
   await navPlaylistsLibrary(ctx);
   await openFirstGridTileDetail('playlist');
-}
-
-/**
- * Movies grid -> open the grid OPTIONS dialog (View / Sort / Filter). The `*`
- * button (ECP "Info" -> BrightScript "options") toggles the `#options`
- * ItemGridOptions overlay; we wait on its `visible` field.
- */
-export async function navLibraryOptions(ctx) {
-  await navLibraryGrid(ctx);
-  await press(ecp.Key.Option); // '*' opens the grid options dialog
-  // The dialog is shown AND focused on open, so assert focus ENTERS it rather than
-  // reading `#options.visible`: a suspended Home stays in the tree (default "hide" mode)
-  // whose own `#options` (an OptionsSlider, hidden) would win a recursive id lookup and
-  // read visible=false. Focus is unambiguous (one focused node), so it's the robust
-  // signal that the active grid's options dialog opened.
-  await waitFocusInside('#options', {
-    label: 'grid options dialog',
-    timeout: 8000,
-    interval: 500,
-  });
-  await sleep(800); // let the dialog's menus paint
 }
 
 /**
@@ -1564,6 +1640,132 @@ export async function focusDetailButton(buttonId, { maxButtons = 12, timeout = 8
 export async function pressGridTile(index = 0) {
   await focusGridTile(index);
   await press(ecp.Key.Ok);
+}
+
+/**
+ * From a library's content: Up into the header strip, then along it to the `sort` or
+ * `filter` chip. Start with focus on the content's first row (a freshly loaded tab), since
+ * Up reaches the strip only from there.
+ */
+export async function focusLibraryChip(id) {
+  const inStrip = (f) => focusIsInside(f.keyPath, '#headerStrip');
+  await waitFocused(inStrip, {
+    timeout: 10000,
+    interval: 400,
+    action: walkFocusUntil(ecp.Key.Up, inStrip),
+    label: `the header strip, for the ${id} chip`,
+  });
+  const chip = id === 'sort' ? '#sortChip' : '#filterChip';
+  const onChip = (f) => focusIsInside(f.keyPath, chip);
+  await waitFocused(onChip, {
+    timeout: 8000,
+    interval: 400,
+    action: walkFocusUntil(id === 'sort' ? ecp.Key.Left : ecp.Key.Right, onChip),
+    label: `the ${id} chip`,
+  });
+}
+
+/**
+ * From a library's overhang row back to its grid: Down lands on the header strip, which
+ * sits between the two, and Down again on the grid.
+ */
+export async function returnToLibraryGrid(label) {
+  await press(ecp.Key.Down);
+  await waitFocusInside('#headerStrip', {
+    label: `the header strip, Down from the row (${label})`,
+    timeout: 8000,
+  });
+  await press(ecp.Key.Down);
+  await waitFocusInside('#itemGrid', { label: `the grid, Down from the strip (${label})` });
+}
+
+/** The text of each row of the list dialog on show. */
+export async function listDialogRows() {
+  const count = (await getVal('#optionList.content.getChildCount()')) || 0;
+  return getVals(Array.from({ length: count }, (_, i) => `#optionList.content.${i}.title`));
+}
+
+/** Walk the list dialog on show to row `index` and press OK. */
+async function pickListDialogRow(index, label) {
+  await waitFocusInside('#optionList', { label: `the list for ${label}`, timeout: 8000 });
+  await scrollFocus({
+    keyPath: '#optionList.itemFocused',
+    target: index,
+    forwardKey: ecp.Key.Down,
+    backKey: ecp.Key.Up,
+    read: getVal,
+    stepped: true,
+    within: '#optionList',
+    label,
+  });
+  await press(ecp.Key.Ok);
+}
+
+/**
+ * The row of the list dialog on show named `name`, with or without a value after it.
+ * `firstRow` says which list is meant, by its first row's text or a test of it: a list
+ * dialog that replaces another keeps the same node ids, so the first row is what tells
+ * the new list from the old.
+ */
+async function listDialogRowNamed(name, firstRow, label) {
+  const isFirstRow = typeof firstRow === 'function' ? firstRow : (t) => t === firstRow;
+  await waitFor('#optionList.content.0.title', isFirstRow, {
+    label: `${label}: its first row`,
+    timeout: 10000,
+  });
+  const rows = await listDialogRows();
+  const index = rows.findIndex(
+    (t) => t === name || (typeof t === 'string' && t.startsWith(`${name} (`)),
+  );
+  if (index < 0) {
+    // eslint-disable-next-line no-restricted-syntax -- a fail-fast that names its cause: the list is up and read, and lacks the row
+    throw new Error(`${label} has no row named "${name}": it has ${JSON.stringify(rows)}`);
+  }
+  return index;
+}
+
+/** Down from a chip, back to the grid, once a chip's change has loaded. */
+async function returnToGridFromChip(label) {
+  await waitGridLoaded(`the grid reloaded after ${label}`);
+  await waitFocusInside('#itemGrid', {
+    label: `the grid after ${label}`,
+    timeout: 20000,
+    action: resendUntilFocusInside(ecp.Key.Down, '#itemGrid'),
+  });
+}
+
+/**
+ * Sort the library tab on show by row `index` of the Sort chip's menu (the tab's sort
+ * fields in order; the row after them is Order). Start with focus on the grid's first row.
+ */
+export async function applyLibrarySort(index) {
+  await focusLibraryChip('sort');
+  await press(ecp.Key.Ok);
+  await pickListDialogRow(index, `sort ${index}`);
+  await waitDialogClosed(`the Sort menu after sort ${index}`);
+  await returnToGridFromChip(`sort ${index}`);
+}
+
+/**
+ * Filter the library tab on show: open the Filter chip's menu, the category named
+ * `category` in it, and pick `option` from that category's single-choice list ("Status",
+ * "Unplayed"). The menu comes back, and Back closes it. Start with focus on the grid's
+ * first row. Names are the app's English ones, so run it in `en_US`.
+ */
+export async function applyLibraryFilter(category, option) {
+  await focusLibraryChip('filter');
+  await press(ecp.Key.Ok);
+  const isString = (t) => typeof t === 'string' && t.length > 0;
+  const categoryRow = await listDialogRowNamed(category, isString, 'the Filter menu');
+  await pickListDialogRow(categoryRow, `the ${category} category`);
+  // A single-choice list opens on "All", which clears the category
+  const optionRow = await listDialogRowNamed(option, 'All', `the ${category} list`);
+  await pickListDialogRow(optionRow, `${category}: ${option}`);
+  // The menu comes back, with Clear filters first now that something is set
+  await listDialogRowNamed(category, 'Clear filters', 'the Filter menu, back');
+  await press(ecp.Key.Back);
+  await waitDialogClosed(`the Filter menu after ${category}: ${option}`);
+  await returnToGridFromChip(`${category}: ${option}`);
 }
 
 /** grid -> focus the hero tile (Right x heroIndex) -> OK -> ItemDetails. */

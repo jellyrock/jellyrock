@@ -1,0 +1,98 @@
+import "pkg:/source/utils/misc.bs"
+
+' A library tab's filters, kept for the signed-in session.
+'
+' They live in the `libraryFilters` field of m.global.user, so a trip to details, Home or
+' search and back keeps them, and they end with the session: user.Logout() resets that
+' node, and an app restart starts with a new one. Nothing here reaches the registry.
+'
+' One entry per library and tab, each `{ <category>: [values] }` (the categories are
+' gridQuery's). No filter is no entry.
+'
+' Every function reads a node field, which is cheap from a component and a thread
+' crossing from a Task: call these from the render thread.
+namespace sessionFilters
+
+  ' The entry key for one tab of a library.
+  function entryKey(libraryId as dynamic, tabId as dynamic) as string
+    return textOrEmpty(libraryId).trim() + "/" + LCase(textOrEmpty(tabId).trim())
+  end function
+
+  ' Every entry, {} when there is none or no user node.
+  function all() as object
+    localUser = m.global.user
+    if not isValid(localUser) then return {}
+    entries = localUser.libraryFilters
+    if type(entries) <> "roAssociativeArray" then return {}
+    return entries
+  end function
+
+  ' The filters in force on one tab.
+  ' @return {object} `{ <category>: [values] }`, {} when nothing is set
+  function get(libraryId as dynamic, tabId as dynamic) as object
+    entries = sessionFilters.all()
+    key = sessionFilters.entryKey(libraryId, tabId)
+    if not entries.DoesExist(key) then return {}
+    entry = entries[key]
+    if type(entry) <> "roAssociativeArray" then return {}
+    return entry
+  end function
+
+  ' Set one category's values on a tab. An empty list removes the category.
+  sub setCategory(libraryId as dynamic, tabId as dynamic, category as dynamic, values as dynamic)
+    name = textOrEmpty(category).trim()
+    if name = "" or textOrEmpty(libraryId).trim() = "" then return
+
+    kept = []
+    if type(values) = "roArray"
+      for each value in values
+        text = textOrEmpty(value).trim()
+        if text <> "" then kept.push(text)
+      end for
+    end if
+
+    entries = sessionFilters.all()
+    key = sessionFilters.entryKey(libraryId, tabId)
+    entry = {}
+    if type(entries[key]) = "roAssociativeArray" then entry = entries[key]
+
+    ' A node field does not promise to keep a key's case, so an earlier spelling of the
+    ' same category is replaced, not kept beside the new one.
+    for each existing in entry.keys()
+      if LCase(existing) = LCase(name) then entry.Delete(existing)
+    end for
+    if kept.count() > 0 then entry[name] = kept
+
+    if entry.count() > 0
+      entries[key] = entry
+    else
+      entries.Delete(key)
+    end if
+    sessionFilters.store(entries)
+  end sub
+
+  ' How many values are ticked on one tab, across its categories: the Filter chip's number.
+  function count(libraryId as dynamic, tabId as dynamic) as integer
+    total = 0
+    entry = sessionFilters.get(libraryId, tabId)
+    for each category in entry
+      if type(entry[category]) = "roArray" then total += entry[category].count()
+    end for
+    return total
+  end function
+
+  ' Remove every filter from one tab.
+  sub clear(libraryId as dynamic, tabId as dynamic)
+    entries = sessionFilters.all()
+    key = sessionFilters.entryKey(libraryId, tabId)
+    if not entries.DoesExist(key) then return
+    entries.Delete(key)
+    sessionFilters.store(entries)
+  end sub
+
+  sub store(entries as object)
+    localUser = m.global.user
+    if isValid(localUser) then localUser.libraryFilters = entries
+  end sub
+
+end namespace

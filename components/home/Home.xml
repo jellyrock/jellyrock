@@ -3,8 +3,6 @@
   <children>
     <VoiceTextEditBox id="homeVoiceBox" visible="true" width="40" translation="[0, 0]" />
     <HomeRows id="homeRows" />
-
-    <OptionsSlider id="options" />
   </children>
   <interface>
     <field id="quickPlayNode" type="node" alwaysNotify="true" />

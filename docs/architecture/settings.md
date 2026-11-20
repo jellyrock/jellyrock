@@ -7,7 +7,7 @@ related-files:
   - source/utils/session.bs
   - components/data/jellyfin/JellyfinUserSettings.xml
   - components/data/jellyfin/JellyfinUserSettings.bs
-last-reviewed: 2026-10-10
+last-reviewed: 2026-11-18
 ---
 
 # Settings
@@ -18,9 +18,17 @@ How `settings/settings.json` defines every setting, how settings reach `m.global
 
 1. **Global settings** apply to every user on the Roku and live in the registry section `JellyRock`: `globalRememberMe`, `globalSplashScreen` and `globalTranslationLocale`. Most are read after sign-in. `globalTranslationLocale`, the language of the sign-in screens and the twin of the per-user `translationLocale`, is read at startup before anyone signs in: `getSetting()` needs no signed-in user, which is what lets it translate the server and user selection screens (see [`translations.md`](translations.md)).
 2. **User settings** belong to one Jellyfin user and live in a registry section named by that user's ID: theme colors, the bitrate limit, subtitle preferences.
-3. **Server config** comes from Jellyfin at sign-in and is never written to the registry. It lives in `m.global.user.config` and `m.global.user.policy`. The order of Home's sections is server data too: one `homeSection<N>` field per slot, `homeSlots.SLOT_COUNT` slots to match the web client, filled from Jellyfin's `DisplayPreferences` API. A migration removes old per-user `homeSection*` keys ([`migrations.md`](migrations.md)).
+3. **Server config** comes from Jellyfin at sign-in and is never written to the registry. It lives in `m.global.user.config` and `m.global.user.policy`. The order of Home's sections is server data too: one `homeSection<N>` field per slot, `homeSlots.SLOT_COUNT` slots to match the web client, filled from Jellyfin's `DisplayPreferences` API. A migration removes old per-user `homeSection*` keys ([`migrations.md`](migrations.md)). So is the default tab a user picked for each library in the web client (`landing-<libraryId>`, or `landing-livetv` for Live TV, in the same response): `libraryTab.serverLandings()` collects the picks into `m.global.user.config.serverLibraryLanding` at every sign-in, and the grid translates one into its own tab ids when a library opens.
 
 Defaults for the first two live only in `settings/settings.json`. Server config has no defaults: the server decides.
+
+### Page settings are not in `settings.json`
+
+A setting whose value belongs to one screen (how one library view is drawn) is a page setting. It is offered on that screen only, from the overhang's settings icon ([navigation.md](navigation.md#the-overhang-row-up-down-and-the-cluster)), and never in the Settings screen, which has no library to apply it to. An app-wide setting lives in Settings. A screen may also offer one as a page entry when a pick visibly changes that screen at once, and the entry writes the same setting: a library offers Item Titles (`itemGridShowTitles`) this way, its list headed to say it applies to all libraries. A library's page settings are display settings: per-user registry keys named `display.<libraryId>.<key>`, held in `m.global.user.settings.displaySettings` and written through `setLibraryDisplaySetting()`. A key that is per view carries the view inside its third part (`layout_<view>` from `libraryLayout.settingKey()`, `columns_<view>` from `libraryGrid.settingKey()`), because only three-part `display.` keys load. Removing a library from `displaySettings` deletes every key under its prefix, and `deleteLibraryDisplaySetting()` deletes one. A library's Default tab entry is one: `display.<libraryId>.defaultTab` holds the tab picked on this Roku, which wins over the web client's pick (`gridQuery.resolveView()`).
+
+A tab's sort is a display setting too, though it is picked in the library and not from the settings icon: `display.<libraryId>.sort_<tab>` holds `<field>:<asc|desc>` (`librarySort` in `source/GridView/libraryTab.bs`, read and written through `getLibrarySort()` and `setLibrarySort()`). A screen with no tab, such as a collection, uses the bare `sort` key. A sort the tab's list no longer offers falls back to the title, ascending, and is not written back (`gridQuery.resolveSort()`). Every display setting loads as the string the registry holds.
+
+Filters are not settings. They last for the signed-in session and never reach the registry: [`global-state.md`](global-state.md#the-user-mglobaluser) has where they live.
 
 ## `settings/settings.json`, the one definition
 
@@ -146,6 +154,8 @@ sub enableAutoSync()
 end sub
 
 sub onSettingChanged(event as object)
+  m.changeCount++                                  ' the change record, saved or not
+  m.changedAt[event.getField()] = m.changeCount
   if not m.isAutoSyncEnabled then return
   registryWrite(event.getField(), valueToString(event.getData()), ...) ' save it
 end sub
@@ -161,6 +171,10 @@ m.global.user.settings.uiThemeColorPrimary = "8b5cf6"
 ```
 
 Writing to the field is the whole interface: saving, type conversion and observers all follow from it.
+
+### Reaching a screen that was covered
+
+The same handler keeps a record of which settings were written, whether or not auto-sync saves them: `changeMark()` gives the count as it stands, and `changedSince(mark)` the settings written after a mark. `JRScreen` hands a screen coming back on top the settings written while it was covered (`onSettingsChanged(names)`), so a screen that read a setting once applies the new value in place ([navigation.md](navigation.md#a-setting-changed-while-a-screen-was-covered)). A screen does not observe the setting fields itself: this node is shared, a screen's `unobserveField` at teardown could remove another component's observer (above), and a covered screen would redraw while nobody sees it. Reading a setting where it is used (each load, each cell drawn) needs none of this.
 
 ## Loading at sign-in: `user.Login()` in `source/utils/session.bs`
 

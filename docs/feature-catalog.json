@@ -9,6 +9,19 @@
   },
   "features": [
     {
+      "slug": "browse-a-library",
+      "title": "Browse a library",
+      "pitch": "Move between a library's tabs, choose how each is drawn and how many items fit in a row, and pick where it opens.",
+      "since": "unreleased",
+      "sinceDate": null,
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "https": null,
+      "page": "docs/user/features/browse-a-library.md",
+      "url": "https://docs.jellyrock.app/features/browse-a-library/"
+    },
+    {
       "slug": "cast-to-jellyrock",
       "title": "Cast from another Jellyfin app",
       "pitch": "Cast from a Jellyfin app on your phone or browser to your Roku, then pause, seek and skip from there.",

@@ -241,6 +241,7 @@ namespace tests
         "uiTvShowsDisableCommunityRating",
         "uiTvShowsDisableUnwatchedCount",
         "itemGridShowItemCount",
+        "itemGridShowTitles",
         "itemGridReset"
       ]
 
@@ -289,8 +290,6 @@ namespace tests
         { name: "playbackPreferredMultichannelCodec", testValue: "eac3" },
         { name: "uiGeneralEpisodeImages", testValue: "always" },
         { name: "uiRowLayout", testValue: "landscape" },
-        { name: "itemGridTitles", testValue: "showalways" },
-        { name: "itemGridMovieDefaultView", testValue: "moviesgrid" },
         { name: "homeSection0", testValue: "librarybuttons" },
         { name: "homeSection1", testValue: "resume" },
         { name: "homeSection2", testValue: "nextup" },
@@ -298,7 +297,7 @@ namespace tests
         { name: "homeSection4", testValue: "livetv" },
         { name: "homeSection5", testValue: "none" },
         { name: "homeSection6", testValue: "none" },
-        { name: "displayLiveTvLanding", testValue: "guide" }
+        { name: "playbackAudioLanguageCustom", testValue: "fre" }
       ]
 
       for each setting in stringSettings

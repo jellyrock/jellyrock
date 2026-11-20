@@ -23,7 +23,7 @@ Then pick a user or sign in. See [Quick Connect](quick-connect.md) to sign in wi
 
 ## Switch servers
 
-Choose **Change server** from the user menu at the top of Home, or from the options button (**\***) on Home. This signs you out of the server you're on and returns to **Connect to Server**.
+Choose **Change server** from the user menu at the top of Home, Settings or Search. This signs you out of the server you're on and returns to **Connect to Server**.
 
 ## Remove a saved server
 

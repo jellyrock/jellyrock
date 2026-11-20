@@ -115,9 +115,10 @@ The app has one scene for its whole life, `components/JRScene.xml`, which extend
 | `loadingKind` | string | The `LoadingKind` of the scene's spinner, which picks the stage text under it. |
 | `backdropMode` | string | Where backdrops show: a `BackdropMode` value (`enabled`, `details` or `disabled`). Empty until the first backdrop request after sign-in (a user with a token) reads the user's settings (`currentBackdropMode()`); a forced clear empties it again. |
 | `exit` | bool | Set true to close the app. |
-| `userMenuAction` | string | Set from the overhang's user dropdown (relayed by `JRScene.onOverhangUserMenuAction`) and from Home's options panel; `main.bs` passes it to `handleMenuAction()`. |
+| `userMenuAction` | string | Set from the overhang's user dropdown, on Home, Settings and Search (relayed by `JRScene.onOverhangUserMenuAction`); `main.bs` passes it to `handleMenuAction()`. |
 | `preLoginIntent` | string | A sign-in screen sets it; `main.bs` passes it to `handlePreLoginIntent()`. |
 | `contentVersion` | int | Bumped when a view changes server content (an item delete). A grid suspended under it reloads on resume when the number differs. |
+| `favoritesVersion` | int | Bumped by every favorite toggle, through `favorites.request()`. A grid that lists favorites (the Favorites tab, or the Favorites filter) reloads on resume, and when the options dialog closes, when the number differs. |
 | `testToast` | string | Shows a test toast when set from the console (see [`debug-tools.md`](debug-tools.md)). |
 
 Its `callFunc` functions:

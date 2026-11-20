@@ -917,6 +917,7 @@ objection entirely.
 
 **date**: 2026-08-16
 **status**: accepted
+**partially-superseded-by**: one-overhang-signed-in (how wide the user name may be)
 **related-files**: `components/ui/dropdown/JRDropdown.xml`, `components/ui/dropdown/JRDropdown.bs`, `components/JROverhang.bs`
 
 The overhang user menu's trigger label keeps a fixed `width="150"`, and long usernames
@@ -2873,6 +2874,123 @@ Ruled out: **treating a 403 as "remove the row"**. It sends a read on every Home
 Translations get one changelog section, last above Dependencies, fed by no PR-title type. `translationLines()` writes one line counting the strings new to each translated locale file (every one but `en_US`) since the previous tag, so the draft notes, built on the release branch, and the final notes, rebuilt from `main` after the squash merge, agree. Ruled out: placing `Translated using Weblate (…)` commits by their subject. Weblate squashes several languages under the subject of one and names itself the author, and the commits leave `main`'s history with the `release-prep` squash, so translations showed in the draft as a Changed line credited to `@weblate`, then vanished from the published notes. This adds a section to [ADR 0042](adr/0042-pr-title-type-places-changelog.md)'s list without changing its rule that a PR's title type places a PR's line.
 
 Credit is the names in the `Co-authored-by` trailers of the commits that touched a translation, minus Weblate and bots. An anonymous suggestion accepted in Weblate arrives as one of those, so a line with no names credits "translators", and every line ends "on Weblate", linked, so the notes always say where to help. Re-evaluate if the count misleads: most of 3.5.0's 4,567 strings came from the other-client imports, not from Weblate.
+
+## decision-id: tab-strip-one-rule-dimmed
+
+**date**: 2026-11-12
+**status**: accepted
+**related-files**: `source/utils/tabStrip.bs`, `components/ui/tabbar/JRTabBar.bs`, `components/ui/tabbar/JRTab.bs`
+
+A scrolling tab strip follows one rule (`tabStrip.window`): the active tab (focused while the bar has focus, else selected) sits first in its slot with the previous tab peeking, and the strip never scrolls past its last tab. Two alternatives were ruled out. "Selected first at rest, least movement while walking" is two rules, slides the strip a second time on OK and on Down, and needs the current offset as an input. "Least movement only" opens a default tab late in the strip at the slot's right edge. A tab the slot's edge cuts is drawn dimmed. A fade to transparent was ruled out: it needs a `MaskGroup`, which the app does not use anywhere, whose cost is unmeasured, and which Roku's `maskgroup.md` says draws unmasked on a player without OpenGL. A painted gradient would show as a band, because a library draws a backdrop behind the overhang. Revisit the fade if the dimmed tab reads badly in use.
+
+Two things seen on a Roku Stick on Roku OS 16.0.4 (2026-11-12) shape the code. A tab past its slot, or past the screen's edge, never reports `renderTracking` as `full`, so `JRTab` sizes when its title is set instead of waiting for the renderer as `TextButton` does. Setting a `clippingRect` back to an empty rectangle stops the tabs drawing, so a bar that leaves its slot takes a clip the size of the screen (`JRTabBar.clearWindow`).
+
+## decision-id: library-tab-view-plus-fixed
+
+**date**: 2026-11-12
+**status**: accepted
+**related-files**: `source/GridView/gridQuery.bs`, `source/GridView/libraryTab.bs`, `source/GridView/MoviePresenter.bs`, `source/GridView/TVShowPresenter.bs`, `components/ItemGrid/BaseGridView.bs`, `components/ItemGrid/LoadItemsTask2.bs`
+
+A library tab is a view plus what is fixed on it. A presenter lists most tabs as their own view; the Favorites tab names its content tab's view with favorites fixed on, and `gridQuery.viewOfTab()` resolves the pair. Presenters are only ever handed a view id, so no presenter method learns a tab that is not a view, and the Favorites tab draws as its content tab does. `LoadItemsTask2` takes `isFavorite` apart from `filter`, so favorites combine with the played filters (asked of local servers 10.7.7 to 12.4.0 on 2026-11-12: the parameter filters alone and beside `Filters`). A library resolves its tab once, when it opens (`BaseGridView.openLibrary()`); after that only a tab press changes it, and a tab press does not write the saved tab. Refines [ADR 0056](adr/0056-library-tab-ids-and-layout.md).
+
+Favorites is a tab only in a movie or TV library, which have one content tab (Movies, Shows): it shows that tab's favorites, as the web client's movie Favorites tab does. Every list the tab does not cover keeps the Favorites filter: Collections, all of Music, Live TV, Photos and folders. A studio, network or genre opened inside a library has one view (`libraryTab.isFolder()`), so it shows its name, no tabs, and keeps the filter. Ruled out: a Favorites tab for Music now (it has no one content tab and needs rows per kind), and "one kind of item to favorite" as the rule, which a movie library's collections and a TV library's episodes contradict.
+
+## decision-id: guide-grid-no-vertical-wrap
+
+**date**: 2026-11-12
+**status**: accepted
+**related-files**: `components/liveTv/schedule.bs`, `components/ItemGrid/BaseGridView.bs`
+
+The TV guide's `TimeGrid` sets `vertFocusAnimationStyle` to `fixedFocus`. Its default, `fixedFocusWrap`, wraps Up on the first channel to the last inside the grid and keeps the key, so no screen code sees it and the overhang row (a Live TV library's tabs, search, settings) could not be reached from the guide. Measured on a Roku Ultra, 2026-11-12, with four channels: the focused channel went from the first to the fourth under the default, and Up reached the tab bar under `fixedFocus` and `floatingFocus`. Roku's `TimeGrid` reference names no wrap setting. `fixedFocus` keeps the focus row where the default has it.
+
+The cost is that the guide no longer wraps between its first and last channel. Ruled out: detecting the wrap after it happens (a guide with one or two channels cannot tell a wrap from a move), and a key other than Up for reaching the tabs from the guide only.
+
+## decision-id: favorite-toggles-bump-version
+
+**date**: 2026-11-12
+**status**: accepted
+**related-files**: `source/utils/favorites.bs`, `components/JRScene.xml`, `components/ItemGrid/BaseGridView.bs`, `source/GridView/gridQuery.bs`, `scripts/bsc-plugins/no-direct-favorite-request.cjs`
+
+Every favorite toggle builds its request through `favorites.request()`, which bumps `JRScene.favoritesVersion`. A grid that lists favorites (`gridQuery.showsFavorites`: the Favorites tab or the Favorites filter) reloads on resume, and when the Star dialog closes, only when that counter moved. The `no-direct-favorite-request` plugin fails the build on a direct `BuildMarkFavoriteRequest` or `BuildUnmarkFavoriteRequest` call anywhere else, so a new toggle site cannot skip the bump. The counter moves when the request is built, not when it succeeds: a failed request costs one extra reload, which shows the server's true state.
+
+Ruled out: reloading the Favorites tab on every return, as Home does, which loses the viewer's place when nothing changed; and bumping `contentVersion`, which would send every library grid back to the top after any favorite toggle. The TV guide is not covered: a reload does nothing on a guide already built.
+
+## decision-id: library-default-tab-precedence
+
+**date**: 2026-11-13
+**status**: accepted
+**related-files**: `source/GridView/gridQuery.bs`, `source/GridView/libraryTab.bs`, `components/ItemGrid/BaseGridView.bs`, `source/utils/session.bs`, `source/migrations.bs`
+
+A library opens on the tab picked for it on this Roku (`display.<libraryId>.defaultTab`, from the gear menu's Default tab entry), else the tab the user picked for it in the web client, else the library type's default (`gridQuery.resolveView`). The web's pick is `landing-<libraryId>` (`landing-livetv` for Live TV) in the `usersettings` display preferences, read at every sign-in into `m.global.user.config.serverLibraryLanding` and never written to the registry. The web saves its own default as an empty string, so only a real pick is followed. A tab press never changes the default, as on the web. Web tab ids are translated in one place, `libraryTab.fromServerTab`.
+
+There is no app-wide toggle for the web's picks: the gear entry's first option follows the web and any tab overrides it for that library, the pattern the playback settings' Use Web Client Setting follows. Its menu row names the tab in force alone (an entry's `valueTitle`), since the first option's own title would nest brackets there. A `landing` value saved from the old Star dialog becomes `defaultTab` unless it is a type default, which says nothing about what the viewer wants, and it wins over a stored `defaultTab` as the newer choice. `displayLiveTvLanding`, a registry copy of `landing-livetv` that nothing read, is removed. Ruled out: writing the default back to the server (a followup), and remembering the last tab, which the web does not do either.
+
+## decision-id: library-default-tab-type-defaults
+
+**date**: 2026-11-13
+**status**: accepted
+**related-files**: `source/GridView/libraryTab.bs`
+
+A library's type default is everything in it to browse: Movies, Shows, Album Artists, Channels, Photos (`libraryTab.defaultFor`); recommendation pages are Home's job. Two depart from the web client's defaults. Music opens on Album Artists, not the web's Albums: the better way to browse a music library on a TV (operator's call, 2026-11-13). Live TV opens on Channels, not the web's Programs, which the app has no tab for. A user who wants the web's tab picks it in the web client or in the gear menu.
+
+## decision-id: library-sort-saved-filters-session
+
+**date**: 2026-11-15
+**status**: accepted
+**related-files**: `source/utils/sessionFilters.bs`, `source/utils/displaySettings.bs`, `source/GridView/gridQuery.bs`, `components/data/jellyfin/JellyfinUser.xml`
+
+A library tab's sort is saved in the registry per library and tab, and its filters last for the signed-in session only, as the web client splits them. Losing a filter on a tab switch or a trip to details is what had to stop; losing it at a restart is understood. Filters sit on the user node and not the scene, because `user.Logout()` resets that node on every session end, so no exit path can leak one user's filters to the next. Ruled out: saving filters to the registry (a filter from last week narrows a library with little on screen saying so), and a scene field cleared by a call each sign-out path must remember.
+
+A sort saved before this is kept. The registry migration cannot know a library's type, so it parks a sort with no saved view under a key with no tab in it and the library moves it to its default tab when it opens. Ruled out: dropping it, which loses the common case, and writing it under every type's default key.
+
+## decision-id: library-header-strip
+
+**date**: 2026-11-15
+**status**: accepted
+**related-files**: `components/ItemGrid/LibraryHeaderStrip.bs`, `components/ItemGrid/BaseGridView.bs`, `source/utils/headerStrip.bs`, `source/GridView/librarySortMenu.bs`, `source/GridView/libraryFilterMenu.bs`, `source/GridView/libraryGrid.bs`
+
+A library's own controls and the caption for its focused item live on one header strip under the tabs (`LibraryHeaderStrip`). Its left side describes the focused item, with a metadata line built and cut as the details screen builds its info rows; its right side holds the count and the Sort and Filter chips. Where a layout has a panel of its own the strip yields: the title alone in the presentation layout, the focused program on the TV guide. Its title stays Medium on every layout, because it is a caption under the tabs and the details screen's title is that page's heading. The strip owns the count and what narrows the tab; the overhang's title, on a screen with no tabs, is the name alone, under a selected tab's underline on every screen that shows a title.
+
+Ruled out: keeping sort and filter behind the Star key, or listing them in the Star menu as well (Star does what the settings icon does, with no rule of its own on a library, and Replay then Up reaches the strip from deep in a grid); Back clearing a filter (Back always goes back; Clear filters in the Filter menu clears the filters, the voice search and the letter); flipping the sort by picking it again (an Order row makes the direction visible and lets a screen reader say it); the old panel's Favorite button for the focused item, which is not carried over (an item is marked a favorite on its own page). The portrait cell is 252 by 378 and its second row's titles may sit in the bottom margin, since the strip names the focused item inside the 5% zone; the letter rail is the one shortcut drawn in the margin.
+
+## decision-id: library-grid-three-image-sizes
+
+**date**: 2026-11-16
+**status**: accepted
+**related-files**: `source/GridView/libraryGrid.bs`, `components/ItemGrid/GridItem.bs`
+
+A library grid cell asks the server for the smallest of three fixed image sizes per shape that covers it (`libraryGrid.imageSizeFor`: portrait 180 by 270, 295 by 440, 564 by 846; square 280, 440, 564), and scales it to its own size as it loads. It used to ask for 295 by 440 at every size, which drew 324 to 564 pixel cells enlarged. A size per count was measured on the 512 MB Stick (2026-11-16) and rejected: the first request for a size the server has not made was far slower for every image (11 per row took 11.4 s to fill the first time, then about 2.8 s), and nine counts and two shapes would pay that eighteen times for about a tenth less time at the densest count. Three sizes pay it three times per shape.
+
+## decision-id: one-overhang-signed-in
+
+**date**: 2026-11-17
+**status**: accepted
+**partially-supersedes**: overhang-username-trigger-stays-fixed-width (how wide the user name may be)
+**related-files**: `components/JROverhang.bs`, `components/JRScene.bs`, `source/utils/overhangRow.bs`, `components/ui/tabbar/JRTabBar.bs`, `components/ui/tabbar/JRTab.bs`, `components/ui/dropdown/JRDropdown.bs`, `components/home/Home.bs`
+
+The overhang reads the same on every signed-in screen. Tabs are text everywhere: few views have a symbol a viewer reads at a glance, and a glyph costs a tab's width, so Home's glyphs and the tab's glyph support went. Every strip follows the one scrolling rule, and a strip that fits never moves, so the fixed mode Home used went too. The logo shows only before sign-in, decided by `JRScene` from sign-in state as the cluster is, so every signed-in screen starts at x 96. A cluster icon for the screen on show does nothing, as a selected tab does, and Star on Home does what the settings icon does; Home's side panel, whose entries the row already had, is gone.
+
+The user menu shows on Home, Settings and Search only, and never crosses the row's line (`overhangRow.LINE_X`, x 1068): a name has no known width, and the room is worth more to tabs, which keep more than half the row. A long name ends in an ellipsis; a short one leaves its room to the tabs. Ruled out: the menu on every signed-in screen (a long name would take library tabs' room), a line at exactly half the row (it gives names more room than the 300 pixel cap did), a mark on the own-screen icon (the underlined title already says it, a tint means a SyncPlay group), and Settings' status line (the menu names the user).
+
+## decision-id: page-menu-row-glyphs
+
+**date**: 2026-11-18
+**status**: accepted
+**related-files**: `source/utils/pageSettings.bs`, `components/ItemGrid/BaseGridView.bs`, `components/JRScene.bs`, `resources/icons/README.md`
+
+The settings icon's page menu gives every row a glyph, as the player's gear menu does, so the app's two settings menus read one way: they are the same overflow menu (`showOverflowMenu`). A page entry declares an optional `icon`, and **All settings** is always the gear (`pageSettings.ALL_SETTINGS_ICON`, the `settings_menu` copy at the menu's density). A library's rows: Layout `space_dashboard`, Items per row `grid_view`, Item Titles `title`, Default tab `push_pin`. The first two are both square, so they fill the same box: `icons:build` fits a glyph by its longest side, so a wide glyph draws shorter beside square ones. A pin says which tab the library opens on.
+
+Ruled out: plain text rows, the pattern a 2026-11-16 survey found inside other Jellyfin clients' view options (the player menu's precedent won); `view_quilt` with `view_module`, which looked alike, and `view_module` alone draws short and wide; `dashboard`, a 2×2 of tiles like `grid_view`; `tab`, which shows a tab rather than the choice; `bookmark`, which reads as save-for-later beside Favorites.
+
+## decision-id: settings-changed-while-covered
+
+**date**: 2026-11-18
+**status**: accepted
+**related-files**: `components/JRScreen.bs`, `components/data/jellyfin/JellyfinUserSettings.bs`, `components/ItemGrid/BaseGridView.bs`, `components/home/Home.bs`
+
+A screen covered while a setting changes (Settings opened over it, or another library's page menu) is told when it comes back. `JellyfinUserSettings.onSettingChanged` records each setting write, saved or not, and `JRScreen.onViewResume` hands the screen's `onSettingsChanged(names)` the settings written since it last took note, before `onScreenShown()`. The screen compares each with what it last used, applies cheap changes in place and leaves a redraw to `onScreenShown()` with a flag. This replaces the checks each screen made by hand on every show: `BaseGridView` called `titlesSettingChanged` and reapplied the presentation backdrop each time it was shown, and now does each only when the hook names its setting.
+
+Ruled out: a screen observing `m.global.user.settings` fields itself (the node is shared, so an `unobserveField` at teardown can remove another component's observer, as `ObserverRegistry.spec.bs` records, and a covered screen would redraw while nobody sees it); rebuilding the screen under Settings on every change, as a theme change does (loses the scroll position and focus, and fetches again); keeping the record on the scene beside `contentVersion` (the scene never sees a setting write; the settings node sees every one). A theme or language change keeps its rebuild, since colors and strings are set when each node is built.
 
 ## Migrated to ADRs
 

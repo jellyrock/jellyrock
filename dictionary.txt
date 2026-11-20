@@ -291,6 +291,7 @@ ffmpeg
 ffmpeg-tagged
 FHD
 filesystem
+Finamp
 flac
 FLAC
 FLACs
@@ -421,6 +422,7 @@ Mixin
 mka
 MKV
 mkv
+Moonfin
 MP3
 mp4
 mpv-shim
@@ -466,6 +468,7 @@ Ogg
 onboarding
 OpenAPI
 opencode
+OpenGL
 opus
 orchestrator
 Orchestrator
@@ -596,6 +599,7 @@ repo-size
 repo-wide
 reproducibility
 resumable
+Resumable
 retry-with-backoff
 revalidation
 reverse-proxied
@@ -751,6 +755,7 @@ unprefixed
 unquantified
 unresolvable
 unreviewed
+Unplayed
 unscoped
 unshuffled
 unsynchronized
@@ -805,6 +810,7 @@ WebP
 webp
 whitespace
 Whitespace
+Wholphin
 Wikimedia
 WIP
 worklist

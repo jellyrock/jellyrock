@@ -6,7 +6,7 @@
     <!-- Selected Item Details -->
     <ProgramDetails id="detailsPane" focusable="true" />
 
-    <JRTimeGrid id="scheduleGrid" translation="[0,600]" />
+    <JRTimeGrid id="scheduleGrid" translation="[0,531]" />
     <!-- Retries a failed channel page or program block when its backoff delay is up -->
     <Timer id="retryTimer" repeat="false" />
     <Animation id="gridMoveAnimation" duration="1" repeat="false" easeFunction="outQuad">
@@ -16,10 +16,14 @@
   <interface>
     <field id="watchChannel" type="node" alwaysNotify="false" />
     <field id="focusedChannel" type="node" alwaysNotify="false" />
+    <!-- For the library screen's header strip: the focused program's { title, metadata },
+         with the focused channel's `position` (from 1) of `total`, 0 when unknown -->
+    <field id="focusedSummary" type="assocarray" />
     <field id="filter" type="string" value="All" />
     <field id="searchTerm" type="string" value="" />
     <!-- The routed screen hosting the guide, which owns its loading wait (screenWaits) -->
     <field id="hostScreen" type="node" />
     <function name="startLoading" />
+    <function name="isAtTop" />
   </interface>
 </component>

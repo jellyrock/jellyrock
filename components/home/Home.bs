@@ -1,7 +1,6 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/apiPromise.bs"
-import "pkg:/source/enums/HomeAction.bs"
 import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/remotecontrol/remoteProtocol.bs"
 import "pkg:/source/translationKeys.bs"
@@ -18,7 +17,6 @@ sub init()
   m.log.verbose("init")
 
   m.isFirstRun = true
-  m.top.isOptionsAvailable = true
 
   ' HomeRows starts in XML as the default tab content
   m.homeRows = m.top.findNode("homeRows")
@@ -41,92 +39,34 @@ sub init()
   ' Only toggle active on screen show/hide.
   initVoiceBox()
 
-  ' Tab configuration: a glyph beside each title, outlined until the tab is selected
+  ' Tab configuration: text tabs, as on every screen with tabs
   m.top.overhangTabs = [
-    { title: translate(translationKeys.LabelHome), id: "home", icon: "pkg:/images/icons/home_outline_$$RES$$.png", selectedIcon: "pkg:/images/icons/home_$$RES$$.png" },
-    { title: translate(translationKeys.LabelFavorites), id: "favorites", icon: "pkg:/images/icons/heart_outline_$$RES$$.png", selectedIcon: "pkg:/images/icons/heart_$$RES$$.png" }
+    { title: translate(translationKeys.LabelHome), id: "home" },
+    { title: translate(translationKeys.LabelFavorites), id: "favorites" }
   ]
   m.top.selectedTabId = "home"
   m.top.observeField("selectedTabId", "onTabChanged")
 
-  ' Home is mounted by the router, so it self-wires its overhang title and the options
-  ' side-panel menu.
+  ' Home is mounted by the router, so it self-wires its overhang title.
   m.top.overhangTitle = translate(translationKeys.LabelHome)
 
   ' Overhang config: declarative fields projected onto the overhang by JRScene (registerOverhangData).
-  m.top.isLogoVisible = true
   m.top.shouldShowUserDropdown = true
-
-  buildOptionsMenu()
 end sub
 
-' Build the options side-panel (search / settings / change user / change server / sign out).
-' The buttons are observed by Home itself; onSidePanelOption routes them. Navigation actions
-' go through the router, session actions up to main.bs.
-sub buildOptionsMenu()
-  sidepanel = m.top.findNode("options")
-  if not isValid(sidepanel) then return
-  m.optionsPanel = sidepanel
-  sidepanel.observeField("closeSidePanel", "onCloseSidePanel")
+' JRScreen hook: Star does what the settings icon does, as on a library. Home declares no
+' page entries, so that opens Settings.
+function onOptionsKey() as boolean
+  m.top.getScene().callFunc("openPageMenu")
+  return true
+end function
 
-  menu = [
-    { title: translate(translationKeys.ButtonSearch), id: HomeAction.OPEN_SEARCH },
-    { title: translate(translationKeys.LabelSettings), id: HomeAction.OPEN_SETTINGS },
-    { title: translate(translationKeys.LabelChangeUser), id: HomeAction.CHANGE_USER },
-    { title: translate(translationKeys.LabelChangeServer), id: HomeAction.CHANGE_SERVER },
-    { title: translate(translationKeys.ButtonSignOut), id: HomeAction.SIGN_OUT }
-  ]
-  options = []
-  for each entry in menu
-    o = CreateObject("roSGNode", "OptionsButton")
-    o.title = entry.title
-    o.id = entry.id
-    o.observeField("optionSelected", "onSidePanelOption")
-    options.push(o)
-  end for
-  m.optionButtons = options
-  sidepanel.options = options
-end sub
-
-' Route a Home menu action. Navigation actions resolve through the router on the
-' render thread; session-ending actions (change user/server, sign out) are emitted
-' as userMenuAction for main.bs, which tears down the routed Home and re-enters the
-' login flow IN PLACE via reenterLogin (see handleMenuAction).
-sub handleHomeMenuAction(actionId as string)
-  if actionId = HomeAction.OPEN_SEARCH or actionId = HomeAction.OPEN_SETTINGS
-    path = "/search"
-    if actionId = HomeAction.OPEN_SETTINGS then path = "/settings"
-    ' Through the scene, not a bare sgrouter.navigateTo: after Back from search, onScreenShown
-    ' focuses the search icon before the router ends the Back navigation, and an OK pressed then
-    ' is refused as "already in progress". JRScene.navigateThenFocus retries that refusal once the
-    ' router is idle, so the press is not lost.
-    m.top.getScene().callFunc("routerNavigate", path)
-  else
-    ' Session-reset (change user/server, sign out) needs main.bs to re-enter the login flow.
-    ' Set it on the SCENE, which main.bs observes via its message port. Observing a routed
-    ' view's field via port never delivered (the relay defect), but a scene field does (same
-    ' channel as `exit`).
-    m.top.getScene().userMenuAction = actionId
-  end if
-end sub
-
-' Options side-panel button pressed: close the panel, then route the action.
-sub onSidePanelOption(msg)
-  button = msg.getRoSGNode()
-  panel = m.top.findNode("options")
-  if isValid(panel) then panel.visible = false
-  handleHomeMenuAction(button.id)
-end sub
-
-' Options side-panel closed without a selection: restore focus to content.
-sub onCloseSidePanel()
-  if isValid(m.top.lastFocus)
-    m.top.lastFocus.setFocus(true)
-  else if isValid(m.activeContent)
-    m.activeContent.setFocus(true)
-  else
-    m.top.setFocus(true)
-  end if
+' JRScreen hook: settings written while Home was covered. Row Layout is read when the rows are
+' built, so the rows on show are laid out again (applyRowLayoutSetting leaves a layout already
+' applied as it is). The other Home settings are read by each load, and the refresh that
+' onScreenShown runs picks them up.
+sub onSettingsChanged(names as object)
+  if inArray(names, "uiRowLayout") and isValid(m.activeContent) then m.activeContent.callFunc("applyRowLayoutSetting")
 end sub
 
 sub refresh()
@@ -470,18 +410,6 @@ sub onDestroy()
 
   m.top.unobserveField("selectedTabId")
   m.top.unobserveField("quickPlayNode")
-
-  ' Release the options side-panel observers wired in buildOptionsMenu
-  if isValid(m.optionsPanel)
-    m.optionsPanel.unobserveField("closeSidePanel")
-    m.optionsPanel = invalid
-  end if
-  if isValid(m.optionButtons)
-    for each o in m.optionButtons
-      o.unobserveField("optionSelected")
-    end for
-    m.optionButtons = invalid
-  end if
 
   ' Release voice box, matching BaseGridView: never set voiceEnabled=false,
   ' only unobserve and release the reference.

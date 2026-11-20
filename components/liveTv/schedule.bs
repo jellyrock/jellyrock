@@ -13,9 +13,14 @@ import "pkg:/source/utils/screenWaits.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/translate.bs"
 
-' Rows the guide shows at once, for when TimeGrid does not report numRows. Roku's TimeGrid
-' reference does not list that field; both test devices report 6 (Roku OS 15.3.4, 2026-09-21).
+' The row count to assume when TimeGrid does not report numRows. Roku's TimeGrid reference
+' does not list that field; both test devices reported 6 by default (Roku OS 15.3.4,
+' 2026-09-21). init() sets numRows itself now, so guideVisibleRows() returns the rows the
+' grid builds, on screen and below its edge, and this stays the fallback.
 const GUIDE_VISIBLE_ROWS = 6
+
+' Where the guide's grid rests, under the details pane
+const GUIDE_GRID_Y = 531
 
 ' Channels per page of the channel list.
 const CHANNEL_PAGE_SIZE = 25
@@ -29,6 +34,8 @@ sub init()
   m.detailsPane.observeField("shouldWatchSelectedChannel", "onWatchChannelSelected")
   m.detailsPane.observeField("shouldRecordSelectedChannel", "onRecordChannelSelected")
   m.detailsPane.observeField("shouldRecordSeriesSelectedChannel", "onRecordSeriesChannelSelected")
+  m.detailsPane.observeField("summary", "publishFocusedSummary")
+  m.channelTotal = 0
   ' Blocks hold programs for a time window around the grid's left edge (guidePrograms.timeWindow),
   ' which follows the left edge as the user scrolls (onGridScrolled); nothing before
   ' guideWindowStart is shown.
@@ -45,6 +52,14 @@ sub init()
   m.scheduleGrid.observeField("programSelected", "onProgramSelected")
   m.scheduleGrid.observeField("leftEdgeTargetTime", "onGridScrolled")
   m.scheduleGrid.channelInfoWidth = 350
+  ' Seven rows fill the screen from where the grid rests. Three more are built below its
+  ' bottom edge, so a channel's logo has loaded by the time a Down press brings it on.
+  m.scheduleGrid.numRows = 10
+  ' Not the grid's default "fixedFocusWrap": that style wraps Up on the first channel to the
+  ' last inside the grid, so the key never reaches this screen and the overhang row (the
+  ' library's tabs, search, settings) cannot be reached from the guide. This one keeps the
+  ' focus row fixed as the default does, and hands Up back at the first row.
+  m.scheduleGrid.vertFocusAnimationStyle = "fixedFocus"
 
   m.gridMoveAnimation = m.top.findNode("gridMoveAnimation")
   m.gridMoveAnimationPosition = m.top.findNode("gridMoveAnimationPosition")
@@ -197,6 +212,7 @@ sub onChannelsLoaded(event as object)
   channels = m.LoadChannelsTask.channels
   startIndex = m.LoadChannelsTask.startIndex
   totalRecordCount = m.LoadChannelsTask.totalRecordCount
+  if ok and totalRecordCount > 0 then m.channelTotal = totalRecordCount
   m.log.info("onChannelsLoaded", "ok", ok, "channelCount", channels.count(), "startIndex", startIndex, "totalRecordCount", totalRecordCount)
   isFirstPage = startIndex = 0
 
@@ -591,11 +607,13 @@ sub onProgramFocused()
   m.programDetailsSeq += 1
   m.top.watchChannel = invalid
 
-  ' Make sure we have channels (for example, filter set to favorite yet there are none)
-  if m.scheduleGrid.content.getChildCount() <= 0
+  ' Make sure we have channels (for example, filter set to favorite yet there are none).
+  ' The grid sets programFocusedDetails only once a program gains focus, so it can be invalid here.
+  focusDetails = m.scheduleGrid.programFocusedDetails
+  if m.scheduleGrid.content.getChildCount() <= 0 or not isValid(focusDetails)
     channel = invalid
   else
-    channel = m.scheduleGrid.content.GetChild(m.scheduleGrid.programFocusedDetails.focusChannelIndex)
+    channel = m.scheduleGrid.content.GetChild(focusDetails.focusChannelIndex)
   end if
 
   m.detailsPane.channel = channel
@@ -609,13 +627,24 @@ sub onProgramFocused()
     return
   end if
 
-  prog = channel.GetChild(m.scheduleGrid.programFocusedDetails.focusIndex)
+  prog = channel.GetChild(focusDetails.focusIndex)
 
   if isValid(prog) and not isValid(m.fullyLoadedProgramIds[prog.id])
-    loadProgramDetails(prog.id, m.scheduleGrid.programFocusedDetails.focusChannelIndex, m.scheduleGrid.programFocusedDetails.focusIndex)
+    loadProgramDetails(prog.id, focusDetails.focusChannelIndex, focusDetails.focusIndex)
   end if
 
   m.detailsPane.programDetails = prog
+end sub
+
+' Hand the header strip what the pane says about the focused program, with the focused
+' channel's place in the list.
+sub publishFocusedSummary()
+  summary = m.detailsPane.summary
+  if not isValid(summary) then summary = { title: "", metadata: [] }
+  position = 0
+  focusDetails = m.scheduleGrid.programFocusedDetails
+  if isValid(focusDetails) and isValid(focusDetails.focusChannelIndex) then position = focusDetails.focusChannelIndex + 1
+  m.top.focusedSummary = { title: summary.title, metadata: summary.metadata, position: position, total: m.channelTotal }
 end sub
 
 ' Fetch full program details for a focused grid cell and swap the lightweight schedule
@@ -678,7 +707,9 @@ end sub
 sub onProgramSelected()
   ' If there is no program data - view the channel
   if not isValid(m.detailsPane.programDetails)
-    m.top.watchChannel = m.scheduleGrid.content.GetChild(m.scheduleGrid.programFocusedDetails.focusChannelIndex)
+    focusDetails = m.scheduleGrid.programFocusedDetails
+    if not isValid(focusDetails) then return
+    m.top.watchChannel = m.scheduleGrid.content.GetChild(focusDetails.focusChannelIndex)
     return
   end if
 
@@ -694,13 +725,13 @@ sub focusProgramDetails(setFocused)
   h = h + 160 + 80
 
   if setFocused = true
-    m.gridMoveAnimationPosition.keyValue = [[0, 600], [0, h]]
+    m.gridMoveAnimationPosition.keyValue = [[0, GUIDE_GRID_Y], [0, h]]
     m.detailsPane.setFocus(true)
     m.detailsPane.hasFocus = true
     m.top.lastFocus = m.detailsPane
   else
     m.detailsPane.hasFocus = false
-    m.gridMoveAnimationPosition.keyValue = [[0, h], [0, 600]]
+    m.gridMoveAnimationPosition.keyValue = [[0, h], [0, GUIDE_GRID_Y]]
     m.scheduleGrid.setFocus(true)
     m.top.lastFocus = m.scheduleGrid
   end if
@@ -780,13 +811,24 @@ sub onRecordOperationDone(event as object)
   else
     ' This reloads only the details for the currently selected program, so that we don't have to
     ' reload the entire grid...
-    channel = m.scheduleGrid.content.GetChild(m.scheduleGrid.programFocusedDetails.focusChannelIndex)
+    focusDetails = m.scheduleGrid.programFocusedDetails
+    if not isValid(focusDetails) then return
+    channel = m.scheduleGrid.content.GetChild(focusDetails.focusChannelIndex)
     prog = invalid
-    if isValid(channel) then prog = channel.GetChild(m.scheduleGrid.programFocusedDetails.focusIndex)
+    if isValid(channel) then prog = channel.GetChild(focusDetails.focusIndex)
     ' Re-fetch unconditionally: the program's recording state has changed.
-    if isValid(prog) then loadProgramDetails(prog.id, m.scheduleGrid.programFocusedDetails.focusChannelIndex, m.scheduleGrid.programFocusedDetails.focusIndex)
+    if isValid(prog) then loadProgramDetails(prog.id, focusDetails.focusChannelIndex, focusDetails.focusIndex)
   end if
 end sub
+
+' Whether Up from here leaves the guide: focus is on the channel grid, on its first row or
+' with no rows at all. The host asks before it hands Up to the overhang row.
+function isAtTop() as boolean
+  if not m.scheduleGrid.isInFocusChain() then return false
+  content = m.scheduleGrid.content
+  if not isValid(content) or content.getChildCount() = 0 then return true
+  return m.scheduleGrid.channelFocused <= 0
+end function
 
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
@@ -824,6 +866,7 @@ sub onDestroy()
   m.detailsPane.unobserveField("shouldWatchSelectedChannel")
   m.detailsPane.unobserveField("shouldRecordSelectedChannel")
   m.detailsPane.unobserveField("shouldRecordSeriesSelectedChannel")
+  m.detailsPane.unobserveField("summary")
   m.scheduleGrid.unobserveField("channelFocused")
   m.scheduleGrid.unobserveField("programFocused")
   m.scheduleGrid.unobserveField("programSelected")

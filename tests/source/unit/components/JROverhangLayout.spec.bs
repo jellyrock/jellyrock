@@ -43,7 +43,7 @@ namespace tests
       m.assertOnGrid({
         ROW_HEIGHT: overhangRow.ROW_HEIGHT, ROW_BOTTOM: overhangRow.ROW_BOTTOM, ROW_TOP: overhangRow.ROW_TOP,
         GLYPH_SIZE: overhangRow.GLYPH_SIZE, BOX_PADDING: overhangRow.BOX_PADDING,
-        TAB_GAP: overhangRow.TAB_GAP, ELEMENT_GAP: overhangRow.ELEMENT_GAP, CLOCK_GAP: overhangRow.CLOCK_GAP,
+        TAB_PADDING: overhangRow.TAB_PADDING, TAB_SPACING: overhangRow.TAB_SPACING, TITLE_STATUS_GAP: overhangRow.TITLE_STATUS_GAP, ELEMENT_GAP: overhangRow.ELEMENT_GAP, CLOCK_GAP: overhangRow.CLOCK_GAP,
         TEXT_DROP: overhangRow.TEXT_DROP, TEXT_TOP: overhangRow.TEXT_TOP,
         ICON_BOX: overhangRow.ICON_BOX, ICON_PADDING: overhangRow.ICON_PADDING, SLOT_SIZE: overhangRow.SLOT_SIZE,
         BADGE_SIZE: overhangRow.BADGE_SIZE, BADGE_X: overhangRow.BADGE_X, BADGE_Y: overhangRow.BADGE_Y,
@@ -78,6 +78,28 @@ namespace tests
       m.assertOnGrid({ "title x": title.translation[0], "title y": title.translation[1], "title height": title.height, "title width": title.maxWidth })
     end function
 
+    @it("underline the title of a screen with no tabs, from the title's left edge")
+    function _()
+      m.overhang.tabs = []
+      m.overhang.title = "Playlists"
+      title = m.overhang.findNode("title")
+      line = m.overhang.findNode("titleUnderline")
+      m.assertTrue(line.visible, "the line shows under a title")
+      m.assertEqual(line.translation[0], title.translation[0])
+      m.assertEqual(int(line.height), overhangRow.TITLE_UNDERLINE)
+      m.assertTrue(line.width > 0 and line.width <= title.maxWidth, "as wide as the text, inside the title's slot")
+      m.assertOnGrid({ "line x": line.translation[0], "line width": line.width })
+      ' Under the text and inside the row
+      m.assertTrue(line.translation[1] > overhangRow.TEXT_TOP and line.translation[1] + line.height <= overhangRow.TEXT_TOP + overhangRow.ROW_HEIGHT, "inside the title's box")
+    end function
+
+    @it("draw no line under a title with no text")
+    function _()
+      m.overhang.tabs = []
+      m.overhang.title = ""
+      m.assertFalse(m.overhang.findNode("titleUnderline").visible)
+    end function
+
     @it("keep the cluster CLOCK_GAP left of the clock's digits, on the grid, at every width")
     function _()
       cluster = m.overhang.findNode("cluster")
@@ -88,6 +110,29 @@ namespace tests
         m.assertTrue(gap >= overhangRow.CLOCK_GAP and gap < overhangRow.CLOCK_GAP + 3, "gap " + gap.toStr() + " at width " + width.toStr())
         m.assertOnGrid({ "cluster x": cluster.translation[0] })
       end for
+    end function
+
+    ' The name's width is known only after render, so this checks the limit the overhang
+    ' hands the menu: at its widest, the menu's box still starts right of the line
+    @it("limit the user menu so it never crosses the line, at every clock width")
+    function _()
+      cluster = m.overhang.findNode("cluster")
+      dropdown = m.overhang.findNode("userDropdown")
+      clock = m.overhang.findNode("clock")
+      for each width in [99, 125, overhangRow.CLOCK_PROVISIONAL_WIDTH + 30]
+        clock.textWidth = width
+        widestLeft = cluster.translation[0] - overhangRow.ELEMENT_GAP - dropdown.maxWidth
+        m.assertTrue(dropdown.maxWidth > 0, "a limit at width " + width.toStr())
+        m.assertTrue(widestLeft >= overhangRow.LINE_X + overhangRow.ELEMENT_GAP, "menu at " + widestLeft.toStr() + " for clock width " + width.toStr())
+      end for
+    end function
+
+    @it("give the user menu the clock's room when the clock is hidden")
+    function _()
+      dropdown = m.overhang.findNode("userDropdown")
+      shown = dropdown.maxWidth
+      m.overhang.isClockVisible = false
+      m.assertTrue(dropdown.maxWidth > shown, "wider without the clock")
     end function
 
     @it("keep the cluster on the grid against the safe edge with the clock hidden")

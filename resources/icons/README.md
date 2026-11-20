@@ -25,14 +25,13 @@ Pass `--filled` to `npm run icons:add` (or store an `_filled.svg` variant) only 
 
 | # | Rule | Trigger | Examples |
 |---|---|---|---|
-| 1 | Pure-shape primitive | No meaningful outlined alternative | `play`, `pause`, `circle`, `record`, `spinner`, `check`, `arrow-*` |
+| 1 | Pure-shape primitive | No meaningful outlined alternative | `play`, `pause`, `circle`, `record`, `spinner`, `check` |
 | 2 | Small canvas | Canvas narrower than `32px` | `mic_icon` (a 16×22 canvas): outlined strokes lose visibility at small sizes (Material 3 small-target guidance, Apple HIG at or under `28pt`) |
 | 3 | Subject or identity content | Shows a person, a user or a content type (an album, a music note) | `person`, `person_36px` (avatars), `album`, `musicNote`. A filled glyph reads more clearly than an outlined one when the icon is the subject, such as the album disc on the audio player's now-playing screen, not an action. |
 | 4 | Placeholder content | Lives in `images/placeholders/` | The placeholders (`movie`, `album`, `folder` and others), as in the file pickers of Apple Finder, Google Drive and Material 3. One exception: the `livetv` placeholder reuses the outlined `liveTV.svg`. |
 | 5 | Rating glyph | Inline rating display | `star`: filled is the industry standard for ratings |
 | 6 | Playback action button | Composes the filled `play` | `resume` (an arc plus the play triangle), to match the standalone `play` |
-| 7 | Toggle on-state | Paired with an outlined off-state | `heart` (the on-state of the `ItemDetails` Favorite button), `groups` (the cluster's SyncPlay icon, filled in both states because its outlined variant differs from the filled one only by two small holes: its on-state is the glyph drawn in `colorSecondary`, as `IconButton`'s selected state is), `favorite_selected` (the on-state in the `ItemGridOptions` favorite menu: outlined geometry, marked by a hard-coded red) |
-| 8 | Selected overhang tab | A tab's glyph is outlined while the tab is not selected and filled while it is; fill follows selection, never focus (the navigation convention, JellyRock's choice 2026-10-25) | `home` (with `home_outline`), `heart` (with `heart_outline`) |
+| 7 | Toggle on-state | Paired with an outlined off-state | `heart` (the on-state of the `ItemDetails` Favorite button), `groups` (the cluster's SyncPlay icon, filled in both states because its outlined variant differs from the filled one only by two small holes: its on-state is the glyph drawn in `colorSecondary`, as `IconButton`'s selected state is), `favorite_selected` (the favorite mark on the TV guide's program picture: outlined geometry, marked by a hard-coded red), `checkbox_checked` (a checklist row's ticked box, with the outlined `checkbox` as its off-state) |
 
 **Choosing the fill for a new icon:**
 
@@ -43,7 +42,6 @@ Does it represent a person OR a content-type subject?              → --filled 
 Does it live in images/placeholders/ (item-type representation)?   → --filled (Rule 4)
 Is it a star used for ratings?                                     → --filled (Rule 5)
 Does it visually compose `play` for a playback action?             → --filled (Rule 6)
-Is it the selected state of an overhang tab's glyph?               → --filled (Rule 8)
 Is it the on-state of a toggle paired with an outlined off-state?  → --filled (Rule 7)
 Otherwise:                                                         → outlined (default)
 ```
@@ -122,7 +120,7 @@ Notes for icons whose density differs from the default. Add one whenever an icon
 - **`spinner`** (`sizeFhd: 125`, `glyphSize: 125`): the global loading spinner is 125×125 because [`components/JRScene.xml`](../../components/JRScene.xml) positions it for a bitmap of that size. `glyphSize: 125` makes the Material `progress_activity` arc fill the whole canvas with no padding, to match the outer circle of the original spinner. Don't shrink it without moving its placement in `JRScene`.
 - **`play`, `pause`, `itemPrevious`, `itemNext`, `chapters`** (`glyphSize` between 38 and 60): each is pinned to the largest dimension of the trimmed, hand-made original PNG, so the move to Material changed the look and kept the same footprint on screen.
 - **`mic_icon`** (`sizeFhd: 16`, `glyphSize: 22`): the voice-search indicator in [`components/ItemGrid/Alpha.xml`](../../components/ItemGrid/Alpha.xml) sits next to a keyboard letter in a Poster that is not square, 15 wide and 22 tall (`<Poster id="alphaMic" height="22" width="15" />`). A square canvas would make the Poster letterbox it: the square source shrinks to the Poster's smaller dimension (15×15) and wastes about 30% of the height. So the build produces a 16×22 PNG instead, through the clamp in its `extend()` step (`Math.max(0, canvas - dim)`). The resized glyph is 22 tall and 16 wide at the mic's natural aspect, taller than `sizeFhd: 16`, so no vertical padding is added and the glyph extends past the square canvas. The result has the same 16×22 footprint as the hand-made asset that came before the pipeline.
-- **`favorite.svg` (`fill="#000000"`) and `favorite_selected.svg` (`fill="#FF0000"`)**: the toggle pair for the favorite state. Both use the outlined Material `favorite` glyph, and only the hand-set fill color (black or red) tells off from on. The pair predates the [Fill convention](#fill-convention) and the [Why white fill](#why-white-fill) rule, so `blendColor` cannot tint them: the hard-coded fill wins. If a screen ever needs themed favorite icons, replace them with white-fill sources and apply `blendColor` where they are used.
+- **`favorite_selected.svg` (`fill="#FF0000"`)**: the favorite mark on the TV guide's program picture ([`components/liveTv/ProgramDetails.xml`](../../components/liveTv/ProgramDetails.xml)). It is the outlined Material `favorite` glyph with a hand-set red fill, older than the [Fill convention](#fill-convention) and the [Why white fill](#why-white-fill) rule, so `blendColor` cannot tint it. Its black off-state twin, `favorite.svg`, went with the library's Star panel, the only thing that drew it.
 
 ## Why white fill
 
@@ -137,8 +135,6 @@ If an icon is never tinted on purpose (for example, a multi-color brand mark), s
 A few icons in `resources/icons/` aren't Material Symbols. The build treats them the same way; only the source differs.
 
 - **`tomato-fresh.svg` and `tomato-rotten.svg`**, from Wikimedia Commons ([fresh](https://commons.wikimedia.org/wiki/File:Rotten_Tomatoes.svg), [rotten](https://commons.wikimedia.org/wiki/File:Rotten_Tomatoes_rotten.svg)). Both are PD-textlogo, which is public domain: "consists only of simple geometric shapes or text". `components/ui/label/metadata/CriticRating.bs` uses them to show Rotten Tomatoes scores. The trademark belongs to Fandango Media. JellyRock uses the icons only to attribute the scores they stand for, as media clients commonly do, never as its own branding.
-
-- **`home.svg` and `home_outline.svg`** are Material's `home` (filled and outlined) with the roof line carried past the walls: two 91-unit strokes with round caps along the middle of the roof line, from (90, -500.85) to (300, -658.35) and from (870, -500.85) to (660, -658.35) on Material's 960 grid, the same thickness as the outline. The first hand-edited glyph in the set (2026-10-25): the stock `home` reads as a box with a notch at 42 pixels. Each file says so in a comment, and `npm run icons:add` refuses to overwrite an existing file; to refresh from Material, redo the edit, never only re-fetch.
 
 To add a non-Material SVG, put it in `resources/icons/`, add a row to the [Provenance](#provenance) table and set its fill colors in the SVG (the white fill from `npm run icons:add` applies only to fetched Material Symbols). `npm run icons:build` then renders its PNGs through the same pipeline.
 
@@ -191,15 +187,7 @@ this table automatically.
 | `check.svg` | `check` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `check-black.svg` | `check` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `check-white.svg` | `check` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `arrow-up-black.svg` | `arrow_upward` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `arrow-up-white.svg` | `arrow_upward` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `arrow-down-black.svg` | `arrow_downward` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `arrow-down-white.svg` | `arrow_downward` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
-| `favorite.svg` | `favorite` | Rounded | 500 | 0 | `24px` | 2026-05-09 |
 | `favorite_selected.svg` | `favorite` (hand-edited fill `#FF0000`) | Rounded | 500 | 0 | `24px` | 2026-05-09 |
-| `home.svg` | `home` (hand-edited: roof line extended, fill 1) | Rounded | 500 | 1 | `24px` | 2026-10-25 |
-| `home_outline.svg` | `home` (hand-edited: roof line extended, fill 0) | Rounded | 500 | 0 | `24px` | 2026-10-25 |
-| `heart_outline.svg` | `favorite` | Rounded | 500 | 0 | `24px` | 2026-10-25 |
 | `heart.svg` | `favorite` | Rounded | 500 | 1 | `24px` | 2026-05-09 |
 | `album.svg` | `album` | Rounded | 500 | 1 | `24px` | 2026-05-10 |
 | `artist_filled.svg` | `account_box` | Rounded | 500 | 1 | `24px` | 2026-05-10 |
@@ -222,3 +210,14 @@ this table automatically.
 | `groups.svg` | `groups` | Rounded | 500 | 1 | `24px` | 2026-10-27 |
 | `groups_menu.svg` | `groups` | Rounded | 500 | 1 | `24px` | 2026-11-03 (a copy of `groups.svg` at the default density, for the gear's **Leave Group** row) |
 | `timer.svg` | `timer` | Rounded | 500 | 0 | `24px` | 2026-11-03 |
+| `checkbox.svg` | `check_box_outline_blank` | Rounded | 500 | 0 | `24px` | 2026-11-15 |
+| `checkbox_checked.svg` | `check_box` | Rounded | 500 | 1 | `24px` | 2026-11-15 |
+| `chevron_up.svg` | `keyboard_arrow_up` | Rounded | 500 | 0 | `24px` | 2026-11-15 |
+| `chevron_down.svg` | `keyboard_arrow_down` | Rounded | 500 | 0 | `24px` | 2026-11-15 |
+| `sort.svg` | `swap_vert` | Rounded | 500 | 0 | `24px` | 2026-11-15 |
+| `filter.svg` | `filter_list` | Rounded | 500 | 0 | `24px` | 2026-11-15 |
+| `layout.svg` | `space_dashboard` | Rounded | 500 | 0 | `24px` | 2026-11-18 |
+| `itemsPerRow.svg` | `grid_view` | Rounded | 500 | 0 | `24px` | 2026-11-18 |
+| `itemTitles.svg` | `title` | Rounded | 500 | 0 | `24px` | 2026-11-18 |
+| `defaultTab.svg` | `push_pin` | Rounded | 500 | 0 | `24px` | 2026-11-18 |
+| `settings_menu.svg` | `settings` | Rounded | 500 | 0 | `24px` | 2026-11-18 (a copy of `settings.svg` at the default density, for the page menu's **All settings** row; `settings` itself is pinned to the overhang's 63/45) |

@@ -1,0 +1,59 @@
+namespace tests
+
+  ' overhangRow.tabSlotWidth: how wide a scrolling tab strip may be. It must not change when
+  ' the clock's digits change width, or the strip would shift at a minute tick.
+  @suite("overhangRow.tabSlotWidth - the width a scrolling tab strip may fill")
+  class OverhangRowTabSlotTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the clock")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("gives the same width for any digits narrower than the allowance")
+    function _()
+      unmeasured = overhangRow.tabSlotWidth(87, 0, true, 126, 0)
+      for each clockWidth in [60, 99, 100, 125, overhangRow.CLOCK_PROVISIONAL_WIDTH]
+        m.assertEqual(overhangRow.tabSlotWidth(87, clockWidth, true, 126, 0), unmeasured, "clock " + clockWidth.toStr())
+      end for
+    end function
+
+    @it("gives way to digits wider than the allowance, so the strip never runs under the cluster")
+    function _()
+      wide = overhangRow.CLOCK_PROVISIONAL_WIDTH + 30
+      m.assertEqual(overhangRow.tabSlotWidth(87, wide, true, 126, 0), overhangRow.tabSlotWidth(87, 0, true, 126, 0) - 30)
+    end function
+
+    @it("runs to the safe edge with the clock hidden")
+    function _()
+      m.assertEqual(overhangRow.tabSlotWidth(87, 99, false, 0, 0), overhangRow.RIGHT_EDGE - 87)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("what sits right of the strip")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("stops an element gap before the cluster")
+    function _()
+      bare = overhangRow.tabSlotWidth(87, 0, true, 0, 0)
+      m.assertEqual(overhangRow.tabSlotWidth(87, 0, true, 126, 0), bare - 126 - overhangRow.ELEMENT_GAP)
+    end function
+
+    @it("stops an element gap before the dropdown when both show")
+    function _()
+      bare = overhangRow.tabSlotWidth(87, 0, true, 0, 0)
+      m.assertEqual(overhangRow.tabSlotWidth(87, 0, true, 126, 198), bare - 126 - 198 - overhangRow.ELEMENT_GAP * 2)
+    end function
+
+    @it("is on the grid for a dropdown width off it")
+    function _()
+      m.assertEqual(overhangRow.tabSlotWidth(87, 0, true, 126, 200) mod 3, 0)
+    end function
+
+    @it("is zero when nothing is left")
+    function _()
+      m.assertEqual(overhangRow.tabSlotWidth(1800, 0, true, 126, 198), 0)
+    end function
+
+  end class
+
+end namespace

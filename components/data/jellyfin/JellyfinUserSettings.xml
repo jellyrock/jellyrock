@@ -85,9 +85,8 @@
 
     <!-- Item Grid Settings -->
     <field id="itemGridShowItemCount" type="boolean" alwaysNotify="true" />
-    <field id="itemGridTitles" type="string" alwaysNotify="true" />
+    <field id="itemGridShowTitles" type="boolean" alwaysNotify="true" />
     <field id="itemGridReset" type="boolean" alwaysNotify="true" />
-    <field id="itemGridMovieDefaultView" type="string" alwaysNotify="true" />
 
     <!-- Photo Settings -->
     <field id="photosSlideshow" type="boolean" alwaysNotify="true" />
@@ -105,9 +104,6 @@
     <field id="homeSection8" type="string" alwaysNotify="true" />
     <field id="homeSection9" type="string" alwaysNotify="true" />
 
-    <!-- Display Settings -->
-    <field id="displayLiveTvLanding" type="string" alwaysNotify="true" />
-
     <!-- Display Settings (nested by library ID) -->
     <field id="displaySettings" type="assocarray" alwaysNotify="true" />
 
@@ -118,5 +114,8 @@
     <!-- Exported functions callable via callFunc() -->
     <function name="enableAutoSync" />
     <function name="disableAutoSync" />
+    <!-- The mark as it stands, and the settings written since a mark: { mark, names } (JRScreen's onSettingsChanged) -->
+    <function name="changeMark" />
+    <function name="changedSince" />
   </interface>
 </component>

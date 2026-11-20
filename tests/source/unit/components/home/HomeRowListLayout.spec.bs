@@ -1,0 +1,51 @@
+namespace tests
+
+  ' applyRowLayoutSetting on Home's row lists: the Row Layout applied in place, and a layout
+  ' already applied left as it is. Through FavoritesRows, which starts no load when built;
+  ' HomeRows runs the same function.
+  @suite("FavoritesRows - applyRowLayoutSetting")
+  class HomeRowListLayoutTests extends tests.BaseTestSuite
+
+    private rows as object
+    private previousLayout as string
+
+    ' beforeEach, not setup: every test writes a setting, and building the list takes focus
+    ' (tests/CLAUDE.md)
+    protected override sub beforeEach()
+      super.beforeEach()
+      settings = m.global.user.settings
+      m.previousLayout = settings.uiRowLayout
+      settings.uiRowLayout = "fullwidth"
+      m.rows = CreateObject("roSGNode", "FavoritesRows")
+    end sub
+
+    protected override sub afterEach()
+      m.rows.callFunc("onDestroy")
+      m.rows = invalid
+      m.global.user.settings.uiRowLayout = m.previousLayout
+      super.afterEach()
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("applyRowLayoutSetting")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("lays the rows out again for a changed layout, texture window included")
+    function _()
+      m.global.user.settings.uiRowLayout = "original"
+      m.rows.callFunc("applyRowLayoutSetting")
+
+      m.assertEqual(m.rows.translation, [111.0, 126.0])
+      m.assertEqual(m.rows.content.textureVisibleWidth, 1703)
+    end function
+
+    @it("leaves a layout already applied as it is")
+    function _()
+      m.rows.translation = [5, 5]
+      m.rows.callFunc("applyRowLayoutSetting")
+      m.assertEqual(m.rows.translation, [5.0, 5.0], "no write for an unchanged layout")
+    end function
+
+  end class
+
+end namespace

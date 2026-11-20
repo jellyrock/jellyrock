@@ -1,6 +1,6 @@
 ' PresentationBackdrop: Handles backdrop image display and crossfade animations
 ' for presentation views. Follows BackdropFader pattern with reduced shade.
-' Positioned on right half of screen at 960x540.
+' Drawn in the screen's top right corner at 1152x648.
 
 sub init()
   m.background = m.top.findNode("background")
@@ -27,6 +27,12 @@ sub applyTheme()
   leftGradient = m.top.findNode("leftGradient")
   leftGradient.endColor = constants.colorBackgroundPrimary + constants.alpha0
   leftGradient.startColor = constants.colorBackgroundPrimary + constants.alpha100
+  bottomGradient = m.top.findNode("bottomGradient")
+  bottomGradient.endColor = constants.colorBackgroundPrimary + constants.alpha0
+  bottomGradient.startColor = constants.colorBackgroundPrimary + constants.alpha100
+  topGradient = m.top.findNode("topGradient")
+  topGradient.endColor = constants.colorBackgroundPrimary + constants.alpha0
+  topGradient.startColor = constants.colorBackgroundPrimary + constants.alpha100
 
   ' Set shade color (fully opaque, we'll control visibility with opacity field)
   m.shade.color = constants.colorBlack + constants.alpha100

@@ -19,7 +19,9 @@ namespace gridQuery
   ' LoadItemsTask2 node. Built from scratch every time, so nothing a presenter set for one
   ' view carries into the next.
   '
-  ' @param state - { nameStartsWith, searchTerm, sortField, sortAscending, filter, filterOptions }
+  ' @param state - { nameStartsWith, searchTerm, sortField, sortAscending, filters,
+  '   isFavorite }; `filters` is the tab's filter map (see "The filter map" below), and
+  '   `isFavorite` is what a Favorites tab fixes on, apart from it, so the two combine
   ' @param parentItem - the library (or folder) the grid shows
   ' @param view - the current view mode, passed to the presenter
   ' @param presenter - the grid's presenter, or invalid
@@ -30,11 +32,12 @@ namespace gridQuery
       searchTerm: state.searchTerm,
       sortField: state.sortField,
       sortAscending: state.sortAscending,
-      filter: state.filter,
-      ' The ONE place a saved filter becomes a request. The panel and the registry
-      ' separate options with the category's own delimiter; the language categories then
-      ' need flattening to the comma list the server takes. See languageFilters.toWire.
-      filterOptions: languageFilters.toWire(state.filterOptions),
+      ' The one place the filter map becomes a request: the status as `filter`, the
+      ' Favorites category as `isFavorite` beside a Favorites tab's, and every other
+      ' category joined for the wire.
+      filter: gridQuery.statusOf(state.filters),
+      filterOptions: gridQuery.wireOptions(state.filters),
+      isFavorite: isBooleanTrue(state.isFavorite) or gridQuery.hasFavorites(state.filters),
       ' Presenters can override any of these
       itemId: parentItem.Id,
       isRecursive: true,
@@ -49,106 +52,267 @@ namespace gridQuery
     return query
   end function
 
-  ' ── The saved view, and what the presenter currently offers ───────────────────
+  ' ── A saved choice, and what the presenter currently offers ───────────────────
   '
-  ' A library's chosen view persists per library id in the `landing` display setting,
-  ' and until 12.0 every view a presenter listed was available on every server, so a
-  ' saved name could always be honored. The Collections view breaks that: it is offered
-  ' only on 12.0+, so a name saved against one server can be missing when the SAME
-  ' library is opened against an older one (a downgrade, a restored backup). Honoring it
-  ' anyway does not fail loudly: the presenter falls through to its default query branch
-  ' while the layout is still chosen for the named view, which on a movie library means
-  ' the presentation grid's 650px offset with the info panel hidden: a grid pushed down
-  ' the screen against dead space.
+  ' Until 12.0 every view a presenter listed was available on every server, so a saved
+  ' tab could always be honored. The Collections view breaks that: it is offered only on
+  ' 12.0+, so a tab saved against one server can be missing when the SAME library is
+  ' opened against an older one (a downgrade, a restored backup). Honoring it anyway does
+  ' not fail loudly: the presenter falls through to its default query branch while the
+  ' layout is still chosen for the named view, which on a movie library means the
+  ' presentation grid's 650px offset with the info panel hidden: a grid pushed down the
+  ' screen against dead space. A tab picked in the web client can name a tab this
+  ' library lacks for the same reason, or one the app has but not here (Favorites on a
+  ' music library).
 
-  ' offersView: whether `viewName` is one of the views the presenter is listing.
+  ' offers: whether `name` is one of the entries a presenter is listing.
   '
-  ' Case-insensitive, matching how BaseGridView.SetUpOptions already compares a view name
-  ' to the saved one. A presenter's `Name` and the saved string must agree under the same
-  ' rule in both places or a view could restore here and fail to tick there.
+  ' Case-insensitive: a saved name and a presenter's `Name` agree whatever case either
+  ' was written in.
   '
-  ' @param views - a presenter's `getOptions().views`
-  ' @param viewName - the name to look for
-  function offersView(views as dynamic, viewName as dynamic) as boolean
-    if type(views) <> "roArray" then return false
+  ' @param offered - a list of `{ Name }`: a presenter's views, or one of its filter lists
+  ' @param name - the name to look for
+  function offers(offered as dynamic, name as dynamic) as boolean
+    if type(offered) <> "roArray" then return false
 
-    wanted = LCase(textOrEmpty(viewName).trim())
+    wanted = LCase(textOrEmpty(name).trim())
     if wanted = "" then return false
 
-    for each view in views
-      if isValid(view)
-        if LCase(textOrEmpty(view.Name).trim()) = wanted then return true
+    for each entry in offered
+      if isValid(entry)
+        if LCase(textOrEmpty(entry.Name).trim()) = wanted then return true
       end if
     end for
     return false
   end function
 
-  ' resolveView: which view a load should actually use.
+  ' resolveOffered: a saved choice, honored only while it is still offered.
   '
-  ' `savedView` is Invalid when the library has never had one chosen, which is the common
-  ' case and is answered with the default exactly as before. A saved name is honored
-  ' unless the presenter has stopped offering it.
-  '
-  ' The empty default is not a missing view. getDefaultView() returns "" for the Live TV,
-  ' Photos and Generic presenters, whose grids run with no named view at all, and "" is
-  ' in no presenter's list, so a rule of "reset anything not offered" would reset those on
-  ' every load. Only a non-empty saved name is checked.
+  ' The one rule for every saved name that a list can stop offering: the view, a plain
+  ' filter, a sort. Nothing saved answers with the fallback, and so does a saved name the
+  ' list no longer holds.
   '
   ' The caller does not write the fallback back to the registry: the saved choice is still
-  ' what the user picked, and it becomes valid again the moment the library is opened
-  ' against a server that supports it.
+  ' what the user picked, and it is valid again the moment the list offers it.
   '
-  ' @param savedView - the stored `landing` setting, or Invalid when none is stored
-  ' @param offeredViews - the presenter's `getOptions().views`
-  ' @param defaultView - what getDefaultView() answered for this library
-  ' @return {string} the view to load
-  function resolveView(savedView as dynamic, offeredViews as dynamic, defaultView as dynamic) as string
-    saved = textOrEmpty(savedView).trim()
-    if saved = "" then return textOrEmpty(defaultView)
-    if gridQuery.offersView(offeredViews, saved) then return saved
-    return textOrEmpty(defaultView)
+  ' @param saved - the stored name, or Invalid when none is stored
+  ' @param offered - a list of `{ Name }`
+  ' @param fallback - what to use instead
+  function resolveOffered(saved as dynamic, offered as dynamic, fallback as dynamic) as string
+    name = textOrEmpty(saved).trim()
+    if name = "" then return textOrEmpty(fallback)
+    if gridQuery.offers(offered, name) then return name
+    return textOrEmpty(fallback)
   end function
 
-  ' ── A category's options, its saved query, and the invariant between them ──────
+  ' resolveView: which tab a library opens on, and where that choice came from.
+  '
+  ' The tab picked on this Roku (the `defaultTab` display setting) while the library
+  ' offers it; else the tab picked in the web client while offered; else the library
+  ' type's default. Each saved choice goes through resolveOffered, so one the library no
+  ' longer offers falls through without being forgotten.
+  '
+  ' The empty default is not a missing view. getDefaultView() returns "" for a folder or
+  ' collection (the Generic presenter), whose grid runs with no named view at all, and ""
+  ' is in no presenter's list. Only a non-empty saved name is checked.
+  '
+  ' @param clientOverride - the stored `defaultTab` setting, or Invalid when none is stored
+  ' @param serverTab - the web's pick for this library, already a libraryTab id
+  '   (libraryTab.fromServerTab), or "" when there is none
+  ' @param offeredViews - the presenter's `getOptions().views`
+  ' @param defaultView - what getDefaultView() answered for this library
+  ' @return {object} { tab, source }, `source` one of RESOLVED_ROKU, RESOLVED_WEB and
+  '   RESOLVED_DEFAULT
+  function resolveView(clientOverride as dynamic, serverTab as dynamic, offeredViews as dynamic, defaultView as dynamic) as object
+    picked = gridQuery.resolveOffered(clientOverride, offeredViews, "")
+    if picked <> "" then return { tab: picked, source: gridQuery.RESOLVED_ROKU }
+    picked = gridQuery.resolveOffered(serverTab, offeredViews, "")
+    if picked <> "" then return { tab: picked, source: gridQuery.RESOLVED_WEB }
+    return { tab: textOrEmpty(defaultView), source: gridQuery.RESOLVED_DEFAULT }
+  end function
+
+  ' Where resolveView's tab came from.
+  const RESOLVED_ROKU = "roku"
+  const RESOLVED_WEB = "web"
+  const RESOLVED_DEFAULT = "default"
+
+  ' viewOfTab: the view a tab shows, and what is fixed on it.
+  '
+  ' A tab is a view plus what is fixed on it. Most tabs are their own view. A presenter
+  ' lists a Favorites tab as `{ Name: libraryTab.FAVORITES, View: <its content tab>,
+  ' IsFavorite: true }`: the content tab's view with favorites fixed on. So presenters are
+  ' only ever handed a view id, and no presenter method learns a tab that is not a view.
+  '
+  ' An id the presenter does not list is its own view with nothing fixed, which is what a
+  ' folder or collection needs: it lists no tabs and runs with the empty view.
+  '
+  ' @param offeredViews - the presenter's `getOptions().views`
+  ' @param tabId - a libraryTab id
+  ' @return {object} { view, isFavorite }
+  function viewOfTab(offeredViews as dynamic, tabId as dynamic) as object
+    id = textOrEmpty(tabId).trim()
+    if type(offeredViews) = "roArray"
+      for each entry in offeredViews
+        if isValid(entry)
+          if LCase(textOrEmpty(entry.Name).trim()) = LCase(id) and id <> ""
+            view = textOrEmpty(entry.View).trim()
+            if view = "" then view = textOrEmpty(entry.Name).trim()
+            return { view: view, isFavorite: isBooleanTrue(entry.IsFavorite) }
+          end if
+        end if
+      end for
+    end if
+    return { view: id, isFavorite: false }
+  end function
+
+  ' isPlainFavorites: whether `query` asks for favorites and narrows them no further.
+  '
+  ' An empty result of such a query means the library has no favorites, which the grid
+  ' says in its own words. With a filter, a letter or a search in force, an empty result
+  ' says only that nothing matched.
+  '
+  ' @param query - a query build() returned
+  function isPlainFavorites(query as dynamic) as boolean
+    if not isValid(query) or not isBooleanTrue(query.isFavorite) then return false
+    if LCase(textOrEmpty(query.filter).trim()) <> LCase(gridQuery.NO_FILTER) then return false
+    if isValid(query.filterOptions)
+      if query.filterOptions.count() > 0 then return false
+    end if
+    if textOrEmpty(query.nameStartsWith).trim() <> "" then return false
+    return textOrEmpty(query.searchTerm).trim() = ""
+  end function
+
+  ' showsFavorites: whether `query` lists favorites, with or without more narrowing.
+  '
+  ' True for the Favorites tab and for the Favorites filter, which both reach the query
+  ' as `isFavorite`. A grid that shows favorites is stale once a favorite toggles
+  ' elsewhere.
+  '
+  ' @param query - a query build() returned
+  function showsFavorites(query as dynamic) as boolean
+    if not isValid(query) then return false
+    return isBooleanTrue(query.isFavorite)
+  end function
+
+  ' ── The sort ──────────────────────────────────────────────────────────────────
+
+  ' What every tab sorts by until a sort is saved for it. Every presenter's sort list
+  ' offers it.
+  const DEFAULT_SORT_FIELD = "SortName"
+
+  ' resolveSort: the saved sort while the tab's list still offers it, else the default.
+  '
+  ' Sort lists differ per tab, so a saved field can be missing from the list on show.
+  ' Not written back (resolveOffered).
+  '
+  ' @param saved - displaySettings.getLibrarySort's { field, ascending }, or Invalid
+  ' @param offeredSorts - the presenter's `getOptions().sort`
+  ' @return {object} { field, ascending }
+  function resolveSort(saved as dynamic, offeredSorts as dynamic) as object
+    if isValid(saved)
+      field = gridQuery.resolveOffered(saved.field, offeredSorts, "")
+      if field <> "" then return { field: field, ascending: isBooleanTrue(saved.ascending) }
+    end if
+    return { field: gridQuery.DEFAULT_SORT_FIELD, ascending: true }
+  end function
+
+  ' ── The filter map ────────────────────────────────────────────────────────────
+  '
+  ' A tab's filters are one map, `{ <category>: [values] }`, kept for the session
+  ' (sessionFilters). Categories narrow each other, and the values inside one widen it.
+  ' No filter is the empty map: "All" is never stored.
+  '
+  '   CATEGORY_STATUS     one of Played, Unplayed, Resumable (a single choice)
+  '   CATEGORY_FAVORITES  one value, FAVORITES_VALUE, where no Favorites tab covers it
+  '   a server category   under its presenter `Name` (Genres, Years), its option values
+  '
+  ' Categories are matched without regard to case: the map crosses a node field, which
+  ' does not promise to keep a key's spelling.
+  const CATEGORY_STATUS = "Status"
+  const CATEGORY_FAVORITES = "Favorites"
+  const FAVORITES_VALUE = "Favorites"
+  const NO_FILTER = "All"
+
+  ' valuesOf: one category's values, [] when the map does not hold it.
+  function valuesOf(filters as dynamic, category as string) as object
+    if type(filters) <> "roAssociativeArray" then return []
+    for each key in filters
+      if LCase(key) = LCase(category)
+        if type(filters[key]) = "roArray" then return filters[key]
+      end if
+    end for
+    return []
+  end function
+
+  ' statusOf: the status in force, as LoadItemsTask2's `filter`; NO_FILTER when none.
+  function statusOf(filters as dynamic) as string
+    values = gridQuery.valuesOf(filters, gridQuery.CATEGORY_STATUS)
+    if values.count() = 0 then return gridQuery.NO_FILTER
+    status = textOrEmpty(values[0]).trim()
+    if status = "" then return gridQuery.NO_FILTER
+    return status
+  end function
+
+  ' hasFavorites: whether the Favorites filter is on.
+  function hasFavorites(filters as dynamic) as boolean
+    return gridQuery.valuesOf(filters, gridQuery.CATEGORY_FAVORITES).count() > 0
+  end function
+
+  ' isBuiltInCategory: whether `category` is the status or Favorites, which the request
+  ' carries in fields of their own.
+  function isBuiltInCategory(category as dynamic) as boolean
+    name = LCase(textOrEmpty(category))
+    return name = LCase(gridQuery.CATEGORY_STATUS) or name = LCase(gridQuery.CATEGORY_FAVORITES)
+  end function
+
+  ' isStatus: whether `name` is a status LoadItemsTask2 sends (Played, Unplayed, Resumable).
+  function isStatus(name as dynamic) as boolean
+    value = LCase(textOrEmpty(name).trim())
+    return value = "played" or value = "unplayed" or value = "resumable"
+  end function
+
+  ' wireDelimiter: what joins one server category's values in the request.
+  '
+  ' Genres and parental ratings are free text that may hold a comma, so they use "|", as
+  ' does a category not named here. A year is digits, so ",". One language option's value
+  ' is already a comma list of ISO codes, and the request takes one flat comma list.
+  function wireDelimiter(category as dynamic) as string
+    if languageFilters.isLanguageKey(category) then return languageFilters.CODE_DELIMITER
+    if LCase(textOrEmpty(category)) = "years" then return ","
+    return "|"
+  end function
+
+  ' wireOptions: every server category as a request parameter, its values joined.
+  '
+  ' @return {object} LoadItemsTask2's `filterOptions`, {} when no server category is set
+  function wireOptions(filters as dynamic) as object
+    wire = {}
+    if type(filters) <> "roAssociativeArray" then return wire
+    for each category in filters
+      if not gridQuery.isBuiltInCategory(category)
+        values = gridQuery.valuesOf(filters, category)
+        if values.count() > 0 then wire[category] = values.join(gridQuery.wireDelimiter(category))
+      end if
+    end for
+    return wire
+  end function
+
+  ' ── A category's options ─────────────────────────────────────────────────────
   '
   ' A filter category's selectable options come in two shapes, and every site that reads
-  ' them goes through optionTitle() / optionValue() so they cannot disagree about which
+  ' them goes through optionTitle() and optionValue(), so they cannot disagree about which
   ' is which.
   '
-  ' A PLAIN STRING is its own query value: Genres sends the genre name, Years sends the
-  ' year. What the panel shows and what the request carries are the same text.
+  ' A plain string is its own value: Genres sends the genre name, Years sends the year.
   '
-  ' An AA ({ title, value }) separates them, which the 12.0 language filters need in
-  ' both directions. The label has to be the app's own localized language name, because
-  ' the server's is an English library-science string ("Spanish; Castilian (spa)"); the
-  ' value has to be the server's own case-sensitive codes, and for a language with two
-  ' ISO 639-2 spellings it is BOTH of them, since the server matches the literal tag on
-  ' the file. Sending the label would return nothing.
+  ' An AA ({ title, value }) separates them, which the 12.0 language filters need in both
+  ' directions. The label is the app's own localized language name, because the server's
+  ' is an English library-science string ("Spanish; Castilian (spa)"); the value is the
+  ' server's own case-sensitive codes, both of them for a language with two ISO 639-2
+  ' spellings, since the server matches the literal tag on the file.
   '
-  ' THE INVARIANT. A category's saved query is its checked options' values joined by the
-  ' category's delimiter, and that same string is what the registry stores. Decoding it
-  ' on restore is a plain split, which is correct only while this holds:
-  '
-  '     An option's value never contains its category's delimiter.
-  '
-  ' Every category is built to satisfy it, and the delimiters were chosen for that
-  ' reason: Genres and OfficialRatings use "|" because their values are free text that
-  ' may contain commas and spaces; Years uses "," because a year is digits; the language
-  ' filters use "|" because ONE option's value is several ISO codes joined by ","
-  ' (languageFilters.toWire converts that form to the comma-only one the server wants).
-  '
-  ' Break it and the failure is silent and specific: the query still applies, because
-  ' joining is unaffected, but the restore pass splits a value apart and matches none of
-  ' the pieces, so the filter is active with no box ticked, and one confirming keypress
-  ' on that panel then clears it. queryValueFor() and checkedStateFor() are inverses, and
-  ' are tested as a ROUND TRIP rather than individually, because each is self-consistently
-  ' correct on its own while the pair silently disagrees.
-  '
-  ' Both accessors read through textOrEmpty() rather than toString(), which FAULTS on
-  ' Invalid (it falls through to Str()), and a filter category's option list is exactly
-  ' the kind of place a missing entry shows up. Both also trim, because Str() on a number
-  ' returns a LEADING SPACE (`1999` -> `" 1999"`), which would never match the saved
-  ' query. Both faults were found by the unit tests on device, not by review.
+  ' Both accessors read through textOrEmpty(), since toString() faults on Invalid, and
+  ' both trim: Str() on a number returns a leading space, which would never match.
 
   ' optionTitle: what the user sees for one selectable option.
   function optionTitle(option as dynamic) as string
@@ -169,94 +333,6 @@ namespace gridQuery
   function isFilterOptionPair(option as dynamic) as boolean
     if not isValid(option) then return false
     return LCase(type(option)) = "roassociativearray"
-  end function
-
-  ' checkListValues: every option's query value, read off the filter panel's own nodes.
-  '
-  ' The VALUE of each option, never its title. They are the same text for Genres and
-  ' Years; for a language filter the title is a localized name the server would match
-  ' nothing against. Read off the CheckList's nodes, not the presenter's option list,
-  ' because those nodes are what the CheckList's checkedState indexes into.
-  '
-  ' @param category - a filter category node whose children are FilterOptionNodes
-  ' @return {object} array of strings, one per option, in panel order
-  function checkListValues(category as dynamic) as object
-    values = []
-    if not isValid(category) then return values
-    for i = 0 to category.getChildCount() - 1
-      option = category.getChild(i)
-      value = option.value
-      ' A node whose value never got set falls back to its title, which is the correct
-      ' answer for every category whose options are plain strings.
-      if not isValidAndNotEmpty(value) then value = textOrEmpty(option.title)
-      values.push(value)
-    end for
-    return values
-  end function
-
-  ' queryValueFor: the saved query for one category (its checked options' values, joined).
-  '
-  ' Takes VALUES rather than options because the caller (ItemGridOptions) reads them off
-  ' the CheckList's own nodes via checkListValues(), not off the presenter's option list.
-  '
-  ' @param values - option query values in panel order
-  ' @param checkedState - one boolean per option, panel order
-  ' @param delimiter - the category's delimiter
-  ' @return {string} "" when nothing is checked, which the caller reads as "no filter"
-  function queryValueFor(values as dynamic, checkedState as dynamic, delimiter as string) as string
-    if type(values) <> "roArray" or type(checkedState) <> "roArray" then return ""
-
-    selected = []
-    for i = 0 to values.count() - 1
-      ' A checkedState shorter than the option list means the panel and the list have
-      ' drifted; take only what both agree on rather than indexing off the end.
-      if i >= checkedState.count() then exit for
-      if isBooleanTrue(checkedState[i])
-        value = textOrEmpty(values[i]).trim()
-        if value <> "" then selected.push(value)
-      end if
-    end for
-
-    return selected.join(delimiter)
-  end function
-
-  ' checkedStateFor: which of a category's options a saved query has selected.
-  '
-  ' The inverse of queryValueFor(), and the reason the pair has to be tested together:
-  ' this is what re-ticks the boxes when the panel reopens, matching on the VALUE because
-  ' that is what was saved: the registry holds the query the filter applied, not the
-  ' labels it was picked by.
-  '
-  ' @param options - a category's `Options` list
-  ' @param savedQuery - the stored query string for this category
-  ' @param delimiter - the category's delimiter
-  ' @return {object} one boolean per option, panel order
-  function checkedStateFor(options as dynamic, savedQuery as dynamic, delimiter as string) as object
-    checkedState = []
-    if type(options) <> "roArray" then return checkedState
-
-    ' An empty separator makes Split() return one entry PER CHARACTER, so a category that
-    ' somehow declared none must fall back to "the whole string is one value".
-    saved = textOrEmpty(savedQuery).trim()
-    selected = []
-    if saved <> ""
-      if delimiter = ""
-        selected = [saved]
-      else
-        selected = saved.split(delimiter)
-      end if
-    end if
-
-    for each option in options
-      value = LCase(gridQuery.optionValue(option))
-      matched = false
-      for each candidate in selected
-        if value <> "" and value = LCase(textOrEmpty(candidate).trim()) then matched = true
-      end for
-      checkedState.push(matched)
-    end for
-
-    return checkedState
   end function
 
 end namespace

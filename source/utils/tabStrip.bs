@@ -1,0 +1,51 @@
+' Where a scrolling tab strip sits in its slot (JRTabBar's "scrolling" mode). Pure.
+' docs/architecture/design-system.md has the rule in words.
+namespace tabStrip
+  ' Starting values, to be tuned on a device
+  const PEEK_WIDTH = 48 ' How much of the tab before the active one stays in view; on the 3 px grid
+  const CUT_OPACITY = 0.4 ' A tab the slot's edge cuts: the cue that more tabs lie that way
+  const SCROLL_SECONDS = 0.15 ' One slide of the strip
+
+  ' The strip's scroll offset for the active tab, and the tab each edge of the slot cuts.
+  ' The active tab sits at the slot's start with `peek` pixels of the tab before it showing,
+  ' and the offset is clamped so the strip never scrolls past its last tab: when every tab
+  ' fits it is 0. The same inputs always give the same position.
+  '
+  ' `widths` are the tabs' widths in order, `gap` the space between two tabs. Returns
+  ' { offset, cutLeft, cutRight }: cutLeft and cutRight are the index of the tab the slot's
+  ' left or right edge passes through, -1 when that edge cuts none (it falls in a gap, or
+  ' nothing lies beyond it). The active tab is never reported as cut.
+  function window(widths as object, gap as integer, slotWidth as integer, activeIndex as integer, peek as integer) as object
+    count = widths.count()
+    if count = 0 or slotWidth <= 0 then return { offset: 0, cutLeft: -1, cutRight: -1 }
+
+    lefts = []
+    x = 0
+    for each width in widths
+      lefts.push(x)
+      x += width + gap
+    end for
+    total = x - gap
+
+    maxOffset = total - slotWidth
+    if maxOffset < 0 then maxOffset = 0
+
+    offset = 0
+    if activeIndex > 0 and activeIndex < count then offset = lefts[activeIndex] - peek
+    if offset < 0 then offset = 0
+    if offset > maxOffset then offset = maxOffset
+
+    cutLeft = -1
+    cutRight = -1
+    slotEnd = offset + slotWidth
+    for i = 0 to count - 1
+      if i <> activeIndex
+        tabEnd = lefts[i] + widths[i]
+        if lefts[i] < offset and tabEnd > offset then cutLeft = i
+        if lefts[i] < slotEnd and tabEnd > slotEnd then cutRight = i
+      end if
+    end for
+
+    return { offset: offset, cutLeft: cutLeft, cutRight: cutRight }
+  end function
+end namespace

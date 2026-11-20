@@ -1,3 +1,4 @@
+import "pkg:/source/GridView/libraryTab.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/misc.bs"
 
@@ -31,7 +32,7 @@ end function
 
 ' Get all display settings for a library
 ' Returns: AA with all settings, or empty {} if library not found
-' Example: { sortField: "DateCreated", filter: "Favorites", landing: "Movies" }
+' Example: { sort_movies: "DateCreated:desc", layout_movies: "grid", defaultTab: "genres" }
 function getLibraryDisplaySettings(libraryId as dynamic) as object
   if not isValid(libraryId) or libraryId = ""
     return {}
@@ -125,6 +126,34 @@ sub setLibraryDisplaySetting(libraryId as dynamic, key as dynamic, value as dyna
   localUser.settings.displaySettings = displaySettings
 end sub
 
+' Delete one display setting for a library (updates node + removes it from the registry)
+' A library left with no settings keeps an empty entry, which writes nothing.
+sub deleteLibraryDisplaySetting(libraryId as dynamic, key as dynamic)
+  if not isValid(libraryId) or libraryId = "" or not isValid(key) or key = ""
+    return
+  end if
+
+  ' Get local reference to minimize rendezvous
+  localUser = m.global.user
+
+  if not isValid(localUser) or not isValid(localUser.settings)
+    return
+  end if
+
+  oldDisplaySettings = localUser.settings.displaySettings
+  if not isValid(oldDisplaySettings) or not oldDisplaySettings.DoesExist(libraryId)
+    return
+  end if
+  if type(oldDisplaySettings[libraryId]) <> "roAssociativeArray" or not oldDisplaySettings[libraryId].DoesExist(key)
+    return
+  end if
+
+  ' A new AA reference, so the observer that syncs the registry sees the change
+  displaySettings = deepCopyDisplaySettings(oldDisplaySettings)
+  displaySettings[libraryId].Delete(key)
+  localUser.settings.displaySettings = displaySettings
+end sub
+
 ' Delete all display settings for a library
 sub deleteLibraryDisplaySettings(libraryId as dynamic)
   if not isValid(libraryId) or libraryId = ""
@@ -153,5 +182,44 @@ sub deleteLibraryDisplaySettings(libraryId as dynamic)
   end if
 
   ' Reassign NEW reference to content node (triggers onChange observer which cleans up registry)
+  localUser.settings.displaySettings = displaySettings
+end sub
+
+' ── The sort, saved per library and tab ───────────────────────────────────────
+
+' The sort saved for one tab of a library.
+' @return {object} { field, ascending }, or Invalid when none is saved
+function getLibrarySort(libraryId as dynamic, tabId as dynamic) as dynamic
+  return librarySort.parse(getLibraryDisplaySetting(libraryId, librarySort.settingKey(tabId), invalid))
+end function
+
+' Save the sort for one tab of a library (updates node + persists to registry)
+sub setLibrarySort(libraryId as dynamic, tabId as dynamic, field as dynamic, ascending as dynamic)
+  if textOrEmpty(field).trim() = "" then return
+  setLibraryDisplaySetting(libraryId, librarySort.settingKey(tabId), librarySort.format(field, ascending))
+end sub
+
+' Move a library's tabless sort to its default tab's key.
+'
+' A sort saved before sorts were per tab was set on the library type's default tab unless
+' a view had been picked. The registry migration cannot know a library's type, so it
+' leaves that sort under the bare key and the library calls this when it opens. A sort
+' already saved for the tab wins. A screen whose default tab is empty keeps the bare key
+' as its own.
+sub adoptLegacySort(libraryId as dynamic, defaultTab as dynamic)
+  bareKey = librarySort.settingKey("")
+  tabKey = librarySort.settingKey(defaultTab)
+  if tabKey = bareKey then return
+
+  librarySettings = getLibraryDisplaySettings(libraryId)
+  if not librarySettings.DoesExist(bareKey) then return
+
+  ' One new AA reference for both changes, so the registry sync runs once
+  localUser = m.global.user
+  displaySettings = deepCopyDisplaySettings(localUser.settings.displaySettings)
+  if not displaySettings[libraryId].DoesExist(tabKey)
+    displaySettings[libraryId][tabKey] = displaySettings[libraryId][bareKey]
+  end if
+  displaySettings[libraryId].Delete(bareKey)
   localUser.settings.displaySettings = displaySettings
 end sub

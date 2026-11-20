@@ -282,6 +282,7 @@
 (?:ffmpeg-tagged)\.
 (?:FHD)\.
 (?:filesystem)\.
+(?:Finamp)\.
 (?:flac)\.
 (?:FLAC)\.
 (?:FLACs)\.
@@ -412,6 +413,7 @@
 (?:mka)\.
 (?:MKV)\.
 (?:mkv)\.
+(?:Moonfin)\.
 (?:MP3)\.
 (?:mp4)\.
 (?:mpv-shim)\.
@@ -457,6 +459,7 @@
 (?:onboarding)\.
 (?:OpenAPI)\.
 (?:opencode)\.
+(?:OpenGL)\.
 (?:opus)\.
 (?:orchestrator)\.
 (?:Orchestrator)\.
@@ -587,6 +590,7 @@
 (?:repo-wide)\.
 (?:reproducibility)\.
 (?:resumable)\.
+(?:Resumable)\.
 (?:retry-with-backoff)\.
 (?:revalidation)\.
 (?:reverse-proxied)\.
@@ -742,6 +746,7 @@
 (?:unquantified)\.
 (?:unresolvable)\.
 (?:unreviewed)\.
+(?:Unplayed)\.
 (?:unscoped)\.
 (?:unshuffled)\.
 (?:unsynchronized)\.
@@ -796,6 +801,7 @@
 (?:webp)\.
 (?:whitespace)\.
 (?:Whitespace)\.
+(?:Wholphin)\.
 (?:Wikimedia)\.
 (?:WIP)\.
 (?:worklist)\.

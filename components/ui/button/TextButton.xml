@@ -68,6 +68,11 @@
          centers the text in the pixel or two it gains. Off by default; the overhang's tabs
          set it. -->
     <field id="shouldSnapToGrid" type="boolean" value="false" />
+    <!-- Lower the label, and the icon with it, by this many pixels. A label centers its line
+         box, and caps sit about 7% of the font size above that box's middle
+         (textMetrics.bs), so in a box only a little taller than the text the label reads
+         as high. 0 by default; the library header strip's chips set 3. -->
+    <field id="textDrop" type="integer" value="0" />
     <!-- Draw the 6px colorSecondary underline under the label while
          isButtonSelected is true. Off by default: most buttons are momentary. -->
     <field id="showSelectedIndicator" type="boolean" value="false" />

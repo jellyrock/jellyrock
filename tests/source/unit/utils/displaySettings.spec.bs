@@ -187,6 +187,35 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("deleteLibraryDisplaySetting")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("removes one setting and keeps the library's others")
+    function _()
+      setLibraryDisplaySetting("test-lib-one", "defaultTab", "genres")
+      setLibraryDisplaySetting("test-lib-one", "sortField", "DateCreated")
+
+      deleteLibraryDisplaySetting("test-lib-one", "defaultTab")
+
+      result = getLibraryDisplaySettings("test-lib-one")
+      m.assertFalse(result.DoesExist("defaultTab"))
+      m.assertEqual(result.sortField, "DateCreated")
+    end function
+
+    @it("does nothing for a setting or a library that is not there")
+    function _()
+      setLibraryDisplaySetting("test-lib-two", "sortField", "DateCreated")
+      before = m.global.user.settings.displaySettings
+
+      deleteLibraryDisplaySetting("test-lib-two", "defaultTab")
+      deleteLibraryDisplaySetting("test-lib-missing", "defaultTab")
+      deleteLibraryDisplaySetting("", "defaultTab")
+      deleteLibraryDisplaySetting("test-lib-two", invalid)
+
+      m.assertEqual(m.global.user.settings.displaySettings, before)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("Cross-library isolation")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -280,6 +309,86 @@ namespace tests
 
       result = getLibraryDisplaySetting("test-bool", "sortAscending", "false")
       m.assertEqual(result, "true")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("The sort, per library and tab")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("answers Invalid when no sort is saved for the tab")
+    function _()
+      m.assertInvalid(getLibrarySort("test-sort-none", "movies"))
+    end function
+
+    @it("keeps each tab's own sort")
+    function _()
+      setLibrarySort("test-sort-tabs", "movies", "DateCreated", false)
+      setLibrarySort("test-sort-tabs", "genres", "Random", true)
+
+      m.assertEqual(getLibrarySort("test-sort-tabs", "movies"), { field: "DateCreated", ascending: false })
+      m.assertEqual(getLibrarySort("test-sort-tabs", "genres"), { field: "Random", ascending: true })
+      m.assertInvalid(getLibrarySort("test-sort-tabs", "studios"))
+      m.assertEqual(getLibraryDisplaySetting("test-sort-tabs", "sort_movies", ""), "DateCreated:desc")
+    end function
+
+    @it("saves a screen with no tab under the bare key")
+    function _()
+      setLibrarySort("test-sort-folder", "", "IsFolder,SortName", true)
+
+      m.assertEqual(getLibraryDisplaySetting("test-sort-folder", "sort", ""), "IsFolder,SortName:asc")
+      m.assertEqual(getLibrarySort("test-sort-folder", ""), { field: "IsFolder,SortName", ascending: true })
+    end function
+
+    @it("saves nothing for an empty field")
+    function _()
+      setLibrarySort("test-sort-empty", "movies", "", true)
+      m.assertInvalid(getLibrarySort("test-sort-empty", "movies"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("adoptLegacySort")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("moves a tabless sort to the library's default tab")
+    function _()
+      setLibraryDisplaySetting("test-adopt-1", "sort", "DateCreated:desc")
+
+      adoptLegacySort("test-adopt-1", "movies")
+
+      m.assertEqual(getLibrarySort("test-adopt-1", "movies"), { field: "DateCreated", ascending: false })
+      m.assertFalse(getLibraryDisplaySettings("test-adopt-1").DoesExist("sort"))
+    end function
+
+    @it("lets a sort already saved for the tab win, and still removes the tabless one")
+    function _()
+      setLibraryDisplaySetting("test-adopt-2", "sort", "DateCreated:desc")
+      setLibrarySort("test-adopt-2", "shows", "Random", true)
+
+      adoptLegacySort("test-adopt-2", "shows")
+
+      m.assertEqual(getLibrarySort("test-adopt-2", "shows"), { field: "Random", ascending: true })
+      m.assertFalse(getLibraryDisplaySettings("test-adopt-2").DoesExist("sort"))
+    end function
+
+    @it("leaves the bare key alone on a screen with no tab, which reads it as its own")
+    function _()
+      setLibraryDisplaySetting("test-adopt-3", "sort", "Random:asc")
+
+      adoptLegacySort("test-adopt-3", "")
+
+      m.assertEqual(getLibrarySort("test-adopt-3", ""), { field: "Random", ascending: true })
+    end function
+
+    @it("does nothing for a library with no tabless sort, or with no settings at all")
+    function _()
+      setLibrarySort("test-adopt-4", "movies", "Random", true)
+      before = getLibraryDisplaySettings("test-adopt-4")
+
+      adoptLegacySort("test-adopt-4", "movies")
+      adoptLegacySort("test-adopt-none", "movies")
+
+      m.assertEqual(getLibraryDisplaySettings("test-adopt-4"), before)
+      m.assertEqual(getLibraryDisplaySettings("test-adopt-none").Count(), 0)
     end function
 
   end class

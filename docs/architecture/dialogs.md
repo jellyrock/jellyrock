@@ -24,7 +24,7 @@ related-files:
   - source/utils/dialogNarration.bs
   - source/utils/buttonOverflow.bs
   - scripts/bsc-plugins/no-hand-rolled-dialog.cjs
-last-reviewed: 2026-11-08
+last-reviewed: 2026-11-15
 ---
 
 # The dialog family
@@ -33,7 +33,7 @@ JellyRock's overlay dialogs (alerts, confirms, choices, pickers, long read-only 
 
 For how to show a dialog from a component, the short version is in [`components/CLAUDE.md`](../../components/CLAUDE.md). This doc is the full contract and the reasons behind it.
 
-Two modal surfaces are still outside the family: `ItemGridOptions`, tracked as [`itemgridoptions-hand-rolled-dialog`](tech-debt.md#itemgridoptions-hand-rolled-dialog), and the subtitle search panel (`SubtitlePanel`), which has its own layout and focus model. The `no-hand-rolled-dialog` build rule stops new ones.
+One modal surface is still outside the family: the subtitle search panel (`SubtitlePanel`), which has its own layout and focus model. The `no-hand-rolled-dialog` build rule stops new ones. The library's options panel was the other until the header strip replaced it: its Sort and Filter are family dialogs now, opened from the strip's chips.
 
 ## Why this is a standard, not a style guide
 
@@ -41,7 +41,7 @@ The family exists because convention failed. `JRDialog`, `JRListDialog` and `Ove
 
 So code backs the rules below, not agreement. `JRDialogPanel` owns the chrome. `dialogLayout.bs` owns the geometry, and it is pure and unit-tested. The component specs check rendered nodes rather than copies of the constants.
 
-## Five decisions a new dialog does not make
+## Six decisions a new dialog does not make
 
 If you are building a dialog, these are settled. Re-deciding any of them is how the app grew two looks the first time.
 
@@ -77,7 +77,7 @@ The flow above is the inside of the panel. Where the panel goes is also this fun
 | `anchor` | Placement | Used by |
 |---|---|---|
 | Omitted | Centered on screen | Every dialog except the overflow menus |
-| `{ x, y, width }` | Left-aligned to the anchor when it fits before the right margin, else right-aligned to it, and grown upward from `anchor.y` | The **More** overflow menus (#788) |
+| `{ x, y, width, height }` | Left-aligned to the anchor when it fits before the right margin, else right-aligned to it. Above the anchor when it fits there, else on the side with more room | The **More** overflow menus (#788), the player's gear, and the overhang's settings icon, which opens below |
 
 Anchoring exists because a centered panel covers both the button row a menu belongs to and the metadata beside it. On `ItemDetails` the row is at y 800, and the title, date and stream lines start at x 96 and run toward the logo. A centered 900-pixel panel (x 510 to 1410) sits on top of them. A narrow panel anchored to the **More** button covers backdrop art instead.
 
@@ -92,10 +92,11 @@ So a narrow menu extends right on both surfaces, and a wide one (a long translat
 
 Overflow cannot be reached on either surface today (`ItemDetails` has 8 of its 8 buttons, the OSD 7 of 10; see the header of `buttonOverflow.bs`), so only the specs exercise these menus for now.
 
-Before adding a third caller:
+**Above or below is derived too.** Above is preferred, so a menu sits over the row it belongs to. The panel goes below only when what it asked for does not fit above and the band below the anchor is the larger one. A button row low on the screen never flips; the overhang's settings icon, with nothing above it, always does (`JRScene.openPageMenu`). An anchor passes its `height` so the panel can start under it, and an anchor without one always stays above; `iconBarNav.iconAnchor()` builds the one for a cluster icon.
 
-- **The ceiling moves with the anchor.** An anchored panel may only fill the band between the top margin and `ANCHOR_GAP` above its anchor, so it overflows sooner than a centered one. It reports that through the same `overflows` field, so `JRListDialog` needed no new overflow handling: its loop that drops rows and lays out again already reacts.
-- **Upward is an observation, not a law.** Both callers have their row near the bottom of the screen. A row near the top needs a downward variant, and it belongs in `computeDialogLayout` beside the horizontal flip, not as a second placement mode somewhere else.
+Before adding another caller:
+
+- **The ceiling moves with the anchor.** An anchored panel may only fill the band it opens into: from the top margin to `ANCHOR_GAP` above its anchor, or from `ANCHOR_GAP` below it to the bottom margin. So it overflows sooner than a centered one. It reports that through the same `overflows` field, so `JRListDialog` needed no new overflow handling: its loop that drops rows and lays out again already reacts.
 
 Build the anchor with `moreButtonAnchor()` (`source/utils/buttonOverflow.bs`) rather than measuring the rendered button. It derives the slot from the same arithmetic that set the button cap, so the anchor cannot drift from the button. It needs no conversion from local to screen coordinates, and it answers before the row has laid out.
 
@@ -119,7 +120,7 @@ No dialog fixes its own panel height. `computeDialogLayout` sizes the panel to w
 |---|---|---|
 | `JRDialog` | `overflows` and `body.height` | Truncates the message to the lines that fit in `body.height`. A confirm that scrolls should have been an info dialog. |
 | `OverviewDialog` | `body.height` | Scrolls its viewport at exactly that height |
-| `JRListDialog` | `overflows` and `body.height` | Drops rows to what fits and lays out again. The list scrolls, so every option stays reachable. |
+| `JRListDialog` | `overflows` and `body.height` | Drops rows to what fits and lays out again. The list scrolls, so every option stays reachable, and the position line under it says so. |
 
 **None of them works out the ceiling itself**, and that is the whole contract. A dialog asks for the body it measured and is told what it got. Only what to do about the difference is local.
 
@@ -134,24 +135,47 @@ Two things follow:
 - **`sections` can be set again, and reconciles.** When the new array has the same shape (the same ids in the same order), setting it rewrites the value text of each row and creates or destroys nothing. The panel height, scroll position and focus stay put. A different shape rebuilds. This lets the playback report refresh live figures behind an open dialog without breaking "set every text field before presenting": that rule exists because a dialog never lays out again after it mounts, and rewriting a one-line value changes no height.
 - **The label columns have fixed widths, not measured ones.** Measuring the widest label needs a rendered pass, and this dialog has already learned that nothing may depend on which pass it is in. `wideLabels` picks the wider of two widths for rows whose labels are Jellyfin reason codes.
 
+#### A list that hides rows shows the position line
+
+`JRListDialog` shows at most 8 rows. When it has more, a `ListPosition` line sits under the list in the flow's footer slot: "3 of 12" between two arrowheads, each lit when rows are hidden that way ([design-system.md](design-system.md#a-list-that-hides-rows-the-position-line)). It is read, never focused, so decision 5 holds: the rows are still the only focusable thing. A list that shows every row has no line and no footer.
+
+The line takes room of its own, so a list that scrolls can show fewer rows than the cap when its title is tall. `applyLayout()` asks the flow with the line's height and reads back the rows that fit, as it does for the ceiling.
+
 #### A list row's gutter holds one thing
 
-`JRListDialogRow` reserves a fixed 36-pixel slot (`LIST_ROW_ICON_SIZE`, inside `LIST_ROW_CHECK_GUTTER`) on every row of a list that can fill it, so labels line up whether a row is marked or not. Two things can want that slot, and they never share it:
+`JRListDialogRow` reserves a fixed 36-pixel slot (`LIST_ROW_ICON_SIZE`, inside `LIST_ROW_CHECK_GUTTER`) on every row of a list that can fill it, so labels line up whether a row is marked or not. Three things can want that slot, and they never share it:
 
 | Occupant | Set by | Color | For |
 |---|---|---|---|
 | The current-option check | `selectedIndex` | `colorSecondary`, a state marker | A picker (audio, subtitles, video source) |
 | A leading action icon | The optional `icons` array | `colorTextPrimary`, part of the label, not a state | An action list, such as a **More** menu |
+| A checkbox | `multiSelect`, on every row | The ticked box `colorSecondary` (a toggle's on-state), the empty one `colorTextPrimary` | A checklist (`showChecklistDialog`) |
 
-**A list that can fill neither drops the gutter on every row.** `listHasGutter()` in `dialogLayout.bs` decides it once per list: a current option (`selectedIndex` 0 or more) or an icon on any row keeps it. A choice list or an action menu without icons then starts its labels at the row padding (`listRowLabelInset()`), and a `sizeToContent` menu is that much narrower, instead of carrying an empty 60-pixel slot on the left. `JRListDialog` stamps the answer on each row as `hasGutter`; a row built by anything else keeps the gutter.
+A checklist row gets no surface under it when ticked: with many ticks the list would turn striped. The two boxes differ in shape, so the state holds in any theme. A checklist does not read `selectedIndex` or `icons`.
 
-They cannot both apply: an action list passes `selectedIndex = -1`, so nothing is checked. The row still states which one draws (the check wins), because "cannot happen" is not a layout rule, and the alternative is two images stacked in one slot.
+**A list that can fill none of them drops the gutter on every row.** `listHasGutter()` in `dialogLayout.bs` decides it once per list: a current option (`selectedIndex` 0 or more), an icon on any row or a checklist keeps it. A choice list or an action menu without icons then starts its labels at the row padding (`listRowLabelInset()`), and a `sizeToContent` menu is that much narrower, instead of carrying an empty 60-pixel slot on the left. `JRListDialog` stamps the answer on each row as `hasGutter`; a row built by anything else keeps the gutter.
+
+The first two cannot both apply: an action list passes `selectedIndex = -1`, so nothing is checked. The row still states which one draws (the check wins), because "cannot happen" is not a layout rule, and the alternative is two images stacked in one slot.
 
 `icons` is a parallel array, paired by position with `items`, rather than a richer `items` shape. `items` is a plain string array the three playback pickers already pass, and a parallel field adds to the contract where a new item shape would change it. It has no `onChange`, so callers set it before `items`, the same order `defaultIndex` and `selectedIndex` rely on, since setting `items` builds the rows. A shorter array leaves the later rows without an icon.
 
 ### 5. A dialog has one kind of focusable thing
 
 Buttons, or rows, or a scroll area plus its dismiss button. Not a mixture. That keeps each dialog type's key model small enough to state in a table.
+
+### 6. OK is the commit, and Back only leaves
+
+Recorded as [ADR 0060](../adr/0060-ok-commits-back-leaves.md). No dialog holds a draft. OK on a picker's row applies that row, a setting saves as it is changed, and Back never throws work away. So nothing in the family has an Apply button, and none is to be added.
+
+The checklist (`showChecklistDialog`, `JRListDialog` with `multiSelect`) is where this is tested, because a list of ticks is where an Apply button is usually reached for:
+
+- **A tick counts when it is made.** OK ticks the focused row or clears its tick, and the dialog stays open. Clearing a tick is the undo.
+- **Back leaves with the set as it stands.** `result.checkedIndexes` is the ticked rows. `result.cancelled` is true when the set did not change, so a caller that reloads on a change does nothing; `result.confirmed` is true when it did.
+- **The ticks are published live.** The dialog rewrites its `checkedIndexes` field on every toggle, for a caller that reacts per tick. One that reacts once reads the result.
+- **A close from code reports the ticks as they stand.** `cancelDialog` (a covered screen, a replacement) delivers the same set Back would, as a cancel with `externallyCancelled`, so the result never disagrees with the live field. A handler that acts declines it, as for every dialog.
+- **An action over the ticked rows asks first.** A "delete these" opens `showConfirmDialog` from the checklist's result handler (the hand-off [below](#presenting-and-tearing-down)). The deliberate second press belongs on the confirm, never on an Apply row.
+
+Why not Apply and Cancel buttons: they break decision 5, and a list that wraps both ways cannot reach a footer without giving the wrap up, which is the bug `dialogKeys.bs` records. Why not an Apply row at the end of the list: Back would then discard ticks, the most common exit losing work, and in a long list the row sits off screen. The library's old options panel, which this replaced, and the web client's filter dialog both applied a tick as it was made.
 
 ## Key models
 
@@ -161,9 +185,12 @@ Buttons, or rows, or a scroll area plus its dismiss button. Not a mixture. That 
 |---|---|---|---|---|
 | `JRDialog` | Step the button row (wraps) | Step the row only when stacked; otherwise consumed | Resolve with the focused button | Canceled result |
 | `JRListDialog` | None | Step rows, wrapping both ways | Commit the row | Dismiss (the only exit; there is no Cancel button) |
+| `JRListDialog` with `multiSelect` | None | Step rows, wrapping both ways | Tick the row or clear its tick; the dialog stays open | Leave with the ticks as they stand |
 | `OverviewDialog` | Consumed | Scroll the body; past the end, move to OK | Dismiss (or move focus to OK) | Dismiss |
 | `QuickConnectDialog` | Nothing: a one-button row steps back onto itself | Consumed | Canceled result | Canceled result |
 | `JRDialog` with `anyKeyResolves` | Resolve | Resolve | Resolve | Resolve: every key answers |
+
+The checklist runs the same `listDialogKeyAction` as the list: Back is still "dismiss", and the component decides what a dismiss delivers ([decision 6](#6-ok-is-the-commit-and-back-only-leaves)).
 
 `anyKeyResolves` exists for one question, "is anyone there?": the still-watching prompt (`showStillWatchingDialog`), where any press is the answer and making the viewer find a particular button would defeat it. It is a flag on the same model (`buttonDialogKeyAction`), not a second dialog.
 
@@ -194,7 +221,7 @@ The helpers and the result contract are in [`navigation.md`](./navigation.md#the
 
 Code that only asks whether an overlay dialog is open imports `source/utils/overlayDialog.bs`, which holds `openOverlayDialog`, `isOverlayDialogOpen` and the shared overlay id, not `dialogs.bs`. `JRScreen` is the base of every screen, so importing the helpers there would put them and their layout code in every screen's scope.
 
-`showOverflowMenu` looks like a new surface and is not. It presents the same `JRListDialog` (same chrome, key model, result contract and specs) with three presentation fields set: `anchor`, `sizeToContent` and `titleVisible = false`. Use it for a menu hanging off a button (**More**, or the playback-settings gear on the player), and `showListDialog` for everything else. Its optional `defaultIndex` is `JRListDialog`'s own field, for a menu reopened on the row the user left it from. If you need a fourth difference, add a field to `JRListDialog`, not a second component.
+`showOverflowMenu` looks like a new surface and is not. It presents the same `JRListDialog` (same chrome, key model, result contract and specs) with three presentation fields set: `anchor`, `sizeToContent` and `titleVisible = false`. Use it for a menu hanging off a button (**More**, the playback-settings gear on the player, or the overhang's settings icon on a screen with page settings), and `showListDialog` for everything else. Its optional `defaultIndex` is `JRListDialog`'s own field, for a menu reopened on the row the user left it from. Its optional `selectedIndex` makes the menu a picker: the row of the option in force takes the check, as in `showListDialog`. A library's Sort chip is the picker, since its menu hangs off the chip that names the sort; a menu of actions leaves it out, because no row is current. If you need a fourth difference, add a field to `JRListDialog`, not a second component. `showChecklistDialog` is the same move in another direction: `multiSelect` and `checkedIndexes` are fields on `JRListDialog`, not a checklist component.
 
 The keyboard (`JRKeyboardDialog`) is Roku's `StandardKeyboardDialog`, themed through `RSGPalette`. It returns the family's result shape but uses Roku's modal channel, not the family's chrome, layout or narration.
 

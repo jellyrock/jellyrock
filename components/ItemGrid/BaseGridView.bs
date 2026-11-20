@@ -8,10 +8,14 @@ import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/constants/imageSize.bs"
-import "pkg:/source/GridView/collectionsView.bs"
 import "pkg:/source/GridView/GenericPresenter.bs"
 import "pkg:/source/GridView/gridPaging.bs"
 import "pkg:/source/GridView/gridQuery.bs"
+import "pkg:/source/GridView/itemSummary.bs"
+import "pkg:/source/GridView/libraryFilterMenu.bs"
+import "pkg:/source/GridView/libraryGrid.bs"
+import "pkg:/source/GridView/librarySortMenu.bs"
+import "pkg:/source/GridView/libraryTab.bs"
 import "pkg:/source/GridView/LiveTVPresenter.bs"
 import "pkg:/source/GridView/MoviePresenter.bs"
 import "pkg:/source/GridView/MusicPresenter.bs"
@@ -21,14 +25,18 @@ import "pkg:/source/libraryViewFactory.bs"
 import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/backdrop.bs"
+import "pkg:/source/utils/buttonOverflow.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/dialogNarration.bs"
+import "pkg:/source/utils/dialogs.bs"
 import "pkg:/source/utils/displaySettings.bs"
+import "pkg:/source/utils/headerStrip.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/languageFilters.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/paging.bs"
+import "pkg:/source/utils/sessionFilters.bs"
 import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
@@ -40,6 +48,19 @@ import "pkg:/source/utils/translate.bs"
 const SLOW_LOAD_STILL_S = 8
 const SLOW_LOAD_SERVER_S = 30
 
+' The display setting that holds this Roku's default tab for a library, and the id of its
+' entry in the gear menu.
+const DEFAULT_TAB_KEY = "defaultTab"
+' The page setting for how many cells a row holds
+const COLUMNS_KEY = "columns"
+' The page setting for the app-wide Item Titles setting
+const TITLES_KEY = "titles"
+' Each page setting's glyph in the gear menu, at the menu's density
+const ICON_LAYOUT = "pkg:/images/icons/layout_$$RES$$.png"
+const ICON_COLUMNS = "pkg:/images/icons/itemsPerRow_$$RES$$.png"
+const ICON_TITLES = "pkg:/images/icons/itemTitles_$$RES$$.png"
+const ICON_DEFAULT_TAB = "pkg:/images/icons/defaultTab_$$RES$$.png"
+
 sub init()
   m.log = new log.Logger("BaseGridView")
   m.log.debug("start init()")
@@ -50,6 +71,7 @@ sub init()
   m.showItemCount = userSettings.itemGridShowItemCount
 
   m.loadedItems = 0
+  m.lastFavoritesVersion = 0
 
   m.data = CreateObject("roSGNode", "ContentNode")
   m.itemGrid.content = m.data
@@ -89,12 +111,21 @@ sub init()
   m.voiceBox.observeField("text", "onVoiceFilter")
   m.voiceBox.hintText = translate(translationKeys.LabelUseVoiceRemoteToSearch)
 
-  ' Sort/filter defaults
-  m.sortField = "SortName"
+  ' Sort and filters, read per tab on every load (loadView)
+  m.sortField = gridQuery.DEFAULT_SORT_FIELD
   m.sortAscending = true
-  m.filter = "All"
-  m.filterOptions = {}
-  m.favorite = "Favorite"
+  m.filters = {}
+  ' The Sort or Filter dialog that is up, and what its rows stand for
+  m.stripDialog = invalid
+  m.sortMenuIds = []
+  m.filterMenuIds = []
+  m.filterCategories = []
+  m.openFilterCategory = invalid
+  ' A filter changed while another screen covered this one: reload when it is shown again
+  m.isFilterReloadDue = false
+  ' The titles changed while another screen covered this one: draw again when it is shown
+  m.isRelayoutDue = false
+  m.headerStrip.observeField("chipAction", "onStripChipAction")
 
   ' Grid run state. Each run gets its own LoadItemsTask2 node (startGridRun), so the query
   ' and the paging state live here: a replaced node takes anything stored on it with it.
@@ -135,10 +166,19 @@ sub init()
 
   ' Get reset folder setting
   m.resetGrid = userSettings.itemGridReset
-  m.top.gridTitles = userSettings.itemGridTitles
 
   ' Presenter (built by onPresenterTypeChanged when presenterType is set)
   m.presenter = invalid
+
+  ' The tabs the presenter offers, the one selected, and what it shows: its view (the
+  ' libraryTab id presenters are handed), whether favorites are fixed on, and the view's
+  ' layout (a libraryLayout value). Set by openLibrary; after that only a tab press
+  ' changes them (showTab).
+  m.offeredViews = []
+  m.tab = ""
+  m.view = ""
+  m.isFavoriteTab = false
+  m.layout = libraryLayout.GRID
 
   ' TV Guide state (LiveTV only)
   m.tvGuide = invalid
@@ -158,13 +198,13 @@ sub init()
   ' onChange does not appear to be removable by unobserveField. See the wiring
   ' rule in components/CLAUDE.md.
   m.top.observeField("presenterType", "onPresenterTypeChanged")
-  m.top.observeField("parentItem", "loadInitialItems")
+  m.top.observeField("parentItem", "openLibrary")
+  m.top.observeField("selectedTabId", "onTabChanged")
   m.top.observeField("alphaSelected", "onAlphaSelectedChanged")
   m.top.observeField("isAlphaActive", "onAlphaActiveChanged")
 end sub
 
 sub setupNodes()
-  m.options = m.top.findNode("options")
   m.itemGrid = m.top.findNode("itemGrid")
   m.voiceBox = m.top.findNode("VoiceBox")
   m.emptyText = m.top.findNode("emptyText")
@@ -180,6 +220,7 @@ sub setupNodes()
   m.genreList = m.top.findNode("genreList")
   m.presentationBackdrop = m.top.findNode("presentationBackdrop")
   m.presentationInfo = m.top.findNode("presentationInfo")
+  m.headerStrip = m.top.findNode("headerStrip")
 end sub
 
 ' ============================================================================
@@ -224,7 +265,7 @@ sub onScreenShown()
   ' deep link / cast pass the rich library node as route.context.item (in-app: the selected
   ' node; deep link: the node JRScene.resolveDeepLink already validated): instant, no
   ' re-fetch. presenterType has to be set before parentItem (parentItem triggers
-  ' loadInitialItems, which reads presenterType). A resumed view skips this
+  ' openLibrary, which reads presenterType). A resumed view skips this
   ' (parentItem already set).
   if not isValid(m.top.parentItem)
     loadLibraryFromRoute(m.top.route)
@@ -233,10 +274,17 @@ sub onScreenShown()
     ' survived. If a mutation elsewhere (for example an item delete in ItemDetails) bumped
     ' the scene's content-freshness token since we last
     ' loaded, our cached grid is stale: re-fetch so deleted items don't linger as
-    ' selectable ghosts. Unchanged token = no reload, so the resume stays cheap.
+    ' selectable ghosts. A grid that shows favorites does the same when a favorite toggled
+    ' (see favoritesStale). Unchanged tokens = no reload, so the resume stays cheap.
+    ' A reload draws the grid again too, so it covers a relayout that is due.
     scene = m.top.getScene()
-    if isValid(scene) and scene.contentVersion <> m.lastContentVersion
+    isRelayoutDue = m.isRelayoutDue
+    m.isRelayoutDue = false
+    if isValid(scene) and (scene.contentVersion <> m.lastContentVersion or favoritesStale() or m.isFilterReloadDue)
       reloadGridItems()
+    else if isRelayoutDue
+      ' The titles changed while covered (onSettingsChanged): same items, drawn again
+      relayoutGrid()
     else
       ' The runway may have run short while another screen was up: a later page failed, or
       ' the user left from near the end. Asked here and not only when focus lands back in
@@ -248,7 +296,6 @@ sub onScreenShown()
 
   ' Clear global backdrop - we handle our own backdrops
   m.global.sceneManager.callFunc("setBackgroundImage", "")
-  reapplyPresentationBackdropSetting()
 
   ' Re-activate voice capture. The voiceBox loses its active connection to the
   ' Roku firmware while this screen is suspended ("detach" removes the node from the
@@ -279,6 +326,14 @@ sub restoreScreenFocus()
   restoreGridFocus()
 end sub
 
+' JRScreen hook: Down left the overhang row. The strip is the next thing down while it
+' shows a chip; else the content.
+sub returnFocusFromOverhang()
+  if restoreOverhangIconFocus(true) then return
+  if m.headerStrip.callFunc("focusEntry") = true then return
+  restoreGridFocus()
+end sub
+
 ' Configure the library view from its route. Both in-app navigation and a deep link / cast
 ' supply the rich library node as route.context.item (the resolver passes the node
 ' it already validated), so there is no fetch here. A missing context node is therefore an
@@ -291,7 +346,7 @@ sub loadLibraryFromRoute(route as object)
 
   if isValid(item)
     m.top.presenterType = DeterminePresenterType(item)
-    m.top.parentItem = item ' triggers loadInitialItems
+    m.top.parentItem = item ' triggers openLibrary
   else
     m.log.warn("library route has no context item", route.routeParams)
   end if
@@ -339,15 +394,18 @@ sub showTVGuide()
   m.tvGuide = CreateObject("roSGNode", "Schedule")
   m.tvGuide.observeField("watchChannel", "onTVGuideWatchChannel")
   m.tvGuide.observeField("focusedChannel", "onTVGuideFocusedChannel")
+  m.tvGuide.observeField("focusedSummary", "onTVGuideFocusedSummary")
 
   ' This screen owns the guide's loading wait. Then the current filter and search state.
   m.tvGuide.hostScreen = m.top
-  m.tvGuide.filter = m.filter
+  m.tvGuide.filter = guideFilter()
   m.tvGuide.searchTerm = m.voiceBox.text
 
   ' Hide the grid and show the guide
   m.itemGrid.visible = false
   m.top.appendChild(m.tvGuide)
+  ' The guide draws over everything before it; the strip stays on top of the guide
+  m.top.appendChild(m.headerStrip)
   m.tvGuide.callFunc("startLoading")
   m.tvGuide.lastFocus.setFocus(true)
   m.top.lastFocus = m.tvGuide.lastFocus
@@ -360,6 +418,7 @@ sub hideTVGuide()
   m.log.debug("Hiding TV Guide")
   m.tvGuide.unobserveField("watchChannel")
   m.tvGuide.unobserveField("focusedChannel")
+  m.tvGuide.unobserveField("focusedSummary")
   ' The guide is a child of this view, not a routed screen, so nothing else will tear it down:
   ' without this its channel and program fetches keep running after it is gone.
   m.tvGuide.callFunc("onDestroy")
@@ -384,6 +443,11 @@ sub onTVGuideWatchChannel()
 
   ' Reset watchChannel to allow same channel to be selected again
   m.tvGuide.watchChannel = invalid
+end sub
+
+' The guide's focus moved: the strip names the program, as it names a grid's focused item
+sub onTVGuideFocusedSummary()
+  updateStrip(invalid)
 end sub
 
 ' Handle channel focus from TV Guide
@@ -435,7 +499,7 @@ end sub
 ' @param {boolean} [disableRemote=false] - Whether to disable remote input during loading
 sub prepareDataLoad(disableRemote = false as boolean)
   ' Released here, not only when the next run replaces it: the TV Guide path of
-  ' loadInitialItems starts no run at all.
+  ' loadView starts no run at all.
   releaseGridRun()
   startLoadingSpinner(disableRemote)
   ' The spinner is the scene's, so closing this view mid-load must take it down (onDestroy).
@@ -445,49 +509,152 @@ sub prepareDataLoad(disableRemote = false as boolean)
   m.loadFailed.visible = false
 end sub
 
-' Full reset + reload of the grid. Used by optionsClosed (sort/filter/view change) and by
-' the resume-time content-freshness check in
-' onScreenShown (a delete elsewhere invalidated our cached content).
+' Whether this grid lists favorites and a favorite toggled since it last loaded. Read on
+' resume: the toggle happens on a screen above this one.
+function favoritesStale() as boolean
+  scene = m.top.getScene()
+  if not isValid(scene) then return false
+  return gridQuery.showsFavorites(m.gridQuery) and scene.favoritesVersion <> m.lastFavoritesVersion
+end function
+
+' Full reset + reload of the grid. Used by a sort or filter change, a tab press and the
+' resume-time check in onScreenShown (a delete, a favorite toggle on a grid that shows
+' favorites, or a filter changed while this screen was covered).
 sub reloadGridItems()
+  m.isFilterReloadDue = false
   m.loadedItems = 0
   m.data = CreateObject("roSGNode", "ContentNode")
   m.itemGrid.content = m.data
   m.flatIndexMap = {}
   initTextureManager(m.data, invalid, invalid, invalid)
-  loadInitialItems()
+  loadView()
 end sub
 
-sub loadInitialItems()
-  m.log.debug("start loadInitialItems()")
+' Draw the view on show again after a change to how it is drawn (the layout, the count per
+' row, the titles), keeping the items loaded and the one in focus. None of those changes
+' the query, so nothing is fetched again.
+'
+' The grid takes its new geometry while it holds no content, as on a load: sizes written to
+' a grid that holds items drew overlapping cells when tried. So the content is detached,
+' the grid configured, and the same content given back. With nothing loaded there is no
+' place to keep, and the view loads as on a reload.
+'
+' The genre rows and the TV guide draw no item grid, and of these changes only the titles
+' reach them: configureGrid() sets showItemTitles, which their cells follow, and readies the
+' hidden grid, which holds no items on those views. Their content is kept.
+sub relayoutGrid()
+  if not showsItemGrid()
+    configureGrid()
+    return
+  end if
+
+  if m.top.loadState <> "loaded" or m.loadedItems = 0
+    reloadGridItems()
+    return
+  end if
+
+  focused = m.itemGrid.itemFocused
+  if focused < 0 then focused = 0
+  m.itemGrid.content = invalid
+  configureBackdrop()
+  configureGrid()
+  m.itemGrid.content = m.data
+  m.itemGrid.jumpToItem = focused
+  ' The strip, the panel, the backdrop, the texture range and the runway all follow the
+  ' focused item; the index may be the one it had, so no focus event is owed
+  onItemFocused()
+end sub
+
+' The library was given its item: resolve the tab it opens on, declare its tabs, load.
+' Once per screen. After this the tab is screen state, and only a tab press changes it
+' (onTabChanged): every later load goes through loadView, which resolves nothing.
+'
+' The tab opened on is the Roku's choice, else the web client's pick, else the library
+' type's default (resolveDefaultTab). A choice no longer offered falls through and is
+' not written back: it is valid again the moment the library offers that tab.
+sub openLibrary()
+  m.offeredViews = offeredViews()
+  showTab(resolveDefaultTab(savedDefaultTab()).tab)
+
+  ' The selection first, then the tabs: the scene projects both when the tabs change
+  ' (JRScene.projectOverhangTabs). m.tab is already set, so onTabChanged sees nothing to
+  ' do. A screen with one view declares no tabs and keeps its title.
+  m.top.selectedTabId = m.tab
+  tabs = []
+  if m.offeredViews.count() > 1
+    for each view in m.offeredViews
+      tabs.push({ id: view.Name, title: view.Title })
+    end for
+  end if
+  m.top.overhangTabs = tabs
+
+  ' A sort saved before sorts were per tab belongs to the default tab
+  adoptLegacySort(m.top.parentItem.Id, getDefaultView())
+
+  loadView()
+end sub
+
+' Make `tabId` the tab on show: its view, what is fixed on it, and the view's layout. The
+' one place those change. The layout is saved per view, so it is resolved here and never
+' on a plain reload.
+sub showTab(tabId as string)
+  shown = gridQuery.viewOfTab(m.offeredViews, tabId)
+  m.tab = tabId
+  m.view = shown.view
+  m.isFavoriteTab = shown.isFavorite
+  ' Presenters read the view back off this field (GridPresenterBase.currentView)
+  m.top.currentView = m.view
+
+  defaultLayout = libraryLayout.GRID
+  if isValid(m.presenter) then defaultLayout = m.presenter.getDefaultLayout()
+  savedLayout = getLibraryDisplaySetting(m.top.parentItem.Id, libraryLayout.settingKey(m.view), invalid)
+  m.layout = libraryLayout.resolve(savedLayout, defaultLayout)
+end sub
+
+' JRScreen's selectedTabId: a tab was pressed in the overhang. The field also fires for
+' this screen's own write in openLibrary, for the scene's projection echoing back and for
+' OK on the tab already selected, none of which is a change.
+sub onTabChanged()
+  tabId = m.top.selectedTabId
+  if tabId = m.tab or not gridQuery.offers(m.offeredViews, tabId) then return
+
+  showTab(tabId)
+
+  ' A new tab starts unnarrowed: no voice text, no letter, and nothing left of the old
+  ' tab's rows to act on while the new one loads.
+  m.voiceBox.text = ""
+  m.top.alphaSelected = ""
+  m.nameStartsWith = ""
+  m.genreData = CreateObject("roSGNode", "ContentNode")
+  m.genreList.content = m.genreData
+
+  ' Each tab keeps its own sort and filters, which loadView reads
+  reloadGridItems()
+  ' At the press, not when the load lands: the viewer chose this tab's content.
+  focusViewContent()
+end sub
+
+' Load the tab on show from its first page. Everything that reloads comes through here.
+sub loadView()
+  m.log.debug("start loadView()")
   ' Record the content-freshness token we're loading at, so a resume after a mutation
   ' elsewhere (for example a delete) can detect staleness and re-fetch.
   scene = m.top.getScene()
-  if isValid(scene) then m.lastContentVersion = scene.contentVersion
+  if isValid(scene)
+    m.lastContentVersion = scene.contentVersion
+    m.lastFavoritesVersion = scene.favoritesVersion
+  end if
   prepareDataLoad(false)
   m.top.loadState = "loading"
 
-  ' Load saved display settings
+  ' The tab's own sort, saved in the registry, and its filters, kept for the session.
+  ' A saved sort is honored only while the tab's list offers it. The filters were picked
+  ' from this session's lists, so they need no such check.
   libraryId = m.top.parentItem.Id
-  m.sortField = getLibraryDisplaySetting(libraryId, "sortField", "SortName")
-  m.filter = getLibraryDisplaySetting(libraryId, "filter", "All")
-  m.filterOptions = parseJson(getLibraryDisplaySetting(libraryId, "filterOptions", "{}"))
-  m.view = getLibraryDisplaySetting(libraryId, "landing", invalid)
-  m.sortAscending = getLibraryDisplaySetting(libraryId, "sortAscending", true)
-
-  ' Set default view if not saved, or if the saved one is no longer on offer.
-  '
-  ' A saved view could always be honored until 12.0, because every view a presenter
-  ' listed existed on every server. The Collections view is the first that does not: the
-  ' same library opened against an older server has no such view, and loading it anyway
-  ' takes the presenter's default query branch while the layout stays the named view's.
-  '
-  ' The fallback is not written back to the registry. The saved choice is still what the
-  ' user picked, and it is valid again the moment the library is opened against a server
-  ' that offers it, so this reads the setting down, it does not overwrite it.
-  m.view = gridQuery.resolveView(m.view, offeredViews(), getDefaultView())
-
-  ' Keep currentView in sync with the finalized view
-  m.top.currentView = m.view
+  sort = gridQuery.resolveSort(getLibrarySort(libraryId, m.tab), offeredSorts())
+  m.sortField = sort.field
+  m.sortAscending = sort.ascending
+  m.filters = sessionFilters.get(libraryId, m.tab)
 
   ' Configure backdrop based on presenter
   configureBackdrop()
@@ -499,6 +666,8 @@ sub loadInitialItems()
   if m.presenter.showsTVGuide(m.view)
     ' Update title before early return to ensure overhang shows correct title on first load
     updateTitle()
+    updateStripChips()
+    updateStrip(invalid)
     showTVGuide()
     stopGridSpinner()
     ' The guide is this view's finished surface; the grid never loads on this path.
@@ -509,25 +678,20 @@ sub loadInitialItems()
     hideTVGuide()
   end if
 
-  ' Alpha search
-  if m.nameStartsWith = m.top.alphaSelected
-    m.nameStartsWith = ""
-  else
-    m.nameStartsWith = m.alpha.letterSelected
-  end if
-
+  ' m.nameStartsWith is the letter in force. Only a press on the rail changes it
+  ' (onAlphaSelectedChanged), so a reload for any other reason keeps it.
   setGridQuery(buildGridQuery(m.nameStartsWith, m.voiceBox.text))
 
   ' Update title after the query is final
   updateTitle()
+  updateStripChips()
+  updateStrip(invalid)
 
   ' Only a Genres run writes genreSkeletons, and only before its samples are fetched: it
   ' is a head start on drawing, not a second delivery channel. `content` still carries the
   ' real rows for every view including this one.
   startGridRun(0, true)
-
-  SetUpOptions()
-  m.log.debug("end loadInitialItems()")
+  m.log.debug("end loadView()")
 end sub
 
 ' The query for a fresh load of the current view (see gridQuery.build).
@@ -540,8 +704,8 @@ function buildGridQuery(nameStartsWith as string, searchTerm as string) as objec
     searchTerm: searchTerm,
     sortField: m.sortField,
     sortAscending: m.sortAscending,
-    filter: m.filter,
-    filterOptions: m.filterOptions
+    filters: m.filters,
+    isFavorite: m.isFavoriteTab
   }, m.top.parentItem, m.view, m.presenter)
 end function
 
@@ -580,15 +744,12 @@ sub releaseGridRun()
   m.loadItemsTask = releaseTask(m.loadItemsTask, "content")
 end sub
 
-' The views the presenter is currently listing for this library, [] when there is no
-' presenter yet.
+' The tabs the presenter lists for this library, [] when there is no presenter yet.
 '
 ' Derived from getOptions() rather than from a second list the presenters would also have
-' to maintain: there is one list, so nothing can disagree with it. "Currently" matters:
-' a presenter's views depend on the server version and on the parent item
-' (a genre folder offers fewer than its library), so this is asked per load, not cached.
-' The cost is one extra options build per library load, the same work SetUpOptions already
-' does once: a handful of translate() calls on the render thread.
+' to maintain: there is one list, so nothing can disagree with it. A presenter's tabs
+' depend on the server version and on the parent item (a genre folder lists one view),
+' both fixed for a screen's life, so openLibrary asks once.
 function offeredViews() as object
   if not isValid(m.presenter) then return []
   options = m.presenter.getOptions(m.top.parentItem)
@@ -596,35 +757,58 @@ function offeredViews() as object
   return options.views
 end function
 
+' The filters the presenter lists for the view on show, [] when it lists none. Asked per
+' load: the list depends on the view.
+function offeredFilters() as object
+  if not isValid(m.presenter) then return []
+  options = m.presenter.getOptions(m.top.parentItem)
+  if not isValid(options) or type(options.filter) <> "roArray" then return []
+  return options.filter
+end function
+
+' The sorts the presenter lists for the view on show, [] when it lists none.
+function offeredSorts() as object
+  if not isValid(m.presenter) then return []
+  options = m.presenter.getOptions(m.top.parentItem)
+  if not isValid(options) or type(options.sort) <> "roArray" then return []
+  return options.sort
+end function
+
+' What the TV guide is told to show: its favorite channels, or all of them.
+function guideFilter() as string
+  if gridQuery.hasFavorites(m.filters) then return gridQuery.FAVORITES_VALUE
+  return gridQuery.NO_FILTER
+end function
+
+' The library type's default tab, a libraryTab id: "" for a folder or collection, which
+' has no tabs. libraryTab.defaultFor holds the defaults and why two depart from the web.
 function getDefaultView() as string
-  ' Let presenter determine default view, or use fallback
-  ' Movies and TV default to grid mode for consistency
+  return libraryTab.defaultFor(getCollectionType(), m.top.presenterType)
+end function
+
+' The tab this Roku keeps for the library (the gear's Default tab), Invalid when none.
+function savedDefaultTab() as dynamic
+  return getLibraryDisplaySetting(m.top.parentItem.Id, DEFAULT_TAB_KEY, invalid)
+end function
+
+' Which tab the library opens on with `clientOverride` as the Roku's choice, and where it
+' came from: gridQuery.resolveView's { tab, source }. The web's pick is server data, read
+' at sign-in into the user config (serverLibraryLanding), never the registry.
+function resolveDefaultTab(clientOverride as dynamic) as object
   collectionType = getCollectionType()
-  if collectionType = "movies"
-    return "MoviesGrid"
-  else if collectionType = "music"
-    return "AlbumArtistsGrid"
-  else if collectionType = "tvshows"
-    return "Shows"
+  serverTab = ""
+  landings = m.global.user.config.serverLibraryLanding
+  if type(landings) = "roAssociativeArray"
+    key = libraryTab.serverLandingKey(m.top.parentItem.Id, collectionType)
+    serverTab = libraryTab.fromServerTab(landings[key], collectionType)
   end if
-
-  ' Fallback to presenterType for genres and other items without collectionType
-  presenterType = m.top.presenterType
-  if presenterType = "movie"
-    return "MoviesGrid"
-  else if presenterType = "music"
-    return "AlbumArtistsGrid"
-  else if presenterType = "tvshow"
-    return "Shows"
-  end if
-
-  return ""
+  return gridQuery.resolveView(clientOverride, serverTab, m.offeredViews, getDefaultView())
 end function
 
 sub configureBackdrop()
   if not isValid(m.presenter) then return
 
-  layoutMode = m.presenter.getBackdropMode()
+  layoutMode = m.presenter.getBackdropMode(m.view, m.layout)
 
   if layoutMode = "presentation"
     ' Clear fullscreen backdrop first to avoid overlap during transition
@@ -637,7 +821,7 @@ sub configureBackdrop()
     if m.isPresentationBackdropShown then m.presentationBackdrop.uri = getItemBackdropUrl(m.top.parentItem, m.backdropSize)
 
     ' Show presentation info if presenter supports it
-    showInfo = m.presenter.shouldShowPresentationInfo(m.view)
+    showInfo = m.presenter.shouldShowPresentationInfo(m.view, m.layout)
     m.presentationInfo.visible = showInfo
   else
     ' Use fullscreen backdrop via scene manager
@@ -658,10 +842,10 @@ sub applyPresentationBackdropSetting()
   if not m.isPresentationBackdropShown then m.presentationBackdrop.uri = ""
 end sub
 
-' Settings opens over this view, so the setting may have changed while it was covered. A pane
+' The Backdrop Images setting changed while this view was covered (onSettingsChanged). A pane
 ' shown again gets the focused item's image, or the library's when nothing is focused yet.
 sub reapplyPresentationBackdropSetting()
-  if not isValid(m.presenter) or m.presenter.getBackdropMode() <> "presentation" then return
+  if not isValid(m.presenter) or m.presenter.getBackdropMode(m.view, m.layout) <> "presentation" then return
 
   wasShown = m.isPresentationBackdropShown
   applyPresentationBackdropSetting()
@@ -677,7 +861,13 @@ end sub
 sub configureGrid()
   if not isValid(m.presenter) then return
 
-  config = m.presenter.getGridConfig(m.view)
+  ' A cell shows its title under the poster, or nothing: the cells and the row gap follow
+  m.top.showItemTitles = m.global.user.settings.itemGridShowTitles
+  textLines = 0
+  if m.top.showItemTitles then textLines = 1
+
+  savedColumns = getLibraryDisplaySetting(m.top.parentItem.Id, libraryGrid.settingKey(m.view), invalid)
+  config = m.presenter.getGridConfig(m.view, m.layout, savedColumns, textLines)
 
   if isValid(config.translation)
     if type(config.translation) = "roArray"
@@ -695,6 +885,10 @@ sub configureGrid()
     m.itemGrid.rowHeights = config.rowHeights
   end if
 
+  if isValid(config.itemSpacing)
+    m.itemGrid.itemSpacing = config.itemSpacing
+  end if
+
   if isValid(config.numRows)
     m.itemGrid.numRows = config.numRows
   end if
@@ -707,14 +901,7 @@ sub configureGrid()
     m.top.imageDisplayMode = config.imageDisplayMode
   end if
 
-  ' Configure item titles visibility
-  userSettings = m.global.user.settings
-  showInfo = m.presenter.shouldShowPresentationInfo(m.view)
-  if showInfo
-    m.top.showItemTitles = "hidealways"
-  else
-    m.top.showItemTitles = userSettings.itemGridTitles
-  end if
+  m.top.gridShape = config.shape
 end sub
 
 ' Swaps the genre RowList to a new set of rows and reveals it, preserving the user's
@@ -938,7 +1125,13 @@ sub onItemDataLoaded(msg)
   ' If there are no items to display, show message
   if m.loadedItems = 0
     m.presentationInfo.visible = false
-    m.emptyText.text = translate(translationKeys.LabelNoItems, [m.top.parentItem.type])
+    ' A Favorites tab with nothing else narrowing it has no favorites to show, and says
+    ' so; any other empty result says only that nothing matched.
+    if gridQuery.isPlainFavorites(m.gridQuery)
+      m.emptyText.text = translate(translationKeys.LabelNoFavoritesYet)
+    else
+      m.emptyText.text = translate(translationKeys.LabelNoItems, [m.top.parentItem.type])
+    end if
     m.emptyText.visible = true
     m.top.loadState = "empty"
   else
@@ -946,6 +1139,7 @@ sub onItemDataLoaded(msg)
   end if
 
   stopGridSpinner()
+  if isFirstPage then updateStrip(m.selectedFavoriteItem)
 
   ' The page may not have been enough: a fast scroller can still be short of runway.
   loadMoreIfShort()
@@ -1132,7 +1326,7 @@ end sub
 ' ============================================================================
 '
 ' Where focus goes is decided from what the view shows NOW, in the three subs below, never
-' by an event on its own: a load that could not take focus (the options dialog was open,
+' by an event on its own: a load that could not take focus (a dialog was open,
 ' the view was suspended) leaves nothing to put it back, so whatever later hands focus back
 ' to the content (closing the dialog, leaving the alpha menu, resuming) asks here.
 
@@ -1148,13 +1342,24 @@ sub focusContent()
 end sub
 
 ' A load's first result arrived. It moves focus only when the user is not somewhere it must
-' not be taken from: another screen (the view is suspended), or the options dialog, where
-' moving it loses their place and their next OK is dropped or commits the wrong entry. On
-' the alpha menu it stays there.
+' not be taken from: another screen (the view is suspended), the overhang row (they went
+' up to the tabs while it loaded), the header strip (they changed the sort or a filter from
+' a chip), or an open dialog, where moving it loses their place and their next OK is dropped
+' or commits the wrong entry. On the alpha menu it stays there.
 sub focusAfterLoad()
-  if not m.isShown or m.options.visible then return
+  if not m.isShown or isOverlayDialogFocused() or isOverhangRowFocused() or m.headerStrip.isInFocusChain() then return
   if m.top.isAlphaActive
     m.alphaMenu.setFocus(true)
+  else
+    focusContent()
+  end if
+end sub
+
+' Focus what the view shows now, at once: the guide when it is up, else the content area.
+' For a change the viewer made from outside the content (a tab press, Down from a chip).
+sub focusViewContent()
+  if isValid(m.tvGuide)
+    if isValid(m.tvGuide.lastFocus) then m.tvGuide.lastFocus.setFocus(true)
   else
     focusContent()
   end if
@@ -1183,8 +1388,8 @@ sub onItemFocused()
   ' Update texture buffer range on every focus change
   updateGridTextureBufferRange(m.data, m.itemGrid.itemFocused, m.itemGrid.numColumns, m.itemGrid.numRows)
 
-  updateTitle()
   m.selectedFavoriteItem = m.itemGrid.content.getChild(m.itemGrid.itemFocused)
+  updateStrip(m.selectedFavoriteItem)
 
   gridPaging.trackFocus(m.scrollTracker, itemInt \ m.itemGrid.numColumns, m.gridClock.totalMilliseconds())
   #if perfTiming
@@ -1198,7 +1403,7 @@ sub onItemFocused()
 
   ' Let presenter handle item-specific metadata display
   if isValid(m.presenter) and isValid(m.selectedFavoriteItem)
-    m.presenter.onItemFocused(m.selectedFavoriteItem, m.view)
+    m.presenter.onItemFocused(m.selectedFavoriteItem, m.view, m.layout)
   end if
 end sub
 
@@ -1304,7 +1509,7 @@ sub updateBackdropForFocusedItem()
   backdropUrl = getItemBackdropUrl(m.selectedFavoriteItem, m.backdropSize)
 
   if isValid(m.presenter)
-    backdropMode = m.presenter.getBackdropMode()
+    backdropMode = m.presenter.getBackdropMode(m.view, m.layout)
     if backdropMode = "presentation"
       ' Clear fullscreen backdrop to prevent overlap with presentation backdrop
       m.global.sceneManager.callFunc("setBackgroundImage", "")
@@ -1359,6 +1564,8 @@ sub onGenreItemFocused()
   ' bare ContentNode does not have. Leave the current backdrop up until the row is filled.
   if skeleton.isPlaceholder(focusedItem) then return
 
+  updateStrip(focusedItem)
+
   ' Update backdrop with focused item's backdrop
   m.global.sceneManager.callFunc("setBackgroundImage", getItemBackdropUrl(focusedItem, m.backdropSize))
 end sub
@@ -1383,159 +1590,444 @@ function getItemFocused()
 end function
 
 ' ============================================================================
-' Options
+' The header strip
 ' ============================================================================
 
-sub SetUpOptions()
-  options = {
-    views: [],
-    sort: [],
-    filter: [],
-    favorite: []
-  }
+' What the strip says about the tab on show: the focused item on the left (on the TV
+' guide, the focused program), what narrows the tab, and the place in the list.
+sub updateStrip(item as dynamic)
+  content = { title: "", metadata: [], narrowedBy: "", count: "" }
+  position = 0
+  total = 0
 
-  ' Let presenter provide options
-  if isValid(m.presenter)
-    presenterOptions = m.presenter.getOptions(m.top.parentItem)
-    if isValid(presenterOptions.views) then options.views = presenterOptions.views
-    if isValid(presenterOptions.sort) then options.sort = presenterOptions.sort
-    if isValid(presenterOptions.filter) then options.filter = presenterOptions.filter
-  end if
-
-  ' Set selected view option
-  for each o in options.views
-    if LCase(o.Name) = LCase(m.view)
-      o.Selected = true
-      o.Ascending = m.sortAscending
-      m.options.view = o.Name
-    end if
-  end for
-
-  ' Set selected sort option
-  for each o in options.sort
-    if LCase(o.Name) = LCase(m.sortField)
-      o.Selected = true
-      o.Ascending = m.sortAscending
-      m.options.sortField = o.Name
-    end if
-  end for
-
-  ' Set selected filter option
-  for each o in options.filter
-    if LCase(o.Name) = LCase(m.filter)
-      o.Selected = true
-      m.options.filter = o.Name
-    end if
-
-    ' Select selected filter options
-    if isValid(o.options) and isValid(m.filterOptions)
-      if o.options.Count() > 0 and m.filterOptions.Count() > 0
-        if LCase(o.Name) = LCase(m.filterOptions.keys()[0])
-          ' Re-ticks the boxes from the saved query. The inverse of the join in
-          ' ItemGridOptions.onKeyEvent, and they are tested as a round trip: a
-          ' disagreement between them is a filter that applies while showing no ticks.
-          o.checkedState = gridQuery.checkedStateFor(o.options, m.filterOptions[m.filterOptions.keys()[0]], o.delimiter)
-        end if
-      end if
-    end if
-  end for
-
-  m.options.options = options
-end sub
-
-sub optionsClosed()
-  reload = false
-
-  if m.options.sortField <> m.sortField or m.options.sortAscending <> m.sortAscending
-    m.sortField = m.options.sortField
-    m.sortAscending = m.options.sortAscending
-    reload = true
-
-    sortAscendingStr = "true"
-    if not m.sortAscending
-      sortAscendingStr = "false"
-    end if
-
-    libraryId = m.top.parentItem.Id
-    setLibraryDisplaySetting(libraryId, "sortField", m.sortField)
-    setLibraryDisplaySetting(libraryId, "sortAscending", sortAscendingStr)
-  end if
-
-  if m.options.filter <> m.filter
-    m.filter = m.options.filter
-    updateTitle()
-    reload = true
-    libraryId = m.top.parentItem.Id
-    setLibraryDisplaySetting(libraryId, "filter", m.options.filter)
-
-    ' Propagate filter change to TV Guide if it's active
-    if isValid(m.tvGuide)
-      m.tvGuide.filter = m.filter
-    end if
-  end if
-
-  if not isValid(m.options.filterOptions)
-    m.options.filterOptions = {}
-  end if
-
-  if not AssocArrayEqual(m.options.filterOptions, m.filterOptions)
-    m.filterOptions = m.options.filterOptions
-    reload = true
-    libraryId = m.top.parentItem.Id
-    setLibraryDisplaySetting(libraryId, "filterOptions", FormatJson(m.options.filterOptions))
-  end if
-
-  ' Check if view changed
-  libraryId = m.top.parentItem.Id
-
-  if m.options.view <> m.view
-    m.view = m.options.view
-    m.top.currentView = m.view
-    setLibraryDisplaySetting(libraryId, "landing", m.view)
-
-    ' Reset any filtering or search terms
-    m.voiceBox.text = ""
-    m.top.alphaSelected = ""
-    m.nameStartsWith = " "
-    m.filter = "All"
-    m.filterOptions = {}
-    m.sortField = "SortName"
-    m.sortAscending = true
-
-    ' Reset view to defaults
-    setLibraryDisplaySetting(libraryId, "sortField", m.sortField)
-    setLibraryDisplaySetting(libraryId, "sortAscending", "true")
-    setLibraryDisplaySetting(libraryId, "filter", m.filter)
-    setLibraryDisplaySetting(libraryId, "filterOptions", FormatJson(m.filterOptions))
-
-    reload = true
-  end if
-
-  ' Let presenter handle any custom option processing (for example, PhotoPresenter saves slideshow/random settings)
-  if isValid(m.presenter)
-    m.presenter.onOptionsClosed(m.options)
-  end if
-
-  if reload
-    reloadGridItems()
-  end if
-
-  ' Restore focus to the correct view after options close
-  if isValid(m.tvGuide)
-    if isValid(m.tvGuide.lastFocus)
-      m.tvGuide.lastFocus.setFocus(true)
+  ' Asked of the presenter, not of m.tvGuide: a load writes the strip before it builds the guide
+  if isValid(m.presenter) and m.presenter.showsTVGuide(m.view)
+    summary = invalid
+    if isValid(m.tvGuide) then summary = m.tvGuide.focusedSummary
+    if isValid(summary)
+      content.title = textOrEmpty(summary.title)
+      if type(summary.metadata) = "roArray" then content.metadata = summary.metadata
+      position = summary.position
+      total = summary.total
     end if
   else
-    focusContent()
+    summary = itemSummary.line(item)
+    content.title = summary.title
+    ' The presentation panel, under the strip, writes the metadata as the details screen
+    ' does, so the strip gives the title alone there
+    if not isValid(m.presenter) or not m.presenter.shouldShowPresentationInfo(m.view, m.layout) then content.metadata = summary.metadata
+    ' The grid's position and total. The Genres row list has a counter per row instead.
+    if m.genreList.opacity <> 1
+      position = m.itemGrid.itemFocused + 1
+      total = m.totalRecordCount
+    end if
   end if
+
+  narrowed = m.voiceBox.text.trim()
+  if narrowed = "" then narrowed = m.nameStartsWith.trim()
+  if narrowed <> "" then content.narrowedBy = translate(translationKeys.LabelFilteredBy, [narrowed])
+
+  if m.showItemCount and position > 0 and total > 0
+    content.count = translate(translationKeys.LabelPositionOfTotal, [position.toStr(), total.toStr()])
+  end if
+
+  m.headerStrip.content = content
+end sub
+
+' The chips' labels, and which of them the tab on show has a use for. The guide takes no
+' sort. The Filter chip shows while the tab offers a category, and while anything narrows
+' the tab, since Clear filters is behind it.
+sub updateStripChips()
+  isGuide = isValid(m.presenter) and m.presenter.showsTVGuide(m.view)
+  sortLabel = librarySortMenu.chipLabel(offeredSorts(), m.sortField, m.sortAscending)
+  m.filterCategories = libraryFilterMenu.categories(offeredFilters())
+
+  m.headerStrip.chips = {
+    sortLabel: sortLabel,
+    isSortShown: not isGuide and sortLabel <> "",
+    filterLabel: libraryFilterMenu.chipLabel(sessionFilters.count(m.top.parentItem.Id, m.tab)),
+    isFilterShown: m.filterCategories.count() > 0 or isNarrowed()
+  }
+end sub
+
+' Whether anything narrows the tab: a filter, the voice text or a letter.
+function isNarrowed() as boolean
+  return m.filters.count() > 0 or m.voiceBox.text.trim() <> "" or m.nameStartsWith.trim() <> ""
+end function
+
+' OK on a chip.
+sub onStripChipAction()
+  if m.headerStrip.chipAction = "sort"
+    openSortMenu()
+  else
+    ' Opening the menu is the moment the filter lists are read, so it is where they are
+    ' revalidated: the fresh lists land for the next open (GridPresenterBase.refreshFilters)
+    if isValid(m.presenter) then m.presenter.refreshFilters()
+    openFilterMenu("")
+  end if
+end sub
+
+sub openSortMenu()
+  menu = librarySortMenu.rows(offeredSorts(), m.sortField, m.sortAscending)
+  anchor = m.headerStrip.callFunc("chipAnchor", "sort")
+  if menu.ids.count() = 0 or not isValid(anchor) then return
+  m.sortMenuIds = menu.ids
+  focusIndex = menu.selectedIndex
+  if focusIndex < 0 then focusIndex = 0
+  m.stripDialog = showOverflowMenu(translate(translationKeys.LabelSort), menu.labels, "onSortMenuResult", anchor, invalid, focusIndex, menu.selectedIndex)
+end sub
+
+sub onSortMenuResult(event as object)
+  picked = librarySortMenu.outcome(event.getData(), m.sortMenuIds, m.sortField, m.sortAscending)
+  if not isValid(picked) then return
+
+  m.sortField = picked.field
+  m.sortAscending = picked.ascending
+  setLibrarySort(m.top.parentItem.Id, m.tab, m.sortField, m.sortAscending)
+  reloadGridItems()
+end sub
+
+' The Filter menu: Clear filters while anything narrows the tab, then the categories.
+' `focusId` is the row to open on, for the menu coming back from one of its categories.
+sub openFilterMenu(focusId as string)
+  m.filterCategories = libraryFilterMenu.categories(offeredFilters())
+  menu = libraryFilterMenu.rows(m.filterCategories, m.filters, isNarrowed())
+  anchor = m.headerStrip.callFunc("chipAnchor", "filter")
+  if menu.ids.count() = 0 or not isValid(anchor) then return
+  m.filterMenuIds = menu.ids
+
+  focusIndex = 0
+  for i = 0 to menu.ids.count() - 1
+    if LCase(menu.ids[i]) = LCase(focusId) then focusIndex = i
+  end for
+  m.stripDialog = showOverflowMenu(translate(translationKeys.LabelFilter), menu.labels, "onFilterMenuResult", anchor, invalid, focusIndex)
+end sub
+
+sub onFilterMenuResult(event as object)
+  id = overflowMenuSelection(event.getData(), m.filterMenuIds)
+  if id = "" then return
+
+  if id = libraryFilterMenu.CLEAR
+    clearNarrowing()
+    return
+  end if
+
+  category = libraryFilterMenu.find(m.filterCategories, id)
+  if not isValid(category) then return
+  m.openFilterCategory = category
+
+  if category.kind = libraryFilterMenu.KIND_TOGGLE
+    ' A press flips it, and the menu comes back saying so
+    values = []
+    if libraryFilterMenu.checkedIndexes(category, m.filters).count() = 0 then values = libraryFilterMenu.valuesAt(category, [0])
+    applyFilterCategory(category, values)
+    openFilterMenu(category.id)
+  else if category.kind = libraryFilterMenu.KIND_CHOICE
+    list = libraryFilterMenu.choiceList(category, m.filters)
+    m.stripDialog = showListDialog(category.title, list.labels, "onFilterChoicePicked", list.selectedIndex, list.selectedIndex)
+  else
+    labels = []
+    for each option in category.options
+      labels.push(option.title)
+    end for
+    m.stripDialog = showChecklistDialog(category.title, labels, "onFilterChecklistClosed", libraryFilterMenu.checkedIndexes(category, m.filters))
+  end if
+end sub
+
+' A status was picked, or its list was left. Either way the menu comes back.
+sub onFilterChoicePicked(event as object)
+  result = event.getData()
+  category = m.openFilterCategory
+  if not isValid(result) or not isValid(category) or result.externallyCancelled = true then return
+
+  if result.cancelled <> true and isValid(result.optionIndex)
+    list = libraryFilterMenu.choiceList(category, m.filters)
+    if result.optionIndex >= 0 and result.optionIndex < list.values.count() and result.optionIndex <> list.selectedIndex
+      values = []
+      if list.values[result.optionIndex] <> "" then values = [list.values[result.optionIndex]]
+      applyFilterCategory(category, values)
+    end if
+  end if
+  openFilterMenu(category.id)
+end sub
+
+' A checklist closed. A tick counts when it is made (dialogs.md), so the ticks are kept
+' however it closed. Closed by the viewer, the menu comes back. Closed from code, either
+' another screen is covering this one (JRScreen.hideCovered hides the screen before it
+' ends the dialog), and the grid reloads when this one is shown again, or another dialog
+' took the checklist's place over this screen, and the grid reloads now.
+sub onFilterChecklistClosed(event as object)
+  result = event.getData()
+  category = m.openFilterCategory
+  if not isValid(result) or not isValid(category) then return
+
+  wasClosedFromCode = result.externallyCancelled = true
+  if type(result.checkedIndexes) = "roArray" and (result.cancelled <> true or wasClosedFromCode)
+    values = libraryFilterMenu.valuesAt(category, result.checkedIndexes)
+    if wasClosedFromCode and not m.top.visible
+      sessionFilters.setCategory(m.top.parentItem.Id, m.tab, category.id, values)
+      m.isFilterReloadDue = true
+    else
+      applyFilterCategory(category, values)
+    end if
+  end if
+  if not wasClosedFromCode then openFilterMenu(category.id)
+end sub
+
+' Keep `values` for one category of the tab on show, and load the tab with them.
+sub applyFilterCategory(category as object, values as object)
+  sessionFilters.setCategory(m.top.parentItem.Id, m.tab, category.id, values)
+  applyFilters()
+end sub
+
+' The session's filters changed: read them back and load the tab with them.
+sub applyFilters()
+  m.filters = sessionFilters.get(m.top.parentItem.Id, m.tab)
+  if isValid(m.tvGuide) then m.tvGuide.filter = guideFilter()
+  reloadGridItems()
+end sub
+
+' Clear filters: everything that narrows the tab goes, the filters, the voice text and
+' the letter.
+sub clearNarrowing()
+  sessionFilters.clear(m.top.parentItem.Id, m.tab)
+  m.voiceBox.text = ""
+  m.top.alphaSelected = ""
+  m.nameStartsWith = ""
+  if isValid(m.tvGuide) then m.tvGuide.searchTerm = ""
+  applyFilters()
+
+  ' A tab that offers no category shows the Filter chip only while something narrows it,
+  ' so clearing can take the chip away. The menu is still closing and would hand the focus
+  ' back to that chip, so the focus moves first: to another chip, else to the content. A
+  ' dialog that no longer holds the focus when it closes restores none (closeOverlayDialog).
+  if not isValid(m.headerStrip.callFunc("chipAnchor", "filter"))
+    if m.headerStrip.callFunc("focusEntry") <> true then focusViewContent()
+  end if
+end sub
+
+' ============================================================================
+' Page settings (the settings icon's menu)
+' ============================================================================
+
+' JRScreen hook: Layout, when the view on show can be drawn more than one way; the cells
+' per row and the titles, when the item grid draws it; and Default tab, when the library
+' has more than one tab.
+function pageSettingsEntries() as object
+  entries = []
+  layouts = offeredLayouts()
+  if layouts.count() > 1
+    entries.push({ id: "layout", title: translate(translationKeys.LabelLayout), options: layouts, selected: m.layout, icon: ICON_LAYOUT })
+  end if
+  if showsItemGrid()
+    entries.push(columnsEntry())
+    entries.push(titlesEntry())
+  end if
+  if type(m.offeredViews) = "roArray" and m.offeredViews.count() > 1
+    entries.push(defaultTabEntry())
+  end if
+  return entries
+end function
+
+' Whether the titles setting no longer matches what the grid was drawn with: it is app-wide,
+' so Settings or another library's menu may have changed it while this screen was covered.
+function titlesSettingChanged() as boolean
+  return m.global.user.settings.itemGridShowTitles <> m.top.showItemTitles
+end function
+
+' Whether the view on show is drawn by the item grid, not the genre rows or the TV guide.
+function showsItemGrid() as boolean
+  if not isValid(m.presenter) or not isValid(m.top.parentItem) then return false
+  if m.presenter.showsTVGuide(m.view) then return false
+  return m.genreList.opacity <> 1
+end function
+
+' The cells-per-row entry: every count the grid on show has room for, the one in force
+' selected. The grid's own numColumns is that count, set by configureGrid(). It is
+' provisional when it is not the saved count (the default, or a saved count raised to the
+' layout's floor), so picking it saves it (applyColumns).
+function columnsEntry() as object
+  options = []
+  top = m.presenter.getGridTop(m.view, m.layout)
+  for each columns in libraryGrid.choices(m.presenter.getGridShape(m.view), top)
+    options.push({ id: columns.toStr(), title: columns.toStr() })
+  end for
+  drawn = m.itemGrid.numColumns.toStr()
+  return {
+    id: COLUMNS_KEY,
+    title: translate(translationKeys.LabelItemsPerRow),
+    options: options,
+    selected: drawn,
+    isSelectedProvisional: drawn <> savedColumnsSetting(),
+    icon: ICON_COLUMNS
+  }
+end function
+
+' The view's saved count per row as the registry holds it, "" when none is saved.
+function savedColumnsSetting() as string
+  return textOrEmpty(getLibraryDisplaySetting(m.top.parentItem.Id, libraryGrid.settingKey(m.view), invalid))
+end function
+
+' The titles entry: the app-wide Item Titles setting, offered here because a pick shows on
+' this grid at once. Its list says it applies to every library, and its options are the
+' Settings screen's own words in its order, so the setting reads one way in both places.
+function titlesEntry() as object
+  title = translate(translationKeys.LabelItemTitles)
+  selected = "false"
+  if m.top.showItemTitles then selected = "true"
+  return {
+    id: TITLES_KEY,
+    title: title,
+    pickerTitle: translate(translationKeys.LabelAppliesToAllLibraries, [title]),
+    options: [
+      { id: "false", title: translate(translationKeys.LabelDisabled) },
+      { id: "true", title: translate(translationKeys.LabelEnabled) }
+    ],
+    selected: selected,
+    icon: ICON_TITLES
+  }
+end function
+
+' Save the app-wide titles setting and redraw this grid with it. Other libraries pick it
+' up when they are next shown (onSettingsChanged).
+sub applyTitles(value as string)
+  setUserSetting("itemGridShowTitles", value = "true")
+  relayoutGrid()
+  focusContent()
+end sub
+
+' Draw the view on show with `columns` cells to a row and save the choice for it. As a
+' layout change, it keeps the sort, the filter, the alpha letter, the voice text and the
+' item in focus (relayoutGrid).
+'
+' A pick is saved even when it is the count already drawn: a layout whose grid starts lower
+' draws a smaller saved count raised to its floor (libraryGrid.resolveColumns), and picking
+' that raised count is a choice of its own, which the other layout then draws too.
+sub applyColumns(columns as string)
+  isDrawn = columns = m.itemGrid.numColumns.toStr()
+  if isDrawn and columns = savedColumnsSetting() then return
+  setLibraryDisplaySetting(m.top.parentItem.Id, libraryGrid.settingKey(m.view), columns)
+  if not isDrawn then relayoutGrid()
+  focusContent()
+end sub
+
+' JRScreen hook: the viewer picked a new option for one of those settings.
+sub onPageSettingChanged(id as string, value as string)
+  if id = "layout"
+    applyLayout(value)
+  else if id = COLUMNS_KEY
+    applyColumns(value)
+  else if id = TITLES_KEY
+    applyTitles(value)
+  else if id = DEFAULT_TAB_KEY
+    applyDefaultTab(value)
+  end if
+end sub
+
+' JRScreen hook: settings written while this screen was covered. The ones read once in init
+' apply here; the titles leave a redraw to onScreenShown (m.isRelayoutDue), which a reload
+' there covers.
+sub onSettingsChanged(names as object)
+  userSettings = m.global.user.settings
+  if inArray(names, "itemGridReset") then m.resetGrid = userSettings.itemGridReset
+  if inArray(names, "itemGridShowItemCount") and m.showItemCount <> userSettings.itemGridShowItemCount
+    m.showItemCount = userSettings.itemGridShowItemCount
+    refreshStripCount()
+  end if
+  if inArray(names, "itemGridShowTitles") and titlesSettingChanged() then m.isRelayoutDue = true
+  if inArray(names, "uiShowBackdrop") then reapplyPresentationBackdropSetting()
+end sub
+
+' Write the strip again for the item count setting. Only a loaded grid or the guide shows a
+' count; a load still running writes the strip when it lands, and the Genres row list has none.
+sub refreshStripCount()
+  if not isValid(m.presenter) or m.top.loadState <> "loaded" then return
+  if m.presenter.showsTVGuide(m.view)
+    updateStrip(invalid)
+  else if m.genreList.opacity <> 1
+    updateStrip(m.selectedFavoriteItem)
+  end if
+end sub
+
+' The Default tab entry. Its first option ("") keeps no tab on this Roku, and is named
+' for the tab the library then opens on and where that comes from: "Web client setting
+' (Genres)" or "Default (Movies)". The offered tabs follow. The menu row names the tab in
+' force alone (valueTitle), since the first option's title would nest brackets there.
+function defaultTabEntry() as object
+  fallback = resolveDefaultTab(invalid)
+  fallbackTitle = offeredViewTitle(fallback.tab)
+  if fallback.source = gridQuery.RESOLVED_WEB
+    firstTitle = translate(translationKeys.LabelDefaultTabFromWeb, [fallbackTitle])
+  else
+    firstTitle = translate(translationKeys.LabelDefaultTabTypeDefault, [fallbackTitle])
+  end if
+
+  options = [{ id: "", title: firstTitle }]
+  for each view in m.offeredViews
+    options.push({ id: view.Name, title: view.Title })
+  end for
+
+  saved = savedDefaultTab()
+  return {
+    id: DEFAULT_TAB_KEY,
+    title: translate(translationKeys.LabelDefaultTab),
+    options: options,
+    selected: gridQuery.resolveOffered(saved, m.offeredViews, ""),
+    valueTitle: offeredViewTitle(resolveDefaultTab(saved).tab),
+    icon: ICON_DEFAULT_TAB
+  }
+end function
+
+' Keep `tabId` as this Roku's choice for the library, or "" to keep none. It applies the
+' next time the library opens: the tab on show stays.
+sub applyDefaultTab(tabId as string)
+  libraryId = m.top.parentItem.Id
+  if tabId = ""
+    deleteLibraryDisplaySetting(libraryId, DEFAULT_TAB_KEY)
+  else if gridQuery.offers(m.offeredViews, tabId)
+    setLibraryDisplaySetting(libraryId, DEFAULT_TAB_KEY, tabId)
+  end if
+end sub
+
+' The layouts the presenter lists for the view on show, as page-setting options
+' ([{ id, title }]); empty when it lists none.
+function offeredLayouts() as object
+  options = []
+  if not isValid(m.presenter) or not isValid(m.top.parentItem) then return options
+  layouts = m.presenter.getOptions(m.top.parentItem).layouts
+  if type(layouts) <> "roAssociativeArray" then return options
+  viewLayouts = layouts[LCase(textOrEmpty(m.view))]
+  if type(viewLayouts) <> "roArray" then return options
+  for each layout in viewLayouts
+    title = libraryLayout.title(layout.Name)
+    if title <> "" then options.push({ id: layout.Name, title: title })
+  end for
+  return options
+end function
+
+' Draw the view on show in `layout` and save the choice for it. Not a view change: the
+' sort, the filter, the alpha letter, the voice text and the item in focus stay as they
+' are (relayoutGrid).
+sub applyLayout(layout as string)
+  if not libraryLayout.isKnown(layout) or layout = m.layout then return
+  m.layout = layout
+  setLibraryDisplaySetting(m.top.parentItem.Id, libraryLayout.settingKey(m.view), layout)
+  relayoutGrid()
+  focusContent()
 end sub
 
 ' ============================================================================
 ' Alpha / Voice Search
 ' ============================================================================
 
+' A press on the letter rail. The same letter again turns the letter off.
 sub onAlphaSelectedChanged()
   if m.top.alphaSelected <> ""
+    if m.nameStartsWith = m.top.alphaSelected
+      m.nameStartsWith = ""
+    else
+      m.nameStartsWith = m.top.alphaSelected
+    end if
     m.loadedItems = 0
 
     m.data = CreateObject("roSGNode", "ContentNode")
@@ -1547,7 +2039,7 @@ sub onAlphaSelectedChanged()
     m.genreList.content = m.genreData
 
     m.voiceBox.text = ""
-    loadInitialItems()
+    loadView()
   end if
 end sub
 
@@ -1557,7 +2049,7 @@ sub onAlphaActiveChanged()
   if m.top.isAlphaActive
     ' Clear backdrop when alpha menu is active
     if isValid(m.presenter)
-      backdropMode = m.presenter.getBackdropMode()
+      backdropMode = m.presenter.getBackdropMode(m.view, m.layout)
       if backdropMode = "presentation"
         m.presentationBackdrop.uri = ""
       else
@@ -1576,7 +2068,8 @@ sub onVoiceFilter()
     ' Route voice search to TV Guide when it's active
     if isValid(m.tvGuide)
       m.tvGuide.searchTerm = m.voiceBox.text
-      updateTitle()
+      updateStripChips()
+      updateStrip(invalid)
       m.tvGuide.lastFocus.setFocus(true)
       return
     end if
@@ -1619,7 +2112,9 @@ sub onVoiceFilter()
       end if
     end if
 
-    updateTitle()
+    ' The Filter chip shows while anything narrows the tab, and the strip says what does
+    updateStripChips()
+    updateStrip(invalid)
   end if
 end sub
 
@@ -1639,45 +2134,12 @@ end function
 ' Key Events
 ' ============================================================================
 
-' JRScreen hook: Star opens the options dialog, from the overhang row as from the grid.
+' JRScreen hook: Star does what the settings icon does, from the overhang row as from the
+' grid: this page's menu, or Settings on a screen that declares no page settings.
 function onOptionsKey() as boolean
-  toggleOptions()
+  m.top.getScene().callFunc("openPageMenu")
   return true
 end function
-
-' Open the options dialog, or close it and apply what was chosen.
-sub toggleOptions()
-  if m.options.visible = true
-    m.options.visible = false
-    m.top.removeChild(m.options)
-    optionsClosed()
-  else
-    ' Rebuild options before showing dialog (to include any dynamically loaded filters)
-    SetUpOptions()
-
-    ' Opening the panel is the only moment the filter lists are actually read, so it is
-    ' also where they are revalidated: SetUpOptions() above has already rendered the
-    ' cached lists, and this refresh lands silently for the NEXT open rather than
-    ' reshuffling categories under a cursor already in the list. It is what lets every
-    ' other path (sort, filter, view, alpha, voice search) stop refetching entirely,
-    ' and it retries a load that previously failed.
-    if isValid(m.presenter) then m.presenter.refreshFilters()
-
-    ' Use TV Guide's focused channel when active, otherwise use the grid's focused item
-    if isValid(m.tvGuide) and isValid(m.channelFocused)
-      itemSelected = m.channelFocused
-    else
-      itemSelected = m.selectedFavoriteItem
-    end if
-    if isValid(itemSelected)
-      m.options.selectedFavoriteItem = itemSelected
-    end if
-
-    m.options.visible = true
-    m.top.appendChild(m.options)
-    m.options.setFocus(true)
-  end if
-end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
@@ -1688,18 +2150,30 @@ function onKeyEvent(key as string, press as boolean) as boolean
   end if
 
   ' UP from the content's top enters the overhang row: the grid's first row, the genre rows'
-  ' first row, or the retry button of a failed load. The alpha menu and the TV guide keep Up.
+  ' first row, or the retry button of a failed load. An empty grid or row list is all top:
+  ' a tab with nothing in it (no favorites yet) or still loading must not hold the viewer
+  ' away from the tabs. So is the TV guide's first channel row. The alpha menu keeps Up.
   if key = "up"
+    if m.headerStrip.isInFocusChain() then return focusOverhang()
     atTop = false
     if m.itemGrid.isInFocusChain()
-      atTop = m.itemGrid.itemFocused >= 0 and m.itemGrid.itemFocused < m.itemGrid.numColumns
+      atTop = m.data.getChildCount() = 0 or (m.itemGrid.itemFocused >= 0 and m.itemGrid.itemFocused < m.itemGrid.numColumns)
     else if m.genreList.isInFocusChain()
       rowItemFocused = m.genreList.rowItemFocused
-      atTop = type(rowItemFocused) = "roArray" and rowItemFocused.count() >= 2 and rowItemFocused[0] = 0
+      atTop = m.genreData.getChildCount() = 0 or (type(rowItemFocused) = "roArray" and rowItemFocused.count() >= 2 and rowItemFocused[0] = 0)
     else if m.retryButton.hasFocus()
       atTop = true
+    else if isValid(m.tvGuide)
+      ' The guide's own grid keeps Up while it has a row to move to
+      atTop = m.tvGuide.callFunc("isAtTop") = true
     end if
-    if atTop then return focusOverhang()
+    if atTop
+      if m.headerStrip.callFunc("focusEntry") = true then return true
+      return focusOverhang()
+    end if
+  else if key = "down" and m.headerStrip.isInFocusChain()
+    focusViewContent()
+    return true
   end if
 
   ' Photos go to ItemDetails like any other item (OK, then itemSelected, then onItemSelected).
@@ -1708,19 +2182,12 @@ function onKeyEvent(key as string, press as boolean) as boolean
   ' ItemDetails and double-pushed (viewer + ItemDetails stacked).
 
   if key = "options"
-    toggleOptions()
-    return true
+    return onOptionsKey()
   else if key = "back"
-    if m.options.visible = true
-      m.options.visible = false
-      optionsClosed()
-      return true
-    else
-      ' The library view is router-owned: pop it via the router (back to Home / the
-      ' previous routed view).
-      sgrouter.goBack()
-      return true
-    end if
+    ' The library view is router-owned: pop it via the router (back to Home / the
+    ' previous routed view).
+    sgrouter.goBack()
+    return true
   else if key = "play"
     ' TV Guide: quickplay the focused channel
     if isValid(m.tvGuide)
@@ -1765,91 +2232,75 @@ function onKeyEvent(key as string, press as boolean) as boolean
     m.alphaMenu.setFocus(false)
     focusContent()
     return true
-  else if key = "replay" and m.options.visible
-    ' The dialog does not handle Replay, so it arrives here. Reloading and resetting the
-    ' filters under an open dialog would rewrite the choices the user is making in it.
-    return true
-  else if key = "replay" and m.itemGrid.isinFocusChain()
-    if m.resetGrid = true
-      m.itemGrid.animateToItem = 0
-    else
-      m.itemGrid.jumpToItem = 0
-    end if
-    return true
-  else if key = "replay" and m.genreList.isinFocusChain()
-    if m.resetGrid = true
-      m.genreList.animateToItem = 0
-    else
-      m.genreList.jumpToItem = 0
-    end if
-    return true
-  end if
-
-  if key = "replay"
-    ' Clear all search/filter state
-    m.voiceBox.text = ""
-    m.nameStartsWith = ""
-    m.top.alphaSelected = ""
-    m.filter = "All"
-    m.filterOptions = {}
-    m.data = CreateObject("roSGNode", "ContentNode")
-    m.itemGrid.content = m.data
-    m.flatIndexMap = {}
-    initTextureManager(m.data, invalid, invalid, invalid)
-    loadInitialItems()
+  else if key = "replay"
+    jumpToFirstItem()
     return true
   end if
 
   return false
 end function
 
+' Replay: focus the first item of what is on show, from anywhere on the screen (the
+' letter rail too). The sort, the filters, the letter and the voice text stay. The
+' Return to Top setting picks a scroll or a snap. The TV guide has no first item to go
+' to, and neither has an empty or a failed tab: focus stays where it is.
+sub jumpToFirstItem()
+  if isValid(m.tvGuide) or m.loadFailed.visible then return
+
+  content = m.itemGrid
+  items = m.data
+  if m.genreList.opacity = 1
+    content = m.genreList
+    items = m.genreData
+  end if
+  if items.getChildCount() = 0 then return
+
+  ' Focus first, as Right from the letter rail does: the list applies the jump when it
+  ' has focus
+  if not content.isInFocusChain()
+    m.top.isAlphaActive = false
+    m.alphaMenu.setFocus(false)
+    focusContent()
+  end if
+
+  if m.resetGrid = true
+    content.animateToItem = 0
+  else
+    content.jumpToItem = 0
+  end if
+end sub
+
 ' ============================================================================
 ' Overhang Title
 ' ============================================================================
 
+' The overhang's title, shown on a screen with no tabs: what was opened. The header strip
+' says the rest: what narrows the tab and the place in the list (updateStrip).
 sub updateTitle()
   m.top.overhangTitle = m.top.parentItem.title
 
-  if m.filter = "Favorites"
+  if gridQuery.hasFavorites(m.filters)
     m.top.overhangTitle = m.top.parentItem.title + " (" + translate(translationKeys.LabelFavorites) + ")"
   end if
 
-  ' Voice search and alpha filters take precedence over view-specific titles
-  ' Check trim() to avoid showing "(Filtered by )" with empty/whitespace values
-  if m.voiceBox.text.trim() <> ""
-    m.top.overhangTitle = translate(translationKeys.MessageFilteredBy, [m.top.parentItem.title, m.voiceBox.text])
-    return
-  end if
-
-  if m.nameStartsWith.trim() <> ""
-    m.top.overhangTitle = translate(translationKeys.MessageFilteredBy, [m.top.parentItem.title, m.nameStartsWith])
-    return
-  end if
-
-  ' View-specific titles (only when no active filters)
+  ' View-specific titles. A library's content tab (Movies, Shows, Channels, Photos)
+  ' carries no suffix; the others are named by the title the presenter gave the tab.
   lowerView = LCase(m.view)
-  if lowerView = "networks"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelNetworks))
-  else if lowerView = "studios"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelStudios))
-  else if lowerView = "genres"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelGenres))
-  else if lowerView = LCase(collectionsView.VIEW_NAME)
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelCollections))
-  else if lowerView = "artistsgrid"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelArtists))
-  else if lowerView = "albumartistsgrid"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelAlbumArtists))
-  else if lowerView = "albums"
-    m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, translate(translationKeys.LabelAlbums))
-  end if
-
-  ' Add item count if enabled
-  actInt = m.itemGrid.itemFocused + 1
-  if m.showItemCount and m.totalRecordCount > 0 and lowerView <> "genres"
-    m.top.overhangTitle += " (" + translate(translationKeys.LabelPositionOfTotal, [actInt.toStr(), m.totalRecordCount.toStr()]) + ")"
+  if lowerView = libraryTab.STUDIOS or lowerView = libraryTab.NETWORKS or lowerView = libraryTab.GENRES or lowerView = libraryTab.COLLECTIONS or lowerView = libraryTab.ARTISTS or lowerView = libraryTab.ALBUM_ARTISTS or lowerView = libraryTab.ALBUMS
+    tabTitle = offeredViewTitle(m.view)
+    if tabTitle <> "" then m.top.overhangTitle = "%s (%s)".Format(m.top.parentItem.title, tabTitle)
   end if
 end sub
+
+' The title the presenter gave a tab at the last load, "" when it did not offer it.
+' Read off the list openLibrary kept, not a fresh getOptions(): this runs on every
+' focus change, and the options build is a run of translate() calls.
+function offeredViewTitle(viewName as string) as string
+  for each view in m.offeredViews
+    if isValid(view) and LCase(textOrEmpty(view.Name)) = LCase(viewName) then return textOrEmpty(view.Title)
+  end for
+  return ""
+end function
 
 ' Returns the flat index of an item within the grid's content root.
 ' Called by GridItem via callFunc for O(1) index lookup (avoids O(N) child scan).
@@ -1873,8 +2324,11 @@ sub onDestroy()
   ' reference release below: these handlers dereference them.
   m.top.unobserveField("presenterType")
   m.top.unobserveField("parentItem")
+  m.top.unobserveField("selectedTabId")
   m.top.unobserveField("alphaSelected")
   m.top.unobserveField("isAlphaActive")
+  ' Every grid cell follows the titles setting (GridItem.onGridTitlesChanged)
+  m.top.unobserveField("showItemTitles")
 
   m.log.verbose("onDestroy")
 
@@ -1890,6 +2344,8 @@ sub onDestroy()
   m.itemGrid.unobserveField("currFocusRow")
   m.itemGrid.unobserveField("itemSelected")
   m.voiceBox.unobserveField("text")
+  m.headerStrip.unobserveField("chipAction")
+  abandonDialog(m.stripDialog)
   m.retryButton.unobserveField("isReady")
   m.failureNarrationTimer.unobserveField("fire")
   m.failureNarrationTimer.control = "stop"
@@ -1901,7 +2357,7 @@ sub onDestroy()
 
   ' Break the GridItem <-> content-root retain CYCLE before dropping our references.
   ' Every GridItem caches m.gridView = this view node (resolveGridViewConfig walks up for
-  ' the gridTitles field) AND observes fields on the shared content root with observeField
+  ' the showItemTitles field) AND observes fields on the shared content root with observeField
   ' (setupGridTextureObserver), which makes the content root hold each cell's component
   ' scope. That closes the loop:
   '   view -> m.data -> cell scope -> m.gridView -> view
@@ -1921,6 +2377,7 @@ sub onDestroy()
   if isValid(m.tvGuide)
     m.tvGuide.unobserveField("watchChannel")
     m.tvGuide.unobserveField("focusedChannel")
+    m.tvGuide.unobserveField("focusedSummary")
     m.tvGuide.callFunc("onDestroy")
     m.tvGuide = invalid
   end if
@@ -1935,7 +2392,7 @@ sub onDestroy()
   end if
 
   ' Clear node references
-  m.options = invalid
+  m.stripDialog = invalid
   m.itemGrid = invalid
   m.voiceBox = invalid
   m.emptyText = invalid
@@ -1951,6 +2408,7 @@ sub onDestroy()
   m.genreList = invalid
   m.presentationBackdrop = invalid
   m.presentationInfo = invalid
+  m.headerStrip = invalid
   m.channelFocused = invalid
 
   ' Release content nodes

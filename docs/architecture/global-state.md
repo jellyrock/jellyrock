@@ -9,7 +9,7 @@ related-files:
   - components/data/Constants.xml
   - components/data/jellyfin/AppInfo.xml
   - components/data/jellyfin/DeviceInfo.xml
-last-reviewed: 2026-10-27
+last-reviewed: 2026-11-15
 ---
 
 # Global state
@@ -32,7 +32,7 @@ m.global
 │   ├── remoteChannelStatus     "" until RemoteControlTask settles (serverCapabilities.bs)
 │   ├── resumePolicy            invalid until ItemDetails first needs it (versionResume.bs)
 │   └── encodingPolicy          invalid until Home's session check or a video load (serverCapabilities.bs)
-├── user                  JellyfinUser: id, name, authToken, fontScaleFactor
+├── user                  JellyfinUser: id, name, authToken, fontScaleFactor, libraryFilters
 │   ├── settings          JellyfinUserSettings, every per-user setting (see settings.md)
 │   ├── config            JellyfinUserConfiguration, the server's profile for the user
 │   └── policy            JellyfinUserPolicy, the server's permissions for the user
@@ -105,11 +105,12 @@ The XML is the one place a reader finds every field and its type, without search
 
 ## The user: `m.global.user`
 
-`setGlobals()` creates the `JellyfinUser` node with empty `settings`, `config` and `policy` children. `user.Login()` in `source/utils/session.bs` fills it at sign-in, and `user.Logout()` replaces all three children with new empty nodes.
+`setGlobals()` creates the `JellyfinUser` node with empty `settings`, `config` and `policy` children. `user.Login()` in `source/utils/session.bs` fills it at sign-in, and `user.Logout()` resets the node's own fields and replaces all three children with new empty nodes.
 
 - **`settings`** holds every per-user setting. Defaults come from `settings/settings.json`, saved values from the registry, and a write to a field is saved for you. [`settings.md`](settings.md) has the whole lifecycle.
 - **`config` and `policy`** come from the server's user record at sign-in (`transformUserConfiguration()` and `transformUserPolicy()`). JellyRock never writes them back.
-- **`fontScaleFactor`** is set by `calculateFontScaleFactor()` in `main.bs` when `uiFontFallback` is on. It scales text drawn in the downloaded fallback font, and `JRLabel`, `JRButtons` and the other `JR*` text components read it.
+- **`libraryFilters`** holds each library tab's filters for the signed-in session, as `{ "<libraryId>/<tab>": { <category>: [values] } }`. `source/utils/sessionFilters.bs` is its only reader and writer, and `gridQuery.build()` turns one tab's entry into a request. It lives here, and not on the scene, because session state for a user must end with the session: `user.Logout()` resets every field of this node, and every sign-out, user switch and server switch runs it, so no exit path has to remember to clear it. It is never saved, so an app restart clears it too. Read it from the render thread only.
+- **`fontScaleFactor`** is set by `calculateFontScaleFactor()` in `main.bs` when `uiFontFallback` is on. It scales text drawn in the downloaded fallback font, and `JRLabel` and the other `JR*` text components read it.
 
 ## Constants: `m.global.constants`
 

@@ -29,8 +29,8 @@ function check(files) {
 
 describe('no-hand-rolled-dialog', () => {
   describe('a hand-rolled dimmed backdrop', () => {
-    // The shape every pre-family dialog had, and the one ItemGridOptions still
-    // has: a full-screen Rectangle at 0.75 opacity behind its own panel.
+    // The shape every pre-family dialog had (the library's old options panel was the
+    // last): a full-screen Rectangle at 0.75 opacity behind its own panel.
     it('flags a full-screen Rectangle that dims', () => {
       const found = check({
         'components/MyPanel.xml': `<?xml version="1.0" encoding="utf-8"?>
@@ -276,7 +276,8 @@ describe('no-hand-rolled-dialog', () => {
       ).toHaveLength(0);
     });
 
-    // The grandfathering path for a known un-migrated surface (ItemGridOptions),
+    // The grandfathering path for a known un-migrated surface (the fixture is named for
+    // the library's old options panel, the last one that needed it),
     // written on the line ABOVE, which is the only form a multi-line XML comment
     // can take.
     it('honours bsc-disable-next-line from the preceding line', () => {

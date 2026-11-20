@@ -1,18 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The top bar, one row: logo (Home only), the tab bar (the screen's views as text buttons
-  with a glyph, one selected) or the title in its place, then the user dropdown (Home only),
-  the fixed cluster (SyncPlay when the account may use it, Search, Settings) and the clock. The cluster is the same on every
-  screen that shows it; a screen's own controls live on the screen. Left and Right walk tab
-  bar, dropdown and cluster as one row that wraps at both ends; Down returns to the screen.
+  The top bar, one row: the logo (before sign-in only), the tab bar (the screen's views as
+  text buttons, one selected) or the title in its place, then the user dropdown (Home,
+  Settings and Search), the fixed cluster (SyncPlay when the account may use it, Search,
+  Settings) and the clock. The cluster is the same on every screen that shows it; a screen's
+  own controls live on the screen. Left and Right walk tab bar, dropdown and cluster as one
+  row that wraps at both ends; Down returns to the screen.
 -->
 <component name="JROverhang" extends="Group">
   <children>
-    <!-- Logo -->
     <!-- Logo, title: placed by JROverhang.bs (LOGO_Y, layout()) -->
     <Poster id="logo" uri="pkg:/images/branding/logo.png" height="39" width="180" />
     <!-- Title: shown when the screen has no tabs, at the tab bar's place -->
     <ScrollingLabelPrimaryLarge id="title" vertAlign="center" maxWidth="300" repeatCount="0" />
+    <!-- The line under the title: a selected tab's underline, so the row marks where the
+         viewer is the same way with tabs or without. Placed by layout(). -->
+    <Rectangle id="titleUnderline" visible="false" />
     <!-- The screen's status, dim, right after the title (the search screen's submitted query);
          placed by layout() from the title's measured width (titleMeasure, never shown) -->
     <ScrollingLabelSecondaryLarge id="status" vertAlign="center" maxWidth="300" repeatCount="0" visible="false" />
@@ -30,9 +33,11 @@
     <field id="status" type="string" onChange="onStatusChanged" />
     <field id="isVisible" value="true" type="boolean" onChange="onIsVisibleChanged" />
     <field id="isMoveAnimationDisabled" value="false" type="boolean" />
+    <!-- The wordmark: JRScene shows it while no user is signed in (the sign-in screens),
+         which have no tabs or title, and hides it on every signed-in screen. -->
     <field id="isLogoVisible" value="true" type="boolean" onChange="onIsLogoVisibleChanged" />
-    <!-- The tab bar's entries: { id, title, icon, selectedIcon }, projected from the active view's
-         overhangTabs. Empty hides the tab bar and shows the title in its place. -->
+    <!-- The tab bar's entries: { id, title }, projected from the active view's overhangTabs.
+         Empty hides the tab bar and shows the title in its place. -->
     <field id="tabs" type="array" onChange="onTabsChanged" />
     <field id="selectedTabId" type="string" alwaysNotify="true" />
     <!-- Whether the fixed cluster shows: JRScene sets it from the signed-in state, so the
@@ -55,6 +60,9 @@
     <field id="isClockVisible" value="true" type="boolean" onChange="isClockVisibleChanged" />
     <!-- The cluster icon for an entry id ("syncplay", "search", "settings"), for a screen's focus bookkeeping. -->
     <function name="getIcon" />
+    <!-- The focus box of a cluster icon in screen coordinates ({ x, y, width, height }), for a
+         menu JRScene anchors to it; invalid for an id the cluster does not show. -->
+    <function name="iconAnchor" />
     <!-- The SyncPlay icon's state from JRScene: { shown, active, badge }. Shown first in the cluster
          when the account may use SyncPlay; active (drawn in colorSecondary) while in a group; a
          badge (a colorSecondary dot) while a group exists to join. -->

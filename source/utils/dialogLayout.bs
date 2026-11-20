@@ -80,9 +80,9 @@ const PANEL_WIDTH_SCALE = 6
 ' so the labels line up with each other; a list that never can drops it on every
 ' row, so its labels sit at the row padding instead of after an empty slot.
 '
-' The gutter holds one of two things and never both: the current-option check, or
-' a leading action icon (an overflow menu's rows carry the same glyph the button
-' they replaced was wearing). LIST_ROW_ICON_SIZE is the SLOT, which is why it is
+' The gutter holds one of three things and never two: the current-option check, a
+' leading action icon (an overflow menu's rows carry the same glyph the button
+' they replaced was wearing), or a checklist's checkbox. LIST_ROW_ICON_SIZE is the SLOT, which is why it is
 ' on the 6px scale, unlike CHECK_ICON_SIZE in JRListDialogRow.bs, which is a
 ' source-bitmap dimension and is not on purpose.
 const LIST_ROW_HEIGHT = 60
@@ -91,13 +91,16 @@ const LIST_ROW_PADDING = 24
 const LIST_ROW_ICON_SIZE = 36
 const LIST_ROW_CHECK_GUTTER = 84
 
-' Whether a list dialog's rows keep the gutter: when some row has an icon, or when
-' one option is current and so carries the check. Decided for the whole list, never
-' per row, so every label in one list starts at the same x.
+' Whether a list dialog's rows keep the gutter: when some row has an icon, when
+' one option is current and so carries the check, or when the list is a checklist,
+' whose every row carries a checkbox. Decided for the whole list, never per row, so
+' every label in one list starts at the same x.
 '
 ' @param {integer} selectedIndex - the current option, -1 for none
 ' @param {dynamic} icons - the rows' icon URIs, or invalid
-function listHasGutter(selectedIndex as integer, icons as dynamic) as boolean
+' @param {boolean} multiSelect - true for a checklist
+function listHasGutter(selectedIndex as integer, icons as dynamic, multiSelect = false as boolean) as boolean
+  if multiSelect then return true
   if selectedIndex >= 0 then return true
   if type(icons) <> "roArray" then return false
   for each icon in icons
@@ -174,13 +177,15 @@ const PANEL_MAX_HEIGHT = SCREEN_HEIGHT - (PANEL_PADDING * 2) - 60
 '                  never exceeds PANEL_MAX_HEIGHT. Read `body.height` back; do
 '                  not assume you got what you asked for.
 '   footerHeight - measured footer height, 0 for none
-'   anchor       - OPTIONAL { x, y, width }, in screen coordinates. Omitted, the
-'                  panel is centred, which is what every dialog did before this
-'                  existed and what all but the overflow menus still do. Given,
-'                  the panel is LEFT-aligned to the anchor where it fits and
-'                  RIGHT-aligned where it does not, and grows UPWARD from
-'                  `anchor.y` so it sits above the thing it belongs to rather
-'                  than over it. See placement below for the flip rule.
+'   anchor       - OPTIONAL { x, y, width, height }, in screen coordinates.
+'                  Omitted, the panel is centred, which is what every dialog did
+'                  before this existed and what all but the overflow menus still
+'                  do. Given, the panel is LEFT-aligned to the anchor where it
+'                  fits and RIGHT-aligned where it does not. It sits ABOVE the
+'                  anchor when it fits there, and otherwise on the side with
+'                  more room: BELOW `anchor.y + anchor.height` for a button near
+'                  the top of the screen. `height` is what allows that: an
+'                  anchor without one always stays above. See placement below.
 '
 ' @returns {object} - { panel, title, accent, subheading, body, footer }, each
 '                     { x, y, width, height }, plus `overflows`.
@@ -206,10 +211,12 @@ function computeDialogLayout(spec as object) as object
   anchorX = 0
   anchorY = 0
   anchorWidth = 0
+  anchorHeight = 0
   if hasAnchor
     anchorX = intOr(anchor.x, 0)
     anchorY = intOr(anchor.y, 0)
     anchorWidth = intOr(anchor.width, 0)
+    anchorHeight = intOr(anchor.height, 0)
   end if
 
   ' Snap the MEASURED heights up to the grid before anything is added to them.
@@ -239,7 +246,7 @@ function computeDialogLayout(spec as object) as object
   bodyY = y
 
   ' A gap only exists BETWEEN things. A dialog whose body is the last thing in
-  ' the panel (JRListDialog has no footer at all) gets padding under it and
+  ' the panel (a list dialog whose rows all fit) gets padding under it and
   ' nothing else. Reserving a footer's gap for a footer that is not there left
   ' 84px of dead space under the list, which is what this shape is guarding.
   hasFooter = footerHeight > 0
@@ -259,15 +266,28 @@ function computeDialogLayout(spec as object) as object
   ' Never LARGER than PANEL_MAX_HEIGHT: an anchor low on the screen leaves plenty
   ' of room above it, and a menu allowed to grow into all of it would be a
   ' full-height panel that happens to be right-aligned.
+  '
+  ' WHICH BAND is derived too. Above the anchor is preferred, and the panel goes
+  ' below only when what it asked for does not fit above and the band below is
+  ' the larger one. A button row low on the screen (ItemDetails at y=800, the
+  ' OSD at y=932) therefore never flips, and a button in the overhang row, which
+  ' has nothing above it, always does. No caller picks the direction. An anchor
+  ' with no `height` never goes below: the panel would start over its button.
+  belowBody = PANEL_PADDING
+  if hasFooter then belowBody += BODY_GAP + footerHeight
+
   ceiling = PANEL_MAX_HEIGHT
+  opensBelow = false
   if hasAnchor
-    ceiling = anchorY - ANCHOR_GAP - PANEL_PADDING
+    roomAbove = anchorY - ANCHOR_GAP - PANEL_PADDING
+    roomBelow = SCREEN_HEIGHT - PANEL_PADDING - (anchorY + anchorHeight + ANCHOR_GAP)
+    wantedHeight = bodyY + bodyHeight + belowBody
+    opensBelow = anchorHeight > 0 and wantedHeight > roomAbove and roomBelow > roomAbove
+    ceiling = roomAbove
+    if opensBelow then ceiling = roomBelow
     if ceiling > PANEL_MAX_HEIGHT then ceiling = PANEL_MAX_HEIGHT
     if ceiling < 0 then ceiling = 0
   end if
-
-  belowBody = PANEL_PADDING
-  if hasFooter then belowBody += BODY_GAP + footerHeight
   maxBodyHeight = ceiling - bodyY - belowBody
   if maxBodyHeight < 0 then maxBodyHeight = 0
 
@@ -327,11 +347,8 @@ function computeDialogLayout(spec as object) as object
     ' set) flips to where the room actually is. One rule; the side it picks is a
     ' consequence of where the anchor sits, not a per-surface decision.
     '
-    ' UPWARD in both cases, because both surfaces put their button row near the
-    ' bottom of the screen (ItemDetails at y=800, the OSD at y=932), so above is
-    ' where the room is. That is an observation about these two callers, not a
-    ' law: a row near the TOP would need a downward variant, and this is the
-    ' place to add it rather than a second placement mode elsewhere.
+    ' The side is independent of the band: a panel below its anchor follows the
+    ' same left-then-right rule as one above it.
     rightLimit = SCREEN_WIDTH - PANEL_PADDING
 
     panelX = floorToGrid(anchorX)
@@ -339,7 +356,12 @@ function computeDialogLayout(spec as object) as object
       panelX = floorToGrid(anchorX + anchorWidth - panelWidth)
     end if
 
-    panelY = floorToGrid(anchorY - ANCHOR_GAP - panelHeight)
+    if opensBelow
+      ' Snapped UP, so the gap under the anchor is never tighter than ANCHOR_GAP.
+      panelY = snapToGrid(anchorY + anchorHeight + ANCHOR_GAP)
+    else
+      panelY = floorToGrid(anchorY - ANCHOR_GAP - panelHeight)
+    end if
 
     ' Keep the panel on screen with the same margin the centred path leaves.
     ' Both bounds are already grid-aligned (PANEL_PADDING is 48, and the right

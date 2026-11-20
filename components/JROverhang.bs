@@ -4,13 +4,14 @@ import "pkg:/source/enums/HomeAction.bs"
 import "pkg:/source/syncplay/syncPlayMenu.bs"
 import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/iconBarNav.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/overhangRow.bs"
 import "pkg:/source/utils/pixelGrid.bs"
+import "pkg:/source/utils/textMetrics.bs"
 import "pkg:/source/utils/translate.bs"
 
-const OVERHANG_LEFT = 96 ' The 5% action-safe left edge: the logo, or the tabs without one
-const TABS_X_WITH_LOGO = 360 ' The tabs' text (or the title) starts here when the logo shows
+const OVERHANG_LEFT = 96 ' The 5% action-safe left edge: the logo, the tabs' text, the title
 const LOGO_Y = 51 ' The wordmark's caps and baseline sit on the tab text's (baseline at design y 81)
 const TITLE_MIN_WIDTH = 120 ' The title keeps at least this, whatever the dropdown's width
 const DROPDOWN_PROVISIONAL_WIDTH = 198 ' Until the trigger reports its width
@@ -32,6 +33,9 @@ sub init()
   m.clock.observeField("textWidth", "onLayoutInputChanged")
   ' The title centers in the same box as a tab's text, so its caps sit where the tabs' do
   m.title.height = overhangRow.ROW_HEIGHT
+  m.titleUnderline = m.top.findNode("titleUnderline")
+  m.titleUnderline.height = overhangRow.TITLE_UNDERLINE
+  m.titleUnderline.color = m.global.constants.colorSecondary
   if isValid(m.logo) then m.logo.translation = [OVERHANG_LEFT, LOGO_Y]
   m.isClockHidden = false
 
@@ -50,7 +54,7 @@ sub init()
   m.userDropdown.observeField("requestFocusReturn", "onUserDropdownFocusReturn")
   m.userDropdown.observeField("selectedAction", "onUserMenuAction")
 
-  ' The tab bar (the active screen's views, one selected; Home: Home, Favorites) is created
+  ' The tab bar (the active screen's views, one selected) is created
   ' on the first non-empty tabs and kept for reuse (onTabsChanged).
   m.tabBar = invalid
 
@@ -182,6 +186,16 @@ end sub
 ' The cluster icon for an entry id, for a screen focusing the icon it was left by
 function getIcon(id as string) as object
   return m.cluster.callFunc("getIcon", id)
+end function
+
+' Where a menu opened from the cluster icon `id` hangs: the icon's focus box in screen
+' coordinates, or invalid when the cluster has no such icon. The overhang sits at the
+' screen's origin while it shows, so the cluster's own translation is the screen's.
+function iconAnchor(id as string) as dynamic
+  index = iconBarNav.indexOf(clusterEntries(m.clusterHasSyncPlay, false), id)
+  if index < 0 then return invalid
+  origin = m.cluster.translation
+  return iconBarNav.iconAnchor(int(origin[0]), int(origin[1]), index)
 end function
 
 ' The cluster's entries: SyncPlay first when the account may use it, then Search and Settings,
@@ -333,18 +347,18 @@ sub onLayoutInputChanged()
 end sub
 
 ' Places the row from both edges in. From the left: the tab bar, or the title in its
-' place, at the logo's right. From the right: the cluster against the clock's slot (or the
-' safe edge with the clock hidden), the dropdown before the cluster. The title takes what
-' is left between, and scrolls when the text is longer.
+' place. From the right: the cluster against the clock's slot (or the safe edge with the
+' clock hidden), the dropdown before the cluster, never left of overhangRow.LINE_X. The
+' title takes what is left between, and ends in an ellipsis when the text is longer. The
+' logo shows only on a screen with neither (before sign-in), so nothing is placed after it.
 sub layout()
   if not isValid(m.cluster) or not isValid(m.userDropdown) then return
 
   tabsX = OVERHANG_LEFT
-  if isValid(m.logo) then tabsX = TABS_X_WITH_LOGO
   if isValid(m.tabBar)
     ' A tab's box is the row's text box, so its caps, not the box, center on the row. The
-    ' text starts at tabsX because the box pads BOX_PADDING.
-    m.tabBar.translation = [tabsX - overhangRow.BOX_PADDING, overhangRow.TEXT_TOP]
+    ' text starts at tabsX because the tab pads TAB_PADDING.
+    m.tabBar.translation = [tabsX - overhangRow.TAB_PADDING, overhangRow.TEXT_TOP]
   end if
 
   titleX = tabsX
@@ -360,6 +374,10 @@ sub layout()
   end if
 
   leftOfDropdown = leftOfCluster
+  clusterWidth = 0
+  if m.cluster.visible then clusterWidth = m.cluster.barWidth
+  maxWidth = overhangRow.menuMaxWidth(m.clock.textWidth, not m.isClockHidden, clusterWidth)
+  if m.userDropdown.maxWidth <> maxWidth then m.userDropdown.maxWidth = maxWidth
   if m.userDropdown.visible
     triggerWidth = m.userDropdown.triggerWidth
     if triggerWidth <= 0 then triggerWidth = DROPDOWN_PROVISIONAL_WIDTH
@@ -368,10 +386,22 @@ sub layout()
     leftOfDropdown = dropdownX - overhangRow.ELEMENT_GAP
   end if
 
+  ' A scrolling tab strip's slot: the same span, but measured from a clock allowance that
+  ' holds still (overhangRow.tabSlotWidth), so the strip does not shift when the digits do
+  if isValid(m.tabBar)
+    dropdownWidth = 0
+    if m.userDropdown.visible
+      dropdownWidth = m.userDropdown.triggerWidth
+      if dropdownWidth <= 0 then dropdownWidth = DROPDOWN_PROVISIONAL_WIDTH
+    end if
+    m.tabBar.slotWidth = overhangRow.tabSlotWidth(tabsX - overhangRow.TAB_PADDING, m.clock.textWidth, not m.isClockHidden, clusterWidth, dropdownWidth)
+  end if
+
   m.title.translation = [titleX, overhangRow.TEXT_TOP]
   titleWidth = leftOfDropdown - titleX
   if titleWidth < TITLE_MIN_WIDTH then titleWidth = TITLE_MIN_WIDTH
   m.title.maxWidth = titleWidth
+  layoutTitleUnderline(titleX, titleWidth)
 
   ' The status follows the title's text (its measured width, on the grid), a tab gap after, and
   ' takes what is left; it hides with the title (tabs in its place), or when the title alone
@@ -379,7 +409,7 @@ sub layout()
   m.status.visible = false
   if m.status.text <> "" and m.title.visible
     textWidth = snapToGrid(-int(-m.titleMeasure.localBoundingRect().width))
-    statusX = titleX + textWidth + overhangRow.TAB_GAP
+    statusX = titleX + textWidth + overhangRow.TITLE_STATUS_GAP
     statusWidth = leftOfDropdown - statusX
     if textWidth > 0 and statusWidth >= TITLE_MIN_WIDTH
       m.status.translation = [statusX, overhangRow.TEXT_TOP]
@@ -463,7 +493,7 @@ sub onTabsChanged()
   ' Preserved tabs are already sized, so hide title instantly.
   ' Rebuilt tabs need render tracking, so keep title visible until ready.
   if m.tabBar.isReady
-    m.title.visible = false
+    hideTitle()
   else
     m.tabBar.unobserveField("isReady") ' prevent stacking duplicate observers on rapid tab changes
     m.tabBar.observeField("isReady", "onTabBarReady")
@@ -476,7 +506,30 @@ sub onTabBarReady()
   if isValid(m.tabBar)
     m.tabBar.unobserveField("isReady")
   end if
+  hideTitle()
+end sub
+
+' The tabs take the title's place: the title goes, and its underline with it.
+sub hideTitle()
   m.title.visible = false
+  m.titleUnderline.visible = false
+end sub
+
+' The line under the title, as wide as its text and no wider than the title's slot (a
+' longer title is cut at the slot's end). It sits where a selected tab's underline does
+' (underlineTop), so a screen with a title and a screen with tabs mark the viewer's place
+' the same way. Hidden with the title, and under a title with no text.
+sub layoutTitleUnderline(titleX as integer, titleWidth as integer)
+  textWidth = snapToGrid(-int(-m.titleMeasure.localBoundingRect().width))
+  if textWidth > titleWidth then textWidth = titleWidth
+  if not m.title.visible or textWidth <= 0
+    m.titleUnderline.visible = false
+    return
+  end if
+  top = underlineTop(overhangRow.ROW_HEIGHT, labelTextHeight(m.global.constants.fontSizeLarge), overhangRow.TITLE_UNDERLINE)
+  m.titleUnderline.width = textWidth
+  m.titleUnderline.translation = [titleX, overhangRow.TEXT_TOP + top]
+  m.titleUnderline.visible = true
 end sub
 
 ' Proxy tab bar selection changes to the overhang's selectedTabId field

@@ -2,6 +2,7 @@ import "pkg:/source/GridView/GenericPresenter.bs"
 import "pkg:/source/GridView/gridQuery.bs"
 import "pkg:/source/GridView/MusicPresenter.bs"
 import "pkg:/source/GridView/TVShowPresenter.bs"
+import "pkg:/source/utils/languageFilters.bs"
 import "pkg:/source/utils/paging.bs"
 
 namespace tests
@@ -21,9 +22,22 @@ namespace tests
         searchTerm: "",
         sortField: "DateCreated",
         sortAscending: false,
-        filter: "Favorites",
-        filterOptions: { Genres: "Drama" }
+        filters: { Status: ["Played"], Genres: ["Drama"] }
       }
+    end function
+
+    ' A movie library's tabs, as MoviePresenter lists them.
+    private function movieTabs() as object
+      return [
+        { Name: "movies", Title: "Movies" },
+        { Name: "favorites", Title: "Favorites", View: "movies", IsFavorite: true },
+        { Name: "genres", Title: "Genres" }
+      ]
+    end function
+
+    ' A Favorites tab's query with nothing else in force. A fresh AA per call.
+    private function favoritesQuery() as object
+      return { isFavorite: true, filter: "All", filterOptions: {}, nameStartsWith: "", searchTerm: "" }
     end function
 
     private function musicLibrary() as object
@@ -42,7 +56,7 @@ namespace tests
       m.assertEqual(query.searchTerm, "")
       m.assertEqual(query.sortField, "DateCreated")
       m.assertEqual(query.sortAscending, false)
-      m.assertEqual(query.filter, "Favorites")
+      m.assertEqual(query.filter, "Played")
       m.assertEqual(query.filterOptions, { Genres: "Drama" })
       m.assertEqual(query.itemId, "lib-1")
       m.assertEqual(query.isRecursive, true)
@@ -51,7 +65,143 @@ namespace tests
       m.assertEqual(query.studioIds, "")
       m.assertEqual(query.genreIds, "")
       m.assertFalse(query.DoesExist("startIndex"), "startIndex belongs to a page, not the query")
+      m.assertFalse(query.isFavorite, "favorites are fixed on only when the state says so")
     end function
+
+    @it("carries isFavorite beside a filter, so the two combine")
+    function _()
+      state = m.state()
+      state.isFavorite = true
+      query = gridQuery.build(state, { Id: "lib-1" }, "movies", invalid)
+
+      m.assertTrue(query.isFavorite)
+      m.assertEqual(query.filter, "Played")
+    end function
+
+    @it("asks for everything when the tab has no filters")
+    function _()
+      state = m.state()
+      state.filters = {}
+      query = gridQuery.build(state, { Id: "lib-1" }, "movies", invalid)
+
+      m.assertEqual(query.filter, "All")
+      m.assertEqual(query.filterOptions, {})
+      m.assertFalse(query.isFavorite)
+
+      state.Delete("filters")
+      m.assertEqual(gridQuery.build(state, { Id: "lib-1" }, "movies", invalid).filter, "All", "no map at all")
+    end function
+
+    @it("sends the Favorites filter as isFavorite, beside a status")
+    function _()
+      state = m.state()
+      state.filters = { Favorites: ["Favorites"], Status: ["Unplayed"] }
+      query = gridQuery.build(state, { Id: "lib-1" }, "albums", invalid)
+
+      m.assertTrue(query.isFavorite)
+      m.assertEqual(query.filter, "Unplayed")
+      m.assertEqual(query.filterOptions, {}, "neither is a request parameter of its own")
+    end function
+
+    @it("joins each category's values for the server, and categories combine")
+    ' Genres and ratings are free text split by a pipe; years are a comma list.
+    function _()
+      state = m.state()
+      state.filters = { Genres: ["Action", "Science Fiction"], Years: ["1999", "2001"], OfficialRatings: ["PG"] }
+      query = gridQuery.build(state, { Id: "lib-1" }, "movies", invalid)
+
+      m.assertEqual(query.filterOptions, { Genres: "Action|Science Fiction", Years: "1999,2001", OfficialRatings: "PG" })
+      m.assertEqual(query.filter, "All")
+    end function
+
+    @it("flattens the language values into the one comma list the server accepts")
+    ' One language's value is already several codes; a pipe between them returns nothing.
+    function _()
+      state = m.state()
+      state.filters = {}
+      state.filters[languageFilters.SUBTITLE_KEY] = ["fra,fre", "deu,ger"]
+      state.filters[languageFilters.AUDIO_KEY] = ["jpn"]
+      query = gridQuery.build(state, { Id: "lib-1" }, "movies", invalid)
+
+      m.assertEqual(query.filterOptions[languageFilters.SUBTITLE_KEY], "fra,fre,deu,ger")
+      m.assertEqual(query.filterOptions[languageFilters.AUDIO_KEY], "jpn")
+    end function
+
+    @it("reads a category whatever case its key comes back in")
+    ' The map crosses a node field, which does not promise to keep a key's spelling.
+    function _()
+      state = m.state()
+      state.filters = { status: ["Resumable"], favorites: ["Favorites"] }
+      query = gridQuery.build(state, { Id: "lib-1" }, "movies", invalid)
+
+      m.assertEqual(query.filter, "Resumable")
+      m.assertTrue(query.isFavorite)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resolveSort()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps a saved sort the tab's list offers")
+    function _()
+      sorts = [{ Name: "SortName" }, { Name: "DateCreated" }]
+      sort = gridQuery.resolveSort({ field: "DateCreated", ascending: false }, sorts)
+
+      m.assertEqual(sort.field, "DateCreated")
+      m.assertFalse(sort.ascending)
+    end function
+
+    @it("falls back to the title, ascending, from a sort the tab does not offer")
+    ' Sort lists differ per tab: a music Genres tab offers no Date Added.
+    function _()
+      sorts = [{ Name: "SortName" }, { Name: "Random" }]
+      sort = gridQuery.resolveSort({ field: "DateCreated", ascending: false }, sorts)
+
+      m.assertEqual(sort.field, "SortName")
+      m.assertTrue(sort.ascending)
+    end function
+
+    @it("falls back when nothing is saved")
+    function _()
+      sort = gridQuery.resolveSort(invalid, [{ Name: "SortName" }])
+
+      m.assertEqual(sort.field, "SortName")
+      m.assertTrue(sort.ascending)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("wireDelimiter()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("joins genres and parental ratings with a pipe")
+    ' Free text that may hold a comma
+    function _()
+      m.assertEqual(gridQuery.wireDelimiter("Genres"), "|")
+      m.assertEqual(gridQuery.wireDelimiter("OfficialRatings"), "|")
+    end function
+
+    @it("joins years with a comma, whatever case the key comes back in")
+    function _()
+      m.assertEqual(gridQuery.wireDelimiter("Years"), ",")
+      m.assertEqual(gridQuery.wireDelimiter("years"), ",")
+    end function
+
+    @it("joins languages with a comma, as the server requires")
+    ' One language's value is already a comma list of codes, and the request is one flat list
+    function _()
+      m.assertEqual(gridQuery.wireDelimiter(languageFilters.AUDIO_KEY), languageFilters.CODE_DELIMITER)
+      m.assertEqual(gridQuery.wireDelimiter(LCase(languageFilters.SUBTITLE_KEY)), languageFilters.CODE_DELIMITER)
+    end function
+
+    @it("uses a pipe for a category it does not name")
+    function _()
+      m.assertEqual(gridQuery.wireDelimiter("Studios"), "|")
+      m.assertEqual(gridQuery.wireDelimiter(invalid), "|")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("build() with a presenter")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("applies what the presenter sets for the view")
     function _()
@@ -169,100 +319,18 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("checkListValues()")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    ' The round trip through the panel the app builds is pinned in ItemGridOptions.spec.bs;
-    ' these cover the reader on its own.
-
-    ' A filter category as ItemGridOptions builds it: one FilterOptionNode per option.
-    private function categoryOf(options as object) as object
-      category = CreateObject("roSGNode", "ContentNode")
-      for each option in options
-        node = category.CreateChild("FilterOptionNode")
-        node.title = option.title
-        node.value = option.value
-      end for
-      return category
-    end function
-
-    @it("reads every option's value, in panel order")
-    function _()
-      category = m.categoryOf([{ title: "French", value: "fra,fre" }, { title: "Japanese", value: "jpn" }])
-      m.assertEqual(gridQuery.checkListValues(category), ["fra,fre", "jpn"])
-    end function
-
-    @it("falls back to the title for an option whose value was never set")
-    function _()
-      category = m.categoryOf([{ title: "Drama", value: "" }, { title: "French", value: "fra,fre" }])
-      m.assertEqual(gridQuery.checkListValues(category), ["Drama", "fra,fre"])
-    end function
-
-    @it("answers a missing or empty category with no values")
-    function _()
-      m.assertEqual(gridQuery.checkListValues(invalid), [])
-      m.assertEqual(gridQuery.checkListValues(CreateObject("roSGNode", "ContentNode")), [])
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("queryValueFor() / checkedStateFor() - edges")
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-    @it("joins only the checked options, in panel order")
-    function _()
-      values = ["Action", "Drama", "Horror"]
-      m.assertEqual(gridQuery.queryValueFor(values, [true, false, true], "|"), "Action|Horror")
-    end function
-
-    @it("stops at the end of a checkedState shorter than the option list")
-    ' A drifted panel must not index off the end of the array.
-    function _()
-      m.assertEqual(gridQuery.queryValueFor(["Action", "Drama"], [true], "|"), "Action")
-    end function
-
-    @it("answers a missing option list or checked state with no filter")
-    function _()
-      m.assertEqual(gridQuery.queryValueFor(invalid, [true], "|"), "")
-      m.assertEqual(gridQuery.queryValueFor(["Action"], invalid, "|"), "")
-      m.assertEqual(gridQuery.checkedStateFor(invalid, "Action", "|"), [])
-    end function
-
-    @it("ticks nothing for an empty saved query")
-    function _()
-      m.assertEqual(gridQuery.checkedStateFor(["Action", "Drama"], "", "|"), [false, false])
-    end function
-
-    @it("treats a missing delimiter as one whole value, not one per character")
-    ' Split("") returns one entry PER CHARACTER, which would match single-letter options.
-    function _()
-      m.assertEqual(gridQuery.checkedStateFor(["Action"], "Action", ""), [true])
-    end function
-
-    @it("never ticks an option that has no value")
-    function _()
-      m.assertEqual(gridQuery.checkedStateFor([invalid, "Drama"], "Drama", "|"), [false, true])
-    end function
-
-    @it("matches the saved query case-insensitively, as the restore pass always has")
-    function _()
-      m.assertEqual(gridQuery.checkedStateFor(["Drama"], "drama", "|"), [true])
-    end function
-
-    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    @describe("offersView()")
+    @describe("offers()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     @it("finds a view the presenter is listing, whatever the casing")
-    ' BaseGridView.SetUpOptions already compares a saved view to a presenter's Name under
-    ' LCase(). If this matched differently, a view could restore here and then fail to
-    ' tick in the panel.
+    ' A saved name and a presenter's Name agree whatever case either was written in.
     @params("MoviesGrid", true)
     @params("moviesgrid", true)
     @params("MOVIESGRID", true)
     @params("Collections", false)
     function _(viewName, expected)
       views = [{ Title: "Movies", Name: "Movies" }, { Title: "Grid", Name: "MoviesGrid" }]
-      m.assertEqual(gridQuery.offersView(views, viewName), expected)
+      m.assertEqual(gridQuery.offers(views, viewName), expected)
     end function
 
     @it("answers false for anything that is not a list of views")
@@ -270,53 +338,196 @@ namespace tests
     @params("MoviesGrid")
     @params({})
     function _(views)
-      m.assertFalse(gridQuery.offersView(views, "MoviesGrid"))
+      m.assertFalse(gridQuery.offers(views, "MoviesGrid"))
     end function
 
     @it("answers false for an empty name, and skips an entry with no Name")
     function _()
-      m.assertFalse(gridQuery.offersView([{ Name: "Movies" }], ""))
-      m.assertFalse(gridQuery.offersView([invalid, { Title: "no name" }], "Movies"))
+      m.assertFalse(gridQuery.offers([{ Name: "Movies" }], ""))
+      m.assertFalse(gridQuery.offers([invalid, { Title: "no name" }], "Movies"))
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("resolveView()")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("keeps a saved view the presenter still offers")
+    @it("opens on the Roku's choice while it is offered, whatever the web picked")
     function _()
-      views = [{ Name: "Movies" }, { Name: "MoviesGrid" }, { Name: "Collections" }]
-      m.assertEqual(gridQuery.resolveView("Collections", views, "MoviesGrid"), "Collections")
+      views = [{ Name: "movies" }, { Name: "genres" }, { Name: "studios" }]
+      m.assertEqual(gridQuery.resolveView("studios", "genres", views, "movies"), { tab: "studios", source: "roku" })
     end function
 
-    @it("falls back when the saved view is no longer offered")
-    ' The case this exists for: Collections is saved against a 12.0 server, and the same
-    ' library is later opened against an older one that does not offer it.
-    function _()
-      views = [{ Name: "Movies" }, { Name: "MoviesGrid" }]
-      m.assertEqual(gridQuery.resolveView("Collections", views, "MoviesGrid"), "MoviesGrid")
-    end function
-
-    @it("uses the default when nothing was ever saved")
+    @it("opens on the web's pick when the Roku has no choice")
     @params(invalid)
     @params("")
     @params("   ")
-    function _(savedView)
-      m.assertEqual(gridQuery.resolveView(savedView, [{ Name: "Movies" }], "MoviesGrid"), "MoviesGrid")
+    function _(clientOverride)
+      views = [{ Name: "movies" }, { Name: "genres" }]
+      m.assertEqual(gridQuery.resolveView(clientOverride, "genres", views, "movies"), { tab: "genres", source: "web" })
     end function
 
-    @it("returns an empty default untouched for the presenters that run without a named view")
-    ' Live TV, Photos and Generic get "" from getDefaultView(), and "" is in no presenter's
-    ' views list, so a rule of "reset anything not offered" would reset them on every
-    ' load. Only a non-empty SAVED name is checked.
+    @it("falls through a Roku choice the library no longer offers")
+    ' The case resolveOffered exists for: Collections chosen against a 12.0 server, and
+    ' the same library later opened against an older one.
     function _()
-      m.assertEqual(gridQuery.resolveView(invalid, [{ Name: "livetv" }, { Name: "tvGuide" }], ""), "")
+      views = [{ Name: "movies" }, { Name: "genres" }]
+      m.assertEqual(gridQuery.resolveView("collections", "genres", views, "movies"), { tab: "genres", source: "web" })
+      m.assertEqual(gridQuery.resolveView("collections", "", views, "movies"), { tab: "movies", source: "default" })
     end function
 
-    @it("keeps a saved view for those presenters too")
+    @it("falls through a web pick the library does not offer")
+    ' Favorites picked for a music library, which has no Favorites tab.
     function _()
-      views = [{ Name: "livetv" }, { Name: "tvGuide" }]
-      m.assertEqual(gridQuery.resolveView("tvGuide", views, ""), "tvGuide")
+      views = [{ Name: "albumartists" }, { Name: "albums" }]
+      m.assertEqual(gridQuery.resolveView(invalid, "favorites", views, "albumartists"), { tab: "albumartists", source: "default" })
+    end function
+
+    @it("uses the type's default when nothing is picked anywhere")
+    function _()
+      m.assertEqual(gridQuery.resolveView(invalid, "", [{ Name: "movies" }], "movies"), { tab: "movies", source: "default" })
+    end function
+
+    @it("returns an empty default untouched for a grid that runs without a named view")
+    ' A folder or collection gets "" from getDefaultView() and offers no tabs, and "" is in
+    ' no presenter's views list, so a rule of "reset anything not offered" would reset it
+    ' on every load. Only a non-empty saved name is checked.
+    function _()
+      m.assertEqual(gridQuery.resolveView(invalid, "", [], ""), { tab: "", source: "default" })
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("resolveOffered()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps a saved name the list still offers")
+    function _()
+      filters = [{ Name: "All" }, { Name: "Played" }, { Name: "Unplayed" }]
+      m.assertEqual(gridQuery.resolveOffered("Played", filters, "All"), "Played")
+    end function
+
+    @it("falls back from a saved name the list no longer offers")
+    ' The case the filter needs: Favorites was saved on a movie library's Movies tab, and
+    ' that tab's list no longer holds it because the library has a Favorites tab.
+    function _()
+      filters = [{ Name: "All" }, { Name: "Played" }]
+      m.assertEqual(gridQuery.resolveOffered("Favorites", filters, "All"), "All")
+    end function
+
+    @it("falls back when nothing is saved")
+    @params(invalid)
+    @params("")
+    @params("  ")
+    function _(saved)
+      m.assertEqual(gridQuery.resolveOffered(saved, [{ Name: "All" }], "All"), "All")
+    end function
+
+    @it("falls back when the list is empty or not a list")
+    @params(invalid)
+    @params([])
+    function _(offered)
+      m.assertEqual(gridQuery.resolveOffered("Played", offered, "All"), "All")
+    end function
+
+    @it("answers an empty or missing fallback with an empty string")
+    @params(invalid)
+    @params("")
+    function _(fallback)
+      m.assertEqual(gridQuery.resolveOffered("Gone", [{ Name: "All" }], fallback), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("viewOfTab()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("answers a plain tab with itself and nothing fixed")
+    function _()
+      m.assertEqual(gridQuery.viewOfTab(m.movieTabs(), "genres"), { view: "genres", isFavorite: false })
+    end function
+
+    @it("answers the Favorites tab with its content tab's view and favorites fixed on")
+    function _()
+      m.assertEqual(gridQuery.viewOfTab(m.movieTabs(), "favorites"), { view: "movies", isFavorite: true })
+    end function
+
+    @it("answers an id that is not offered with itself and nothing fixed")
+    ' A folder or collection lists no tabs and runs with the empty view.
+    @params("networks")
+    @params("")
+    function _(tabId)
+      m.assertEqual(gridQuery.viewOfTab(m.movieTabs(), tabId), { view: tabId, isFavorite: false })
+      m.assertEqual(gridQuery.viewOfTab([], tabId), { view: tabId, isFavorite: false })
+      m.assertEqual(gridQuery.viewOfTab(invalid, tabId), { view: tabId, isFavorite: false })
+    end function
+
+    @it("answers for a missing id")
+    function _()
+      m.assertEqual(gridQuery.viewOfTab(m.movieTabs(), invalid), { view: "", isFavorite: false })
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("isPlainFavorites()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for favorites with nothing else narrowing them")
+    function _()
+      m.assertTrue(gridQuery.isPlainFavorites(m.favoritesQuery()))
+    end function
+
+    @it("is false once a filter, a filter category, a letter or a search is in force")
+    function _()
+      query = m.favoritesQuery()
+      query.filter = "Played"
+      m.assertFalse(gridQuery.isPlainFavorites(query), "a filter")
+
+      query = m.favoritesQuery()
+      query.filterOptions = { Genres: "Drama" }
+      m.assertFalse(gridQuery.isPlainFavorites(query), "a filter category")
+
+      query = m.favoritesQuery()
+      query.nameStartsWith = "B"
+      m.assertFalse(gridQuery.isPlainFavorites(query), "a letter")
+
+      query = m.favoritesQuery()
+      query.searchTerm = "alien"
+      m.assertFalse(gridQuery.isPlainFavorites(query), "a search")
+    end function
+
+    @it("is false for a query that does not fix favorites on, and for none")
+    function _()
+      query = m.favoritesQuery()
+      query.isFavorite = false
+      m.assertFalse(gridQuery.isPlainFavorites(query))
+      m.assertFalse(gridQuery.isPlainFavorites(invalid))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("showsFavorites()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is true for a query that fixes favorites on, narrowed or not")
+    function _()
+      m.assertTrue(gridQuery.showsFavorites(m.favoritesQuery()))
+
+      query = m.favoritesQuery()
+      query.filter = "Played"
+      query.nameStartsWith = "B"
+      m.assertTrue(gridQuery.showsFavorites(query), "narrowed by another filter and a letter")
+    end function
+
+    @it("is true for the Favorites filter, which build() sends as isFavorite")
+    function _()
+      state = m.state()
+      state.filters = { Favorites: ["Favorites"] }
+      m.assertTrue(gridQuery.showsFavorites(gridQuery.build(state, { Id: "lib-1" }, "albums", invalid)))
+    end function
+
+    @it("is false for a query that shows no favorites, and for none")
+    function _()
+      query = m.favoritesQuery()
+      query.isFavorite = false
+      m.assertFalse(gridQuery.showsFavorites(query))
+      m.assertFalse(gridQuery.showsFavorites({}), "no fields")
+      m.assertFalse(gridQuery.showsFavorites(invalid))
     end function
 
   end class

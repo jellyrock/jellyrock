@@ -3,17 +3,18 @@
   <children>
 
     <!-- Selected Item Details -->
-    <maskGroup id="backgroundMask" maskUri="pkg:/images/backgroundmask.png" translation="[1320, 150]" maskSize="[500,375]">
-      <Poster id="image" height="375" width="500" loadDisplayMode="scaleToFit" />
+    <maskGroup id="backgroundMask" maskUri="pkg:/images/backgroundmask.png" translation="[1467, 183]" maskSize="[357,267]">
+      <Poster id="image" height="267" width="357" loadDisplayMode="scaleToFit" />
     </maskGroup>
 
-    <Poster id="favorite" translation="[1335, 165]" uri="pkg:/images/icons/favorite_selected_$$RES$$.png" visible="false" />
+    <Poster id="favorite" translation="[1482, 198]" uri="pkg:/images/icons/favorite_selected_$$RES$$.png" visible="false" />
 
     <Group id="detailsView" visible="false">
 
-      <Group translation="[ 96, 160 ]">
-        <LayoutGroup itemSpacings="[4,20, 20, 20, 40]">
-          <LabelPrimaryLarge id="programName" isBold="true" />
+      <!-- The library screen's header strip, above this pane, names the program and gives
+           its length, its time and its channel (the `summary` field). What follows it starts here. -->
+      <Group translation="[ 96, 183 ]">
+        <LayoutGroup itemSpacings="[12, 36]">
 
           <LayoutGroup id="episodeDetailsGroup" layoutDirection="horiz" itemSpacings="[10]">
             <Group id="isLive">
@@ -28,13 +29,7 @@
             <LabelPrimarySmall id="episodeTitle" />
           </LayoutGroup>
 
-          <LayoutGroup layoutDirection="horiz" itemSpacings="[30]">
-            <LabelPrimaryMedium id="duration" />
-            <LabelPrimaryMedium id="broadcastDetails" />
-            <LabelPrimaryMedium id="channelName" />
-          </LayoutGroup>
-
-          <LabelSecondarySmall id="overview" wrap="true" width="1210" />
+          <LabelSecondarySmall id="overview" wrap="true" width="1305" />
 
           <JRButtonGroup id="buttons" opacity="0">
             <TextButton id="viewChannelButton" text="" />
@@ -47,8 +42,7 @@
       </Group>
     </Group>
     <!-- When no schedule information to display  -->
-    <LayoutGroup id="noInformation" translation="[96, 300]">
-      <LabelPrimaryLarge id="noInfoChannelName" isBold="true" />
+    <LayoutGroup id="noInformation" translation="[96, 183]">
       <LabelPrimarySmall id="noScheduleInfoLabel" text="" />
     </LayoutGroup>
     <Animation id="focusAnimation" duration="0.2" repeat="false" easeFunction="linear">
@@ -63,6 +57,9 @@
     <field id="favorite" type="node" onchange="onChannelUpdated" />
     <field id="programDetails" type="node" onchange="onProgramUpdated" />
     <field id="height" type="integer" />
+    <!-- What the header strip says about the focused program: { title, metadata: [items] }.
+         A channel with no program gives its name alone. -->
+    <field id="summary" type="assocarray" />
     <field id="hasFocus" type="boolean" onChange="onFocusChanged" />
   </interface>
 </component>

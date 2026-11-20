@@ -980,16 +980,6 @@ LabelNetworks:
     streamyfin: { key: "search.networks", en: "Networks" }
     jellyfin-roku: { key: "Networks", en: "Networks" }
 
-LabelMoviesGrid:
-  en: "Movies (Grid)"
-  from:
-    jellyfin-roku: { key: "Movies (Grid)", en: "Movies (Grid)" }
-
-LabelMoviesPresentation:
-  en: "Movies (Presentation)"
-  from:
-    jellyfin-roku: { key: "Movies (Presentation)", en: "Movies (Presentation)" }
-
 LabelTvGuide:
   en: "TV Guide"
   from:
@@ -1776,16 +1766,6 @@ LabelUserInterface:
   from:
     jellyfin-roku: { key: "User Interface", en: "User Interface" }
 
-LabelAlwaysHide:
-  en: "Always Hide"
-  from:
-    jellyfin-roku: { key: "Always Hide", en: "Always Hide" }
-
-LabelAlwaysShow:
-  en: "Always Show"
-  from:
-    jellyfin-roku: { key: "Always Show", en: "Always Show" }
-
 LabelCustom:
   en: "Custom"
   from:
@@ -1873,16 +1853,6 @@ LabelMaximumResolution:
   from:
     jellyfin-roku: { key: "Maximum Resolution", en: "Maximum Resolution" }
 
-LabelRandomOff:
-  en: "Random Off"
-  from:
-    jellyfin-roku: { key: "Random Off", en: "Random Off" }
-
-LabelRandomOn:
-  en: "Random On"
-  from:
-    jellyfin-roku: { key: "Random On", en: "Random On" }
-
 MessageRememberMe:
   en: "Remember Me?"
   from:
@@ -1902,11 +1872,6 @@ LabelConfigureTheMaximumPlaybackBitrate:
   en: "Configure the maximum playback bitrate."
   from:
     jellyfin-roku: { key: "Configure the maximum playback bitrate.", en: "Configure the maximum playback bitrate." }
-
-LabelDefaultViewForMovieLibraries:
-  en: "Default view for Movie Libraries."
-  from:
-    jellyfin-roku: { key: "Default view for Movie Libraries.", en: "Default view for Movie Libraries." }
 
 LabelDisableCommunityRatingForEpisodes:
   en: "Disable Community Rating for Episodes"
@@ -1942,11 +1907,6 @@ LabelRewatchingNextUp:
   en: "Rewatching Next Up"
   from:
     jellyfin-roku: { key: "Rewatching Next Up", en: "Rewatching Next Up" }
-
-LabelShowOnHover:
-  en: "Show On Hover"
-  from:
-    jellyfin-roku: { key: "Show On Hover", en: "Show On Hover" }
 
 LabelTextSubtitlesOnly:
   en: "Text Subtitles Only"
@@ -2405,16 +2365,6 @@ ErrorItemDataFailed:
   en: "There was an error retrieving the data for this item from the server."
   from:
     jellyfin-roku: { key: "There was an error retrieving the data for this item from the server.", en: "There was an error retrieving the data for this item from the server." }
-
-LabelSlideshowOff:
-  en: "Slideshow Off"
-  from:
-    jellyfin-roku: { key: "Slideshow Off", en: "Slideshow Off" }
-
-LabelSlideshowOn:
-  en: "Slideshow On"
-  from:
-    jellyfin-roku: { key: "Slideshow On", en: "Slideshow On" }
 
 LabelSlideshowPaused:
   en: "Slideshow Paused"

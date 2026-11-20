@@ -39,7 +39,8 @@
     <field id="loadingKind" type="string" value="plain" />
     <field id="isLoading" type="boolean" alwaysNotify="true" value="true" onchange="onIsLoadingChanged" />
     <field id="exit" type="boolean" alwaysNotify="true" />
-    <!-- Session-reset bridge. Routed views (Home) set this to a HomeAction id; main.bs
+    <!-- Session-reset bridge. The overhang's user menu (Home, Settings and Search) sets this
+         to a HomeAction id through JRScene; main.bs
          observes it on the main thread (an m.global field + port does not deliver, the relay
          defect, but a scene field + port does, like `exit`) and re-enters the login flow
          IN PLACE via handleMenuAction -> resetRouter + reenterLogin (no `goto appStart`; the
@@ -53,6 +54,8 @@
          this is for the suspend/resume path.) Plain field: grids read
          it synchronously on resume, no observer needed. -->
     <field id="contentVersion" type="integer" value="0" />
+    <!-- Favorite toggles bump this through favorites.request(); grids that show favorites reload on resume when it moved. -->
+    <field id="favoritesVersion" type="integer" value="0" />
     <!-- Pre-login intent bridge. The routed pre-login views
          (SetServerScreen / UserSelect / LoginScene) set this to an intent action string;
          main.bs observes it on the main thread (scene field + port delivers, unlike an
@@ -70,6 +73,9 @@
     <function name="reloadRoutedHome" />
     <function name="resetRouter" />
     <function name="routerGoBack" />
+    <!-- A screen whose Star key does what the settings icon does calls this: the page menu
+         where the screen declares page settings, Settings where it declares none -->
+    <function name="openPageMenu" />
     <!-- Test hook, in every build: set from BrightScript console to test toasts. Format: "type|message"
          Example: m.top.getScene().testToast = "error|Something went wrong" -->
     <field id="testToast" type="string" value="" alwaysNotify="true" />

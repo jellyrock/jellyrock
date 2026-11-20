@@ -1,0 +1,143 @@
+import "pkg:/source/utils/listPosition.bs"
+
+namespace tests
+
+  @suite("listPosition.bs - where a viewer is in a list that hides rows")
+  class ListPositionTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("firstVisibleAfter - the window follows focus")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("stays put while focus moves inside the window")
+    function _()
+      m.assertEqual(listPosition.firstVisibleAfter(0, 3, 8, 12), 0)
+      m.assertEqual(listPosition.firstVisibleAfter(2, 9, 8, 12), 2)
+      m.assertEqual(listPosition.firstVisibleAfter(2, 2, 8, 12), 2)
+    end function
+
+    @it("moves down one row when focus steps past the last row on screen")
+    function _()
+      m.assertEqual(listPosition.firstVisibleAfter(0, 8, 8, 12), 1)
+      m.assertEqual(listPosition.firstVisibleAfter(1, 9, 8, 12), 2)
+    end function
+
+    @it("moves up one row when focus steps above the first row on screen")
+    function _()
+      m.assertEqual(listPosition.firstVisibleAfter(4, 3, 8, 12), 3)
+    end function
+
+    @it("shows the end of the list after a wrap to the last row")
+    function _()
+      m.assertEqual(listPosition.firstVisibleAfter(0, 11, 8, 12), 4)
+    end function
+
+    @it("shows the start of the list after a wrap to the first row")
+    function _()
+      m.assertEqual(listPosition.firstVisibleAfter(4, 0, 8, 12), 0)
+    end function
+
+    @it("is 0 for a list that shows every row")
+    function _()
+      m.assertEqual(listPosition.firstVisibleAfter(3, 2, 8, 8), 0)
+      m.assertEqual(listPosition.firstVisibleAfter(0, 1, 8, 3), 0)
+      m.assertEqual(listPosition.firstVisibleAfter(0, 1, 0, 3), 0)
+    end function
+
+    @it("never leaves the window past either end")
+    function _()
+      m.assertEqual(listPosition.firstVisibleAfter(9, 11, 8, 12), 4)
+      m.assertEqual(listPosition.firstVisibleAfter(-3, 0, 8, 12), 0)
+    end function
+
+    ' FF and Rewind page the list, and opening on defaultIndex jumps it, and Roku
+    ' moves the window the least it must for those too. Each case is a move seen
+    ' on a device.
+    @it("follows a page or a jump the same way as a step")
+    function _()
+      ' Opening on a row below the first screen puts it at the bottom.
+      m.assertEqual(listPosition.firstVisibleAfter(0, 9, 8, 12), 2)
+      ' Opening on a row inside the first screen leaves the window at the top.
+      m.assertEqual(listPosition.firstVisibleAfter(0, 5, 8, 12), 0)
+      ' FF from the first row, then again to the last.
+      m.assertEqual(listPosition.firstVisibleAfter(0, 17, 8, 24), 10)
+      m.assertEqual(listPosition.firstVisibleAfter(10, 23, 8, 24), 16)
+      ' Rewind from the last row puts the row it lands on at the top.
+      m.assertEqual(listPosition.firstVisibleAfter(16, 6, 8, 24), 6)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("describe - what the line shows")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    ' The line answers "is there more?", and a list seen whole has answered it.
+    @it("is not shown for a list that shows every row")
+    function _()
+      state = listPosition.describe(0, 2, 8, 8)
+      m.assertFalse(state.isShown)
+      m.assertFalse(state.hasAbove)
+      m.assertFalse(state.hasBelow)
+    end function
+
+    @it("at the top, lights only the lower arrowhead")
+    function _()
+      state = listPosition.describe(0, 0, 8, 12)
+      m.assertTrue(state.isShown)
+      m.assertEqual(state.position, 1)
+      m.assertEqual(state.total, 12)
+      m.assertFalse(state.hasAbove)
+      m.assertTrue(state.hasBelow)
+    end function
+
+    @it("in the middle, lights both")
+    function _()
+      state = listPosition.describe(2, 5, 8, 12)
+      m.assertTrue(state.hasAbove)
+      m.assertTrue(state.hasBelow)
+      m.assertEqual(state.position, 6)
+    end function
+
+    @it("at the end, lights only the upper arrowhead")
+    function _()
+      state = listPosition.describe(4, 11, 8, 12)
+      m.assertTrue(state.hasAbove)
+      m.assertFalse(state.hasBelow)
+      m.assertEqual(state.position, 12)
+    end function
+
+    ' An arrowhead follows the rows hidden, not the focused row: focus on the
+    ' first row on screen still has rows above it.
+    @it("lights by the rows hidden, wherever focus is in the window")
+    function _()
+      state = listPosition.describe(3, 3, 8, 12)
+      m.assertTrue(state.hasAbove)
+    end function
+
+    @it("reads an unfocused list as its first row")
+    function _()
+      m.assertEqual(listPosition.describe(0, -1, 8, 12).position, 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("layout - the count centered between the arrowheads")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("centers the count and puts an arrowhead the same gap from each side")
+    function _()
+      parts = listPosition.layout(804, 90)
+      m.assertEqual(parts.countX, 357)
+      m.assertEqual(parts.countX - (parts.upX + listPosition.CHEVRON_SIZE), listPosition.PART_GAP)
+      m.assertEqual(parts.downX - (parts.countX + parts.countWidth), listPosition.PART_GAP)
+    end function
+
+    @it("keeps every edge on the 3 px grid for a measured width off it")
+    function _()
+      parts = listPosition.layout(804, 91)
+      for each edge in [parts.upX, parts.countX, parts.countWidth, parts.downX, parts.chevronY]
+        m.assertEqual(edge mod 3, 0)
+      end for
+    end function
+
+  end class
+
+end namespace

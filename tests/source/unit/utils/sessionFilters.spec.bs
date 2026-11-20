@@ -1,0 +1,143 @@
+import "pkg:/source/GridView/gridQuery.bs"
+import "pkg:/source/utils/session.bs"
+import "pkg:/source/utils/sessionFilters.bs"
+
+namespace tests
+
+  ' A library tab's filters last for the signed-in session: kept on the user node, per
+  ' library and tab, and gone when the session ends.
+  @suite("sessionFilters - a tab's filters for the session")
+  class SessionFiltersTests extends tests.BaseTestSuite
+
+    protected override sub beforeEach()
+      super.beforeEach()
+      m.global.user.libraryFilters = {}
+    end sub
+
+    protected override sub afterEach()
+      m.global.user.libraryFilters = {}
+      super.afterEach()
+    end sub
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("get() and setCategory()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("answers an empty map for a tab with no filters")
+    function _()
+      m.assertEqual(sessionFilters.get("lib-1", "movies"), {})
+      m.assertEqual(sessionFilters.get(invalid, invalid), {})
+    end function
+
+    @it("keeps a category's values, and categories side by side")
+    function _()
+      sessionFilters.setCategory("lib-1", "movies", "Genres", ["Action", "Science Fiction"])
+      sessionFilters.setCategory("lib-1", "movies", "Status", ["Unplayed"])
+
+      filters = sessionFilters.get("lib-1", "movies")
+      m.assertEqual(filters.count(), 2)
+      m.assertEqual(gridQuery.valuesOf(filters, "Genres"), ["Action", "Science Fiction"])
+      m.assertEqual(gridQuery.valuesOf(filters, "Status"), ["Unplayed"])
+    end function
+
+    @it("replaces a category's values, whatever case it is named in")
+    function _()
+      sessionFilters.setCategory("lib-1", "movies", "Genres", ["Action"])
+      sessionFilters.setCategory("lib-1", "movies", "genres", ["Drama"])
+
+      filters = sessionFilters.get("lib-1", "movies")
+      m.assertEqual(filters.count(), 1)
+      m.assertEqual(gridQuery.valuesOf(filters, "Genres"), ["Drama"])
+    end function
+
+    @it("removes a category given no values, and the entry with its last category")
+    function _()
+      sessionFilters.setCategory("lib-1", "movies", "Genres", ["Action"])
+      sessionFilters.setCategory("lib-1", "movies", "Genres", [])
+
+      m.assertEqual(sessionFilters.get("lib-1", "movies"), {})
+      m.assertEqual(m.global.user.libraryFilters.count(), 0)
+    end function
+
+    @it("drops empty values, and stores nothing without a library or a category")
+    function _()
+      sessionFilters.setCategory("lib-1", "movies", "Years", ["1999", "", invalid, " 2001 "])
+      sessionFilters.setCategory("", "movies", "Years", ["1999"])
+      sessionFilters.setCategory("lib-2", "movies", "", ["1999"])
+
+      m.assertEqual(gridQuery.valuesOf(sessionFilters.get("lib-1", "movies"), "Years"), ["1999", "2001"])
+      m.assertEqual(m.global.user.libraryFilters.count(), 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("one entry per library and tab")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps each tab's filters apart, and each library's")
+    function _()
+      sessionFilters.setCategory("lib-1", "movies", "Status", ["Played"])
+      sessionFilters.setCategory("lib-1", "collections", "Favorites", ["Favorites"])
+      sessionFilters.setCategory("lib-2", "movies", "Status", ["Unplayed"])
+
+      m.assertEqual(gridQuery.statusOf(sessionFilters.get("lib-1", "movies")), "Played")
+      m.assertTrue(gridQuery.hasFavorites(sessionFilters.get("lib-1", "collections")))
+      m.assertFalse(gridQuery.hasFavorites(sessionFilters.get("lib-1", "movies")))
+      m.assertEqual(gridQuery.statusOf(sessionFilters.get("lib-2", "movies")), "Unplayed")
+    end function
+
+    @it("reads a tab whatever case its id is in, and a screen with no tab")
+    function _()
+      sessionFilters.setCategory("lib-1", "Movies", "Status", ["Played"])
+      sessionFilters.setCategory("folder-1", "", "Favorites", ["Favorites"])
+
+      m.assertEqual(gridQuery.statusOf(sessionFilters.get("lib-1", "movies")), "Played")
+      m.assertTrue(gridQuery.hasFavorites(sessionFilters.get("folder-1", "")))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("count()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("counts the ticked values across a tab's categories, and no other tab's")
+    function _()
+      m.assertEqual(sessionFilters.count("lib-1", "movies"), 0)
+      sessionFilters.setCategory("lib-1", "movies", "Genres", ["Action", "Drama"])
+      sessionFilters.setCategory("lib-1", "movies", gridQuery.CATEGORY_STATUS, ["Unplayed"])
+      sessionFilters.setCategory("lib-1", "genres", "Years", ["1999"])
+      m.assertEqual(sessionFilters.count("lib-1", "movies"), 3)
+      m.assertEqual(sessionFilters.count("lib-1", "genres"), 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("clear()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("removes one tab's filters and no other's")
+    function _()
+      sessionFilters.setCategory("lib-1", "movies", "Status", ["Played"])
+      sessionFilters.setCategory("lib-1", "genres", "Status", ["Unplayed"])
+
+      sessionFilters.clear("lib-1", "movies")
+      sessionFilters.clear("lib-9", "movies")
+
+      m.assertEqual(sessionFilters.get("lib-1", "movies"), {})
+      m.assertEqual(gridQuery.statusOf(sessionFilters.get("lib-1", "genres")), "Unplayed")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the end of a session")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("is emptied by user.Logout(), which every sign-out, user switch and server switch runs")
+    function _()
+      sessionFilters.setCategory("lib-1", "movies", "Status", ["Played"])
+
+      user.Logout()
+
+      m.assertEqual(sessionFilters.get("lib-1", "movies"), {})
+      m.assertEqual(sessionFilters.all(), {})
+    end function
+
+  end class
+
+end namespace

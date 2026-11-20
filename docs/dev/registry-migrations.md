@@ -25,13 +25,13 @@ You don't need one to add a setting (its default comes from `settings/settings.j
 
 ## How a migration runs
 
-`Main()` in `source/main.bs` calls `runGlobalMigrations()` for the global `JellyRock` section, then `runRegistryUserMigrations()` for every user section, before it creates the scene. Each migration is a block guarded by a version:
+`Main()` in `source/main.bs` calls `runGlobalMigrations()` for the global `JellyRock` section, then `runRegistryUserMigrations()` for every user section, before it creates the scene. Each migration is a function that does the work, and a block in the runner that holds its version gate and calls it:
 
 ```brighterscript
 if isValid(lastRunVersion) and not versionChecker(lastRunVersion, AUDIO_CODEC_MIGRATION_VERSION)
 ```
 
-`versionChecker(a, b)` is true when `a` is at least `b`, so the block runs when the section was last used by a version older than the constant. A user several versions behind runs every block they missed, in file order.
+`versionChecker(a, b)` is true when `a` is at least `b`, so the block runs when the section was last used by a version older than the constant. A user several versions behind runs every block they missed, in file order. The runner holds only the gates and the calls: the work lives in the function, so a spec can call one migration without the ones after it.
 
 Write each migration so it can run more than once:
 
@@ -62,20 +62,20 @@ If the release number isn't known yet, use the release you expect. `npm run lint
 
 A released constant keeps its value: changing it re-runs the migration for users who already ran it. For new work, add a new constant and block. You can remove a released constant, or rename it and keep its value.
 
-### 2. Add the block
+### 2. Add the function and its gated call
 
-Put it at the end of the function for your scope, so the blocks stay in version order:
+Write the function below the runner, then add a gated call at the end of the runner for your scope, so the gates stay in version order:
 
-- **A user setting:** `runRegistryUserMigrations()`. Inside it, `reg` is the user's section and `section` its name.
-- **A global setting** (in the `JellyRock` section): `runGlobalMigrations()`.
+- **A user setting:** `runRegistryUserMigrations()`. The function takes `reg` (the user's section) and `section` (its name), which the runner has in hand.
+- **A global setting** (in the `JellyRock` section): `runGlobalMigrations()`. It still keeps its block inline, since no global migration has needed a spec of its own; when one does, give it a function the same way.
 
-A rename that also changes values, from `AUDIO_CODEC_MIGRATION_VERSION`:
+The function holds the whole migration. A rename that also changes values, from `AUDIO_CODEC_MIGRATION_VERSION`:
 
 ```brighterscript
-' AUDIO_CODEC_MIGRATION_VERSION - Rename and migrate audio codec preference
-if isValid(lastRunVersion) and not versionChecker(lastRunVersion, AUDIO_CODEC_MIGRATION_VERSION)
-  m.wasMigrated = true
-
+' AUDIO_CODEC_MIGRATION_VERSION - Rename the audio codec preference and replace its deprecated values
+' @param reg The user's registry section
+' @param section The section name, for log lines
+sub migrateAudioCodecSetting(reg as object, section as string)
   oldSettingName = "playbackPreferredAudioCodec"
   newSettingName = "playbackPreferredMultichannelCodec"
 
@@ -96,12 +96,22 @@ if isValid(lastRunVersion) and not versionChecker(lastRunVersion, AUDIO_CODEC_MI
   else
     print `No audio codec migration needed for userid: ${section} (setting not found)`
   end if
+end sub
+```
+
+The runner's gated call:
+
+```brighterscript
+' AUDIO_CODEC_MIGRATION_VERSION - Rename and migrate audio codec preference
+if isValid(lastRunVersion) and not versionChecker(lastRunVersion, AUDIO_CODEC_MIGRATION_VERSION)
+  m.wasMigrated = true
+  migrateAudioCodecSetting(reg, section)
 end if
 ```
 
-Every block follows the same rules:
+Every migration follows the same rules:
 
-- **Set `m.wasMigrated = true`.** `Main()` then prints the registry, so the console shows what changed.
+- **Set `m.wasMigrated = true` in the gated call, before calling the function.** `Main()` then prints the registry, so the console shows what changed.
 - **Write only what the user had.** When the old key is missing, write nothing: the default comes from `settings/settings.json`. A default written to the registry stops a later change to the default from reaching that user.
 - **Delete the old key** once its value is written under the new one.
 - **Call `reg.flush()` when you wrote or deleted something**, and only then.
@@ -121,6 +131,17 @@ After a rename, only the new name exists, so nothing may read the old one:
 
    Leave what is meant to keep the old name: earlier migrations' mappings, legacy inputs in the migration specs and mocks, and the generated `docs/user/app-settings.md`.
 
+### When the migration cannot know enough
+
+A migration sees only the registry. It has no server, no library types and no screen. When the right new value depends on something only a screen knows, split the work:
+
+1. The migration does everything the registry alone decides, and parks the rest under a key the new code can read as it is.
+2. The screen finishes the move the first time it has the missing fact, in one function that changes nothing once the parked key is gone.
+
+The library sort is the example. An old per-library sort belongs to the library type's default tab, and the registry does not hold a library's type. `migrateLibrarySortAndFilters()` writes it to the bare `display.<libraryId>.sort` key, and `adoptLegacySort()` in `source/utils/displaySettings.bs` moves it to the default tab's key when the library opens. Dropping the value would have been simpler and would have lost most users' saved sort.
+
+Give the screen's half its own spec, and keep it a move that is safe to run on every open.
+
 ## Test it
 
 A migration test is an integration test under `tests/source/integration/migration/`, in a spec named for it (`AudioCodecMigration.spec.bs`). A migration that only cleans up keys an earlier one wrote can be tested in that one's spec, as the `HOMESECTION_CLEANUP_VERSION` cleanup is in `SettingsMigration.spec.bs`. The rules for registry tests are in [`unit-tests.md`](unit-tests.md#test-the-registry). For a migration:
@@ -128,7 +149,8 @@ A migration test is an integration test under `tests/source/integration/migratio
 - **Tag the suite `@tags("migration")`** and set `m.needsRegistrySetup = true` before `super.setup()`.
 - **Name each section `test-<something>`**, unique to its test. In test mode the runner migrates only `test-` sections, so a real user's data is never touched.
 - **Write `serverId`.** The runner skips a section without one as an unfinished login, so a test that leaves it out passes without running the migration.
-- **Pass the section to the runner:** `runRegistryUserMigrations([testUserId])`, so other tests' sections stay out of it.
+- **Call your migration's function, not the runner.** The runner also runs every block after yours, and one of them may rewrite the value you assert, so a spec that goes through the runner breaks when someone adds a later migration. Pass the function a section object and its name: `migrateAudioCodecSetting(CreateObject("roRegistrySection", testUserId), testUserId)`.
+- **Keep the version-gate cases on the runner:** `runRegistryUserMigrations([testUserId])`, so other tests' sections stay out of it. A later block can still change what such a case reads. Assert a value no later block touches, or the end value of the chain with a one-line comment saying so.
 
 ```brighterscript
 @it("migrates playbackPreferredAudioCodec to playbackPreferredMultichannelCodec")
@@ -141,7 +163,7 @@ function _()
   reg.write("playbackPreferredAudioCodec", "eac3")
   reg.flush()
 
-  runRegistryUserMigrations([testUserId])
+  migrateAudioCodecSetting(CreateObject("roRegistrySection", testUserId), testUserId)
 
   reg = CreateObject("roRegistrySection", testUserId)
   m.assertEqual(reg.read("playbackPreferredMultichannelCodec"), "eac3")
@@ -158,8 +180,8 @@ Cover these cases:
 | A value it keeps | It is unchanged |
 | The old key is missing | Nothing is written |
 | Old and new keys both there | The result is what you decided, and the old key is gone |
-| `LastRunVersion` at the constant's version | The block does not run |
-| `LastRunVersion` below the constant's version | The block runs |
+| `LastRunVersion` at the constant's version | The block does not run (through the runner) |
+| `LastRunVersion` below the constant's version | The block runs (through the runner) |
 | The block runs twice | The second run changes nothing |
 | Two users | Each keeps their own value |
 
@@ -170,6 +192,6 @@ Also add your old keys to `"migrates all user settings from old to new names"` i
 The `migration` tag keeps these suites out of `test:all` and `test:integration`. Run them one of two ways:
 
 - **Your spec alone:** list it in your TDD config and run `npm run test:tdd` ([`unit-tests-tdd.md`](unit-tests-tdd.md)).
-- **Every suite, migrations included:** `npm run test:complete`. It records code coverage, so it takes much longer.
+- **Every suite but the timing ones, migrations included:** `npm run test:complete`. It leaves out the `measurement` suites and records code coverage, so it takes much longer.
 
 Then try it on a device with real data. Sideload a build from before your change (`git switch --detach <last-release-tag>`), sign in and change the setting so the old key is stored. Then sideload your build over it and watch the console (`telnet <roku-ip> 8085`): it prints your migration's lines, then the registry.
