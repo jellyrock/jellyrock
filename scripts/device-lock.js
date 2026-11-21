@@ -163,6 +163,9 @@ const DEFAULT_LEASE_MS = 3 * REFRESH_MS;
  */
 const STEAL_CONFIRM_MS = 10 * 1000;
 
+/** How long one GitHub request may sit silent before it is cut off. */
+const REQUEST_TIMEOUT_MS = 20_000;
+
 const isCI = () => process.env.GITHUB_ACTIONS === 'true';
 
 /** Control-flow marker: this caller is read-only, so skip the write attempt. */
@@ -345,7 +348,10 @@ function api(pathname, opts = {}) {
  * the network, and, more importantly, so a stubbed test can never silently fall
  * through to real GitHub and start creating refs.
  */
-function httpsTransport(pathname, { method = 'GET', body, token } = {}) {
+function httpsTransport(
+  pathname,
+  { method = 'GET', body, token, timeoutMs = REQUEST_TIMEOUT_MS } = {},
+) {
   const payload = body ? JSON.stringify(body) : null;
   return new Promise((resolve, reject) => {
     const req = https.request(
@@ -353,7 +359,7 @@ function httpsTransport(pathname, { method = 'GET', body, token } = {}) {
       {
         method,
         // The global agent puts a 5 s socket timeout on every request, which
-        // would cut a slow call off before the 20 s limit below applies.
+        // would cut a slow call off before the limit below applies.
         agent: false,
         headers: {
           accept: 'application/vnd.github+json',
@@ -381,7 +387,7 @@ function httpsTransport(pathname, { method = 'GET', body, token } = {}) {
       },
     );
     req.on('error', (err) => reject(new Error(`${err.code || 'ERR'}: ${pathname}`)));
-    req.setTimeout(20_000, () => req.destroy(new Error(`timeout calling ${pathname}`)));
+    req.setTimeout(timeoutMs, () => req.destroy(new Error(`timeout calling ${pathname}`)));
     if (payload) req.write(payload);
     req.end();
   });
@@ -676,12 +682,23 @@ function degraded(reason, requireLock, what) {
 
 const RELEASE_TRIES = 3;
 const RELEASE_RETRY_MS = 250;
+// Each release try's time limit, shorter than REQUEST_TIMEOUT_MS because the
+// release runs on the way out, often from a Ctrl-C handler that waits for it.
+// Three tries then hold the exit for about 25 s at most, not a minute. A chosen
+// limit, not a measured one, with headroom over the slowest GitHub call that
+// still succeeded (5.1 s, 2026-11-20). If all three run out, the lease expires
+// on its own and `device:release` frees it at once.
+const RELEASE_TRY_MS = 8_000;
 
 async function releaseRef(repo, token, ref, tookRef) {
   if (!tookRef) return;
   for (let attempt = 1; attempt <= RELEASE_TRIES; attempt++) {
     try {
-      const { status } = await api(`/repos/${repo}/git/refs/${ref}`, { method: 'DELETE', token });
+      const { status } = await api(`/repos/${repo}/git/refs/${ref}`, {
+        method: 'DELETE',
+        token,
+        timeoutMs: RELEASE_TRY_MS,
+      });
       // 404 and 422 both mean the ref is already gone.
       if ((status >= 200 && status < 300) || status === 404 || status === 422) return;
     } catch {
@@ -908,6 +925,8 @@ export const _internals = {
   },
   describeHolder,
   DEFAULT_LEASE_MS,
+  REQUEST_TIMEOUT_MS,
+  RELEASE_TRY_MS,
   /** Test seam: see `httpsTransport`. Pass nothing to restore the real one. */
   setTransport: (fn) => {
     transport = fn ?? httpsTransport;
