@@ -2992,15 +2992,15 @@ A screen covered while a setting changes (Settings opened over it, or another li
 
 Ruled out: a screen observing `m.global.user.settings` fields itself (the node is shared, so an `unobserveField` at teardown can remove another component's observer, as `ObserverRegistry.spec.bs` records, and a covered screen would redraw while nobody sees it); rebuilding the screen under Settings on every change, as a theme change does (loses the scroll position and focus, and fetches again); keeping the record on the scene beside `contentVersion` (the scene never sees a setting write; the settings node sees every one). A theme or language change keeps its rebuild, since colors and strings are set when each node is built.
 
-## decision-id: page-menu-flat-no-entry-cap
+## decision-id: page-entry-from-setting
 
 **date**: 2026-11-18
 **status**: accepted
-**related-files**: `source/utils/pageSettings.bs`, `source/home/homePageSettings.bs`, `components/JRScene.bs`
+**related-files**: `source/utils/pageSettings.bs`, `source/home/homePageSettings.bs`
 
-The settings icon's page menu stays one flat list whatever the count of entries: a library offers up to four, Home five (Row Layout, Episode Images Next Up, Max Items per Row, Max Days Next Up, Rewatching Next Up). Every entry is then one press from the icon, and the menu reads like the player's settings menu. An app-wide setting is offered on a page when a pick visibly changes that page, and its entry is built from the setting's own `settings.json` entry (`pageSettings.settingEntry()`), so it reads as in Settings; an integer setting is offered as steps with the value in force placed among them, as the player's Maximum Bitrate is.
+An app-wide setting offered on a page (Home's five, a library's Item Titles) gets its entry from the setting's own `settings.json` entry (`pageSettings.settingEntry()`), so it reads as in Settings. An integer setting is offered as steps with the value in force placed among them, as the player's Maximum Bitrate is. How many entries the menu holds is [ADR 0063](adr/0063-page-menu-flat-at-any-count.md).
 
-Ruled out: moving a page's entries into one Page settings dialog past about three (the plan's first rule), which puts every Home setting two presses deep for a list that still fits the screen; a number-entry dialog for integer settings, which is slower with a remote than a list and is what Settings is for.
+Ruled out: a number-entry dialog for integer settings, which is slower with a remote than a list and is what Settings is for.
 
 ## decision-id: ratings-one-setting-episode-spoiler
 
@@ -3046,3 +3046,4 @@ convergence (audit-before-migrate). Old `decision-id` references resolve here:
 | `rta-functional-tests-vitest` | [ADR 0017](adr/0017-rta-functional-tests-vitest.md) |
 | `episode-queue-starts-fresh` | [ADR 0038](adr/0038-queue-arrival-starts-fresh.md) |
 | `bare-array-bodies-accept-items-wrapper` | [ADR 0039](adr/0039-list-endpoint-shape-in-pool.md) |
+| `page-menu-flat-no-entry-cap` | [ADR 0063](adr/0063-page-menu-flat-at-any-count.md) |
