@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-21: fix(syncplay): Stop a short lander resuming late after a second Seek
 - 2026-11-18: update(syncplay): Stay in step with a new engine; rejoin a lost group
 - 2026-11-18: ci: Wait out a busy Weblate repository; count translations in the changelog
 - 2026-11-17: fix(home): Hide the Live TV rows from users without Live TV access
@@ -57,19 +58,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-11-08: feat(syncplay): Add a group mark, names, a play confirm and catch-up
 - 2026-11-08: chore(rta): Keep the device safe however the RTA runner is stopped
 - 2026-11-07: fix(video): Follow repeat mode on voice and remote Next and Previous
-- 2026-11-06: update(logging): Mask secrets in logs, keep names and search text out
-- 2026-11-06: fix(playback): Start 4K Dolby Vision on a display without HDR
-- 2026-11-06: fix(playback): Play more Dolby Vision files, end a wasted retry
-- 2026-11-05: fix(playback): Handle long films, big re-encodes and frozen playback
-- 2026-11-05: Renamed the Rooibos patch for alpha.56, so `npm install` no longer warns about a version mismatch
-- 2026-11-05: fix(playback): Make 4K transcodes play, in HEVC on hardware servers
-- 2026-11-05: fix(playback): Recover when a 4K remux overflows the video buffer
-- 2026-11-05: refactor(logging): adopt `roku-log` as owned code, drop its hook
-- 2026-11-05: feat(syncplay): Repeat, shuffle, time offset and leave in the gear
-- 2026-11-05: fix(playback): Copy AC3 audio in a remux on 7.1 systems
-- 2026-11-05: fix(playback): Pick a playable audio track, not audio description
-- 2026-11-04: chore(build): Fail the build on an `m.log` call with too many values
-- 2026-11-04: fix(playback): Stop transcoded videos playing with no sound
 
 ## Open followups
 
