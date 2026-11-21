@@ -2874,6 +2874,16 @@ Translations get one changelog section, last above Dependencies, fed by no PR-ti
 
 Credit is the names in the `Co-authored-by` trailers of the commits that touched a translation, minus Weblate and bots. An anonymous suggestion accepted in Weblate arrives as one of those, so a line with no names credits "translators", and every line ends "on Weblate", linked, so the notes always say where to help. Re-evaluate if the count misleads: most of 3.5.0's 4,567 strings came from the other-client imports, not from Weblate.
 
+## decision-id: syncplay-resume-lag-not-carried
+
+**date**: 2026-11-20
+**status**: accepted
+**related-files**: `source/syncplay/syncPlayPlayer.bs`
+
+A new stream starts its resume lag again (`syncPlayPlayer.mounted()`); the lag learned on the stream before is not carried. Carrying only a lag below zero was tried and declined: it did not leave other devices on the behavior that passed. In the new-stream records of 2026-11-18, the carried steady samples of a Streaming Stick 4K were all below zero in 6 of 13 and 2 of 10 windows, and with the carry in place in 9 of 10 (8 of 9 on an Ultra). The samples were split from repeated readings, so the counts are approximate. Each try costs 20 runs of `syncplay-controls`, on the device where the first carry failed 1 run in 14. The cost accepted: a low-end Streaming Stick holds three or four times, each under half a second, as a video starts (the user page's Known limits).
+
+If it is taken up again, size separates the devices where sign does not. Steady samples were -228 to -429 ms on the low-end Stick and -37 to +16 ms on the Stick 4K and the Ultra, so a carry gated on a lag far below zero is the shape to try. It closed followup `syncplay-hold-leaves-lead`.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

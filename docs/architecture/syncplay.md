@@ -169,7 +169,7 @@ A resume takes effect a little after it is written. The player model learns how 
 - A sample can be below zero: the node ran on past the stop the model took. A lag below zero is used only when at least two samples are kept and all are below zero. A low-end Stick's node ran on at every resume measured, and on other devices one such sample is noise.
 - A new stream forgets what was learned (`syncPlayPlayer.mounted()`).
 
-That last point costs a low-end device a few short holds at the start of each video. Carrying the lag across streams was tried and declined on 2026-11-20. The carry changed what other devices did, and the commit that closed followup `syncplay-hold-leaves-lead` records the samples.
+That last point costs a low-end device a few short holds at the start of each video. Carrying the lag across streams was tried and declined on 2026-11-20. The carry changed what other devices did, and decision `syncplay-resume-lag-not-carried` records the samples.
 
 `lateLagMs()` guards one trap: a lag below zero applied to "now" would put the resume off at every look, for good.
 
@@ -297,7 +297,7 @@ The specs read the manager through its published `sync` field. It carries counte
 
 The user page's [Known limits](../user/features/syncplay.md#known-limits) lists what a viewer can meet, each with its device and date. The open followups in `docs/progress.md` hold the rest. By what they are about:
 
-- A second seek inside one pause on a device that lands short. The fix passed its 700-step run on a low-end Streaming Stick on 2026-11-21: 700 of 700 at rest, against 697 with 3 frozen on the same step list on 2026-11-18.
+- A member can play a few tens of milliseconds behind after a group `Seek`, inside the bars, so nothing corrects it (`syncplay-member-behind-after-seek-uncorrected`).
 - The learned lead misses on a file with sparse keyframes (`syncplay-catch-up-lead-from-keyframes`).
 - A load in a group that never reaches a first frame, cause unknown (`syncplay-load-never-reaches-first-frame`).
 - A previous step right after a transcoding item's `Ready` (`syncplay-previous-reload-never-swaps`).
