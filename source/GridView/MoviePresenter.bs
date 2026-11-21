@@ -14,6 +14,7 @@ import "pkg:/source/GridView/libraryTab.bs"
 import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/utils/languageFilters.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/ratingsDisplay.bs"
 import "pkg:/source/utils/tasks.bs"
 
 ' The presentation layout's grid starts here, and never moves: the panel above it fills
@@ -295,8 +296,8 @@ class MoviePresenter extends GridPresenterBase
         m.displayInfoNode(movieInfoGroup, ratingNode)
       end if
 
-      ' Community Rating (if enabled)
-      if m.view.global.user.settings.uiMoviesShowRatings
+      ' Community Rating, when ratings show (ratingsDisplay.isShown; a movie is never an episode)
+      if ratingsDisplay.isShown(m.view.global.user.settings, false)
         if item.communityRating > 0
           communityRating = CreateObject("roSGNode", "CommunityRating")
           communityRating.id = "communityRatingDisplay"
@@ -349,21 +350,21 @@ class MoviePresenter extends GridPresenterBase
 
       ' The overview takes the lines the rows above it leave, so a movie with no ratings
       ' or no tagline shows more of it and nothing floats over a gap
+      tagline = m.paneTagline(item, m.view.global.user.settings)
       used = 0
       if isValid(movieInfoGroup) and movieInfoGroup.getChildCount() > 0 then used += TEXT_LINE
       if isValid(movieGenresGroup) and movieGenresGroup.getChildCount() > 0 then used += TEXT_LINE
       if used > 0 then used += DESCRIPTION_GAP
-      if item.taglines.count() > 0 and item.taglines[0] <> "" then used += TEXT_LINE + TAGLINE_GAP
+      if tagline <> "" then used += TEXT_LINE + TAGLINE_GAP
       overviewLines = (PANEL_ROOM - used) \ TEXT_LINE
       if overviewLines < OVERVIEW_MIN_LINES then overviewLines = OVERVIEW_MIN_LINES
 
-      ' Tagline (stored in taglines array)
-      if item.taglines.count() > 0 and item.taglines[0] <> ""
+      if tagline <> ""
         taglineNode = CreateObject("roSGNode", "LabelSecondaryMedium")
         taglineNode.id = "selectedMovieTagline"
         taglineNode.isBold = true
         taglineNode.width = 800
-        taglineNode.text = item.taglines[0]
+        taglineNode.text = tagline
         movieDescriptionGroup.appendChild(taglineNode)
       end if
 
@@ -384,6 +385,14 @@ class MoviePresenter extends GridPresenterBase
     ' Load logo
     m.loadLogo(item.id)
   end sub
+
+  ' The tagline the pane shows for `item`: its first, or "" when it has none or Hide Taglines is
+  ' on, as on the details screen.
+  function paneTagline(item as object, userSettings as object) as string
+    if userSettings.uiDetailsHideTagline = true then return ""
+    if type(item.taglines) <> "roArray" or item.taglines.count() = 0 then return ""
+    return textOrEmpty(item.taglines[0])
+  end function
 
   ' Load movie logo image, on a NEW node per focus change: focus can move on while the
   ' previous lookup is still running, and a launch of a still-running node is ignored

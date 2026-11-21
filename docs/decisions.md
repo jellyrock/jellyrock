@@ -2992,6 +2992,36 @@ A screen covered while a setting changes (Settings opened over it, or another li
 
 Ruled out: a screen observing `m.global.user.settings` fields itself (the node is shared, so an `unobserveField` at teardown can remove another component's observer, as `ObserverRegistry.spec.bs` records, and a covered screen would redraw while nobody sees it); rebuilding the screen under Settings on every change, as a theme change does (loses the scroll position and focus, and fetches again); keeping the record on the scene beside `contentVersion` (the scene never sees a setting write; the settings node sees every one). A theme or language change keeps its rebuild, since colors and strings are set when each node is built.
 
+## decision-id: page-entry-from-setting
+
+**date**: 2026-11-18
+**status**: accepted
+**related-files**: `source/utils/pageSettings.bs`, `source/home/homePageSettings.bs`
+
+An app-wide setting offered on a page (Home's five, a library's Item Titles) gets its entry from the setting's own `settings.json` entry (`pageSettings.settingEntry()`), so it reads as in Settings. An integer setting is offered as steps with the value in force placed among them, as the player's Maximum Bitrate is. How many entries the menu holds is [ADR 0063](adr/0063-page-menu-flat-at-any-count.md).
+
+Ruled out: a number-entry dialog for integer settings, which is slower with a remote than a list and is what Settings is for.
+
+## decision-id: ratings-one-setting-episode-spoiler
+
+**date**: 2026-11-18
+**status**: accepted
+**related-files**: `source/utils/ratingsDisplay.bs`, `components/ItemDetails.bs`, `components/video/OSD.bs`, `source/GridView/MoviePresenter.bs`
+
+Community and Critical Ratings (`uiMoviesShowRatings`) is one app-wide setting: it shows or hides community and critic ratings on every details screen, in Grid with details and in the player. It sat under Libraries › Movies and read as a movie setting, while the details screen already applied it to every item type. Disable Community Rating for Episodes (`uiTvShowsDisableCommunityRating`) also hides an episode's ratings, on its details screen as in the player, where only the player obeyed it before. One rule, `ratingsDisplay.isShown`, serves all three. The setting names are unchanged, so nothing is migrated. A viewer with ratings off now has them off in the player on episodes too.
+
+Ruled out: each setting covering its own item type (movies, then series, seasons and episodes) with every other type always showing ratings, which would bring ratings back on shows for a viewer who had turned them off.
+
+## decision-id: star-does-settings-icon
+
+**date**: 2026-11-18
+**status**: accepted
+**related-files**: `components/JRScreen.bs`, `components/JRScene.bs`, `components/settings/settings.bs`
+
+On a signed-in screen, Star does what the overhang's settings icon does, unless the screen gives Star a meaning of its own. `JRScreen.onOptionsKey` opens the screen's slide-out panel when it has one (the server list, the photo viewer), and otherwise calls `JRScene.openSettingsIconFromStar`, which opens the page's menu or Settings while the cluster shows; before sign-in and on a player Star does nothing. Settings keeps Star as its way out (`leaveScreen()`), so Star toggles Settings. Details and search, where Star did nothing, now open Settings.
+
+Ruled out: Star doing nothing on Settings, as its own settings icon does there, which would leave the key dead on the one screen where users press it to go back; a per-screen override on each screen, which Home and the library had, and which left details and search behind.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model
@@ -3016,3 +3046,4 @@ convergence (audit-before-migrate). Old `decision-id` references resolve here:
 | `rta-functional-tests-vitest` | [ADR 0017](adr/0017-rta-functional-tests-vitest.md) |
 | `episode-queue-starts-fresh` | [ADR 0038](adr/0038-queue-arrival-starts-fresh.md) |
 | `bare-array-bodies-accept-items-wrapper` | [ADR 0039](adr/0039-list-endpoint-shape-in-pool.md) |
+| `page-menu-flat-no-entry-cap` | [ADR 0063](adr/0063-page-menu-flat-at-any-count.md) |

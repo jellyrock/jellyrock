@@ -35,8 +35,8 @@ namespace tests
       m.global.user.settings.uiRowLayout = "original"
       m.rows.callFunc("applyRowLayoutSetting")
 
-      m.assertEqual(m.rows.translation, [111.0, 126.0])
-      m.assertEqual(m.rows.content.textureVisibleWidth, 1703)
+      m.assertEqual(m.rows.translation, [96.0, 126.0])
+      m.assertEqual(m.rows.content.textureVisibleWidth, 1728)
     end function
 
     @it("leaves a layout already applied as it is")

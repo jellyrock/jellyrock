@@ -8,7 +8,8 @@ namespace homeRowLayout
 
   ' The row list fields for `uiRowLayout`, for one setFields: "fullwidth" runs the rows to the
   ' screen's edges with the focus on the action safe zone, any other value is the original
-  ' inset layout. An unset value gives no fields, leaving the list's own.
+  ' inset layout, inside that zone (96 to 1824, the band the overhang and a library's grid use,
+  ' so the rows start under the tabs' text). An unset value gives no fields, leaving the list's own.
   '
   ' itemSize's height is the tallest row (a portrait slot and its text); each row's own
   ' rowHeights overrides it.
@@ -23,8 +24,8 @@ namespace homeRowLayout
       }
     end if
     return {
-      translation: [111, 126],
-      itemSize: [1703, rowSlotSize.ROW_HEIGHT_PORTRAIT],
+      translation: [96, 126],
+      itemSize: [1728, rowSlotSize.ROW_HEIGHT_PORTRAIT],
       focusXOffset: [],
       rowLabelOffset: [0, 18]
     }

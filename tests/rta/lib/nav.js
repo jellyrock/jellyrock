@@ -233,14 +233,13 @@ export async function focusHomeRow(row, label) {
   await walkHomeRowsTo(list, { row, col: 0 }, label);
 }
 
-/** home -> overhang settings icon -> Settings screen (version label is the gate). */
+/**
+ * The overhang's settings icon, then through to the Settings screen (version label is the
+ * gate), past the screen's page menu when it has one (Home, a library).
+ */
 export async function navSettings() {
   await focusOverhangIcon('settingsIcon');
-  await press(ecp.Key.Ok);
-  await waitFor('#versionLabel.text', (t) => typeof t === 'string' && /^v/.test(t), {
-    label: 'settings version label',
-    timeout: 20000,
-  });
+  await openSettingsFromGear();
   await sleep(1000); // let the settings menu + panels paint before capture
 }
 
@@ -270,13 +269,29 @@ export async function waitPageMenu(label = 'the page menu') {
 }
 
 /**
- * OK on the gear, which already holds focus, through to the Settings screen. On a screen with
- * page settings (`pageMenu`: a movie library on its Movies tab) the gear opens its menu
- * first, and All settings is the last row: Up from the first row wraps to it.
+ * Whether the gear on the screen on show opens a page menu: the screen declares page entries
+ * (JRScreen.pageSettingsEntries), the same question JRScene.openPageMenu asks. Asked of the
+ * app rather than inferred from the screen's type, because which screens have entries changes
+ * (a library's depend on its tab and layout).
  */
-export async function openSettingsFromGear({ pageMenu = false } = {}) {
+export async function activeScreenHasPageMenu() {
+  const { value } = await odc.callFunc(
+    { base: 'global', keyPath: 'activeRoutedView', funcName: 'pageSettingsEntries' },
+    { timeout: 10000 },
+  );
+  return Array.isArray(value) && value.length > 0;
+}
+
+/**
+ * OK on the gear, which already holds focus, through to the Settings screen. On a screen with
+ * page settings (Home, a library) the gear opens its menu first, and All settings is the last
+ * row: Up from the first row wraps to it. `pageMenu` says which to expect; left out, the
+ * screen is asked (activeScreenHasPageMenu).
+ */
+export async function openSettingsFromGear({ pageMenu } = {}) {
+  const hasMenu = pageMenu ?? (await activeScreenHasPageMenu());
   await press(ecp.Key.Ok);
-  if (pageMenu) {
+  if (hasMenu) {
     const rows = await waitPageMenu('the gear menu');
     await press(ecp.Key.Up);
     await waitFor('#optionList.itemFocused', (n) => n === rows - 1, {

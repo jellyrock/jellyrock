@@ -274,10 +274,17 @@ end function
 ' JRScene: Star was pressed and this screen did not take the key itself: focus was in the
 ' overhang row, or the key passed through. Do what Star does on this screen, and return
 ' whether anything happened. The base opens the slide-out panel of a screen that has one
-' (an `options` node with a `panelList`: Home, the server list). A screen with its own Star
-' behavior overrides this with the function its onKeyEvent runs, so the key means the same
-' wherever focus was.
+' (an `options` node with a `panelList`: the server list, the photo viewer); on any other
+' screen Star does what the settings icon does, where that icon shows (the page's menu, or
+' Settings: JRScene.openSettingsIconFromStar). A screen whose Star means something else
+' overrides this (Settings: Star leaves it), so the key means the same wherever focus was.
 function onOptionsKey() as boolean
+  if openOptionsPanel() then return true
+  return m.top.getScene().callFunc("openSettingsIconFromStar") = true
+end function
+
+' The screen's slide-out panel, opened with its list focused; false when it has none.
+function openOptionsPanel() as boolean
   if m.top.isOptionsAvailable <> true then return false
   ' A screen can report isOptionsAvailable without owning a panel, and a panel of another
   ' kind has no list to focus.

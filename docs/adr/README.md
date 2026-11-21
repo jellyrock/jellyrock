@@ -68,9 +68,10 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0054](0054-owned-code-gets-every-check.md) | Code kept in the repo gets every check; only package-managed code is exempt | Accepted | 2026-11-05 |
 | [0055](0055-dialog-ends-with-its-screen.md) | A dialog ends with the screen that opened it, and screen hooks run only through `JRScreen` | Accepted | 2026-11-08 |
 | [0056](0056-library-tab-ids-and-layout.md) | Library tabs have JellyRock's own ids, and layout is a setting of its own (partially superseded by 0058 and 0061) | Accepted | 2026-11-05 |
-| [0057](0057-page-settings-declared-by-screen.md) | Page settings are declared by a screen and presented by the scene (partially superseded by 0062) | Accepted | 2026-11-12 |
+| [0057](0057-page-settings-declared-by-screen.md) | Page settings are declared by a screen and presented by the scene (partially superseded by 0062 and 0063) | Accepted | 2026-11-12 |
 | [0058](0058-library-layout-saved-per-view.md) | A library's layout is saved per view (partially supersedes 0056; partially superseded by 0061) | Accepted | 2026-11-12 |
 | [0059](0059-roku-audio-track-ids-from-mkv-header.md) | A Roku audio track id comes from the MKV header, read alongside `PlaybackInfo` | Accepted | 2026-11-13 |
 | [0060](0060-ok-commits-back-leaves.md) | In a dialog, OK is the commit and Back only leaves | Accepted | 2026-11-14 |
 | [0061](0061-library-grid-count-per-row.md) | A library grid's size is a count per row, and every cell is derived (partially supersedes 0056 and 0058) | Accepted | 2026-11-16 |
 | [0062](0062-app-setting-offered-on-a-page.md) | An app-wide setting may also be a page entry where a pick visibly changes the page (partially supersedes 0057) | Accepted | 2026-11-16 |
+| [0063](0063-page-menu-flat-at-any-count.md) | The page menu stays one flat list at any count of entries (partially supersedes 0057) | Accepted | 2026-11-21 |

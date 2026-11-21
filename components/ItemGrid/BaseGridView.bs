@@ -35,6 +35,7 @@ import "pkg:/source/utils/headerStrip.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/languageFilters.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/pageSettings.bs"
 import "pkg:/source/utils/paging.bs"
 import "pkg:/source/utils/sessionFilters.bs"
 import "pkg:/source/utils/skeleton.bs"
@@ -54,7 +55,7 @@ const DEFAULT_TAB_KEY = "defaultTab"
 ' The page setting for how many cells a row holds
 const COLUMNS_KEY = "columns"
 ' The page setting for the app-wide Item Titles setting
-const TITLES_KEY = "titles"
+const TITLES_KEY = "itemGridShowTitles"
 ' Each page setting's glyph in the gear menu, at the menu's density
 const ICON_LAYOUT = "pkg:/images/icons/layout_$$RES$$.png"
 const ICON_COLUMNS = "pkg:/images/icons/itemsPerRow_$$RES$$.png"
@@ -1821,7 +1822,8 @@ function pageSettingsEntries() as object
   end if
   if showsItemGrid()
     entries.push(columnsEntry())
-    entries.push(titlesEntry())
+    titles = titlesEntry()
+    if isValid(titles) then entries.push(titles)
   end if
   if type(m.offeredViews) = "roArray" and m.offeredViews.count() > 1
     entries.push(defaultTabEntry())
@@ -1869,29 +1871,21 @@ function savedColumnsSetting() as string
 end function
 
 ' The titles entry: the app-wide Item Titles setting, offered here because a pick shows on
-' this grid at once. Its list says it applies to every library, and its options are the
-' Settings screen's own words in its order, so the setting reads one way in both places.
-function titlesEntry() as object
-  title = translate(translationKeys.LabelItemTitles)
-  selected = "false"
-  if m.top.showItemTitles then selected = "true"
-  return {
-    id: TITLES_KEY,
-    title: title,
-    pickerTitle: translate(translationKeys.LabelAppliesToAllLibraries, [title]),
-    options: [
-      { id: "false", title: translate(translationKeys.LabelDisabled) },
-      { id: "true", title: translate(translationKeys.LabelEnabled) }
-    ],
-    selected: selected,
-    icon: ICON_TITLES
-  }
+' this grid at once. It reads as Settings shows it (pageSettings.settingEntry), its value is
+' the one this grid was drawn with, and its list says it applies to every library.
+' settings.json is read when the menu first opens and kept for the screen's life, as on Home.
+function titlesEntry() as dynamic
+  if not isValid(m.settingsTree) then m.settingsTree = GetConfigTree()
+  if not isValid(m.settingsTree) then return invalid
+  entry = pageSettings.settingEntry(findConfigTreeKey(TITLES_KEY, m.settingsTree), m.top.showItemTitles, ICON_TITLES)
+  if isValid(entry) then entry.pickerTitle = translate(translationKeys.LabelAppliesToAllLibraries, [entry.title])
+  return entry
 end function
 
 ' Save the app-wide titles setting and redraw this grid with it. Other libraries pick it
 ' up when they are next shown (onSettingsChanged).
 sub applyTitles(value as string)
-  setUserSetting("itemGridShowTitles", value = "true")
+  setUserSetting(TITLES_KEY, value = "true")
   relayoutGrid()
   focusContent()
 end sub
@@ -1925,8 +1919,8 @@ sub onPageSettingChanged(id as string, value as string)
 end sub
 
 ' JRScreen hook: settings written while this screen was covered. The ones read once in init
-' apply here; the titles leave a redraw to onScreenShown (m.isRelayoutDue), which a reload
-' there covers.
+' apply here, and so do the ones the Grid with details pane reads as it draws; the titles leave
+' a redraw to onScreenShown (m.isRelayoutDue), which a reload there covers.
 sub onSettingsChanged(names as object)
   userSettings = m.global.user.settings
   if inArray(names, "itemGridReset") then m.resetGrid = userSettings.itemGridReset
@@ -1936,6 +1930,15 @@ sub onSettingsChanged(names as object)
   end if
   if inArray(names, "itemGridShowTitles") and titlesSettingChanged() then m.isRelayoutDue = true
   if inArray(names, "uiShowBackdrop") then reapplyPresentationBackdropSetting()
+  if inArray(names, "uiDetailsHideTagline") or inArray(names, "uiMoviesShowRatings") then redrawPresentationInfo()
+end sub
+
+' Draw the Grid with details pane again for the item in focus: it reads Hide Taglines and the
+' ratings setting as it draws. The presenter draws nothing on a layout without the pane.
+sub redrawPresentationInfo()
+  if isValid(m.presenter) and isValid(m.selectedFavoriteItem)
+    m.presenter.onItemFocused(m.selectedFavoriteItem, m.view, m.layout)
+  end if
 end sub
 
 ' Write the strip again for the item count setting. Only a loaded grid or the guide shows a
@@ -2133,13 +2136,6 @@ end function
 ' ============================================================================
 ' Key Events
 ' ============================================================================
-
-' JRScreen hook: Star does what the settings icon does, from the overhang row as from the
-' grid: this page's menu, or Settings on a screen that declares no page settings.
-function onOptionsKey() as boolean
-  m.top.getScene().callFunc("openPageMenu")
-  return true
-end function
 
 function onKeyEvent(key as string, press as boolean) as boolean
   if not press then return false
