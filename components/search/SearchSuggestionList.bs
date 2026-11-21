@@ -277,18 +277,20 @@ function onKeyEvent(key as string, press as boolean) as boolean
     return true
   end if
 
-  ' OPTIONS on a focused recent search: ask the screen to remove it (it confirms first).
-  ' Only in recent mode: OK on a row runs its search, and removing it is the row's
-  ' secondary action (#889). A hint row is not a recent search, so it has none.
-  if key = "options" and m.top.mode = "recent" and isValid(m.list) and m.list.isInFocusChain()
-    if isValid(m.list.content)
+  ' OPTIONS on a row of the list is always taken, so it never reaches the scene, whose
+  ' fallback opens Settings. On a recent search it asks the screen to remove it (it
+  ' confirms first): OK on a row runs its search, and removing it is the row's secondary
+  ' action (#889). A hint row is not a recent search, so it has no action and Options does
+  ' nothing there.
+  if key = "options" and isValid(m.list) and m.list.isInFocusChain()
+    if m.top.mode = "recent" and isValid(m.list.content)
       idx = m.list.itemFocused
       row = m.list.content.getChild(idx)
       if isValid(row) and isValid(row.description) and row.description <> ""
         m.top.removeRequested = row.description
-        return true
       end if
     end if
+    return true
   end if
 
   ' DOWN-from-last-row escape is handled by EscapingLabelList via the
