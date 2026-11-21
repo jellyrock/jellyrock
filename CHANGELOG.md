@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - (syncplay) Stay in step with a new engine; rejoin a lost group ([#1355](https://github.com/jellyrock/jellyrock/pull/1355)) by [@cewert](https://github.com/cewert)
 
+### Fixed
+
+- (syncplay) Stop a short lander resuming late after a second Seek ([#1412](https://github.com/jellyrock/jellyrock/pull/1412)) by [@cewert](https://github.com/cewert)
+
 ### Dependencies
 
 - Update markdownlint-cli2 from v0.24.1 to v0.24.2 ([#1411](https://github.com/jellyrock/jellyrock/pull/1411)) by [@renovate[bot]](https://github.com/apps/renovate)
