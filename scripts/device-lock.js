@@ -352,6 +352,9 @@ function httpsTransport(pathname, { method = 'GET', body, token } = {}) {
       `${API}${pathname}`,
       {
         method,
+        // The global agent puts a 5 s socket timeout on every request, which
+        // would cut a slow call off before the 20 s limit below applies.
+        agent: false,
         headers: {
           accept: 'application/vnd.github+json',
           'user-agent': 'jellyrock-device-lock',
@@ -671,15 +674,24 @@ function degraded(reason, requireLock, what) {
   };
 }
 
+const RELEASE_TRIES = 3;
+const RELEASE_RETRY_MS = 250;
+
 async function releaseRef(repo, token, ref, tookRef) {
   if (!tookRef) return;
-  try {
-    await api(`/repos/${repo}/git/refs/${ref}`, { method: 'DELETE', token });
-  } catch {
-    // A leaked lease expires on its own once the heartbeat stops, so a failed
-    // release is not fatal.
-    console.warn('[device-lock] could not release the lock; the lease will expire on its own');
+  for (let attempt = 1; attempt <= RELEASE_TRIES; attempt++) {
+    try {
+      const { status } = await api(`/repos/${repo}/git/refs/${ref}`, { method: 'DELETE', token });
+      // 404 and 422 both mean the ref is already gone.
+      if ((status >= 200 && status < 300) || status === 404 || status === 422) return;
+    } catch {
+      // Counts as a failed try.
+    }
+    if (attempt < RELEASE_TRIES) await new Promise((r) => setTimeout(r, RELEASE_RETRY_MS));
   }
+  // A leaked lease expires on its own once the heartbeat stops, so a failed
+  // release is not fatal.
+  console.warn('[device-lock] could not release the lock; the lease will expire on its own');
 }
 
 /**
