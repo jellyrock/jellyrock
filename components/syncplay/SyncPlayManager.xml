@@ -85,10 +85,13 @@
     <!-- reloadStart(playerStartTicks): where a reload in place starts while following: the group's
          position when the manager knows it, else the player's own (syncPlayHooks.reloadStart). -->
     <function name="reloadStart" />
-    <!-- { kind: "mounted" | "reloaded" | "state" | "position" | "finished" | "unmounted", state,
-         position, startSeconds, isTranscoded } from the host and the player, position in the Video
-         node's float seconds; "reloaded" (the player loading its stream again in place) carries
-         the startSeconds it reloads from; a "position" says whether the stream is a transcode. -->
+    <!-- { kind: "mounted" | "reloaded" | "state" | "position" | "finished" | "unmounted" | "scrub" |
+         "pauseWritten" | "localSeek", state, position, startSeconds, isTranscoded, duration,
+         scrubbing } from the host and the player, position in the Video node's float seconds;
+         "reloaded" (the player loading its stream again in place) carries the startSeconds it
+         reloads from; a "position" carries the stream's length and whether it is a transcode;
+         "scrub", "state" and "position" say whether the trick-play bar is up; "pauseWritten" is
+         the player's own pause write, and "localSeek" its own seek to the position given. -->
     <function name="playerEvent" />
     <!-- control({ kind: "pause" | "unpause" | "seek" | "next" | "previous" | "repeat" | "shuffle" |
          "timeOffset", position, mode }): a control the viewer pressed while following, posted to the

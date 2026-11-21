@@ -95,7 +95,7 @@ namespace syncPlayHooks
   ' repeat or shuffle pick carries its `mode`, and a time offset pick, which asks the group for
   ' nothing, only that the manager take the saved setting now): true
   ' when the request was posted, so the server's command will move every member, false when the
-  ' player should act on its own. The server's answer comes later, as a command or not at all. A pause is the one control the player also applies at once.
+  ' player should act on its own. The server's answer comes later, as a command or not at all. A pause is the one control that lands at once: the comparison pauses the node (SyncPlayManager.viewerPause).
   function control(request as object) as boolean
     manager = m.global.syncPlayManager
     if not isValid(manager) or manager.following <> true then return false

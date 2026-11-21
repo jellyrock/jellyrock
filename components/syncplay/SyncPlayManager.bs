@@ -1258,8 +1258,8 @@ end function
 ' { kind: "pause" | "unpause" | "seek" | "next" | "previous" | "repeat" | "shuffle" | "timeOffset", position, mode },
 ' the seek's position in the Video node's float seconds, a repeat or shuffle pick's mode in the
 ' server's words (queueRepeat.bs, syncPlayQueue.SHUFFLE_ON). True when it was posted; the server's
-' command then moves every member, this one included (a pause is also written locally by the
-' player, as web does, so the viewer sees it land at once), and a mode comes back as a PlayQueue
+' command then moves every member, this one included (a pause lands at once: the comparison
+' pauses the node as the viewer's own, viewerAsk), and a mode comes back as a PlayQueue
 ' update that every member reads (syncGroupModes). Nothing is posted while halted, or while the
 ' group plays nothing: the player then keeps its own behavior.
 function control(request as object) as boolean

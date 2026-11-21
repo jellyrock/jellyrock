@@ -55,11 +55,8 @@ namespace syncPlayGroup
       waitPointTicks: invalid,
       ' What the viewer asked that no command has answered yet: { kind, positionTicks, atMs }.
       viewerAsk: invalid,
-      ' Catch-ups written since the member was last found in step (or the last command), and
-      ' whether this member asked the group to wait on it since the last Pause.
+      ' Catch-ups written since the member was last found in step (or the last command).
       catchUps: 0,
-      ' Holds written in a row with no reading in step between, and whether the viewer's log
-      ' was told the budget ran out.
       ' Reloads written for a seek that stuck again after its recovery seek.
       stuckReloads: 0,
       ' Stream reloads written for a catch-up seek the node did not take (syncPlayConverge.catchUp).
@@ -69,8 +66,12 @@ namespace syncPlayGroup
       landingAsked: false,
       landingAsks: 0,
       landingAskAtMs: invalid,
+      ' Holds written in a row with no reading in step between, and whether the log was told
+      ' the budget ran out.
       holds: 0,
       holdsSpentTold: false,
+      ' Whether this member asked the group to wait on it, until it is next in step, the group
+      ' pauses or it stalls.
       askedWait: false,
       ' The point the node was last sent to for a waiting group, in ticks, until the node or the
       ' group moves on from it. One seek goes toward a point: a second to the same place has

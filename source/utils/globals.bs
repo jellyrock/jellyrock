@@ -216,7 +216,7 @@ sub setGlobalNodes()
   ' See remote-control.md.
   m.global.addFields({ remoteControlTask: CreateObject("roSGNode", "RemoteControlTask") })
 
-  ' The SyncPlay coordinator: receives the group's frames from remoteDispatch and drives the
+  ' The SyncPlay coordinator: receives the group's frames from the receiver task and drives the
   ' player (components/syncplay/SyncPlayManager.bs). Render-thread owned, like every node here.
   m.global.addFields({ syncPlayManager: CreateObject("roSGNode", "SyncPlayManager") })
 
