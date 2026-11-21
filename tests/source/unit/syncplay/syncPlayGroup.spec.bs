@@ -259,6 +259,23 @@ namespace tests
       m.assertFalse(group.askedWait)
     end function
 
+    @it("the asks to come to a short landing stay spent through a Pause or a Seek, and are whole after a Stop, a new item or a follow again")
+    function _()
+      group = m.groupOnItem()
+      group.landingAsks = 3
+      syncPlayGroup.command(group, m.cmd("Pause", 6000&, m.at60s))
+      syncPlayGroup.command(group, m.cmd("Seek", 6500&, m.at60s))
+      m.assertEqual(group.landingAsks, 3)
+      syncPlayGroup.command(group, m.cmd("Stop", 7000&, m.at60s))
+      m.assertEqual(group.landingAsks, 0)
+      group.landingAsks = 3
+      syncPlayGroup.itemChanged(group, "p-2", 8000&)
+      m.assertEqual(group.landingAsks, 0)
+      group.landingAsks = 3
+      syncPlayGroup.followedAgain(group)
+      m.assertEqual(group.landingAsks, 0)
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("requests")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

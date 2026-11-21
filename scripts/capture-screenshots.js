@@ -354,7 +354,8 @@ async function main() {
   //
   //  - Armed: do not await, and do not exit. `await lock.release(); process.exit(130)`
   //    used to win the race against armRestore's registry restore, which takes tens of
-  //    seconds (the release is one GitHub DELETE, under a second, or a no-op when
+  //    seconds (the release is a GitHub DELETE, usually under a second and retried up
+  //    to three times within `RELEASE_TRY_MS` each in `device-lock.js`, or a no-op when
   //    degraded), killing the restore and leaving the device signed into the demo
   //    server: the #800 bug, live on this path until now. That handler owns the exit
   //    here.

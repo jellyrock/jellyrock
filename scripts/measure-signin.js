@@ -178,7 +178,7 @@ try {
 // `released` keeps the net from firing again on the way OUT. The ordinary path releases the
 // lock at the bottom of this file and then prints and exits; a signal landing after that
 // would otherwise re-release: a second DELETE on a ref that is already gone. `releaseRef`
-// in `device-lock.js` does not check the HTTP status, so that is silent, but it is a
+// in `device-lock.js` takes that 404 or 422 as released, so it is silent, but it is a
 // wasted GitHub round trip before the exit.
 //
 // It is set AFTER the release resolves, not before, and that ordering is the whole point:

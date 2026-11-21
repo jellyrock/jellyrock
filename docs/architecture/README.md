@@ -35,6 +35,7 @@ Each doc's frontmatter lists the source files it describes (`related-files`) and
 | `RowList` and grid item layout, and the focus indicator (the `rowHeights` trap) | [list-grid-item-layout.md](./list-grid-item-layout.md) |
 | global state: what hangs off `m.global` | [global-state.md](./global-state.md) |
 | video and audio playback | [playback.md](./playback.md) |
+| SyncPlay: how a member stays in step with its group | [syncplay.md](./syncplay.md) |
 | remote control, "Cast to JellyRock" | [remote-control.md](./remote-control.md) |
 | the HTTPS long-poll fallback's wire format | [remote-control-longpoll-contract.md](./remote-control-longpoll-contract.md) |
 | the API layer and task pool | [api.md](./api.md) |

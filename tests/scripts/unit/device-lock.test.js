@@ -214,6 +214,98 @@ describe('device-lock: acquiring', () => {
   });
 });
 
+describe('device-lock: releasing the ref', () => {
+  const WARNING = '[device-lock] could not release the lock; the lease will expire on its own';
+
+  /** Wraps the fake GitHub so the first DELETEs answer `outcomes` in order. */
+  async function lockWithDeleteOutcomes(outcomes) {
+    const gh = fakeGitHub();
+    let deletes = 0;
+    mod._internals.setTransport(async (pathname, opts) => {
+      if (opts?.method === 'DELETE') {
+        deletes++;
+        const next = outcomes.shift();
+        if (next instanceof Error) throw next;
+        if (next) return next;
+      }
+      return gh.handler(pathname, opts);
+    });
+    const lock = await mod.acquireDeviceLock({ what: 'test:rta', deviceHost: DEVICE });
+    return { gh, lock, deletes: () => deletes };
+  }
+
+  it('retries a DELETE that throws once, then releases with no warning', async () => {
+    const { gh, lock, deletes } = await lockWithDeleteOutcomes([new Error('ECONNRESET')]);
+
+    await lock.release();
+
+    expect(deletes()).toBe(2);
+    expect(gh.refs.size).toBe(0);
+    expect(console.warn).not.toHaveBeenCalledWith(WARNING);
+  });
+
+  it('retries a DELETE that answers 500, then releases', async () => {
+    const { gh, lock, deletes } = await lockWithDeleteOutcomes([{ status: 500, json: null }]);
+
+    await lock.release();
+
+    expect(deletes()).toBe(2);
+    expect(gh.refs.size).toBe(0);
+    expect(console.warn).not.toHaveBeenCalledWith(WARNING);
+  });
+
+  it('warns once, after three failed tries', async () => {
+    const { lock, deletes } = await lockWithDeleteOutcomes([
+      new Error('ECONNRESET'),
+      { status: 500, json: null },
+      new Error('timeout'),
+    ]);
+
+    await lock.release();
+
+    expect(deletes()).toBe(3);
+    expect(console.warn.mock.calls.filter(([m]) => m === WARNING)).toHaveLength(1);
+  });
+
+  it('takes a 404 as already released, with no retry and no warning', async () => {
+    const { lock, deletes } = await lockWithDeleteOutcomes([{ status: 404, json: {} }]);
+
+    await lock.release();
+
+    expect(deletes()).toBe(1);
+    expect(console.warn).not.toHaveBeenCalledWith(WARNING);
+  });
+
+  it('takes a 422 as already released, with no retry and no warning', async () => {
+    const { lock, deletes } = await lockWithDeleteOutcomes([{ status: 422, json: {} }]);
+
+    await lock.release();
+
+    expect(deletes()).toBe(1);
+    expect(console.warn).not.toHaveBeenCalledWith(WARNING);
+  });
+
+  it('gives each DELETE try its own short time limit, so a stalled network cannot hold the exit', async () => {
+    const limits = [];
+    const gh = fakeGitHub();
+    mod._internals.setTransport(async (pathname, opts) => {
+      if (opts?.method === 'DELETE') {
+        limits.push(opts.timeoutMs);
+        if (limits.length < 3) throw new Error('timeout');
+      }
+      return gh.handler(pathname, opts);
+    });
+    const lock = await mod.acquireDeviceLock({ what: 'test:rta', deviceHost: DEVICE });
+
+    await lock.release();
+
+    const { RELEASE_TRY_MS, REQUEST_TIMEOUT_MS } = mod._internals;
+    expect(RELEASE_TRY_MS).toBeGreaterThan(0);
+    expect(RELEASE_TRY_MS).toBeLessThan(REQUEST_TIMEOUT_MS);
+    expect(limits).toEqual(Array(3).fill(RELEASE_TRY_MS));
+  });
+});
+
 describe('device-lock: no CI-yield', () => {
   it('never polls the Actions API to yield to an in-flight CI run', async () => {
     // A LAN sweep on 2026-08-10 found THREE Rokus: CI drives .200, local drives

@@ -55,21 +55,23 @@ namespace syncPlayGroup
       waitPointTicks: invalid,
       ' What the viewer asked that no command has answered yet: { kind, positionTicks, atMs }.
       viewerAsk: invalid,
-      ' Catch-ups written since the member was last found in step (or the last command), and
-      ' whether this member asked the group to wait on it since the last Pause.
+      ' Catch-ups written since the member was last found in step (or the last command).
       catchUps: 0,
-      ' Holds written in a row with no reading in step between, and whether the viewer's log
-      ' was told the budget ran out.
       ' Reloads written for a seek that stuck again after its recovery seek.
       stuckReloads: 0,
       ' Stream reloads written for a catch-up seek the node did not take (syncPlayConverge.catchUp).
       catchUpReloads: 0,
-      ' Whether this member has asked the group to come to where its seek landed, in this wait,
-      ' and when.
+      ' Whether this member has asked the group to come to where its seek landed, since the
+      ' group's last Seek, and when. landingAsks counts those asks since the group last played.
       landingAsked: false,
+      landingAsks: 0,
       landingAskAtMs: invalid,
+      ' Holds written in a row with no reading in step between, and whether the log was told
+      ' the budget ran out.
       holds: 0,
       holdsSpentTold: false,
+      ' Whether this member asked the group to wait on it, until it is next in step, the group
+      ' pauses or it stalls.
       askedWait: false,
       ' The point the node was last sent to for a waiting group, in ticks, until the node or the
       ' group moves on from it. One seek goes toward a point: a second to the same place has
@@ -126,9 +128,14 @@ namespace syncPlayGroup
     ' A group that plays on or stops has left the point. A Pause or a Seek naming the point
     ' again has not, and allows no second seek there.
     if cmd.command = "Unpause" or cmd.command = "Stop" then group.pointSoughtTicks = invalid
-    ' A group that plays on or stops has ended its wait: the next one may ask the group to
-    ' come to a short landing again.
-    if cmd.command = "Unpause" or cmd.command = "Stop" then group.landingAsked = false
+    ' Each Seek may be answered by one ask to come to a short landing: a node can land short
+    ' of every point a paused group is sent to. The count of them is whole again once the group
+    ' plays on or stops (syncPlayConverge.landingAsk).
+    if cmd.command = "Seek" then group.landingAsked = false
+    if cmd.command = "Unpause" or cmd.command = "Stop"
+      group.landingAsked = false
+      group.landingAsks = 0
+    end if
     group.recoverSeeks = 0
     group.stuckReloads = 0
     group.catchUpReloads = 0
@@ -162,6 +169,7 @@ namespace syncPlayGroup
     group.catchUpReloads = 0
     group.landingAskAtMs = invalid
     group.landingAsked = false
+    group.landingAsks = 0
     group.askedWait = false
     group.owesReady = false
     if playingItemId <> "" then startWait(group)
@@ -315,6 +323,7 @@ namespace syncPlayGroup
     group.catchUpReloads = 0
     group.landingAskAtMs = invalid
     group.landingAsked = false
+    group.landingAsks = 0
     group.askedWait = false
     group.whereAskedAtMs = invalid
     group.toldUnreachable = false
