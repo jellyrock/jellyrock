@@ -114,7 +114,7 @@ The first engine reacted to each event in its own handler. Members drifted after
 
 Its PR records both engines on a Streaming Stick 4K against Jellyfin 12.4.0. After a group pause, the old engine left the member 51 to 195 ms ahead over 14 rounds (2026-11-10). The new one stayed within 30 ms over 20 resumes (2026-11-18). A 2,000-step mixed soak on 2026-11-18 ended every step at rest.
 
-No decision record for the engine exists yet.
+[ADR 0063](../adr/0063-syncplay-compares-two-models.md) records the choice.
 
 ## The rules that are easy to break
 

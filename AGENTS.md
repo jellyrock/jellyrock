@@ -26,6 +26,7 @@ JellyRock is a Jellyfin client for Roku, written in **BrighterScript** (`.bs`, t
 - **Never cite a gitignored path as a source in tracked content:** `tasks/`, `docs/projects/`, `.claude/handoffs/`, `.claude/plans/`. A reviewer can't open them, and a local planning file is archived or deleted once its work finishes, so the citation breaks by design. This covers commit messages, PR bodies, shared docs **and source comments**. Comments are where it keeps slipping, because a `PLAN.md` feels like a real document while you work from it. If a rationale is worth citing from tracked code, move it to a tracked home first ([`/log decision`](.claude/skills/log/SKILL.md), an ADR or the relevant doc) and cite that. Naming such a path as a *destination* is fine: a skill telling an agent where to write a handoff is an instruction, not a citation.
 - **A PR's follow-ups go in a journal, not only the PR body.** When a PR defers something ("out of scope", "follow-up"), add an entry to the right journal (see Capture & state discipline below) and link it from the PR. Otherwise the deferral is lost once the PR merges.
 - **A feature users can see ships with its page.** A `feat` PR that adds one adds its page in `docs/user/features/`, and a PR that changes what a feature does, needs or how it is used updates that page, in the same PR. The page is what users read on the docs site, and its frontmatter is where the feature's facts are kept for reuse. How to write one: [`docs/dev/feature-pages.md`](docs/dev/feature-pages.md).
+- **Learn a device timing, and bound it; don't hard-code it.** When behavior depends on how long a device takes (a resume, a seek, a load), learn the value from that device as it runs, between a floor and a ceiling kept as named constants. A fixed number or a per-model table is wrong on the next device and nobody updates it. A ceiling is a viewing choice, so say in its comment what the viewer gets when it is reached. `syncPlayPlayer.learnResumeLag()` and `syncPlayConverge.catchUp()` are the reference.
 
 ## Landing
 
@@ -136,6 +137,7 @@ This file holds only rules that apply across the repo. Rules for one area live i
 | `components/data/` | [`components/data/CLAUDE.md`](components/data/CLAUDE.md) |
 | `source/` (any subfolder) | [`source/CLAUDE.md`](source/CLAUDE.md) |
 | `source/api/` | [`source/api/CLAUDE.md`](source/api/CLAUDE.md) (and `source/CLAUDE.md`) |
+| `source/syncplay/` | [`source/syncplay/CLAUDE.md`](source/syncplay/CLAUDE.md) (and `source/CLAUDE.md`) |
 | `source/utils/` | [`source/utils/CLAUDE.md`](source/utils/CLAUDE.md) |
 | `tests/` | [`tests/CLAUDE.md`](tests/CLAUDE.md) |
 | `tests/rta/` | [`tests/rta/CLAUDE.md`](tests/rta/CLAUDE.md) (and `tests/CLAUDE.md`) |
