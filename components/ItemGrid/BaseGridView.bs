@@ -1873,10 +1873,11 @@ end function
 ' The titles entry: the app-wide Item Titles setting, offered here because a pick shows on
 ' this grid at once. It reads as Settings shows it (pageSettings.settingEntry), its value is
 ' the one this grid was drawn with, and its list says it applies to every library.
+' settings.json is read when the menu first opens and kept for the screen's life, as on Home.
 function titlesEntry() as dynamic
-  tree = GetConfigTree()
-  if not isValid(tree) then return invalid
-  entry = pageSettings.settingEntry(findConfigTreeKey(TITLES_KEY, tree), m.top.showItemTitles, ICON_TITLES)
+  if not isValid(m.settingsTree) then m.settingsTree = GetConfigTree()
+  if not isValid(m.settingsTree) then return invalid
+  entry = pageSettings.settingEntry(findConfigTreeKey(TITLES_KEY, m.settingsTree), m.top.showItemTitles, ICON_TITLES)
   if isValid(entry) then entry.pickerTitle = translate(translationKeys.LabelAppliesToAllLibraries, [entry.title])
   return entry
 end function
