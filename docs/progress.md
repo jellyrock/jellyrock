@@ -1156,20 +1156,6 @@ Voice fast-forward and rewind while following are now a relative group seek (`vo
 
 Closes when the queue-edit design ships or is declined in a decision note, and a device check shows the held remote key cannot land a scrub without an OK.
 
-#### A SyncPlay hold can leave a small lead unchanged, spending both corrections `[fid: syncplay-hold-leaves-lead]` `[captured 2026-11-01]`
-
-A hold that should close a small lead on a SyncPlay member can leave the lead where it was, and the two corrections an `Unpause` allows are then spent. Measured 2026-11-01: on the low-end Stick (12.2) one `Unpause` read -877, then -329, and ended at -321 ms, and another read -362, then -344 ms. On the Stick 4K it failed one case across 14 runs and 259 corrections (10.9.11): 2246 behind, then -229, then -246 ms.
-
-The member stays inside the server's 500 ms tolerance and nothing hangs, but `syncPlayPlayback.SETTLE_CORRECTION_MS` promises 150 ms ahead, the viewer sees up to two freezes for no gain, and `syncplay-controls` fails its drift bound on that Stick.
-
-Not checked: whether the picture really runs ahead or the node's `position` over-reads after a resume. No camera measurement exists, and the reading alone cannot tell them apart. Measure the position across a short pause and resume on that Stick first. Closes with either a hold that converges there, or a threshold per device class, with the measurement that justifies it.
-
-Revised 2026-11-17: the cause of the low-end Stick's occasional holds is found and fixed. On that device the first position reading after a resume reaches the app up to a few hundred milliseconds stale (12 of 40 resumes read 163 to 254 ms behind and the next reading 206 to 307 ms better, with no correction written), and the learner sampled that reading, so three stale samples in five pulled the learned lag toward zero. The learner now keeps the earlier-saying of a resume's first two readings (`syncPlayPlayer.learnResumeLag`). Measured the same day on the low-end Stick, 40 member-driven resumes against Jellyfin 12.4.0: 0 holds (10 before), resting drift 19 ms ahead to 20 ms behind, learned lag -331 to -355 ms. `syncplay-controls` on a Streaming Stick 4K: 20 of 20 runs.
-
-Revised 2026-11-18: a change that started a new stream from the lag the last stream on its playback path learned was built, measured and taken out again the same day (commit `3a867f38`, then its revert). It cut the low-end Stick's holds at a stream's start from 66 to 14 over 21 loads (3 or 4 on every load before; 9 on the first five loads and 4 single holds in the next 16 after), against Jellyfin 12.4.0 with a direct play and a transcode alternating. But `syncplay-controls` on a Streaming Stick 4K then passed 13 of 14 runs: the time offset case ended 57 ms from the group after a hold, against its 50 ms bar, the step an earlier carry had failed. The cause of the holds stands: the lag is forgotten at each stream, and a lag below zero needs two samples.
-
-Still open: every new stream on the low-end Stick starts with three or four short holds. The next try keeps the carry for a device whose learned lag is below zero and leaves every other device as it is, so a Stick 4K runs the code that passed 20 of 20. Closes with that change passing 20 runs of `syncplay-controls` on the Stick 4K and the new-stream run on all three devices, or a recorded no.
-
 #### A SyncPlay join on a 12.2 server once left the Roku's icon inactive, cause unknown `[fid: syncplay-join-frame-never-seen]` `[captured 2026-11-01]`
 
 A SyncPlay join in the RTA specs occasionally never turned the icon active, though the server recorded the join. The cause on servers before 10.11 is found and fixed; one sighting is left unexplained.
