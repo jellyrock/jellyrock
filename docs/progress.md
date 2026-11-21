@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-18
+last-updated: 2026-11-21
 ---
 
 # Progress
@@ -397,6 +397,10 @@ The `no-namespace-const-call` BSC plugin fails the build on the broken shapes. I
 `fetchSourceCode()` in `scripts/translations-seed.js` clones each seed source's full code into the repo's `.cache/translation-seed/<id>-<sha>-code/`, so every checkout downloads its own copy, and other tools can walk into it. ESLint crashed on a cloned project's own config there, and now ignores `.cache/` (`eslint.config.js`). Prettier, markdownlint, the spellchecker and `scripts/lib/lint-excludes.cjs` still don't exclude `.cache/`, and only `.cache/translation-seed/` is gitignored.
 
 To close: clone into the per-user cache folder (`${XDG_CACHE_HOME:-$HOME/.cache}/jellyrock/translation-seed/`, with a test and a line in `docs/dev/translations.md`), or keep the location and add `.cache/` to the other lint excludes. Not done in the PR that added `context`, because the ESLint ignore unblocked the push and moving the cache is a seeder change of its own.
+
+#### `device:status` says `held` for a lease that has already expired, so a wait on `free` never ends `[fid: device-status-reports-expired-lease-held]` `[captured 2026-11-21]`
+
+[`scripts/device-lock.js`](../scripts/device-lock.js)'s `status` command prints `held by …` for any lock ref that exists and never compares the ref's date with `DEFAULT_LEASE_MS`. Only `acquireDeviceLock` applies the lease, through `stealIfExpired()`. So after a failed release (followup `release-ref-swallows-failed-delete`) the status line keeps saying `held` for as long as nobody starts a run. Seen 2026-11-18 on a Streaming Stick 4K: a `test:rta` run ended with its lock leaked, and a background series that waited for `npm run device:status` to print `free` stalled about three hours, with no holder process alive. Whether a new run at that point would have taken the expired lease was not tried: `npm run device:release` cleared it. **Close it by** having `status` read the lease clock and print an expired lease as such (for example `expired lease of …; the next run takes it`), so a script or agent that waits on the status line is not blocked by a dead holder. Not fixed now: it changes what a shared command prints and needs a unit case through the `setTransport` seam.
 
 ### components
 

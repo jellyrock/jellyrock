@@ -135,6 +135,15 @@ namespace tests
       return group
     end function
 
+    ' The node was sent to `pointTicks`, stopped 3 s short of it, and asked the group to come there.
+    private sub landShortAndAsk(group as object, pointTicks as longinteger, nowMs as longinteger)
+      player = m.pausedAt(pointTicks - 3000 * m.oneMs, "wait")
+      group.pointSoughtTicks = pointTicks
+      ask = m.decide(player, group, nowMs)
+      m.assertEqual(m.kindOf(ask), "ask")
+      syncPlayConverge.applied(player, group, ask.action, nowMs)
+    end sub
+
     private function kindOf(result as object) as string
       if not isValid(result.action) then return ""
       return result.action.kind
@@ -501,7 +510,7 @@ namespace tests
       m.assertEqual(ready.action.positionTicks, stop&)
     end function
 
-    @it("the ask is made once per wait: a member that has used it reports the point, until the group plays again")
+    @it("an ask already made for this Seek is not made again: the member reports the point")
     function _()
       player = m.pausedAt(m.at100s - 3000 * m.oneMs, "wait")
       group = m.seekGroup()
@@ -517,6 +526,41 @@ namespace tests
       syncPlayGroup.command(group, m.cmd("Seek", 12000&, m.at100s))
       group.pointSoughtTicks = m.at100s
       m.assertEqual(m.kindOf(m.decide(player, group, 11500&)), "ask")
+    end function
+
+    @it("a second Seek inside one pause gets an ask of its own when the node lands short again")
+    function _()
+      group = m.seekGroup()
+      m.landShortAndAsk(group, m.at100s, 10000&)
+      ' Another member seeks the paused group elsewhere, and this node lands short there too.
+      syncPlayGroup.command(group, m.cmd("Seek", 11000&, m.at65s))
+      group.pointSoughtTicks = m.at65s
+      stop& = m.at65s - 3000 * m.oneMs
+      ask = m.decide(m.pausedAt(stop&, "wait"), group, 12000&)
+      m.assertEqual(m.kindOf(ask), "ask")
+      m.assertTrue(ask.action.landing)
+      m.assertEqual(ask.action.positionTicks, stop&)
+    end function
+
+    @it("the asks of one pause are capped, so two members that land apart cannot trade Seeks for good")
+    function _()
+      policy = syncPlayConverge.defaultPolicy()
+      group = m.seekGroup()
+      nowMs& = 10000&
+      for i = 1 to policy.landingAskLimit
+        m.landShortAndAsk(group, m.at100s, nowMs&)
+        nowMs& += 1000
+        syncPlayGroup.command(group, m.cmd("Seek", nowMs&, m.at100s))
+      end for
+      group.pointSoughtTicks = m.at100s
+      spent = m.decide(m.pausedAt(m.at100s - 3000 * m.oneMs, "wait"), group, nowMs& + 500)
+      m.assertEqual(m.kindOf(spent), "report")
+      m.assertEqual(spent.action.positionTicks, m.at100s)
+      ' The group plays, then seeks again: the asks are whole.
+      syncPlayGroup.command(group, m.cmd("Unpause", nowMs& + 1000, m.at100s))
+      syncPlayGroup.command(group, m.cmd("Seek", nowMs& + 2000, m.at100s))
+      group.pointSoughtTicks = m.at100s
+      m.assertEqual(m.kindOf(m.decide(m.pausedAt(m.at100s - 3000 * m.oneMs, "wait"), group, nowMs& + 2500)), "ask")
     end function
 
     @it("the ask leaves the budget of the last-resort wait untouched")

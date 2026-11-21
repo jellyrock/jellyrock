@@ -60,6 +60,9 @@ namespace syncPlayConverge
       ' Catch-ups in a row that did not bring the member in step, before the group is asked to
       ' wait instead.
       catchUpLimit: 2,
+      ' Asks to come to a short landing inside one pause, one per Seek, before a Ready names
+      ' the point instead. Provisional: a number chosen, not measured.
+      landingAskLimit: 3,
       ' Holds in a row that did not bring a member ahead in step, before it is left to play on:
       ' two while the player model learns that the node runs on past its stops (it takes two
       ' samples, syncPlayPlayer.lagInUse), one written with that, and one to spare.
@@ -221,6 +224,7 @@ namespace syncPlayConverge
       if action.waitOnMe = true then group.askedWait = true
       if action.landing = true
         group.landingAsked = true
+        group.landingAsks++
         group.landingAskAtMs = nowMs
       end if
     else if kind = "notice"
@@ -595,10 +599,11 @@ namespace syncPlayConverge
   ' the seeks the comparison allows itself are spent and the node is paused further short of
   ' the point than the server's tolerance, the member asks the group to come to where it
   ' stands: the server sends every member a Seek there, and this node is already at it. One ask
-  ' per wait, made whole when the group plays again, so two members whose sync frames differ
-  ' cannot pull the group back in turns while it waits, and the next seek gets an ask of its own.
+  ' per Seek, since a node can land short of each point a paused group is sent to. The asks of
+  ' one pause are capped, so two members whose sync frames differ cannot pull the group back in
+  ' turns for good; the count is whole again when the group plays.
   function landingAsk(player as object, group as object, want as object, ctx as object, policy as object, nowMs as longinteger) as dynamic
-    if group.landingAsked or group.ask.state = "flight" then return invalid
+    if group.landingAsked or group.landingAsks >= policy.landingAskLimit or group.ask.state = "flight" then return invalid
     if not isValid(want.pointTicks) or not standsAtCommand(group) then return invalid
     point& = syncPlayTime.asLong(want.pointTicks)
     if not soughtPoint(group, point&, policy) then return invalid
