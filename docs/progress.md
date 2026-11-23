@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-21
+last-updated: 2026-11-23
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-23: test(syncplay): Keep the outside SyncPlay probe as a tested tool
 - 2026-11-21: fix(syncplay): Stop a short lander resuming late after a second Seek
 - 2026-11-18: update(syncplay): Stay in step with a new engine; rejoin a lost group
 - 2026-11-18: ci: Wait out a busy Weblate repository; count translations in the changelog
@@ -54,10 +55,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-11-09: fix(playback): Restart a stream the server stops sending, and say why
 - 2026-11-09: fix(playback): Keep a paused video transcoding on the server
 - 2026-11-09: fix(syncplay): Skip a queue update with no readable time, not crash
-- 2026-11-08: fix(ui): Fix dialogs left deaf by navigation or the screensaver
-- 2026-11-08: feat(syncplay): Add a group mark, names, a play confirm and catch-up
-- 2026-11-08: chore(rta): Keep the device safe however the RTA runner is stopped
-- 2026-11-07: fix(video): Follow repeat mode on voice and remote Next and Previous
 
 ## Open followups
 
