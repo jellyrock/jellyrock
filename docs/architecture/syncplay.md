@@ -289,7 +289,7 @@ The specs read the manager through its published `sync` field. It carries counte
 ### What the tests cannot show
 
 - The second member is not a real client. It is REST calls that create the group and ignore the wait. It never plays, never reports `Ready`, and has no screen. Nothing here tests two players against each other.
-- The drift in the app is the Roku's own reading: `SyncPlayManager.publishedDriftMs()` sets the player model's clock against the group's line, under the Roku's own clock estimate. No test measures two screens from outside. An error in the estimate or in the output delay of a TV does not show.
+- The drift in the app is the Roku's own reading: `SyncPlayManager.publishedDriftMs()` sets the player model's clock against the group's line, under the Roku's own clock estimate. No test measures two screens from outside. An error in the estimate or in the output delay of a TV does not show. `npm run syncplay:probe` ([`scripts/syncplay-probe.js`](../../scripts/syncplay-probe.js)) measures one Roku against the group's line from outside the app, on a server that runs on the machine measuring. Run it by hand to judge a change to tightness. It sees an error in the estimate, and still not a TV's delay.
 - The simulator's fake node behaves as one device's records did, and it has known gaps: it never delivers a late result from an earlier try (`syncplay-sim-no-late-request-result`), and never lets a seek fall back (`syncplay-sim-seek-never-falls-back`).
 - No manager-level unit case reads what the manager passes the comparison (`syncplay-pause-estimate-wiring-untested`).
 

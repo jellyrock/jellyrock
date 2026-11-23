@@ -143,6 +143,7 @@
     "demo": "node tests/rta/demos/run.mjs",
     "rta:restore": "node scripts/rta-restore.js",
     "device:check": "node scripts/device-check.js",
+    "syncplay:probe": "node scripts/syncplay-probe.js",
     "jellyfin:matrix": "node scripts/jellyfin-matrix.js",
     "measure": "node scripts/measure.js",
     "measure:compare": "node scripts/measure-compare.js",
