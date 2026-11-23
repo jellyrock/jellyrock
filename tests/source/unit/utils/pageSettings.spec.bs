@@ -1,3 +1,4 @@
+import "pkg:/source/home/homePageSettings.bs"
 import "pkg:/source/utils/pageSettings.bs"
 
 namespace tests
@@ -231,6 +232,118 @@ namespace tests
       m.assertEqual(pageSettings.pickOutcome({ cancelled: false }, entry, values).action, pageSettings.PICK_NONE)
       m.assertEqual(pageSettings.pickOutcome({ cancelled: false, optionIndex: 5 }, entry, values).action, pageSettings.PICK_NONE)
       m.assertEqual(pageSettings.pickOutcome({ cancelled: false, optionIndex: -1 }, entry, values).action, pageSettings.PICK_NONE)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("settingEntry")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    private function boolSetting() as object
+      return { settingName: "itemGridShowTitles", type: "bool", title: "Item Titles", default: "true" }
+    end function
+
+    private function radioSetting() as object
+      return {
+        settingName: "uiRowLayout",
+        type: "radio",
+        title: "Row Layout",
+        options: [{ title: "Original", id: "original" }, { title: "Full Width", id: "fullwidth" }]
+      }
+    end function
+
+    private function integerSetting() as object
+      return { settingName: "uiHomeRowLimit", type: "integer", title: "Home Row Size", default: "32", min: 1, max: 100 }
+    end function
+
+    private function optionIds(entry as object) as object
+      ids = []
+      for each option in entry.options
+        ids.push(option.id)
+      end for
+      return ids
+    end function
+
+    @it("offers a bool setting as Disabled then Enabled, with the value in force selected")
+    function _()
+      entry = pageSettings.settingEntry(m.boolSetting(), true, "pkg:/icon.png")
+
+      m.assertEqual(entry.id, "itemGridShowTitles")
+      m.assertEqual(entry.title, "Item Titles")
+      m.assertEqual(entry.icon, "pkg:/icon.png")
+      m.assertEqual(entry.options, [{ id: "false", title: "Disabled" }, { id: "true", title: "Enabled" }])
+      m.assertEqual(entry.selected, "true")
+      m.assertEqual(pageSettings.settingEntry(m.boolSetting(), false).selected, "false")
+    end function
+
+    @it("offers a radio setting's options in their order, with the value in force selected")
+    function _()
+      entry = pageSettings.settingEntry(m.radioSetting(), "fullwidth")
+
+      m.assertEqual(entry.options, [{ id: "original", title: "Original" }, { id: "fullwidth", title: "Full Width" }])
+      m.assertEqual(entry.selected, "fullwidth")
+    end function
+
+    @it("titles the entry and its options from their translation keys when they have them")
+    function _()
+      setting = m.radioSetting()
+      setting.titleKey = "LabelRowLayout"
+      setting.options[0].titleKey = "LabelOriginal"
+      entry = pageSettings.settingEntry(setting, "original")
+
+      m.assertEqual(entry.title, translate(translationKeys.LabelRowLayout))
+      m.assertEqual(entry.options[0].title, translate(translationKeys.LabelOriginal))
+    end function
+
+    @it("offers an integer setting's steps, the value in force selected")
+    function _()
+      entry = pageSettings.settingEntry(m.integerSetting(), 32, "", { values: [8, 16, 32, 64] })
+
+      m.assertEqual(m.optionIds(entry), ["8", "16", "32", "64"])
+      m.assertEqual(entry.options[2].title, "32")
+      m.assertEqual(entry.selected, "32")
+    end function
+
+    @it("places a value in force that is not a step among the steps, in order")
+    function _()
+      steps = { values: [8, 16, 32, 64] }
+
+      m.assertEqual(m.optionIds(pageSettings.settingEntry(m.integerSetting(), 20, "", steps)), ["8", "16", "20", "32", "64"])
+      m.assertEqual(m.optionIds(pageSettings.settingEntry(m.integerSetting(), 3, "", steps)), ["3", "8", "16", "32", "64"])
+      m.assertEqual(m.optionIds(pageSettings.settingEntry(m.integerSetting(), 90, "", steps)), ["8", "16", "32", "64", "90"])
+      m.assertEqual(pageSettings.settingEntry(m.integerSetting(), 20, "", steps).selected, "20")
+    end function
+
+    @it("selects the setting's default when the field holds no integer")
+    function _()
+      entry = pageSettings.settingEntry(m.integerSetting(), invalid, "", { values: [8, 16, 32, 64] })
+
+      m.assertEqual(entry.selected, "32")
+      m.assertEqual(m.optionIds(entry), ["8", "16", "32", "64"])
+    end function
+
+    @it("titles each step through the caller's label function")
+    function _()
+      entry = pageSettings.settingEntry(m.integerSetting(), 0, "", { values: [0, 7], labelFor: homePageSettings.maxDaysLabel })
+
+      m.assertEqual(entry.options[0].title, translate(translationKeys.LabelNoLimit))
+      m.assertEqual(entry.options[1].title, "7 days")
+    end function
+
+    @it("offers nothing for an integer setting without steps, an unknown type or no setting")
+    function _()
+      m.assertInvalid(pageSettings.settingEntry(m.integerSetting(), 32))
+      m.assertInvalid(pageSettings.settingEntry({ settingName: "uiTheme", type: "text" }, ""))
+      m.assertInvalid(pageSettings.settingEntry(invalid, true))
+      m.assertInvalid(pageSettings.settingEntry({ type: "bool" }, true))
+      m.assertInvalid(pageSettings.settingEntry({ settingName: "uiRowLayout", type: "radio", options: [] }, ""))
+    end function
+
+    @it("passes its entries through menuRows as any other entry")
+    function _()
+      menu = pageSettings.menuRows([pageSettings.settingEntry(m.radioSetting(), "fullwidth")])
+
+      m.assertEqual(menu.ids, ["uiRowLayout", pageSettings.ALL_SETTINGS])
+      m.assertEqual(menu.labels[0], "Row Layout (Full Width)")
     end function
 
   end class

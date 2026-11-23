@@ -1,0 +1,123 @@
+import "pkg:/source/home/homePageSettings.bs"
+
+namespace tests
+
+  ' The entries of the settings icon's menu on Home (source/home/homePageSettings.bs), read from
+  ' the app's own settings.json.
+  @suite("homePageSettings - Home's settings menu")
+  class HomePageSettingsTests extends tests.BaseTestSuite
+
+    private function settings() as object
+      return {
+        uiRowLayout: "fullwidth",
+        uiGeneralEpisodeImages: "webclient",
+        uiHomeRowLimit: 32,
+        uiDetailsMaxDaysNextUp: 0,
+        uiDetailsEnableRewatchingNextUp: false
+      }
+    end function
+
+    private function entryIds(entries as object) as object
+      ids = []
+      for each entry in entries
+        ids.push(entry.id)
+      end for
+      return ids
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("entries")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("offers the Home tab Row Layout, Episode Images, Row Size, Max Days and Rewatching")
+    function _()
+      entries = homePageSettings.entries(GetConfigTree(), m.settings(), "home")
+
+      m.assertEqual(m.entryIds(entries), ["uiRowLayout", "uiGeneralEpisodeImages", "uiHomeRowLimit", "uiDetailsMaxDaysNextUp", "uiDetailsEnableRewatchingNextUp"])
+    end function
+
+    @it("offers the Favorites tab Row Layout alone")
+    function _()
+      entries = homePageSettings.entries(GetConfigTree(), m.settings(), "favorites")
+
+      m.assertEqual(m.entryIds(entries), ["uiRowLayout"])
+    end function
+
+    @it("gives every entry a glyph and selects the value in force")
+    function _()
+      for each entry in homePageSettings.entries(GetConfigTree(), m.settings(), "home")
+        m.assertNotEmpty(entry.icon, entry.id)
+      end for
+      entries = homePageSettings.entries(GetConfigTree(), m.settings(), "home")
+      m.assertEqual(entries[0].selected, "fullwidth")
+      m.assertEqual(entries[2].selected, "32")
+      m.assertEqual(entries[3].selected, "0")
+      m.assertEqual(entries[4].selected, "false")
+    end function
+
+    @it("names Episode Images' value on its row with one word, the list keeping the full titles")
+    function _()
+      settings = m.settings()
+      for each pair in [["webclient", "Web client"], ["episode", "Episode"], ["show", "Show"]]
+        settings.uiGeneralEpisodeImages = pair[0]
+        entry = homePageSettings.entries(GetConfigTree(), settings, "home")[1]
+        m.assertEqual(entry.valueTitle, pair[1], pair[0])
+        m.assertEqual(pageSettings.menuRows([entry]).labels[0], "Episode Images Next Up (" + pair[1] + ")")
+        m.assertEqual(entry.options[0].title, "Use Web Client Setting", "the list keeps Settings' words")
+      end for
+    end function
+
+    @it("offers nothing without settings.json")
+    function _()
+      m.assertEqual(homePageSettings.entries(invalid, m.settings(), "home"), [])
+    end function
+
+    @it("offers only settings it knows how to apply")
+    function _()
+      for each entry in homePageSettings.entries(GetConfigTree(), m.settings(), "home")
+        m.assertTrue(homePageSettings.isHomeSetting(entry.id), entry.id)
+      end for
+      m.assertFalse(homePageSettings.isHomeSetting("uiHomeUseWebArrangement"))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("steps")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("keeps every Max Items per Row step inside the setting's range, ascending")
+    function _()
+      setting = findConfigTreeKey("uiHomeRowLimit", GetConfigTree())
+      previous = -1
+      for each value in homePageSettings.rowLimitSteps().values
+        m.assertTrue(value >= setting.min and value <= setting.max, value.toStr())
+        m.assertTrue(value > previous, value.toStr())
+        previous = value
+      end for
+    end function
+
+    @it("includes the Max Items per Row default as a step")
+    function _()
+      setting = findConfigTreeKey("uiHomeRowLimit", GetConfigTree())
+      m.assertArrayContains(homePageSettings.rowLimitSteps().values, Int(Val(setting.default)))
+    end function
+
+    @it("keeps the Max Days Next Up steps ascending from no limit, the default")
+    function _()
+      setting = findConfigTreeKey("uiDetailsMaxDaysNextUp", GetConfigTree())
+      values = homePageSettings.maxDaysSteps().values
+      m.assertEqual(values[0], Int(Val(setting.default)))
+      for i = 1 to values.count() - 1
+        m.assertTrue(values[i] > values[i - 1], values[i].toStr())
+      end for
+    end function
+
+    @it("reads no limit for 0 days and a count of days otherwise")
+    function _()
+      m.assertEqual(homePageSettings.maxDaysLabel(0), translate(translationKeys.LabelNoLimit))
+      m.assertEqual(homePageSettings.maxDaysLabel(1), "1 day")
+      m.assertEqual(homePageSettings.maxDaysLabel(30), "30 days")
+    end function
+
+  end class
+
+end namespace

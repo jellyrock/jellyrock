@@ -92,6 +92,9 @@ export const BUDGETS = new Map([
   // thing being disproven.
   ['tests/rta/specs/deeplink.spec.js', 2],
   ['tests/rta/specs/genre-skeleton.spec.js', 1],
+  // Options on a search suggestion must not reach the scene and open Settings; a router
+  // navigation exposes no field, so the check out-waits one and reads the active view.
+  ['tests/rta/specs/search-navigation.spec.js', 1],
   // Sign-in must land on Home and stay there: a replay would move on from Home a moment later.
   ['tests/rta/specs/sign-in-landing.spec.js', 1],
   // A sign-in step canceled with Back must not act on its answer once it lands; no app field

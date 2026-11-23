@@ -1,0 +1,18 @@
+' Whether an item's community and critic ratings show: one rule for the details screen, the
+' player's info and a movie library's Grid with details pane.
+namespace ratingsDisplay
+
+  ' isShown: Community and Critical Ratings (uiMoviesShowRatings) turns ratings on or off
+  ' everywhere, and Disable Community Rating for Episodes (uiTvShowsDisableCommunityRating)
+  ' also hides them on an episode, so its rating cannot spoil it.
+  '
+  ' @param userSettings - the signed-in user's JellyfinUserSettings node
+  ' @param isEpisode - the item is an episode of a show
+  ' @return {boolean}
+  function isShown(userSettings as object, isEpisode as boolean) as boolean
+    if userSettings.uiMoviesShowRatings = false then return false
+    if isEpisode and userSettings.uiTvShowsDisableCommunityRating = true then return false
+    return true
+  end function
+
+end namespace

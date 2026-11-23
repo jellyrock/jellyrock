@@ -34,8 +34,8 @@ namespace pageSettings
   ' gutter empty. No usable entry means no menu, and the settings icon opens Settings in
   ' one press.
   '
-  ' Past about three entries the menu gets long for something hanging off an icon: move
-  ' them into one Page settings dialog behind a single row here.
+  ' The menu is flat, whatever the count (a library offers up to four entries, Home five), so
+  ' every entry is one press from the icon.
   '
   ' @param entries - a screen's pageSettingsEntries()
   ' @return {object} { labels: [string], ids: [string], icons: [string] }
@@ -119,6 +119,94 @@ namespace pageSettings
       list.values.push(option.id)
     end for
     return list
+  end function
+
+  ' settingEntry: an entry for a user setting, offered on a page it visibly changes. Its title,
+  ' its options and their order are the setting's own in settings.json, as the Settings screen
+  ' shows them, so the setting reads one way in both places. The entry's id is the setting's
+  ' name, and an option's id is the value user.settings.Save takes for it.
+  '
+  ' A bool setting offers Disabled then Enabled, the Settings screen's two words. A radio
+  ' setting offers its options. An integer setting offers `steps.values` (ascending, inside the
+  ' setting's range: the caller's to keep), with the value in force placed among them when it
+  ' is not a step, so a value typed in Settings is never shown as another. A step's title is
+  ' steps.labelFor(value) when the caller gives that function, else the number.
+  '
+  ' @param setting - the setting's settings.json entry (findConfigTreeKey)
+  ' @param current - the setting's value in force, as its JellyfinUserSettings field holds it
+  ' @param icon - the menu row's glyph
+  ' @param steps - for an integer setting: { values: [integer], labelFor: function(integer) as string }
+  ' @return {dynamic} the entry, or invalid for a setting it cannot offer
+  function settingEntry(setting as dynamic, current as dynamic, icon = "" as string, steps = invalid as dynamic) as dynamic
+    if type(setting) <> "roAssociativeArray" or not pageSettings.isText(setting.settingName) or setting.settingName = "" then return invalid
+    entry = { id: setting.settingName, title: pageSettings.jsonText(setting), options: [], selected: "", icon: icon }
+
+    kind = LCase(textOrEmpty(setting.type))
+    if kind = "bool"
+      entry.options = [
+        { id: "false", title: translate(translationKeys.LabelDisabled) },
+        { id: "true", title: translate(translationKeys.LabelEnabled) }
+      ]
+      entry.selected = "false"
+      if current = true then entry.selected = "true"
+    else if kind = "radio"
+      if type(setting.options) = "roArray"
+        for each option in setting.options
+          if type(option) = "roAssociativeArray" and pageSettings.isText(option.id) and option.id <> ""
+            entry.options.push({ id: option.id, title: pageSettings.jsonText(option) })
+          end if
+        end for
+      end if
+      entry.selected = textOrEmpty(current)
+    else if kind = "integer"
+      if type(steps) <> "roAssociativeArray" then return invalid
+      inForce = pageSettings.integerInForce(current, setting.default)
+      for each value in pageSettings.stepsWith(steps.values, inForce)
+        title = value.toStr()
+        ' Called through a local, not as steps.labelFor(): a call through the AA would run it
+        ' with `m` as the AA, and a label that translates reads m.global.
+        labelFor = steps.labelFor
+        if isValid(labelFor) then title = labelFor(value)
+        entry.options.push({ id: value.toStr(), title: title })
+      end for
+      if isValid(inForce) then entry.selected = inForce.toStr()
+    else
+      return invalid
+    end if
+
+    if entry.options.count() = 0 then return invalid
+    return entry
+  end function
+
+  ' A settings.json title: its translation key's text, else its English title.
+  function jsonText(item as object) as string
+    if pageSettings.isText(item.titleKey) and item.titleKey <> "" then return translate(item.titleKey)
+    return textOrEmpty(item.title)
+  end function
+
+  ' The integer in force: the field's value, else the setting's default (a string in
+  ' settings.json), else invalid.
+  function integerInForce(current as dynamic, default as dynamic) as dynamic
+    kind = type(current)
+    if kind = "roInt" or kind = "roInteger" or kind = "Integer" or kind = "roLongInteger" or kind = "LongInteger" then return Int(current)
+    if pageSettings.isText(default) and default <> "" then return Int(Val(default))
+    return invalid
+  end function
+
+  ' `values` (integers, ascending) with `inForce` placed in order when it is not one of them.
+  function stepsWith(values as dynamic, inForce as dynamic) as object
+    result = []
+    if type(values) <> "roArray" then return result
+    isPlaced = not isValid(inForce)
+    for each value in values
+      if not isPlaced and inForce <= value
+        if inForce < value then result.push(inForce)
+        isPlaced = true
+      end if
+      result.push(value)
+    end for
+    if not isPlaced then result.push(inForce)
+    return result
   end function
 
   ' The picker's close did nothing the scene acts on.

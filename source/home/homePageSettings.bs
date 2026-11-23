@@ -1,0 +1,82 @@
+import "pkg:/source/translationKeys.bs"
+import "pkg:/source/utils/config.bs"
+import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/pageSettings.bs"
+import "pkg:/source/utils/translate.bs"
+
+' Home's page settings: the entries of the settings icon's menu on Home (Home.pageSettingsEntries).
+' Each is an app-wide setting offered on Home because a pick shows there at once; it reads as
+' it does in Settings (pageSettings.settingEntry). It lives in source/ so a Rooibos suite can
+' reach it.
+namespace homePageSettings
+
+  ' The menu rows' glyphs, at the menu's density
+  const ICON_ROW_LAYOUT = "pkg:/images/icons/rowLayout_$$RES$$.png"
+  const ICON_EPISODE_IMAGES = "pkg:/images/icons/episodeImages_$$RES$$.png"
+  const ICON_ROW_SIZE = "pkg:/images/icons/rowSize_$$RES$$.png"
+  const ICON_MAX_DAYS = "pkg:/images/icons/maxDays_$$RES$$.png"
+  const ICON_REWATCHING = "pkg:/images/icons/rewatching_$$RES$$.png"
+
+  ' entries: Row Layout on both tabs; on the Home tab also the settings that change what its
+  ' rows show. The Favorites tab's cells take no episode art (BrowseRowItem) and it has no
+  ' Next Up row, so Row Layout is its only one.
+  '
+  ' @param tree - settings.json (GetConfigTree)
+  ' @param settings - the signed-in user's JellyfinUserSettings node
+  ' @param tabId - Home's selected tab: "home" or "favorites"
+  ' @return {object} the entries, in menu order
+  function entries(tree as dynamic, settings as object, tabId as string) as object
+    list = []
+    if type(tree) <> "roArray" then return list
+    homePageSettings.add(list, tree, "uiRowLayout", settings.uiRowLayout, homePageSettings.ICON_ROW_LAYOUT)
+    if tabId = "home"
+      episodeImages = homePageSettings.add(list, tree, "uiGeneralEpisodeImages", settings.uiGeneralEpisodeImages, homePageSettings.ICON_EPISODE_IMAGES)
+      if isValid(episodeImages) then episodeImages.valueTitle = homePageSettings.episodeImagesValue(episodeImages.selected)
+      homePageSettings.add(list, tree, "uiHomeRowLimit", settings.uiHomeRowLimit, homePageSettings.ICON_ROW_SIZE, homePageSettings.rowLimitSteps())
+      homePageSettings.add(list, tree, "uiDetailsMaxDaysNextUp", settings.uiDetailsMaxDaysNextUp, homePageSettings.ICON_MAX_DAYS, homePageSettings.maxDaysSteps())
+      homePageSettings.add(list, tree, "uiDetailsEnableRewatchingNextUp", settings.uiDetailsEnableRewatchingNextUp, homePageSettings.ICON_REWATCHING)
+    end if
+    return list
+  end function
+
+  ' isHomeSetting: whether `name` is a setting Home's menu can offer.
+  function isHomeSetting(name as string) as boolean
+    return inArray(["uiRowLayout", "uiGeneralEpisodeImages", "uiHomeRowLimit", "uiDetailsMaxDaysNextUp", "uiDetailsEnableRewatchingNextUp"], name)
+  end function
+
+  ' The Max Items per Row (uiHomeRowLimit) steps: how many items a Recently Added, On Now or Active Recordings row
+  ' loads, inside the setting's 1 to 100.
+  function rowLimitSteps() as object
+    return { values: [8, 16, 24, 32, 48, 64, 100] }
+  end function
+
+  ' The Max Days Next Up steps; 0 is no limit (buildHomeNextUpParams).
+  function maxDaysSteps() as object
+    return { values: [0, 7, 14, 30, 60, 90, 180, 365], labelFor: homePageSettings.maxDaysLabel }
+  end function
+
+  ' "No limit", "1 day" or "30 days".
+  function maxDaysLabel(days as integer) as string
+    if days = 0 then return translate(translationKeys.LabelNoLimit)
+    return translatePlural(translationKeys.LabelDayCount, days, [days.toStr()])
+  end function
+
+  ' Episode Images' value on its menu row: a word for the image's source, since the options'
+  ' own titles ("Use Web Client Setting") are cut at the menu's width. "" for an unknown id,
+  ' and the row then shows the option's title.
+  function episodeImagesValue(optionId as string) as string
+    if optionId = "webclient" then return translate(translationKeys.LabelImageSourceWebClient)
+    if optionId = "episode" then return translate(translationKeys.LabelImageSourceEpisode)
+    if optionId = "show" then return translate(translationKeys.LabelImageSourceShow)
+    return ""
+  end function
+
+  ' Build the entry for the setting `name`, add it to `list`, and return it (invalid when the
+  ' setting cannot be offered).
+  function add(list as object, tree as object, name as string, current as dynamic, icon as string, steps = invalid as dynamic) as dynamic
+    entry = pageSettings.settingEntry(findConfigTreeKey(name, tree), current, icon, steps)
+    if isValid(entry) then list.push(entry)
+    return entry
+  end function
+
+end namespace

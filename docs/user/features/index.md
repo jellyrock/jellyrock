@@ -14,6 +14,7 @@ What JellyRock does, one page per feature. Each page says what the feature needs
 | [Delete media](delete-media.md) | Delete a movie, an episode or any other item from your server, right from your Roku, if your account allows it. | 10.7.0 or later | None |
 | [Favorites](favorites.md) | Mark what you love as a favorite and find it all in one place, on its own tab on Home. | 10.7.0 or later | None |
 | [HDR and Dolby Vision](hdr-dolby-vision.md) | Watch HDR10, HDR10+, HLG and Dolby Vision as they were made, on a 4K Roku and a TV that shows them. | 10.7.0 or later | None |
+| [Home](home.md) | Pick up where you left off, see what's new in each library, and change how Home looks from its own menu. | 10.7.0 or later | None |
 | [Item details](item-details.md) | One details page for movies, shows, music, people and more, with its actions, tracks and related items. | 10.7.0 or later | None |
 | [Jellyfin 12](jellyfin-12.md) | Works with Jellyfin 12 and uses what's new in it, from collections and language filters to episode versions. | 12.0.0 or later | None |
 | [Languages](languages.md) | Use JellyRock in your language, following your server or Roku, or pick any language yourself. | 10.7.0 or later | None |
