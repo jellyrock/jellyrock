@@ -1047,8 +1047,9 @@ sub onFullSearchResults(event as object)
   ' Only steal focus when the overlay is collapsed (user submitted). During
   ' live-while-typing the user is still on the keyboard: snapping focus to
   ' the results list would yank them out of the middle of a word.
+  ' A covered screen takes no focus: OnScreenShown restores lastFocus when it shows again.
   if not m.top.isExpanded
-    m.searchSelect.setFocus(true)
+    if m.isShown then m.searchSelect.setFocus(true)
     m.top.lastFocus = m.searchSelect
   end if
 end sub
@@ -1142,8 +1143,10 @@ sub showHelpText(text as string)
 end sub
 
 sub focusRetryButton()
-  m.searchRetryButton.setFocus(true)
   m.top.lastFocus = m.searchRetryButton
+  ' A covered screen takes no focus: OnScreenShown restores lastFocus when it shows again.
+  if not m.isShown then return
+  m.searchRetryButton.setFocus(true)
   ' The platform speaks only the focused button; the message is ours to announce.
   m.failureNarrationTimer.control = "stop"
   m.failureNarrationTimer.control = "start"
