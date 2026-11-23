@@ -34,6 +34,7 @@ namespace tests
 
       m.itemDetails = CreateObject("roSGNode", "ItemDetails")
       m.global.user.settings.uiMoviesShowRatings = true
+      m.global.user.settings.uiTvShowsDisableCommunityRating = false
     end sub
 
     protected override sub teardown()
@@ -84,6 +85,23 @@ namespace tests
 
       m.assertInvalid(m.itemDetails.findNode("communityRating"))
       m.assertInvalid(m.itemDetails.findNode("criticRating"))
+    end function
+
+    @it("omits community and critic rating nodes when Disable Community Rating for Episodes is on")
+    function _()
+      ' Both set here: setup() runs once per suite, and a case above turns ratings off
+      settings = m.global.user.settings
+      wereShown = settings.uiMoviesShowRatings
+      settings.uiMoviesShowRatings = true
+      settings.uiTvShowsDisableCommunityRating = true
+      item = m.makeEpisode()
+      m.itemDetails.itemContent = item
+      settings.uiTvShowsDisableCommunityRating = false
+      settings.uiMoviesShowRatings = wereShown
+
+      m.assertInvalid(m.itemDetails.findNode("communityRating"))
+      m.assertInvalid(m.itemDetails.findNode("criticRating"))
+      m.assertNotInvalid(m.itemDetails.findNode("officialRating"), "the official rating is not a spoiler")
     end function
 
     @it("still populates official rating node alongside community/critic rating")

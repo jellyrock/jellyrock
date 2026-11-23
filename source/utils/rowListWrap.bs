@@ -83,7 +83,7 @@ function getWrapTarget(key as string, rowItemFocused as dynamic, content as dyna
   end if
 
   ' Derive visible width from itemSize (row container width) instead of hardcoding 1920.
-  ' itemSize[0] is the actual RowList row width, which varies by layout (for example 1920 vs 1703).
+  ' itemSize[0] is the actual RowList row width, which varies by layout (for example 1920 vs 1728).
   visibleWidth = 1920 ' fallback for safety
   if type(itemSize) = "roArray" and itemSize.count() > 0
     visibleWidth = itemSize[0]

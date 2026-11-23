@@ -11,6 +11,7 @@ import "pkg:/source/utils/overhangRow.bs"
 import "pkg:/source/utils/playbackCaps.bs"
 import "pkg:/source/utils/playbackSettingsMenu.bs"
 import "pkg:/source/utils/queueRepeat.bs"
+import "pkg:/source/utils/ratingsDisplay.bs"
 import "pkg:/source/utils/translate.bs"
 
 sub init()
@@ -95,9 +96,8 @@ end sub
 ' is read directly from typed fields (item.type, item.name, item.communityRating, etc.)
 '
 ' Content Type Detection (isMovie/isSeries):
-' These flags determine which user settings control ratings display:
-' - isMovie=true: Uses uiMoviesShowRatings setting
-' - isSeries=true: Uses uiTvShowsDisableCommunityRating setting
+' Ratings follow ratingsDisplay.isShown: uiMoviesShowRatings for every item, and
+' uiTvShowsDisableCommunityRating as well when isSeries is true.
 '
 ' Detection Priority (applied in order):
 ' 1. API flags: Uses isMovie/isSeries from JellyfinBaseItem if provided
@@ -531,20 +531,8 @@ sub setVideoSubTitle()
     displaySubtitleNode(officialRatingNode)
   end if
 
-  ' Determine if ratings should be shown based on content type and user settings
-  shouldShowRatings = false
-  if m.top.isMovie
-    ' Movie content - respect uiMoviesShowRatings setting
-    shouldShowRatings = userSettings.uiMoviesShowRatings
-  else if m.top.isSeries
-    ' Series content - respect uiTvShowsDisableCommunityRating setting
-    shouldShowRatings = not userSettings.uiTvShowsDisableCommunityRating
-  else
-    ' Unknown/other content types - show if metadata exists
-    shouldShowRatings = true
-  end if
-
-  if shouldShowRatings
+  ' Ratings follow the one rule the details screen follows; series content counts as an episode
+  if ratingsDisplay.isShown(userSettings, m.top.isSeries)
     ' communityRating (star + rating)
     if metaItem.communityRating <> 0
       communityRatingNode = CreateObject("roSGNode", "CommunityRating")
