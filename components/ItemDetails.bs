@@ -25,6 +25,7 @@ import "pkg:/source/utils/people.bs"
 import "pkg:/source/utils/placeholderImage.bs"
 import "pkg:/source/utils/playKind.bs"
 import "pkg:/source/utils/probedStreams.bs"
+import "pkg:/source/utils/ratingsDisplay.bs"
 import "pkg:/source/utils/remoteSubtitles.bs"
 import "pkg:/source/utils/screenReadiness.bs"
 import "pkg:/source/utils/screenWaits.bs"
@@ -2368,19 +2369,22 @@ sub fitInfoRow(group as object)
 end sub
 
 ' displayRatingNodes: Community + critic rating chips shared across every rateable item type's
-' Row 1. Both are gated behind uiMoviesShowRatings and only render when the value is present
+' Row 1. Both follow ratingsDisplay.isShown and only render when the value is present
 ' (> 0), so it's safe to call for any type: types without a rating from the server
 ' show nothing. Values are passed explicitly (rather than reading item.* directly) so callers
 ' that need a parent-series fallback (Season) can resolve the value first.
-sub displayRatingNodes(userSettings as object, communityRating as float, criticRating as float)
-  if userSettings.uiMoviesShowRatings and communityRating > 0
+' @param {boolean} isEpisode - an episode, which the episode spoiler setting also hides ratings on
+sub displayRatingNodes(userSettings as object, communityRating as float, criticRating as float, isEpisode = false as boolean)
+  if not ratingsDisplay.isShown(userSettings, isEpisode) then return
+
+  if communityRating > 0
     communityRatingNode = CreateObject("roSGNode", "CommunityRating")
     communityRatingNode.id = "communityRating"
     communityRatingNode.rating = communityRating
     displayInfoNode(communityRatingNode)
   end if
 
-  if userSettings.uiMoviesShowRatings and criticRating > 0
+  if criticRating > 0
     criticRatingNode = CreateObject("roSGNode", "CriticRating")
     criticRatingNode.id = "criticRating"
     criticRatingNode.rating = criticRating
@@ -2718,7 +2722,7 @@ sub populateInfoGroupEpisode(item as object, userSettings as object)
     displayInfoNode(ratingNode)
   end if
 
-  displayRatingNodes(userSettings, item.communityRating, item.criticRating)
+  displayRatingNodes(userSettings, item.communityRating, item.criticRating, true)
 
   if item.runTimeTicks > 0
     runtimeNode = createInfoLabel("runtime")

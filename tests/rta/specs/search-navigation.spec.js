@@ -6,7 +6,8 @@
  *  - in recent mode, Down from the last entry reaches Clear History;
  *  - Up from the first results row reopens the overlay where focus left it: on the
  *    suggestion that was picked, or on the keyboard;
- *  - picking a suggestion lands on the results even before any have arrived.
+ *  - picking a suggestion lands on the results even before any have arrived;
+ *  - Options on a suggestion opens nothing (no dialog, and no Settings from the scene).
  *
  * Suggestions here are the demo server's live hints for RTA_CONFIG.searchQuery, so each case
  * reads what the list holds before asserting on it rather than naming a title.
@@ -31,6 +32,7 @@ import {
   getVal,
   hasChildren,
   press,
+  sleep,
   waitFocused,
   waitFocusInside,
   waitFor,
@@ -44,6 +46,9 @@ const FEW_HINTS_QUERY = 'pioneer';
 const LIST = '#suggestions.#list';
 // RTA_CAPTURE=1 also saves the overlay's states to out/rta-captures/ for review.
 const CAPTURE = process.env.RTA_CAPTURE === '1';
+// Longer than a router navigation to Settings takes: a probe on 2026-11-21 saw Settings on screen
+// within 4 s of the key, so 5 s leaves a second of margin.
+const NAVIGATION_WINDOW_MS = 5000;
 
 const atList = (f) => f?.node?.id === 'list';
 const atResults = (f) => f?.node?.id === 'searchSelect';
@@ -382,9 +387,14 @@ it('Options on a suggestion opens nothing, even one that is also a recent search
 
   await press(ecp.Key.Option);
   // A dialog would take focus, and Left would then move between its buttons. Left reaching
-  // the keyboard proves the Option press opened nothing, with no wait for a non-event.
+  // the keyboard shows the Option press opened no dialog. It does not show the press went
+  // nowhere: an unhandled Option reaches the scene, which navigates to Settings several turns
+  // of the event loop later, after the gate below passes. Settings is a router navigation with
+  // no field to observe, so the check waits out a window (a non-event) and reads the active view.
   await press(ecp.Key.Left);
   await waitFocusInside('#kbd', { label: 'the keyboard, with no dialog open', timeout: 8000 });
+  await sleep(NAVIGATION_WINDOW_MS);
+  expect(await getActiveVal('subtype()'), 'still on the search screen').toBe('SearchScreen');
 });
 
 it('shows five hints, but four recent searches beside Clear History', async () => {

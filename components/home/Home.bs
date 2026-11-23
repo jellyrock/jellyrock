@@ -1,6 +1,7 @@
 import "pkg:/source/api/ApiClient.bs"
 import "pkg:/source/api/apiPool.bs"
 import "pkg:/source/api/apiPromise.bs"
+import "pkg:/source/home/homePageSettings.bs"
 import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/remotecontrol/remoteProtocol.bs"
 import "pkg:/source/translationKeys.bs"
@@ -54,19 +55,41 @@ sub init()
   m.top.shouldShowUserDropdown = true
 end sub
 
-' JRScreen hook: Star does what the settings icon does, as on a library. Home declares no
-' page entries, so that opens Settings.
-function onOptionsKey() as boolean
-  m.top.getScene().callFunc("openPageMenu")
-  return true
+' JRScreen hook: the settings icon's menu (homePageSettings.entries). settings.json is read
+' when the menu first opens and kept for Home's life.
+function pageSettingsEntries() as object
+  if not isValid(m.settingsTree) then m.settingsTree = GetConfigTree()
+  return homePageSettings.entries(m.settingsTree, m.global.user.settings, m.activeTabId)
 end function
 
-' JRScreen hook: settings written while Home was covered. Row Layout is read when the rows are
-' built, so the rows on show are laid out again (applyRowLayoutSetting leaves a layout already
-' applied as it is). The other Home settings are read by each load, and the refresh that
-' onScreenShown runs picks them up.
+' JRScreen hook: the viewer picked a value in Home's menu. It is saved as Settings saves it,
+' then applied on screen the way a change made in Settings is (applyHomeSetting).
+sub onPageSettingChanged(id as string, value as string)
+  if not homePageSettings.isHomeSetting(id) then return
+  user.settings.Save(id, value)
+  applyHomeSetting(id, true)
+end sub
+
+' JRScreen hook: settings written while Home was covered. The reload onScreenShown runs on
+' every return covers the settings a load reads, so only Row Layout applies here.
 sub onSettingsChanged(names as object)
-  if inArray(names, "uiRowLayout") and isValid(m.activeContent) then m.activeContent.callFunc("applyRowLayoutSetting")
+  for each name in names
+    if homePageSettings.isHomeSetting(name) then applyHomeSetting(name, false)
+  end for
+end sub
+
+' Apply one of Home's settings to what is on screen. Row Layout lays the rows out again
+' (applyRowLayoutSetting leaves a layout already applied as it is). The others are read by
+' each load, and a reload gives every cell a new item, so the rows draw with the new value:
+' at once when Home is on show, else by the reload onScreenShown runs.
+' @param {boolean} isOnShow - Home is on screen now, not coming back from under another screen
+sub applyHomeSetting(name as string, isOnShow as boolean)
+  if not isValid(m.activeContent) then return
+  if name = "uiRowLayout"
+    m.activeContent.callFunc("applyRowLayoutSetting")
+  else if isOnShow
+    refresh()
+  end if
 end sub
 
 sub refresh()

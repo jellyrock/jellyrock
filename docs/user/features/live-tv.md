@@ -60,7 +60,7 @@ Both are part of the standard Home arrangement. By default Home follows your web
 
 ## Settings
 
-- [Home Row Size](../app-settings.md#uiHomeRowLimit): how many items the **On Now** and **Active Recordings** rows load.
+- [Max Items per Row](../app-settings.md#uiHomeRowLimit): how many items the **On Now** and **Active Recordings** rows load.
 - [Use Web Client's Home Section Arrangement](../app-settings.md#uiHomeUseWebArrangement): whether Home follows your web client's row order, which decides whether the Live TV rows show.
 
 ## Troubleshooting

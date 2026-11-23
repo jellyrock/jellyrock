@@ -21,11 +21,11 @@ namespace tests
       })
     end function
 
-    @it("insets the original layout, with no focus offset")
+    @it("insets the original layout to the action-safe band the tabs start on, with no focus offset")
     function _()
       m.assertEqual(homeRowLayout.fields("original"), {
-        translation: [111, 126],
-        itemSize: [1703, rowSlotSize.ROW_HEIGHT_PORTRAIT],
+        translation: [96, 126],
+        itemSize: [1728, rowSlotSize.ROW_HEIGHT_PORTRAIT],
         focusXOffset: [],
         rowLabelOffset: [0, 18]
       })
@@ -33,7 +33,7 @@ namespace tests
 
     @it("treats any value but fullwidth as the original layout")
     function _()
-      m.assertEqual(homeRowLayout.fields("").translation, [111, 126])
+      m.assertEqual(homeRowLayout.fields("").translation, [96, 126])
     end function
 
     @it("gives no fields for an unset value, leaving the list's own")

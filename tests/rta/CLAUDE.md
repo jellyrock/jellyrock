@@ -197,7 +197,7 @@ A few calls set their own timeout: `readIdentity` in [`scripts/measurement-guard
 | `getValues` | The batch reader every wait goes through (`getVals`, `getActiveVals`). A keyPath that doesn't resolve comes back `found: false` instead of failing the batch, so one fixed request set covers every screen. |
 | `getValue` | Single reads in [`lib/driver.js`](lib/driver.js) and [`lib/steps.js`](lib/steps.js) where there is one keyPath. |
 | `getFocusedNode` | Every focus predicate (`focusIsInside`, `waitFocused`, `focusIsInHomeContent`) and the failure dump. |
-| `callFunc` | The bench and probe specs' harness nodes (`task-ledger-bench`, `task-ledger-screen-cost`, `task-thread-peak`, `gaa-thread-scope`). |
+| `callFunc` | The bench and probe specs' harness nodes (`task-ledger-bench`, `task-ledger-screen-cost`, `task-thread-peak`, `gaa-thread-scope`), the SyncPlay specs' manager and player calls, and `activeScreenHasPageMenu` ([`lib/nav.js`](lib/nav.js)), which asks the screen on show for its page entries before the gear is pressed. |
 | `setValue` | Arranging state the app can't be walked into: [`lib/nav.js`](lib/nav.js), [`lib/failRequests.js`](lib/failRequests.js) (requests made to fail), `dialogs.spec.js`, `genre-skeleton.spec.js`. |
 | `createChild` / `removeNode` | The bench and probe specs create a measurement node under the scene and remove it again, in pairs, since a node left behind would read as an app leak in the leak gate. `capture-screenshots.js` creates one too. |
 | `readRegistry` / `writeRegistry` / `deleteRegistrySections` | [`lib/registry.js`](lib/registry.js)'s snapshot and verified restore, [`lib/seed.js`](lib/seed.js)'s session seeds, and a few specs that set or read one key (`dialogs`, `still-watching`, the playback specs). |

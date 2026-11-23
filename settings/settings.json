@@ -671,7 +671,7 @@
     "children": [
       {
         "title": "General",
-        "description": "Settings relating to the appearance of the Home screen and the program in general.",
+        "description": "Settings relating to the appearance of the app in general.",
         "children": [
           {
             "title": "Display Language",
@@ -709,32 +709,6 @@
             "descriptionKey": "MessageControlDisplayOfBackdropImagesThroughout"
           },
           {
-            "title": "Episode Images Next Up",
-            "description": "What type of images to use for Episodes shown in the 'Next Up' and 'Continue Watching' sections.",
-            "settingName": "uiGeneralEpisodeImages",
-            "type": "radio",
-            "default": "webclient",
-            "options": [
-              {
-                "title": "Use Web Client Setting",
-                "id": "webclient",
-                "titleKey": "LabelUseWebClientSetting"
-              },
-              {
-                "title": "Use Episode Image",
-                "id": "episode",
-                "titleKey": "LabelUseEpisodeImage"
-              },
-              {
-                "title": "Use Show Image",
-                "id": "show",
-                "titleKey": "LabelUseShowImage"
-              }
-            ],
-            "titleKey": "LabelEpisodeImagesNextUp",
-            "descriptionKey": "SettingDescEpisodeImages"
-          },
-          {
             "title": "Fallback Fonts",
             "description": "Replace Roku's system font with the fallback font provided by the Jellyfin server. Fallback fonts must be configured and enabled by the server admin for this to work. JellyRock will need to be restarted.",
             "settingName": "uiFontFallback",
@@ -751,56 +725,6 @@
             "default": "false",
             "titleKey": "LabelHideClock",
             "descriptionKey": "SettingDescHideClock"
-          },
-          {
-            "title": "Home Row Size",
-            "description": "Sets how many items the Recently Added, On Now and Active Recordings rows load; Continue Watching and Next Up always show your full list. Higher values load more slowly, especially on older devices or with many libraries. Applies next time Home loads.",
-            "settingName": "uiHomeRowLimit",
-            "type": "integer",
-            "default": "32",
-            "min": 1,
-            "max": 100,
-            "titleKey": "SettingHomeRowSize",
-            "descriptionKey": "SettingDescHomeRowSize"
-          },
-          {
-            "title": "Max Days Next Up",
-            "description": "Set the maximum amount of days a show should stay in the 'Next Up' list without watching it.",
-            "settingName": "uiDetailsMaxDaysNextUp",
-            "type": "integer",
-            "default": "0",
-            "titleKey": "LabelMaxDaysNextUp",
-            "descriptionKey": "SettingDescMaxDaysNextUp"
-          },
-          {
-            "title": "Rewatching Next Up",
-            "description": "Show already watched episodes in 'Next Up' sections.",
-            "settingName": "uiDetailsEnableRewatchingNextUp",
-            "type": "bool",
-            "default": "false",
-            "titleKey": "LabelRewatchingNextUp",
-            "descriptionKey": "SettingDescRewatchingNextUp"
-          },
-          {
-            "title": "Row Layout",
-            "description": "Choose how rows are displayed throughout the app.",
-            "settingName": "uiRowLayout",
-            "type": "radio",
-            "default": "fullwidth",
-            "options": [
-              {
-                "title": "Original",
-                "id": "original",
-                "titleKey": "LabelOriginal"
-              },
-              {
-                "title": "Full Width",
-                "id": "fullwidth",
-                "titleKey": "LabelFullWidth"
-              }
-            ],
-            "titleKey": "LabelRowLayout",
-            "descriptionKey": "SettingDescRowLayout"
           },
           {
             "title": "Theme",
@@ -1018,6 +942,90 @@
             ],
             "titleKey": "LabelCustomThemeColors",
             "descriptionKey": "MessageManuallySetIndividualThemeColors"
+          }
+        ],
+        "titleKey": "LabelGeneral",
+        "descriptionKey": "SettingDescUserInterfaceGeneral"
+      },
+      {
+        "title": "Home",
+        "description": "Settings relating to what the Home screen shows and how its rows are laid out.",
+        "children": [
+          {
+            "title": "Episode Images Next Up",
+            "description": "What type of images to use for Episodes shown in the 'Next Up' and 'Continue Watching' sections.",
+            "settingName": "uiGeneralEpisodeImages",
+            "type": "radio",
+            "default": "webclient",
+            "options": [
+              {
+                "title": "Use Web Client Setting",
+                "id": "webclient",
+                "titleKey": "LabelUseWebClientSetting"
+              },
+              {
+                "title": "Use Episode Image",
+                "id": "episode",
+                "titleKey": "LabelUseEpisodeImage"
+              },
+              {
+                "title": "Use Show Image",
+                "id": "show",
+                "titleKey": "LabelUseShowImage"
+              }
+            ],
+            "titleKey": "LabelEpisodeImagesNextUp",
+            "descriptionKey": "SettingDescEpisodeImages"
+          },
+          {
+            "title": "Max Days Next Up",
+            "description": "Set the maximum amount of days a show should stay in the 'Next Up' list without watching it.",
+            "settingName": "uiDetailsMaxDaysNextUp",
+            "type": "integer",
+            "default": "0",
+            "titleKey": "LabelMaxDaysNextUp",
+            "descriptionKey": "SettingDescMaxDaysNextUp"
+          },
+          {
+            "title": "Max Items per Row",
+            "description": "Sets how many items the Recently Added, On Now and Active Recordings rows load; Continue Watching and Next Up always show your full list. Higher values load more slowly, especially on older devices or with many libraries. Applies next time Home loads.",
+            "settingName": "uiHomeRowLimit",
+            "type": "integer",
+            "default": "32",
+            "min": 1,
+            "max": 100,
+            "titleKey": "SettingHomeRowSize",
+            "descriptionKey": "SettingDescHomeRowSize"
+          },
+          {
+            "title": "Rewatching Next Up",
+            "description": "Show already watched episodes in 'Next Up' sections.",
+            "settingName": "uiDetailsEnableRewatchingNextUp",
+            "type": "bool",
+            "default": "false",
+            "titleKey": "LabelRewatchingNextUp",
+            "descriptionKey": "SettingDescRewatchingNextUp"
+          },
+          {
+            "title": "Row Layout",
+            "description": "Choose how the rows on Home and its Favorites tab are laid out.",
+            "settingName": "uiRowLayout",
+            "type": "radio",
+            "default": "fullwidth",
+            "options": [
+              {
+                "title": "Original",
+                "id": "original",
+                "titleKey": "LabelOriginal"
+              },
+              {
+                "title": "Full Width",
+                "id": "fullwidth",
+                "titleKey": "LabelFullWidth"
+              }
+            ],
+            "titleKey": "LabelRowLayout",
+            "descriptionKey": "SettingDescRowLayout"
           },
           {
             "title": "Use Web Client's Home Section Arrangement",
@@ -1029,8 +1037,8 @@
             "descriptionKey": "SettingDescHomeUseWebArrangement"
           }
         ],
-        "titleKey": "LabelGeneral",
-        "descriptionKey": "SettingDescUserInterfaceGeneral"
+        "titleKey": "LabelHome",
+        "descriptionKey": "SettingDescUserInterfaceHome"
       },
       {
         "title": "Libraries",
@@ -1067,6 +1075,15 @@
                 "descriptionKey": "SettingDescGridView"
               },
               {
+                "title": "Community and Critical Ratings",
+                "description": "Show community and critic ratings on details screens, in a library's Grid with details layout and in the player.",
+                "settingName": "uiMoviesShowRatings",
+                "type": "bool",
+                "default": "true",
+                "titleKey": "LabelCommunityAndCriticalRatings",
+                "descriptionKey": "SettingDescMoviesShowRatings"
+              },
+              {
                 "title": "Hide Taglines",
                 "description": "Hides tagline text on details pages.",
                 "settingName": "uiDetailsHideTagline",
@@ -1087,23 +1104,6 @@
             ],
             "titleKey": "LabelGeneral",
             "descriptionKey": "SettingDescLibrariesGeneral"
-          },
-          {
-            "title": "Movies",
-            "description": "Settings relating to the appearance of pages in Movie Libraries.",
-            "children": [
-              {
-                "title": "Community and Critical Ratings",
-                "description": "Ratings for how good a movie is.",
-                "settingName": "uiMoviesShowRatings",
-                "type": "bool",
-                "default": "true",
-                "titleKey": "LabelCommunityAndCriticalRatings",
-                "descriptionKey": "SettingDescMoviesShowRatings"
-              }
-            ],
-            "titleKey": "LabelMovies",
-            "descriptionKey": "SettingDescMovies"
           },
           {
             "title": "Photos",
@@ -1146,7 +1146,7 @@
               },
               {
                 "title": "Disable Community Rating for Episodes",
-                "description": "Hide the star and community rating for episodes of a TV show. This is to prevent spoilers of an upcoming good/bad episode.",
+                "description": "Hide the community and critic ratings of episodes, on their details screens and in the player, so a rating cannot spoil an upcoming episode.",
                 "settingName": "uiTvShowsDisableCommunityRating",
                 "type": "bool",
                 "default": "false",

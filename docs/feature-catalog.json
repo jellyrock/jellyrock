@@ -118,6 +118,19 @@
       "url": "https://docs.jellyrock.app/features/hdr-dolby-vision/"
     },
     {
+      "slug": "home",
+      "title": "Home",
+      "pitch": "Pick up where you left off, see what's new in each library, and change how Home looks from its own menu.",
+      "since": "1.0.0",
+      "sinceDate": "2025-08-24",
+      "server": "10.7.0",
+      "plugins": [],
+      "screenshots": [],
+      "https": null,
+      "page": "docs/user/features/home.md",
+      "url": "https://docs.jellyrock.app/features/home/"
+    },
+    {
       "slug": "item-details",
       "title": "Item details",
       "pitch": "One details page for movies, shows, music, people and more, with its actions, tracks and related items.",
