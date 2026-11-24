@@ -290,17 +290,6 @@ Where JellyRock stands: pinned to 1.7.27. 1.7.28 over-indents every statement af
 
 When it moves: when a release after 1.7.28 ships, format the multi-line-AA reproduction snippet under it (`npx bsfmt --write` on a `fn("x", { k: v })`-across-lines snippet followed by a top-level function); if indentation is correct, merge the Renovate bump and drop the 1.7.27 pin in `package.json`. Link the upstream issue once filed
 
-#### The next brighterscript bump past 1.0.0-alpha.57 needs three things here: the `TaskLedgerBench` interface, the lost unreachable-code gate and the Rooibos patch `[fid: brighterscript-alpha57-bump-blockers]` `[captured 2026-10-20]`
-
-Renovate PR #1202 (brighterscript and bslint `1.0.0-alpha.57`) was closed on 2026-10-20 because the build failed with 13 errors that alpha.56 doesn't report. The PR comment has the full findings. Six are bslint `uninitialized-variable` false positives on calls inside inactive `#if` blocks; upstream fixed them in bslint PR #227, unreleased at that date. The other two problems remain after that fix and need work here before the next bump lands, and Rooibos moves with it:
-
-1. **`components/testing/TaskLedgerBench.xml` reports 7 × `function-not-found`.** Its `<interface>` names functions whose bodies in `TaskLedgerBench.bs` sit inside `#if ENABLE_RTA`, which is false in the committed manifest. brighterscript alpha.57 (its PR #1886) leaves functions in inactive branches out of scope, so the check is a brighterscript check and arguably correct. Pick a fix, such as moving the `#if` inside each function body so the functions always exist. Not checked: how a Roku device treats an interface function with no implementation.
-2. **`unreachable-code` silently stops failing the build.** bslint dropped the rule (its PR #228), so `"unreachable-code": "error"` in `bslint.json` does nothing, and brighterscript reports the code as a Hint the CLI doesn't print. Raising it with `diagnosticSeverityOverrides: {"unreachable-code": "error"}` in `bsconfig-base.json` restores the error, but it then flags the deliberate trailing `return` after `while true` in `RemoteControlTask.bs` and `apiPipeline.bs`. Remove that `return` and the bslint rule `unsafe-return-value` fails instead. Choose between a recorded `bs:disable` at those two sites, an upstream report of the conflict, or accepting the hint, and drop the dead `bslint.json` key.
-
-3. **Bump `rooibos-roku` in the same change.** Renovate PR #1206 (`rooibos-roku` `6.0.0-alpha.57`) was closed on 2026-10-20 too: `npm ci` failed because `patches/rooibos-roku+6.0.0-alpha.55.patch` no longer applies, and Rooibos alpha.57 depends on brighterscript `^1.0.0-alpha.57`, so with brighterscript held at alpha.56 the test build would load two brighterscript versions. Upstream covers the patch's `ConsoleTestReporter.bs` hunk (the `Ignored` count, Rooibos PR #435); drop it. Rooibos PR #449 rewrote `CodeCoverage.brs` as a Task that counts events as they arrive, so the patch's coverage hunk has no code left to apply to. Run a coverage suite on a device before deleting the patch, since Rooibos issue #364 is still open. Not checked: whether the new coverage design stays under the watchdog on a device. Update the patch-package paragraph in `docs/architecture/build-and-tooling.md` to match.
-
-Closes when the next brighterscript bump builds clean with all three items handled.
-
 #### The hardware sync's GitLab fetch has not run in CI yet `[fid: roku-hardware-sync-gitlab-first-ci-run]` `[captured 2026-10-21]`
 
 `15f0377e` changed `.github/workflows/roku-hardware-sync.yml`: the fetch step no longer has `GH_TOKEN` and now reads GitLab through `npm run roku-hardware:fetch`, and the sync PR body builds a GitLab commit link from `UPSTREAM_FULL`. The fetch ran locally against GitLab (data checksum unchanged), but the workflow's shell was never run in CI, and the PR-body step only runs when device data changes. Close it after the first scheduled run following the merge: confirm the fetch step passes (`gh run list --workflow roku-hardware-sync.yml`), and trigger it with `workflow_dispatch` if no device change shows up soon. The committed dataset's provenance (`upstreamCommit` `c685ceb7`) is behind the current GitLab commit `8abc84b1` with identical data, so the next data change will also refresh it.
@@ -1450,6 +1439,12 @@ Read from the code on 2026-11-23, during the audit before the library screens br
 
 Why not now: it needs a look at a real library of each type first. To close: capture each type, decide what each needs (a presenter of its own, sorts, filters, a cell shape), and file what follows.
 
+#### Re-run the #1341 probe table on the installed brighterscript before the typecast trial `[fid: bsc-v1-probe-rerun-on-alpha58]` `[captured 2026-11-24]`
+
+Epic #1341's table of what BrighterScript v1 checks was measured on 1.0.0-alpha.56. The repo is on alpha.58, which adds checks the table does not list: missing observer callbacks (it found two dangling `observeField` calls in `IconButton.bs`), a warning when assigning to a member of an AA read from a node field, and optional chaining on `callFunc`. alpha.57 also stopped putting functions in an inactive `#if` branch in scope.
+
+To close: run the epic's probe project again on the installed version, update the table in the issue, and note which rows changed. Do it before the Settings `typecast` trial, and start that trial on a release that carries brighterscript PR #1998, since `typecast` leans on the same symbol tables a statement inserted by a plugin can disturb. Not now: it belongs to the epic's first step, not to the dependency bump.
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`
@@ -2017,6 +2012,26 @@ When it moves: if the release guards both functions, delete the patch and its te
 Since the settings-reach-screen work (2026-11-18), `seedHome` and `seedHomeWithSavedServers` in `tests/rta/lib/seed.js` put the user back on default settings before each seed: every field of `JellyfinUserSettings.xml` in its registry section, and the `display.*` keys. Before that, specs cleaned up the settings they wrote by hand, and four still do: `dialogs.spec.js` (`PLAYBACK_SETTING_KEYS`, `seedPlaybackSettings(null)` in `afterAll`), `theme.spec.js` (`clearThemeKeys`, before each seed and in `afterAll`), `still-watching.spec.js` (an `afterAll` deleting `playbackPlayNextEpisode`) and `playback-advance.spec.js` (one deleting it and `playbackCinemaMode`).
 
 They were kept because a spec after them that lands through a seed that signs nobody in (`seedUserSelect`, `seedServerSelect`) and then signs in through the UI would still see the setting. To close: check which specs after these four land that way and whether any reads a playback or theme setting; if none does, remove the hand cleanups (and the comments explaining them), then run the full `npm run test:rta` to prove the seed reset carries them. Not done in the same change because it widens a fix PR into four unrelated specs.
+
+#### Delete the Rooibos patch when a brighterscript release carries its PR #1998 `[fid: rooibos-position-patch-delete-on-bsc-fix]` `[captured 2026-11-24]` `[waits-on: after:2026-12-15]`
+
+`patches/rooibos-roku+6.0.0-alpha.58.patch` holds one fix: each statement keeps its position while Rooibos inserts coverage calls, so a local that shares its name with a namespace member is not transpiled as that member (rooibos#462). The fix in the compiler is brighterscript PR #1998, merged to its `v1` branch on 2026-11-20 and not in 1.0.0-alpha.58.
+
+When a brighterscript release carries it (expected in the next alpha): bump, delete the patch, and run `npm run test:scripts`. `rooibos-coverage-local-names.test.js` must pass with no patch; if it fails, the release does not fix it, so regenerate the patch with `npx patch-package rooibos-roku`. Then update the patch-package paragraph in `docs/architecture/build-and-tooling.md` and the header of that test. Not now: the release does not exist yet.
+
+#### `test:complete` stalls in the SyncPlay simulation spec, and two cases fail only under coverage `[fid: test-complete-stalls-in-syncplay-sim]` `[captured 2026-11-24]`
+
+`npm run test:complete` stalls in `tests/source/unit/syncplay/syncPlayConvergeSim.spec.bs`, at "with no faults, every run ends in step with no forbidden write". Measured 2026-11-24 on a Streaming Stick 4K: the case takes 21 s without coverage, and with coverage it printed nothing for 15 minutes (`ROKU_TEST_IDLE_TIMEOUT_MS=900000`), on rooibos-roku 6.0.0-alpha.56 and alpha.58 alike. The spec arrived in #1355, after the coverage build last ran clean. Not checked: whether the case is very slow under coverage or never ends.
+
+With the spec left out of the build, the coverage run finishes with one failure, and which one differs by Rooibos version: `ItemDetailsEpisode.spec.bs` "omits community and critic rating nodes when Disable Community Rating for Episodes is on" on alpha.58 (twice), a dialog focus case ("leaves focus alone when a dialog opened by its result handler...") on alpha.56. Both pass without coverage. The `ItemDetailsEpisode` case resets its settings right after writing `itemContent`, which an observer handles, so a timing dependence is likely and not proven.
+
+To close: decide how the simulation suite and coverage coexist (a tag that `bsconfig-tests-complete.json` leaves out, as it does `measurement`, or a smaller seed range under coverage), then make the two timing-dependent cases wait for the state they assert. Run `npm run test:complete` to a full pass. Not now: it is broken on `main` already and needs a design choice. Findings are on issue #945.
+
+#### A full RTA run whose first tests all fail runs for an hour instead of stopping `[fid: rta-run-no-stop-when-all-fail]` `[captured 2026-11-24]`
+
+A full `npm run test:rta` on 2026-11-24 failed every test it reached (183 failed, 0 passed) for an hour, each waiting out its 10 to 20 second timeout. It started in the minute a Rooibos coverage run ended on the same device, and a spec from it passed alone right after. The cause is not established. `scripts/rta-run.js` has no guard for this shape, so the run costs its full length and the ledger gets an hour of noise.
+
+To close: stop the run, with an outcome that is not `failed`, when the first N tests all fail (pick N from the ledger: a healthy run has never opened with that many), and say what the device answered at that point. Add a script test for the guard. Also worth checking then: whether a Rooibos test build left resident makes the next RTA deploy start in a bad state. Not now: it needs a threshold chosen from ledger data and a test. Findings are on issue #945.
 
 ### docs
 
