@@ -32,7 +32,7 @@
     "!**/*.map"
   ],
   "rooibos": {
-    "isRecordingCodeCoverage": false,
+    "codeCoverage": false,
     "testsFilePattern": null,
     "tags": ["!migration", "!registry", "!measurement"],
     "showOnlyFailures": true,

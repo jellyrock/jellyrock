@@ -182,7 +182,8 @@ function apiPipelineAdvance(pipe as object) as dynamic
   end while
 
   ' Unreachable: every exit above returns. Present so the loop's only exits stay
-  ' the explicit ones.
+  ' the explicit ones, and because bslint's unsafe-return-value wants a return on every path.
+  ' bs:disable-next-line unreachable-code
   return invalid
 end function
 

@@ -10,5 +10,4 @@
     <function name="prepare" />
   </interface>
   <script type="text/brightscript" uri="pkg:/components/ItemGrid/LoadItemsTask2.bs" />
-  <script type="text/brightscript" uri="pkg:/components/tests/LoadItemsTask2Harness.bs" />
 </component>

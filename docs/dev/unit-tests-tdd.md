@@ -67,7 +67,7 @@ The sample's `rooibos` block is set up for quick runs:
 ```json
 {
   "rooibos": {
-    "isRecordingCodeCoverage": false,
+    "codeCoverage": false,
     "showOnlyFailures": true,
     "failFast": false,
     "catchCrashes": true
@@ -79,7 +79,7 @@ Change these to suit your work:
 
 - `"failFast": true` stops at the first failure.
 - `"showOnlyFailures": false` lists passing tests too.
-- `"isRecordingCodeCoverage": true` records coverage, which makes the build slower.
+- `"codeCoverage": true` records coverage, which makes the build slower.
 
 ## A TDD session
 
@@ -132,7 +132,7 @@ end function
 
 ### Builds are slow
 
-- Check that `isRecordingCodeCoverage` is `false`.
+- Check that `codeCoverage` is `false`.
 - Check that `files` lists only the test files you need.
 - Turn source maps off with `"compilerOptions": { "sourceMap": false }`. A top-level `"sourceMap": false` is ignored, because `compilerOptions.sourceMap` in `bsconfig-base.json` wins.
 

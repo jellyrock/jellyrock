@@ -4,6 +4,7 @@
     "autoImportComponentScript": true,
     "sourceMap": true
   },
+  "diagnosticSeverityOverrides": { "unreachable-code": "error" },
   "diagnosticFilters": [
     { "files": "node_modules/**/*" },
     { "files": "**/roku_modules/**/*" },

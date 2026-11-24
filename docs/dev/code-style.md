@@ -259,7 +259,8 @@ Registry keys such as `"saved_servers"` and `"active_user"` are stored on users'
 | Tool | Config | Checks |
 | --- | --- | --- |
 | bsfmt | `bsfmt.json` | Indentation, comment style, import order |
-| bslint | `bslint.json` and its defaults | `function` and `sub`, parentheses around conditions, inconsistent variable casing, unused variables, unreachable code, `STOP` statements, duplicate `roRegex` patterns |
+| bslint | `bslint.json` and its defaults | `function` and `sub`, parentheses around conditions, inconsistent variable casing, unused variables, `STOP` statements, duplicate `roRegex` patterns |
+| BrighterScript | `diagnosticSeverityOverrides` in `bsconfig-base.json` | Unreachable code, raised from a hint to an error |
 | `.editorconfig` | `.editorconfig` | Indentation, line endings, trailing whitespace, final newline |
 
 Naming and line length have no tool: review checks them.

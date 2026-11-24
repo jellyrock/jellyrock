@@ -51,7 +51,7 @@ namespace tests
     @params(-1234567890, true)
     @params(0, true)
     @params(1234567890, true)
-    @params(1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890, true)
+    @params(1.2345678901234567e+99, true)
     function _(value, expectedassertResult)
       m.assertEqual(isValid(value), expectedassertResult)
     end function
@@ -61,7 +61,7 @@ namespace tests
     @params(12.3456789, true)
     @params(1.23456E+30, true)
     @params(12.3456789!, true)
-    @params(123456789012345678901234567890123456789012345678901234567890.123456789012345678901234567890123456789012345678901234567890, true)
+    @params(1.2345678901234567e+59, true)
     function _(value, expectedassertResult)
       m.assertEqual(isValid(value), expectedassertResult)
     end function

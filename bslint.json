@@ -2,7 +2,6 @@
   "rules": {
     "case-sensitivity": "error",
     "unused-variable": "error",
-    "unreachable-code": "error",
     "no-stop": "error",
     "no-regex-duplicates": "error"
   }
