@@ -78,7 +78,9 @@ describe('conditional compile and the manifest override', () => {
         cwd: dir,
         project: join(dir, 'bsconfig.json'),
         noEmit: true,
-        logLevel: 'error',
+        // The planted mistakes are the point: keep them out of the test log.
+        logLevel: 'off',
+        showDiagnosticsInConsole: false,
       });
       const messages = builder.program.getDiagnostics().map((d) => d.message);
       builder.dispose?.();
