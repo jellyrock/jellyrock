@@ -1038,6 +1038,10 @@ sub onItemDataLoaded(msg)
       if itemType = "musicgenre" or itemFolderType = "musicgenre"
         isMusicGenre = true
       end if
+    else if itemData.Count() = 0
+      ' Nothing to read the kind from (a letter no genre starts with): a music library's
+      ' genres are still the grid's, so the grid stays on show and says it is empty.
+      isMusicGenre = getCollectionType() = "music"
     end if
 
     ' Only use rowlist for movie/TV genres, not music

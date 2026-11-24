@@ -79,6 +79,10 @@ import { calleeName, walkAst } from './_shared.js';
  */
 const VERIFIED_SETTLE_KEYPATHS = new Set([
   '#buttons.buttonFocused',
+  // `ItemDetails` writes it each time it draws the item (the tagline, or "" when Hide
+  // Taglines is on or the item has none), and it holds until the next draw. Terminal, not a
+  // pulse. Read against the app source 2026-11-23.
+  '#itemDescription.tagline',
   // `LibraryHeaderStrip.onContentChanged` sets it from what `BaseGridView.updateStrip` hands
   // over on a focus move or a load, and it holds until the next one. Terminal, not a pulse.
   // Read against the app source 2026-11-15.
