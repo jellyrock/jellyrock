@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-24: feat(library): Library views as overhang tabs (integration branch)
 - 2026-11-23: test(syncplay): Keep the outside SyncPlay probe as a tested tool
 - 2026-11-21: fix(syncplay): Stop a short lander resuming late after a second Seek
 - 2026-11-18: update(syncplay): Stay in step with a new engine; rejoin a lost group
@@ -45,16 +46,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-11-12: feat(ui): Item-details-only backdrops; Movies pane obeys the setting
 - 2026-11-10: chore(tooling): Report dead code a short string prefix hid
 - 2026-11-10: ci(journal): Sync the journal only for PRs merged into `main`
-- 2026-11-09: fix(syncplay): Reload where the group is; load a mid-reload restart
-- 2026-11-09: ci(release): Post release announcements as the JellyRock App
-- 2026-11-09: ci(release): Let the announcement workflow link every release's discussion
-- 2026-11-09: fix(playback): Reload where the stream was and keep a group in sync
-- 2026-11-09: ci(release): Credit released changelog sections, keep old schedules
-- 2026-11-09: ci(bot): Drop the changelog job's status step that has no token
-- 2026-11-09: ci(release): Credit authors and add a summary to release notes
-- 2026-11-09: fix(playback): Restart a stream the server stops sending, and say why
-- 2026-11-09: fix(playback): Keep a paused video transcoding on the server
-- 2026-11-09: fix(syncplay): Skip a queue update with no readable time, not crash
 
 ## Open followups
 
