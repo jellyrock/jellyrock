@@ -99,7 +99,7 @@ jobs:
       - name: Commit en_US.json changes
         if: steps.check_changes.outputs.has_changes == 'true'
         run: |
-          git pull --rebase --autostash origin main
+          bash scripts/ci/pull-main.sh
           git add locale/custom/en_US.json locale/languages.json
           git commit -m "chore(translation): auto-update translation source files"
 
@@ -253,7 +253,7 @@ jobs:
       - name: Commit settings docs changes
         if: steps.settings_check.outputs.settings_changed == 'true' && steps.check_changes.outputs.has_changes == 'true'
         run: |
-          git pull --rebase --autostash origin main
+          bash scripts/ci/pull-main.sh
           git add docs/user/app-settings.md
           git commit -m "chore(docs): auto-update settings docs"
 
@@ -359,7 +359,7 @@ jobs:
             echo "ℹ️ No changelog changes needed"
             echo "has_changes=false" >> $GITHUB_ENV
           else
-            git pull --rebase --autostash origin main
+            bash scripts/ci/pull-main.sh
             git add CHANGELOG.md
 
             if [ "${{ steps.sync_type.outputs.type }}" = "release" ]; then

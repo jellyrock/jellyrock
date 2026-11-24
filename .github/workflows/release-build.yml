@@ -76,7 +76,7 @@ jobs:
             changelog_changed=true
           fi
           git checkout main
-          git pull --rebase origin main
+          bash scripts/ci/pull-main.sh
           if [ "$changelog_changed" = true ]; then git stash pop; fi
 
           # Feature pages that said `since: unreleased` in the tagged commit get this version,
