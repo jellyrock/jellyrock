@@ -196,7 +196,10 @@ function connectAndPump(url as string) as boolean
       end if
     end if
   end while
-  return false ' unreachable (the loop only exits via the terminal-event return); satisfies the analyzer
+  ' Not reached: the loop only exits through the terminal-event return. The return stays
+  ' because bslint's unsafe-return-value wants one on every path.
+  ' bs:disable-next-line unreachable-code
+  return false
 end function
 
 ' Posts this device's capabilities and waits for the answer, which makes the server create the
@@ -441,7 +444,10 @@ function waitForPlugin(probeUrl as string, probeTimeoutMs as integer) as boolean
       attempt++
     end if
   end while
-  return false ' not reached: the loop only exits through its returns
+  ' Not reached: the loop only exits through its returns. The return stays because bslint's
+  ' unsafe-return-value wants one on every path.
+  ' bs:disable-next-line unreachable-code
+  return false
 end function
 
 ' Run the long-poll loop. Returns true when the plugin is gone (a 404), so the caller probes again, and
@@ -493,7 +499,10 @@ function pollUntilPluginGone(serverUrl as string, pollWaitMs as integer, pollTim
       attempt++
     end if
   end while
-  return false ' not reached: the loop only exits through its returns
+  ' Not reached: the loop only exits through its returns. The return stays because bslint's
+  ' unsafe-return-value wants one on every path.
+  ' bs:disable-next-line unreachable-code
+  return false
 end function
 
 ' Authenticated async GET on this Task thread. Blocks up to timeoutMs for the response. Returns

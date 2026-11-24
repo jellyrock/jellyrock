@@ -1,12 +1,12 @@
 // Reads the summary Rooibos's console reporter prints at the end of a device test
 // run, and says how many counted tests it never reported.
 //
-// `Total` counts every test that ran, but unpatched Rooibos (6.0.0-alpha.55 and
-// alpha.56) prints `Ignored` from a build-time count that leaves out a test `@ignore`d
-// on its own (an ignored group or suite IS counted), so such a test appears in `Total`
-// and in no other line, and the run still reads as a clean pass. `patches/rooibos-roku+*.patch`
-// makes the reporter print the runtime count; this check notices if anything ever
-// leaves a counted test unreported again.
+// `Total` counts every test that ran. Rooibos 6.0.0-alpha.55 and alpha.56 printed
+// `Ignored` from a build-time count that left out a test `@ignore`d on its own (an
+// ignored group or suite was counted), so such a test appeared in `Total` and in no
+// other line, and the run still read as a clean pass. Rooibos prints the runtime count
+// since 6.0.0-alpha.57 (its PR #435); this check notices if anything ever leaves a
+// counted test unreported again.
 
 const SUMMARY_LINE = /^\s*(Total|Passed|Crashed|Failed|Ignored):\s*(\d+)\s*$/;
 const FIELDS = ['total', 'passed', 'crashed', 'failed', 'ignored'];
@@ -31,8 +31,8 @@ function createSummaryCollector() {
 
 /**
  * Tests counted in `total` but reported as none of passed / crashed / failed /
- * ignored. Negative when `ignored` over-counts (unpatched Rooibos adds 1 for an ignored suite
- * on top of its tests), which hides nothing.
+ * ignored. Negative when `ignored` over-counts (Rooibos before 6.0.0-alpha.57 added 1 for an
+ * ignored suite on top of its tests), which hides nothing.
  */
 function unaccountedTests({ total, passed, crashed, failed, ignored }) {
   return total - (passed + crashed + failed + ignored);

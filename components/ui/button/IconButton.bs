@@ -29,8 +29,6 @@ sub init()
   m.top.observeField("iconBackground", "onIconBackgroundChanged")
   m.top.observeField("icon", "onIconChanged")
   m.top.observeField("text", "onTextChanged")
-  m.top.observeField("height", "onHeightChanged")
-  m.top.observeField("width", "onWidthChanged")
   m.top.observeField("padding", "onPaddingChanged")
   m.top.observeField("focusedChild", "onFocusChanged")
 

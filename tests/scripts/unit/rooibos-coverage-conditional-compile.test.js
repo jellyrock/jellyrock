@@ -1,9 +1,9 @@
-// The coverage processor in rooibos-roku must not emit a line-report call outside a function.
+// The coverage processor in rooibos-roku must not emit a coverage call outside a function.
 //
-// A file-level `#if` wraps whole subs. The unpatched processor put a bare
-// `RBS_CC_<id>_reportLine(...)` as the first statement of each branch of every `#if`, which
-// BrightScript rejects at file scope. `patches/rooibos-roku+*.patch` guards it: only a `#if`
-// inside a function gets the call. Runs the installed plugin over a small fixture.
+// A file-level `#if` wraps whole subs, and BrightScript rejects a bare call at file scope.
+// rooibos-roku 6.0.0-alpha.56 wrote one there, and a local patch guarded it. The processor was
+// rewritten upstream and no longer does, so this runs the installed plugin over a small fixture
+// to notice if it comes back.
 
 import { createRequire } from 'node:module';
 import { describe, it, expect } from 'vitest';
@@ -13,7 +13,8 @@ const require = createRequire(import.meta.url);
 const { CodeCoverageProcessor } = require('rooibos-roku/dist/lib/rooibos/CodeCoverageProcessor');
 const { FileFactory } = require('rooibos-roku/dist/lib/rooibos/FileFactory');
 
-const FIXTURE = `#if perfTiming
+const FIXTURE = `#const perfTiming = true
+#if perfTiming
 sub timedStart()
   print "start"
 end sub
@@ -32,7 +33,8 @@ sub doWork()
 end sub
 `;
 
-const REPORT_CALL = /RBS_CC_\d+_reportLine\("?\d+"?, 4\)/;
+const COVERAGE_CALL = /RBS_CC_\d+_report\w+\(/;
+const LINE_CALL = /RBS_CC_\d+_reportLine\(\d+\)/;
 
 // Lines of the transpiled file that sit outside every sub, with directives ignored.
 const fileLevelReportCalls = (code) => {
@@ -42,21 +44,25 @@ const fileLevelReportCalls = (code) => {
     const text = line.trim();
     if (/^(sub|function)\b/i.test(text)) depth++;
     else if (/^end (sub|function)\b/i.test(text)) depth--;
-    else if (depth === 0 && REPORT_CALL.test(text)) found.push(text);
+    else if (depth === 0 && COVERAGE_CALL.test(text)) found.push(text);
   }
   return found;
 };
 
-// The installed coverage processor, run on each file the way rooibos's plugin runs it. The whole
+// The installed coverage processor, wired the way rooibos's own plugin wires it. The whole
 // plugin needs a test project and a main sub, which this fixture has no use for.
 const coveragePlugin = () => {
-  const processor = new CodeCoverageProcessor(
-    { options: { rooibos: { isRecordingCodeCoverage: true } } },
-    new FileFactory(),
-  );
+  let processor;
   return {
     name: 'coverage-only',
-    prepareFile: (event) => processor.addCodeCoverage(event.file, event.editor),
+    beforeBuildProgram: (event) => {
+      processor = new CodeCoverageProcessor(
+        { options: { rooibos: { codeCoverage: true } }, program: event.program },
+        new FileFactory(),
+      );
+      processor.onBeforeBuildProgram(event.program);
+    },
+    beforePrepareFile: (event) => processor.addCodeCoverage(event.file, event.editor),
   };
 };
 
@@ -69,17 +75,19 @@ describe('rooibos coverage of conditional compilation', () => {
   it('emits no coverage call at file level', async () => {
     const code = await transpile();
     expect(code).toContain('timedStart');
+    // The file is instrumented at all: without this, an empty list below proves nothing.
+    expect(code).toMatch(LINE_CALL);
     expect(fileLevelReportCalls(code)).toEqual([]);
   });
 
-  it('still reports a conditional compile inside a function, in both branches', async () => {
+  it('still reports the live branch of a conditional compile inside a function', async () => {
     const code = await transpile();
     const doWork = code.slice(code.search(/sub doWork/i));
-    expect(doWork.match(new RegExp(REPORT_CALL.source, 'g'))?.length).toBe(2);
+    expect(doWork).toMatch(new RegExp(`${LINE_CALL.source}\\s*\\n\\s*print "inside then"`));
   });
 
   it('still reports ordinary statements inside subs under a file-level #if', async () => {
     const code = await transpile();
-    expect(code).toMatch(/RBS_CC_\d+_reportLine\("?\d+"?, 1\)\s*\n\s*print "start"/);
+    expect(code).toMatch(new RegExp(`${LINE_CALL.source}\\s*\\n\\s*print "start"`));
   });
 });

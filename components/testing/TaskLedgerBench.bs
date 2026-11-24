@@ -475,4 +475,36 @@ import "pkg:/source/utils/tasks.bs"
     }
   end function
 
+#else
+
+  ' The interface in TaskLedgerBench.xml names these seven, so they exist in every build.
+  ' Without ENABLE_RTA nothing calls them, and each returns an empty result.
+  function runCell(_args as object) as object
+    return invalid
+  end function
+
+  function liveCount() as object
+    return invalid
+  end function
+
+  function ledgerCost() as object
+    return invalid
+  end function
+
+  function resetLedgerCost() as boolean
+    return false
+  end function
+
+  function selfLaunchAndCount() as object
+    return invalid
+  end function
+
+  function gaaProbe() as boolean
+    return false
+  end function
+
+  function gaaProbeResult() as object
+    return invalid
+  end function
+
 #end if

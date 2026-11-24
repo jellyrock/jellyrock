@@ -286,8 +286,8 @@ async function main() {
     if (result.passed && unaccounted > 0) {
       console.error(
         `❌ ${unaccounted} test(s) counted in Total but reported as none of Passed, Crashed, Failed or Ignored. ` +
-          "The known cause is an individually @ignore'd test on an unpatched Rooibos, whose Ignored count leaves " +
-          'it out: check that `npm run patches:apply` applies patches/rooibos-roku+*.patch.',
+          "The known cause was an individually @ignore'd test on Rooibos before 6.0.0-alpha.57, whose Ignored " +
+          'count left it out: check the installed rooibos-roku version (`npm ls rooibos-roku`).',
       );
       await done(1);
     } else if (result.passed) {
