@@ -14,17 +14,19 @@
 import { beforeAll, it, expect } from 'vitest';
 import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
-import { authenticate, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
+import { authenticate, getHero, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
 import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
 import { navLibraryGrid, openSettingsFromGear, waitGridLoaded } from '../lib/nav.js';
 import {
   enterOverhangRow,
+  getActiveVal,
   getActiveVals,
   homeListId,
   press,
   waitFocused,
   waitFocusInside,
+  waitFor,
   waitHome,
   walkOverhangRowTo,
 } from '../lib/steps.js';
@@ -120,4 +122,42 @@ it('a row layout changed in Settings lays Home out again when Back returns there
   ]);
   expect(translation, 'the rows moved in from the edge, under the tabs').toEqual([96, 126]);
   expect(focusXOffset, 'and the focus offset follows').toEqual([]);
+});
+
+it('Hide Taglines turned on in Settings reaches a details screen left from its description', async (testCtx) => {
+  const hero = await getHero(session);
+  if (!hero.id) testCtx.skip('the server has no hero movie');
+  const expectedServer = await seedHome(session, LOCALE);
+  await hardRelaunch();
+  await assertSeedTookEffect(expectedServer, 'settings reach details');
+  await waitHome();
+  await ecp.sendInput({ params: { contentId: hero.id } });
+  await waitFor('subtype()', (v) => v === 'ItemDetails', {
+    read: getActiveVal,
+    timeout: 20000,
+    interval: 250,
+    label: 'the movie details',
+  });
+  const tagline = await waitFor('#itemDescription.tagline', (t) => typeof t === 'string', {
+    read: getActiveVal,
+    timeout: 20000,
+    label: 'the description drawn',
+  });
+  if (!tagline) testCtx.skip('the hero movie has no tagline');
+
+  // Up from the buttons passes the description on the way to the overhang row, so the
+  // description is the focus the screen saved when Settings covers it.
+  await enterOverhangRow('the movie details');
+  if ((await getActiveVal('lastFocus.id')) !== 'itemDescription')
+    testCtx.skip('the way up did not pass the description');
+  await walkOverhangRowTo('settingsIcon', { label: 'the gear on details' });
+  await openSettingsFromGear({ pageMenu: false });
+  await writeSetting('uiDetailsHideTagline', true);
+  await backToGear('the gear again, over details');
+
+  await waitFor('#itemDescription.tagline', (t) => t === '', {
+    read: getActiveVal,
+    timeout: 15000,
+    label: 'the tagline gone',
+  });
 });

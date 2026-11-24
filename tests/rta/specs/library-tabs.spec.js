@@ -669,3 +669,62 @@ it('an item unfavorited from its details leaves the Favorites tab on Back', asyn
     await setFavorite(session, first.Id, wasFavorite);
   }
 });
+
+it('a letter no music genre starts with leaves the Genres tab drawing its grid', async (testCtx) => {
+  const musicId = libraryIdFor(libraries, 'music');
+  if (!musicId) testCtx.skip('server has no "music" library');
+  const names = (
+    (
+      await getJson(
+        `${session.serverUrl}/MusicGenres?userId=${session.userId}&parentId=${musicId}`,
+        tokenHeader(session.token),
+      )
+    )?.Items ?? []
+  ).map((genre) => String(genre.Name ?? '').toUpperCase());
+  if (names.length === 0) testCtx.skip('the music library has no genres');
+  // The rail is #, then A to Z.
+  const free = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].findIndex(
+    (letter) => !names.some((name) => name.startsWith(letter)),
+  );
+  if (free < 0) testCtx.skip('every letter starts a music genre');
+
+  await openLibrary('music genres letter', 'music', 'genres');
+  await waitGridLoaded('the music Genres tab');
+  await waitFocusInside('#itemGrid', { label: 'focus on the genres grid', timeout: 20000 });
+  await press(ecp.Key.Left);
+  await waitFocusInside('#alphaMenu', { label: 'the letter rail', timeout: 10000 });
+  await scrollFocus({
+    keyPath: '#alphaMenu.itemFocused',
+    target: free + 1,
+    forwardKey: ecp.Key.Down,
+    backKey: ecp.Key.Up,
+    read: getActiveVal,
+    stepped: true,
+    within: '#alphaMenu',
+    label: 'a letter no genre starts with',
+  });
+  await press(ecp.Key.Ok);
+  await waitFor('loadState', (v) => v === 'empty', {
+    read: getActiveVal,
+    timeout: 20000,
+    label: 'no genre under the letter',
+  });
+  expect(
+    await getActiveVals(['#itemGrid.opacity', '#genreList.opacity']),
+    'a music library draws genres in its grid, empty or not',
+  ).toEqual([1, 0]);
+
+  // The same letter again turns it off, and the genres are back on show.
+  await press(ecp.Key.Ok);
+  await waitFor('loadState', (v) => v === 'loaded', {
+    read: getActiveVal,
+    timeout: 20000,
+    label: 'every genre again',
+  });
+  const [count, gridOpacity] = await getActiveVals([
+    '#itemGrid.content.getChildCount()',
+    '#itemGrid.opacity',
+  ]);
+  expect(count, 'the genres are loaded').toBeGreaterThan(0);
+  expect(gridOpacity, 'and drawn').toBe(1);
+});

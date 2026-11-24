@@ -1079,6 +1079,30 @@ The settings icon's menu (`showOverflowMenu`, `JRListDialog` rows with an `icons
 
 Not measured: how long the gap lasts on each device class, and whether a viewer notices it. To close: measure the gap on the 512 MB Stick and the Ultra; if it is visible, load the menu's glyphs before the menu shows (a `Poster` `loadStatus` wait in the dialog, or warming the textures once after sign-in), or record that it is accepted.
 
+#### Star does nothing on a library's letter rail `[fid: star-dead-on-letter-rail]` `[captured 2026-11-23]`
+
+With focus on a library's letter rail, Star does nothing: the page menu does not open. Everywhere else on the screen it does what the settings icon does (`JRScreen.onOptionsKey`), which is the rule decision `star-does-settings-icon` sets for every signed-in screen.
+
+Seen on a Streaming Stick 4K (Roku OS 16.0.4) on 2026-11-23 during the review of the library screens branch: with key tracing in `Alpha.onKeyEvent` and `BaseGridView.onKeyEvent`, a Left onto the rail printed in both and the Star press after it printed in neither, so the key never leaves the rail's `LabelList` (`alphaMenu` in `components/ItemGrid/Alpha.xml`). Not checked: whether Roku's `LabelList` takes the key by design, and whether `main` behaves the same (its Star dialog used the same path).
+
+Why not now: the key cannot be caught above a node that keeps it, so the fix is a rail built on another node (a `MarkupList`, as the other lists are) or a different way to hand the key on, and the rail's future is already open in `letter-rail-filter-outside-safe-zone`. To close: Star on the rail opens the page menu, with an RTA case in `page-settings.spec.js` that presses it there.
+
+#### A library voice search stops searching the whole tree after a reload `[fid: voice-search-loses-recursion-on-reload]` `[captured 2026-11-23]`
+
+A voice search in a library whose presenter does not search its whole tree (a folder, a collection, home videos, photos) searches everything at first, then only the folder's direct children after any reload. `BaseGridView.onVoiceFilter()` sets `isRecursive = true` on the query it builds, and every later load goes through `loadView()`, which builds the query again from the voice text alone (`buildGridQuery(m.nameStartsWith, m.voiceBox.text)`), so the results shrink after a sort or filter change, or on return from details when a reload is due.
+
+Found by reading the code on 2026-11-23, during the review of the library screens branch; not reproduced on a device (an RTA case would need to set the voice box's text). The same shape is on `main`; the branch adds reload triggers (the Filter chip, the favorites check on resume).
+
+Why not now: it needs a test that drives the voice box, and the fix belongs where the query is built (`buildGridQuery` deciding recursion from the search text), which every load uses. To close: a reload with voice text on keeps searching the whole tree, covered by a spec.
+
+#### A movie library's Genres and Studios tabs offer sorts and filters their lists ignore `[fid: movie-genres-studios-tabs-offer-movie-sorts]` `[captured 2026-11-23]`
+
+A movie library's Genres and Studios tabs show the Movies tab's sort and filter lists on the header strip: `MoviePresenter.getOptions()` trims them only for Collections. On Genres they apply to the list of genres, and the sample row under each genre ignores them (`LoadItemsTask2.loadItems()` builds each row's request without them), so a Favorites or Played filter there usually empties the tab. `TVShowPresenter` already gives its Genres view one sort and no filter. An empty Genres tab also shows no "no items" text: the row-list path in `BaseGridView.onItemDataLoaded` sets `loadState` to `empty` and returns before the text is set.
+
+Found by reading the code on 2026-11-23, during the review of the library screens branch; not seen on a device. The lists are older than the branch; the strip's chips put them on screen all the time.
+
+Why not now: which sorts and filters a genre or studio list should offer is a design choice, with captures. To close: the two tabs offer only what their lists honor, an empty Genres tab says so, and `library-tabs.spec.js` covers both.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`

@@ -368,11 +368,20 @@ sub onScreenShown()
   if m.isFirstRun
     m.isFirstRun = false
   else
-    ' Don't refresh when closing OverviewDialog
-    if not isValid(m.top.lastFocus) or m.top.lastFocus.id <> "itemDescription"
+    ' Don't refresh when closing OverviewDialog, unless a setting changed while this screen
+    ' was covered: the refresh is what draws the screen with it (onSettingsChanged).
+    if m.isSettingsRefreshDue = true or not isValid(m.top.lastFocus) or m.top.lastFocus.id <> "itemDescription"
       m.top.refreshItemDetailsData = not m.top.refreshItemDetailsData
     end if
   end if
+  m.isSettingsRefreshDue = false
+end sub
+
+' JRScreen hook, called before onScreenShown: settings were written while this screen was
+' covered. The screen reads its settings as it draws the item, so the next show refreshes it
+' wherever the focus was saved.
+sub onSettingsChanged(_names as object)
+  m.isSettingsRefreshDue = true
 end sub
 
 sub onScreenHidden()

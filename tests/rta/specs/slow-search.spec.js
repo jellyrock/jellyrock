@@ -22,7 +22,7 @@
  * queries are one character, so typing starts exactly one live search.
  */
 import { beforeAll, it, expect } from 'vitest';
-import { ecp } from 'roku-test-automation';
+import { ecp, odc } from 'roku-test-automation';
 import { RTA_CONFIG } from '../config.js';
 import { authenticate, getHero, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
 import { seedHome, assertSeedTookEffect } from '../lib/seed.js';
@@ -41,6 +41,7 @@ import {
   getVal,
   press,
   sleep,
+  waitFocused,
   waitFor,
   waitHome,
 } from '../lib/steps.js';
@@ -188,7 +189,7 @@ it('Back mid-search takes the spinner with the screen', async () => {
   expect(await getVal('#loadingStageText.visible')).toBe(false);
 });
 
-it("a late search answer does not stop the library grid's spinner", async () => {
+it("a late search answer does not stop the library grid's spinner or take its focus", async () => {
   // A library deep link opens its grid, which loads its own items under the scene spinner.
   // (A details deep link would not do: details takes the item the deep link fetched and loads
   // nothing of its own, so it has no spinner a late answer could stop.)
@@ -208,6 +209,20 @@ it("a late search answer does not stop the library grid's spinner", async () => 
   // app field reports that a delivery did not happen, so this out-waits it.
   await sleep(3000);
   expect(await getVal('isLoading'), "the grid's own spinner still up").toBe(true);
+  // Nor may they take the focus: the keys would go to a list nobody can see.
+  const focused = await odc.getFocusedNode({ includeNode: true });
+  expect(focused.keyPath, 'focus is not in the covered search screen').not.toContain(
+    'searchSelect',
+  );
+
+  // The covered screen kept its place: Back returns to the results with the list focused.
+  await press(ecp.Key.Back);
+  await waitActive('SearchScreen', 'back on the search');
+  await waitFocused((f) => String(f.keyPath).includes('searchSelect'), {
+    timeout: 10000,
+    interval: 250,
+    label: 'the results list has the focus again',
+  });
 });
 
 it('returning to a search that is still loading shows its spinner, counted from the search', async () => {
