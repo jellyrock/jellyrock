@@ -3032,6 +3032,16 @@ On a signed-in screen, Star does what the overhang's settings icon does, unless 
 
 Ruled out: Star doing nothing on Settings, as its own settings icon does there, which would leave the key dead on the one screen where users press it to go back; a per-screen override on each screen, which Home and the library had, and which left details and search behind.
 
+## decision-id: validate-inactive-branches
+
+**date**: 2026-11-24
+**status**: accepted
+**related-files**: `bsconfig-validate-rta.json`, `package.json`, `scripts/lint/ci-parity-check.js`
+
+`npm run validate` ends with a second type-check of the app, `validate:rta`, over `bsconfig-validate-rta.json`. That config extends `bsconfig.json` and turns `ENABLE_RTA` and `debug` on through `compilerOptions.manifest.bs_const`. BrighterScript reports nothing inside an inactive `#if` branch, the committed manifest has both flags off, and the RTA deploy turns `ENABLE_RTA` on in the staged manifest after the compiler has finished, so that code reached a device unchecked. The variable tracking in bslint caught an undefined name there on alpha.56 and skips inactive branches from alpha.58 (measured 2026-11-24 with a call to a missing function planted in an `#if debug` block: 186 `uninitialized-variable` errors on alpha.56, none on alpha.58). `validate-rta-pass.test.js` fails if the override stops making those branches active.
+
+Ruled out: compiling the RTA build with the flag on, which changes how every RTA, measurement and screenshot build is produced and runs only when someone runs RTA, so CI would still miss a mistake; and leaving the device's own compile as the only check. Not covered: the test configs, and the `#else` side of the `perfTiming` blocks. The pass took about 10 s (measured 2026-11-24 with `time npm run validate:rta`, alpha.56).
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

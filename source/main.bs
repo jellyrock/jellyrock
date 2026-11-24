@@ -38,6 +38,8 @@ sub Main (args as dynamic) as void
   ' flipped to true only by the RTA screenshot deploy, so prod / store builds
   ' compile this out at device load (it never ships enabled).
   #if ENABLE_RTA
+    ' roku-test-automation injects RTA_OnDeviceComponent at deploy time, so no file defines it at build time.
+    ' bs:disable-next-line unknown-rosgnode
     m.rtaOnDeviceComponent = createObject("roSGNode", "RTA_OnDeviceComponent")
   #end if
 

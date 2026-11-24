@@ -1,0 +1,6 @@
+{
+  "extends": "./bsconfig.json",
+  "compilerOptions": {
+    "manifest": { "bs_const": { "ENABLE_RTA": true, "debug": true } }
+  }
+}
