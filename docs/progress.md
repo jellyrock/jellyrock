@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-23
+last-updated: 2026-11-24
 ---
 
 # Progress
@@ -1103,6 +1103,16 @@ Found by reading the code on 2026-11-23, during the review of the library screen
 
 Why not now: which sorts and filters a genre or studio list should offer is a design choice, with captures. To close: the two tabs offer only what their lists honor, an empty Genres tab says so, and `library-tabs.spec.js` covers both.
 
+A TV library's Networks tab has the same shape: `TVShowPresenter.getOptions()` gives it the Shows tab's sorts and its Favorites, Played and Unplayed filters, and `LoadItemsTask2` sends the view to the studios request. Read from the code on 2026-11-23; what the server does with those sorts on a list of networks was not checked. Closing this covers that tab too.
+
+#### The details screen has no settings menu of its own, and a library's could offer more `[fid: page-settings-on-details-and-more-on-libraries]` `[captured 2026-11-24]`
+
+The details screen shows the settings icon and declares no page settings, so the icon opens Settings there. Offer the app-wide settings that change it at once, as ADR 0062 allows: Hide Taglines, Community and Critical Ratings, Disable Community Rating for Episodes, Blur Unwatched Episodes and Disable Unwatched Episode Count, each only on the item types it changes. A library can offer more the same way: Item Count on every grid, and Ratings and Hide Taglines on Grid with details. The operator agreed to these on 2026-11-23.
+
+Open: Backdrop Images. It changes details, Grid with details and Home alike, so decide whether it is offered on all three or stays in Settings only.
+
+Why not now: each entry needs its glyph, a redraw in place that keeps the focus (`watch-badge-stale-on-visible-cells` is the same need for badges), and captures. To close: `ItemDetails.pageSettingsEntries()` and the added library entries, built with `pageSettings.settingEntry()`, with RTA cases in `page-settings.spec.js`, and the Backdrop Images question answered.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
@@ -1415,6 +1425,38 @@ The likely place is the resume a landing ends with (the `landing` kind of resume
 #### Write a library's default tab back to the server's display preferences `[fid: library-default-tab-write-back]` `[captured 2026-11-13]`
 
 The library screens' default tab reads the web client's pick (`landing-<libraryId>`, or `landing-livetv`, in the `usersettings` display preferences, client `emby`) at sign-in, and keeps a Roku pick in the registry (`display.<libraryId>.defaultTab`, decision `library-default-tab-precedence`). Nothing is written back, so a pick made in the gear menu's Default tab entry stays on this Roku. Writing it back would make one pick follow the user across clients, but it would also change what the web opens on, so it needs a design call first: whether the Roku's pick replaces the web's or stays an override, and what the gear entry's first option then means. A write would POST the whole `DisplayPreferences` record with one key changed, as the web does. Deferred from piece 07 of the library screens work, by design.
+
+#### Nothing deletes a removed library's saved display keys `[fid: library-display-keys-never-pruned]` `[captured 2026-11-24]`
+
+`deleteLibraryDisplaySettings()` in `source/utils/displaySettings.bs` has no caller outside its spec, on `main` too, though ADR 0058 says removing a library deletes every key under its prefix. So the sort, layout, items per row and default tab saved for a library stay in the registry after the library is gone. The grid saves them under `parentItem.Id` (`BaseGridView.applyColumns()`), which for an opened genre, studio or network is that folder's id, so each folder a viewer changes adds keys too.
+
+Read from the code on 2026-11-23, during the audit before the library screens branch lands. Not measured: how many keys a real registry holds.
+
+Why not now: when to prune is a design choice (at sign-in against the user's libraries is one answer), and whether a folder should save keys of its own is a second. To close: decide both, call the delete where a library is found gone, and cover it with a spec.
+
+#### Only movie libraries offer the Genres, Parental Ratings, Years and language filters `[fid: library-filters-beyond-movies]` `[captured 2026-11-24]`
+
+Only a movie library's Filter menu offers the server's lists: Genres, Parental Ratings, Years and the two language categories. `MoviePresenter.configureLoadTask()` is the one caller of `GridPresenterBase.loadFilters()`. A TV library offers Favorites, Played and Unplayed, and music, photo, Live TV and every other library offer Favorites alone, so a viewer cannot narrow shows or albums by genre or year.
+
+Read from the presenters' `getOptions()` on 2026-11-23, during the audit before the library screens branch lands.
+
+Why not now: each library type needs its own choice of categories, a check of what the server answers for its item types, and captures. To close: each presenter offers the categories that suit its lists, decided for the best experience on a TV and not copied from another client, with specs for the query each builds.
+
+#### Which tabs each library type should have is undecided past the ones it had `[fid: library-tabs-still-to-decide]` `[captured 2026-11-24]`
+
+A library's tabs are the ones JellyRock had before the redesign. The presenters' comments list tabs the web client has and JellyRock lacks: Suggestions (movies, TV, music), Upcoming and Episodes (TV), Playlists and Songs (music). A Live TV library has Channels and TV Guide only. Read from `getOptions()` in the presenters on 2026-11-23; the web client's current source was not compared.
+
+Decide per library type which tabs earn a place. The test is the best experience on a TV, never parity with another client for its own sake: a tab that repeats a Home row or holds a list nobody browses by remote stays out. See also `music-library-favorites-tab`.
+
+Why not now: each tab is a surface of its own, with its loading, its sorts and filters, and its captures. To close: a decision per candidate tab (build or decline, with the reason), and a followup or issue for each one to build.
+
+#### Home video, music video, book and playlist libraries share one plain view `[fid: generic-libraries-one-plain-view]` `[captured 2026-11-24]`
+
+Home video, music video, book, playlist and mixed-folder libraries all draw through `GenericPresenter` (`DeterminePresenterType()` in `source/libraryViewFactory.bs` returns `generic` for them): one view, no tabs, no layout choice, four sorts and the Favorites filter. The redesign gave them the header strip and Items per row and nothing of their own. `wide-cells-home-and-music-videos` covers only their cell shape.
+
+Read from the code on 2026-11-23, during the audit before the library screens branch lands. Not seen on a device with each library type.
+
+Why not now: it needs a look at a real library of each type first. To close: capture each type, decide what each needs (a presenter of its own, sorts, filters, a cell shape), and file what follows.
 
 ### api
 
