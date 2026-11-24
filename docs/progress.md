@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-24: ci: Reinstall packages after pulling main when the lockfile moved
 - 2026-11-24: feat(library): Library views as overhang tabs (integration branch)
 - 2026-11-23: test(syncplay): Keep the outside SyncPlay probe as a tested tool
 - 2026-11-21: fix(syncplay): Stop a short lander resuming late after a second Seek
