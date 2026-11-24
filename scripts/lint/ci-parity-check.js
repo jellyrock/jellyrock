@@ -78,6 +78,10 @@ export const LOCAL_ONLY = {
     '`npm run validate` runs it as its second step, and CI runs `npm run validate` ' +
     '(`_lint-brightscript.yml`), so it gates in CI through validate. Its only own ' +
     'entry point is the parent script.',
+  'validate:rta':
+    '`npm run validate` runs it as its third step, and CI runs `npm run validate` ' +
+    '(`_lint-brightscript.yml`), so it gates in CI through validate. Its only own ' +
+    'entry point is the parent script.',
 };
 
 // Aggregate members whose CI home is a Vitest repo-drift-gate test rather than a

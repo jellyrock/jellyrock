@@ -4,6 +4,7 @@ related-files:
   - bsconfig-base.json
   - bsconfig.json
   - bsconfig-prod.json
+  - bsconfig-validate-rta.json
   - package.json
   - patches/
   - scripts/lib/install-freshness.cjs
@@ -104,7 +105,7 @@ related-files:
   - .prettierrc.json
   - .prettierignore
   - vitest.config.js
-last-reviewed: 2026-11-15
+last-reviewed: 2026-11-24
 ---
 
 # Build and tooling
@@ -128,7 +129,8 @@ Each build target has its own `bsconfig*.json`, and every one inherits from `bsc
 | File | Purpose |
 |---|---|
 | `bsconfig-base.json` | Not a build target. The settings every config shares: `compilerOptions` (`autoImportComponentScript`, `sourceMap: true`), every `diagnosticFilters` entry, and `outDir` |
-| `bsconfig.json` | Dev build, and the project the editor and CI check. `npm run validate` checks it, then `bsconfig-tests.json` (`validate:tests`). Every plugin, logs kept, source maps on |
+| `bsconfig.json` | Dev build, and the project the editor and CI check. `npm run validate` checks it, then `bsconfig-tests.json` (`validate:tests`) and `bsconfig-validate-rta.json` (`validate:rta`). Every plugin, logs kept, source maps on |
+| `bsconfig-validate-rta.json` | Not a build target. Extends `bsconfig.json` and turns `ENABLE_RTA` and `debug` on through `compilerOptions.manifest.bs_const`, so `npm run validate:rta` type-checks the code inside those `#if` blocks. BrighterScript reports nothing inside an inactive branch, and the committed `manifest` has both flags off |
 | `bsconfig-prod.json` | Production build. Logs and comments stripped, no file paths in log lines, no source maps, release branding copied to `images/branding`. Leaves out Markdown, the test probes (`components/testing/`) and the translation seed (`locale/seed/`), which Roku's analyzer flags as extraneous; `release-package-contents.test.js` fails if any non-runtime file comes back. Runs fewer plugins than the dev build (below) |
 | `bsconfig-analysis.json` | `bsconfig-prod.json` plus source maps, built to `build-analysis/` (`npm run build:analysis`). `/crash-report` derives the same config from each tag's own prod config |
 | `bsconfig-tests-base.json` | Not a build target. The plugin list every test config shares, so a gate added for test code reaches all four |
@@ -152,7 +154,7 @@ The other plugins stay out of the test configs, each for a reason:
 
 ### How the configs compose
 
-Each config names its parent with `extends`. `bsconfig-analysis.json` extends the prod config, `bsconfig-tdd-sample.json` extends `bsconfig-tests.json`, the four test configs extend `bsconfig-tests-base.json`, and the rest extend the base. A test config never sets its own `plugins`, since that would replace the shared list.
+Each config names its parent with `extends`. `bsconfig-analysis.json` extends the prod config, `bsconfig-tdd-sample.json` extends `bsconfig-tests.json`, `bsconfig-validate-rta.json` extends `bsconfig.json`, the four test configs extend `bsconfig-tests-base.json`, and the rest extend the base. A test config never sets its own `plugins`, since that would replace the shared list.
 
 BrighterScript merges `extends` shallowly. Only `compilerOptions` merges key by key, so the prod config can set `compilerOptions.sourceMap: false` and keep the other options. Any other key a child sets replaces the parent's value. A child `diagnosticFilters` array would drop every filter in the base, so all filters live in the base, test-only ones included.
 
@@ -178,7 +180,7 @@ The BrighterScript language server reloads a project only when that project's ow
 The `manifest`'s `bs_const` line carries three compile-time constants. Roku's on-device compiler evaluates `#if`, not `bsc`: the directives pass through into the emitted `.brs` and are compiled out at load time against the shipped manifest. Two consequences:
 
 - Grepping `build/**/*.brs` to see whether a flag is off proves nothing, because the `#if` block is always there. Read `build/manifest` instead.
-- A `manifest.bs_const` override in a bsconfig enforces nothing. BrighterScript applies it to its own in-memory manifest; the `manifest` file is copied to `build/` as it is.
+- A `manifest.bs_const` override in a bsconfig changes nothing on the device. BrighterScript applies it to its own in-memory manifest, which decides what it checks; the `manifest` file is copied to `build/` as it is. `bsconfig-validate-rta.json` uses that to check the `ENABLE_RTA` and `debug` branches, which the plain build skips.
 
 | Constant | Default | What it gates |
 |---|---|---|
@@ -404,7 +406,7 @@ One makes it report more. A name built at runtime from a variable (`setField(nam
 
 | Group | Scripts | More in |
 |---|---|---|
-| Build | `build` (dev), `build:prod` (then [manifest hardening](#production-hardening)), `build:analysis`, `build:tests`, `build:tests-unit`, `build:tests-integration`, `build:tests-complete`, `build:tdd`, `validate` (`bsc --noEmit`) | [bsconfig variants](#bsconfig-variants) |
+| Build | `build` (dev), `build:prod` (then [manifest hardening](#production-hardening)), `build:analysis`, `build:tests`, `build:tests-unit`, `build:tests-integration`, `build:tests-complete`, `build:tdd`, `validate` (`bsc --noEmit`, then `validate:tests` and `validate:rta`) | [bsconfig variants](#bsconfig-variants) |
 | Package | `package` (sideload ZIP), `package:signed` (signed `.pkg`) | [Roku signing pipeline](#roku-signing-pipeline) |
 | Device tests | `test:unit`, `test:integration`, `test:all`, `test:complete`, `test:tdd`, `device:check` | [unit-tests-tdd.md](../dev/unit-tests-tdd.md) |
 | RTA | `test:rta`, `test:rta:tdd`, `test:rta:fast`, `test:rta:servers`, `test:rta:capture`, `demo`, `rta:restore`, `screenshots:*`, `device:status`, `device:release` | [rta-tests.md](../dev/rta-tests.md) |
@@ -618,7 +620,7 @@ CI and local work never share a Roku: CI uses its own device, named by an org-le
 |---|---|---|---|
 | `bsfmt --write` | ✓ | | File-scoped; the fix is re-staged |
 | `lint:bs` (bslint) | | ✓ | Needs the whole project |
-| `validate` (`bsc --noEmit`) | | ✓ | A full compile |
+| `validate` (`bsc --noEmit`) | | ✓ | Full compiles: the app, the tests and the RTA branches |
 | `lint:markdown` | ✓ | ✓ | Pre-commit fixes; pre-push re-checks changed `.md`, because rebase, cherry-pick and merge commits skip pre-commit |
 | `lint:spelling` | ✓ | ✓ | Same backstop. No auto-fix |
 | `lint:json` (jshint) | ✓ | | File-scoped |

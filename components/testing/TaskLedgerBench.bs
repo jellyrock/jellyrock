@@ -169,14 +169,14 @@ import "pkg:/source/utils/tasks.bs"
     return CreateObject("roSGNode", "ServerReachableTask")
   end function
 
-  function seedLedger(store as object, depth as integer) as void
+  sub seedLedger(store as object, depth as integer)
     seeded = []
     for i = 1 to depth
       seeded.push(freshTask())
     end for
     if not store.hasField("taskLedger") then store.addField("taskLedger", "array", false)
     store["taskLedger"] = seeded
-  end function
+  end sub
 
   function benchRecord(store as object, depth as integer, iterations as integer) as float
     seedLedger(store, depth)
