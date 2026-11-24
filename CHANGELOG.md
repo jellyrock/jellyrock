@@ -7,16 +7,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- (ui) Home settings menu; ratings, taglines, Star follow one rule ([#1413](https://github.com/jellyrock/jellyrock/pull/1413)) by [@cewert](https://github.com/cewert)
+- (ui) One overhang on signed-in screens; library menu icons ([#1405](https://github.com/jellyrock/jellyrock/pull/1405)) by [@cewert](https://github.com/cewert)
+- (library) Items per row and item titles from a library's menu ([#1400](https://github.com/jellyrock/jellyrock/pull/1400)) by [@cewert](https://github.com/cewert)
+- (library) Header strip with Sort and Filter; titles underlined ([#1398](https://github.com/jellyrock/jellyrock/pull/1398)) by [@cewert](https://github.com/cewert)
+- (library) Sort saved per tab; filters kept for the session ([#1392](https://github.com/jellyrock/jellyrock/pull/1392)) by [@cewert](https://github.com/cewert)
+- (dialogs) Position line on long lists; a checklist mode ([#1390](https://github.com/jellyrock/jellyrock/pull/1390)) by [@cewert](https://github.com/cewert)
+- (library) Default tab from a Roku pick or the web client's ([#1375](https://github.com/jellyrock/jellyrock/pull/1375)) by [@cewert](https://github.com/cewert)
+- (library) Library views as overhang tabs, with a Favorites tab ([#1374](https://github.com/jellyrock/jellyrock/pull/1374)) by [@cewert](https://github.com/cewert)
+- (library) Layout menu on the settings icon; letter filter kept ([#1371](https://github.com/jellyrock/jellyrock/pull/1371)) by [@cewert](https://github.com/cewert)
+- (library) Separate tabs from layouts, photo toggles in Settings ([#1326](https://github.com/jellyrock/jellyrock/pull/1326)) by [@cewert](https://github.com/cewert)
+
 ### Changed
 
+- (overhang) Roomier tab focus box; a long tab strip can scroll ([#1368](https://github.com/jellyrock/jellyrock/pull/1368)) by [@cewert](https://github.com/cewert)
 - (syncplay) Stay in step with a new engine; rejoin a lost group ([#1355](https://github.com/jellyrock/jellyrock/pull/1355)) by [@cewert](https://github.com/cewert)
 
 ### Fixed
 
+- (ui) Covered Search and details screens, and empty music Genres ([#1417](https://github.com/jellyrock/jellyrock/pull/1417)) by [@cewert](https://github.com/cewert)
+- (settings) A setting changed in Settings reaches the screen below ([#1410](https://github.com/jellyrock/jellyrock/pull/1410)) by [@cewert](https://github.com/cewert)
 - (syncplay) Stop a short lander resuming late after a second Seek ([#1412](https://github.com/jellyrock/jellyrock/pull/1412)) by [@cewert](https://github.com/cewert)
 
 ### Dependencies
 
+- Update lint-staged from v17.6.1 to v17.6.2 ([#1414](https://github.com/jellyrock/jellyrock/pull/1414)) by [@renovate[bot]](https://github.com/apps/renovate)
 - Update markdownlint-cli2 from v0.24.1 to v0.24.2 ([#1411](https://github.com/jellyrock/jellyrock/pull/1411)) by [@renovate[bot]](https://github.com/apps/renovate)
 - Update vitest from v5.1.0 to v5.1.1 ([#1409](https://github.com/jellyrock/jellyrock/pull/1409)) by [@renovate[bot]](https://github.com/apps/renovate)
 - Update actions/setup-java action to v6.3.0 ([#1399](https://github.com/jellyrock/jellyrock/pull/1399)) by [@renovate[bot]](https://github.com/apps/renovate)
