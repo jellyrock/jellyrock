@@ -23,52 +23,83 @@ namespace headerStrip
   ' A label centers its line box and caps sit above that box's middle (textMetrics.bs), so
   ' the row's text is drawn this much lower to center its caps in the row.
   const TEXT_DROP = 3
-  ' The least the left block keeps. Under it the count gives up its room first.
+  ' The least the left block keeps. Under it the library's name gives up its room first,
+  ' then the count.
   const MIN_LEFT_WIDTH = 480
+  ' The most the library's name takes: past it the name ends in an ellipsis, so a long
+  ' name never crowds the focused item's title. A name cut under the minimum hides.
+  const NAME_MAX_WIDTH = 300
+  const NAME_MIN_WIDTH = 90
 
   ' Where each part of the row goes, for the widths its text measures.
   '
-  ' The chips sit at the right edge, the count before them, the narrowed-by text before
-  ' that, and the left block (the focused item's title, then its metadata) takes the rest.
-  ' When room runs out the left block shortens first: the metadata keeps its width up to
-  ' half the block and the title is cut. Under MIN_LEFT_WIDTH the count hides, then the
-  ' narrowed-by text is cut to what is left.
+  ' The count ends at the right edge, under the clock's last digit, as a row's counter
+  ' does on Home. The chips sit before it, then the library's name, then the narrowed-by
+  ' text, and the left block (the focused item's title, then its metadata) takes the rest.
+  ' With no count the chips end at the edge.
   '
-  ' @param widths - { title, metadata, narrowedBy, count, chips: [width, …] }, each the
-  '   text's own width, 0 for a part with nothing to show; `chips` holds the shown chips
-  '   from left to right
+  ' When room runs out the left block shortens first: the metadata keeps its width up to
+  ' half the block and the title is cut. Under MIN_LEFT_WIDTH the name is cut, then
+  ' hidden, then the count hides, then the narrowed-by text is cut to what is left. No
+  ' part is placed over another.
+  '
+  ' @param widths - { title, metadata, narrowedBy, name, count, chips: [width, …] }, each
+  '   the text's own width, 0 for a part with nothing to show; `chips` holds the shown
+  '   chips from left to right
   ' @param slotWidth - the row's width
   ' @return {object} { titleWidth, metadataX, metadataWidth, narrowedByX, narrowedByWidth,
-  '   isCountShown, countX, chipXs: [x, …] }, x from the row's left edge, on the 3 px grid
+  '   nameX, nameWidth, isCountShown, countX, chipXs: [x, …] }, x from the row's left
+  '   edge, on the 3 px grid; a nameWidth of 0 hides the name
   function fit(widths as object, slotWidth as integer) as object
-    chipXs = []
+    chipsWidth = 0
+    for each width in widths.chips
+      chipsWidth += snapToGrid(width)
+    end for
+    if widths.chips.count() > 1 then chipsWidth += headerStrip.CHIP_GAP * (widths.chips.count() - 1)
+
+    hasLeft = widths.title > 0 or widths.metadata > 0
+    minLeft = 0
+    leftNeeded = 0
+    if hasLeft
+      minLeft = headerStrip.MIN_LEFT_WIDTH
+      leftNeeded = minLeft + headerStrip.PART_GAP
+    end if
+
+    countWidth = snapToGrid(widths.count)
+    narrowedWidth = snapToGrid(widths.narrowedBy)
+    nameWidth = snapToGrid(widths.name)
+    if nameWidth > headerStrip.NAME_MAX_WIDTH then nameWidth = headerStrip.NAME_MAX_WIDTH
+
+    ' The name takes what the left block's minimum and the narrowed-by text leave
+    rightEdge = headerStrip.edgeBeforeName(slotWidth, countWidth, chipsWidth)
+    if nameWidth > 0
+      nameRoom = floorToGrid(rightEdge - leftNeeded - headerStrip.narrowedRoom(narrowedWidth))
+      if nameWidth > nameRoom then nameWidth = nameRoom
+      if nameWidth < headerStrip.NAME_MIN_WIDTH and nameWidth < snapToGrid(widths.name) then nameWidth = 0
+    end if
+
+    ' The count hides only once the name has: there is no room for the name by then
+    isCountShown = countWidth > 0
+    if isCountShown and rightEdge - headerStrip.narrowedRoom(narrowedWidth) < minLeft
+      isCountShown = false
+      rightEdge = headerStrip.edgeBeforeName(slotWidth, 0, chipsWidth)
+    end if
+
+    countX = slotWidth
     x = slotWidth
+    if isCountShown
+      countX = slotWidth - countWidth
+      x = countX - headerStrip.PART_GAP
+    end if
+    chipXs = []
     for i = widths.chips.count() - 1 to 0 step -1
       x -= snapToGrid(widths.chips[i])
       chipXs.unshift(x)
       x -= headerStrip.CHIP_GAP
     end for
-    ' x is now the chips' left edge, less one gap
-    rightEdge = slotWidth
-    if chipXs.count() > 0 then rightEdge = chipXs[0] - headerStrip.PART_GAP
 
-    hasLeft = widths.title > 0 or widths.metadata > 0
-    leftNeeded = 0
-    if hasLeft then leftNeeded = headerStrip.MIN_LEFT_WIDTH + headerStrip.PART_GAP
-
-    countWidth = snapToGrid(widths.count)
-    narrowedWidth = snapToGrid(widths.narrowedBy)
-
-    isCountShown = countWidth > 0
-    if isCountShown and rightEdge - countWidth - headerStrip.narrowedRoom(narrowedWidth) < leftNeeded
-      isCountShown = false
-    end if
-
-    countX = rightEdge
-    if isCountShown
-      countX = rightEdge - countWidth
-      rightEdge = countX - headerStrip.PART_GAP
-    end if
+    nameX = rightEdge - nameWidth
+    if nameWidth > 0 then rightEdge = nameX - headerStrip.PART_GAP
 
     narrowedByX = rightEdge
     if narrowedWidth > 0
@@ -101,10 +132,21 @@ namespace headerStrip
       metadataWidth: metadataWidth,
       narrowedByX: narrowedByX,
       narrowedByWidth: narrowedWidth,
+      nameX: nameX,
+      nameWidth: nameWidth,
       isCountShown: isCountShown,
       countX: countX,
       chipXs: chipXs
     }
+  end function
+
+  ' Where the parts left of the chips may end: the row's edge, less the count and the
+  ' chips, each with the gap after it. A width of 0 takes no room and no gap.
+  function edgeBeforeName(slotWidth as integer, countWidth as integer, chipsWidth as integer) as integer
+    edge = slotWidth
+    if countWidth > 0 then edge -= countWidth + headerStrip.PART_GAP
+    if chipsWidth > 0 then edge -= chipsWidth + headerStrip.PART_GAP
+    return edge
   end function
 
   ' The room the narrowed-by text takes with its gap, 0 when there is none.

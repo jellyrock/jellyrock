@@ -12,6 +12,7 @@ sub init()
   m.title = m.top.findNode("title")
   m.metadata = m.top.findNode("metadata")
   m.narrowedBy = m.top.findNode("narrowedBy")
+  m.libraryName = m.top.findNode("libraryName")
   m.count = m.top.findNode("count")
   m.chipNodes = {}
   m.chipNodes[CHIP_SORT] = m.top.findNode("sortChip")
@@ -19,7 +20,7 @@ sub init()
   m.chipNodes[CHIP_SORT].icon = "pkg:/images/icons/sort_$$RES$$.png"
   m.chipNodes[CHIP_FILTER].icon = "pkg:/images/icons/filter_$$RES$$.png"
 
-  for each label in [m.title, m.narrowedBy, m.count]
+  for each label in [m.title, m.narrowedBy, m.libraryName, m.count]
     label.height = headerStrip.HEIGHT
     label.translation = [0, headerStrip.TEXT_DROP]
   end for
@@ -53,6 +54,7 @@ sub onContentChanged()
   m.title.text = textOrEmpty(content.title)
   setMetadata(content.metadata)
   m.narrowedBy.text = textOrEmpty(content.narrowedBy)
+  m.libraryName.text = textOrEmpty(content.libraryName)
   m.count.text = textOrEmpty(content.count)
   layout()
 end sub
@@ -100,6 +102,7 @@ sub layout()
     title: naturalWidth(m.title),
     metadata: metadataRowWidth(metadataWidths),
     narrowedBy: naturalWidth(m.narrowedBy),
+    name: naturalWidth(m.libraryName),
     count: naturalWidth(m.count),
     chips: chipWidths
   }, headerStrip.WIDTH)
@@ -109,6 +112,12 @@ sub layout()
   m.metadata.translation = [placed.metadataX, headerStrip.TEXT_DROP]
   m.narrowedBy.width = placed.narrowedByWidth
   m.narrowedBy.translation = [placed.narrowedByX, headerStrip.TEXT_DROP]
+  ' A width under the text's own cuts the name with an ellipsis; 0 hides it
+  m.libraryName.visible = placed.nameWidth > 0
+  if placed.nameWidth > 0
+    m.libraryName.width = placed.nameWidth
+    m.libraryName.translation = [placed.nameX, headerStrip.TEXT_DROP]
+  end if
   m.count.visible = placed.isCountShown
   if placed.isCountShown
     m.count.width = 0

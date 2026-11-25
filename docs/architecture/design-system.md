@@ -31,7 +31,7 @@ related-files:
   - components/ItemGrid/LibraryHeaderStrip.bs
   - components/ItemGrid/LibraryHeaderStrip.xml
   - source/utils/headerStrip.bs
-last-reviewed: 2026-11-17
+last-reviewed: 2026-11-25
 ---
 
 # Design system
@@ -105,11 +105,12 @@ Every library screen has one row under the overhang (`LibraryHeaderStrip`, fed b
 | The row | 54 pixels tall from y 111, x 96 to 1824. It sits midway between the selected tab's underline and the first row's focus ring: 13 pixels from each, measured on a Roku Ultra capture (2026-11-15). The ring is the reference, not the poster: the ring is what the eye meets |
 | Title | The focused item's name in the Medium font, bold, primary color. It is a caption under the tabs, so it stays smaller than them on every layout. The details screen's title is that page's heading and is larger on purpose |
 | Metadata | One line after the title in the Small font, secondary color: a movie's year, rating and runtime, a series' years and rating, an album's artist and year, a channel's number and program (`itemSummary.line`). It is built as the details screen builds an info row, items 9 pixels each side of a bold bullet, and cut by the same rule (`fitTextRow`) |
-| Narrowed by | "Filtered by: …" in Small secondary text before the count, while a voice search or a letter narrows the tab |
-| Count | "12 of 240" in Small secondary text, the string every position readout uses. A setting, on by default |
+| Narrowed by | "Filtered by: …" in Small secondary text before the library's name, while a voice search or a letter narrows the tab |
+| Library name | The library's own name in Small secondary text before the chips, on a screen with tabs. Tabs take the overhang title's place, so without it two libraries of one type look the same once open. A screen with no tabs shows its name as the overhang title and none here. It takes at most 300 pixels (`headerStrip.NAME_MAX_WIDTH`) and ends in an ellipsis past that |
+| Count | "12 of 240" in Small secondary text, the string every position readout uses. It ends at the row's right edge, under the clock's last digit, as a row's counter does on Home. A setting, on by default; with it off the chips end at the edge |
 | Chips | `TextButton`s the row's height: padding 15, a 30 pixel glyph (a 63/45 asset, so about 21 pixels of ink, the Medium font's cap height) and a 9 pixel gutter. Sort names the field and points an arrow its way; Filter counts the values set. A chip shows only where it does something: the TV guide takes no sort |
 | Text drop | The row's text is drawn 3 pixels low (`headerStrip.TEXT_DROP`, `TextButton.textDrop`). A label centers its line box and caps sit above that box's middle, which shows in a box only a little taller than its text (measured: caps 3 pixels high in the chip) |
-| When room runs out | The title is cut first, the metadata never takes more than half of the left side, and the count hides before the left side falls under 480 pixels (`headerStrip.fit`, pure, with a spec) |
+| When room runs out | The title is cut first, and the metadata never takes more than half of the left side. Before the left side falls under 480 pixels the library's name is cut and then hidden, then the count hides, then the narrowed-by text is cut. No part is drawn over another (`headerStrip.fit`, pure, with a spec) |
 
 Where a layout has a panel that describes the focused item, the strip gives up what the panel says better. In the presentation layout the strip shows the title alone, and the panel under it writes the metadata as the details screen does. On the TV guide the strip names the focused program, and the guide's pane starts with what follows.
 

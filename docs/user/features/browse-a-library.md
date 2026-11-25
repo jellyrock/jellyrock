@@ -36,7 +36,7 @@ JellyRock remembers the layout and the items per row for that tab of the library
 
 ## See what is focused
 
-A row under the tabs describes the item you are on: its title, and its year, rating and length where it has them. On the right it shows where you are in the list, such as "12 of 240". To hide that count, turn off **Settings → User Interface → Libraries → General → Grid View Settings → Item Count**.
+A row under the tabs describes the item you are on: its title, and its year, rating and length where it has them. On the right, a library with tabs shows its own name beside **Sort** and **Filter**, and the far right shows where you are in the list, such as "12 of 240". To hide that count, turn off **Settings → User Interface → Libraries → General → Grid View Settings → Item Count**.
 
 ## Sort a tab
 

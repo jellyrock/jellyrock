@@ -2,49 +2,74 @@ import "pkg:/source/utils/headerStrip.bs"
 
 namespace tests
 
-  ' headerStrip.fit: the chips at the right edge, the count and the narrowed-by text before
-  ' them, and the left block in what is left. The row here is 1728 wide.
+  ' headerStrip.fit: the count at the right edge, the chips before it, then the library's
+  ' name and the narrowed-by text, and the left block in what is left. The row here is
+  ' 1728 wide.
   @suite("headerStrip - how the library header strip shares its row")
   class HeaderStripTests extends tests.BaseTestSuite
 
-    private function widths(title as integer, metadata as integer, narrowedBy as integer, count as integer, chips as object) as object
-      return { title: title, metadata: metadata, narrowedBy: narrowedBy, count: count, chips: chips }
+    private function widths(title as integer, metadata as integer, narrowedBy as integer, name as integer, count as integer, chips as object) as object
+      return { title: title, metadata: metadata, narrowedBy: narrowedBy, name: name, count: count, chips: chips }
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("everything fits")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-    @it("puts the chips at the right edge, a gap apart, with the count before them")
+    @it("ends the count at the right edge, with the chips before it a gap apart")
     function _()
-      placed = headerStrip.fit(m.widths(300, 210, 0, 120, [240, 150]), 1728)
-      m.assertEqual(placed.chipXs, [1332, 1578], "Filter ends at 1728, Sort 6 before it")
+      placed = headerStrip.fit(m.widths(300, 210, 0, 0, 120, [240, 150]), 1728)
       m.assertTrue(placed.isCountShown)
-      m.assertEqual(placed.countX, 1332 - 24 - 120)
+      m.assertEqual(placed.countX, 1728 - 120, "the count ends at the row's edge")
+      m.assertEqual(placed.chipXs, [1188, 1434], "Filter ends a part gap before the count, Sort 6 before Filter")
+      m.assertEqual(placed.nameWidth, 0, "no name, no room taken")
       m.assertEqual(placed.titleWidth, 300)
       m.assertEqual(placed.metadataX, 318, "the metadata follows the title by its gap")
       m.assertEqual(placed.metadataWidth, 210)
     end function
 
-    @it("puts the narrowed-by text before the count")
+    @it("puts the library's name before the chips")
     function _()
-      placed = headerStrip.fit(m.widths(300, 0, 180, 120, [150]), 1728)
-      m.assertEqual(placed.countX, 1578 - 24 - 120)
-      m.assertEqual(placed.narrowedByX, placed.countX - 24 - 180)
+      placed = headerStrip.fit(m.widths(300, 0, 0, 150, 120, [240, 150]), 1728)
+      m.assertEqual(placed.nameWidth, 150)
+      m.assertEqual(placed.nameX, 1188 - 24 - 150)
+    end function
+
+    @it("puts the narrowed-by text before the name")
+    function _()
+      placed = headerStrip.fit(m.widths(300, 0, 180, 150, 120, [150]), 1728)
+      m.assertEqual(placed.chipXs, [1434])
+      m.assertEqual(placed.nameX, 1434 - 24 - 150)
+      m.assertEqual(placed.narrowedByX, placed.nameX - 24 - 180)
       m.assertEqual(placed.narrowedByWidth, 180)
+    end function
+
+    @it("ends the chips at the right edge when there is no count")
+    function _()
+      placed = headerStrip.fit(m.widths(300, 0, 0, 150, 0, [240, 150]), 1728)
+      m.assertFalse(placed.isCountShown)
+      m.assertEqual(placed.chipXs, [1332, 1578], "Filter ends at 1728")
+      m.assertEqual(placed.nameX, 1332 - 24 - 150)
+    end function
+
+    @it("holds the name to its maximum width")
+    function _()
+      placed = headerStrip.fit(m.widths(300, 0, 0, 500, 120, [240, 150]), 1728)
+      m.assertEqual(placed.nameWidth, headerStrip.NAME_MAX_WIDTH)
+      m.assertEqual(placed.nameX, 1188 - 24 - headerStrip.NAME_MAX_WIDTH)
     end function
 
     @it("rounds a measured width up onto the 3 px grid, so every position is on it")
     function _()
-      placed = headerStrip.fit(m.widths(301, 200, 100, 121, [241, 149]), 1728)
-      for each x in [placed.chipXs[0], placed.chipXs[1], placed.countX, placed.narrowedByX, placed.metadataX, placed.titleWidth, placed.metadataWidth]
+      placed = headerStrip.fit(m.widths(301, 200, 100, 151, 121, [241, 149]), 1728)
+      for each x in [placed.chipXs[0], placed.chipXs[1], placed.countX, placed.nameX, placed.nameWidth, placed.narrowedByX, placed.metadataX, placed.titleWidth, placed.metadataWidth]
         m.assertEqual(x mod 3, 0, "on the grid: " + x.toStr())
       end for
     end function
 
     @it("places a row with no chips and no count from the right edge")
     function _()
-      placed = headerStrip.fit(m.widths(300, 0, 0, 0, []), 1728)
+      placed = headerStrip.fit(m.widths(300, 0, 0, 0, 0, []), 1728)
       m.assertEqual(placed.chipXs, [])
       m.assertFalse(placed.isCountShown)
       m.assertEqual(placed.titleWidth, 300)
@@ -56,45 +81,84 @@ namespace tests
 
     @it("cuts the title first and lets the metadata keep its width")
     function _()
-      ' The chips and count leave 1728 - 396 - 24 - 120 - 24 = 1164 for the left block
-      placed = headerStrip.fit(m.widths(1500, 210, 0, 120, [240, 150]), 1728)
+      ' The count and chips leave 1728 - 120 - 24 - 396 - 24 = 1164 for the left block
+      placed = headerStrip.fit(m.widths(1500, 210, 0, 0, 120, [240, 150]), 1728)
       m.assertTrue(placed.isCountShown)
       m.assertEqual(placed.metadataWidth, 210)
       m.assertEqual(placed.titleWidth, 1164 - 18 - 210)
       m.assertEqual(placed.metadataX, placed.titleWidth + 18)
     end function
 
+    @it("cuts a long title before the name, while the left block keeps its minimum")
+    function _()
+      ' The name and its gap take 174 of the 1164
+      placed = headerStrip.fit(m.widths(1500, 210, 0, 150, 120, [240, 150]), 1728)
+      m.assertEqual(placed.nameWidth, 150)
+      m.assertEqual(placed.titleWidth, 990 - 18 - 210)
+    end function
+
     @it("holds the metadata to half the left block")
     function _()
-      placed = headerStrip.fit(m.widths(1500, 900, 0, 120, [240, 150]), 1728)
+      placed = headerStrip.fit(m.widths(1500, 900, 0, 0, 120, [240, 150]), 1728)
       m.assertEqual(placed.metadataWidth, 582, "half of 1164")
       m.assertEqual(placed.titleWidth, 1164 - 18 - 582)
     end function
 
     @it("gives a short title's unused room to a long metadata line")
     function _()
-      placed = headerStrip.fit(m.widths(150, 1500, 0, 120, [240, 150]), 1728)
+      placed = headerStrip.fit(m.widths(150, 1500, 0, 0, 120, [240, 150]), 1728)
       m.assertEqual(placed.titleWidth, 150)
       m.assertEqual(placed.metadataWidth, 1164 - 18 - 150)
     end function
 
-    @it("hides the count when the left block would fall under its minimum")
+    @it("cuts the name to what the left block's minimum leaves")
     function _()
-      ' Chips 1200 wide leave 1728 - 1206 - 24 = 498 before the count: under 480 + 24 with it
-      placed = headerStrip.fit(m.widths(600, 0, 0, 120, [600, 600]), 1728)
+      ' Chips 906 wide leave 1728 - 144 - 906 - 24 = 654; the left block keeps 480 + 24
+      placed = headerStrip.fit(m.widths(600, 0, 0, 300, 120, [501, 399]), 1728)
+      m.assertEqual(placed.nameWidth, 150)
+      m.assertEqual(placed.nameX, 504)
+      m.assertTrue(placed.isCountShown, "the name gives way before the count")
+      m.assertEqual(placed.titleWidth, 480)
+    end function
+
+    @it("hides the name when it would be cut under its minimum")
+    function _()
+      ' Chips 978 wide leave 582: 78 for the name, under NAME_MIN_WIDTH
+      placed = headerStrip.fit(m.widths(600, 0, 0, 300, 120, [540, 432]), 1728)
+      m.assertEqual(placed.nameWidth, 0)
+      m.assertTrue(placed.isCountShown)
+      m.assertEqual(placed.titleWidth, 582)
+    end function
+
+    @it("hides the count, after the name, when the left block would fall under its minimum")
+    function _()
+      ' Chips 1206 wide leave 354 with the count, and 1728 - 1206 - 24 = 498 without it
+      placed = headerStrip.fit(m.widths(600, 0, 0, 300, 120, [600, 600]), 1728)
+      m.assertEqual(placed.nameWidth, 0)
       m.assertFalse(placed.isCountShown)
+      m.assertEqual(placed.chipXs, [522, 1128], "the chips take the count's place at the edge")
       m.assertEqual(placed.titleWidth, 498)
     end function
 
     @it("keeps the count on a row with nothing on the left to protect")
     function _()
-      placed = headerStrip.fit(m.widths(0, 0, 0, 120, [600, 600]), 1728)
+      placed = headerStrip.fit(m.widths(0, 0, 0, 0, 120, [600, 600]), 1728)
       m.assertTrue(placed.isCountShown)
+    end function
+
+    @it("cuts the name before the narrowed-by text")
+    function _()
+      ' 1728 - 396 - 24 = 1308 before the name; the text and its gap take 624, the left block 504
+      placed = headerStrip.fit(m.widths(600, 0, 600, 300, 0, [240, 150]), 1728)
+      m.assertEqual(placed.nameWidth, 180)
+      m.assertEqual(placed.narrowedByWidth, 600)
+      m.assertEqual(placed.narrowedByX, 504)
+      m.assertEqual(placed.titleWidth, 480)
     end function
 
     @it("cuts the narrowed-by text to what the left block's minimum leaves")
     function _()
-      placed = headerStrip.fit(m.widths(600, 0, 900, 0, [240, 150]), 1728)
+      placed = headerStrip.fit(m.widths(600, 0, 900, 0, 0, [240, 150]), 1728)
       ' 1728 - 396 - 24 = 1308 before the text; the left block keeps 480 + 24
       m.assertEqual(placed.narrowedByWidth, 1308 - 504)
       m.assertEqual(placed.titleWidth, 480)

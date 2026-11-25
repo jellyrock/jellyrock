@@ -1601,7 +1601,9 @@ end function
 ' What the strip says about the tab on show: the focused item on the left (on the TV
 ' guide, the focused program), what narrows the tab, and the place in the list.
 sub updateStrip(item as dynamic)
-  content = { title: "", metadata: [], narrowedBy: "", count: "" }
+  content = { title: "", metadata: [], narrowedBy: "", libraryName: "", count: "" }
+  ' A screen with tabs has no title in the overhang, so the strip names the library
+  if isValid(m.offeredViews) and m.offeredViews.count() > 1 then content.libraryName = textOrEmpty(m.top.parentItem.title)
   position = 0
   total = 0
 

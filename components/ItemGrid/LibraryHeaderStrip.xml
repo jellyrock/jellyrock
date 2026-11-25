@@ -3,9 +3,9 @@
   LibraryHeaderStrip: the row under the overhang on a library screen.
 
   Left: the focused item's title and one metadata line. Right: what narrows the tab
-  (voice text or a letter), the item count, and the Sort and Filter chips. It only
-  draws: BaseGridView feeds it and acts on chipAction. Sizes and the layout rule are in
-  source/utils/headerStrip.bs.
+  (voice text or a letter), the library's name on a screen with tabs, the Sort and
+  Filter chips, and the item count at the edge. It only draws: BaseGridView feeds it and
+  acts on chipAction. Sizes and the layout rule are in source/utils/headerStrip.bs.
 -->
 <component name="LibraryHeaderStrip" extends="Group">
   <children>
@@ -14,12 +14,13 @@
          builds its info rows (9 pixels each side of a bullet) -->
     <LayoutGroup id="metadata" layoutDirection="horiz" vertAlignment="top" />
     <LabelSecondarySmall id="narrowedBy" vertAlign="center" />
+    <LabelSecondarySmall id="libraryName" vertAlign="center" />
     <LabelSecondarySmall id="count" vertAlign="center" />
     <TextButton id="sortChip" visible="false" />
     <TextButton id="filterChip" visible="false" />
   </children>
   <interface>
-    <!-- { title, metadata: [items], narrowedBy, count }: one write, so one layout pass -->
+    <!-- { title, metadata: [items], narrowedBy, libraryName, count }: one write, so one layout pass -->
     <field id="content" type="assocarray" onChange="onContentChanged" />
     <!-- { sortLabel, filterLabel, isSortShown, isFilterShown } -->
     <field id="chips" type="assocarray" onChange="onChipsChanged" />
