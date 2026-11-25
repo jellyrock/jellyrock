@@ -3042,6 +3042,16 @@ Ruled out: Star doing nothing on Settings, as its own settings icon does there, 
 
 Ruled out: compiling the RTA build with the flag on, which changes how every RTA, measurement and screenshot build is produced and runs only when someone runs RTA, so CI would still miss a mistake; and leaving the device's own compile as the only check. Not covered: the test configs, and the `#else` side of the `perfTiming` blocks. The pass took about 10 s (measured 2026-11-24 with `time npm run validate:rta`, alpha.56).
 
+## decision-id: header-strip-count-digit-box
+
+**date**: 2026-11-25
+**status**: accepted
+**related-files**: `components/ItemGrid/LibraryHeaderStrip.bs`, `source/utils/headerStrip.bs`
+
+The library header strip's count ends at the row's right edge, with the Sort and Filter chips before it, so the count's width places the chips. Its box is the count with every digit of the place drawn as the font's widest digit, and the text is right-aligned in it (`headerStrip.reservedPosition`, `LibraryHeaderStrip.countBoxWidth()`). The chips then move only when the place gains or loses a digit: in a library of 12,000 items, four times from start to end.
+
+Sizing the box by the text moved the chips on most focus steps: Roku's system font has proportional digits, and Roku's `Font` node has no tabular-digit setting. Measured 2026-11-25 on a Streaming Stick 4K: "1 of 240" is 101 pixels wide, "9 of 240" 104, "10 of 240" 119 and "11 of 240" 114. Sizing it by the total holds the chips still but leaves about 60 pixels empty beside "1 of 12000". Moving the count back before the chips undoes the choice in #1418 to place it as a row's counter sits on Home.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

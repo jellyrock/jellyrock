@@ -353,6 +353,69 @@ it('a voice search brings the Filter chip to a tab with no filter category', asy
   );
 });
 
+it('a library with tabs names itself left of Sort, and its count ends at the right edge', async (testCtx) => {
+  const libraryId = await openMovies('header strip library name', 'movies', testCtx);
+  const library = libraries.find((l) => l.id === libraryId);
+
+  expect(await getActiveVal('#headerStrip.#libraryName.visible'), 'the name shows').toBe(true);
+  expect(await getActiveVal('#headerStrip.#libraryName.text'), "it is the library's own").toBe(
+    library.name,
+  );
+
+  const strip = await getActiveVal('#headerStrip.sceneBoundingRect()');
+  const name = await getActiveVal('#headerStrip.#libraryName.sceneBoundingRect()');
+  const sort = await getActiveVal('#headerStrip.#sortChip.sceneBoundingRect()');
+  const filter = await getActiveVal('#headerStrip.#filterChip.sceneBoundingRect()');
+  const count = await getActiveVal('#headerStrip.#count.sceneBoundingRect()');
+  // 1824 is the 5% safe zone's right edge, where the clock's digits end
+  expect(count.x + count.width, 'the count ends at the safe edge').toBeCloseTo(1824, -1);
+  expect(strip.x, 'the strip starts at the safe edge').toBeCloseTo(96, 0);
+  expect(filter.x + filter.width, 'Filter ends before the count').toBeLessThan(count.x);
+  expect(sort.x + sort.width, 'Sort ends before Filter').toBeLessThan(filter.x + 1);
+  expect(name.x + name.width, 'the name ends before Sort').toBeLessThan(sort.x);
+});
+
+it('the chips hold still as focus moves, until the place in the list gains a digit', async (testCtx) => {
+  await openMovies('header strip steady chips', 'movies', testCtx);
+  const count = await getActiveVal('#itemGrid.content.getChildCount()');
+  const columns = await getActiveVal('#itemGrid.numColumns');
+  if (!(count >= 10)) testCtx.skip(`the library holds ${count} movie(s): no tenth item`);
+  // The walk visits places 1 to columns + 1 with one digit, then the tenth on the second row
+  if (!(columns >= 5 && columns <= 8)) testCtx.skip(`${columns} columns: the walk expects 5 to 8`);
+
+  const sortX = async () => (await getActiveVal('#headerStrip.#sortChip.sceneBoundingRect()')).x;
+  const countAt = (place) =>
+    waitFor('#headerStrip.#count.text', (t) => (t ?? '').startsWith(`${place} of `), {
+      label: `the strip counting ${place}`,
+      timeout: 8000,
+      read: getActiveVal,
+    });
+
+  await countAt(1);
+  const atFirst = await sortX();
+  // Digits differ in width, so a count sized by its own text moved the chips at most steps
+  for (let index = 1; index < columns; index += 1) {
+    await focusGridTile(index);
+    await countAt(index + 1);
+    expect(await sortX(), `Sort where the count reads ${index + 1}`).toBe(atFirst);
+  }
+  await press(ecp.Key.Replay);
+  await waitFor('#itemGrid.itemFocused', (n) => n === 0, {
+    label: 'Replay back on the first item',
+    timeout: 8000,
+    read: getActiveVal,
+  });
+  await press(ecp.Key.Down);
+  await countAt(columns + 1);
+  expect(await sortX(), `Sort where the count reads ${columns + 1}`).toBe(atFirst);
+
+  await focusGridTile(9);
+  await countAt(10);
+  expect(await sortX(), 'Sort moves left once, for the second digit').toBeLessThan(atFirst);
+  const edge = await getActiveVal('#headerStrip.#count.sceneBoundingRect()');
+  expect(edge.x + edge.width, 'the count still ends at the safe edge').toBeCloseTo(1824, -1);
+});
+
 it('a screen with no tabs is titled with its name alone, underlined as a selected tab is', async (testCtx) => {
   // The reference: the selected tab's underline in a library with tabs
   await openMovies('header strip title reference', 'movies', testCtx);
@@ -372,6 +435,10 @@ it('a screen with no tabs is titled with its name alone, underlined as a selecte
   await waitFocusInside('#itemGrid', { label: 'the one-view library: focus on the grid' });
 
   expect(await getVal('#overhang.#title.text'), 'the title is the name alone').toBe(library.name);
+  expect(
+    await getActiveVal('#headerStrip.#libraryName.visible'),
+    'the strip does not repeat the name the title gives',
+  ).toBe(false);
   if ((await getActiveVal('#itemGrid.content.getChildCount()')) > 0) {
     expect(await getActiveVal('#headerStrip.#count.text'), 'the strip gives the place').toMatch(
       /^1 of \d+$/,

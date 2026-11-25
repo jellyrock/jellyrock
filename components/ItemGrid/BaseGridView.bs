@@ -1601,7 +1601,9 @@ end function
 ' What the strip says about the tab on show: the focused item on the left (on the TV
 ' guide, the focused program), what narrows the tab, and the place in the list.
 sub updateStrip(item as dynamic)
-  content = { title: "", metadata: [], narrowedBy: "", count: "" }
+  content = { title: "", metadata: [], narrowedBy: "", libraryName: "", position: 0, total: 0 }
+  ' A screen with tabs has no title in the overhang, so the strip names the library
+  if m.offeredViews.count() > 1 then content.libraryName = textOrEmpty(m.top.parentItem.title)
   position = 0
   total = 0
 
@@ -1632,8 +1634,10 @@ sub updateStrip(item as dynamic)
   if narrowed = "" then narrowed = m.nameStartsWith.trim()
   if narrowed <> "" then content.narrowedBy = translate(translationKeys.LabelFilteredBy, [narrowed])
 
+  ' The strip writes the count, and sizes its box for every place with as many digits
   if m.showItemCount and position > 0 and total > 0
-    content.count = translate(translationKeys.LabelPositionOfTotal, [position.toStr(), total.toStr()])
+    content.position = position
+    content.total = total
   end if
 
   m.headerStrip.content = content
