@@ -1,6 +1,8 @@
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/headerStrip.bs"
 import "pkg:/source/utils/infoRowFit.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 const CHIP_SORT = "sort"
 const CHIP_FILTER = "filter"
@@ -13,14 +15,14 @@ sub init()
   m.metadata = m.top.findNode("metadata")
   m.narrowedBy = m.top.findNode("narrowedBy")
   m.libraryName = m.top.findNode("libraryName")
-  m.count = m.top.findNode("count")
+  m.countLabel = m.top.findNode("count")
   m.chipNodes = {}
   m.chipNodes[CHIP_SORT] = m.top.findNode("sortChip")
   m.chipNodes[CHIP_FILTER] = m.top.findNode("filterChip")
   m.chipNodes[CHIP_SORT].icon = "pkg:/images/icons/sort_$$RES$$.png"
   m.chipNodes[CHIP_FILTER].icon = "pkg:/images/icons/filter_$$RES$$.png"
 
-  for each label in [m.title, m.narrowedBy, m.libraryName, m.count]
+  for each label in [m.title, m.narrowedBy, m.libraryName, m.countLabel]
     label.height = headerStrip.HEIGHT
     label.translation = [0, headerStrip.TEXT_DROP]
   end for
@@ -46,6 +48,12 @@ sub init()
   m.lastChip = ""
   ' Whether the last fit cut the metadata line (fitMetadata)
   m.isMetadataCut = false
+  ' The place in the list and its total, 0 for no count; the count's box (countBoxWidth)
+  m.position = 0
+  m.total = 0
+  m.widestDigit = ""
+  m.reservedText = ""
+  m.reservedWidth = 0
 end sub
 
 sub onContentChanged()
@@ -55,9 +63,21 @@ sub onContentChanged()
   setMetadata(content.metadata)
   m.narrowedBy.text = textOrEmpty(content.narrowedBy)
   m.libraryName.text = textOrEmpty(content.libraryName)
-  m.count.text = textOrEmpty(content.count)
+  m.position = 0
+  m.total = 0
+  if isValid(content.position) and isValid(content.total)
+    m.position = int(content.position)
+    m.total = int(content.total)
+  end if
+  m.countLabel.text = ""
+  if m.position > 0 and m.total > 0 then m.countLabel.text = countText(m.position.toStr())
   layout()
 end sub
+
+' "12 of 240", the string every position readout uses, with `place` as the place.
+function countText(place as string) as string
+  return translate(translationKeys.LabelPositionOfTotal, [place, m.total.toStr()])
+end function
 
 sub onChipsChanged()
   chips = m.top.chips
@@ -103,7 +123,7 @@ sub layout()
     metadata: metadataRowWidth(metadataWidths),
     narrowedBy: naturalWidth(m.narrowedBy),
     name: naturalWidth(m.libraryName),
-    count: naturalWidth(m.count),
+    count: countBoxWidth(),
     chips: chipWidths
   }, headerStrip.WIDTH)
 
@@ -118,10 +138,11 @@ sub layout()
     m.libraryName.width = placed.nameWidth
     m.libraryName.translation = [placed.nameX, headerStrip.TEXT_DROP]
   end if
-  m.count.visible = placed.isCountShown
+  m.countLabel.visible = placed.isCountShown
   if placed.isCountShown
-    m.count.width = 0
-    m.count.translation = [placed.countX, headerStrip.TEXT_DROP]
+    ' The label is right-aligned in its box, so the text ends at the row's edge
+    m.countLabel.width = headerStrip.WIDTH - placed.countX
+    m.countLabel.translation = [placed.countX, headerStrip.TEXT_DROP]
   end if
   for i = 0 to m.shown.count() - 1
     m.chipNodes[m.shown[i]].translation = [placed.chipXs[i], 0]
@@ -188,6 +209,44 @@ sub fitMetadata(widths as object, budget as integer)
   childCount = m.metadata.getChildCount()
   m.metadata.removeChildrenIndex(childCount - lastKept - 1, lastKept + 1)
 end sub
+
+' The count's box: as wide as the count with every digit of the place in the widest digit,
+' so the chips before it hold still while focus moves and shift only when the place gains
+' or loses a digit. Measured again only when that text changes. Never narrower than the
+' count itself, so the count is never cut. 0 for no count.
+function countBoxWidth() as integer
+  natural = naturalWidth(m.countLabel)
+  if natural = 0 then return 0
+
+  reserved = countText(headerStrip.reservedPosition(m.position, widestDigit()))
+  if reserved <> m.reservedText
+    text = m.countLabel.text
+    m.countLabel.text = reserved
+    m.reservedWidth = naturalWidth(m.countLabel)
+    m.countLabel.text = text
+    m.reservedText = reserved
+  end if
+  if m.reservedWidth > natural then return m.reservedWidth
+  return natural
+end function
+
+' The digit the count's font draws widest, measured once: a font's digits differ in width.
+function widestDigit() as string
+  if m.widestDigit <> "" then return m.widestDigit
+  text = m.countLabel.text
+  widest = 0
+  m.widestDigit = "0"
+  for digit = 0 to 9
+    m.countLabel.text = digit.toStr()
+    width = naturalWidth(m.countLabel)
+    if width > widest
+      widest = width
+      m.widestDigit = digit.toStr()
+    end if
+  end for
+  m.countLabel.text = text
+  return m.widestDigit
+end function
 
 ' A label's text width with no box around it, 0 for no text.
 function naturalWidth(label as object) as integer

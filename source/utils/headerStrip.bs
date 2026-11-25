@@ -14,7 +14,7 @@ namespace headerStrip
 
   const CHIP_PADDING = 15 ' A chip's text padding: with the Medium font the box is the row's height
   const CHIP_GAP = 6 ' Between two chips, as between the overhang's right-hand elements
-  const PART_GAP = 24 ' Between the chips, the count and the narrowed-by text, and before the left block
+  const PART_GAP = 24 ' Between the count, the chips, the library's name and the narrowed-by text, and before the left block
   const TITLE_GAP = 18 ' Between the focused item's title and its metadata line
   ' The metadata line is built as the details screen builds its info rows: its items 9
   ' pixels from a bullet on each side, and an item cut no narrower than this.
@@ -44,8 +44,8 @@ namespace headerStrip
   ' part is placed over another.
   '
   ' @param widths - { title, metadata, narrowedBy, name, count, chips: [width, …] }, each
-  '   the text's own width, 0 for a part with nothing to show; `chips` holds the shown
-  '   chips from left to right
+  '   the text's own width, 0 for a part with nothing to show; `count` is its box's width
+  '   (reservedPosition); `chips` holds the shown chips from left to right
   ' @param slotWidth - the row's width
   ' @return {object} { titleWidth, metadataX, metadataWidth, narrowedByX, narrowedByWidth,
   '   nameX, nameWidth, isCountShown, countX, chipXs: [x, …] }, x from the row's left
@@ -147,6 +147,13 @@ namespace headerStrip
     if countWidth > 0 then edge -= countWidth + headerStrip.PART_GAP
     if chipsWidth > 0 then edge -= chipsWidth + headerStrip.PART_GAP
     return edge
+  end function
+
+  ' The place in the list written with every digit as `digit`: 12 with "0" is "00". The
+  ' count's box is measured with it in the widest digit, so any place with as many digits
+  ' fits, and the chips before the count move only when the place gains or loses a digit.
+  function reservedPosition(position as integer, digit as string) as string
+    return string(len(position.toStr()), digit)
   end function
 
   ' The room the narrowed-by text takes with its gap, 0 when there is none.

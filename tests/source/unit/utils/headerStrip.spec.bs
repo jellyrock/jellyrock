@@ -59,6 +59,13 @@ namespace tests
       m.assertEqual(placed.nameX, 1188 - 24 - headerStrip.NAME_MAX_WIDTH)
     end function
 
+    @it("keeps a short name whole, though it is narrower than the least a cut name keeps")
+    function _()
+      placed = headerStrip.fit(m.widths(300, 0, 0, 60, 120, [240, 150]), 1728)
+      m.assertEqual(placed.nameWidth, 60, "a name such as TV is never hidden for being short")
+      m.assertEqual(placed.nameX, 1188 - 24 - 60)
+    end function
+
     @it("rounds a measured width up onto the 3 px grid, so every position is on it")
     function _()
       placed = headerStrip.fit(m.widths(301, 200, 100, 151, 121, [241, 149]), 1728)
@@ -162,6 +169,19 @@ namespace tests
       ' 1728 - 396 - 24 = 1308 before the text; the left block keeps 480 + 24
       m.assertEqual(placed.narrowedByWidth, 1308 - 504)
       m.assertEqual(placed.titleWidth, 480)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the count's box")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("writes the place with one widest digit per digit, so the box fits any place as long")
+    function _()
+      m.assertEqual(headerStrip.reservedPosition(1, "0"), "0")
+      m.assertEqual(headerStrip.reservedPosition(9, "8"), "8")
+      m.assertEqual(headerStrip.reservedPosition(10, "0"), "00")
+      m.assertEqual(headerStrip.reservedPosition(240, "0"), "000")
+      m.assertEqual(headerStrip.reservedPosition(12000, "0"), "00000")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

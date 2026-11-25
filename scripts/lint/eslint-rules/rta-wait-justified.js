@@ -91,6 +91,10 @@ const VERIFIED_SETTLE_KEYPATHS = new Set([
   // what narrows the tab at a letter press, a voice search and a load. It holds until the next
   // one. Terminal. Read against the app source 2026-11-16.
   '#headerStrip.#narrowedBy.text',
+  // The same write again: `onContentChanged` sets the count from the place and total that
+  // `updateStrip` hands over on a focus move or a load, "" while the setting is off. It holds
+  // until the next one. Terminal. Read against the app source 2026-11-25.
+  '#headerStrip.#count.text',
   // `LibraryHeaderStrip.applyChip` sets it from what `BaseGridView.updateStripChips` hands over
   // at a load or a voice search, and nothing else writes it. Terminal. Read against the app
   // source 2026-11-16.

@@ -15,12 +15,14 @@
     <LayoutGroup id="metadata" layoutDirection="horiz" vertAlignment="top" />
     <LabelSecondarySmall id="narrowedBy" vertAlign="center" />
     <LabelSecondarySmall id="libraryName" vertAlign="center" />
-    <LabelSecondarySmall id="count" vertAlign="center" />
+    <LabelSecondarySmall id="count" vertAlign="center" horizAlign="right" />
     <TextButton id="sortChip" visible="false" />
     <TextButton id="filterChip" visible="false" />
   </children>
   <interface>
-    <!-- { title, metadata: [items], narrowedBy, libraryName, count }: one write, so one layout pass -->
+    <!-- { title, metadata: [items], narrowedBy, libraryName, position, total }: one write,
+         so one layout pass. The strip writes the count from the place and total; 0 shows none -->
+
     <field id="content" type="assocarray" onChange="onContentChanged" />
     <!-- { sortLabel, filterLabel, isSortShown, isFilterShown } -->
     <field id="chips" type="assocarray" onChange="onChipsChanged" />

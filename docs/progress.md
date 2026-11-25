@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-24
+last-updated: 2026-11-25
 ---
 
 # Progress
@@ -1012,14 +1012,6 @@ Two changes to weigh together, since each alters what the rail is for:
 Why not now: both are design choices for the operator, and the second needs a paging design. See also `library-grid-alpha-menu-trim`, which needs the same per-letter knowledge.
 
 Not checked: whether any TV in use clips x 52.
-
-#### A library with tabs never shows its own name `[fid: tabbed-library-hides-its-name]` `[captured 2026-11-16]`
-
-A library with tabs never shows its own name. Its first tab is the type's word (`MoviePresenter` labels it with `LabelMovies`, the TV presenter with its own), and the overhang hides the title while tabs show (`JROverhang.onTabsChanged()`), so two movie libraries look the same once open. A screen with no tabs shows its name as the overhang title, underlined as a selected tab is, so the gap is only on tabbed libraries. Found while reviewing the library header strip (2026-11-16).
-
-One answer to weigh: label the first tab with the library's own name.
-
-Why not now: it changes what a tab is called on every tabbed library, and needs its own captures and a rule for a long name in the tab strip. Closes when a tabbed library shows its name, or the gap is recorded as intended.
 
 #### Grid with details is offered only on a movie library's Movies tab `[fid: grid-with-details-beyond-movies]` `[captured 2026-11-16]`
 
