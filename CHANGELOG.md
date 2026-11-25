@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- (library) Show the library's name; end the count at the edge ([#1447](https://github.com/jellyrock/jellyrock/pull/1447)) by [@cewert](https://github.com/cewert)
 - (ui) Home settings menu; ratings, taglines, Star follow one rule ([#1413](https://github.com/jellyrock/jellyrock/pull/1413)) by [@cewert](https://github.com/cewert)
 - (ui) One overhang on signed-in screens; library menu icons ([#1405](https://github.com/jellyrock/jellyrock/pull/1405)) by [@cewert](https://github.com/cewert)
 - (library) Items per row and item titles from a library's menu ([#1400](https://github.com/jellyrock/jellyrock/pull/1400)) by [@cewert](https://github.com/cewert)
