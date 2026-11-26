@@ -1079,15 +1079,19 @@ Open: Backdrop Images. It changes details, Grid with details and Home alike, so 
 
 Why not now: each entry needs its glyph, a redraw in place that keeps the focus (`watch-badge-stale-on-visible-cells` is the same need for badges), and captures. To close: `ItemDetails.pageSettingsEntries()` and the added library entries, built with `pageSettings.settingEntry()`, with RTA cases in `page-settings.spec.js`, and the Backdrop Images question answered.
 
-#### The Live TV Channels tab's letter rail likely never filters: `/LiveTv/Channels` takes no name parameter `[fid: live-tv-channels-letter-never-filters]` `[captured 2026-11-26]` `[pinned]`
+#### The Live TV Channels tab's letter rail never filters: `/LiveTv/Channels` ignores the letter `[fid: live-tv-channels-letter-never-filters]` `[captured 2026-11-26]` `[pinned]`
 
-On a Live TV library's Channels tab, a letter is sent as `searchterm` with `parentid " "` to `/LiveTv/Channels` (the `ItemType = "LiveTV"` lines in `LoadItemsTask2`'s `NameStartsWith` block, then `executeItemQuery()`'s `liveTV` route). That endpoint declares no `searchTerm`, `nameStartsWith` or `parentId` parameter in the 10.7.0, 10.11.9 or 12.2 specs, and `BuildGetLiveTVChannelsRequest()` passes every parameter through. The code is unchanged from the fork at v2.2.5. Found while removing `LoadChannelsTask`'s dead letter branch (#1427). #1429's "Starts with" Filter category sets the same `nameStartsWith`, so it inherits the gap on this tab: fix it there.
+On a Live TV library's Channels tab, a letter is sent as `searchterm` with `parentid " "` to `/LiveTv/Channels` (the `ItemType = "LiveTV"` lines in `LoadItemsTask2`'s `NameStartsWith` block, then `executeItemQuery()`'s `liveTV` route). That endpoint declares no `searchTerm`, `nameStartsWith` or `parentId` parameter in the 10.7.0, 10.11.9 or 12.2 specs. The code is unchanged from the fork at v2.2.5. Found while removing `LoadChannelsTask`'s dead letter branch (#1427). #1429's "Starts with" Filter category sets the same `nameStartsWith`, so it inherits the gap on this tab: fix it there.
 
-**Options:** `items` (recommended): with a letter or search in force, ask `/Items` with `IncludeItemTypes=TvChannel` and `NameStartsWith`, and the two-range `#` request other libraries use (`executeHashPage`); stay on `/LiveTv/Channels` otherwise. `client`: fetch every channel and filter on the Roku, which breaks paging and costs memory on a 512 MB Stick. `hide`: hide the rail on Live TV, which removes the control.
+**Reproduced on 12.4** (2026-11-26, the local test server with `epg-fixture.sh up`, four channels named "Fixture …"): `/LiveTv/Channels` returned all 4 with no letter, with `searchterm=M` and with `searchterm=zzzqqq`, so the server ignores it.
 
-**Closes when** a letter on the Channels tab shows only channels whose names start with it, checked on a server with Live TV and covered by a query spec.
+**`/Items` cannot filter channels by letter either.** On the same server, `/Items` with `IncludeItemTypes=TvChannel` (or `LiveTvChannel`) returned all 4, but `NameStartsWith=F` returned 0, as did `NameStartsWithOrGreater=F&NameLessThan=G`. The channels' `SortName` is `-Fixture DASH`: the channel number, a dash, then the name. `searchTerm=Muxed` found 1, but that matches anywhere in a name.
 
-**Not checked:** whether the server ignores the parameter or acts on it (needs a server with channels). What the tab shows under a letter on a device. Whether `/Items` with `IncludeItemTypes=TvChannel` and `NameStartsWith` returns the same channel fields and numbers that the grid uses.
+**Options:** `client`: fetch every channel and keep those whose name starts with the letter, on the Roku. `LoadChannelsTask` already fetches every channel in one request for the guide's voice search (`filterByVoiceSearch()`), so it has a precedent; the cost is memory and load time on a large lineup on a 512 MB Stick. `hide`: hide the rail and the "Starts with" category on Live TV, which removes the control. `search`: send the letter as `/Items` `searchTerm`, which matches anywhere in a name, so it is not a letter filter.
+
+**Closes when** a letter on the Channels tab shows only channels whose names start with it, or the control is gone from Live TV, checked on a server with Live TV and covered by a spec.
+
+**Not checked:** what `SortName` holds for channels that have numbers (the fixture's have none), and whether servers before 12.4 behave the same. What the tab shows under a letter on a device. How many channels a real lineup has, which sizes the `client` cost.
 
 #### Sorts and filters for both Live TV tabs: the guide has no sort, the Channels tab one `[fid: live-tv-tabs-sort-and-filter]` `[captured 2026-11-26]`
 
