@@ -477,10 +477,6 @@ A 2,000-channel lineup takes 18 s to finish loading idle (Stick 4K, 2026-09-21),
 
 **Dropping or cutting a TV guide program block blocks the render thread**: a drop 108–256 ms on a 512 MB Roku Stick (typically ~150) and 45–137 ms on a Stick 4K; a cut back to the time window 50–235 ms and 33–83 ms (one `removeChildrenIndex` per channel row, measured 2026-09-21). Once `guidePrograms.CAP` blocks are held, scrolling costs one drop per 25 rows, and scrolling in time one cut per block per ~12 h; `reconcilePrograms` applies one trim per call, so they do not stack. Deferring them until the focus settles, or spreading a block's rows across turns, would move them out of the scroll — neither is measured yet.
 
-#### `LoadChannelsTask`'s alpha-filter branch is unreachable. `[fid: load-channels-alpha-filter-unreachable]` `[captured 2026-09-22]`
-
-It falls back to `/Items` when `nameStartsWith` is set, but nothing sets `nameStartsWith` on it: the guide is its only caller and passes filter, search term and page size only. Delete the branch (and the unused `nameStartsWith` / `sortField` / `sortAscending` / `isRecursive` fields) or wire it to the guide's alpha menu if that is wanted.
-
 #### A loading indicator for the TV guide's rows. `[fid: tv-guide-rows-loading-indicator]` `[captured 2026-09-22]`
 
 `TimeGrid` draws program cells itself and takes no custom cell component, so a spinner can only go (a) per row, in a custom `channelInfoComponentName` channel column, or (b) once for the guide, beside the channel column header, shown while `guidePrograms.spanState` reads `GuideSpanState.LOADING`. Try (b) first: one animation, and no takeover of the channel column's logo, name, focus and fallback-font rendering. Measure it on a 512 MB Stick while scrolling — an animating render thread is what slowed every Task crossing ([`threading.md`](architecture/threading.md#measured-findings)) — before considering (a).
@@ -1082,6 +1078,22 @@ The details screen shows the settings icon and declares no page settings, so the
 Open: Backdrop Images. It changes details, Grid with details and Home alike, so decide whether it is offered on all three or stays in Settings only.
 
 Why not now: each entry needs its glyph, a redraw in place that keeps the focus (`watch-badge-stale-on-visible-cells` is the same need for badges), and captures. To close: `ItemDetails.pageSettingsEntries()` and the added library entries, built with `pageSettings.settingEntry()`, with RTA cases in `page-settings.spec.js`, and the Backdrop Images question answered.
+
+#### The Live TV Channels tab's letter rail likely never filters: `/LiveTv/Channels` takes no name parameter `[fid: live-tv-channels-letter-never-filters]` `[captured 2026-11-26]` `[pinned]`
+
+On a Live TV library's Channels tab, a letter is sent as `searchterm` with `parentid " "` to `/LiveTv/Channels` (the `ItemType = "LiveTV"` lines in `LoadItemsTask2`'s `NameStartsWith` block, then `executeItemQuery()`'s `liveTV` route). That endpoint declares no `searchTerm`, `nameStartsWith` or `parentId` parameter in the 10.7.0, 10.11.9 or 12.2 specs, and `BuildGetLiveTVChannelsRequest()` passes every parameter through. The code is unchanged from the fork at v2.2.5. Found while removing `LoadChannelsTask`'s dead letter branch (#1427). #1429's "Starts with" Filter category sets the same `nameStartsWith`, so it inherits the gap on this tab: fix it there.
+
+**Options:** `items` (recommended): with a letter or search in force, ask `/Items` with `IncludeItemTypes=TvChannel` and `NameStartsWith`, and the two-range `#` request other libraries use (`executeHashPage`); stay on `/LiveTv/Channels` otherwise. `client`: fetch every channel and filter on the Roku, which breaks paging and costs memory on a 512 MB Stick. `hide`: hide the rail on Live TV, which removes the control.
+
+**Closes when** a letter on the Channels tab shows only channels whose names start with it, checked on a server with Live TV and covered by a query spec.
+
+**Not checked:** whether the server ignores the parameter or acts on it (needs a server with channels). What the tab shows under a letter on a device. Whether `/Items` with `IncludeItemTypes=TvChannel` and `NameStartsWith` returns the same channel fields and numbers that the grid uses.
+
+#### Sorts and filters for both Live TV tabs: the guide has no sort, the Channels tab one `[fid: live-tv-tabs-sort-and-filter]` `[captured 2026-11-26]`
+
+Both Live TV tabs are wanted with more sorts and filters (decided 2026-11-26 while closing #1427). Today the Channels tab offers Title and All or Favorites (`LiveTVPresenter.getOptions()`), and the TV Guide offers no sort: it always sends `LoadChannelsTask`'s `sortField` and `sortAscending` defaults, which #1427 kept as the guide's sort inputs.
+
+What the server allows: `/LiveTv/Channels` takes `sortBy`, `sortOrder`, `isFavorite`, `enableFavoriteSorting` and the content flags `isMovie`, `isSeries`, `isNews`, `isKids` and `isSports` (10.7.0, 10.11.9 and 12.2 specs), and no name filter, so a letter needs `/Items` (see `live-tv-channels-letter-never-filters`). A guide sort is passed through `m.channelQuery` in `schedule.bs`, and needs a decision on `LoadChannelsTask` moving each page's favorites to the top, which a chosen sort would contradict. Filter categories for Live TV belong with #1440's per-library choice; the guide's sort and that favorites rule are this entry.
 
 ### source
 
@@ -1739,10 +1751,6 @@ The bug #991 fixed — the guide stopped at 25 channels, since pagination was ad
 #### The per-library Collections view has no permanent RTA coverage, and the blocker is the fixture, not the spec. `[fid: collections-view-no-rta-coverage]` `[captured 2026-09-23]`
 
 Its device verification — 12.0.0 and 12.1.0 loading each library's own collections, 10.11.11 withholding the entry and falling back to `MoviesGrid` — ran through a throwaway spec against a temporary `ZZ Probe TV Collection` seeded and torn down inside the session that built it, so nothing on `main` asserts the view again. A permanent spec needs a permanent collection in the local fixture, which was deliberately NOT created: seeding collections is what made the `Collections[boxsets]` and `Playlists[playlists]` libraries non-empty in the first place, so they began appearing in `/UserViews` on all three servers and moved the RTA baseline. **Decide the fixture question first** — a permanent movie collection plus a permanent TV one, and a re-taken baseline — then write the spec. A spec written before that either has nothing to assert against or silently re-perturbs the baseline.
-
-#### `MusicPresenter` still has its own copy of the `m.view.top.currentView` read that `GridPresenterBase.currentView()` now owns. `[fid: music-presenter-duplicates-current-view]` `[captured 2026-09-23]`
-
-The helper was added for the Collections view and `TVShowPresenter` was converted to it; `MusicPresenter` kept its own four-line copy because the Collections work had no reason to touch that file. Two copies of a guarded node read is the shape that drifts — convert it next time `MusicPresenter` is open for another reason.
 
 #### The playback report's slow-fetch races have no permanent RTA gate. `[fid: playback-report-slow-fetch-races-ungated]` `[captured 2026-09-23]`
 
