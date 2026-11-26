@@ -46,12 +46,8 @@ class MusicPresenter extends GridPresenterBase
       ]
     end if
 
-    ' Sort options vary by view - get current view from presenter's view reference
-    currentView = ""
-    if isValid(m.view) and isValid(m.view.top) and isValid(m.view.top.currentView)
-      currentView = m.view.top.currentView
-    end if
-    viewLower = LCase(currentView)
+    ' Sort options vary by view
+    viewLower = LCase(m.currentView())
     if viewLower = libraryTab.GENRES
       options.sort = [
         { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },

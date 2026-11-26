@@ -1,0 +1,78 @@
+import "pkg:/source/GridView/libraryTab.bs"
+import "pkg:/source/GridView/MusicPresenter.bs"
+
+namespace tests
+
+  ' Which sorts and filters a music library offers on each tab. The tab is read back off
+  ' the host view (GridPresenterBase.currentView()), so each case builds a host on that tab.
+  @suite("MusicPresenter - sorts and filters per tab")
+  class MusicPresenterTests extends tests.BaseTestSuite
+
+    ' Only what a presenter reads off its host (see presenterTabs.spec.bs).
+    private function host(currentView as dynamic) as object
+      return {
+        top: {
+          currentView: currentView,
+          callFunc: function(_name as string, _args as object) as object
+            return invalid
+          end function
+        },
+        global: {
+          server: { version: "12.0.0" },
+          user: { id: "user-1" }
+        }
+      }
+    end function
+
+    private function optionsOn(currentView as dynamic) as object
+      presenter = new MusicPresenter()
+      presenter.onInit(m.host(currentView))
+      return presenter.getOptions({ Id: "lib-1", type: "CollectionFolder", folderType: "CollectionFolder", collectionType: "music" })
+    end function
+
+    private function names(entries as object) as object
+      out = []
+      for each entry in entries
+        out.push(entry.Name)
+      end for
+      return out
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("getOptions()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("offers title and random on Genres, with no filters")
+    function _()
+      options = m.optionsOn(libraryTab.GENRES)
+      m.assertEqual(m.names(options.sort), ["SortName", "Random"])
+      m.assertEqual(m.names(options.filter), [])
+    end function
+
+    @it("offers the album sorts on Albums, whatever the casing")
+    function _()
+      for each view in [libraryTab.ALBUMS, UCase(libraryTab.ALBUMS)]
+        options = m.optionsOn(view)
+        m.assertEqual(m.names(options.sort), ["SortName", "DateCreated", "Random"])
+        m.assertEqual(m.names(options.filter), ["All", "Favorites"])
+      end for
+    end function
+
+    @it("offers the artist sorts on the artist tabs")
+    function _()
+      for each view in [libraryTab.ARTISTS, libraryTab.ALBUM_ARTISTS]
+        options = m.optionsOn(view)
+        m.assertEqual(m.names(options.sort), ["SortName", "DateCreated", "DatePlayed", "PremiereDate", "Random"])
+        m.assertEqual(m.names(options.filter), ["All", "Favorites"])
+      end for
+    end function
+
+    @it("falls back to the artist sorts when the tab is unknown")
+    ' A host with no tab yet, or none at all: the read gives "" rather than faulting.
+    function _()
+      m.assertEqual(m.names(m.optionsOn("").sort), ["SortName", "DateCreated", "DatePlayed", "PremiereDate", "Random"])
+      m.assertEqual(m.names(m.optionsOn(invalid).sort), ["SortName", "DateCreated", "DatePlayed", "PremiereDate", "Random"])
+    end function
+
+  end class
+end namespace
