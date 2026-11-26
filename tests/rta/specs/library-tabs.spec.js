@@ -694,10 +694,11 @@ it('an item unfavorited from its details leaves the Favorites tab on Back', asyn
     await getJson(
       `${session.serverUrl}/Items?UserId=${session.userId}&ParentId=${libraryId}` +
         '&IncludeItemTypes=Movie&Recursive=true&SortBy=SortName&SortOrder=Ascending' +
-        '&Limit=1&Fields=UserData',
+        '&Fields=UserData',
       headers,
     )
-  )?.Items?.[0];
+  )?.Items?.find((i) => i.Type === 'Movie');
+  // A library that groups movies into collections lists a BoxSet first, as firstMovie() notes.
   if (!first) testCtx.skip('the movies library holds no movie');
   const target = first.Id.replace(/-/g, '').toLowerCase();
   const wasFavorite = first.UserData?.IsFavorite === true;
