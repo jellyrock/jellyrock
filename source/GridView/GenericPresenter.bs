@@ -75,8 +75,8 @@ class GenericPresenter extends GridPresenterBase
   ' one list, then that list's favorites. Folders comes first because it is what the
   ' library showed before it had tabs.
   '
-  ' The flat list leaves out the two rating sorts jellyfin-web offers: music videos
-  ' seldom carry a rating, and a sort that reorders nothing reads as broken.
+  ' The flat list sorts by both ratings, as jellyfin-web's does. The folders list does
+  ' not: a folder carries no rating, so the sort would move the loose videos alone.
   private function musicVideosOptions() as object
     options = {
       views: [
@@ -90,8 +90,10 @@ class GenericPresenter extends GridPresenterBase
     if LCase(m.currentView()) = libraryTab.MUSIC_VIDEOS
       options.sort = [
         { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
+        { "Title": translate(translationKeys.LabelImdbRating), "Name": "CommunityRating" },
         { "Title": translate(translationKeys.LabelDateAdded), "Name": "DateCreated" },
         { "Title": translate(translationKeys.LabelDatePlayed), "Name": "DatePlayed" },
+        { "Title": translate(translationKeys.LabelOfficialRating), "Name": "OfficialRating" },
         { "Title": translate(translationKeys.LabelPlayCount), "Name": "PlayCount" },
         { "Title": translate(translationKeys.LabelReleaseDate), "Name": "PremiereDate" },
         { "Title": translate(translationKeys.LabelRuntime), "Name": "Runtime" },

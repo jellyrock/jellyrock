@@ -106,7 +106,7 @@ namespace tests
     @it("sorts each list by what it holds")
     @params("playlists", "playlists", ["SortName", "DateCreated", "DatePlayed", "Runtime", "Random"])
     @params("musicvideos", "folders", ["SortName", "DateCreated", "DatePlayed", "IsFolder,SortName", "PremiereDate", "Runtime", "Random"])
-    @params("musicvideos", "musicvideos", ["SortName", "DateCreated", "DatePlayed", "PlayCount", "PremiereDate", "Runtime", "Random"])
+    @params("musicvideos", "musicvideos", ["SortName", "CommunityRating", "DateCreated", "DatePlayed", "OfficialRating", "PlayCount", "PremiereDate", "Runtime", "Random"])
     function _(collectionType, view, expected)
       parentItem = m.library(collectionType)
 
