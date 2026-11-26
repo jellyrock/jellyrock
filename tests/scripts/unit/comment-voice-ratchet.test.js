@@ -2,7 +2,7 @@
 //
 // The tool holds the comments of tracked code to the house voice
 // (docs/dev/writing-style.md), per file, against `.doc-voice-baseline.json`. Markdown is
-// not its job: `.claude/skills/log/voice-check.sh` checks it (the first describe block
+// not its job: `scripts/voice-check/voice-check.sh` checks it (the first describe block
 // pins that this tool neither counts nor fails on it). What the tests pin is the
 // judgment calls the parsers encode, because each one is a place a naive regex over raw
 // source would either miss a comment or count a string:
@@ -45,7 +45,7 @@ function makeRoot(files, voiceBaseline = {}) {
 const run = (r, args = []) => spawnScript(LINT, [r, ...args]);
 const readVoice = (r) => JSON.parse(readFileSync(join(r, '.doc-voice-baseline.json'), 'utf8'));
 
-// Markdown moved to .claude/skills/log/voice-check.sh. This tool must neither count it
+// Markdown moved to scripts/voice-check/voice-check.sh. This tool must neither count it
 // nor fail on it, whatever the markdown holds, and must not need a citation baseline.
 describe('comment-voice-ratchet — markdown is not checked here', () => {
   const MD = [

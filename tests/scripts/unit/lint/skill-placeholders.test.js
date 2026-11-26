@@ -44,13 +44,13 @@ describe('skillFiles', () => {
   it('keeps only skill SKILL.md files, absolute or relative', () => {
     const files = skillFiles(
       [
-        resolve(REPO_ROOT, '.claude/skills/log/SKILL.md'),
-        '.claude/skills/log/notes.md',
+        resolve(REPO_ROOT, '.claude/skills/new-setting/SKILL.md'),
+        '.claude/skills/new-setting/notes.md',
         'docs/README.md',
       ],
       REPO_ROOT,
     );
-    expect(files).toEqual(['.claude/skills/log/SKILL.md']);
+    expect(files).toEqual(['.claude/skills/new-setting/SKILL.md']);
   });
 });
 

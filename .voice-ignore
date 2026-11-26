@@ -1,4 +1,4 @@
-# Paths the house-voice check (.claude/skills/log/voice-check.sh) skips.
+# Paths the house-voice check (scripts/voice-check/voice-check.sh) skips.
 # One gitignore pattern per line, each under a comment saying why.
 
 # Translations: the text is the translators' language, not our prose.

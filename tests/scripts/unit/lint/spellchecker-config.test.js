@@ -312,7 +312,7 @@ describe('spellchecker config / behaviour against the real binary', () => {
 
   it('does not report a dictionary word that ends a paragraph in any hostile position', () => {
     // The trap this configuration exists to close. `## decision-id: <slug>` is the schema
-    // every docs/decisions.md note uses, so this sat directly in the `/log decision` path.
+    // every docs/decisions.md note uses, so this sat directly in the path every decision note takes.
     for (const word of ['handoff.', "orchestrator's.", 'Jellyfin.']) {
       expect(reported, `${word} must not be reported`).not.toContain(word);
     }

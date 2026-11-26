@@ -97,7 +97,7 @@ Then try it with real data: sideload the last release, store the old key, sidelo
 
 ## Step 7: Record a non-obvious rename (optional)
 
-If the reason for the new name isn't obvious, invoke `/log decision` with a slug like `rename-<old>-to-<new>`.
+If the reason for the new name isn't obvious, record it as a decision with a slug like `rename-<old>-to-<new>`.
 
 ## When not to use
 

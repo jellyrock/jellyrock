@@ -70,7 +70,7 @@ Every pointer resolves **within this file**. A note superseded by an *ADR* has
 no field for it — cross-tier relationships are written as prose markdown links
 (`Refines [ADR 0023](adr/0023-cold-launch-cast-producer.md)`), which the link
 checker already validates. If a note has grown ADR-grade, that promotion is a
-judgment call for [`/log decision`](../.claude/skills/log/SKILL.md), not a
+judgment call for `/log decision`, not a
 field.
 
 `npm run lint:docs` validates all of the above — unique slugs, one value per
@@ -78,7 +78,7 @@ field, the status enum, both pairs resolving and symmetric, `superseded` naming
 its successor, `withdrawn` staying terminal, and nothing pointing at itself — so
 a half-applied ritual fails at push time rather than silently. ADR supersede
 chains are prose and are **not** machine-checked. Use
-[`/log decision`](../.claude/skills/log/SKILL.md), which applies all three
+`/log decision`, which applies all three
 parts; raw markdown edits to this file are not the sanctioned path.
 
 ## decision-id: signals-backlog-scope
@@ -812,7 +812,7 @@ names is the state tier 1 checks.
 
 Rejected: keeping the name and fixing the prose around it. The prose had already been written
 four times and was wrong four times, which is the evidence that the name — not the writing —
-was doing it. Related to [`intent-based-naming`](../.claude/rules/intent-based-naming.md),
+was doing it. Related to `intent-based-naming`,
 which covers naming by goal over mechanism; this is the narrower case where two nearby STATES
 share one colloquial word, so the fix is precision about which state, not intent-vs-mechanism.
 
@@ -1534,7 +1534,7 @@ Ruled out: **sending it everywhere because newer servers ignore it**. An ignored
 
 Tracked prose cites a **symbol**, never a line number, and does not store a quantity the repo can derive; a number that genuinely is the point is framed as a dated measurement instead. A line number rots on any edit above it rather than only on edits to the thing described, so it decays faster than review or the contextual freshness gates ([ADR 0033](adr/0033-contextual-doc-freshness.md)) can catch — a reader re-reading the prose cannot see that a number drifted underneath it. Of a 14-reference sample taken 2026-09-17, three were already wrong: two past end-of-file, and one citing the `quickPlayNode` self-observer at a line that reads `m.trailerCheckSeq = 0`, in a doc reviewed that same day. Citing the symbol is strictly better rather than merely more durable, because a human or an agent can search the codebase for a symbol and cannot search it for a line number.
 
-Enforced as a **per-file** ratchet (`doc-citation-ratchet.js`, since cut to code comments as [`comment-voice-ratchet.js`](../scripts/lint/comment-voice-ratchet.js); Markdown citations moved to [`voice-check.sh`](../.claude/skills/log/voice-check.sh)) over the 55 grandfathered references, drained under issue #959. Ruled out: **one global total**, like `.promise-ratchet-baseline` — the population spans 13 files, so a single integer lets an unrelated cleanup fund a fresh citation elsewhere while the gate stays green, which is the slack-refill failure that ratchet's own advisory warns about. **A hard zero-tolerance gate**, which could not land without one mechanical PR rewriting 13 docs at once. **Convention with no gate**, which is what already failed — 55 accumulated under it. Deliberately NOT gated: whether a quantity is a live claim or a dated measurement, since telling them apart needs reading, so clauses 2 and 3 stay convention. Exempt by construction: fenced code blocks (a quoted transcript would be falsified by a rewrite), gitignored ephemeral prose, and append-only `AUDIT-LOG.md` records.
+Enforced as a **per-file** ratchet (`doc-citation-ratchet.js`, since cut to code comments as [`comment-voice-ratchet.js`](../scripts/lint/comment-voice-ratchet.js); Markdown citations moved to `voice-check.sh`) over the 55 grandfathered references, drained under issue #959. Ruled out: **one global total**, like `.promise-ratchet-baseline` — the population spans 13 files, so a single integer lets an unrelated cleanup fund a fresh citation elsewhere while the gate stays green, which is the slack-refill failure that ratchet's own advisory warns about. **A hard zero-tolerance gate**, which could not land without one mechanical PR rewriting 13 docs at once. **Convention with no gate**, which is what already failed — 55 accumulated under it. Deliberately NOT gated: whether a quantity is a live claim or a dated measurement, since telling them apart needs reading, so clauses 2 and 3 stay convention. Exempt by construction: fenced code blocks (a quoted transcript would be falsified by a rewrite), gitignored ephemeral prose, and append-only `AUDIT-LOG.md` records.
 
 ## decision-id: version-resume-near-level
 

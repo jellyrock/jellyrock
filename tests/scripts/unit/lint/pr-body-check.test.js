@@ -25,7 +25,7 @@ import { spawnScript } from '../_helpers/spawn-script.js';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE = resolve(HERE, '../../../../.github/pull_request_template.md');
 
-/** A body that answers every section: the shape `/pr` renders. */
+/** A body that answers every section: the shape a PR skill renders. */
 const FILLED = `# Overview
 
 Stops the router retaining screens the user backed out of.
@@ -269,7 +269,7 @@ describe('listIssueRefs', () => {
   });
 });
 
-// The CLI is what CI and /pr actually run, so its wiring is gated here, not only the
+// The CLI is what CI and the PR skills actually run, so its wiring is gated here, not only the
 // helpers: dropping the reference check from main(), leaving the title out of it, or
 // letting --list-refs exit 0 must each fail. No case below reaches `gh`: CI mode never
 // resolves, and the --list-refs inputs carry no bare or qualified reference.

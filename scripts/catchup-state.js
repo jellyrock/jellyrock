@@ -1,10 +1,10 @@
-// scripts/catchup-state.js: the aggregator for /catchup, /ramp and sub-agents.
+// scripts/catchup-state.js: the aggregator for the state briefing, /ramp and sub-agents.
 //
 // Single Node call returns JSON describing the repo state the shared reader
-// (.claude/skills/catchup/catchup-state.sh) does not cover: open PRs, recent
+// (the maintainer's catchup-state.sh) does not cover: open PRs, recent
 // issues, CI runs, pending handoffs, open upstream-watch issues, recent ADRs, tech
 // debt, doc staleness. Git position and the followup journal are the shared
-// reader's. Replaces ~13 parallel-bash calls with one allowlisted invocation. Banner-detection in /catchup becomes deterministic
+// reader's. Replaces ~13 parallel-bash calls with one allowlisted invocation. Banner-detection in the briefing becomes deterministic
 // JSON compares instead of agent text-parsing of mixed tool outputs.
 //
 // Usage:
@@ -12,7 +12,7 @@
 //
 // Flags:
 //   --pretty       indent JSON output (default is single-line)
-//   --typed        first the banner rules of .claude/skills/catchup/jellyrock.md as
+//   --typed        first the banner rules of the maintainer's catchup notes as
 //                  the shared reader's typed lines (scripts/lib/catchup-typed.cjs),
 //                  then the JSON under one `=== STATE ===` line. catchup.conf runs
 //                  it so; without the flag the output is the JSON alone.
@@ -116,7 +116,7 @@ function isoDaysAgo(n) {
 }
 
 // Compress a tech-debt **issue** bullet body to a single short line for the
-// /catchup briefing. First sentence wins; if shorter than 40 chars (anemic
+// state briefing. First sentence wins; if shorter than 40 chars (anemic
 // preamble like "1,315-line file."), glue on the next sentence. Over-120
 // chars get word-trimmed + ellipsis. Markdown spans are left intact.
 function summarizeIssue(text) {
@@ -214,7 +214,7 @@ run('ci', () => {
   // list was fresh every time.
   const runs = JSON.parse(
     exec(
-      // the run id is the /ci-triage route; asked for only under --typed, so the
+      // the run id is the CI-triage route; asked for only under --typed, so the
       // JSON alone stays as it was
       `gh run list --limit 100 --json headBranch,status,conclusion,name,createdAt,event${TYPED ? ',databaseId' : ''}`,
     ),
@@ -242,7 +242,7 @@ run('handoffs', () => {
       return { full, name: f, mtime };
     });
 
-  // Auto-prune handoffs older than 30 days. /catchup historically ran a
+  // Auto-prune handoffs older than 30 days. The briefing historically ran a
   // shell `find -mtime +30 -delete`; here it's part of the aggregator so
   // every consumer (catchup, ramp, sub-agents) gets the same eviction.
   for (const f of files) {
@@ -383,7 +383,7 @@ run('tech_debt', () => {
 
 run('docs_stale', () => {
   // Reuse docs-stale.cjs's --json output. Surfaces stale + no-date docs;
-  // /catchup banners on these but doesn't block (the blocking gate lives
+  // The briefing banners on these but doesn't block (the blocking gate lives
   // in docs-stale-blocking.cjs and runs in CI).
   const out = exec(`node "${DOCS_STALE_SCRIPT}" --json`);
   const parsed = JSON.parse(out);

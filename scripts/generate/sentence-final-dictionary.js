@@ -7,7 +7,7 @@
 // on (`handoff.` rather than `handoff`). Base-dictionary words survive that;
 // dictionary.txt entries are matched as anchored regexes and do not, so a
 // paragraph ending on one of our own words fails the lint. That is a trap in the
-// sanctioned `/log decision` path, whose schema (`## decision-id: <slug>`) puts a
+// path every decision note takes, whose schema (`## decision-id: <slug>`) puts a
 // lowercase heading directly under a paragraph.
 //
 // Why not a broad `ignore` regex: an `ignore` entry matching any token that ends

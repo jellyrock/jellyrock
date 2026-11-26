@@ -1,7 +1,7 @@
 // The markdown and spelling lints must not read files inside `.git/`.
 //
 // `.markdownlint-cli2.jsonc` sets `gitignore: true`, but `.git/` is never listed in
-// `.gitignore`, so a `.md` file written there (the /pr skill's `.git/pr-backup-<N>-<ts>.md`)
+// `.gitignore`, so a `.md` file written there (a PR skill's `.git/pr-backup-<N>-<ts>.md`)
 // was linted and failed the next pre-push. `lint:spelling`'s `**/.*/**/*.md` glob reaches
 // dot-directories, so it needs the same exclusion.
 

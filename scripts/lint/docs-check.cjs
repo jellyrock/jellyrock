@@ -46,7 +46,7 @@
 //     symmetric, `superseded` records its successor, `withdrawn` is
 //     terminal, and nothing points at itself. The supersede ritual is
 //     a three-part hand edit, so a half-applied one used to leave the
-//     chain silently lying, and `/log`'s SKILL.md claimed this was
+//     chain silently lying, and the capture tooling's docs claimed this was
 //     already validated when no such logic existed.
 //   - The Roku store descriptions in docs/admin/store-listing.md (see
 //     checkStoreListing): each block is within the dashboard's limit,
@@ -123,7 +123,7 @@ const VERBOSE = process.argv.includes('--verbose') && !JSON_MODE;
 // .github/workflows/docs-stale-tracker.yml (weekly main-branch tracking issue).
 // What DOES stay here is the *structural* frontmatter check below
 // (checkProgressFrontmatter): a well-formed `last-updated` is a per-PR property.
-// A PR that malforms it is at fault, and the tracker, /catchup, and
+// A PR that malforms it is at fault, and the tracker, the state briefing, and
 // journal-sync all read that field.
 
 // docs/decisions.md note statuses, per that file's own Format section.
@@ -370,7 +370,7 @@ function checkLinkFragment(docPath, link, fragment, target) {
 
 // Structural (not temporal) validation of progress.md frontmatter. A
 // well-formed `last-updated: YYYY-MM-DD` is a per-PR property: it's the field
-// the tracker, /catchup, and journal-sync all parse, so a malformed one
+// the tracker, the state briefing, and journal-sync all parse, so a malformed one
 // silently breaks them. Temporal staleness (how OLD the date is) is handled
 // non-blocking elsewhere (see the note near the top).
 function checkProgressFrontmatter() {
@@ -390,14 +390,14 @@ function checkProgressFrontmatter() {
 
 // Supersede-chain integrity for docs/decisions.md.
 //
-// The supersede ritual is a THREE-part edit, applied by hand (or by /log
-// decision): the new note gets `**supersedes**: <old>`, and the old note's
+// The supersede ritual is a THREE-part edit, applied by hand (or by the
+// capture tooling): the new note gets `**supersedes**: <old>`, and the old note's
 // `**status**` flips to `superseded` and gains `**superseded-by**: <new>`.
 // Miss any part and the chain lies: a note still reading `accepted` while a
-// successor exists is worse than no record, because /catchup and every future
+// successor exists is worse than no record, because the state briefing and every future
 // reader treat these journals as authoritative.
 //
-// This was previously claimed to be validated and was not: `/log`'s SKILL.md
+// This was previously claimed to be validated and was not: the capture tooling's docs
 // asserted `npm run lint:docs` checked "the supersede chain is consistent",
 // but no such logic existed anywhere in scripts/.
 //

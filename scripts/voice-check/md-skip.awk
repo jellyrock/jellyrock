@@ -12,10 +12,8 @@
 # a caller that reads several files in one awk run resets md_fm = md_fn = 0 on FNR == 1, and passes
 # fmok = 0 wherever the lines do not come in file order (a loop over a saved array in END).
 #
-# The scripts load this file by path, as ../log/md-skip.awk beside their own skill folder:
-# resume-state.sh, replace-section.sh, catchup-state.sh, plan-run.sh, scaffold-project.sh,
-# review-run.sh and journal.sh. Each reads it into a shell variable and puts it in front of its
-# awk program. Its cases are in tests/md-skip/run.sh.
+# Each script that uses it reads this file by path into a shell variable and puts it in front of
+# its awk program.
 function md_skip(line, fmok,   t, c, n) {
   if (NR == 1 && fmok && line == "---") { md_fm = 1; return 1 }
   if (md_fm) { if (line == "---") md_fm = 0; return 1 }

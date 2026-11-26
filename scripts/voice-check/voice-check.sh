@@ -23,16 +23,17 @@
 # for Markdown that is not prose (test fixtures, vendored text). A pattern that matches no tracked
 # Markdown file prints a NOTE, since a typo there would hide nothing and say nothing. --counts
 # counts whatever files it is given.
-# Fences come from md-skip.awk beside this script (CommonMark: backtick and tilde fences), the one
-# rule for what is not prose that every script reading Markdown shares. It sits in the log skill
-# for that reason only: the voice check is not part of the journal.
+# Fences come from md-skip.awk, which must sit beside this script (CommonMark: backtick and tilde
+# fences): the one rule for what is not prose, shared by every script that reads Markdown.
 # The baseline is <repo root>/.voice-baseline.tsv: lines path<TAB>category<TAB>count, sorted.
 #
 # Usage: bash voice-check.sh [<file.md>...]      check; paths limit the run. A named file is read
 #                                                even when untracked, with the verdict it gets once
 #                                                staged. named_path() says what else a path can do
 #        bash voice-check.sh --init              write the baseline from the current counts
-#        bash voice-check.sh --lower             lower allowances to the current counts
+#        bash voice-check.sh --lower [<file.md>...]  lower allowances to the current counts; paths
+#                                                limit the lowering to those files' rows, every
+#                                                other row stays as it is
 #        bash voice-check.sh --counts <file>...  print each category's count per file
 # Run from anywhere inside the repo. Exit: 0 ok · 1 refused or over the baseline · 2 usage or
 # setup error.
@@ -61,13 +62,13 @@ while [ $# -gt 0 ]; do
 done
 case "$mode" in
   counts) [ "${#paths[@]}" -gt 0 ] || die "--counts needs at least one file" ;;
-  init|lower) [ "${#paths[@]}" -eq 0 ] || die "--$mode takes no paths: it works on the whole scope" ;;
+  init) [ "${#paths[@]}" -eq 0 ] || die "--init takes no paths: it works on the whole scope" ;;
 esac
 
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git repository"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MDSKIP="$here/md-skip.awk"
-[ -r "$MDSKIP" ] || die "cannot read $MDSKIP: the log skill is incomplete"
+[ -r "$MDSKIP" ] || die "cannot read $MDSKIP: md-skip.awk must sit beside voice-check.sh"
 MD_LIB="$(cat "$MDSKIP")"$'\n'
 baseline="$root/$BASELINE_NAME"
 ignorefile="$root/$IGNORE_NAME"
@@ -304,17 +305,25 @@ init)
   exit 0 ;;
 lower)
   [ -f "$baseline" ] || refuse "no $BASELINE_NAME to lower: run --init first"
-  awk -F'\t' -v OFS='\t' '
+  : >"$tmp/sel"
+  for p in ${paths[@]+"${paths[@]}"}; do
+    r="$(realpath -m --relative-to="$root" -- "$p" 2>/dev/null)" || die "cannot resolve the path $p"
+    case "$r" in ..|../*) die "$p is outside this repo: its baseline cannot answer for that file" ;; esac
+    printf '%s\n' "$r" >>"$tmp/sel"
+  done
+  awk -F'\t' -v OFS='\t' -v limited="${#paths[@]}" '
+    FILENAME == sf { sel[$0] = 1; next }
     FILENAME == cf { cur[$1 SUBSEP $2] = $3 + 0; tracked[$1] = 1; next }
     /^#/ || $0 == "" { next }
     {
+      if (limited > 0 && !($1 in sel)) { print; next }
       if (!($1 in tracked)) { print "dropped\t" $1 "\t" $2 "\t" "file is out of scope (untracked, or matched by .voice-ignore)" >"/dev/stderr"; next }
       c = cur[$1 SUBSEP $2] + 0; a = $3 + 0
       n = (c < a) ? c : a
       if (n == 0) { print "dropped\t" $1 "\t" $2 "\t" "count is now zero" >"/dev/stderr"; next }
       if (n < a) print "lowered\t" $1 "\t" $2 "\t" "from " a " to " n >"/dev/stderr"
       print $1, $2, n
-    }' cf="$tmp/counts" "$tmp/counts" "$baseline" 2>"$tmp/report" | LC_ALL=C sort >"$tmp/new"
+    }' sf="$tmp/sel" cf="$tmp/counts" "$tmp/sel" "$tmp/counts" "$baseline" 2>"$tmp/report" | LC_ALL=C sort >"$tmp/new"
   { header; cat "$tmp/new"; } >"$tmp/baseline.new"
   if [ -s "$tmp/report" ]; then
     awk -F'\t' '{ printf "voice-check: %s %s: %s %s\n", $1, $2, $3, $4 }' "$tmp/report"

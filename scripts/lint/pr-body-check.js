@@ -38,7 +38,7 @@
  * (#940, #1000, #1002) and `jellyfin-roku-legacy PR #669` links to our unrelated #669
  * (#1016), both permanently, in the squash commit. The shorthand is decidable from the
  * text alone, so it FAILS here. Whether a bare `#N` means ours is a judgment, so it
- * does not: `--list-refs` (run by the `/pr` skill, or by hand) resolves every reference
+ * does not: `--list-refs` (run by hand or by a PR skill) resolves every reference
  * against GitHub and prints each one's title for a person to confirm.
  *
  * ## Skips
@@ -52,7 +52,7 @@
  *   PR_BODY="$BODY" node scripts/lint/pr-body-check.js \
  *     --pr-title "..." --pr-author "..." --pr-labels "a,b" --pr-head-ref "..."
  *
- *   # Check a rendered body before posting it (the /pr skill); same checks as CI.
+ *   # Check a rendered body before posting it (by hand or a PR skill); same checks as CI.
  *   node scripts/lint/pr-body-check.js --pr-title "..." --body-file body.md
  *
  *   # List every issue reference with its resolved title (needs `gh`); body on stdin.
@@ -72,7 +72,7 @@ const SKIP_HEAD_REF_PATTERNS = [/^release[-/]/i, /^renovate\//i, /^dependabot\//
  * `rule` is per-section on purpose: a bare `-` is a filled Overview's worth of
  * nothing under Changes. One generic "is it non-empty" test would pass it.
  *
- * An optional section may be left out, and `/pr` leaves out any it has nothing for.
+ * An optional section may be left out, and a PR skill leaves out any it has nothing for.
  * One that is present must be answered: the whole description becomes the commit
  * message, so an empty heading would sit in `git log` saying nothing. Sections this
  * list does not name (the Docs checklist older PRs carry) are ignored, so a PR opened
@@ -356,7 +356,7 @@ function main() {
     '\nThis repo squash-merges with the PR description as the commit message, so these\n' +
       'would land in `git log` on main permanently. Fix them and the check re-runs on\n' +
       'edit — no new push needed.\n' +
-      '\nThe `/pr` skill renders a filled body from .github/pull_request_template.md.',
+      '\nThe `/open-pr` skill drafts a filled body from .github/pull_request_template.md.',
   );
   process.exitCode = 1;
 }

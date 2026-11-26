@@ -1,6 +1,6 @@
 /**
  * Unit tests for scripts/lib/pr-title.js: the one map from a PR title's type to its
- * CHANGELOG.md section, shared by the changelog, the PR-title gate and the /pr skill.
+ * CHANGELOG.md section, shared by the changelog, the PR-title gate and the PR skills.
  *
  * The word-boundary cases are real titles the previous categorizer got wrong: it matched
  * type words with `startsWith`, so "Cinema mode: …" read as `ci` and was dropped.
@@ -115,8 +115,8 @@ describe('pr-title.js', () => {
 
   describe('changelogText()', () => {
     it('drops the type and keeps the scope in front', () => {
-      expect(changelogText('fix(skills): Make /pr titles name every change')).toBe(
-        '(skills) Make /pr titles name every change',
+      expect(changelogText('fix(skills): Make PR titles name every change')).toBe(
+        '(skills) Make PR titles name every change',
       );
       expect(changelogText('fix: Stop X')).toBe('Stop X');
     });

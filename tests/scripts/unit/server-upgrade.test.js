@@ -383,7 +383,7 @@ describe('assembleIssueBody', () => {
     expect(body).toContain('source/api/ApiClient.bs');
     expect(body).toContain('AGENT PROSE HERE');
     expect(body).toContain('**Agent rationale**: real on 10.9+');
-    expect(body).toContain('/issue-triage');
+    expect(body).toContain('Investigate the issue before acting on it');
   });
 });
 

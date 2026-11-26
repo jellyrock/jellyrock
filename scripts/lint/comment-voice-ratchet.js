@@ -1,7 +1,7 @@
 // scripts/lint/comment-voice-ratchet.js: anti-backslide ratchet for the house voice
 // (docs/dev/writing-style.md) in the COMMENTS of tracked code.
 //
-// Markdown is not checked here. `.claude/skills/log/voice-check.sh` holds every tracked
+// Markdown is not checked here. `scripts/voice-check/voice-check.sh` holds every tracked
 // Markdown file to the same voice (and to the line-number citation rule) against
 // `.voice-baseline.tsv`; run it with `npm run lint:voice`.
 //

@@ -1,6 +1,6 @@
 ---
 name: crash-report
-description: "Process a Roku weekly crash-report CSV (or a zip holding one or more CSVs) into tracked GitHub issues and architectural-epic evidence, enriching before filing (stage, then enrich, then file). STAGE parses and filters the CSV, groups by pkg-path signature, builds each cited app version in a temporary git worktree, maps the transpiled `.brs` line back to the source `.bs` line, runs the GitHub dedup search, and writes a local worksheet where every crash starts pending; a mechanism hint (task-launch, network, other) orders which to pull first but never authorizes a file. ENRICH folds in the per-crash backtraces you paste from Roku's dashboard (a 7-day window, one click per crash, no bulk export), extracts each `&hNN` exception code, and routes every crash to a disposition (nothing files or aggregates without a backtrace): `file` (a scoped bug becomes a new per-signature [crash] issue, born enriched), `aggregate` (a known architectural class: `&h29` big-library too-many-task-threads, `&h23` render-thread execution timeouts, the `&hec` init `m.global.constants` race; upserted as one flat record comment per `file·function·line·version` onto the class epic, never a standalone issue), or `watch` (accepted noise, a spike comment only). FILE performs the GitHub writes (create, comment or reopen for scoped bugs; the epic record upsert for architectural classes) and writes a run-summary handoff. Dedup-aware and idempotent. Use when a fresh Roku crash CSV arrives (weekly). A deep dive on one crash goes to `/issue-triage <N>` after filing."
+description: "Process a Roku weekly crash-report CSV (or a zip holding one or more CSVs) into tracked GitHub issues and architectural-epic evidence, enriching before filing (stage, then enrich, then file). STAGE parses and filters the CSV, groups by pkg-path signature, builds each cited app version in a temporary git worktree, maps the transpiled `.brs` line back to the source `.bs` line, runs the GitHub dedup search, and writes a local worksheet where every crash starts pending; a mechanism hint (task-launch, network, other) orders which to pull first but never authorizes a file. ENRICH folds in the per-crash backtraces you paste from Roku's dashboard (a 7-day window, one click per crash, no bulk export), extracts each `&hNN` exception code, and routes every crash to a disposition (nothing files or aggregates without a backtrace): `file` (a scoped bug becomes a new per-signature [crash] issue, born enriched), `aggregate` (a known architectural class: `&h29` big-library too-many-task-threads, `&h23` render-thread execution timeouts, the `&hec` init `m.global.constants` race; upserted as one flat record comment per `file·function·line·version` onto the class epic, never a standalone issue), or `watch` (accepted noise, a spike comment only). FILE performs the GitHub writes (create, comment or reopen for scoped bugs; the epic record upsert for architectural classes) and writes a run-summary handoff. Dedup-aware and idempotent. Use when a fresh Roku crash CSV arrives (weekly). A deep dive on one crash is a separate investigation of its issue after filing."
 model: opus
 effort: high
 ---
@@ -78,13 +78,13 @@ node scripts/crash-report.js file --worksheet "$WS"
 
 ## Step 6: Report the summary
 
-Read the handoff and recap: N filed (#…), N commented, N reopened, N aggregated to epics (#…), N suppressed, N skipped. Name any action that failed, for a retry by hand. **Next:** for a deep dive on a filed issue, `/issue-triage <N>`. Delete the worksheet: `rm "$WS"`.
+Read the handoff and recap: N filed (#…), N commented, N reopened, N aggregated to epics (#…), N suppressed, N skipped. Name any action that failed, for a retry by hand. **Next:** offer to investigate a filed issue in depth. Delete the worksheet: `rm "$WS"`.
 
 ## When not to use
 
-- One crash log from a developer's device: use `/runtime-triage`.
-- One crash issue someone filed by hand: use `/issue-triage <N>`.
-- A CI failure log: use `/ci-triage <run-id>`.
+- One crash log from a developer's device: this skill reads only the weekly CSV.
+- One crash issue someone filed by hand: investigate that issue directly.
+- A CI failure log: investigate the failed run directly.
 
 ## The weekly cadence
 

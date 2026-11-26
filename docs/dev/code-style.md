@@ -168,7 +168,7 @@ Three things fail that test and belong elsewhere:
 - **The proof**: the reproduction, the device, the measurement behind a fix. Put it in the commit message or a journal entry (`docs/progress.md`, [`tech-debt.md`](../architecture/tech-debt.md), a decision record). Keep the rule the measurement produced.
 - **A restatement** of the line below.
 
-A copy of the evidence in a comment is a second copy, and it is the one nobody updates. The agents' version of this rule is [`prove-dont-dismiss.md`](../../.claude/rules/prove-dont-dismiss.md).
+A copy of the evidence in a comment is a second copy, and it is the one nobody updates.
 
 Comments follow the house voice too: no em dashes, no words in capitals for emphasis. See [`writing-style.md`](writing-style.md#in-code-comments).
 

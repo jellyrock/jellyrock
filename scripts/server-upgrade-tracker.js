@@ -7,7 +7,7 @@
 // runs this script, which:
 //
 //   1. DETECTS whether a newer Jellyfin STABLE release exists than the version
-//      JellyRock has acknowledged. Detection is robust whether or not /catchup
+//      JellyRock has acknowledged. Detection is robust whether or not a briefing
 //      has run: it fetches the live latest stable (RCs excluded, per the
 //      fetcher) and takes the acknowledged version from reviewedAnchor() (the
 //      newest committed stable fingerprint).

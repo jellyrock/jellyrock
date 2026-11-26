@@ -302,9 +302,7 @@ function main() {
     console.log(
       `   • last-updated is ${stale.lastUpdated} (${stale.days}d ago) with ${stale.commitsSince} commit(s) since.`,
     );
-    console.log(
-      '     Run `/log followup` for any deferred work, or `/done <slug>` to close one that shipped.',
-    );
+    console.log('     Record a followup for any deferred work, or close one that shipped.');
     console.log('');
   }
 
@@ -316,7 +314,7 @@ function main() {
       `   • Currently running cursor references branch \`${branchRef.branchInCursor}\`; you're on \`${branchRef.currentBranch}\`${stillExists}.`,
     );
     console.log(
-      '     Run `/done running` to promote the cursor to Recently shipped, or `/log running "<text>"` to set a fresh cursor for this branch.',
+      '     Promote the cursor to Recently shipped, or set a fresh cursor for this branch.',
     );
     console.log('');
   } else if (cursorShipped) {
@@ -326,9 +324,7 @@ function main() {
     for (const m of cursorShipped.matchingSubjects) {
       console.log(`       "${m.subj}" (${m.overlap} shared tokens)`);
     }
-    console.log(
-      '     Looks like the cursor work shipped. Run `/done running` to promote → Recently shipped.',
-    );
+    console.log('     Looks like the cursor work shipped. Promote the cursor to Recently shipped.');
     console.log('');
   }
 

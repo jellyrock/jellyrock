@@ -1,11 +1,6 @@
 # voice-check baseline: the most house-voice hits each Markdown file may have, per category.
 # Lines are path<TAB>category<TAB>count, sorted. A file may only go down (a ratchet); a file or
 # category absent here is allowed zero. Flags: --init writes this file once; --lower lowers it.
-.claude/skills/log/SKILL.md	caps-emphasis	1
-.claude/skills/log/SKILL.md	filler	1
-.claude/skills/resume-project/SKILL.md	caps-emphasis	2
-.claude/skills/second-opinion/SKILL.md	caps-emphasis	1
-.claude/skills/start-project/SKILL.md	filler	1
 docs/adr/0003-icons-material-rounded-house-style.md	em-dash	2
 docs/adr/0004-icons-outlined-by-default.md	em-dash	3
 docs/adr/0005-jrplaceholder-themed-composition.md	em-dash	3

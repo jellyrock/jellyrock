@@ -44,7 +44,7 @@
 #   - npm run lint:comment-voice (seconds, not minutes): per-file ratchet on the
 #     house voice in code comments (docs/dev/writing-style.md).
 #   - npm run lint:voice: per-file ratchet on the house voice and line-number
-#     citations in every tracked .md (.claude/skills/log/voice-check.sh).
+#     citations in every tracked .md (scripts/voice-check/voice-check.sh).
 #   - npm run dictionary:sentence-final:check: runs before lint:spelling so
 #     a stale companion dictionary reports as drift rather than as a wall of
 #     spelling failures. dictionary-sentence-final.txt is generated from
@@ -79,7 +79,7 @@
 #   - npm run lint:promise-ratchet: when *.bs / *.brs changed. Blocking in
 #     CI.
 #   - node scripts/lint/decision-shape-nudge.cjs: pattern-matches commit
-#     messages for decision-shape language and nudges toward /log decision
+#     messages for decision-shape language and nudges toward recording a decision
 #     when the range touches neither docs/decisions.md nor docs/adr/.
 #   - node scripts/lint/progress-cursor-nudge.cjs: flags stale progress.md
 #     and Currently-running cursors that look shipped (token overlap with
@@ -319,14 +319,14 @@ fi
 # Decision-shape commit nudge: advisory only, never blocks the push.
 # Detects commits whose messages look like decisions (decided/switched-from/
 # instead-of/etc.) but touched neither docs/decisions.md nor docs/adr/;
-# reminds the user to invoke /log decision in the same change set if the
+# reminds the user to record a decision in the same change set if the
 # commit warrants it.
 node scripts/lint/decision-shape-nudge.cjs || true
 
 # Progress-cursor nudge: advisory only, never blocks the push.
 # Surfaces when docs/progress.md is stale OR the Currently-running cursor
 # overlaps with recent commit subjects (that is, the work it tracks shipped but
-# /done running was never invoked). Mechanical close-loop on PR merge ships
+# the cursor was never closed). Mechanical close-loop on PR merge ships
 # via .github/workflows/journal-sync.yml; this nudge catches the gap when
 # the user pushes from a feature branch before the merge fires.
 node scripts/lint/progress-cursor-nudge.cjs --quiet || true

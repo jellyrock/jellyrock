@@ -1,15 +1,17 @@
 // Unit tests for scripts/lib/catchup-typed.cjs: the banner rules of
-// .claude/skills/catchup/jellyrock.md as the typed lines the shared reader
-// (.claude/skills/catchup/catchup-state.sh) ranks. Pure: each case hands it a
+// the maintainer's catchup notes as the typed lines the shared reader
+// (the maintainer's catchup-state.sh) ranks. Pure: each case hands it a
 // state object shaped like catchup-state.js's JSON.
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { typedLines, BANNER_IDS } = require('../../../scripts/lib/catchup-typed.cjs');
 
 const T = '\t';
+// The maintainer's local catchup config: absent from a contributor's checkout and from CI.
+const CATCHUP_CONF = '.claude/skills/catchup/catchup.conf';
 const run = (o) => ({
   status: 'completed',
   event: 'push',
@@ -46,7 +48,7 @@ describe('typedLines', () => {
   });
 
   describe('ci-failing', () => {
-    it('a finished run that did not pass fires, routed to /ci-triage with its id', () => {
+    it('a finished run that did not pass fires, routed to CI triage with its id', () => {
       const lines = typedLines({
         ci: {
           current_branch_runs: [
@@ -215,12 +217,16 @@ describe('typedLines', () => {
     expect(typedLines(state)).toEqual([`ERROR${T}ci${T}catchup-state: ci failed: x`]);
   });
 
-  it('BANNER_IDS is every id a BANNER line can carry, and catchup.conf gives each one a class', () => {
-    const conf = readFileSync('.claude/skills/catchup/catchup.conf', 'utf8');
-    const classed = [...conf.matchAll(/^class\.([a-z0-9-]+)=(fire|resume|overdue|debt)$/gm)].map(
-      (m) => m[1],
-    );
-    expect(classed.sort()).toEqual([...BANNER_IDS].sort());
-    expect(conf).toMatch(/^reader=node scripts\/catchup-state\.js --typed --pretty$/m);
-  });
+  // Runs where the config exists (the maintainer's checkout); skipped elsewhere.
+  it.skipIf(!existsSync(CATCHUP_CONF))(
+    'BANNER_IDS is every id a BANNER line can carry, and catchup.conf gives each one a class',
+    () => {
+      const conf = readFileSync(CATCHUP_CONF, 'utf8');
+      const classed = [...conf.matchAll(/^class\.([a-z0-9-]+)=(fire|resume|overdue|debt)$/gm)].map(
+        (m) => m[1],
+      );
+      expect(classed.sort()).toEqual([...BANNER_IDS].sort());
+      expect(conf).toMatch(/^reader=node scripts\/catchup-state\.js --typed --pretty$/m);
+    },
+  );
 });

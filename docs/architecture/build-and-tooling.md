@@ -417,7 +417,7 @@ One makes it report more. A name built at runtime from a variable (`setField(nam
 | Server upgrades | `docs:api-manifest`, `docs:spec-fingerprints`, `api-watch:*`, `jellyfin:matrix`, each with `:check` where one exists | [server-upgrade-automation.md](server-upgrade-automation.md) |
 | Generated assets | `icons:build`, `icons:add`, `gradients:build`, `roku-hardware:fetch`, each with `:check` | [Icon resolution pipeline](#icon-resolution-pipeline) |
 | Docs | `docs:settings`, `docs:dev-index`, `docs:features`, `docs:stale`, `docs:stale:blocking`, `docs:fact-report`, `dictionary:sentence-final` | [Doc-maintenance enforcement](#doc-maintenance-enforcement) |
-| Agent state | `catchup:state` (the JSON `/catchup` and `/ramp` read) | [`scripts/catchup-state.js`](../../scripts/catchup-state.js) |
+| Agent state | `catchup:state` (the JSON the maintainer's state briefing and `/ramp` read) | [`scripts/catchup-state.js`](../../scripts/catchup-state.js) |
 | Dead code | `dead-code:replay`, `dead-code:mutate`, `dead-code:write-only` | [Dead code](#dead-code) |
 | Changelog | `changelog:*`, run by CI only | [changelog.md](../admin/changelog.md) |
 | Install | `postinstall` (`ropm`, then `patches:apply`), `prepare` (husky) | [ropm modules](#ropm-modules) |
@@ -428,7 +428,7 @@ One makes it report more. A name built at runtime from a variable (`setField(nam
 
 | Script | Checks |
 |---|---|
-| `lint:docs` | `related-files:` paths, relative links and `tech-debt.md#` anchors across the docs, every `CLAUDE.md` outside dot-directories, and the BSC plugins. Plus the schema of `progress.md`'s frontmatter, the `decisions.md` supersede chain, the Roku store descriptions in `docs/admin/store-listing.md` (each within its length limit, each count it cites matching the app), and the frontmatter of each feature page in `docs/user/features/` ([Document a feature](../dev/feature-pages.md)). Run it through `/docs-lint` |
+| `lint:docs` | `related-files:` paths, relative links and `tech-debt.md#` anchors across the docs, every `CLAUDE.md` outside dot-directories, and the BSC plugins. Plus the schema of `progress.md`'s frontmatter, the `decisions.md` supersede chain, the Roku store descriptions in `docs/admin/store-listing.md` (each within its length limit, each count it cites matching the app), and the frontmatter of each feature page in `docs/user/features/` ([Document a feature](../dev/feature-pages.md)) |
 | `lint:voice` | The house voice and line-number citations in every tracked `.md`, as a per-file ratchet ([writing-style.md](../dev/writing-style.md#what-the-gate-checks)) |
 | `lint:comment-voice` | The house voice in the comments of tracked code, as a per-file ratchet ([writing-style.md](../dev/writing-style.md#what-the-gate-checks)) |
 | `lint:skill-placeholders` | Argument placeholders in `.claude/skills/*/SKILL.md` (`$ARGUMENTS`, `$0` to `$9`, an `arguments:` list), which Claude Code replaces at run time ([the script's header](../../scripts/lint/skill-placeholders-check.js)) |

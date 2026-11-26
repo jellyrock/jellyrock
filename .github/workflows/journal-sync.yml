@@ -11,10 +11,10 @@
 #   - Clear ## Currently running when its text overlaps the PR title
 #   - Bump frontmatter last-updated:
 #
-# Judgment-bearing entries (decisions, tech-debt, followups) stay on the
-# user-driven /pr, then /log path. This workflow is the auto-close-loop side
+# Judgment-bearing entries (decisions, tech-debt, followups) stay with the
+# maintainer's own tooling. This workflow is the auto-close-loop side
 # only: see docs/architecture/system-shape.md for the full four-pillar
-# pattern, and .claude/skills/pr/SKILL.md for the judgment side.
+# pattern.
 #
 # Skips (no commit pushed):
 #   - PRs labeled dependencies / documentation / docs-only / ci / automated /
