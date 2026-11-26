@@ -497,9 +497,19 @@ it("Up from the TV guide's first channel reaches the tabs, and Channels opens", 
   });
   expect(await getActiveVal('#scheduleGrid.channelFocused'), 'the guide did not wrap').toBe(0);
 
-  // Down returns to the guide, where it was.
+  // Down returns to the guide, where it was. It takes two Downs: the header strip sits between
+  // the tabs and the guide, so the first lands in the strip and the second reaches the guide.
   await press(ecp.Key.Down);
-  await waitFocusInside('#scheduleGrid', { label: 'Down returns to the guide', timeout: 8000 });
+  await waitFocusInside('#headerStrip', {
+    label: 'Down from the tabs reaches the strip',
+    timeout: 8000,
+  });
+  await press(ecp.Key.Down);
+  await waitFocusInside('#scheduleGrid', {
+    label: 'Down from the strip returns to the guide',
+    timeout: 8000,
+  });
+  expect(await getActiveVal('#scheduleGrid.channelFocused'), 'the guide kept its row').toBe(0);
 
   await selectLibraryTab('channels');
   await waitGridLoaded('the Channels tab');
