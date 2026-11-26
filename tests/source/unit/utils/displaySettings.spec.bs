@@ -391,5 +391,39 @@ namespace tests
       m.assertEqual(getLibraryDisplaySettings("test-adopt-none").Count(), 0)
     end function
 
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("adoptLegacyColumns")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("moves a tabless cells-per-row count to the library's default tab")
+    function _()
+      setLibraryDisplaySetting("test-adopt-5", "columns_", "9")
+
+      adoptLegacyColumns("test-adopt-5", "collections")
+
+      m.assertEqual(getLibraryDisplaySetting("test-adopt-5", "columns_collections", invalid), "9")
+      m.assertFalse(getLibraryDisplaySettings("test-adopt-5").DoesExist("columns_"))
+    end function
+
+    @it("lets a count already saved for the tab win")
+    function _()
+      setLibraryDisplaySetting("test-adopt-6", "columns_", "9")
+      setLibraryDisplaySetting("test-adopt-6", "columns_playlists", "5")
+
+      adoptLegacyColumns("test-adopt-6", "playlists")
+
+      m.assertEqual(getLibraryDisplaySetting("test-adopt-6", "columns_playlists", invalid), "5")
+      m.assertFalse(getLibraryDisplaySettings("test-adopt-6").DoesExist("columns_"))
+    end function
+
+    @it("leaves the bare key alone on a folder, which reads it as its own")
+    function _()
+      setLibraryDisplaySetting("test-adopt-7", "columns_", "9")
+
+      adoptLegacyColumns("test-adopt-7", "")
+
+      m.assertEqual(getLibraryDisplaySetting("test-adopt-7", "columns_", invalid), "9")
+    end function
+
   end class
 end namespace

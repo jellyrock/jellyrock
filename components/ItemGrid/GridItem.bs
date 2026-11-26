@@ -5,6 +5,7 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/itemImageUrl.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/placeholderImage.bs"
+import "pkg:/source/utils/rowItemImage.bs"
 import "pkg:/source/utils/rowItemText.bs"
 import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/textureManager.bs"
@@ -277,7 +278,14 @@ sub renderMediaItem(itemData as object, itemType as string)
 
   ' The smallest of the grid's fixed image sizes that covers this cell, in the shape the view
   ' declares: a cell being resized is briefly neither shape, so its size cannot say which
-  posterUri = getItemPosterUrl(itemData, libraryGrid.imageSizeFor(m.gridShape, int(m.top.width)))
+  artSize = libraryGrid.imageSizeFor(m.gridShape, int(m.top.width))
+  if m.gridShape = libraryGrid.SHAPE_WIDE
+    ' A wide cell asks the picker a wide tile in a row asks, so an item has one picture
+    ' on Home, in Search and in its library.
+    posterUri = getRowItemImageUrl(itemData, artSize.width, artSize.height, invalid, false, false)
+  else
+    posterUri = getItemPosterUrl(itemData, artSize)
+  end if
 
   ' Cache URI + display mode for texture management
   m.cachedPosterUri = posterUri

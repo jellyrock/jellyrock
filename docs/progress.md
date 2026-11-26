@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-25
+last-updated: 2026-11-26
 ---
 
 # Progress
@@ -1020,10 +1020,6 @@ Grid with details (the presentation layout) is offered only on a movie library's
 
 Add the third kind of library layout, List: a cell with the poster, the title, facts and the overview beside it, where Items per row sets the column count (one wide row per line at the largest, two columns in the middle; whether it goes to three is a bench call). It needs an overview on every page of items, so measure the page cost first (`docs/dev/measuring-performance.md`). ADR 0061 reserves the stored id `list`. Deferred by piece 10 of the library redesign: its own pull request after the redesign lands on `main`.
 
-#### Home video and music video libraries draw portrait cells where Home draws them wide `[fid: wide-cells-home-and-music-videos]` `[captured 2026-11-16]`
-
-Home video and music video libraries draw portrait cells in the library grid, while Home's Latest rows draw the same items wide (`latestRows.slotSizeFor`), so a library looks different on Home and when opened (read from the code, not seen on a device). Add a wide shape to `libraryGrid` (one row of widths, one shared rule for which libraries get it). Capture a real home video library first. Deferred by piece 10 of the library redesign: its own pull request after the redesign lands on `main`.
-
 #### A library's page menu describes the previous tab while a new tab loads `[fid: page-menu-describes-previous-tab-while-loading]` `[captured 2026-11-17]`
 
 `BaseGridView.showsItemGrid()` decides whether a library's page menu offers Items per row and Item Titles from `genreList.opacity`, which changes only when a load lands. So while a tab switch loads, the menu describes the previous tab's surface. Switching to a movie or TV library's Genres tab still offers Items per row until the genre rows draw, and a pick there saves an unused `columns_genres` and reloads. Switching from Genres back, the entry is missing until the first page arrives. Found in the review of PR 1400 (2026-11-16), read from the code.
@@ -1422,14 +1418,6 @@ A library's tabs are the ones JellyRock had before the redesign. The presenters'
 Decide per library type which tabs earn a place. The test is the best experience on a TV, never parity with another client for its own sake: a tab that repeats a Home row or holds a list nobody browses by remote stays out. See also `music-library-favorites-tab`.
 
 Why not now: each tab is a surface of its own, with its loading, its sorts and filters, and its captures. To close: a decision per candidate tab (build or decline, with the reason), and a followup or issue for each one to build.
-
-#### Home video, music video, book and playlist libraries share one plain view `[fid: generic-libraries-one-plain-view]` `[captured 2026-11-24]`
-
-Home video, music video, book, playlist and mixed-folder libraries all draw through `GenericPresenter` (`DeterminePresenterType()` in `source/libraryViewFactory.bs` returns `generic` for them): one view, no tabs, no layout choice, four sorts and the Favorites filter. The redesign gave them the header strip and Items per row and nothing of their own. `wide-cells-home-and-music-videos` covers only their cell shape.
-
-Read from the code on 2026-11-23, during the audit before the library screens branch lands. Not seen on a device with each library type.
-
-Why not now: it needs a look at a real library of each type first. To close: capture each type, decide what each needs (a presenter of its own, sorts, filters, a cell shape), and file what follows.
 
 #### Re-run the #1341 probe table on the installed brighterscript before the typecast trial `[fid: bsc-v1-probe-rerun-on-alpha58]` `[captured 2026-11-24]`
 

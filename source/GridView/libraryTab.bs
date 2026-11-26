@@ -23,10 +23,13 @@ namespace libraryTab
   const CHANNELS = "channels"
   const COLLECTIONS = "collections"
   const FAVORITES = "favorites"
+  const FOLDERS = "folders"
   const GENRES = "genres"
   const GUIDE = "guide"
   const MOVIES = "movies"
+  const MUSIC_VIDEOS = "musicvideos"
   const PHOTOS = "photos"
+  const PLAYLISTS = "playlists"
   const NETWORKS = "networks"
   const SHOWS = "shows"
   const STUDIOS = "studios"
@@ -35,9 +38,9 @@ namespace libraryTab
   function ids() as object
     return [
       libraryTab.ALBUMS, libraryTab.ALBUM_ARTISTS, libraryTab.ARTISTS, libraryTab.CHANNELS,
-      libraryTab.COLLECTIONS, libraryTab.FAVORITES, libraryTab.GENRES, libraryTab.GUIDE,
-      libraryTab.MOVIES, libraryTab.NETWORKS, libraryTab.PHOTOS, libraryTab.SHOWS,
-      libraryTab.STUDIOS
+      libraryTab.COLLECTIONS, libraryTab.FAVORITES, libraryTab.FOLDERS, libraryTab.GENRES,
+      libraryTab.GUIDE, libraryTab.MOVIES, libraryTab.MUSIC_VIDEOS, libraryTab.NETWORKS,
+      libraryTab.PHOTOS, libraryTab.PLAYLISTS, libraryTab.SHOWS, libraryTab.STUDIOS
     ]
   end function
 
@@ -57,7 +60,8 @@ namespace libraryTab
   end function
 
   ' defaultFor: the tab a library of this type opens on when nothing picks another, ""
-  ' for a folder or collection (one view, no tabs).
+  ' for a folder (one view, no tabs) and for a library the Generic presenter draws, which
+  ' opens on the first tab it lists (BaseGridView.getDefaultView).
   '
   ' The rule: a library's first screen on a TV is its full browsable content, and
   ' recommendation pages are Home's job. Two types depart from the web client's defaults
@@ -160,8 +164,9 @@ namespace libraryTab
 
     shared = [
       libraryTab.ALBUMS, libraryTab.ALBUM_ARTISTS, libraryTab.ARTISTS, libraryTab.CHANNELS,
-      libraryTab.COLLECTIONS, libraryTab.FAVORITES, libraryTab.GENRES, libraryTab.GUIDE,
-      libraryTab.MOVIES, libraryTab.PHOTOS
+      libraryTab.COLLECTIONS, libraryTab.FAVORITES, libraryTab.FOLDERS, libraryTab.GENRES,
+      libraryTab.GUIDE, libraryTab.MOVIES, libraryTab.MUSIC_VIDEOS, libraryTab.PHOTOS,
+      libraryTab.PLAYLISTS
     ]
     for each id in shared
       if webTab = id then return id

@@ -16,6 +16,8 @@ A library on your Jellyfin server.
 
 A library's tabs show it in different ways. A movie library has **Movies**, **Favorites**, **Collections**, **Genres** and **Studios**. A TV library has **Shows**, **Favorites**, **Genres**, **Networks** and **Collections**. Music and Live TV have their own. **Collections** needs Jellyfin 12.0 or later.
 
+The Collections library has **Collections** and **Favorites**, and the Playlists library has **Playlists** and **Favorites**. A music video library has **Folders**, which shows it as it is stored, **Music Videos**, which lists every video in one place, and **Favorites**.
+
 1. In the library, press **Up** until the top row has focus.
 2. Move to a tab and press **OK**. The tab opens with the first item focused.
 
@@ -29,7 +31,7 @@ The settings icon's menu changes how the tab on screen is drawn. Each change red
 2. Select a setting, then a choice.
 
 - **Layout:** a movie library's **Movies** tab shows a **Grid** of posters, or a **Grid with details**, which shows the focused movie's details above the posters.
-- **Items per row:** how many posters or covers fit across the screen, from 3 to 11. Fewer makes them bigger; more shows more at once. A tab shows 7 posters, or 6 album or artist covers, until you pick.
+- **Items per row:** how many posters or covers fit across the screen, from 3 to 11. Fewer makes them bigger; more shows more at once. A tab shows 7 posters, 6 album, artist or playlist covers, or 4 wide pictures in a music video or home video library, until you pick.
 - **Item Titles:** **Enabled** shows each item's title under it, **Disabled** shows the art alone. This one applies to every library, and you can also set it in **Settings → User Interface → Libraries → General → Grid View Settings → Item Titles**.
 
 JellyRock remembers the layout and the items per row for that tab of the library on this Roku.
@@ -54,7 +56,7 @@ Filters work together. Two genres ticked show items in either genre, and a genre
 
 To remove every filter, open **Filter** and select **Clear filters**, the first row. It also clears a voice search and a letter picked on the letter rail.
 
-Which filters a tab offers depends on the library. A music library has **Favorites** alone, and a movie library has the most.
+Which filters a tab offers depends on the library. A music library has **Favorites** alone, a collection, playlist or music video list has **Played** and **Unplayed**, and a movie library has the most.
 
 Deep in a long list, press **Replay** to jump to the first item, then **Up** to reach **Sort** and **Filter**.
 
@@ -69,7 +71,7 @@ Press **Replay** in a library to jump to the first item, from the letter rail to
 
 ## Choose the tab a library opens on
 
-A library opens on its usual first tab: **Movies**, **Shows**, **Album Artists** for music and **Channels** for Live TV. If you picked a **Default screen** for the library in the Jellyfin website's Home screen settings, it opens there instead. You can also pick a tab for it on this Roku, which wins over both.
+A library opens on its usual first tab: **Movies**, **Shows**, **Album Artists** for music, **Channels** for Live TV and **Folders** for music videos. If you picked a **Default screen** for the library in the Jellyfin website's Home screen settings, it opens there instead. You can also pick a tab for it on this Roku, which wins over both.
 
 1. In the library, press **Up** until the top row has focus, then move to the settings icon and press **OK**.
 2. Select **Default tab**. Its row shows the tab the library opens on.

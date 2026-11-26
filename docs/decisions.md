@@ -3052,6 +3052,26 @@ The library header strip's count ends at the row's right edge, with the Sort and
 
 Sizing the box by the text moved the chips on most focus steps: Roku's system font has proportional digits, and Roku's `Font` node has no tabular-digit setting. Measured 2026-11-25 on a Streaming Stick 4K: "1 of 240" is 101 pixels wide, "9 of 240" 104, "10 of 240" 119 and "11 of 240" 114. Sizing it by the total holds the chips still but leaves about 60 pixels empty beside "1 of 12000". Moving the count back before the chips undoes the choice in #1418 to place it as a row's counter sits on Home.
 
+## decision-id: video-frame-first-image
+
+**date**: 2026-11-26
+**status**: accepted
+**related-files**: `source/utils/rowItemImage.bs`, `components/ItemGrid/GridItem.bs`
+
+A video or a music video shows its Primary image first in every row and in a wide grid cell (`getRowItemImageUrl()`, through `getItemPosterUrl()`), and in a wide slot its Thumb, then its Backdrop, only when it has no Primary. Its Primary is its own 16:9 frame, as an episode's is: on a 12.4 server (2026-11-26), 105 of the 107 videos and music videos with a Primary had a wide one, and none had a Thumb or a Backdrop. The wide grid cell asks the rows' picker, so Home, Search, Favorites and a library show one picture for an item. The library pages of jellyfin-web also put Primary first (`getCardImageUrl`, read 2026-11-26).
+
+Ruled out: wide art first, the order rows had copied from the Home rows of jellyfin-web, which lets one list mix frames with title cards on a server that fetched a Thumb for some items; and Primary first in the grid alone, which lets a row and a library differ. Movies and shows keep wide art first in a wide slot, since their Primary is a 2:3 poster. Revisit if a wide surface needs art without text for a video.
+
+## decision-id: generic-library-tabs
+
+**date**: 2026-11-26
+**status**: accepted
+**related-files**: `source/GridView/GenericPresenter.bs`, `source/GridView/libraryGrid.bs`, `source/home/latestRows.bs`
+
+The libraries `GenericPresenter` draws get tabs by type (#1439). The Collections library has Collections and Favorites, and the Playlists library has Playlists and Favorites. A music video library has Folders, Music Videos and Favorites, and opens on Folders, the view it had before. Favorites is the Music Videos list with favorites fixed on, so it finds a video in any folder. This changes the line in #1439 that gave these libraries their content and Favorites only: the operator chose the three tabs on 2026-11-26. A home video library keeps one view until #935, and a mixed library and a plain folder keep one view.
+
+Ruled out for music videos: folders alone, which leaves no flat list to sort by date or shuffle and makes Favorites ask a different question than its content tab; and a flat list alone, which drops the grouping by artist a library on disk has. The cells follow the art (`libraryGrid.shapeForLibrary()`): wide for music videos and home videos, square for playlists, a portrait for the rest, a mixed library included. Home's Latest row for a mixed library is a portrait for the same reason (`latestRows.slotSizeFor()`); it was wide.
+
 ## Migrated to ADRs
 
 These decisions were promoted to numbered ADRs on the operating-model

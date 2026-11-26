@@ -10,7 +10,7 @@ related-files:
   - components/home/Home.bs
   - components/ItemGrid/BaseGridView.bs
   - source/utils/playKind.bs
-last-reviewed: 2026-11-17
+last-reviewed: 2026-11-26
 ---
 
 # The user journey
@@ -124,6 +124,8 @@ The route sets `presenterType` (`loadLibraryFromRoute()`), and `onPresenterTypeC
 | `photo` | `PhotoPresenter` |
 | `livetv` | `LiveTVPresenter` |
 | anything else | `GenericPresenter` |
+
+`GenericPresenter` draws every library without a presenter of its own, and any folder. It keeps one list per library type: the Collections library and the Playlists library each get their content tab and Favorites, a music video library gets Folders, Music Videos and Favorites, and each gets the sorts and filters its list honors. A home video or mixed library, and a folder, has one view and no tabs.
 
 A new library type needs a presenter, not a change to the grid. The same folder holds the grid's paging and query helpers (`gridPaging`, `gridPage`, `gridQuery`).
 

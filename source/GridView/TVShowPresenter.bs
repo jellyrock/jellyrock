@@ -58,23 +58,11 @@ class TVShowPresenter extends GridPresenterBase
     ' Sort options vary by view - get current view from presenter's view reference
     viewLower = LCase(m.currentView())
     if viewLower = libraryTab.COLLECTIONS
-      ' Collections lists BoxSets, not series. Same shorter list the movie libraries'
-      ' Collections view uses, and the same one jellyfin-web offers on its Collections
-      ' tab: a collection has no episode-added date or series-played date of its own.
-      options.sort = [
-        { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
-        { "Title": translate(translationKeys.LabelImdbRating), "Name": "CommunityRating" },
-        { "Title": translate(translationKeys.LabelDateAdded), "Name": "DateCreated" },
-        { "Title": translate(translationKeys.LabelOfficialRating), "Name": "OfficialRating" },
-        { "Title": translate(translationKeys.LabelReleaseDate), "Name": "PremiereDate" },
-        { "Title": translate(translationKeys.LabelRandom), "Name": "Random" }
-      ]
-      options.filter = [
-        { "Title": translate(translationKeys.LabelAll), "Name": "All" },
-        { "Title": translate(translationKeys.LabelFavorites), "Name": "Favorites" },
-        { "Title": translate(translationKeys.LabelPlayed), "Name": "Played" },
-        { "Title": translate(translationKeys.LabelUnplayed), "Name": "Unplayed" }
-      ]
+      ' Collections lists BoxSets, not series: a collection has no episode-added date or
+      ' series-played date of its own. The lists are collectionsView's, shared with every
+      ' list of collections.
+      options.sort = collectionsView.sortOptions()
+      options.filter = collectionsView.filterOptions()
     else if viewLower = libraryTab.GENRES
       ' Genre view only has title sort
       options.sort = [

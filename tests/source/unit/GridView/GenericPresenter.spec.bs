@@ -1,0 +1,209 @@
+import "pkg:/source/GridView/GenericPresenter.bs"
+import "pkg:/source/GridView/gridQuery.bs"
+import "pkg:/source/GridView/libraryGrid.bs"
+import "pkg:/source/GridView/libraryTab.bs"
+
+namespace tests
+
+  ' What each library without a presenter of its own gets: its tabs, sorts, filters, the
+  ' shape of its cells and the query behind each tab. A folder opened inside one keeps
+  ' the library's shape and gets no tabs.
+  @suite("GenericPresenter - collection, playlist, music video and folder grids")
+  class GenericPresenterTests extends tests.BaseTestSuite
+
+    private function library(collectionType as string, itemType = "CollectionFolder" as string) as object
+      return { Id: "lib-1", type: itemType, collectionType: collectionType, folderType: collectionType }
+    end function
+
+    ' A folder opened from a library's grid, carrying that library's collection type
+    private function folderIn(collectionType as string) as object
+      return { Id: "folder-1", type: "Folder", collectionType: collectionType, folderType: "" }
+    end function
+
+    ' Only what a presenter reads off its host
+    private function presenterFor(parentItem as object, currentView as string) as object
+      presenter = new GenericPresenter()
+      presenter.onInit({ top: { currentView: currentView, parentItem: parentItem } })
+      return presenter
+    end function
+
+    private function names(entries as object) as object
+      out = []
+      for each entry in entries
+        out.push(entry.Name)
+      end for
+      return out
+    end function
+
+    private function queryFor(parentItem as object, tabId as string) as object
+      views = m.presenterFor(parentItem, "").getOptions(parentItem).views
+      shown = gridQuery.viewOfTab(views, tabId)
+      state = { nameStartsWith: "", searchTerm: "", sortField: "SortName", sortAscending: true, filters: {}, isFavorite: shown.isFavorite }
+      return gridQuery.build(state, parentItem, shown.view, m.presenterFor(parentItem, shown.view))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("tabs")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("gives a library its content, then Favorites")
+    @params("boxsets", "CollectionFolder", ["collections", "favorites"])
+    @params("playlists", "UserView", ["playlists", "favorites"])
+    @params("musicvideos", "CollectionFolder", ["folders", "musicvideos", "favorites"])
+    function _(collectionType, itemType, expected)
+      parentItem = m.library(collectionType, itemType)
+
+      m.assertEqual(m.names(m.presenterFor(parentItem, "").getOptions(parentItem).views), expected)
+    end function
+
+    @it("lists only tab ids the app knows")
+    @params("boxsets")
+    @params("playlists")
+    @params("musicvideos")
+    function _(collectionType)
+      parentItem = m.library(collectionType)
+      for each name in m.names(m.presenterFor(parentItem, "").getOptions(parentItem).views)
+        m.assertTrue(libraryTab.isKnown(name), name)
+      end for
+    end function
+
+    @it("makes Favorites the content tab's view with favorites fixed on")
+    @params("boxsets", "collections")
+    @params("playlists", "playlists")
+    @params("musicvideos", "musicvideos")
+    function _(collectionType, contentView)
+      parentItem = m.library(collectionType)
+      views = m.presenterFor(parentItem, "").getOptions(parentItem).views
+
+      m.assertEqual(gridQuery.viewOfTab(views, libraryTab.FAVORITES), { view: contentView, isFavorite: true })
+    end function
+
+    @it("gives no tabs to a folder, a home video library or a mixed library")
+    @params({ Id: "f1", type: "Folder", collectionType: "", folderType: "" })
+    @params({ Id: "f1", type: "Folder", collectionType: "musicvideos", folderType: "" })
+    @params({ Id: "f1", type: "Folder", collectionType: "playlists", folderType: "" })
+    @params({ Id: "l1", type: "CollectionFolder", collectionType: "homevideos", folderType: "homevideos" })
+    @params({ Id: "l1", type: "CollectionFolder", collectionType: "", folderType: "" })
+    function _(parentItem)
+      options = m.presenterFor(parentItem, "").getOptions(parentItem)
+
+      m.assertEqual(options.views, [])
+      m.assertEqual(m.names(options.sort), ["SortName", "DateCreated", "DatePlayed", "Random"])
+      m.assertEqual(m.names(options.filter), ["All", "Favorites"])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("sorts and filters")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("sorts the Collections library as every other list of collections")
+    function _()
+      parentItem = m.library("boxsets")
+
+      m.assertEqual(m.presenterFor(parentItem, "collections").getOptions(parentItem).sort, collectionsView.sortOptions())
+    end function
+
+    @it("sorts each list by what it holds")
+    @params("playlists", "playlists", ["SortName", "DateCreated", "DatePlayed", "Runtime", "Random"])
+    @params("musicvideos", "folders", ["SortName", "DateCreated", "DatePlayed", "IsFolder,SortName", "PremiereDate", "Runtime", "Random"])
+    @params("musicvideos", "musicvideos", ["SortName", "CommunityRating", "DateCreated", "DatePlayed", "OfficialRating", "PlayCount", "PremiereDate", "Runtime", "Random"])
+    function _(collectionType, view, expected)
+      parentItem = m.library(collectionType)
+
+      m.assertEqual(m.names(m.presenterFor(parentItem, view).getOptions(parentItem).sort), expected)
+    end function
+
+    @it("offers every list the default sort")
+    @params("boxsets", "collections")
+    @params("playlists", "playlists")
+    @params("musicvideos", "folders")
+    @params("musicvideos", "musicvideos")
+    function _(collectionType, view)
+      parentItem = m.library(collectionType)
+
+      m.assertTrue(gridQuery.offers(m.presenterFor(parentItem, view).getOptions(parentItem).sort, gridQuery.DEFAULT_SORT_FIELD))
+    end function
+
+    @it("leaves the Favorites filter off a list its Favorites tab covers")
+    @params("boxsets", "collections")
+    @params("playlists", "playlists")
+    @params("musicvideos", "musicvideos")
+    function _(collectionType, view)
+      parentItem = m.library(collectionType)
+
+      m.assertEqual(m.names(m.presenterFor(parentItem, view).getOptions(parentItem).filter), ["All", "Played", "Unplayed"])
+    end function
+
+    @it("keeps the Favorites filter on the folders list, which no tab covers")
+    function _()
+      parentItem = m.library("musicvideos")
+
+      m.assertEqual(m.names(m.presenterFor(parentItem, "folders").getOptions(parentItem).filter), ["All", "Favorites", "Played", "Unplayed"])
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the query behind a tab")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("lists what the library holds directly, of any type")
+    @params("boxsets", "collections")
+    @params("playlists", "playlists")
+    @params("musicvideos", "folders")
+    function _(collectionType, tabId)
+      query = m.queryFor(m.library(collectionType), tabId)
+
+      m.assertFalse(query.isRecursive)
+      m.assertEqual(query.itemType, "")
+      m.assertFalse(query.isFavorite)
+    end function
+
+    @it("lists every music video in the library, whatever folder holds it")
+    function _()
+      query = m.queryFor(m.library("musicvideos"), "musicvideos")
+
+      m.assertTrue(query.isRecursive)
+      m.assertEqual(query.itemType, "MusicVideo")
+      m.assertFalse(query.isFavorite)
+    end function
+
+    @it("asks the Favorites tab for the content view's favorites")
+    @params("boxsets", false, "")
+    @params("playlists", false, "")
+    @params("musicvideos", true, "MusicVideo")
+    function _(collectionType, isRecursive, itemType)
+      query = m.queryFor(m.library(collectionType), "favorites")
+
+      m.assertTrue(query.isFavorite)
+      m.assertEqual(query.isRecursive, isRecursive)
+      m.assertEqual(query.itemType, itemType)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the shape of the cells")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("follows the library's art")
+    @params("boxsets", "portrait")
+    @params("playlists", "square")
+    @params("musicvideos", "wide")
+    @params("homevideos", "wide")
+    @params("", "portrait")
+    function _(collectionType, expected)
+      m.assertEqual(m.presenterFor(m.library(collectionType), "").getGridShape(""), expected)
+    end function
+
+    @it("keeps the library's shape in a folder opened inside it")
+    @params("musicvideos", "wide")
+    @params("homevideos", "wide")
+    @params("", "portrait")
+    function _(collectionType, expected)
+      m.assertEqual(m.presenterFor(m.folderIn(collectionType), "").getGridShape(""), expected)
+    end function
+
+    @it("is a portrait before the presenter has a host")
+    function _()
+      m.assertEqual((new GenericPresenter()).getGridShape(""), libraryGrid.SHAPE_PORTRAIT)
+    end function
+
+  end class
+end namespace
