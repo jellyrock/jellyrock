@@ -118,7 +118,7 @@ class GenericPresenter extends GridPresenterBase
     return options
   end function
 
-  ' A folder, and a library with no table of its own: one view and no tabs.
+  ' A folder, and a library with no tabs of its own: one view and no tabs.
   private function folderOptions() as object
     return {
       views: [],
