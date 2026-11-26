@@ -6,10 +6,9 @@
     <field id="startIndex" type="integer" value="0" />
     <field id="filter" type="string" value="All" />
     <field id="searchTerm" type="string" value="" />
+    <!-- The guide sets no sort yet: these defaults order each page, after its favorites -->
     <field id="sortField" type="string" value="SortName" />
     <field id="sortAscending" type="boolean" value="true" />
-    <field id="nameStartsWith" type="string" value="" />
-    <field id="isRecursive" type="boolean" value="true" />
     <!-- Outputs: ok is set before channels, so a reader of channels can trust it -->
     <field id="ok" type="boolean" value="false" />
     <!-- Total records available from server-->
