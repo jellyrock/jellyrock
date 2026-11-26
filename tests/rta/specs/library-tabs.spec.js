@@ -4,8 +4,9 @@
  * A library declares its tabs once it has its item, with the tab it resolved selected; a
  * tab press switches the view in place with focus on the content, and nothing but a tab
  * press changes the tab afterwards. A movie or TV library has a Favorites tab: its content
- * tab's view with favorites fixed on, which says so when it is empty. A studio, network or
- * genre opened inside a library has one view, so it shows its name and no tabs.
+ * tab's view with favorites fixed on, which says so when it is empty. So has a collection,
+ * playlist or music video library, whose cells take the shape of its art. A studio, network
+ * or genre opened inside a library has one view, so it shows its name and no tabs.
  *
  * Content is asked of the server before it is asserted, and a case skips, with its reason,
  * on a server without the library it needs.
@@ -219,6 +220,69 @@ it('a tab press shows the tab with focus on the content, and later loads keep th
     drawn: 'studios',
   });
 });
+
+// The libraries the Generic presenter draws: each opens on its first tab, in the shape of
+// its art, and its Favorites tab holds the favorites the server reports for that list.
+for (const { collectionType, tabs, shape, favoritesView, favoritesQuery } of [
+  {
+    collectionType: 'boxsets',
+    tabs: ['collections', 'favorites'],
+    shape: 'portrait',
+    favoritesView: 'collections',
+    favoritesQuery: '',
+  },
+  {
+    collectionType: 'playlists',
+    tabs: ['playlists', 'favorites'],
+    shape: 'square',
+    favoritesView: 'playlists',
+    favoritesQuery: '',
+  },
+  {
+    collectionType: 'musicvideos',
+    tabs: ['folders', 'musicvideos', 'favorites'],
+    shape: 'wide',
+    favoritesView: 'musicvideos',
+    favoritesQuery: '&Recursive=true&IncludeItemTypes=MusicVideo',
+  },
+]) {
+  it(`a ${collectionType} library has its content and Favorites tabs, in ${shape} cells`, async (testCtx) => {
+    const libraryId = libraryIdFor(libraries, collectionType);
+    if (!libraryId) testCtx.skip(`server has no "${collectionType}" library`);
+    const favorites = (
+      await getJson(
+        `${session.serverUrl}/Items?UserId=${session.userId}&ParentId=${libraryId}` +
+          `&IsFavorite=true&Limit=0${favoritesQuery}`,
+        tokenHeader(session.token),
+      )
+    )?.TotalRecordCount;
+    expect(typeof favorites, 'the server answered with a count').toBe('number');
+    await openLibrary(`library tabs ${collectionType}`, collectionType);
+
+    expect(await overhangTabIds()).toEqual(tabs);
+    expect(await tabState(), 'it opens on its first tab').toEqual({
+      selectedTabId: tabs[0],
+      currentView: tabs[0],
+      drawn: tabs[0],
+    });
+    expect(await getActiveVal('gridShape'), 'the shape of its art').toBe(shape);
+
+    await selectLibraryTab('favorites');
+    await waitGridLoaded(`the ${collectionType} Favorites tab`);
+    expect(await tabState(), 'a tab of its own, drawn as its content view').toEqual({
+      selectedTabId: 'favorites',
+      currentView: favoritesView,
+      drawn: 'favorites',
+    });
+    const [count, shapeOnFavorites] = await getActiveVals([
+      '#itemGrid.content.getChildCount()',
+      'gridShape',
+    ]);
+    // A grid page holds 100.
+    expect(count, 'the favorites the server holds for this list').toBe(Math.min(favorites, 100));
+    expect(shapeOnFavorites, 'Favorites keeps the shape').toBe(shape);
+  });
+}
 
 it("the Favorites tab shows the content tab's favorites and draws as that tab", async (testCtx) => {
   const libraryId = libraryIdFor(libraries, 'movies');

@@ -481,8 +481,8 @@ export const SCREENS = [
   vw('musicLibraryAlbums', navMusicLibrary, 'music', 'albums'),
   vw('musicLibraryArtists', navMusicLibrary, 'music', 'artists'),
   vw('musicLibraryGenres', navMusicLibrary, 'music', 'genres'),
-  // A playlists library is a folder with one view and no tabs, so nothing is seeded:
-  // the reset before each screen leaves it on that view.
+  // Nothing is seeded for a playlists library: the reset before each screen leaves it on
+  // its first tab, Playlists.
   vw('playlistsLibrary', navPlaylistsLibrary, 'playlists', ''),
 
   // --- Per-item-type detail screens (Movie detail is `movieDetails`, above) ----

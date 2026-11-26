@@ -129,27 +129,11 @@ class MoviePresenter extends GridPresenterBase
     ' The Collections view lists BoxSets, not movies, so it takes its own sort and filter
     ' lists and stops here: every category below this point describes a movie.
     '
-    ' The sort list is shorter on purpose, and matches what jellyfin-web offers on its own
-    ' Collections tab (`collectionMovieOptions`): a collection carries no critic rating,
-    ' no runtime and no play count of its own, so those four entries would be controls
-    ' that appear to do nothing. The filters are the four verified against a local 12.0.0
-    ' (2026-09-23) to answer for a BoxSet; Resumable is left out because a collection is
-    ' not a thing you resume, even where the server will answer the query.
+    ' The lists are collectionsView's, shared with every list of collections. The filters
+    ' are the four verified against a local 12.0.0 (2026-09-23) to answer for a BoxSet.
     if LCase(m.currentView()) = libraryTab.COLLECTIONS
-      options.sort = [
-        { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
-        { "Title": translate(translationKeys.LabelImdbRating), "Name": "CommunityRating" },
-        { "Title": translate(translationKeys.LabelDateAdded), "Name": "DateCreated" },
-        { "Title": translate(translationKeys.LabelOfficialRating), "Name": "OfficialRating" },
-        { "Title": translate(translationKeys.LabelReleaseDate), "Name": "PremiereDate" },
-        { "Title": translate(translationKeys.LabelRandom), "Name": "Random" }
-      ]
-      options.filter = [
-        { "Title": translate(translationKeys.LabelAll), "Name": "All" },
-        { "Title": translate(translationKeys.LabelFavorites), "Name": "Favorites" },
-        { "Title": translate(translationKeys.LabelPlayed), "Name": "Played" },
-        { "Title": translate(translationKeys.LabelUnplayed), "Name": "Unplayed" }
-      ]
+      options.sort = collectionsView.sortOptions()
+      options.filter = collectionsView.filterOptions()
       return options
     end if
 

@@ -10,8 +10,10 @@ namespace libraryGrid
 
   ' A 2:3 poster (movies, shows, collections, channels, photos).
   const SHAPE_PORTRAIT = "portrait"
-  ' Square art (albums, artists).
+  ' Square art (albums, artists, playlists).
   const SHAPE_SQUARE = "square"
+  ' A 16:9 frame (music videos, home videos).
+  const SHAPE_WIDE = "wide"
 
   ' The fewest and the most cells a row may hold. Under 3 a portrait poster is taller than
   ' the screen; 12 has no width and gap on the 3 pixel grid that span the header strip.
@@ -21,8 +23,10 @@ namespace libraryGrid
   ' What a view draws until the viewer picks. Seven posters is the first count whose
   ' second row ends inside the 5% safe zone with its titles; six squares are the size
   ' nearest to those posters, so a music library reads at the same scale as a movie one.
+  ' Four wide cells are the size nearest to a wide tile in a Home row.
   const DEFAULT_PORTRAIT_COLUMNS = 7
   const DEFAULT_SQUARE_COLUMNS = 6
+  const DEFAULT_WIDE_COLUMNS = 4
 
   ' The least room between two cells. The grid's focus ring reaches 12 pixels outside a
   ' cell and is drawn behind its neighbors; 18 leaves the ring the same 6 pixels of air
@@ -48,22 +52,50 @@ namespace libraryGrid
   ' Designed values, each the widest cell on the 3 pixel grid whose row ends within 6
   ' pixels of the strip's right edge with gaps of at least MIN_GAP; six portrait cells
   ' keep the width approved with the header strip. Everything else is derived. A portrait
-  ' width is a multiple of 6, so its 2:3 height lands on the grid too.
+  ' width is a multiple of 6, so its 2:3 height lands on the grid too. A wide cell takes
+  ' the square widths, the widest there are.
   function widths(shape as string) as object
-    if shape = libraryGrid.SHAPE_SQUARE then return [564, 414, 324, 273, 231, 195, 168, 156, 138]
-    return [564, 414, 324, 252, 228, 192, 168, 156, 138]
+    if shape = libraryGrid.SHAPE_PORTRAIT then return [564, 414, 324, 252, 228, 192, 168, 156, 138]
+    return [564, 414, 324, 273, 231, 195, 168, 156, 138]
   end function
 
   ' shapeOf: `shape` when it is a shape this build draws, else a portrait.
   function shapeOf(shape as dynamic) as string
-    if textOrEmpty(shape) = libraryGrid.SHAPE_SQUARE then return libraryGrid.SHAPE_SQUARE
+    name = textOrEmpty(shape)
+    if name = libraryGrid.SHAPE_SQUARE or name = libraryGrid.SHAPE_WIDE then return name
     return libraryGrid.SHAPE_PORTRAIT
   end function
 
-  ' heightOf: a cell's height for its width.
+  ' shapeForLibrary: the shape a library of this collection type draws its own items in,
+  ' and a folder opened inside it.
+  '
+  ' The art decides: a music video or a home video carries a 16:9 frame, a playlist a
+  ' square. Home's rows draw the same items the same way (latestRows.slotSizeFor,
+  ' SearchRow and FavoritesRows), so a library looks alike on Home and when opened.
+  ' Movie, TV, music, Live TV and photo libraries have presenters that name their shapes.
+  '
+  ' @param collectionType - the library's collection type, in any case; "" for none
+  function shapeForLibrary(collectionType as dynamic) as string
+    kind = LCase(textOrEmpty(collectionType))
+    if kind = "musicvideos" or kind = "homevideos" then return libraryGrid.SHAPE_WIDE
+    if kind = "playlists" then return libraryGrid.SHAPE_SQUARE
+    return libraryGrid.SHAPE_PORTRAIT
+  end function
+
+  ' heightOf: a cell's height for its width. A wide cell's is the grid line nearest to
+  ' 16:9, so it is within two pixels of the frame.
   function heightOf(shape as string, width as integer) as integer
     if shape = libraryGrid.SHAPE_SQUARE then return width
+    if shape = libraryGrid.SHAPE_WIDE then return ((width * 9 + 24) \ 48) * 3
     return (width * 3) \ 2
+  end function
+
+  ' defaultColumns: what a shape draws until the viewer picks.
+  function defaultColumns(shape as dynamic) as integer
+    shapeName = libraryGrid.shapeOf(shape)
+    if shapeName = libraryGrid.SHAPE_SQUARE then return libraryGrid.DEFAULT_SQUARE_COLUMNS
+    if shapeName = libraryGrid.SHAPE_WIDE then return libraryGrid.DEFAULT_WIDE_COLUMNS
+    return libraryGrid.DEFAULT_PORTRAIT_COLUMNS
   end function
 
   ' settingKey: the display-setting key a view's count is saved under, beside its layout.
@@ -102,8 +134,7 @@ namespace libraryGrid
   '
   ' @param saved - the view's stored count ("7"), or Invalid when none is stored
   function resolveColumns(saved as dynamic, shape as dynamic, top as integer) as integer
-    columns = libraryGrid.DEFAULT_PORTRAIT_COLUMNS
-    if libraryGrid.shapeOf(shape) = libraryGrid.SHAPE_SQUARE then columns = libraryGrid.DEFAULT_SQUARE_COLUMNS
+    columns = libraryGrid.defaultColumns(shape)
 
     text = textOrEmpty(saved).trim()
     parsed = text.toInt()
@@ -158,13 +189,20 @@ namespace libraryGrid
   ' has not made is slow for every image in the library. Three sizes per shape pay that
   ' once each; a size per count would pay it nine times. A cell scales what it gets down
   ' to its own size as it loads (Poster.loadWidth and loadHeight), so a larger image costs
-  ' download time, not texture memory. The two smaller sizes of each shape are ones other
-  ' screens ask for too (source/constants/imageSize.bs).
+  ' download time, not texture memory. The two smaller portrait and square sizes are ones
+  ' other screens ask for too (source/constants/imageSize.bs), and the middle wide size is
+  ' a Home row's wide tile (rowSlotSize.WIDE).
   '
   ' @param shape - the cell's libraryGrid shape; anything else is a portrait
   ' @return {object} { width, height }
   function imageSizeFor(shape as dynamic, width as integer) as object
-    if libraryGrid.shapeOf(shape) = libraryGrid.SHAPE_SQUARE
+    shapeName = libraryGrid.shapeOf(shape)
+    if shapeName = libraryGrid.SHAPE_WIDE
+      if width <= 288 then return { width: 288, height: 162 }
+      if width <= 468 then return { width: 468, height: 264 }
+      return { width: 564, height: 318 }
+    end if
+    if shapeName = libraryGrid.SHAPE_SQUARE
       if width <= 280 then return { width: 280, height: 280 }
       if width <= 440 then return { width: 440, height: 440 }
       return { width: 564, height: 564 }

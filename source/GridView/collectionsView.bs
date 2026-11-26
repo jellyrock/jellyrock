@@ -1,4 +1,6 @@
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 ' The per-library Collections view: a Jellyfin 12.0 server capability.
 '
@@ -59,6 +61,34 @@ namespace collectionsView
     if not isValid(parentItem) then return false
     if textOrEmpty(parentItem.type) <> "CollectionFolder" then return false
     return collectionsView.supported(serverVersion)
+  end function
+
+  ' sortOptions: the sorts a list of collections offers, wherever it is drawn: a movie or
+  ' TV library's Collections tab, and the Collections library.
+  '
+  ' Shorter than a movie list's, and what jellyfin-web offers on its own Collections tab
+  ' (`collectionMovieOptions`): a collection carries no critic rating, no runtime and no
+  ' play count of its own, so those entries would be controls that appear to do nothing.
+  function sortOptions() as object
+    return [
+      { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
+      { "Title": translate(translationKeys.LabelImdbRating), "Name": "CommunityRating" },
+      { "Title": translate(translationKeys.LabelDateAdded), "Name": "DateCreated" },
+      { "Title": translate(translationKeys.LabelOfficialRating), "Name": "OfficialRating" },
+      { "Title": translate(translationKeys.LabelReleaseDate), "Name": "PremiereDate" },
+      { "Title": translate(translationKeys.LabelRandom), "Name": "Random" }
+    ]
+  end function
+
+  ' filterOptions: the filters a list of collections offers. Resumable is left out: a
+  ' collection is not a thing you resume, even where the server will answer the query.
+  function filterOptions() as object
+    return [
+      { "Title": translate(translationKeys.LabelAll), "Name": "All" },
+      { "Title": translate(translationKeys.LabelFavorites), "Name": "Favorites" },
+      { "Title": translate(translationKeys.LabelPlayed), "Name": "Played" },
+      { "Title": translate(translationKeys.LabelUnplayed), "Name": "Unplayed" }
+    ]
   end function
 
 end namespace

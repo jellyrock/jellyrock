@@ -10,7 +10,7 @@ related-files:
   - components/home/HomeRows.bs
   - source/utils/listTheme.bs
   - source/utils/textureManager.bs
-last-reviewed: 2026-11-18
+last-reviewed: 2026-11-26
 ---
 
 # `RowList` and grid item layout, and the focus indicator
@@ -91,7 +91,9 @@ After an unload Roku reports the poster's `loadStatus` as `failed`. That is the 
 
 Every library grid cell comes from `libraryGrid.cell(shape, columns, textLines)` in [`libraryGrid.bs`](../../source/GridView/libraryGrid.bs). A presenter declares a shape (`getGridShape`), an image mode (`getImageDisplayMode`) and where the grid starts (`getGridTop`); `GridPresenterBase.getGridConfig()` builds the rest. No presenter holds a cell's pixels. The grid starts at y 168 (`headerStrip.CONTENT_TOP`), under the [header strip](design-system.md#the-library-header-strip), except in the presentation layout.
 
-- **The viewer picks how many cells a row holds,** 3 to 11 (`MIN_COLUMNS`, `MAX_COLUMNS`), from the library's page menu. It is saved per library and view as `columns_<view>`. Until then a portrait grid draws 7 and a square grid 6. `resolveColumns()` raises a count to `minColumns(shape, top)`, the first count whose whole poster shows above the screen's edge, without rewriting what was saved. That is why the presentation layout starts at 5.
+- **The viewer picks how many cells a row holds,** 3 to 11 (`MIN_COLUMNS`, `MAX_COLUMNS`), from the library's page menu. It is saved per library and view as `columns_<view>`. Until then a portrait grid draws 7, a square grid 6 and a wide grid 4 (`defaultColumns()`). `resolveColumns()` raises a count to `minColumns(shape, top)`, the first count whose whole poster shows above the screen's edge, without rewriting what was saved. That is why the presentation layout starts at 5.
+- **There are three shapes:** a 2:3 portrait, a square and a 16:9 wide cell. A presenter names its own, and `GenericPresenter` asks `shapeForLibrary()`, which goes by the library's collection type: wide for music videos and home videos, square for playlists, a portrait for the rest. A folder opened from such a grid takes the library's collection type (`BaseGridView.inheritCollectionType()`), so it keeps the shape. Home, Search and Favorites rows draw the same items in the same shapes.
+- **A wide cell asks the rows' image picker,** `getRowItemImageUrl()`, so an item shows one picture in a row and in its library. A video or a music video shows its own frame first, as an episode does, and wide art only when it has none.
 - **Each count has one designed width** (`widths()`): the widest cell on the 3 pixel grid whose row spans the header strip with gaps of at least `MIN_GAP`. The height follows the shape, and the column gap is what the span leaves. The row gap holds the text lines under a poster, or equals the column gap with titles off. 12 is out: no width on the grid spans the strip.
 - **`MIN_GAP` is 18 because of the focus ring.** The ring sits 12 pixels outside the poster on every side and is drawn behind the neighbors (read off Roku Ultra captures at 300, 234 and 168 wide, 2026-11-16). At 18 it keeps the same 6 pixels of air outside it as inside.
 - **The ring frames the poster with `rowHeights` equal to `itemSize`,** unlike a `RowList`. The title sits in the row gap: `TEXT_TOP_GAP` under the poster, a line of `TEXT_LINE_HEIGHT`, then `TEXT_BOTTOM_GAP` to the next poster.

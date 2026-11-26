@@ -589,8 +589,10 @@ sub openLibrary()
   end if
   m.top.overhangTabs = tabs
 
-  ' A sort saved before sorts were per tab belongs to the default tab
+  ' A sort saved before sorts were per tab belongs to the default tab, and so does a
+  ' cells-per-row count saved before the library had tabs
   adoptLegacySort(m.top.parentItem.Id, getDefaultView())
+  adoptLegacyColumns(m.top.parentItem.Id, getDefaultView())
 
   loadView()
 end sub
@@ -781,10 +783,14 @@ function guideFilter() as string
   return gridQuery.NO_FILTER
 end function
 
-' The library type's default tab, a libraryTab id: "" for a folder or collection, which
-' has no tabs. libraryTab.defaultFor holds the defaults and why two depart from the web.
+' The library type's default tab, a libraryTab id: "" for a folder, which has no tabs.
+' libraryTab.defaultFor holds the defaults and why two depart from the web. A library it
+' names no default for opens on the first tab its presenter lists.
 function getDefaultView() as string
-  return libraryTab.defaultFor(getCollectionType(), m.top.presenterType)
+  typeDefault = libraryTab.defaultFor(getCollectionType(), m.top.presenterType)
+  if typeDefault <> "" then return typeDefault
+  if isValid(m.offeredViews) and m.offeredViews.count() > 0 then return textOrEmpty(m.offeredViews[0].Name)
+  return ""
 end function
 
 ' The tab this Roku keeps for the library (the gear's Default tab), Invalid when none.
@@ -1532,7 +1538,21 @@ end sub
 ' ============================================================================
 
 sub onItemSelected()
-  m.top.selectedItem = m.itemGrid.content.getChild(m.itemGrid.itemSelected)
+  item = m.itemGrid.content.getChild(m.itemGrid.itemSelected)
+  inheritCollectionType(item)
+  m.top.selectedItem = item
+end sub
+
+' A plain folder says nothing of the library it sits in, so one opened from this grid
+' takes this grid's collection type: its cells then keep the library's shape
+' (libraryGrid.shapeForLibrary). LoadItemsTask2 does the same for a studio. Only where
+' the Generic presenter draws: a type with its own presenter would route the folder to it.
+sub inheritCollectionType(item as dynamic)
+  if m.top.presenterType <> "generic" then return
+  if not isValid(item) or item.type <> "Folder" then return
+  if isValidAndNotEmpty(item.collectionType) then return
+  if not isValidAndNotEmpty(m.top.parentItem.collectionType) then return
+  item.collectionType = m.top.parentItem.collectionType
 end sub
 
 sub onGenreItemSelected()

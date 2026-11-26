@@ -1,4 +1,6 @@
+import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/GridView/libraryGrid.bs"
+import "pkg:/source/home/latestRows.bs"
 import "pkg:/source/utils/headerStrip.bs"
 
 namespace tests
@@ -12,7 +14,7 @@ namespace tests
 
     private function everyCell() as object
       cells = []
-      for each shape in [libraryGrid.SHAPE_PORTRAIT, libraryGrid.SHAPE_SQUARE]
+      for each shape in [libraryGrid.SHAPE_PORTRAIT, libraryGrid.SHAPE_SQUARE, libraryGrid.SHAPE_WIDE]
         for columns = libraryGrid.MIN_COLUMNS to libraryGrid.MAX_COLUMNS
           for textLines = 0 to 2
             cells.push({ name: `${shape} ${columns} ${textLines}`, shape: shape, cell: libraryGrid.cell(shape, columns, textLines) })
@@ -61,6 +63,9 @@ namespace tests
         m.assertEqual(c.rowHeights[0], c.itemSize[1], entry.name)
         if entry.shape = libraryGrid.SHAPE_SQUARE
           m.assertEqual(c.itemSize[1], c.itemSize[0], entry.name)
+        else if entry.shape = libraryGrid.SHAPE_WIDE
+          ' The grid line nearest to 16:9: at most a pixel and a half off the frame
+          m.assertTrue(Abs(c.itemSize[1] * 16 - c.itemSize[0] * 9) <= 24, entry.name)
         else
           m.assertEqual(c.itemSize[1] * 2, c.itemSize[0] * 3, entry.name)
         end if
@@ -69,7 +74,7 @@ namespace tests
 
     @it("draws smaller cells as a row holds more of them")
     function _()
-      for each shape in [libraryGrid.SHAPE_PORTRAIT, libraryGrid.SHAPE_SQUARE]
+      for each shape in [libraryGrid.SHAPE_PORTRAIT, libraryGrid.SHAPE_SQUARE, libraryGrid.SHAPE_WIDE]
         for columns = libraryGrid.MIN_COLUMNS + 1 to libraryGrid.MAX_COLUMNS
           wider = libraryGrid.cell(shape, columns - 1, 1).itemSize[0]
           m.assertTrue(libraryGrid.cell(shape, columns, 1).itemSize[0] < wider, `${shape} ${columns}`)
@@ -79,7 +84,7 @@ namespace tests
 
     @it("grows the row gap by one line slot for each line of text")
     function _()
-      for each shape in [libraryGrid.SHAPE_PORTRAIT, libraryGrid.SHAPE_SQUARE]
+      for each shape in [libraryGrid.SHAPE_PORTRAIT, libraryGrid.SHAPE_SQUARE, libraryGrid.SHAPE_WIDE]
         one = libraryGrid.cell(shape, 6, 1)
         two = libraryGrid.cell(shape, 6, 2)
         m.assertEqual(two.itemSpacing[1] - one.itemSpacing[1], libraryGrid.TEXT_LINE_HEIGHT, shape)
@@ -108,10 +113,40 @@ namespace tests
     end function
 
     @it("draws an unknown shape as a portrait")
-    @params("wide")
+    @params("banner")
     @params(invalid)
     function _(shape)
       m.assertEqual(libraryGrid.cell(shape, 7, 1), libraryGrid.cell(libraryGrid.SHAPE_PORTRAIT, 7, 1))
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("shapeForLibrary()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("draws a library in the shape of its art")
+    @params("musicvideos", "wide")
+    @params("homevideos", "wide")
+    @params("HomeVideos", "wide")
+    @params("playlists", "square")
+    @params("boxsets", "portrait")
+    @params("", "portrait")
+    @params(invalid, "portrait")
+    function _(collectionType, expected)
+      m.assertEqual(libraryGrid.shapeForLibrary(collectionType), expected)
+    end function
+
+    @it("draws a library wide exactly where Home's Latest row draws it wide")
+    ' A mixed library (no collection type) is left out: its grid is a portrait and its
+    ' Latest row is wide, until one has been seen on a device (issue 1439). So are the
+    ' Collections and Playlists libraries, which Home draws no Latest row for.
+    @params("musicvideos")
+    @params("homevideos")
+    @params("movies")
+    @params("tvshows")
+    function _(collectionType)
+      isWideOnHome = latestRows.slotSizeFor(collectionType)[1] = rowSlotSize.WIDE[1] and latestRows.slotSizeFor(collectionType)[0] = rowSlotSize.WIDE[0]
+
+      m.assertEqual(libraryGrid.shapeForLibrary(collectionType) = libraryGrid.SHAPE_WIDE, isWideOnHome, collectionType)
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -134,7 +169,7 @@ namespace tests
     @it("shows one whole poster at every count it offers")
     function _()
       for each top in [headerStrip.CONTENT_TOP, 438, 600]
-        for each shape in [libraryGrid.SHAPE_PORTRAIT, libraryGrid.SHAPE_SQUARE]
+        for each shape in [libraryGrid.SHAPE_PORTRAIT, libraryGrid.SHAPE_SQUARE, libraryGrid.SHAPE_WIDE]
           for each columns in libraryGrid.choices(shape, top)
             bottom = top + libraryGrid.POSTER_TOP_OFFSET + libraryGrid.cell(shape, columns, 1).itemSize[1]
             m.assertTrue(bottom <= libraryGrid.SCREEN_HEIGHT, `${shape} ${columns} at ${top}`)
@@ -166,6 +201,7 @@ namespace tests
     function _(saved)
       m.assertEqual(libraryGrid.resolveColumns(saved, libraryGrid.SHAPE_PORTRAIT, headerStrip.CONTENT_TOP), libraryGrid.DEFAULT_PORTRAIT_COLUMNS)
       m.assertEqual(libraryGrid.resolveColumns(saved, libraryGrid.SHAPE_SQUARE, headerStrip.CONTENT_TOP), libraryGrid.DEFAULT_SQUARE_COLUMNS)
+      m.assertEqual(libraryGrid.resolveColumns(saved, libraryGrid.SHAPE_WIDE, headerStrip.CONTENT_TOP), libraryGrid.DEFAULT_WIDE_COLUMNS)
     end function
 
     @it("raises a saved count to the floor of a grid that starts lower")
@@ -196,7 +232,7 @@ namespace tests
 
     @it("asks for no more than three sizes of a shape, however many counts there are")
     function _()
-      for each shape in [libraryGrid.SHAPE_PORTRAIT, libraryGrid.SHAPE_SQUARE]
+      for each shape in [libraryGrid.SHAPE_PORTRAIT, libraryGrid.SHAPE_SQUARE, libraryGrid.SHAPE_WIDE]
         sizes = {}
         for columns = libraryGrid.MIN_COLUMNS to libraryGrid.MAX_COLUMNS
           cellSize = libraryGrid.cell(shape, columns, 1).itemSize
@@ -204,6 +240,13 @@ namespace tests
         end for
         m.assertEqual(sizes.count(), 3, shape)
       end for
+    end function
+
+    @it("asks for a Home row's wide tile at the default wide count, so the two share an image")
+    function _()
+      cellWidth = libraryGrid.cell(libraryGrid.SHAPE_WIDE, libraryGrid.DEFAULT_WIDE_COLUMNS, 1).itemSize[0]
+
+      m.assertEqual(libraryGrid.imageSizeFor(libraryGrid.SHAPE_WIDE, cellWidth), { width: rowSlotSize.WIDE[0], height: rowSlotSize.WIDE[1] })
     end function
 
     @it("keeps the genre rows' poster at the size it had")
@@ -216,7 +259,8 @@ namespace tests
       ' A square cell going from 273 to 231 pixels can be read at 231 by 273 between the two writes
       m.assertEqual(libraryGrid.imageSizeFor(libraryGrid.SHAPE_SQUARE, 231), { width: 280, height: 280 })
       m.assertEqual(libraryGrid.imageSizeFor(libraryGrid.SHAPE_PORTRAIT, 228), { width: 295, height: 440 })
-      m.assertEqual(libraryGrid.imageSizeFor("wide", 228), { width: 295, height: 440 }, "an unknown shape is a portrait")
+      m.assertEqual(libraryGrid.imageSizeFor(libraryGrid.SHAPE_WIDE, 231), { width: 288, height: 162 })
+      m.assertEqual(libraryGrid.imageSizeFor("banner", 228), { width: 295, height: 440 }, "an unknown shape is a portrait")
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

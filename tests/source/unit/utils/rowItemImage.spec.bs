@@ -445,6 +445,37 @@ namespace tests
       m.assertTrue(url.inStr("Thumb") > -1)
     end function
 
+    @it("puts a video's own frame first in a wide slot, ahead of its wide art")
+    @params("Video")
+    @params("MusicVideo")
+    function _(itemType)
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "vid1"
+      item.type = itemType
+      item.primaryImageTag = "frametag"
+      item.thumbImageTag = "thumbtag"
+
+      url = getRowItemImageUrl(item, 468, 264, invalid)
+
+      m.assertTrue(url.inStr("frametag") > -1)
+      m.assertTrue(url.inStr("Primary") > -1)
+    end function
+
+    @it("falls back to a video's wide art when it has no frame")
+    @params("Video")
+    @params("MusicVideo")
+    function _(itemType)
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "vid1"
+      item.type = itemType
+      item.thumbImageTag = "thumbtag"
+
+      url = getRowItemImageUrl(item, 468, 264, invalid)
+
+      m.assertTrue(url.inStr("thumbtag") > -1)
+      m.assertTrue(url.inStr("Thumb") > -1)
+    end function
+
     @it("falls back to portrait poster when no wide image available in wide slot")
     function _()
       item = CreateObject("roSGNode", "JellyfinBaseItem")

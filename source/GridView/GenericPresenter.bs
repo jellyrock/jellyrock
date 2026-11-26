@@ -1,13 +1,21 @@
-' GenericPresenter: Fallback presenter for library types without specialized views
+' GenericPresenter: the presenter for every library and folder without one of its own
 '
-' Used for: Collections, Boxsets, Folders, etc.
-' Uses full-screen global backdrop and standard grid layout.
+' Used for: the Collections library, the Playlists library, music video, home video and
+' mixed libraries, and any folder opened inside one.
 '
-' A folder or collection has one view and no tabs, so it lists none: its grid runs with
-' the empty view, and the title names the folder.
+' A library gets tabs: its content, then Favorites, as a movie or TV library has. What
+' each type lists, sorts by and filters on follows what it holds, and so does the shape
+' of its cells (libraryGrid.shapeForLibrary). A folder has one view and no tabs: its grid
+' runs with the empty view, and the title names the folder. A home video library is
+' still drawn as a folder; its tabs and sorts are issue 935.
 
+import "pkg:/source/GridView/collectionsView.bs"
 import "pkg:/source/GridView/GridPresenterBase.bs"
+import "pkg:/source/GridView/libraryGrid.bs"
+import "pkg:/source/GridView/libraryTab.bs"
+import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/translate.bs"
 
 class GenericPresenter extends GridPresenterBase
 
@@ -25,39 +33,91 @@ class GenericPresenter extends GridPresenterBase
     return false
   end function
 
-  ' Returns options customized based on parent item type
+  ' The tabs, sorts and filters for what the grid shows: a library by its collection
+  ' type, anything else as a folder.
   override function getOptions(parentItem as object) as object
-    ' Check if this is a boxset
-    isBoxset = m.isBoxsetItem(parentItem)
+    kind = m.libraryKind(parentItem)
+    if kind = "boxsets" then return m.collectionsOptions()
+    if kind = "playlists" then return m.playlistsOptions()
+    if kind = "musicvideos" then return m.musicVideosOptions()
+    return m.folderOptions()
+  end function
 
-    if isBoxset
-      ' Boxset-specific options with Folders sort
-      return {
-        views: [],
-        layouts: {},
-        sort: [
-          { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
-          { "Title": translate(translationKeys.LabelRandom), "Name": "Random" },
-          { "Title": translate(translationKeys.LabelImdbRating), "Name": "CommunityRating" },
-          { "Title": translate(translationKeys.LabelCriticRating), "Name": "CriticRating" },
-          { "Title": translate(translationKeys.LabelDateAdded), "Name": "DateCreated" },
-          { "Title": translate(translationKeys.LabelDatePlayed), "Name": "DatePlayed" },
-          { "Title": translate(translationKeys.LabelFolders), "Name": "IsFolder,SortName" },
-          { "Title": translate(translationKeys.LabelOfficialRating), "Name": "OfficialRating" },
-          { "Title": translate(translationKeys.LabelPlayCount), "Name": "PlayCount" },
-          { "Title": translate(translationKeys.LabelReleaseDate), "Name": "PremiereDate" },
-          { "Title": translate(translationKeys.LabelRuntime), "Name": "Runtime" }
-        ],
-        filter: [
-          { "Title": translate(translationKeys.LabelAll), "Name": "All" },
-          { "Title": translate(translationKeys.LabelFavorites), "Name": "Favorites" },
-          { "Title": translate(translationKeys.LabelPlayed), "Name": "Played" },
-          { "Title": translate(translationKeys.LabelUnplayed), "Name": "Unplayed" }
-        ]
-      }
+  ' The Collections library: every collection on the server, and its favorites.
+  private function collectionsOptions() as object
+    return {
+      views: m.contentAndFavorites(libraryTab.COLLECTIONS, translate(translationKeys.LabelCollections)),
+      layouts: {},
+      sort: collectionsView.sortOptions(),
+      ' The Favorites tab covers this list's favorites
+      filter: m.withoutFilter(collectionsView.filterOptions(), "Favorites")
+    }
+  end function
+
+  ' The Playlists library. Each sort was checked against a 12.4 server (2026-11-26) to
+  ' reorder the list, apart from Date Played, which two playlists could not show.
+  private function playlistsOptions() as object
+    return {
+      views: m.contentAndFavorites(libraryTab.PLAYLISTS, translate(translationKeys.LabelPlaylists)),
+      layouts: {},
+      sort: [
+        { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
+        { "Title": translate(translationKeys.LabelDateAdded), "Name": "DateCreated" },
+        { "Title": translate(translationKeys.LabelDatePlayed), "Name": "DatePlayed" },
+        { "Title": translate(translationKeys.LabelRuntime), "Name": "Runtime" },
+        { "Title": translate(translationKeys.LabelRandom), "Name": "Random" }
+      ],
+      filter: m.statusFilters(false)
+    }
+  end function
+
+  ' A music video library: its folders as they are on disk, then every music video in
+  ' one list, then that list's favorites. Folders comes first because it is what the
+  ' library showed before it had tabs.
+  '
+  ' The flat list leaves out the two rating sorts jellyfin-web offers: music videos
+  ' seldom carry a rating, and a sort that reorders nothing reads as broken.
+  private function musicVideosOptions() as object
+    options = {
+      views: [
+        { "Title": translate(translationKeys.LabelFolders), "Name": libraryTab.FOLDERS },
+        { "Title": translate(translationKeys.LabelMusicVideos), "Name": libraryTab.MUSIC_VIDEOS },
+        { "Title": translate(translationKeys.LabelFavorites), "Name": libraryTab.FAVORITES, "View": libraryTab.MUSIC_VIDEOS, "IsFavorite": true }
+      ],
+      layouts: {}
+    }
+
+    if LCase(m.currentView()) = libraryTab.MUSIC_VIDEOS
+      options.sort = [
+        { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
+        { "Title": translate(translationKeys.LabelDateAdded), "Name": "DateCreated" },
+        { "Title": translate(translationKeys.LabelDatePlayed), "Name": "DatePlayed" },
+        { "Title": translate(translationKeys.LabelPlayCount), "Name": "PlayCount" },
+        { "Title": translate(translationKeys.LabelReleaseDate), "Name": "PremiereDate" },
+        { "Title": translate(translationKeys.LabelRuntime), "Name": "Runtime" },
+        { "Title": translate(translationKeys.LabelRandom), "Name": "Random" }
+      ]
+      ' The Favorites tab covers this list's favorites
+      options.filter = m.statusFilters(false)
+      return options
     end if
 
-    ' Default generic options
+    options.sort = [
+      { "Title": translate(translationKeys.LabelTitle), "Name": "SortName" },
+      { "Title": translate(translationKeys.LabelDateAdded), "Name": "DateCreated" },
+      { "Title": translate(translationKeys.LabelDatePlayed), "Name": "DatePlayed" },
+      { "Title": translate(translationKeys.LabelFolders), "Name": "IsFolder,SortName" },
+      { "Title": translate(translationKeys.LabelReleaseDate), "Name": "PremiereDate" },
+      { "Title": translate(translationKeys.LabelRuntime), "Name": "Runtime" },
+      { "Title": translate(translationKeys.LabelRandom), "Name": "Random" }
+    ]
+    ' No tab covers a favorite folder, so this list keeps the filter
+    options.filter = m.statusFilters(true)
+    return options
+  end function
+
+  ' A folder, and a library with no table of its own: one view and no tabs.
+  private function folderOptions() as object
     return {
       views: [],
       layouts: {},
@@ -74,14 +134,52 @@ class GenericPresenter extends GridPresenterBase
     }
   end function
 
-  ' Check if parent item is a boxset
-  private function isBoxsetItem(parentItem as object) as boolean
-    if not isValid(parentItem) then return false
-    return LCase(parentItem.type) = "boxset"
+  ' A content tab, then its favorites: the content tab's view with favorites fixed on
+  ' (gridQuery.viewOfTab).
+  private function contentAndFavorites(contentTab as string, title as string) as object
+    return [
+      { "Title": title, "Name": contentTab },
+      { "Title": translate(translationKeys.LabelFavorites), "Name": libraryTab.FAVORITES, "View": contentTab, "IsFavorite": true }
+    ]
   end function
 
-  override sub configureLoadTask(task as object, _parentItem as object, _viewMode as string)
-    ' Generic presenter uses whatever item type is in the folder
+  ' All, Played and Unplayed, with the Favorites filter where no tab covers it.
+  private function statusFilters(hasFavorites as boolean) as object
+    filters = [{ "Title": translate(translationKeys.LabelAll), "Name": "All" }]
+    if hasFavorites then filters.push({ "Title": translate(translationKeys.LabelFavorites), "Name": "Favorites" })
+    filters.push({ "Title": translate(translationKeys.LabelPlayed), "Name": "Played" })
+    filters.push({ "Title": translate(translationKeys.LabelUnplayed), "Name": "Unplayed" })
+    return filters
+  end function
+
+  ' The collection type of the library the grid shows, in lowercase: "" for a folder
+  ' opened inside one, which has no tabs of its own.
+  private function libraryKind(parentItem as dynamic) as string
+    if not isValid(parentItem) then return ""
+    itemType = textOrEmpty(parentItem.type)
+    if itemType <> "CollectionFolder" and itemType <> "UserView" then return ""
+    return LCase(textOrEmpty(parentItem.collectionType))
+  end function
+
+  ' The cells take the shape of the library's art. A folder opened inside a library
+  ' carries that library's collection type (BaseGridView.onItemSelected), so it keeps
+  ' the shape.
+  override function getGridShape(_viewMode as string) as string
+    if not isValid(m.view) or not isValid(m.view.top) then return libraryGrid.SHAPE_PORTRAIT
+    parentItem = m.view.top.parentItem
+    if not isValid(parentItem) then return libraryGrid.SHAPE_PORTRAIT
+    return libraryGrid.shapeForLibrary(parentItem.collectionType)
+  end function
+
+  override sub configureLoadTask(task as object, _parentItem as object, viewMode as string)
+    ' Every music video in the library, whatever folder holds it
+    if LCase(viewMode) = libraryTab.MUSIC_VIDEOS
+      task.itemType = "MusicVideo"
+      task.isRecursive = true
+      return
+    end if
+
+    ' Everything else lists what the library or folder holds directly, of any type
     task.isRecursive = false
   end sub
 

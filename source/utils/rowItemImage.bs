@@ -108,7 +108,16 @@ function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight a
     return getItemPosterUrl(item, size)
   end if
 
-  ' All remaining types (Movie, Series, Season, BoxSet, Person, Video, MusicVideo, etc.):
+  ' A video's or a music video's Primary is its own 16:9 frame, as an episode's is, so it
+  ' comes first in any slot and wide art only stands in for a missing one. One list of
+  ' them then shows one kind of picture.
+  if item.type = "Video" or item.type = "MusicVideo"
+    url = getItemPosterUrl(item, size)
+    if url = "" and slotWidth > posterHeight then url = getItemWidePosterUrl(item, size)
+    return url
+  end if
+
+  ' All remaining types (Movie, Series, Season, BoxSet, Person, etc.):
   ' Use slot shape to determine image strategy.
   ' Wide slot (slotWidth > posterHeight): try wide image first, fall back to portrait.
   ' Portrait/square slot: use portrait poster.
