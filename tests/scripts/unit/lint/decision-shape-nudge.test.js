@@ -44,7 +44,7 @@ describe('decision-shape-nudge', () => {
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(/Decision-shape commit detected/);
     expect(stdout).toMatch(/decided/);
-    expect(stdout).toMatch(/\/log decision/);
+    expect(stdout).toMatch(/as a decision: an ADR or a sub-ADR note/);
   });
 
   it('prints a nudge when commit matches "switched from"', () => {

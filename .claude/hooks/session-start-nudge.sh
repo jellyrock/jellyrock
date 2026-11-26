@@ -5,14 +5,14 @@
 # Sibling to check-progress-cursor.sh (Stop hook). Both wrap a .cjs nudge
 # script that exits 0 silently when state is clean, prints one line when not.
 #
-# Why this exists: per CLAUDE.md's catchup-discipline rule, /catchup (or
-# /focus for triage) should run at the start of any genuine new session. The
+# Why this exists: a state briefing (or a triage of the next move) should
+# run at the start of any genuine new session. The
 # rule is documented but easy to forget. This hook surfaces a soft nudge at
 # the moment the session begins, only when state actually warrants
 # attention. Silent on clean repos so it doesn't become noise.
 #
 # Local-only by design: no `gh` calls, no network. Network-dependent banners
-# (failed CI, PR review requested) surface in /focus itself when invoked.
+# (failed CI, PR review requested) surface in the triage itself when invoked.
 # Cheap + offline-tolerant; can't slow session start or hit rate limits.
 #
 # Failure mode: this hook must not block or fail session start. The

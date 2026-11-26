@@ -18,7 +18,7 @@ Read [How to add a new skill](README.md#how-to-add-a-new-skill) in this director
 
 ## Model fit
 
-Every skill pins a model in frontmatter (`model: opus | sonnet | haiku`). The choice tracks the actual reasoning load. Procedural workflows (checklists and step-by-step recipes such as `/pr`, `/log` and `/new-setting`) belong on sonnet. Judgment-heavy skills (`/runtime-triage`, `/ci-triage`) belong on opus. Pure data assembly with no judgment could go on haiku; no skill here uses it. After a few real runs, check whether the assigned model still fits.
+Every skill pins a model in frontmatter (`model: opus | sonnet | haiku`). The choice tracks the actual reasoning load. Procedural workflows (checklists and step-by-step recipes such as `/new-setting` and `/translation-add`) belong on sonnet. Judgment-heavy skills (`/crash-report`, `/server-upgrade`) belong on opus. Pure data assembly with no judgment could go on haiku; no skill here uses it. After a few real runs, check whether the assigned model still fits.
 
 ## When you change a skill
 
@@ -32,5 +32,5 @@ Every skill pins a model in frontmatter (`model: opus | sonnet | haiku`). The ch
 2. Find every reference: `grep -rn "/<name>" CLAUDE.md docs/ .claude/`. Fix or remove each one.
 3. `git rm -r .claude/skills/<name>/`.
 4. Remove its row from [`README.md`](README.md).
-5. Invoke `/log decision` with slug `retire-<name>-skill` to record why. The Capture-discipline rule in the root [`CLAUDE.md`](../../CLAUDE.md) requires it.
+5. Record why as a decision, with the slug `retire-<name>-skill`.
 6. Run `npm run lint:docs`. It catches a broken link to the removed files; only the grep in step 2 catches a plain mention.

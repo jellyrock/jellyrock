@@ -354,8 +354,8 @@ function footer(verdict) {
   const rationale = verdict.rationale ? `**Agent rationale**: ${verdict.rationale}\n\n` : '';
   return (
     `${rationale}_Filed automatically by the \`/server-upgrade\` skill — see ` +
-    `\`docs/architecture/server-upgrade-automation.md\`. Run \`/issue-triage <N>\` ` +
-    `for a deeper dive._`
+    `\`docs/architecture/server-upgrade-automation.md\`. Investigate the issue ` +
+    `before acting on it._`
   );
 }
 
@@ -1065,7 +1065,7 @@ export function renderRunSummary(plan, results, { createdAt, digest = null } = {
     );
   }
   if (monitored.length) {
-    sections.push('## Monitor — real but deferred (consider `/log followup`)');
+    sections.push('## Monitor — real but deferred (consider a followup)');
     sections.push(
       list(monitored, (r) => `- \`${r.findingKey}\`${r.rationale ? ` — ${r.rationale}` : ''}`),
     );

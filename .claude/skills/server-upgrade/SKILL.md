@@ -13,7 +13,7 @@ This skill is stage 4, "Investigate", of the pipeline in [`docs/architecture/ser
 
 The split holds the pipeline together: **the script never decides whether a change is a real problem, and you never touch GitHub.** The script owns finding identity (so dedup stays stable across releases) and the issue mechanics; you own the call on each finding.
 
-Like `/crash-report`, this skill has no sibling `INVESTIGATION.md`: each filed issue is the shared handoff, and a deep dive on one finding goes to `/issue-triage <N>`. The run summary in `.claude/handoffs/` is a local record and resume aid for the person running the triage.
+Like `/crash-report`, this skill has no sibling `INVESTIGATION.md`: each filed issue is the shared handoff, and a deep dive on one finding is an investigation of that issue. The run summary in `.claude/handoffs/` is a local record and resume aid for the person running the triage.
 
 ## Inputs
 
@@ -122,7 +122,7 @@ For each entry, fill in place (never change `findingKey`):
 - `real` (bool), `severity` (`high`, `medium` or `low`), and `recommendedAction`:
   - **`file`:** a real problem, or an opportunity worth having, that deserves an issue. Needs `severity` and a `draftIssueBody` in GitHub markdown: what changed, why it affects us, the cited sites, the suggested fix. The filer wraps it in a provenance header and footer, so write only the substance.
   - **`skip`:** investigated and not a real problem (a false positive, no runtime effect, a covering fallback, a regeneration artifact). No body, but a one-paragraph `rationale` is required: it records why we looked and passed.
-  - **`monitor`:** real but deferred (an opportunity for later, a floor-coverage advisory not worth filing yet). `rationale` required; it is offered for a `/log followup` in Step 6.
+  - **`monitor`:** real but deferred (an opportunity for later, a floor-coverage advisory not worth filing yet). `rationale` required; it is offered as a followup in Step 6.
 - Add any `labels` beyond the prefilled base set (`regression`, for example).
 
 Write the filled verdicts to the new `$VERDICTS` path with the Write tool, not back over `$SCAFFOLD`: the Write tool refuses to overwrite a file you haven't read with the Read tool, and a fresh path avoids that. Copy every entry from the template into `$VERDICTS`, filled in. Every entry needs a `recommendedAction`: the filer reports one left blank as `missing-verdict` instead of dropping it.
@@ -168,11 +168,11 @@ For each write action it creates, comments on or reopens the issue with its labe
 
 Read the run summary and recap it briefly, for example:
 
-> Triaged the Jellyfin 10.11.10 digest (#840): filed 2 sub-issues (#842, #843), commented on 1 recurrence (#812), reopened 1 regression (#790). Skipped 4 after investigation (covering fallbacks, cosmetic changes). 1 to monitor. Digest closed (fully triaged). Summary: `.claude/handoffs/server-upgrade-<ts>.md`. **Next:** deep-dive any sub-issue with `/issue-triage <N>`.
+> Triaged the Jellyfin 10.11.10 digest (#840): filed 2 sub-issues (#842, #843), commented on 1 recurrence (#812), reopened 1 regression (#790). Skipped 4 after investigation (covering fallbacks, cosmetic changes). 1 to monitor. Digest closed (fully triaged). Summary: `.claude/handoffs/server-upgrade-<ts>.md`. **Next:** investigate any sub-issue in depth.
 
 Then close the loops the capture-discipline rule expects:
 
-- For each `monitor` finding worth tracking upstream, offer to run `/log followup`, naming what to check upstream and what to do when it moves. Don't write the journal directly.
+- For each `monitor` finding worth tracking upstream, offer to record a followup, naming what to check upstream and what to do when it moves. Don't write the journal directly.
 - If Step 2 case 3 found a recurring cosmetic artifact, remind the user it can go in `.api-watch/suppressions.yml` so the next run drops it.
 - This run acknowledged `<to>`: the `<to>` fingerprint committed in Step 0 is the acknowledgment, and it becomes the next run's `<from>` once the triage merges. Nothing else moves.
 
@@ -181,7 +181,7 @@ Delete the temporary files: `rm -f "$SCAFFOLD" "$VERDICTS" "$PLAN"`.
 ## When not to use
 
 - A new Jellyfin release candidate or master build: this skill does handle it, through the pre-release path (Step 0a), which triages locally, writes a handoff and files no issues. CI opens a `server-upgrade:rc` issue for each release candidate. Don't use the stable Steps 3 to 5 for a pre-release.
-- You want to investigate one `[server-upgrade]` issue that is already filed: use `/issue-triage <N>`.
+- You want to investigate one `[server-upgrade]` issue that is already filed: investigate that issue directly.
 - The report has no candidates to investigate: there is nothing to do, and that is the system working.
 - You need to rebuild the manifest, the fingerprints or the report itself: those are the generators (`docs:api-manifest`, `docs:spec-fingerprints`, `api-watch:findings`), not this skill.
 

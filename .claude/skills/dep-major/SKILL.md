@@ -84,7 +84,7 @@ Emit a **go / no-go** with the SOP checklist ticked:
 
 If a migration is needed and the user approves, apply it with `Edit` on the affected files (cite the changelog rationale), then re-run the relevant gate step to confirm green. Leave the merge to the user: this skill reviews and prepares; it never merges.
 
-If anything was deferred (a device run that couldn't happen, for example), record it with [`/log followup`](../log/SKILL.md) so it isn't lost.
+If anything was deferred (a device run that couldn't happen, for example), record it as a followup so it isn't lost.
 
 ## When not to use
 

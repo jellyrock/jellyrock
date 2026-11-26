@@ -1,19 +1,19 @@
 ---
 name: ramp
-description: Area-scoped deep-dive briefing for context-switching into a JellyRock subsystem. Loads the scoped CLAUDE.md, the matching architecture topic doc, area-relevant tech-debt slugs, recent commits scoped to the area, and skills/agents that mention the area. Use when switching into `components`, `components/video`, `components/data`, `source`, `source/api`, `source/utils`, `tests`, `locale`, or `scripts` after >2 weeks not touching it, or when a sub-agent needs scoped briefing before research. Complements /catchup (which is global).
+description: Area-scoped deep-dive briefing for context-switching into a JellyRock subsystem. Loads the scoped CLAUDE.md, the matching architecture topic doc, area-relevant tech-debt slugs, recent commits scoped to the area, and skills/agents that mention the area. Use when switching into `components`, `components/video`, `components/data`, `source`, `source/api`, `source/utils`, `tests`, `locale`, or `scripts` after >2 weeks not touching it, or when a sub-agent needs scoped briefing before research. Complements the repo-wide state briefing.
 model: sonnet
 effort: low
 ---
 
 # /ramp `<area>`: an area-scoped briefing
 
-`AGENTS.md`'s catchup-discipline rule calls for it when you come back to a subsystem after more than two weeks away. Where `/catchup` covers the whole repo, `/ramp` zooms into one subsystem's rules, recent commits and tech debt.
+Use it when you come back to a subsystem after more than two weeks away. Where a state briefing covers the whole repo, `/ramp` zooms into one subsystem's rules, recent commits and tech debt.
 
 ## Inputs
 
 The arguments name one area. The recognized areas are the folders with a scoped `CLAUDE.md`: `components`, `components/video`, `components/data`, `source`, `source/api`, `source/utils`, `tests`, `locale`, `scripts`.
 
-With no arguments, list the recognized areas and ask which one. For an area not in the list, treat the question as cross-cutting and suggest `/catchup`, or the closest matching area.
+With no arguments, list the recognized areas and ask which one. For an area not in the list, treat the question as cross-cutting and suggest a repo-wide state briefing, or the closest matching area.
 
 ## Step 1: Load state through the aggregator and targeted reads
 
@@ -112,14 +112,14 @@ An empty section reads "(none)", so the shape stays the same.
 
 ## Step 3: Hand off
 
-If the briefing turns up something to act on (an open issue with traction, a tech-debt slug the user recently touched), name the next skill in a closing line: `/issue-triage <N>`, `/tech-debt-scan` (when finishing a feature in this area) or `/runtime-triage` (when a recent crash log is at hand).
+If the briefing turns up something to act on (an open issue with traction, a tech-debt slug the user recently touched), name the next step in a closing line: investigate issue #N, or sweep the area's tech debt when finishing a feature in it.
 
 This skill only reads. Don't edit anything: surface and summarize.
 
 ## When not to use
 
-- Starting a fresh session: use `/catchup` first. `/ramp` is for switching areas within a session.
-- The area isn't in the recognized list: ask the user, or treat it as cross-cutting and use `/catchup`.
+- Starting a fresh session: get a repo-wide state briefing first. `/ramp` is for switching areas within a session.
+- The area isn't in the recognized list: ask the user, or treat it as cross-cutting and get a repo-wide state briefing.
 - A specific question that doesn't need a full briefing: answer it directly.
 
 ## Sub-agent invocation

@@ -22,7 +22,7 @@ import { ChangelogSyncer, SUMMARY_REMINDER } from '../../../scripts/changelog-sy
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '../../..');
-const VOICE_CHECK = path.join(REPO, '.claude/skills/log/voice-check.sh');
+const VOICE_CHECK = path.join(REPO, 'scripts/voice-check/voice-check.sh');
 const FEATURES_DIR = path.join(REPO, 'docs/user/features');
 // Short enough to read in a notification preview, with room for a large release's
 // story: 2 more words for each user-facing line past 12, never past the ceiling.

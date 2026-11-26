@@ -156,7 +156,7 @@ describe('shouldSkip', () => {
   });
 
   it('proceeds for other agent-tooling titles', () => {
-    expect(shouldSkip({ prTitle: 'chore(skills): tighten /pr title rule' })).toBe(null);
+    expect(shouldSkip({ prTitle: 'chore(skills): tighten the PR title rule' })).toBe(null);
     expect(shouldSkip({ prTitle: 'feat(agents): add a skill' })).toBe(null);
   });
 

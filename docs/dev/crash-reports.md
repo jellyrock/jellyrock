@@ -99,7 +99,7 @@ The dashboard's **View report â†’ Backtrace** export is a TSV row. Its backtrace
 ## Issues for `file` crashes
 
 - **Title:** `[crash] <function>() in <basename>.brs:<line> (v<version>)`. It is the same every run, so finding an existing issue is reliable.
-- **Body:** follows the headings of [`bug_report.yml`](../../.github/ISSUE_TEMPLATE/bug_report.yml), with the source location, a code snippet, the counts, the backtrace and a pointer to `/issue-triage <N>`.
+- **Body:** follows the headings of [`bug_report.yml`](../../.github/ISSUE_TEMPLATE/bug_report.yml), with the source location, a code snippet, the counts, the backtrace and a note to find the root cause before fixing.
 - **Labels:** `bug` and `crash`.
 
 ### Finding existing issues
@@ -119,7 +119,7 @@ gh label create epic --color 5319e7 --description "Architectural class tracker â
 ## What the workflow can't do
 
 - **Name device models or users.** Roku's report doesn't include them.
-- **Reproduce a crash.** The report says where it happened, not why. Run `/issue-triage <N>` after filing.
+- **Reproduce a crash.** The report says where it happened, not why. Find the root cause before fixing it.
 - **Match an exact build between releases.** The manifest version doesn't change on every commit, so the script uses the highest `v<major>.<minor>.*` tag and notes that the match is inexact.
 - **Read source maps from a shipped build.** Release builds ship without them, so the script rebuilds the tagged version with `bsconfig-analysis.json`, which mirrors the release build.
 - **Enrich a crash older than 7 days.** The dashboard no longer has it.
@@ -130,7 +130,7 @@ If `npm ci` or `bsc` fails while building a cited version, its crashes get no so
 
 ## Old flow: enrich after filing
 
-The old flow filed issues from the CSV first, then enriched each one with the `/crash-backtrace` skill. That skill is [deprecated](../../.claude/skills/crash-backtrace/SKILL.md): `/crash-report` now enriches before filing. For an issue filed under the old flow, the script still has an `enrich-issue` command:
+The old flow filed issues from the CSV first, then enriched each one with the `/crash-backtrace` skill. That skill was removed: `/crash-report` now enriches before filing. For an issue filed under the old flow, the script still has an `enrich-issue` command:
 
 ```bash
 node scripts/crash-report.js enrich-issue --issue <N> --backtrace-file <path>

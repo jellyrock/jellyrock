@@ -8,7 +8,7 @@
  *
  *   - `scripts/changelog-syncer.js`: sorts and words each changelog line
  *   - `scripts/lint/pr-body-check.js`: fails a PR whose title has no known type
- *   - the `/pr` skill: picks the type when it titles a PR
+ *   - the PR skills: pick the type when they title a PR
  *
  * A title is `type(scope)!: Subject` (Conventional Commits 1.0), where the scope and
  * the `!` are optional. Types are case-insensitive, as the spec requires. The set is

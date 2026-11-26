@@ -10,9 +10,9 @@
 # journals (progress / decisions / signals / tech-debt) are state that work
 # depends on. The mechanical close-loop on PR merge ships via
 # .github/workflows/journal-sync.yml, but mid-session the cursor can drift
-# (working on a new branch without /log running, or the previous work
+# (working on a new branch without setting the cursor, or the previous work
 # shipped and the cursor wasn't closed). This hook surfaces that drift
-# during the agent's natural work cycle, before /catchup has to flag it.
+# during the agent's natural work cycle, before a state briefing has to flag it.
 #
 # Failure mode: this hook must not block or fail an agent's turn. The
 # underlying script always exits 0; this wrapper does too.

@@ -20,13 +20,10 @@ This page covers what is specific to the JellyRock app repository. The [organiza
 
 ## Use the skills
 
-The project's development workflow ships as a set of `/` skills in [`.claude/skills/`](../../.claude/skills/). Running them is the easiest way to make changes that match the project's conventions. You don't have to use them, but they hold the house style, so issues, pull requests and tracked work come out in a consistent shape.
+The repo ships a few `/` skills for [Claude Code](https://claude.com/claude-code) in [`.claude/skills/`](../../.claude/skills/). They load on their own when you open the repo there. They hold the house style, so issues and pull requests come out in the shape the project asks for:
 
-Open the repo in [Claude Code](https://claude.com/claude-code) and the workflow skills load on their own. The ones you'll use most:
-
-- **`/focus`** works out what to do next and points you to the skill for it.
-- **The project skills** (`/start-project`, `/resume-project`, `/end-session`) are for any change that takes more than one sitting. The `PLAN.md` they keep is a local working file and is not committed, like `.claude/handoffs/`. What lasts is committed: decisions as [ADRs](../adr/README.md), progress in [`docs/progress.md`](../progress.md) and deferred work in [tech-debt](../architecture/tech-debt.md). So the next contributor gets the context, even though the PLAN stays on your machine.
-- **The GitHub skills** (`/create-issue`, `/pr`, `/issue-triage`, `/ci-triage`) file issues, open pull requests, and look into issues and failed CI runs.
+- **`/report-issue`** drafts a bug report or feature request from the repo's issue forms, checks for duplicates, and opens the form in your browser with the draft filled in.
+- **`/open-pr`** drafts a pull request from the template and the title rule, and opens GitHub's new pull request page with the draft filled in.
 - **The recipe skills** (`/new-setting`, `/new-migration`, `/new-api-version`, `/translation-add`) walk you step by step through the common kinds of change. Each one follows the matching guide in `docs/dev/`.
 
 You're welcome to work by hand too. The skills are a convenience, not a requirement.

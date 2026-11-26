@@ -11,7 +11,7 @@ Wraps [`locale/CLAUDE.md`](../../../locale/CLAUDE.md) and [`docs/dev/translation
 
 ## Step 1: Pick the key prefix
 
-Keys are PascalCase and start with a prefix that says what kind of text they hold. The prefixes and an example of each are in [`docs/dev/translations.md`](../../../docs/dev/translations.md#key-names). No lint checks the prefix, so pick it by what the string is on screen. If none fits, pick the closest; a new prefix needs a `/log decision` first.
+Keys are PascalCase and start with a prefix that says what kind of text they hold. The prefixes and an example of each are in [`docs/dev/translations.md`](../../../docs/dev/translations.md#key-names). No lint checks the prefix, so pick it by what the string is on screen. If none fits, pick the closest; a new prefix needs a recorded decision first.
 
 ## Step 2: Add the key to `en_US.json`, sorted
 
@@ -35,7 +35,7 @@ JellyRock uses a zero/one/many model, three keys per phrase. These are the exist
 "LabelEpisodeCountMany": "{0} Episodes",
 ```
 
-Languages with more plural forms (Polish, Russian, Arabic) read this approximately; full Unicode CLDR plural support is a known limitation. Don't add `Few`, `Two` or other variants without a `/log decision` that changes the rule for the whole project.
+Languages with more plural forms (Polish, Russian, Arabic) read this approximately; full Unicode CLDR plural support is a known limitation. Don't add `Few`, `Two` or other variants without a recorded decision that changes the rule for the whole project.
 
 In BrighterScript, call `translatePlural(translationKeys.LabelEpisodeCount, count, [stri(count).trim()])`. Pass the base key, with no suffix: `translatePlural` picks the variant. `npm run lint:translations` fails when one of the three keys is missing.
 

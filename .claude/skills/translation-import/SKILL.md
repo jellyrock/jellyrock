@@ -28,7 +28,7 @@ effort: high
 - **Rejecting what could not be proven wrong.** A `reject:` is permanent for `suggest`; an unclear candidate belongs on the leave list.
 - **Fetching code for every key.** `context` is for candidates the name and values leave unclear; most keys settle without it.
 - **Retyping English strings.** An entry seeds only while both English strings match exactly; copy them from the rank output.
-- **Pushing or opening the PR.** The batch is reviewed as a PR the user opens with `/pr`.
+- **Pushing or opening the PR.** The batch is reviewed as a PR the user opens.
 
 **When not to use.**
 
@@ -95,7 +95,7 @@ The seed ledger (`locale/seed/seeded.json`) records every fill, so a cell a revi
 
 ### Step 6: Commit and report
 
-Commit `locale/seed/keymap.yml`, `locale/seed/seeded.json` and the locale files in one commit: subject `chore(translations): Map {{n}} keys for seeding (batch {{k}})`, then the counts, then the contents of `seed-body.txt` (its `Translation-Source:` lines). Never push; the user opens the PR with `/pr`.
+Commit `locale/seed/keymap.yml`, `locale/seed/seeded.json` and the locale files in one commit: subject `chore(translations): Map {{n}} keys for seeding (batch {{k}})`, then the counts, then the contents of `seed-body.txt` (its `Translation-Source:` lines). Never push; the user opens the PR.
 
 Report, for the user to review:
 

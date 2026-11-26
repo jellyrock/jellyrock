@@ -2,7 +2,7 @@
 topic: writing-style
 related-files:
   - scripts/lint/comment-voice-ratchet.js
-  - .claude/skills/log/voice-check.sh
+  - scripts/voice-check/voice-check.sh
   - .voice-baseline.tsv
   - .doc-voice-baseline.json
   - .claude/rules/writing-style.md
@@ -89,7 +89,7 @@ Code a tool reads is not prose: a marker such as `bsc-disable-next-line dead-cod
 
 ## What the gate checks
 
-Two checks run in pre-push and CI. `npm run lint:voice` runs [`voice-check.sh`](../../.claude/skills/log/voice-check.sh) over every tracked Markdown file, against [`.voice-baseline.tsv`](../../.voice-baseline.tsv); lint-staged runs it on each staged `.md` too. `npm run lint:comment-voice` runs [`comment-voice-ratchet.js`](../../scripts/lint/comment-voice-ratchet.js) over the comments of tracked code. Both count these per file (the Markdown check also counts line-number citations):
+Two checks run in pre-push and CI. `npm run lint:voice` runs [`voice-check.sh`](../../scripts/voice-check/voice-check.sh) over every tracked Markdown file, against [`.voice-baseline.tsv`](../../.voice-baseline.tsv); lint-staged runs it on each staged `.md` too. `npm run lint:comment-voice` runs [`comment-voice-ratchet.js`](../../scripts/lint/comment-voice-ratchet.js) over the comments of tracked code. Both count these per file (the Markdown check also counts line-number citations):
 
 | Category | What it counts |
 | --- | --- |
@@ -113,6 +113,6 @@ The comment ratchet counts the same categories in the comments of tracked code (
 
 Inline code and URLs inside a comment are skipped. Translations, package-managed and generated code (`locale/`, `roku_modules/`, `node_modules/`, `build/`, `out/`) are out of scope. Third-party code kept in the repo is checked like any other ([ADR 0054](../adr/0054-owned-code-gets-every-check.md)).
 
-Both checks are ratchets. Each file has an allowance in its baseline, and a file may only improve. A new file starts at zero. When a file drops below its allowance, lock the gain in: `bash .claude/skills/log/voice-check.sh --lower` for Markdown, `node scripts/lint/comment-voice-ratchet.js --lower-voice-baseline` for code comments.
+Both checks are ratchets. Each file has an allowance in its baseline, and a file may only improve. A new file starts at zero. When a file drops below its allowance, lock the gain in: `bash scripts/voice-check/voice-check.sh --lower` for Markdown, `node scripts/lint/comment-voice-ratchet.js --lower-voice-baseline` for code comments.
 
 The gate cannot judge rules 2, 3, 4, 7 and 10. Reviewers check those.

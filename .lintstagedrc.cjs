@@ -89,7 +89,7 @@ module.exports = {
     // Dictionaries and plugins come from `.spellcheckerrc.yaml`: see that file for why
     // they must not be re-specified here.
     const spell = cmdWithFiles('npx spellchecker --files', keep(isSpellExcluded)(files));
-    const voice = cmdWithFiles('bash .claude/skills/log/voice-check.sh', files);
+    const voice = cmdWithFiles('bash scripts/voice-check/voice-check.sh', files);
     return [mdLint, spell, voice].filter(Boolean);
   },
 

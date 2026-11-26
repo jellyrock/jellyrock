@@ -6,50 +6,27 @@ This file is the index. Each skill's own `description` is the full summary; a ro
 
 ## Skills
 
+### Contributing
+
+| Skill | Model | What | When |
+|---|---|---|---|
+| [`/report-issue`](report-issue/SKILL.md) | sonnet | Draft a bug report or feature request from the issue forms, check for duplicates, and open the form with the draft filled in | When you have a bug or an idea to report |
+| [`/open-pr`](open-pr/SKILL.md) | sonnet | Draft a pull request from the template and the title rule, and open GitHub's new pull request page with it filled in | When your branch is ready for review |
+
 ### Daily work
 
 | Skill | Model | What | When |
 |---|---|---|---|
-| [`/pr`](pr/SKILL.md) | sonnet | Create or update a PR: a typed title, labels, a body that reads as the squash commit, a review-notes comment, and the journal passes (tech debt, decision shape, followups) | Every PR, in place of `gh pr create` |
 | [`/release-summary`](release-summary/SKILL.md) `[version]` | sonnet | Draft the summary at the top of a release's notes: a short paragraph naming what a user would notice, with the other fixes counted, checked by a script and written into the draft on your ok | When the release's draft is ready, before you publish it |
-| [`/catchup`](catchup/SKILL.md) | sonnet | State briefing: git, the journal and projects, plus the `scripts/catchup-state.js` aggregator (GitHub, signals, decisions, tech debt) | The start of a new session |
-| [`/focus`](focus/SKILL.md) `[--area=<name>]` | opus | Picks one next move from the same state as `/catchup`, with alternatives and the command to take it | When several things look actionable |
 | [`/ramp`](ramp/SKILL.md) `<area>` | sonnet | A briefing on one area: its rules, docs, tech debt and recent commits | Coming back to an area after more than two weeks |
-| [`/log`](log/SKILL.md) `<type>` | sonnet | Write a journal entry: `decision`, `followup`, `signal` or `running` | When there is something to record |
-| [`/done`](done/SKILL.md) `<fid-or-slug>` | sonnet | Close a journal entry once its work is committed | When a followup, signal or running item is finished |
-| [`/snag`](snag/SKILL.md) `<flaw>` | opus | A flaw found mid-work: investigate it read-only, then one decision screen with the fixes and when to make them | The moment a defect surfaces during other work |
-| [`/second-opinion`](second-opinion/SKILL.md) `<what>` | opus | A review from a clean context: one item improved, or several compared without bias | When you type it, or reply `second-opinion` on a decision screen |
-| [`/sonnet`](sonnet/SKILL.md) `<plan>` | sonnet | Run a procedural plan with no open questions on Sonnet, stopping before push | A plan `/focus` saved, or one you hand it |
-| [`/tech-debt-scan`](tech-debt-scan/SKILL.md) | sonnet | Sweep `tech-debt.md` for entries the branch resolved, narrowed or added | Before a PR for any non-trivial change (`/pr` runs it) |
-
-### Tracked projects
-
-| Skill | Model | What |
-|---|---|---|
-| [`/start-project`](start-project/SKILL.md) | opus | Begin a tracked project in the projects folder, with its PLAN and Charter |
-| [`/resume-project`](resume-project/SKILL.md) `<slug>` | sonnet | Load a project and its kickoff, with a continuity check |
-| [`/end-session`](end-session/SKILL.md) | opus | Close a project session: update the PLAN, commit and push. The user types it |
-
-### Investigations
-
-Each runs end to end in the main conversation on opus, with the user in the loop throughout. `/issue-triage` and `/ci-triage` investigate, then follow `/snag`'s steps from its decision screen on: the user picks the fix, which is built test-first and committed on a `fix/…` branch, never pushed. `/ci-triage` reads the run through its tested `ci-triage-state.sh`, which classifies each failed step against [`ci-triage/gates.tsv`](ci-triage/gates.tsv). `/runtime-triage` writes a handoff file to `.claude/handoffs/` (for compaction, `/catchup` and resuming in another session) and continues into its `INVESTIGATION.md`.
-
-| Skill | Investigation | What |
-|---|---|---|
-| [`/issue-triage`](issue-triage/SKILL.md) `<N>` | its Steps 2 to 8, then [`/snag`](snag/SKILL.md)'s | A GitHub issue |
-| [`/runtime-triage`](runtime-triage/SKILL.md) `<paste>` | [`runtime-triage/INVESTIGATION.md`](runtime-triage/INVESTIGATION.md) | A Roku log, crash or unexpected behavior |
-| [`/ci-triage`](ci-triage/SKILL.md) `<run-id>` | its Steps 2 to 7, then [`/snag`](snag/SKILL.md)'s | A failed GitHub Actions run |
 
 ### Bridges to outside sources
 
 | Skill | Model | What |
 |---|---|---|
-| [`/create-issue`](create-issue/SKILL.md) | sonnet | Draft and file a GitHub issue from a report, using the issue form templates |
 | [`/crash-report`](crash-report/SKILL.md) `<csv-or-zip>` | opus | Turn Roku's weekly crash CSV into issues and epic evidence: stage, enrich with pasted backtraces, then file |
-| [`/crash-backtrace`](crash-backtrace/SKILL.md) | sonnet | **Deprecated:** `/crash-report`'s `enrich` phase replaced it. Kept only as a redirect |
 | [`/server-upgrade`](server-upgrade/SKILL.md) `[<report>]` | opus | Triage a Jellyfin server release against the app's API usage, on its release-triage digest issue |
 | [`/dep-major`](dep-major/SKILL.md) `<PR# \| package>` | opus | Review a major dependency bump: changelog, affected call sites, the gate for its type, a go or no-go |
-| [`/docs-lint`](docs-lint/SKILL.md) | sonnet | Run the docs validators and propose fixes, grouped by category |
 
 ### Guided recipes (each wraps a `docs/dev/` how-to)
 
@@ -63,12 +40,7 @@ Each runs end to end in the main conversation on opus, with the user in the loop
 
 ## Agents
 
-An agent runs through the Agent tool. The triage workflows once had paired investigator agents; single-file opus skills with an `INVESTIGATION.md` replaced them (the audit log is `.claude/skills/issue-triage/AUDIT-LOG.md`). The remaining agents are narrow and scoped: they report and finish.
-
-| Agent | Model | What | When |
-|---|---|---|---|
-| [`log-reviewer`](../agents/log-reviewer.md) | sonnet | Audits roku-log use in a file; audit only by default, never blanket-adds logs | For a read on whether a file's logging is adequate |
-| [`pattern-finder`](../agents/pattern-finder.md) | sonnet | Finds the canonical JellyRock pattern for a task, with its governing rule | Before adding new code |
+An agent runs through the Agent tool. None is tracked today; the table below says when one fits.
 
 ## Skill, agent, how-to or hook?
 
@@ -81,7 +53,7 @@ An agent runs through the Agent tool. The triage workflows once had paired inves
 
 Rule of thumb: if you'd type `/<name>` to run it, it's a skill. Judgment given context is an agent. "Follow N steps every time you do X" with no decisions is a how-to. Something that should fire on its own is a hook.
 
-They combine. `/issue-triage` (a skill) prepares and investigates in the main conversation; the [`bsfmt-on-write`](../hooks/bsfmt-on-write.sh) hook formats `.bs` files as edits land; and deferred work goes to the [`tech-debt.md`](../../docs/architecture/tech-debt.md) inventory.
+They combine. `/crash-report` (a skill) stages, enriches and files in the main conversation; the [`bsfmt-on-write`](../hooks/bsfmt-on-write.sh) hook formats `.bs` files as edits land; and deferred work goes to the [`tech-debt.md`](../../docs/architecture/tech-debt.md) inventory.
 
 ## Sub-agent invocation
 
@@ -119,7 +91,7 @@ The rules for writing one are in [`CLAUDE.md`](CLAUDE.md). The steps:
 
 An agent is `.claude/agents/<name>.md` with frontmatter (`name`, `description`, `model`, `color`) and a system prompt as the body:
 
-- **Color:** pick one distinct from the agents already there (cyan and purple are taken).
+- **Color:** pick one distinct from any agents already there.
 - **Operating contract:** list what the agent will and won't do. Hard constraints go here, not deep in the steps.
 - **What it receives:** if a skill calls the agent, say what the skill hands it; if it stands alone, say what the user usually passes.
 - Add a row to the Agents table in this README.

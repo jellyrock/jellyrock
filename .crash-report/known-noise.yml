@@ -94,7 +94,7 @@ patterns:
       Reframed from "server timeouts" per real crash evidence — JellyRock runs
       API on the task pool, so the common case is compute-bound, not
       server-caused (see ADR 0024). All &h23 route here; humans triage the
-      specific fix per site during /issue-triage. DISTINCT from "unexpected /
+      specific fix per site during issue triage. DISTINCT from "unexpected /
       malformed server response" (&h18 etc.) — those are scoped bugs.
     tracker_issue: 729
     match:

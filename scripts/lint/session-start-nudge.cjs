@@ -9,7 +9,7 @@
 //   4. An install that no longer matches package-lock.json or patches/
 //
 // Network-dependent banners (failed CI, PR review requested) stay in
-// /focus itself: this hook is cheap and offline-tolerant by design so it
+// the triage itself: this hook is cheap and offline-tolerant by design so it
 // can't slow down session start or hit gh rate limits on heavy automation.
 //
 // Always exits 0. Never blocks. Mirrors the advisory-nudge shape of
@@ -148,7 +148,7 @@ function main() {
 
   console.log('');
   console.log(
-    `💡 Session start — actionable state: ${parts.join('; ')}. Consider \`/focus\` for triage, or \`/catchup\` for state-only briefing.`,
+    `💡 Session start — actionable state: ${parts.join('; ')}. Consider a triage of the next move, or a state-only briefing.`,
   );
   console.log('');
 

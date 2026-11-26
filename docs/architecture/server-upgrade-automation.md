@@ -170,7 +170,7 @@ gh issue list --label server-upgrade --state all --limit 200 \
         fpRate: (if $total == 0 then null else ($fp / $total) end) }'
 ```
 
-To split it by class, group on the kind label that follows `[server-upgrade]` in the title (`endpoint removed:`, `floor coverage gap:`, `coverage symmetry:`, `new endpoint:` and the rest of `KIND_LABEL`). Graduating a class is one line, `export const AUTO_FILE_CLASSES = new Set(['<class>']);`, plus a `/log decision` with the measured rate. `opportunity` is the safest first candidate, since a wrong enhancement does little harm. `coverage-gap` is the worst, because capability guards make it over-report.
+To split it by class, group on the kind label that follows `[server-upgrade]` in the title (`endpoint removed:`, `floor coverage gap:`, `coverage symmetry:`, `new endpoint:` and the rest of `KIND_LABEL`). Graduating a class is one line, `export const AUTO_FILE_CLASSES = new Set(['<class>']);`, plus a decision record with the measured rate. `opportunity` is the safest first candidate, since a wrong enhancement does little harm. `coverage-gap` is the worst, because capability guards make it over-report.
 
 ## The release digest
 
@@ -197,7 +197,7 @@ The workflow authenticates as the JellyRock GitHub App, so the installation's pe
 The diff anchor is the last version a maintainer triaged with `/server-upgrade`, which commits that version's fingerprint: committing it is the acknowledgment, so nothing stores the anchor a second time ([ADR 0051](../adr/0051-retire-signals-backlog.md)). A clean release closes its digest without moving it, so the anchor can sit several releases behind. That costs nothing, because the diff is point to point. Two things keep the gap from reading as neglect ([ADR 0015](../adr/0015-server-upgrade-anchor-vs-resolved-decoupling.md)):
 
 - The tracker passes the digest list to the renderer (`--tracker-issues`). `clearedThroughFrom()` finds the newest closed digest below this release, and the body shows a "Mechanically cleared through `<X>`" line under the "Diff baseline (last full review)" row.
-- `/catchup` raises a banner only for an open digest (its `watches` section), so clean releases never nag.
+- The maintainer's state briefing raises a banner only for an open digest (the `watches` section of `scripts/catchup-state.js`), so clean releases never nag.
 
 ## The endpoint-availability ledger
 

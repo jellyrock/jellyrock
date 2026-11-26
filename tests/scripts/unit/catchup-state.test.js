@@ -1,4 +1,4 @@
-// Tests for scripts/catchup-state.js (the /catchup + /ramp aggregator).
+// Tests for scripts/catchup-state.js (the state briefing and /ramp aggregator).
 //
 // All tests pass --no-gh so they don't shell out to the gh CLI (would either
 // hit the network or fail without auth). Coverage focuses on the journal
@@ -191,7 +191,7 @@ describe('catchup-state', () => {
     expect(typed).toEqual(plain);
   });
 
-  it('--typed asks gh for the run id and routes a failing run to /ci-triage with it; the JSON alone does not', () => {
+  it('--typed asks gh for the run id and routes a failing run to CI triage with it; the JSON alone does not', () => {
     fix = setupFixture();
     fix.commit('seed');
     // a gh stand-in: run list answers with the fields it was asked for, everything else is empty

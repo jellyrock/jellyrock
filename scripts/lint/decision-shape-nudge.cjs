@@ -5,11 +5,11 @@
 // "we now use", "replace with", etc.). If any commit matches AND no
 // decision-record surface (docs/adr/ for ADR-grade, docs/decisions.md for
 // sub-architectural notes) is in the diff, print a friendly nudge pointing at
-// /log decision.
+// recording a decision.
 //
 // **Always exits 0.** This is advisory. The requirement itself is the
-// agent-facing CLAUDE.md "Capture discipline" rule (agents are told to
-// invoke /log decision in the same change set), an instruction that
+// maintainer's "Capture discipline" rule (agents are told to
+// record the decision in the same change set), an instruction that
 // nothing enforces mechanically. Humans see this nudge and decide.
 //
 // Why a nudge and not a hard gate: catching the false positive ("decided to
@@ -110,8 +110,8 @@ function main() {
   }
   console.log('');
   console.log('   If this represents a decision worth keeping (closes off alternatives, has');
-  console.log('   a non-obvious rationale, or a constraint worth re-evaluating), invoke');
-  console.log('   `/log decision <slug>` — the agent routes it to an ADR or a sub-ADR note');
+  console.log('   a non-obvious rationale, or a constraint worth re-evaluating), record it');
+  console.log('   as a decision: an ADR or a sub-ADR note');
   console.log("   so the rationale isn't lost.");
   console.log('');
   console.log('   This nudge is advisory only — the push is not blocked.');

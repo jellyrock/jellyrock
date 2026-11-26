@@ -153,13 +153,13 @@ if (mdLintTargets.length > 0 && binExists('markdownlint-cli2')) {
 }
 
 // ────────────────────────────────────────────────────────────────────
-// House voice (.claude/skills/log/voice-check.sh)
+// House voice (scripts/voice-check/voice-check.sh)
 // ────────────────────────────────────────────────────────────────────
 //
 // The same per-file ratchet lint-staged runs. It reads `.voice-ignore` and
 // skips untracked files itself, so every changed `.md` is passed as is.
 
-const VOICE_CHECK = path.join('.claude', 'skills', 'log', 'voice-check.sh');
+const VOICE_CHECK = path.join('scripts', 'voice-check', 'voice-check.sh');
 
 if (mdFiles.length > 0 && fs.existsSync(VOICE_CHECK)) {
   const result = spawnSync('bash', [VOICE_CHECK, ...mdFiles], {

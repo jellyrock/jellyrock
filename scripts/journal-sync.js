@@ -3,7 +3,7 @@
 // The "ship side" of the four-pillar journal automation. Called by
 // .github/workflows/journal-sync.yml after a PR merges to main. Handles only
 // the deterministic mechanical edits. Entries that need judgment (decisions,
-// tech-debt, followups) stay on the user-driven path: /pr, then /log.
+// tech-debt, followups) stay with the maintainer's own tooling.
 //
 // What it does:
 //   1. Prepends "- YYYY-MM-DD: <pr-title>" to ## Recently shipped.
@@ -12,7 +12,7 @@
 //   3. Bumps frontmatter last-updated: to today.
 //   4. Prunes ## Recently shipped bullets older than the retention window
 //      (RECENTLY_SHIPPED_PRUNE_DAYS), so the section stays bounded without a
-//      manual /catchup sweep, and rebuilds the section's shape (intro on top, no
+//      manual sweep, and rebuilds the section's shape (intro on top, no
 //      doubled blank lines).
 //
 // What it skips (exit 0, prints "skipped: <reason>"):
@@ -324,7 +324,7 @@ export function applyShipEdit(content, { prTitle, today }) {
   // 4. Prune Recently shipped bullets older than the retention window, and rebuild the
   //    section's shape. This runs in the same post-merge commit that prepends the new
   //    bullet, so the section stays bounded automatically instead of relying on a
-  //    manual /catchup sweep. The bullet prepended above is dated `today`, so it is
+  //    manual sweep. The bullet prepended above is dated `today`, so it is
   //    always retained.
   next = pruneRecentlyShipped(next, today, RECENTLY_SHIPPED_PRUNE_DAYS);
 
@@ -402,7 +402,7 @@ export function pruneRecentlyShipped(content, today, maxAgeDays) {
 // and the tool falls back to its own defaults, silently dropping the `frontmatter`
 // plugin and BOTH dictionaries. Verified by spawning it from outside the repo: the
 // mis-tokenized `handoff.` the companion dictionary exists to cover came back as a
-// failure. That matters most here: a `/log decision` bullet is exactly the shape
+// failure. That matters most here: a decision note is exactly the shape
 // (a paragraph above a `## decision-id:` heading) that produces the mis-tokenization.
 
 // Resolve spellchecker-cli's binary from THIS script's own node_modules so

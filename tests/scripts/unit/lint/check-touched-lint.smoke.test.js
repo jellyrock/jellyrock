@@ -45,10 +45,10 @@ describe('check-touched-lint (smoke)', () => {
     git(dir, 'init', '--quiet', '--initial-branch=main');
     git(dir, 'config', 'user.email', 'test@example.com');
     git(dir, 'config', 'user.name', 'Test');
-    const logDir = join(dir, '.claude', 'skills', 'log');
-    mkdirSync(logDir, { recursive: true });
+    const voiceDir = join(dir, 'scripts', 'voice-check');
+    mkdirSync(voiceDir, { recursive: true });
     for (const f of ['voice-check.sh', 'md-skip.awk']) {
-      copyFileSync(join('.claude', 'skills', 'log', f), join(logDir, f));
+      copyFileSync(join('scripts', 'voice-check', f), join(voiceDir, f));
     }
     writeFileSync(join(dir, 'README.md'), '# Heading\n\nbody\n');
     git(dir, 'add', '.');

@@ -93,7 +93,7 @@ Standing up a tier is verified entirely by **static analysis of the `.bs` source
 
 ## Step 8: Record the decision and close out
 
-Standing up a tier is decision-shaped (it closes off cramming the new shape into the existing tier). Offer to invoke `/log decision` with a slug like `apiversion-v<N>-split` capturing why `X` warranted a new tier. Summarize the surfaces touched and flag any `TODO(V<N>)` stubs left for when the spec finalizes. If this came from a `/server-upgrade <rc>` triage, remind the user to re-run that against the FINAL stable when it ships (the RC can still change).
+Standing up a tier is decision-shaped (it closes off cramming the new shape into the existing tier). Offer to record it as a decision with a slug like `apiversion-v<N>-split`, capturing why `X` warranted a new tier. Summarize the surfaces touched and flag any `TODO(V<N>)` stubs left for when the spec finalizes. If this came from a `/server-upgrade <rc>` triage, remind the user to re-run that against the FINAL stable when it ships (the RC can still change).
 
 ## When not to use
 

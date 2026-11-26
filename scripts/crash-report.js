@@ -28,7 +28,7 @@
 //                issue's cited version, posts a single enrichment comment.
 //   resolve-issue reverse-lookup: given a backtrace, find every [crash] issue
 //                whose title carries the innermost frame's basename:line.
-//                JSON output; it powered the deprecated /crash-backtrace's
+//                JSON output; it powered the removed crash-backtrace skill's
 //                auto-resolve flow.
 //
 // Usage: `node scripts/crash-report.js --help` lists every subcommand and flag.
@@ -1764,10 +1764,10 @@ Aggregate telemetry — specific device models are not provided by Roku in the a
 N/A — telemetry-sourced.
 
 ### Logs (optional)
-Not available in the aggregate report. To gather logs, reproduce in dev mode and run \`/runtime-triage\` against a captured BrightScript console log.
+Not available in the aggregate report. To gather logs, reproduce in dev mode and capture the BrightScript console log.
 
 ### Additional context (optional)
-- Run \`/issue-triage <this-issue-number>\` for a deeper investigation.
+- Find the root cause before fixing: this report says where it crashed, not why.
 - Filed by the \`/crash-report\` skill — see \`docs/dev/crash-reports.md\`.
 `;
 }
