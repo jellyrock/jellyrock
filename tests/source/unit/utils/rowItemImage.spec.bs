@@ -551,6 +551,33 @@ namespace tests
       m.assertTrue(url.inStr("Primary") > -1)
     end function
 
+    @it("uses a photo album's wide art when it has some")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "album1"
+      item.type = "PhotoAlbum"
+      item.primaryImageTag = "collagetag"
+      item.thumbImageTag = "thumbtag"
+
+      url = getRowItemImageUrl(item, 468, 264, invalid)
+
+      m.assertTrue(url.inStr("thumbtag") > -1)
+      m.assertTrue(url.inStr("Thumb") > -1)
+    end function
+
+    @it("falls back to a photo album's Primary, the one image the server makes for it")
+    function _()
+      item = CreateObject("roSGNode", "JellyfinBaseItem")
+      item.id = "album1"
+      item.type = "PhotoAlbum"
+      item.primaryImageTag = "collagetag"
+
+      url = getRowItemImageUrl(item, 468, 264, invalid)
+
+      m.assertTrue(url.inStr("collagetag") > -1)
+      m.assertTrue(url.inStr("Primary") > -1)
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("getRowItemImageUrl() - episodes in a portrait slot")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
