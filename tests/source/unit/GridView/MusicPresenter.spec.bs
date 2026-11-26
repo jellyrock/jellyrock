@@ -68,7 +68,7 @@ namespace tests
     end function
 
     @it("falls back to the artist sorts when the tab is unknown")
-    ' A host with no tab yet, or none at all: the read gives "" rather than faulting.
+    ' A host with no tab yet, or a tab that is not a string: the read gives "" rather than faulting.
     function _()
       m.assertEqual(m.names(m.optionsOn("").sort), ["SortName", "DateCreated", "DatePlayed", "PremiereDate", "Random"])
       m.assertEqual(m.names(m.optionsOn(invalid).sort), ["SortName", "DateCreated", "DatePlayed", "PremiereDate", "Random"])

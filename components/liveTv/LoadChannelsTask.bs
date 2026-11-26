@@ -25,7 +25,8 @@ sub loadChannels()
 
   ' Dedicated endpoint: much faster, no unnecessary metadata (Chapters, Trickplay, Backdrop, etc.)
   ' OSD loads its own metadata via LoadVideoContentTask when a channel is selected.
-  ' It takes no name filter: a letter filter would have to ask /Items instead.
+  ' It takes no name filter, and /Items NameStartsWith misses channels too
+  ' (see live-tv-channels-letter-never-filters in docs/progress.md).
   params = {
     SortBy: m.top.sortField,
     SortOrder: sortOrder,
