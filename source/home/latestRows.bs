@@ -13,10 +13,13 @@ namespace latestRows
 
   ' The poster slot of a library's Recently Added row.
   '
+  ' A mixed library holds movies and shows, so it draws their posters, as its own grid
+  ' does (libraryGrid.shapeForLibrary).
+  '
   ' @param collectionType - the library's collection type, invalid or empty for a mixed library
   ' @return one of the rowSlotSize shapes
   function slotSizeFor(collectionType as dynamic) as object
-    if not isValidAndNotEmpty(collectionType) then return rowSlotSize.WIDE
+    if not isValidAndNotEmpty(collectionType) then return rowSlotSize.PORTRAIT
 
     libraryType = LCase(collectionType)
     if libraryType = "movies" or libraryType = "tvshows" then return rowSlotSize.PORTRAIT

@@ -136,10 +136,10 @@ namespace tests
     end function
 
     @it("draws a library wide exactly where Home's Latest row draws it wide")
-    ' A mixed library (no collection type) is left out: its grid is a portrait and its
-    ' Latest row is wide, until one has been seen on a device (issue 1439). So are the
-    ' Collections and Playlists libraries, which Home draws no Latest row for.
+    ' The Collections and Playlists libraries are left out: Home draws no Latest row for
+    ' them.
     @params("musicvideos")
+    @params("")
     @params("homevideos")
     @params("movies")
     @params("tvshows")

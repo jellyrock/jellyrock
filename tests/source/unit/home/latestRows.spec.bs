@@ -386,14 +386,15 @@ namespace tests
     @params("TvShows", [234, 351])
     @params("music", [234, 234])
     @params("homevideos", [468, 264])
-    @params("", [468, 264])
+    @params("musicvideos", [468, 264])
+    @params("", [234, 351])
     function _(collectionType, expected)
       m.assertEqual(latestRows.slotSizeFor(collectionType), expected)
     end function
 
-    @it("returns the wide slot for a library with no type")
+    @it("returns the portrait slot for a mixed library, which has no type")
     function _()
-      m.assertEqual(latestRows.slotSizeFor(invalid), rowSlotSize.WIDE)
+      m.assertEqual(latestRows.slotSizeFor(invalid), rowSlotSize.PORTRAIT)
     end function
 
   end class
