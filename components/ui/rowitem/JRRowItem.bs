@@ -555,6 +555,15 @@ sub setupTextureObserver()
   if m.contentRoot.hasField("focusedColumns")
     m.contentRoot.observeField("focusedColumns", "onFocusedColumnsChanged")
   end if
+  ' The watch badge setting changed while this cell kept its item (watchBadge.sync)
+  if m.contentRoot.hasField("watchBadgeHidden")
+    m.contentRoot.observeField("watchBadgeHidden", "onWatchBadgeHiddenChanged")
+  end if
+end sub
+
+' The poster draws its badge again from the data it holds.
+sub onWatchBadgeHiddenChanged()
+  m.poster.callFunc("redrawWatchBadge")
 end sub
 
 ' Returns this cell's row index by finding its row node in the content root's children.

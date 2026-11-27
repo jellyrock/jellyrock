@@ -17,7 +17,7 @@ import { RTA_CONFIG } from '../config.js';
 import { authenticate, getHero, getLibraries, libraryIdFor } from '../lib/jellyfin.js';
 import { seedHome, seedLibraryLanding, assertSeedTookEffect } from '../lib/seed.js';
 import { hardRelaunch } from '../lib/driver.js';
-import { navLibraryGrid, openSettingsFromGear, waitGridLoaded } from '../lib/nav.js';
+import { navLibraryGrid, navTvLibrary, openSettingsFromGear, waitGridLoaded } from '../lib/nav.js';
 import {
   enterOverhangRow,
   getActiveVal,
@@ -37,11 +37,13 @@ const atSettingsIcon = (f) => f?.node?.id === 'settingsIcon';
 let session;
 let libraries;
 let moviesId;
+let tvId;
 
 beforeAll(async () => {
   session = await authenticate(RTA_CONFIG.server);
   libraries = await getLibraries(session);
   moviesId = libraryIdFor(libraries, 'movies');
+  tvId = libraryIdFor(libraries, 'tvshows');
 });
 
 /** Write a user setting the way Settings saves it: a field of the settings node. */
@@ -97,6 +99,60 @@ it('the item count turned off in Settings leaves the library strip at once, with
     (await getActiveVals(['#headerStrip.#count.text']))[0],
     'the count is back for the item in focus',
   ).toMatch(/^1 of \d+$/);
+});
+
+it('the watch badge setting changed in Settings redraws the badges of a library grid left in place', async (testCtx) => {
+  if (!tvId) testCtx.skip('server has no "tvshows" library');
+  const expectedServer = await seedHome(session, LOCALE);
+  const landing = await seedLibraryLanding(session, tvId, 'shows', { layout: 'grid' });
+  await hardRelaunch();
+  await assertSeedTookEffect(expectedServer, 'settings reach the TV library', { landing });
+  await waitHome();
+  await navTvLibrary({ libraries });
+  await waitGridLoaded('the TV grid');
+  await waitFocusInside('#itemGrid', { label: 'focus on the TV grid', timeout: 20000 });
+
+  // RTA resolves `#itemGrid.<i>` to the cell bound to content item i
+  const CELLS = 6;
+  const badgePaths = Array.from(
+    { length: CELLS },
+    (_, i) => `#itemGrid.${i}.#itemPoster.#watchBadgeBackground.visible`,
+  );
+  const shown = await getActiveVals(badgePaths);
+  const cell = shown.findIndex((v) => v === true);
+  if (cell < 0) testCtx.skip(`none of the first ${CELLS} shows has a watch badge`);
+  const badgePath = badgePaths[cell];
+
+  // A load gives the grid a new content node, so a mark on this one says whether it was kept
+  await odc.setValue({ keyPath: '#itemGrid.content.title', value: 'rta-kept' });
+
+  await enterOverhangRow('the TV grid');
+  await walkOverhangRowTo('settingsIcon', { label: 'the gear on the TV grid' });
+  await openSettingsFromGear({ pageMenu: true });
+  await writeSetting('uiTvShowsDisableUnwatchedCount', true);
+  await backToGear('the gear again, over the TV library');
+
+  const [hidden, mark, loadState] = await getActiveVals([
+    badgePath,
+    '#itemGrid.content.title',
+    'loadState',
+  ]);
+  expect(hidden, 'the badge is gone from the cell left on screen').toBe(false);
+  expect(mark, 'the same items, not a reload').toBe('rta-kept');
+  expect(loadState, 'no load started').toBe('loaded');
+
+  // And back off, the same way
+  await openSettingsFromGear({ pageMenu: true });
+  await writeSetting('uiTvShowsDisableUnwatchedCount', false);
+  await backToGear('the gear again, over the TV library, a second time');
+  const [back, markAgain, loadStateAgain] = await getActiveVals([
+    badgePath,
+    '#itemGrid.content.title',
+    'loadState',
+  ]);
+  expect(back, 'the badge is back').toBe(true);
+  expect(markAgain, 'still the same items').toBe('rta-kept');
+  expect(loadStateAgain, 'still no load').toBe('loaded');
 });
 
 it('a row layout changed in Settings lays Home out again when Back returns there', async () => {

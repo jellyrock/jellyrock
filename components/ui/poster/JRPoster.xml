@@ -45,5 +45,6 @@
     <field id="playedPercentage" type="float" value="0" />
     <field id="mediaSourceCount" type="integer" value="0" />
     <function name="resetBadge" />
+    <function name="redrawWatchBadge" />
   </interface>
 </component>

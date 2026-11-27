@@ -69,6 +69,71 @@ namespace tests
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("redrawWatchBadge")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("hides the count of a poster bound before the setting turned on")
+    function _()
+      m.poster.unplayedCount = 3
+      m.assertTrue(m.badge.visible, "precondition: the count shows")
+
+      m.global.user.settings.uiTvShowsDisableUnwatchedCount = true
+      m.poster.callFunc("redrawWatchBadge")
+
+      m.assertFalse(m.badge.visible, "no badge")
+      m.assertFalse(m.count.visible, "no count")
+      m.assertFalse(m.checkmark.visible, "no checkmark")
+    end function
+
+    @it("shows the count of a poster bound while the setting was on, once it turns off")
+    function _()
+      m.global.user.settings.uiTvShowsDisableUnwatchedCount = true
+      m.poster.unplayedCount = 3
+      m.assertFalse(m.badge.visible, "precondition: no badge while the setting is on")
+
+      m.global.user.settings.uiTvShowsDisableUnwatchedCount = false
+      m.poster.callFunc("redrawWatchBadge")
+
+      m.assertTrue(m.badge.visible, "badge shown")
+      m.assertTrue(m.count.visible, "count shown")
+      m.assertEqual(m.count.text, "3")
+      m.assertFalse(m.checkmark.visible, "no checkmark")
+    end function
+
+    @it("shows the checkmark of a watched poster again")
+    function _()
+      m.global.user.settings.uiTvShowsDisableUnwatchedCount = true
+      m.poster.isWatched = true
+      m.assertFalse(m.badge.visible, "precondition: no badge while the setting is on")
+
+      m.global.user.settings.uiTvShowsDisableUnwatchedCount = false
+      m.poster.callFunc("redrawWatchBadge")
+
+      m.assertTrue(m.badge.visible, "badge shown")
+      m.assertTrue(m.checkmark.visible, "checkmark shown")
+      m.assertFalse(m.count.visible, "no count")
+    end function
+
+    @it("shows nothing for a poster with no badge data")
+    function _()
+      m.poster.callFunc("redrawWatchBadge")
+
+      m.assertFalse(m.badge.visible, "no badge")
+      m.assertFalse(m.checkmark.visible, "no checkmark for a count of 0")
+      m.assertFalse(m.count.visible, "no count")
+    end function
+
+    @it("draws the badge twice in a row without changing it")
+    function _()
+      m.poster.unplayedCount = 3
+      m.poster.callFunc("redrawWatchBadge")
+      m.poster.callFunc("redrawWatchBadge")
+
+      m.assertTrue(m.badge.visible, "badge shown")
+      m.assertEqual(m.count.text, "3")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("resetBadge")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 

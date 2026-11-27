@@ -143,6 +143,8 @@
     <field id="isAlphaActive" type="boolean" value="false" />
     <!-- Whether cells show their title under the poster: GridItem reads it on every bind -->
     <field id="showItemTitles" type="boolean" value="true" />
+    <!-- The Disable Unwatched Episode Count setting, which every cell observes to redraw its badge (watchBadge.bs) -->
+    <field id="watchBadgeHidden" type="boolean" value="false" />
     <field id="currentView" type="string" value="" />
     <!--
       Load lifecycle of this view's content, for tests/tooling to observe atomically:

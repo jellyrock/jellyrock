@@ -1,4 +1,5 @@
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/watchBadge.bs"
 
 ' VideoProgressBar's own height: the strip the bar occupies along the poster's bottom edge.
 const PROGRESS_BAR_STRIP = 9
@@ -34,27 +35,65 @@ sub init()
   m.top.observeField("mediaSourceCount", "onMediaSourceCountChanged")
   ' Observed whatever the setting: the handlers read it when they run, so a change applies to
   ' every poster drawn after it (a cell resets its badge and sets these again on each bind).
+  ' A cell that stays on its item through a change calls redrawWatchBadge() instead.
   m.top.observeField("unplayedCount", "onUnplayedCountChanged")
   m.top.observeField("isWatched", "onIsWatchedChanged")
 end sub
 
 ' The user's Disable Unwatched Count setting: the watched badge stays hidden.
 function isWatchBadgeDisabled() as boolean
-  return m.global.user.settings.uiTvShowsDisableUnwatchedCount = true
+  return watchBadge.isHidden()
 end function
+
+' Interface function: draw the watch badge again from this poster's own isWatched and
+' unplayedCount, for the setting as it is now. A cell that stays on its item calls it when
+' the setting changed under it. A watched poster with no unplayed count draws the checkmark,
+' an unwatched one with a count above 0 draws the count, and anything else draws nothing.
+sub redrawWatchBadge()
+  hideWatchBadge()
+  if isWatchBadgeDisabled() then return
+
+  if m.top.isWatched
+    if m.top.unplayedCount > 0 then return
+    showCheckmark()
+  else if m.top.unplayedCount > 0
+    showUnplayedCount()
+  else
+    return
+  end if
+
+  updateBadgeSize()
+end sub
+
+' Hides the watch badge and its contents. resetBadge() does the rest of a recycled cell's
+' clearing.
+sub hideWatchBadge()
+  m.watchBadgeBackground.visible = false
+  m.checkmark.visible = false
+  m.unplayedVideosCount.visible = false
+  m.unplayedVideosCount.text = ""
+end sub
+
+sub showCheckmark()
+  m.unplayedVideosCount.visible = false
+  m.unplayedVideosCount.text = ""
+  m.checkmark.visible = true
+end sub
+
+sub showUnplayedCount()
+  m.checkmark.visible = false
+  m.unplayedVideosCount.text = m.top.unplayedCount.ToStr()
+  m.unplayedVideosCount.visible = true
+end sub
 
 sub onUnplayedCountChanged()
   if m.isResettingBadge or isWatchBadgeDisabled() then return
   if m.top.isWatched then return
 
   if m.top.unplayedCount > 0
-    m.checkmark.visible = false
-    m.unplayedVideosCount.text = m.top.unplayedCount.ToStr()
-    m.unplayedVideosCount.visible = true
+    showUnplayedCount()
   else
-    m.unplayedVideosCount.visible = false
-    m.unplayedVideosCount.text = ""
-    m.checkmark.visible = true
+    showCheckmark()
   end if
 
   updateBadgeSize()
@@ -65,9 +104,7 @@ sub onIsWatchedChanged()
   if m.top.unplayedCount > 0 then return
 
   if m.top.isWatched
-    m.unplayedVideosCount.visible = false
-    m.unplayedVideosCount.text = ""
-    m.checkmark.visible = true
+    showCheckmark()
   else
     m.checkmark.visible = false
   end if
