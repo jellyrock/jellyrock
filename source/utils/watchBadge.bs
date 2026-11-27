@@ -1,0 +1,39 @@
+import "pkg:/source/utils/misc.bs"
+
+' Tells a screen's live cells to redraw their watch badge when the Disable Unwatched Episode
+' Count setting (`uiTvShowsDisableUnwatchedCount`) really changed.
+'
+' A poster decides its badge when a cell binds, so a cell already on screen keeps the old
+' badge when Settings changes the setting over it. The owner of those cells (a library grid,
+' Home's rows) holds a node with a `watchBadgeHidden` field. It writes the current setting to
+' the field when the setting is written, and each cell observes the field. The field does not
+' raise `alwaysNotify`, so SceneGraph calls the observers only when the value changed: the
+' "compare with what you last used" that `onSettingsChanged` asks for.
+namespace watchBadge
+
+  ' True when the user has turned the watch badge off.
+  function isHidden() as boolean
+    return m.global.user.settings.uiTvShowsDisableUnwatchedCount = true
+  end function
+
+  ' Give a node the `watchBadgeHidden` field, set to the current setting. Call it before any
+  ' cell can bind, so the first write is not taken for a change.
+  ' @param node - the node whose cells follow the setting
+  sub attach(node as object)
+    if not isValid(node) then return
+    if not node.hasField("watchBadgeHidden")
+      node.addField("watchBadgeHidden", "boolean", false)
+    end if
+    node.watchBadgeHidden = isHidden()
+  end sub
+
+  ' Write the current setting to the node's field, which wakes its cells when it changed.
+  ' Does nothing for a node without the field.
+  ' @param node - a node that `attach` or its component interface gave the field
+  sub sync(node as object)
+    if not isValid(node) then return
+    if not node.hasField("watchBadgeHidden") then return
+    node.watchBadgeHidden = isHidden()
+  end sub
+
+end namespace
