@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- (syncplay) Move the resume lag onto a shared learned-value helper ([#1463](https://github.com/jellyrock/jellyrock/pull/1463)) by [@cewert](https://github.com/cewert)
 - (library) Remove two pieces of dead library code ([#1451](https://github.com/jellyrock/jellyrock/pull/1451)) by [@cewert](https://github.com/cewert)
 - (overhang) Roomier tab focus box; a long tab strip can scroll ([#1368](https://github.com/jellyrock/jellyrock/pull/1368)) by [@cewert](https://github.com/cewert)
 - (syncplay) Stay in step with a new engine; rejoin a lost group ([#1355](https://github.com/jellyrock/jellyrock/pull/1355)) by [@cewert](https://github.com/cewert)
