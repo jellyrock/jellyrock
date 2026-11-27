@@ -8,7 +8,7 @@ related-files:
   - source/utils/memoryMonitor.bs
   - components/JRScene.xml
   - components/JRScene.bs
-last-reviewed: 2026-11-12
+last-reviewed: 2026-11-27
 ---
 
 # Bootstrap and lifecycle
@@ -219,7 +219,7 @@ Both carry a `contentId` and may carry a `mediaType` and an `itemName`. `content
 `resolveDeepLink()` fetches the item before navigating, because the id came from outside. The remote stays live during the fetch, and Back cancels it.
 
 - **Not found:** a toast, and nothing navigates.
-- **A library or folder:** its grid opens directly.
+- **A library or folder:** its grid opens directly, on the tab the link names when the library offers it (`tab=<id>`, carried in the route's context).
 - **Anything else:** the details route opens with `?deeplink=<action>`. `ItemDetails` then shows the item for `open`, or starts the action (`play`, `shuffle`, `trailer`, `instantmix`).
 
 Back from the player then goes to details, then Home.

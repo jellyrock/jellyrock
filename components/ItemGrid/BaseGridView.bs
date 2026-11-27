@@ -39,6 +39,7 @@ import "pkg:/source/utils/languageFilters.bs"
 import "pkg:/source/utils/misc.bs"
 import "pkg:/source/utils/pageSettings.bs"
 import "pkg:/source/utils/paging.bs"
+import "pkg:/source/utils/screenReopen.bs"
 import "pkg:/source/utils/sessionFilters.bs"
 import "pkg:/source/utils/skeleton.bs"
 import "pkg:/source/utils/tasks.bs"
@@ -575,12 +576,14 @@ end sub
 ' Once per screen. After this the tab is screen state, and only a tab press changes it
 ' (onTabChanged): every later load goes through loadView, which resolves nothing.
 '
-' The tab opened on is the Roku's choice, else the web client's pick, else the library
-' type's default (resolveDefaultTab). A choice no longer offered falls through and is
-' not written back: it is valid again the moment the library offers that tab.
+' The tab opened on is the one the route names (a deep link's `tab`, or the tab a reload
+' returns to), else the Roku's choice, else the web client's pick, else the library
+' type's default (resolveDefaultTab). A choice not offered falls through. A saved one is
+' not written back: it is valid again the moment the library offers that tab. The
+' route's tab is for this opening and is never saved.
 sub openLibrary()
   m.offeredViews = offeredViews()
-  showTab(resolveDefaultTab(savedDefaultTab()).tab)
+  showTab(resolveDefaultTab(savedDefaultTab(), screenReopen.tabOf(m.top.route)).tab)
 
   ' The selection first, then the tabs: the scene projects both when the tabs change
   ' (JRScene.projectOverhangTabs). m.tab is already set, so onTabChanged sees nothing to
@@ -619,9 +622,36 @@ sub showTab(tabId as string)
   m.layout = libraryLayout.resolve(savedLayout, defaultLayout)
 end sub
 
-' JRScreen's selectedTabId: a tab was pressed in the overhang. The field also fires for
-' this screen's own write in openLibrary, for the scene's projection echoing back and for
-' OK on the tab already selected, none of which is a change.
+' The router: a navigation to this library's own path arrived while it is on screen, so
+' the view is reused and m.top.route is the new route. A deep link to the library on show
+' is the one sender. A tab it names is switched to as a press would (onTabChanged), and
+' the scene draws the new selection when the navigation settles
+' (JRScene.showSelectionOfActiveScreen). A link with no tab, or one this library does not
+' offer, changes nothing.
+function onRouteUpdate(_event = {} as object) as dynamic
+  tabId = screenReopen.tabOf(m.top.route)
+  if tabId <> m.tab and gridQuery.offers(m.offeredViews, tabId)
+    ' A Sort or Filter list open for the old tab ends first, so what it holds is applied
+    ' to the tab it was opened on
+    endOwnedDialog()
+    m.top.selectedTabId = tabId
+  end if
+  return promises.resolve(invalid)
+end function
+
+' JRScreen hook: the tab on show, so the reload after a theme or language change comes
+' back to it (openLibrary reads it). A screen with one view has none.
+function reopenContext() as object
+  if m.tab = "" then return {}
+  context = {}
+  context[screenReopen.TAB] = m.tab
+  return context
+end function
+
+' JRScreen's selectedTabId: a tab was pressed in the overhang, or a link named one
+' (onRouteUpdate). The field also fires for this screen's own write in openLibrary, for
+' the scene's projection echoing back and for OK on the tab already selected, none of
+' which is a change.
 sub onTabChanged()
   tabId = m.top.selectedTabId
   if tabId = m.tab or not gridQuery.offers(m.offeredViews, tabId) then return
@@ -805,8 +835,10 @@ end function
 
 ' Which tab the library opens on with `clientOverride` as the Roku's choice, and where it
 ' came from: gridQuery.resolveView's { tab, source }. The web's pick is server data, read
-' at sign-in into the user config (serverLibraryLanding), never the registry.
-function resolveDefaultTab(clientOverride as dynamic) as object
+' at sign-in into the user config (serverLibraryLanding), never the registry. `linkTab` is
+' the tab one opening was asked for, which only openLibrary passes: the Default tab entry
+' describes what the library opens on by itself.
+function resolveDefaultTab(clientOverride as dynamic, linkTab = "" as string) as object
   collectionType = getCollectionType()
   serverTab = ""
   landings = m.global.user.config.serverLibraryLanding
@@ -814,7 +846,7 @@ function resolveDefaultTab(clientOverride as dynamic) as object
     key = libraryTab.serverLandingKey(m.top.parentItem.Id, collectionType)
     serverTab = libraryTab.fromServerTab(landings[key], collectionType)
   end if
-  return gridQuery.resolveView(clientOverride, serverTab, m.offeredViews, getDefaultView())
+  return gridQuery.resolveView(clientOverride, serverTab, m.offeredViews, getDefaultView(), linkTab)
 end function
 
 sub configureBackdrop()

@@ -37,6 +37,9 @@
     <function name="pageSettingsEntries" />
     <!-- The viewer picked a new option (its id) for one of those settings: save and apply it. -->
     <function name="onPageSettingChanged" />
+    <!-- What a new instance of this screen needs to come back as this one is: an AA merged
+         over its route's context when JRScene reopens it (screenReopen.bs). Empty by default. -->
+    <function name="reopenContext" />
     <!-- Back from the overhang row: leave this screen. True when it went back (leaveScreen). -->
     <function name="leaveScreen" />
   </interface>

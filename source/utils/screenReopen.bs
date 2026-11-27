@@ -1,0 +1,46 @@
+' What a screen needs to come back as it was, carried in its route's context.
+'
+' A route's context is how a screen is told what to open with. Two callers add to it: a deep
+' link that names a library tab (JRScene.onDeepLinkResolved), and the reload after a theme or
+' language change, which opens a new instance of the screen Settings was opened from
+' (JRScene.reloadRoutedHome). The reload asks the screen what to add (JRScreen.reopenContext),
+' so a link and a reload reach the screen through the same key.
+'
+' Pure: no node and no m. The keys in use are constants here, so a screen and the scene
+' cannot disagree on a spelling.
+namespace screenReopen
+
+  ' The tab a screen opens on, one of its own tab ids.
+  const TAB = "tab"
+
+  ' tabOf: the tab a route's context names, "" when it names none.
+  '
+  ' Whether the screen offers that tab is the screen's to decide: a link's value is the
+  ' sender's, and a library that lacks the tab opens as it would without it.
+  '
+  ' @param route - a view's `route` (the router's node), a record shaped like one, or Invalid
+  function tabOf(route as dynamic) as string
+    if type(route) <> "roSGNode" and type(route) <> "roAssociativeArray" then return ""
+    context = route.context
+    if type(context) <> "roAssociativeArray" then return ""
+    tabId = context[screenReopen.TAB]
+    if type(tabId) <> "roString" and type(tabId) <> "String" then return ""
+    return tabId.trim()
+  end function
+
+  ' contextFor: the context to reopen a screen with: its route's own, with the screen's
+  ' answer over it.
+  '
+  ' The screen's answer wins a shared key: a library a link opened on Genres and the
+  ' viewer then moved to Studios comes back on Studios. Neither input is changed.
+  '
+  ' @param routeContext - the `context` of the screen's route, or Invalid
+  ' @param answer - what the screen's reopenContext() returned, or Invalid
+  function contextFor(routeContext as dynamic, answer as dynamic) as object
+    context = {}
+    if type(routeContext) = "roAssociativeArray" then context.append(routeContext)
+    if type(answer) = "roAssociativeArray" then context.append(answer)
+    return context
+  end function
+
+end namespace
