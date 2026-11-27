@@ -1,0 +1,44 @@
+' A value the engine learns from a device as it runs: the last few samples that fall inside a
+' band, summarized by their median. A sample outside the band is dropped and counted, so a
+' device that learns nothing says why. What a learner's value is used for, and any rule about
+' which samples to offer, stays with the code that owns it (syncPlayPlayer.learnResumeLag).
+namespace syncPlayLearned
+
+  ' A learner that keeps the last `size` samples from minMs to maxMs, both included.
+  function newLearner(size as integer, minMs as longinteger, maxMs as longinteger) as object
+    return { size: size, minMs: minMs, maxMs: maxMs, samples: [], kept: 0, dropped: 0 }
+  end function
+
+  ' Offers a sample, in ms. A sample inside the band is kept, the oldest giving way past
+  ' `size`; one outside it is counted as dropped. Returns whether it was kept.
+  function offer(learner as object, sampleMs as longinteger) as boolean
+    if sampleMs < syncPlayTime.asLong(learner.minMs) or sampleMs > syncPlayTime.asLong(learner.maxMs)
+      learner.dropped++
+      return false
+    end if
+    learner.samples.push(sampleMs)
+    if learner.samples.count() > learner.size then learner.samples.shift()
+    learner.kept++
+    return true
+  end function
+
+  ' Takes back the newest sample, when a later reading of the same event replaces it.
+  sub withdrawLast(learner as object)
+    if learner.samples.count() = 0 then return
+    learner.samples.pop()
+    learner.kept--
+  end sub
+
+  ' The median of a list of ms values, or 0 for none.
+  function medianOf(samples as dynamic) as longinteger
+    if not isValid(samples) or samples.count() = 0 then return 0&
+    sorted = []
+    sorted.append(samples)
+    sorted.sort()
+    mid = sorted.count() \ 2
+    median& = syncPlayTime.asLong(sorted[mid])
+    if sorted.count() mod 2 = 0 then median& = (syncPlayTime.asLong(sorted[mid - 1]) + median&) \ 2
+    return median&
+  end function
+
+end namespace

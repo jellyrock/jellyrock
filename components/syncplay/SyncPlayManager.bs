@@ -7,6 +7,7 @@ import "pkg:/source/logging/Logger.bs"
 import "pkg:/source/syncplay/syncPlayConverge.bs"
 import "pkg:/source/syncplay/syncPlayGroup.bs"
 import "pkg:/source/syncplay/syncPlayInbox.bs"
+import "pkg:/source/syncplay/syncPlayLearned.bs"
 import "pkg:/source/syncplay/syncPlayMessage.bs"
 import "pkg:/source/syncplay/syncPlayOffset.bs"
 import "pkg:/source/syncplay/syncPlayPlayback.bs"
@@ -1029,7 +1030,12 @@ sub playerFact(evt as object)
     m.pauseLandedMs = nowMs& - syncPlayTime.asLong(player.pauseWrittenAtMs)
     m.log.info("pause landed", "afterMs", m.pauseLandedMs.toStr(), "owner", player.pauseOwner)
   end if
+  droppedBefore = resumeLagCounts().dropped
   syncPlayConverge.playerFact(m.comparison, evt, m.loadStartTicks, nowMs&)
+  if resumeLagCounts().dropped > droppedBefore
+    ' A first reading's drop can be followed by a second reading that is kept.
+    m.log.warn("resume lag sample dropped, outside the band", "sampleMs", syncPlayTime.asLong(player.resumeLagLastSampleMs).toStr(), "kind", player.resumeLagLastKind, "reading", player.resumeReadings.toStr())
+  end if
   #if ENABLE_RTA
     if evt.kind = "localSeek" then applySeekBudgetHook(player)
   #end if
@@ -1051,6 +1057,12 @@ end sub
 ' what each resume was written against. Invalid with no sample yet.
 function resumeLagForSpecs(field as string) as dynamic
   return m.comparison.player[field]
+end function
+
+' How many resume-lag samples the stream has kept and dropped, both kinds of stop together.
+function resumeLagCounts() as object
+  lag = m.comparison.player.resumeLag
+  return { kept: lag.landing.kept + lag.steady.kept, dropped: lag.landing.dropped + lag.steady.dropped }
 end function
 
 ' The group model takes a group update.
@@ -1161,6 +1173,7 @@ end sub
 
 sub publish()
   m.publishedPhase = trackerPhase()
+  resumeLag = resumeLagCounts()
   m.top.setFields({
     inGroup: m.state.inGroup,
     following: isFollowing(),
@@ -1195,6 +1208,8 @@ sub publish()
       resumeLagMs: resumeLagForSpecs("resumeLagMs"),
       resumeLagSampleMs: resumeLagForSpecs("resumeLagLastSampleMs"),
       resumeLagKind: resumeLagForSpecs("resumeLagLastKind"),
+      resumeLagKept: resumeLag.kept,
+      resumeLagDropped: resumeLag.dropped,
       repeatMode: m.state.repeatMode,
       shuffleMode: m.state.shuffleMode
     }

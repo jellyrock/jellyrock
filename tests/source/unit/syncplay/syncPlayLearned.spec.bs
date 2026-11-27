@@ -1,0 +1,75 @@
+import "pkg:/source/syncplay/syncPlayLearned.bs"
+import "pkg:/source/syncplay/syncPlayTime.bs"
+
+namespace tests
+
+  @suite("syncPlayLearned: a value learned from a device")
+  class SyncPlayLearnedTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("a learner")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("a new learner has no samples and counts none")
+    function _()
+      learner = syncPlayLearned.newLearner(5, -500&, 150&)
+      m.assertEqual(learner.samples.count(), 0)
+      m.assertEqual(learner.kept, 0)
+      m.assertEqual(learner.dropped, 0)
+    end function
+
+    @it("a sample on either edge of the band is kept, one past it is dropped and counted")
+    function _()
+      learner = syncPlayLearned.newLearner(5, -500&, 150&)
+      m.assertTrue(syncPlayLearned.offer(learner, -500&))
+      m.assertTrue(syncPlayLearned.offer(learner, 150&))
+      m.assertFalse(syncPlayLearned.offer(learner, -501&))
+      m.assertFalse(syncPlayLearned.offer(learner, 151&))
+      m.assertEqual(learner.kept, 2)
+      m.assertEqual(learner.dropped, 2)
+      m.assertEqual(learner.samples.count(), 2)
+      m.assertEqual(syncPlayTime.asLong(learner.samples[0]), -500&)
+      m.assertEqual(syncPlayTime.asLong(learner.samples[1]), 150&)
+    end function
+
+    @it("past its size the oldest sample gives way")
+    function _()
+      learner = syncPlayLearned.newLearner(3, -500&, 150&)
+      for each sampleMs in [1&, 2&, 3&, 4&]
+        syncPlayLearned.offer(learner, sampleMs)
+      end for
+      m.assertEqual(learner.samples.count(), 3)
+      m.assertEqual(syncPlayTime.asLong(learner.samples[0]), 2&)
+      m.assertEqual(syncPlayTime.asLong(learner.samples[1]), 3&)
+      m.assertEqual(syncPlayTime.asLong(learner.samples[2]), 4&)
+      m.assertEqual(learner.kept, 4)
+    end function
+
+    @it("withdrawing takes back the newest sample and its count, and does nothing with none")
+    function _()
+      learner = syncPlayLearned.newLearner(5, -500&, 150&)
+      syncPlayLearned.withdrawLast(learner)
+      m.assertEqual(learner.kept, 0)
+      syncPlayLearned.offer(learner, 10&)
+      syncPlayLearned.offer(learner, 20&)
+      syncPlayLearned.withdrawLast(learner)
+      m.assertEqual(learner.samples.count(), 1)
+      m.assertEqual(syncPlayTime.asLong(learner.samples[0]), 10&)
+      m.assertEqual(learner.kept, 1)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the median")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("the median of an odd count is the middle value, of an even count the mean of the two middle values")
+    function _()
+      m.assertEqual(syncPlayLearned.medianOf([30&, 10&, 20&]), 20&)
+      m.assertEqual(syncPlayLearned.medianOf([40&, 10&, 30&, 20&]), 25&)
+      m.assertEqual(syncPlayLearned.medianOf([]), 0&)
+      m.assertEqual(syncPlayLearned.medianOf(invalid), 0&)
+    end function
+
+  end class
+
+end namespace

@@ -7,6 +7,7 @@ related-files:
   - components/syncplay/TimeSyncTask.xml
   - source/syncplay/syncPlayConverge.bs
   - source/syncplay/syncPlayPlayer.bs
+  - source/syncplay/syncPlayLearned.bs
   - source/syncplay/syncPlayGroup.bs
   - source/syncplay/syncPlayPlayback.bs
   - source/syncplay/syncPlayOffset.bs
@@ -19,7 +20,7 @@ related-files:
   - source/syncplay/syncPlayHooks.bs
   - source/syncplay/syncPlayMenu.bs
   - tests/source/shared/syncPlaySim.bs
-last-reviewed: 2026-11-21
+last-reviewed: 2026-11-26
 ---
 
 # SyncPlay: staying in step with a group
@@ -166,6 +167,7 @@ A resume takes effect a little after it is written. The player model learns how 
 
 - The lag is kept per kind of stop, `landing` or `steady`, because a node stopped straight after a landing resumes differently.
 - The lag in use is a median of the last few samples (`lagInUse()`), so one late reading does not move it.
+- Each kind of stop has its own learner from `syncPlayLearned` (the ring, the band and the median). The learner counts a sample outside the band, and `SyncPlayManager` logs it ("resume lag sample dropped").
 - A sample can be below zero: the node ran on past the stop the model took. A lag below zero is used only when at least two samples are kept and all are below zero. A low-end Stick's node ran on at every resume measured, and on other devices one such sample is noise.
 - A new stream forgets what was learned (`syncPlayPlayer.mounted()`).
 

@@ -1097,6 +1097,17 @@ Both Live TV tabs are wanted with more sorts and filters (decided 2026-11-26 whi
 
 What the server allows: `/LiveTv/Channels` takes `sortBy`, `sortOrder`, `isFavorite`, `enableFavoriteSorting` and the content flags `isMovie`, `isSeries`, `isNews`, `isKids` and `isSports` (10.7.0, 10.11.9 and 12.2 specs), and no name filter, so a letter needs `/Items` (see `live-tv-channels-letter-never-filters`). A guide sort is passed through `m.channelQuery` in `schedule.bs`, and needs a decision on `LoadChannelsTask` moving each page's favorites to the top, which a chosen sort would contradict. Filter categories for Live TV belong with #1440's per-library choice; the guide's sort and that favorites rule are this entry.
 
+#### Gate the OSD speed setting (#1316) by device and audio path, from the SyncPlay speed measurements `[fid: osd-speed-setting-per-device-gate]` `[captured 2026-11-27]`
+
+Issue #1316 asks for a playback speed setting in the OSD. The SyncPlay speed spike measured what the Roku media player does with a rate (2026-11-26, Roku OS 16.0.4, local 12.4 server), and those numbers bear on the setting even though speed was ruled out as a SyncPlay correction tool:
+
+- Stereo AAC (direct play and HLS transcode) honors 0.75 to 1.25 on a Stick 4K and an Ultra, within 0.25%.
+- An Ultra passing AC3 or EAC3 5.1 through to the TV does not honor it: 0.95 and 1.05 played as 0.87 to 1.14, with sound up to 1.2 s off the picture.
+- A low-end Stick accepts the write and keeps playing at 1.000 on every stream tried.
+- Each rate change costs about 100 to 350 ms of playback on a direct-play stream.
+
+So the setting would need a per-device and per-audio-path gate (offer it only where the rate takes effect, or force a stereo transcode when it is chosen). Not checked: 4K HEVC, Stick 4K surround passthrough, a listening test. Decide whether to post these figures on the issue (the operator's call), then design the gate. Closes with the setting built with its gate, or the issue closed with the reason.
+
 #### Search results and the details-screen extras rows keep a stale watch badge after Disable Unwatched Episode Count changes `[fid: watch-badge-sync-search-extras]` `[captured 2026-11-27]`
 
 The fix for #1425 redraws the watch badge on cells already on screen when Disable Unwatched Episode Count (`uiTvShowsDisableUnwatchedCount`) changes, but only on library grids (`BaseGridView`) and Home's rows (`Home.onSettingsChanged`). Search results (`SearchRow`, on `SearchScreen`) and the extras rows on a details screen (`ExtrasRowList`, on `ItemDetails`) draw `BrowseRowItem` cells. Their content roots get the `watchBadgeHidden` field from `initTextureManager` (`watchBadge.attach`), and the cells observe it, but neither screen calls `watchBadge.sync`. So a cell there keeps its old badge after the setting changes in Settings, until it is bound again. Not measured on a device; reasoned from the code.
@@ -1410,9 +1421,9 @@ Not checked: files past 100 Mbps, the low-end Stick on a heavy file it can direc
 
 After some group Seeks a member plays a few tens of milliseconds behind the group and nothing corrects it, because a playing member is corrected only past `syncPlayPlayback.SKIP_TO_SYNC_MIN_MS` behind. Measured 2026-11-21 on an Ultra (Jellyfin 12.4.0 over HTTP, one film, eight group Seeks with about 29 s of play after each): after four of the eight the member sat 30 to 55 ms behind for the whole stretch, and across all readings the median was 20 ms behind. After a pause and resume the same device sat within about 12 ms. The engine released as v3.5.0 sat 85 to 117 ms behind after every one of the same Seeks, so this is not a regression.
 
-The measurement came from outside the app: a throwaway script joined the group as a silent member to hear the server's commands, and timed the steps of the device's ECP `query/media-player` position against the group's line, on the machine that runs the server. Each reading is good to about 25 ms. The app's own drift figure cannot show this, since it rests on the app's own clock estimate. The script was not kept in the repo.
+The measurement came from outside the app: a throwaway script joined the group as a silent member to hear the server's commands, and timed the steps of the device's ECP `query/media-player` position against the group's line, on the machine that runs the server. Each reading is good to about 25 ms. The app's own drift figure cannot show this, since it rests on the app's own clock estimate. Since PR #1416 that probe is a kept tool, `npm run syncplay:probe`.
 
-The likely place is the resume a landing ends with (the `landing` kind of resume lag in `syncPlayPlayer.learnResumeLag`), which is not confirmed. Not checked: other devices after a Seek, a transcode, a server over HTTPS, and whether a viewer notices an offset this size. Start by making the outside measurement a kept tool, then measure before changing anything. Closes with a tighter landing shown by that measurement, or a recorded no.
+The likely place is the resume a landing ends with (the `landing` kind of resume lag in `syncPlayPlayer.learnResumeLag`), which is not confirmed. Not checked: other devices after a Seek, a transcode, a server over HTTPS, and whether a viewer notices an offset this size. Measure with the probe before changing anything. Closes with a tighter landing shown by that measurement, or a recorded no.
 
 #### Write a library's default tab back to the server's display preferences `[fid: library-default-tab-write-back]` `[captured 2026-11-13]`
 
@@ -1459,6 +1470,12 @@ Why not now: the art value is decided before the image is resolved, and this cas
 Not checked: a rendered Home row with Blur Unwatched Episodes on and Episode Images Next Up set to show art. The fix above is covered by `rowItemImage.spec.bs` only.
 
 To close: a cell showing a series image for an episode is never blurred, whichever path picked the image, with a case in `rowItemImage.spec.bs`, and one look at a Home row on a device with the setting on.
+
+#### SyncPlay resume lag: a second reading outside the band throws away the first reading's good sample `[fid: syncplay-resume-lag-second-reading-out-of-band]` `[captured 2026-11-27]`
+
+When a resume's second reading says the resume came earlier but falls outside the band, `syncPlayPlayer.learnResumeLag()` takes back the first reading's sample, which was inside the band, and keeps nothing, so that resume teaches the lag nothing. PR #1463 (the move onto `syncPlayLearned`) kept this behavior unchanged on purpose. On the low-end Stick the samples ran from -428 to -340 ms (2026-11-27), the lowest 72 ms inside the -500 ms edge (`RESUME_LAG_MIN_MS`), so a corrected second reading past that edge is plausible there. `resumeLagDropped` in the soak record, and the "reading" value in the dropped-sample warning, now show how often it happens.
+
+Decide whether the first reading's sample should stand when the second, earlier-saying reading is outside the band. Closes with a rule change shown by the trace pins and a low-end Stick run, or a recorded no.
 
 ### api
 
@@ -2043,6 +2060,18 @@ To close: decide how the simulation suite and coverage coexist (a tag that `bsco
 A full `npm run test:rta` on 2026-11-24 failed every test it reached (183 failed, 0 passed) for an hour, each waiting out its 10 to 20 second timeout. It started in the minute a Rooibos coverage run ended on the same device, and a spec from it passed alone right after. The cause is not established. `scripts/rta-run.js` has no guard for this shape, so the run costs its full length and the ledger gets an hour of noise.
 
 To close: stop the run, with an outcome that is not `failed`, when the first N tests all fail (pick N from the ledger: a healthy run has never opened with that many), and say what the device answered at that point. Add a script test for the guard. Also worth checking then: whether a Rooibos test build left resident makes the next RTA deploy start in a bad state. Not now: it needs a threshold chosen from ledger data and a test. Findings are on issue #945.
+
+#### The SyncPlay time offset pick case fails 1 to 2 runs in 20 on main after a slow seek `[fid: syncplay-time-offset-pick-case-flaky]` `[captured 2026-11-27]`
+
+The RTA case "a time offset picked in the gear corrects the drift at once, without an `Unpause`" in `tests/rta/specs/syncplay-controls.spec.js` fails now and then on `main`. Measured 2026-11-27 on a Stick 4K against the local 12.4 server: 1 of 20 runs on `main` (`f76625c2`), alternating run for run with a build of the shared learned-value helper, which passed 20 of 20; an earlier straight series of that build failed it 2 of 20. Every failure came after the 200 ms pick: twice at the step "the hold brought the node back in step" (the drift last read 55 and 68 ms, against the 50 ms pick bar, `PICK_BAR_MS`), once when the catch-up seek fell back and reloaded the stream, which sent the `Unpause` the case forbids. Both builds' failing runs had slow seeks right before (learned leads of 2,054 and 2,334 ms).
+
+So either the engine misses the pick bar on a slow seek, or the case's bar is tighter than this device's landing scatter. Not checked: other devices, the low-end Stick, whether the fall-back reload is the stuck player's known trigger. Start from the failing runs' device consoles (kept under `.device-runs/rta/runs/`), then decide engine or test. Closes with a fix shown by 20 of 20 alternating runs, or a recorded bar change with its measurement.
+
+#### The SyncPlay replay spec decodes a recorded trace in two copies of the same loop `[fid: syncplay-replay-spec-duplicate-trace-loop]` `[captured 2026-11-27]`
+
+`tests/source/unit/syncplay/syncPlayPlayerReplay.spec.bs` decodes a recorded trace twice: `replay()` and `lagHistory()` hold the same loop over the records (seeks, pauses, resumes, node states, readings and the player's removal). PR #1463 copied it so its first commit could change tests only and leave `replay()` alone. A new record kind now has to be added in both places, and a copy that misses it would silently feed the model a different trace.
+
+Merge them into one walker that feeds the player model and calls back before each record, then rebuild `replay()` and `lagHistory()` on it. Closes when both pinned lag histories and the replay tolerance cases pass unchanged on a device over the one loop.
 
 ### docs
 

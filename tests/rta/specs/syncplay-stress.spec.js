@@ -400,6 +400,8 @@ async function snapshot() {
     resumeLagMs: sync?.resumelagms,
     resumeLagSampleMs: sync?.resumelagsamplems,
     resumeLagKind: sync?.resumelagkind,
+    resumeLagKept: sync?.resumelagkept,
+    resumeLagDropped: sync?.resumelagdropped,
     loads: sync?.loadcount,
     itemIndex: sync?.playingitemindex,
     itemId: sync?.playingitemid,
