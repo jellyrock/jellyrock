@@ -25,8 +25,9 @@ namespace libraryRows
   ' Nothing else gets under 22 pixels, since POSTER_TOP_OFFSET is shared with the grid.
   const LABEL_OFFSET = -8
 
-  ' A row's width: from the list's left edge to the header strip's right edge.
-  const WIDTH = 1702
+  ' A row's width: from the list's left edge (x 120 in BaseGridView.xml) to the header
+  ' strip's right edge (headerStrip.LEFT + headerStrip.WIDTH).
+  const WIDTH = 1704
 
   ' layout: the row list's fields for rows of `slot` posters.
   '

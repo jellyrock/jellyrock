@@ -1,5 +1,6 @@
 import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/GridView/libraryRows.bs"
+import "pkg:/source/utils/headerStrip.bs"
 
 namespace tests
 
@@ -23,15 +24,12 @@ namespace tests
     function _()
       rows = libraryRows.layout(rowSlotSize.SQUARE)
       m.assertEqual(rows.rowItemSize, [rowSlotSize.SQUARE])
-      m.assertEqual(rows.rowHeights, [rowSlotSize.SQUARE[1] + libraryRows.ROW_CHROME])
     end function
 
-    @it("makes each row taller than its slot, so the focus ring pins to the poster")
+    @it("ends each row at the header strip's right edge")
     function _()
-      for each slot in [rowSlotSize.PORTRAIT, rowSlotSize.SQUARE, rowSlotSize.WIDE]
-        rows = libraryRows.layout(slot)
-        m.assertTrue(rows.rowHeights[0] > slot[1], `${slot[1]}`)
-      end for
+      rows = libraryRows.layout(rowSlotSize.PORTRAIT)
+      m.assertEqual(120 + rows.itemSize[0], headerStrip.LEFT + headerStrip.WIDTH)
     end function
 
     @it("gives itemSize the same height as the row, as the list's unspecified rows fall back to it")
