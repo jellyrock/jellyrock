@@ -57,17 +57,11 @@ function getRowItemImageUrl(item as object, slotWidth as integer, posterHeight a
   ' Everything else, including browse rows and an empty or unknown setting, shares one image
   ' order below.
   if item.type = "Episode"
-    art = getRowItemArt(item, slotWidth, posterHeight, usesHomeEpisodeArt)
+    art = getRowItemArt(item, slotWidth, posterHeight, usesHomeEpisodeArt, userSettings, useEpisodeImages)
     if art = RowItemArt.PARENT_POSTER
       return getItemParentPosterUrl(item, size)
-    else if art = RowItemArt.STANDARD and usesHomeEpisodeArt and isValid(userSettings)
-      episodeImageSetting = userSettings.uiGeneralEpisodeImages
-      if episodeImageSetting = "show"
-        return getItemParentWidePosterUrl(item, size)
-      else if episodeImageSetting = "webclient" and not useEpisodeImages
-        ' Respect the Jellyfin web client's "use episode images" config flag.
-        return getItemParentWidePosterUrl(item, size)
-      end if
+    else if art = RowItemArt.SERIES_WIDE_ART
+      return getItemParentWidePosterUrl(item, size)
     end if
     ' One order: the episode's own Primary (screenshot), then wide art (own Thumb/Backdrop,
     ' then the series'), and the portrait poster only as the last resort.
@@ -140,17 +134,29 @@ end function
 ' @param slotWidth - width of the image area in pixels
 ' @param posterHeight - height of the image area in pixels
 ' @param usesHomeEpisodeArt - see getRowItemImageUrl
+' @param userSettings - see getRowItemImageUrl
+' @param useEpisodeImages - see getRowItemImageUrl
 ' @returns a RowItemArt value
-function getRowItemArt(item as object, slotWidth as integer, posterHeight as integer, usesHomeEpisodeArt = true as boolean) as string
-  if item.type <> "Episode" or not usesHomeEpisodeArt or posterHeight <= slotWidth then return RowItemArt.STANDARD
-  if isValid(getItemParentPosterSource(item)) then return RowItemArt.PARENT_POSTER
-  return RowItemArt.FITTED_OWN_IMAGE
+function getRowItemArt(item as object, slotWidth as integer, posterHeight as integer, usesHomeEpisodeArt = true as boolean, userSettings = invalid as object, useEpisodeImages = false as boolean) as string
+  if item.type <> "Episode" or not usesHomeEpisodeArt then return RowItemArt.STANDARD
+  if posterHeight > slotWidth
+    if isValid(getItemParentPosterSource(item)) then return RowItemArt.PARENT_POSTER
+    return RowItemArt.FITTED_OWN_IMAGE
+  end if
+  if isValid(userSettings)
+    episodeImageSetting = userSettings.uiGeneralEpisodeImages
+    ' "webclient" respects the Jellyfin web client's "use episode images" config flag.
+    if episodeImageSetting = "show" or (episodeImageSetting = "webclient" and not useEpisodeImages)
+      return RowItemArt.SERIES_WIDE_ART
+    end if
+  end if
+  return RowItemArt.STANDARD
 end function
 
 ' Whether an item's image gets the unwatched blur, once the user has turned it on. The blur
-' hides spoilers, and a poster shows none.
+' hides spoilers in an episode's own image. A poster or the series' wide art shows none.
 function shouldBlurRowItem(itemType as string, isWatched as boolean, art as string) as boolean
-  return itemType = "Episode" and not isWatched and art <> RowItemArt.PARENT_POSTER
+  return itemType = "Episode" and not isWatched and art <> RowItemArt.PARENT_POSTER and art <> RowItemArt.SERIES_WIDE_ART
 end function
 
 ' Whether an item's image is fitted rather than cropped to the slot.
