@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-27: fix(posters): Redraw watch badges on screen when the setting changes
 - 2026-11-27: fix(home): Blur only an episode's own image, not the show's art
 - 2026-11-26: refactor(library): Remove two pieces of dead library code
 - 2026-11-26: test(rta): Take two Downs from the tabs back into the TV guide
@@ -1036,10 +1037,6 @@ Use Web Client's Home Section Arrangement (`uiHomeUseWebArrangement`) is read on
 
 `ItemDetails.init` observes the overhang clock's `minutes` only when the clock is shown (`uiDesignHideClock` off), so a details screen built with the clock hidden never ticks its Ends At line after the clock is turned on in Settings: the line itself is rebuilt on return (the item reloads on every show and `populate*` reads the setting), but it keeps the minute it was drawn at. Low impact. Not fixed with the settings-changed-while-covered work (2026-11-18) because the fix is more than "always observe": the clock is the overhang's shared node, and `ItemDetails.onDestroy` calls `m.clock.unobserveField("minutes")`, the shape `ObserverRegistry.spec.bs` shows can remove another component's observer, so observing it on more screens widens that. To close: decide how `ItemDetails` follows the clock without an unobserve on a shared node (a scoped observer once that is measured, or a field the scene relays), then observe whatever the setting and gate the handler on it.
 
-#### Disable Unwatched Count reaches cells bound after the change, not the cells already on screen `[fid: watch-badge-stale-on-visible-cells]` `[captured 2026-11-18]`
-
-Since the settings-changed-while-covered work (2026-11-18), `JRPoster` reads Disable Unwatched Count (`uiTvShowsDisableUnwatchedCount`) when it draws the watch badge instead of once in `init`, so every cell bound after a change is right in both directions (a cell resets its badge and sets it again on each bind; `JRPoster.spec.bs` covers it). Cells already on a covered screen when the setting changes keep the badge they drew until they are bound again: a library's grid keeps its cells across a redraw in place (`GridItem.bs`, no bind on `relayoutGrid`), so its visible cells change only on scroll, reload or reopening. Not checked on a device: whether Home's refresh on return (`updateHomeRows`) binds its visible cells again. To close: check Home and a library on a device after the change; if visible cells stay stale, give the screens' `onSettingsChanged` a way to redraw their cells' badges (a rebind of the visible range, or a poster function the cell calls), without a reload that loses the place.
-
 #### The settings icon's menu can show its first open after a cold start before its glyphs have drawn `[fid: page-menu-glyphs-late-first-open]` `[captured 2026-11-19]`
 
 The settings icon's menu (`showOverflowMenu`, `JRListDialog` rows with an `icons` gutter) can open with its glyphs not yet drawn the first time each glyph loads after a cold start. Seen on a Streaming Stick 4K on 2026-11-18 with Home's menu: a capture right after the menu opened showed the labels and an empty gutter, including the existing All settings gear (`pageSettings.ALL_SETTINGS_ICON`); one second later every glyph had drawn, and later opens drew them at once. A second cold-start run caught them already drawn, so the delay varies. The library's menu loads its glyphs the same way, so this is not specific to Home.
@@ -1110,6 +1107,14 @@ Issue #1316 asks for a playback speed setting in the OSD. The SyncPlay speed spi
 - Each rate change costs about 100 to 350 ms of playback on a direct-play stream.
 
 So the setting would need a per-device and per-audio-path gate (offer it only where the rate takes effect, or force a stereo transcode when it is chosen). Not checked: 4K HEVC, Stick 4K surround passthrough, a listening test. Decide whether to post these figures on the issue (the operator's call), then design the gate. Closes with the setting built with its gate, or the issue closed with the reason.
+
+#### Search results and the details-screen extras rows keep a stale watch badge after Disable Unwatched Episode Count changes `[fid: watch-badge-sync-search-extras]` `[captured 2026-11-27]`
+
+The fix for #1425 redraws the watch badge on cells already on screen when Disable Unwatched Episode Count (`uiTvShowsDisableUnwatchedCount`) changes, but only on library grids (`BaseGridView`) and Home's rows (`Home.onSettingsChanged`). Search results (`SearchRow`, on `SearchScreen`) and the extras rows on a details screen (`ExtrasRowList`, on `ItemDetails`) draw `BrowseRowItem` cells. Their content roots get the `watchBadgeHidden` field from `initTextureManager` (`watchBadge.attach`), and the cells observe it, but neither screen calls `watchBadge.sync`. So a cell there keeps its old badge after the setting changes in Settings, until it is bound again. Not measured on a device; reasoned from the code.
+
+Check one thing on a device first. `SearchRow` gives the list a new content root on each search, and `JRRowItem.setupTextureObserver` keeps the first root it saw (`if isValid(m.contentRoot) then return`). If the `RowList` keeps its cells when its content is replaced, those cells observe an old root, so a sync on the current root reaches none of them; the texture fields would share the gap. Not checked either way.
+
+To close: call `watchBadge.sync` on the list's content root from `SearchScreen.onSettingsChanged` and `ItemDetails.onSettingsChanged` when the names include the setting, after a second search on a device shows the cells follow the new root (or after fixing the latch if they do not), and add the case to `tests/rta/specs/settings-reach-screen.spec.js`.
 
 ### source
 

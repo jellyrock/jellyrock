@@ -60,8 +60,9 @@ end sub
 '
 ' The view is found once, by walking up to the first ancestor with showItemTitles and not
 ' by a fixed depth: the MarkupGrid puts cells 2 levels below BaseGridView, the genre
-' RowList deeper. The cell then follows the titles setting between binds too: a redraw in
-' place (BaseGridView.relayoutGrid) keeps a cell on its item, so no bind comes.
+' RowList deeper. The cell then follows the titles setting and the watch badge setting
+' between binds too: a redraw in place (BaseGridView.relayoutGrid) keeps a cell on its item,
+' so no bind comes.
 ' BaseGridView.onDestroy releases the observer.
 sub resolveGridViewConfig()
   if not isValid(m.gridView)
@@ -72,6 +73,7 @@ sub resolveGridViewConfig()
     if not isValid(node) then return
     m.gridView = node
     m.gridView.observeField("showItemTitles", "onGridTitlesChanged")
+    m.gridView.observeField("watchBadgeHidden", "onWatchBadgeHiddenChanged")
   end if
 
   if isValid(m.gridView.imageDisplayMode) then m.imageDisplayMode = m.gridView.imageDisplayMode
@@ -172,6 +174,13 @@ end sub
 ' carries its label inside the tile, and a loading cell has no text.
 sub applyTitleVisibility()
   m.itemText.visible = m.areTitlesShown and m.itemText.text <> "" and not m.genreLabel.visible
+end sub
+
+' The watch badge setting changed while this cell kept its item: the poster draws its badge
+' again from the data it holds.
+sub onWatchBadgeHiddenChanged()
+  if not isValid(m.itemPoster) then return
+  m.itemPoster.callFunc("redrawWatchBadge")
 end sub
 
 ' The view's titles setting changed while this cell kept its item. Only the title

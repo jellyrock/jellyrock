@@ -1,0 +1,71 @@
+import "pkg:/source/utils/watchBadge.bs"
+
+namespace tests
+
+  @suite("watchBadge.bs - the watch badge follows its setting")
+  class WatchBadgeTests extends tests.BaseTestSuite
+
+    private node as object
+    private previousDisableCount as boolean
+
+    protected override sub beforeEach()
+      super.beforeEach()
+      m.previousDisableCount = m.global.user.settings.uiTvShowsDisableUnwatchedCount
+      m.global.user.settings.uiTvShowsDisableUnwatchedCount = false
+      m.node = CreateObject("roSGNode", "Group")
+    end sub
+
+    protected override sub afterEach()
+      m.global.user.settings.uiTvShowsDisableUnwatchedCount = m.previousDisableCount
+      m.node = invalid
+      super.afterEach()
+    end sub
+
+    @describe("isHidden")
+
+    @it("reads the setting")
+    function _()
+      m.global.user.settings.uiTvShowsDisableUnwatchedCount = true
+      m.assertTrue(watchBadge.isHidden())
+      m.global.user.settings.uiTvShowsDisableUnwatchedCount = false
+      m.assertFalse(watchBadge.isHidden())
+    end function
+
+    @describe("attach")
+
+    @it("adds the field with the current value")
+    function _()
+      m.global.user.settings.uiTvShowsDisableUnwatchedCount = true
+      watchBadge.attach(m.node)
+      m.assertTrue(m.node.hasField("watchBadgeHidden"))
+      m.assertTrue(m.node.watchBadgeHidden)
+    end function
+
+    @it("keeps working on a node that already has the field")
+    function _()
+      watchBadge.attach(m.node)
+      m.global.user.settings.uiTvShowsDisableUnwatchedCount = true
+      watchBadge.attach(m.node)
+      m.assertTrue(m.node.watchBadgeHidden)
+    end function
+
+    @describe("sync")
+
+    @it("writes the current value")
+    function _()
+      watchBadge.attach(m.node)
+      m.assertFalse(m.node.watchBadgeHidden, "precondition")
+      m.global.user.settings.uiTvShowsDisableUnwatchedCount = true
+      watchBadge.sync(m.node)
+      m.assertTrue(m.node.watchBadgeHidden)
+    end function
+
+    @it("adds no field to a node without one")
+    function _()
+      watchBadge.sync(m.node)
+      m.assertFalse(m.node.hasField("watchBadgeHidden"))
+    end function
+
+  end class
+
+end namespace

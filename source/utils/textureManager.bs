@@ -1,5 +1,6 @@
 import "pkg:/source/utils/cellLoad.bs"
 import "pkg:/source/utils/viewport.bs"
+import "pkg:/source/utils/watchBadge.bs"
 
 ' Texture Manager Utility
 '
@@ -82,6 +83,10 @@ sub initTextureManager(contentRoot as object, itemSize as dynamic, focusXOffset 
     contentRoot.addField("textureManagerState", "string", false)
   end if
   contentRoot.textureManagerState = "init"
+
+  ' The watch badge setting rides on the same root: each cell observes the field, and the
+  ' owning screen writes it when the setting changes (watchBadge.sync).
+  watchBadge.attach(contentRoot)
 
   ' Attach the cell-load ledger to the same lifecycle. `m.top.subtype()` resolves to the
   ' CALLING component (these are free functions, so `m` is the caller's, the same
