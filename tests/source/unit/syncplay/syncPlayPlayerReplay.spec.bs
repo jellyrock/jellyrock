@@ -58,6 +58,48 @@ namespace tests
       return stats
     end function
 
+    ' The lag in use just before each resume is written, and at the end, as "lag/last sample".
+    ' @returns those readings joined with ","
+    private function lagHistory(trace as string) as string
+      history = []
+      player = syncPlayPlayer.newPlayer()
+      syncPlayPlayer.mounted(player, invalid, 0&)
+      syncPlayPlayer.nodeState(player, "playing", 0&)
+      for each record in trace.split(";")
+        parts = record.split(",")
+        atMs& = parts[0].toInt()
+        kind = parts[1].toInt()
+        ticks& = syncPlayTime.msToTicks(parts[2].toInt())
+        syncPlayPlayer.advance(player, atMs&)
+        if kind = 1
+          syncPlayPlayer.told(player, "seek", "group", ticks&, atMs&)
+        else if kind = 2
+          syncPlayPlayer.told(player, "pause", "group", invalid, atMs&)
+        else if kind = 3
+          history.push(m.lagReading(player))
+          syncPlayPlayer.told(player, "resume", "group", invalid, atMs&)
+        else if kind = 4
+          syncPlayPlayer.nodeState(player, "playing", atMs&)
+        else if kind = 5
+          syncPlayPlayer.nodeState(player, "paused", atMs&)
+        else if kind = 6
+          syncPlayPlayer.nodeState(player, "buffering", atMs&)
+        else if kind = 7
+          syncPlayPlayer.reading(player, ticks&, atMs&)
+        else
+          syncPlayPlayer.unmounted(player, atMs&)
+        end if
+      end for
+      history.push(m.lagReading(player))
+      return history.join(",")
+    end function
+
+    private function lagReading(player as object) as string
+      lastSample = "-"
+      if isValid(player.resumeLagLastSampleMs) then lastSample = syncPlayTime.asLong(player.resumeLagLastSampleMs).toStr()
+      return syncPlayTime.asLong(player.resumeLagMs).toStr() + "/" + lastSample
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("the clock against what the node read")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -99,6 +141,20 @@ namespace tests
         if offMs < earliest then earliest = offMs
       end for
       m.assertEqual(earliest, -948&)
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("the resume lag learned through the traces")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("direct play: the lag in use at every resume is pinned")
+    function _()
+      m.assertEqual(m.lagHistory(tests.syncPlayTraces.directPlay()), "0/-,0/-,0/-8,0/-8,0/-8,0/-2,0/-2,-5/-2,0/-22,0/-22,-8/-22,0/4,0/4,0/4,4/4,0/-9,0/-9,4/-9,0/-11,0/-11,4/-11,0/-12,0/-12,4/-12,0/-9,0/-9,0/-9")
+    end function
+
+    @it("transcode: the lag in use at every resume is pinned")
+    function _()
+      m.assertEqual(m.lagHistory(tests.syncPlayTraces.transcode()), "0/-,0/-,0/-5,0/-5,0/-5,0/-10,-7/-10,0/-4,0/-4,-5/-4,0/-23,-7/-23")
     end function
 
   end class
