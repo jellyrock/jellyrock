@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (home) Blur only an episode's own image, not the show's art ([#1460](https://github.com/jellyrock/jellyrock/pull/1460)) by [@cewert](https://github.com/cewert)
 - (ui) Covered Search and details screens, and empty music Genres ([#1417](https://github.com/jellyrock/jellyrock/pull/1417)) by [@cewert](https://github.com/cewert)
 - (settings) A setting changed in Settings reaches the screen below ([#1410](https://github.com/jellyrock/jellyrock/pull/1410)) by [@cewert](https://github.com/cewert)
 - (syncplay) Stop a short lander resuming late after a second Seek ([#1412](https://github.com/jellyrock/jellyrock/pull/1412)) by [@cewert](https://github.com/cewert)
