@@ -1,3 +1,4 @@
+import "pkg:/source/syncplay/syncPlayLearned.bs"
 import "pkg:/source/syncplay/syncPlayPlayback.bs"
 import "pkg:/source/syncplay/syncPlayPlayer.bs"
 import "pkg:/source/syncplay/syncPlayTime.bs"
@@ -52,11 +53,11 @@ namespace tests
 
     ' The samples the player model keeps for each kind of stop, oldest first.
     private function landingSamples(player as object) as object
-      return player.resumeLagSamples.landing
+      return player.resumeLag.landing.samples
     end function
 
     private function steadySamples(player as object) as object
-      return player.resumeLagSamples.steady
+      return player.resumeLag.steady.samples
     end function
 
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
