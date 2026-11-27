@@ -59,7 +59,7 @@ namespace tests
       return stats
     end function
 
-    ' The lag in use just before each resume is written, and at the end, as "lag/last sample".
+    ' The lag in use before each resume is written, and at the end, as "lag/last sample".
     ' @returns those readings joined with ","
     private function lagHistory(trace as string) as string
       history = []
