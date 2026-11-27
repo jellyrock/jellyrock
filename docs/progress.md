@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-27: fix(home): Blur only an episode's own image, not the show's art
 - 2026-11-26: refactor(library): Remove two pieces of dead library code
 - 2026-11-26: test(rta): Take two Downs from the tabs back into the TV guide
 - 2026-11-26: feat(library): Tabs and art-shaped cells beyond movie, TV and music
@@ -48,8 +49,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-11-14: fix(playback): Play and name the audio track picked in an `MP4`
 - 2026-11-14: fix(playback): Play the MKV audio track the viewer picked
 - 2026-11-13: refactor: Gate namespaced constant access and spec code at build time
-- 2026-11-12: fix(ui): Star from the overhang no longer crashes the app
-- 2026-11-12: feat(ui): Item-details-only backdrops; Movies pane obeys the setting
 
 ## Open followups
 
