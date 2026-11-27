@@ -76,7 +76,7 @@ The exception is `open` on a grid container (see below), which goes to the libra
 
 ### A library's tab
 
-`tab=<id>` opens a library on that tab. The ids are the app's own ([ADR 0056](../adr/0056-library-tab-ids-and-layout.md)), which makes them part of this contract: renaming one in `libraryTab.bs` breaks a sender.
+`tab=<id>` opens a library on that tab. The ids are the app's own ([ADR 0056](../adr/0056-library-tab-ids-and-layout.md)), which makes them part of this contract: renaming one in `libraryTab.bs` breaks a sender ([ADR 0065](../adr/0065-library-tab-in-a-link.md)).
 
 - **It is for that opening only.** It wins over the default tab kept on the Roku and the one picked in the web client, and it is never saved (`gridQuery.resolveView()`, source `RESOLVED_LINK`).
 - **A tab the library does not offer is ignored,** and the library opens as it would without one. So is a tab on a link to anything but a library. An older build ignores the key, as it does every key it does not know.

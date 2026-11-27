@@ -76,3 +76,4 @@ notes in [`../decisions.md`](../decisions.md), not here.
 | [0062](0062-app-setting-offered-on-a-page.md) | An app-wide setting may also be a page entry where a pick visibly changes the page (partially supersedes 0057) | Accepted | 2026-11-16 |
 | [0063](0063-syncplay-compares-two-models.md) | SyncPlay keeps a Roku in step by comparing two models and taking one action at a time | Accepted | 2026-11-21 |
 | [0064](0064-page-menu-flat-at-any-count.md) | The page menu stays one flat list at any count of entries (partially supersedes 0057) | Accepted | 2026-11-21 |
+| [0065](0065-library-tab-in-a-link.md) | A library's tab is screen state that a link or a reload can name (extends 0018 and 0056) | Accepted | 2026-11-27 |
