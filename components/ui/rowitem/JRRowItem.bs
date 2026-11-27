@@ -243,7 +243,7 @@ sub renderStandardItem(item as object, slotWidth as float, posterHeight as float
   end if
 
   usesHomeEpisodeArt = m.top.usesHomeEpisodeArt
-  art = getRowItemArt(item, int(slotWidth), int(posterHeight), usesHomeEpisodeArt)
+  art = getRowItemArt(item, int(slotWidth), int(posterHeight), usesHomeEpisodeArt, userSettings, useEpisodeImages)
   posterUri = getRowItemImageUrl(item, int(slotWidth), int(posterHeight), userSettings, useEpisodeImages, usesHomeEpisodeArt)
 
   ' Guard posterUri <> "" to avoid appending to an empty string, which would produce

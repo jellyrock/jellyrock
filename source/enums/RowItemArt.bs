@@ -5,6 +5,9 @@ enum RowItemArt
   STANDARD = "standard"
   ' An episode in a Home portrait slot, showing its season or series poster.
   PARENT_POSTER = "parentPoster"
+  ' An episode in a Home wide slot, showing the series' wide art because the episode image
+  ' setting asks for it.
+  SERIES_WIDE_ART = "seriesWideArt"
   ' An episode in a Home portrait slot with no parent poster, showing its own wide image.
   FITTED_OWN_IMAGE = "fittedOwnImage"
 end enum

@@ -667,6 +667,35 @@ namespace tests
       m.assertEqual(getRowItemArt(m.portraitEpisode(true, true, true), slotWidth, posterHeight), RowItemArt.STANDARD)
     end function
 
+    @it("labels a wide episode as series wide art when the setting asks for it")
+    @params("show", false)
+    @params("webclient", false)
+    function _(setting, useEpisodeImages)
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = setting
+      art = getRowItemArt(m.portraitEpisode(true, true, true), 468, 264, true, userSettings, useEpisodeImages)
+      m.assertEqual(art, RowItemArt.SERIES_WIDE_ART)
+    end function
+
+    @it("labels a wide episode as standard when the episode's own image is shown")
+    @params("episode", false)
+    @params("webclient", true)
+    @params("", false)
+    function _(setting, useEpisodeImages)
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = setting
+      art = getRowItemArt(m.portraitEpisode(true, true, true), 468, 264, true, userSettings, useEpisodeImages)
+      m.assertEqual(art, RowItemArt.STANDARD)
+    end function
+
+    @it("is standard for a wide episode with no settings or off a Home row")
+    function _()
+      userSettings = CreateObject("roSGNode", "JellyfinUserSettings")
+      userSettings.uiGeneralEpisodeImages = "show"
+      m.assertEqual(getRowItemArt(m.portraitEpisode(true, true, true), 468, 264, true, invalid), RowItemArt.STANDARD)
+      m.assertEqual(getRowItemArt(m.portraitEpisode(true, true, true), 468, 264, false, userSettings), RowItemArt.STANDARD)
+    end function
+
     @it("is standard for another type")
     function _()
       item = m.portraitEpisode(false, false, true)
@@ -682,6 +711,11 @@ namespace tests
     function _()
       m.assertTrue(shouldBlurRowItem("Episode", false, RowItemArt.STANDARD))
       m.assertTrue(shouldBlurRowItem("Episode", false, RowItemArt.FITTED_OWN_IMAGE))
+    end function
+
+    @it("doesn't blur the series' wide art shown in an episode's place")
+    function _()
+      m.assertFalse(shouldBlurRowItem("Episode", false, RowItemArt.SERIES_WIDE_ART))
     end function
 
     @it("doesn't blur a poster, a watched episode or another type")
