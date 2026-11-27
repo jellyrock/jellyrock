@@ -38,9 +38,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Dependencies
 
+- Update vitest from v5.1.0 to v5.1.2 ([#1409](https://github.com/jellyrock/jellyrock/pull/1409), [#1449](https://github.com/jellyrock/jellyrock/pull/1449)) by [@renovate[bot]](https://github.com/apps/renovate)
 - Update lint-staged from v17.6.1 to v17.6.2 ([#1414](https://github.com/jellyrock/jellyrock/pull/1414)) by [@renovate[bot]](https://github.com/apps/renovate)
 - Update markdownlint-cli2 from v0.24.1 to v0.24.2 ([#1411](https://github.com/jellyrock/jellyrock/pull/1411)) by [@renovate[bot]](https://github.com/apps/renovate)
-- Update vitest from v5.1.0 to v5.1.1 ([#1409](https://github.com/jellyrock/jellyrock/pull/1409)) by [@renovate[bot]](https://github.com/apps/renovate)
 - Update actions/setup-java action to v6.3.0 ([#1399](https://github.com/jellyrock/jellyrock/pull/1399)) by [@renovate[bot]](https://github.com/apps/renovate)
 - Update eslint from v10.14.0 to v10.15.0 ([#1380](https://github.com/jellyrock/jellyrock/pull/1380)) by [@renovate[bot]](https://github.com/apps/renovate)
 - Move to BrighterScript and Rooibos alpha.58, with fixes ([#1421](https://github.com/jellyrock/jellyrock/pull/1421)) by [@cewert](https://github.com/cewert)
