@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-27: fix(posters): Redraw watch badges on screen when the setting changes
 - 2026-11-27: fix(home): Blur only an episode's own image, not the show's art
 - 2026-11-26: refactor(library): Remove two pieces of dead library code
 - 2026-11-26: test(rta): Take two Downs from the tabs back into the TV guide
