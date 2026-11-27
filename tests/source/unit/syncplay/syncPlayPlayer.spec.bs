@@ -496,9 +496,13 @@ namespace tests
       ' 300 ms stale: 261 ms late by itself, outside the band.
       syncPlayPlayer.reading(player, m.at60s + 3000000& + 2390000&, 5500&)
       m.assertEqual(m.landingSamples(player).count(), 0)
+      m.assertEqual(player.resumeLag.landing.dropped, 1)
       syncPlayPlayer.reading(player, m.at60s + 3000000& + 10390000&, 6000&)
       m.assertEqual(m.landingSamples(player).count(), 1)
       m.assertEqual(syncPlayTime.asLong(m.landingSamples(player)[0]), -39&)
+      ' The first reading stays counted as dropped, beside the second's kept sample.
+      m.assertEqual(player.resumeLag.landing.kept, 1)
+      m.assertEqual(player.resumeLag.landing.dropped, 1)
     end function
 
     @it("a resume held again on its first reading keeps that reading's sample")
@@ -592,9 +596,13 @@ namespace tests
       player = m.pausedAfter300()
       m.resumeCycle(player, 2000&, syncPlayPlayer.RESUME_LAG_MIN_MS - 1)
       m.assertEqual(m.landingSamples(player).count(), 0)
+      ' Both of the resume's readings fall outside the band, and each is counted.
+      m.assertEqual(player.resumeLag.landing.dropped, 2)
       m.pauseAt(player, 4000&)
       m.resumeCycle(player, 5000&, syncPlayPlayer.RESUME_LAG_MIN_MS)
       m.assertEqual(m.steadySamples(player).count(), 1)
+      m.assertEqual(player.resumeLag.steady.kept, 1)
+      m.assertEqual(player.resumeLag.steady.dropped, 0)
     end function
 
     @it("a stop straight after a landing and a stop in steady play each keep a lag of their own")

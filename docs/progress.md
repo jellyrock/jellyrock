@@ -1471,6 +1471,12 @@ Not checked: a rendered Home row with Blur Unwatched Episodes on and Episode Ima
 
 To close: a cell showing a series image for an episode is never blurred, whichever path picked the image, with a case in `rowItemImage.spec.bs`, and one look at a Home row on a device with the setting on.
 
+#### SyncPlay resume lag: a second reading outside the band throws away the first reading's good sample `[fid: syncplay-resume-lag-second-reading-out-of-band]` `[captured 2026-11-27]`
+
+When a resume's second reading says the resume came earlier but falls outside the band, `syncPlayPlayer.learnResumeLag()` takes back the first reading's sample, which was inside the band, and keeps nothing, so that resume teaches the lag nothing. PR #1463 (the move onto `syncPlayLearned`) kept this behavior unchanged on purpose. On the low-end Stick the samples ran from -428 to -340 ms (2026-11-27), the lowest 72 ms inside the -500 ms edge (`RESUME_LAG_MIN_MS`), so a corrected second reading past that edge is plausible there. `resumeLagDropped` in the soak record, and the "reading" value in the dropped-sample warning, now show how often it happens.
+
+Decide whether the first reading's sample should stand when the second, earlier-saying reading is outside the band. Closes with a rule change shown by the trace pins and a low-end Stick run, or a recorded no.
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`
@@ -2060,6 +2066,12 @@ To close: stop the run, with an outcome that is not `failed`, when the first N t
 The RTA case "a time offset picked in the gear corrects the drift at once, without an `Unpause`" in `tests/rta/specs/syncplay-controls.spec.js` fails now and then on `main`. Measured 2026-11-27 on a Stick 4K against the local 12.4 server: 1 of 20 runs on `main` (`f76625c2`), alternating run for run with a build of the shared learned-value helper, which passed 20 of 20; an earlier straight series of that build failed it 2 of 20. Every failure came after the 200 ms pick: twice at the step "the hold brought the node back in step" (the drift last read 55 and 68 ms, against the 50 ms pick bar, `PICK_BAR_MS`), once when the catch-up seek fell back and reloaded the stream, which sent the `Unpause` the case forbids. Both builds' failing runs had slow seeks right before (learned leads of 2,054 and 2,334 ms).
 
 So either the engine misses the pick bar on a slow seek, or the case's bar is tighter than this device's landing scatter. Not checked: other devices, the low-end Stick, whether the fall-back reload is the stuck player's known trigger. Start from the failing runs' device consoles (kept under `.device-runs/rta/runs/`), then decide engine or test. Closes with a fix shown by 20 of 20 alternating runs, or a recorded bar change with its measurement.
+
+#### The SyncPlay replay spec decodes a recorded trace in two copies of the same loop `[fid: syncplay-replay-spec-duplicate-trace-loop]` `[captured 2026-11-27]`
+
+`tests/source/unit/syncplay/syncPlayPlayerReplay.spec.bs` decodes a recorded trace twice: `replay()` and `lagHistory()` hold the same loop over the records (seeks, pauses, resumes, node states, readings and the player's removal). PR #1463 copied it so its first commit could change tests only and leave `replay()` alone. A new record kind now has to be added in both places, and a copy that misses it would silently feed the model a different trace.
+
+Merge them into one walker that feeds the player model and calls back before each record, then rebuild `replay()` and `lagHistory()` on it. Closes when both pinned lag histories and the replay tolerance cases pass unchanged on a device over the one loop.
 
 ### docs
 
