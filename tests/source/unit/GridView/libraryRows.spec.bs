@@ -1,0 +1,51 @@
+import "pkg:/source/constants/itemAspectRatio.bs"
+import "pkg:/source/GridView/libraryRows.bs"
+import "pkg:/source/utils/headerStrip.bs"
+
+namespace tests
+
+  ' libraryRows: a library screen's rows (the Genres tab's today) take their poster size
+  ' from the shared rowSlotSize and their row height from it, so they follow when the
+  ' shared size changes. These pin that derivation.
+  @suite("libraryRows - the library screen's derived rows")
+  class LibraryRowsTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("layout()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("draws a portrait row at the shared portrait slot")
+    function _()
+      rows = libraryRows.layout(rowSlotSize.PORTRAIT)
+      m.assertEqual(rows.rowItemSize, [rowSlotSize.PORTRAIT])
+    end function
+
+    @it("follows the slot it is given")
+    function _()
+      rows = libraryRows.layout(rowSlotSize.SQUARE)
+      m.assertEqual(rows.rowItemSize, [rowSlotSize.SQUARE])
+    end function
+
+    @it("ends each row at the header strip's right edge")
+    function _()
+      rows = libraryRows.layout(rowSlotSize.PORTRAIT)
+      m.assertEqual(120 + rows.itemSize[0], headerStrip.LEFT + headerStrip.WIDTH)
+    end function
+
+    @it("gives itemSize the same height as the row, as the list's unspecified rows fall back to it")
+    function _()
+      rows = libraryRows.layout(rowSlotSize.PORTRAIT)
+      m.assertEqual(rows.itemSize[1], rows.rowHeights[0])
+    end function
+
+    @it("puts the row pitch on the 3 pixel grid")
+    function _()
+      for each slot in [rowSlotSize.PORTRAIT, rowSlotSize.SQUARE, rowSlotSize.WIDE]
+        rows = libraryRows.layout(slot)
+        m.assertEqual((rows.rowHeights[0] + rows.itemSpacing[1]) mod 3, 0, `${slot[1]}`)
+      end for
+    end function
+
+  end class
+
+end namespace

@@ -8,12 +8,14 @@ import "pkg:/source/api/apiPromise.bs"
 import "pkg:/source/api/baseRequest.bs"
 import "pkg:/source/api/image.bs"
 import "pkg:/source/constants/imageSize.bs"
+import "pkg:/source/constants/itemAspectRatio.bs"
 import "pkg:/source/GridView/GenericPresenter.bs"
 import "pkg:/source/GridView/gridPaging.bs"
 import "pkg:/source/GridView/gridQuery.bs"
 import "pkg:/source/GridView/itemSummary.bs"
 import "pkg:/source/GridView/libraryFilterMenu.bs"
 import "pkg:/source/GridView/libraryGrid.bs"
+import "pkg:/source/GridView/libraryRows.bs"
 import "pkg:/source/GridView/librarySortMenu.bs"
 import "pkg:/source/GridView/libraryTab.bs"
 import "pkg:/source/GridView/LiveTVPresenter.bs"
@@ -85,8 +87,7 @@ sub init()
 
   m.genreData = CreateObject("roSGNode", "ContentNode")
   m.genreList.focusXOffset = 0
-  ' rowLabelOffset is set in the XML, not here: it only makes sense alongside
-  ' rowHeights/itemSpacing, so all three live together. See the comment there.
+  m.genreList.setFields(libraryRows.layout(rowSlotSize.PORTRAIT))
   ' Override JRRowList's inherited "fixedFocusWrap": this is a browse view with an
   ' alpha menu to its left, so Left at the first item must exit to that menu (handled
   ' in onKeyEvent) rather than wrap to the end of the row. floatingFocus stops the row

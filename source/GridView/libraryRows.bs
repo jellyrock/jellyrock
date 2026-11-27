@@ -1,0 +1,54 @@
+' A library screen's rows, derived in one place. The Genres tab draws them today. A row's
+' poster is the shared row slot (rowSlotSize), so these rows are the size Home's are and
+' follow it when that size changes. layout() turns a slot into every field the row list
+' is set with; the list's XML holds none of them.
+' docs/architecture/list-grid-item-layout.md has the contract a cell follows.
+namespace libraryRows
+
+  ' How much taller a row is than its poster slot: the row label, rowLabelOffset, the
+  ' cell's POSTER_TOP_OFFSET and TEXT_TOP_GAP, and one line of title. The label and title
+  ' heights are rendered font heights, so this is measured, not added up: a 320 slot
+  ' measured a 415 row on an Ultra (1080p UI) on 2026-08-09.
+  const ROW_CHROME = 95
+
+  ' The gap from one row's title to the next row's label. Together with ROW_CHROME it
+  ' keeps the row pitch on the 3 pixel grid for any slot that is itself on it.
+  const ROW_GAP = 40
+
+  ' The gap between two posters in a row.
+  const ITEM_GAP = 20
+
+  ' rowLabelOffset.y. It is a gap, not a position, and it stacks with the cell's own
+  ' POSTER_TOP_OFFSET, so the visible label-to-poster gap is the sum of the two. Negative
+  ' on purpose: a heading spaced evenly between two rows reads as belonging to neither,
+  ' and -8 puts it 14 pixels above its own posters, far closer than to the titles above.
+  ' Nothing else gets under 22 pixels, since POSTER_TOP_OFFSET is shared with the grid.
+  const LABEL_OFFSET = -8
+
+  ' A row's width: from the list's left edge (x 120 in BaseGridView.xml) to the header
+  ' strip's right edge (headerStrip.LEFT + headerStrip.WIDTH).
+  const WIDTH = 1704
+
+  ' layout: the row list's fields for rows of `slot` posters.
+  '
+  ' rowHeights includes the label and its offset (verified by where rows 2 and 3 land), and
+  ' is taller than the slot, which is what pins the focus ring to the poster rather than
+  ' the whole cell. itemSize's height equals it: Roku repeats the one rowHeights entry
+  ' across rows, but its docs say rows without one fall back to itemSize, so equal is
+  ' right either way.
+  '
+  ' @param slot - [width, height] of the poster slot, a rowSlotSize value
+  ' @return {object} fields to pass to the list's setFields()
+  function layout(slot as object) as object
+    rowHeight = slot[1] + libraryRows.ROW_CHROME
+    return {
+      itemSize: [libraryRows.WIDTH, rowHeight],
+      rowItemSize: [slot],
+      rowHeights: [rowHeight],
+      rowItemSpacing: [[libraryRows.ITEM_GAP, 0]],
+      rowLabelOffset: [[0, libraryRows.LABEL_OFFSET]],
+      itemSpacing: [0, libraryRows.ROW_GAP]
+    }
+  end function
+
+end namespace

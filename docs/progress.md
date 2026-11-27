@@ -987,12 +987,6 @@ The TV guide draws on Roku's own `TimeGrid` (`JRTimeGrid` in `components/liveTv/
 
 Why not now: it is a rewrite of the guide, with its own design and device work. What the library screen and the guide exchange is small and would stay: the favorites filter, the search term, `isAtTop()` and `focusedSummary`. Closes when a custom guide component replaces `JRTimeGrid`, or the idea is dropped.
 
-#### A portrait poster is three sizes across Home, the library grid and the Genres rows `[fid: one-portrait-poster-size]` `[captured 2026-11-15]`
-
-Three screens draw a portrait poster at three sizes: Home's rows at 234 by 351 (`itemAspectRatio.PORTRAIT`), the library grid at 252 by 378 (`libraryGrid.POSTER_WIDTH`), and the Genres tab's rows at 213 by 320 (`genreList` in `BaseGridView.xml`). The library grid was 264 by 396 until the header strip took room above it, so the sizes were never one. Raised by the operator while judging the strip's layout (2026-11-15).
-
-Why not now: one size changes Home and every row list, each with its own row heights and focus chrome (`docs/architecture/list-grid-item-layout.md`), and needs its own captures. Closes when the three share one constant, or the difference is recorded as intended.
-
 #### Hear the library header strip, its Sort menu and its Filter checklist with the screen reader on `[fid: header-strip-screen-reader-check]` `[captured 2026-11-15]`
 
 The library header strip has not been heard with the screen reader on. To check by ear, on a movie library: the Sort and Filter chips say their label and value ("Sort: Title", the direction, "Filter: 2"); the Sort menu says which field is in force and reads the Order row's direction in words; the Filter menu reads each category with what is set; a Filter checklist says "Checked" and "Not checked" as a row is ticked. The strip's title and metadata are not focusable, so also check whether a focused poster still names its item.

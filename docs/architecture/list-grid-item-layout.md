@@ -7,10 +7,11 @@ related-files:
   - components/ItemGrid/GridItem.bs
   - components/ItemGrid/BaseGridView.xml
   - source/GridView/libraryGrid.bs
+  - source/GridView/libraryRows.bs
   - components/home/HomeRows.bs
   - source/utils/listTheme.bs
   - source/utils/textureManager.bs
-last-reviewed: 2026-11-26
+last-reviewed: 2026-11-27
 ---
 
 # `RowList` and grid item layout, and the focus indicator
@@ -86,7 +87,7 @@ After an unload Roku reports the poster's `loadStatus` as `failed`. That is the 
 ## Canonical examples
 
 - [`JRRowItem`](../../components/ui/rowitem/JRRowItem.bs) with [`HomeRows`](../../components/home/HomeRows.bs): `setRowItemSize()` in `HomeRows` sets each row's `rowHeights` to the slot plus a 90-pixel text area (library tiles get the slot only), and `JRRowItem` puts its title `FOCUS_PADDING` below the poster. `SearchRow` and `FavoritesRows` do the same in their `applyRowSizes()`.
-- [`GridItem`](../../components/ItemGrid/GridItem.bs) in the genre `RowList` (`genreList` in [`BaseGridView.xml`](../../components/ItemGrid/BaseGridView.xml)): `rowItemSize="[[213, 320]]"` and `rowHeights="[415]"`, with `itemSize="[1702, 415]"` to match. The comment above the list in the markup says why those numbers.
+- [`GridItem`](../../components/ItemGrid/GridItem.bs) in the genre `RowList` (`genreList` in [`BaseGridView.xml`](../../components/ItemGrid/BaseGridView.xml)): `libraryRows.layout()` in [`libraryRows.bs`](../../source/GridView/libraryRows.bs) sets every size field from a row slot (`rowSlotSize.PORTRAIT`). `rowHeights` is the slot plus a measured `ROW_CHROME` for the row label and the title, and `itemSize.y` matches it. Rows that other library tabs add read the same function, so every row on a library screen is the size Home's are.
 - Roku's [`RowList` sample](https://gitlab.com/rokudev/samples/-/tree/master/ux%20components/lists%20and%20grids/RowListExample) uses `rowItemSize=[536,308]` with the poster inset to 512×288, another way to keep the indicator off the image.
 
 ## The library grid's cells
@@ -108,7 +109,7 @@ Every library grid cell comes from `libraryGrid.cell(shape, columns, textLines)`
 
 At 7 per row the second row's titles end inside the 5% zone. At 6 and fewer they draw in the bottom margin (Roku Ultra captures, 2026-11-15 and 2026-11-16). That is accepted: the header strip names the focused item inside the zone, so a title under a poster is a convenience for the rows not in focus.
 
-These sizes are the library grid's alone. Home's rows use 234 by 351 (`itemAspectRatio.PORTRAIT`) and the Genres rows 213 by 320.
+These sizes are the library grid's alone. Rows, on Home and on a library screen's Genres tab, use the shared row slot (`rowSlotSize.PORTRAIT`). At that size a Genres tab shows one full row and the top of the next, as Home does: focus stays on the top row, so the cut row is a preview.
 
 ## Why this doc exists
 
