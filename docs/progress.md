@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-26
+last-updated: 2026-11-27
 ---
 
 # Progress
@@ -1443,6 +1443,18 @@ Why not now: each tab is a surface of its own, with its loading, its sorts and f
 Epic #1341's table of what BrighterScript v1 checks was measured on 1.0.0-alpha.56. The repo is on alpha.58, which adds checks the table does not list: missing observer callbacks (it found two dangling `observeField` calls in `IconButton.bs`), a warning when assigning to a member of an AA read from a node field, and optional chaining on `callFunc`. alpha.57 also stopped putting functions in an inactive `#if` branch in scope.
 
 To close: run the epic's probe project again on the installed version, update the table in the issue, and note which rows changed. Do it before the Settings `typecast` trial, and start that trial on a release that carries brighterscript PR #1998, since `typecast` leans on the same symbol tables a statement inserted by a plugin can disturb. Not now: it belongs to the epic's first step, not to the dependency bump.
+
+#### Blur Unwatched Episodes still blurs the show's wide art for an episode with no image of its own `[fid: blur-setting-blurs-series-fallback-art]` `[captured 2026-11-27]`
+
+With Blur Unwatched Episodes on, an episode not yet watched that has no image of its own is still blurred while its cell shows the show's wide art. `getRowItemImageUrl()` falls back from the episode's own Primary to wide art through `getItemWidePosterUrl()`, which can return the series' image, and `getRowItemArt()` reports that cell as `STANDARD`, so `shouldBlurRowItem()` blurs it. This happens on any screen that draws `JRRowItem` or `BrowseRowItem`: Home, Favorites, Search and the details rows. The blur hides spoilers, and a show's art has none.
+
+Left out of the fix that gave the show's wide art its own value when Episode Images Next Up asks for it (`RowItemArt.SERIES_WIDE_ART`, branch `fix/home-blur-show-art`, 2026-11-26), to keep that fix to the setting's case. Found by reading the code; not seen on a device.
+
+Why not now: the art value is decided before the image is resolved, and this case is known only once the fallback order has run, so the fix needs `getRowItemArt()` to know which image the order picked (own Thumb or Backdrop, or the series').
+
+Not checked: a rendered Home row with Blur Unwatched Episodes on and Episode Images Next Up set to show art. The fix above is covered by `rowItemImage.spec.bs` only.
+
+To close: a cell showing a series image for an episode is never blurred, whichever path picked the image, with a case in `rowItemImage.spec.bs`, and one look at a Home row on a device with the setting on.
 
 ### api
 
