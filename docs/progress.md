@@ -1096,6 +1096,10 @@ Both Live TV tabs are wanted with more sorts and filters (decided 2026-11-26 whi
 
 What the server allows: `/LiveTv/Channels` takes `sortBy`, `sortOrder`, `isFavorite`, `enableFavoriteSorting` and the content flags `isMovie`, `isSeries`, `isNews`, `isKids` and `isSports` (10.7.0, 10.11.9 and 12.2 specs), and no name filter, so a letter needs `/Items` (see `live-tv-channels-letter-never-filters`). A guide sort is passed through `m.channelQuery` in `schedule.bs`, and needs a decision on `LoadChannelsTask` moving each page's favorites to the top, which a chosen sort would contradict. Filter categories for Live TV belong with #1440's per-library choice; the guide's sort and that favorites rule are this entry.
 
+#### Search results and the details-screen extras rows keep a stale watch badge after Disable Unwatched Episode Count changes `[fid: watch-badge-sync-search-extras]` `[captured 2026-11-27]`
+
+The fix for #1425 (`fix/issue-1425`) redraws the watch badge on cells already on screen when Disable Unwatched Episode Count (`uiTvShowsDisableUnwatchedCount`) changes, but only on library grids (`BaseGridView`) and Home's rows (`Home.onSettingsChanged`). Search results (`SearchRow`, on `SearchScreen`) and the extras rows on a details screen (`ExtrasRowList`, on `ItemDetails`) draw `BrowseRowItem` cells. Their content roots get the `watchBadgeHidden` field from `initTextureManager` (`watchBadge.attach`), and the cells observe it, but neither screen calls `watchBadge.sync`. So a cell there keeps its old badge after the setting changes in Settings, until it is bound again. Not measured on a device; reasoned from the code. To close: call `watchBadge.sync` on the list's content root from `SearchScreen.onSettingsChanged` and `ItemDetails.onSettingsChanged` when the names include the setting, check it on a device, and add the case to `tests/rta/specs/settings-reach-screen.spec.js`.
+
 ### source
 
 #### Custom subtitles are correct ONLY because `vtt` is listed FIRST in `getSubtitleProfiles()` (`source/utils/deviceCapabilities.bs`), and nothing pins that. `[fid: custom-subtitles-depend-on-vtt-first]` `[captured 2026-09-23]`
