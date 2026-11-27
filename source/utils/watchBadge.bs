@@ -17,7 +17,9 @@ namespace watchBadge
   end function
 
   ' Give a node the `watchBadgeHidden` field, set to the current setting. Call it before any
-  ' cell can bind, so the first write is not taken for a change.
+  ' cell can bind, so the first write is not taken for a change. initTextureManager calls it
+  ' for every list, so a library grid's content root gets a copy no cell reads: grid cells
+  ' follow BaseGridView's own field, which reaches the genre rows too.
   ' @param node - the node whose cells follow the setting
   sub attach(node as object)
     if not isValid(node) then return

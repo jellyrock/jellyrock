@@ -56,7 +56,7 @@ The subtitle panel used to set `drawFocusFeedback="false"`, and each row toggled
 
 Cells free their poster texture when the user is not about to see it, and load it again when they are. [`textureManager.bs`](../../source/utils/textureManager.bs) keeps the inputs on the list's content root, and each cell ([`JRRowItem`](../../components/ui/rowitem/JRRowItem.bs), [`GridItem`](../../components/ItemGrid/GridItem.bs)) observes them and decides for itself.
 
-The content root also carries `watchBadgeHidden`, the Disable Unwatched Episode Count setting, which has nothing to do with textures. The screen writes it from `onSettingsChanged` (`watchBadge.sync`), and each cell redraws its poster's watch badge when it changes, so a cell that kept its item through the change draws the new setting. `BaseGridView` holds the same field on itself for its grid cells.
+The content root also carries `watchBadgeHidden`, the Disable Unwatched Episode Count setting, which has nothing to do with textures. The screen writes it from `onSettingsChanged` (`watchBadge.sync`), and each cell redraws its poster's watch badge when it changes, so a cell that kept its item through the change draws the new setting. `BaseGridView` holds the same field on itself for its grid cells, so the genre rows follow it too. Its grid's content root still gets the field from `initTextureManager`, but no cell reads that copy and nothing syncs it.
 
 **States** (`textureManagerState` on the content root):
 
