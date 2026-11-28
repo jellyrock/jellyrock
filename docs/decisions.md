@@ -2878,7 +2878,8 @@ Credit is the names in the `Co-authored-by` trailers of the commits that touched
 ## decision-id: syncplay-resume-lag-not-carried
 
 **date**: 2026-11-20
-**status**: accepted
+**status**: superseded
+**superseded-by**: `syncplay-resume-lag-carried-far`
 **related-files**: `source/syncplay/syncPlayPlayer.bs`
 
 A new stream starts its resume lag again (`syncPlayPlayer.mounted()`); the lag learned on the stream before is not carried. Carrying only a lag below zero was tried and declined: it did not leave other devices on the behavior that passed. In the new-stream records of 2026-11-18, the carried steady samples of a Streaming Stick 4K were all below zero in 6 of 13 and 2 of 10 windows, and with the carry in place in 9 of 10 (8 of 9 on an Ultra). The samples were split from repeated readings, so the counts are approximate. Each try costs 20 runs of `syncplay-controls`, on the device where the first carry failed 1 run in 14. The cost accepted: a low-end Streaming Stick holds three or four times, each under half a second, as a video starts (the user page's Known limits).
@@ -3071,6 +3072,17 @@ Ruled out: wide art first, the order rows had copied from the Home rows of jelly
 The libraries `GenericPresenter` draws get tabs by type (#1439). The Collections library has Collections and Favorites, and the Playlists library has Playlists and Favorites. A music video library has Folders, Music Videos and Favorites, and opens on Folders, the view it had before. Favorites is the Music Videos list with favorites fixed on, so it finds a video in any folder. This changes the line in #1439 that gave these libraries their content and Favorites only: the operator chose the three tabs on 2026-11-26. A home video library keeps one view until #935, and a mixed library and a plain folder keep one view.
 
 Ruled out for music videos: folders alone, which leaves no flat list to sort by date or shuffle and makes Favorites ask a different question than its content tab; and a flat list alone, which drops the grouping by artist a library on disk has. The cells follow the art (`libraryGrid.shapeForLibrary()`): wide for music videos and home videos, square for playlists, a portrait for the rest, a mixed library included. Home's Latest row for a mixed library is a portrait for the same reason (`latestRows.slotSizeFor()`); it was wide.
+
+## decision-id: syncplay-resume-lag-carried-far
+
+**date**: 2026-11-28
+**status**: accepted
+**supersedes**: `syncplay-resume-lag-not-carried`
+**related-files**: `source/syncplay/syncPlayPlayer.bs`
+
+A new stream keeps a resume-lag learner whose lag in use is at or below `RESUME_LAG_CARRY_BELOW_MS` (-150 ms) and starts any other empty (`syncPlayPlayer.mounted()`). The gate is on size, which the earlier note named as the shape to try: a low-end Streaming Stick's lags sit near -250 to -340 ms, and on a Streaming Stick 4K and an Ultra the carry never fired in a 300-step soak each (2026-11-28). On the low-end Stick a 300-step soak went from 142 holds to 40, and from 40 events with more than one hold to 5, with every step at rest and the hold budget never spent (2026-11-27 and 2026-11-28). On the Stick 4K, 20 runs of `syncplay-controls` passed 20 of 20 against 19 of 20 for `main`, run in turn.
+
+The cost accepted: the low-end Stick rests looser, with 43% of playing steps within 50 ms against 63%, and more steps over 100 ms behind. Its plain resume lands loosely with or without the carry, and the holds the carry removes were what trimmed it. Fewer freezes were ranked above a tighter rest, which one viewer on one screen cannot perceive. Ruled out: carrying the steady learner only (73 holds and no tighter), a starting value from the device tier table (one 512 MB model measured), and lowering the ahead bar on capable devices, which would add small holds for tightness. The first group stream after launch still learns from nothing. Not measured: any 512 MB model other than the one low-end Streaming Stick, and a transcoded stream against a direct-play one on the same device.
 
 ## Migrated to ADRs
 
