@@ -703,6 +703,34 @@ namespace tests
       m.assertEqual(m.steadySamples(player).count(), 0)
     end function
 
+    @it("a landing lag far below zero is kept, and the new stream's first stop resumes by it")
+    function _()
+      ' The load's landing, then a seek's landing, each resumed with the node running on.
+      player = m.pausedAfter300()
+      m.resumeCycle(player, 2000&, -300&)
+      syncPlayPlayer.told(player, "seek", "group", m.at60s, 4000&)
+      syncPlayPlayer.nodeState(player, "buffering", 4100&)
+      syncPlayPlayer.nodeState(player, "playing", 4500&)
+      syncPlayPlayer.reading(player, m.at60s, 4520&)
+      syncPlayPlayer.told(player, "pause", "wait", invalid, 4530&)
+      syncPlayPlayer.nodeState(player, "paused", 4560&)
+      m.assertEqual(player.stopKind, "landing")
+      m.resumeCycle(player, 5000&, -260&)
+      m.assertEqual(m.landingSamples(player), [-300&, -260&])
+      syncPlayPlayer.reloaded(player, invalid, 9000&)
+      m.assertEqual(m.landingSamples(player), [-300&, -260&])
+      m.assertEqual(m.steadySamples(player).count(), 0)
+      m.assertEqual(player.resumeLagCarried, "landing")
+      ' The new stream's first pause comes before any reading since its landing.
+      syncPlayPlayer.nodeState(player, "buffering", 9050&)
+      syncPlayPlayer.nodeState(player, "playing", 9800&)
+      syncPlayPlayer.reading(player, m.at60s, 9900&)
+      syncPlayPlayer.told(player, "pause", "group", invalid, 10200&)
+      syncPlayPlayer.nodeState(player, "paused", 10230&)
+      m.assertEqual(player.stopKind, "landing")
+      m.assertEqual(player.resumeLagMs, -280&)
+    end function
+
     @it("a resume from an unknown stop plays with no position until a reading")
     function _()
       player = m.playingAt60()
