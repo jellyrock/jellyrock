@@ -1,5 +1,5 @@
 ---
-last-updated: 2026-11-27
+last-updated: 2026-11-28
 ---
 
 # Progress
@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-28: feat(library): A deep link can name a library tab, and a reload returns to it
 - 2026-11-27: update(library): Draw Genres rows at the shared row size
 - 2026-11-27: refactor(syncplay): Move the resume lag onto a shared learned-value helper
 - 2026-11-27: fix(posters): Redraw watch badges on screen when the setting changes
@@ -51,7 +52,6 @@ Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets ol
 - 2026-11-14: refactor(translations): Rename 75 keys by role, keeping translations
 - 2026-11-14: fix(playback): Play and name the audio track picked in an `MP4`
 - 2026-11-14: fix(playback): Play the MKV audio track the viewer picked
-- 2026-11-13: refactor: Gate namespaced constant access and spec code at build time
 
 ## Open followups
 
