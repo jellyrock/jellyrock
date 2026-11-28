@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- (library) A deep link can name a library tab, and a reload returns to it ([#1465](https://github.com/jellyrock/jellyrock/pull/1465)) by [@cewert](https://github.com/cewert)
 - (library) Tabs and art-shaped cells beyond movie, TV and music ([#1450](https://github.com/jellyrock/jellyrock/pull/1450)) by [@cewert](https://github.com/cewert)
 - (library) Show the library's name; end the count at the edge ([#1447](https://github.com/jellyrock/jellyrock/pull/1447)) by [@cewert](https://github.com/cewert)
 - (ui) Home settings menu; ratings, taglines, Star follow one rule ([#1413](https://github.com/jellyrock/jellyrock/pull/1413)) by [@cewert](https://github.com/cewert)
