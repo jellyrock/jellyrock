@@ -387,6 +387,36 @@ namespace tests
       m.assertEqual(gridQuery.resolveView(invalid, "", [{ Name: "movies" }], "movies"), { tab: "movies", source: "default" })
     end function
 
+    @it("opens on the tab a link names, ahead of the Roku's choice and the web's pick")
+    function _()
+      views = [{ Name: "movies" }, { Name: "genres" }, { Name: "studios" }, { Name: "favorites" }]
+      m.assertEqual(gridQuery.resolveView("studios", "genres", views, "movies", "favorites"), { tab: "favorites", source: "link" })
+      m.assertEqual(gridQuery.resolveView(invalid, "", views, "movies", "genres"), { tab: "genres", source: "link" })
+    end function
+
+    @it("falls through a link's tab the library does not offer")
+    ' A link written for a movie library sent to a music library, or naming a tab the app
+    ' does not have.
+    function _()
+      views = [{ Name: "movies" }, { Name: "genres" }, { Name: "studios" }]
+      m.assertEqual(gridQuery.resolveView("studios", "genres", views, "movies", "albums"), { tab: "studios", source: "roku" })
+      m.assertEqual(gridQuery.resolveView(invalid, "", views, "movies", "nosuchtab"), { tab: "movies", source: "default" })
+    end function
+
+    @it("resolves as before when no link names a tab")
+    @params(invalid)
+    @params("")
+    function _(linkTab)
+      views = [{ Name: "movies" }, { Name: "genres" }]
+      m.assertEqual(gridQuery.resolveView("genres", "", views, "movies", linkTab), { tab: "genres", source: "roku" })
+    end function
+
+    @it("never opens a one-view screen on a link's tab")
+    ' A folder or collection offers no tabs, so no tab id is offered there.
+    function _()
+      m.assertEqual(gridQuery.resolveView(invalid, "", [], "", "genres"), { tab: "", source: "default" })
+    end function
+
     @it("returns an empty default untouched for a grid that runs without a named view")
     ' A folder or collection gets "" from getDefaultView() and offers no tabs, and "" is in
     ' no presenter's views list, so a rule of "reset anything not offered" would reset it

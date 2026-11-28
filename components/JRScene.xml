@@ -71,6 +71,7 @@
     <function name="routerNavigate" />
     <function name="resolveDeepLink" />
     <function name="reloadRoutedHome" />
+    <function name="drawTabSelection" />
     <function name="resetRouter" />
     <function name="routerGoBack" />
     <!-- A screen whose Star key does what the settings icon does calls this: the page menu

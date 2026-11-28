@@ -1,6 +1,7 @@
 # ADR 0018: Deep-link / cast contract + validate-before-navigate resolution
 
 **Status:** Accepted
+**Extended by:** [ADR 0065](0065-library-tab-in-a-link.md) (a `tab` key that opens a library on a tab)
 **Date:** 2026-06-20
 
 **related-files**: source/replayRoute.bs, source/deepLink.bs, components/JRScene.bs, components/ItemDetails.bs, source/main.bs, docs/dev/deep-linking.md

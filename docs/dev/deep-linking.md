@@ -6,7 +6,7 @@ related-files:
   - components/JRScene.bs
   - components/ItemDetails.bs
   - components/auth/AuthManager.bs
-last-reviewed: 2026-11-03
+last-reviewed: 2026-11-27
 ---
 
 # Deep linking and casting
@@ -39,12 +39,13 @@ Both pass the parameters to `stashDeepLink()` in `source/replayRoute.bs`. The re
 | `id` | None | The Jellyfin item ID. A segment with no `=` is taken as the ID, so `<id>`, `<id>\|action=play` and `id=<id>\|action=play` all work. |
 | `serverId` (or `server`) | The active server | The target server's Jellyfin ID (a GUID), not a URL. See [Server resolution](#server-resolution). |
 | `action` | `open` | What to do with the item: `open`, `play`, `shuffle`, `trailer` or `instantmix`. This is the sender's choice; JellyRock never infers it from the item. An unknown value acts as `open`, so a new verb is safe on older builds. |
+| `tab` | The library's own | The tab a library opens on: one of the app's tab ids in `source/GridView/libraryTab.bs` (`genres`, `favorites`, `albums` and so on). Read only when `open` targets a library. See [A library's tab](#a-librarys-tab). |
 
 `parseDeepLinkContentId()` follows these rules:
 
 - **It splits each segment on the first `=` only,** so a value can contain `=`.
 - **A repeated key keeps its last value:** `id=a|id=b` gives `b`. Empty segments (a stray `|`) are ignored.
-- **Keys are case-insensitive.** The `action` value and the `serverId` GUID are lowercased, so a sender with the wrong case still works. A Jellyfin server GUID is lowercase hex, and the saved-server match ignores case on both sides.
+- **Keys are case-insensitive.** The `action` and `tab` values and the `serverId` GUID are lowercased, so a sender with the wrong case still works. A Jellyfin server GUID is lowercase hex, and the saved-server match ignores case on both sides.
 - **The ID must be URL-safe** (`isPlausibleDeepLinkItemId()`): letters, digits, dashes and underscores, with no `/ ? # & = | %` and no whitespace. Any other ID is dropped when it is stashed. The ID is pasted into the details route and the `/Items/<id>` URL, so this stops a crafted `contentId` from changing either. A real Jellyfin ID is a GUID, so no real link is rejected: this guards against injection, and isn't a strict GUID check.
 
 **Why everything goes inside `contentId`, separated by pipes:** `contentId` is the only field that survives both ways in. A cold-start `/launch` keeps only `contentId` and `mediaType` and drops other parameters, while a runtime `/input` forwards them all. Roku also forbids `&` inside `contentId` and reserves `action` as a top-level launch key. So the contract lives inside `contentId`, separated by pipes, as Roku's own docs do (`series=x|Season=1`). Our `action` is a sub-key, which Roku never reads.
@@ -72,6 +73,18 @@ The exception is `open` on a grid container (see below), which goes to the libra
 - **`shuffle`** takes the **Shuffle** button's path (`onShuffleButtonPressed()`).
 - **`trailer`** plays the item's trailers.
 - **`instantmix`** builds an instant mix from the item, as the **Instant Mix** button does. It does nothing on an item that yields no mix.
+
+### A library's tab
+
+`tab=<id>` opens a library on that tab. The ids are the app's own ([ADR 0056](../adr/0056-library-tab-ids-and-layout.md)), which makes them part of this contract: renaming one in `libraryTab.bs` breaks a sender ([ADR 0065](../adr/0065-library-tab-in-a-link.md)).
+
+- **It is for that opening only.** It wins over the default tab kept on the Roku and the one picked in the web client, and it is never saved (`gridQuery.resolveView()`, source `RESOLVED_LINK`).
+- **A tab the library does not offer is ignored,** and the library opens as it would without one. So is a tab on a link to anything but a library. An older build ignores the key, as it does every key it does not know.
+- **A link to the library already on screen switches its tab in place.** The router reuses the view for a navigation to its own path, and `BaseGridView.onRouteUpdate()` switches as a tab press does. No second screen is pushed, so **Back** still returns to where the library was opened from.
+- **The value is checked like `action`** (`isPlausibleDeepLinkToken()`), though it enters no path and no URL: it rides in the route's context. A value that fails is dropped and the link still opens.
+- **It survives sign-in and a server switch,** since it is stored with the rest of the link (`AuthManager.stashedDeepLink`).
+
+A tab press never changes the router's address: a tab is the screen's own state, as on Home. The link's tab and the tab a library returns to after a theme or language change both reach it as one key in the route's context (`source/utils/screenReopen.bs`).
 
 ### Once per navigation
 
@@ -123,6 +136,9 @@ curl -d '' "http://<IP>:8060/input?contentId=<itemId>|serverId%3D<serverGuid>|ac
 
 # Cold start straight into playback
 curl -d '' "http://<IP>:8060/launch/dev?contentId=<itemId>|action%3Dplay"
+
+# Open a library on a tab (a movie library's Genres)
+curl -d '' "http://<IP>:8060/input?contentId=<libraryId>|tab%3Dgenres"
 
 # Invalid id: the message only, for any action
 curl -d '' "http://<IP>:8060/input?contentId=deadbeefdoesnotexist"

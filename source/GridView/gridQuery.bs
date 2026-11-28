@@ -107,10 +107,11 @@ namespace gridQuery
 
   ' resolveView: which tab a library opens on, and where that choice came from.
   '
-  ' The tab picked on this Roku (the `defaultTab` display setting) while the library
-  ' offers it; else the tab picked in the web client while offered; else the library
-  ' type's default. Each saved choice goes through resolveOffered, so one the library no
-  ' longer offers falls through without being forgotten.
+  ' The tab a link or a reload names for this opening, while the library offers it; else
+  ' the tab picked on this Roku (the `defaultTab` display setting) while offered; else the
+  ' tab picked in the web client while offered; else the library type's default. Each
+  ' choice goes through resolveOffered, so one the library does not offer falls through,
+  ' and a saved one is not forgotten.
   '
   ' The empty default is not a missing view. getDefaultView() returns "" for a folder or
   ' collection (the Generic presenter), whose grid runs with no named view at all, and ""
@@ -121,9 +122,13 @@ namespace gridQuery
   '   (libraryTab.fromServerTab), or "" when there is none
   ' @param offeredViews - the presenter's `getOptions().views`
   ' @param defaultView - what getDefaultView() answered for this library
-  ' @return {object} { tab, source }, `source` one of RESOLVED_ROKU, RESOLVED_WEB and
-  '   RESOLVED_DEFAULT
-  function resolveView(clientOverride as dynamic, serverTab as dynamic, offeredViews as dynamic, defaultView as dynamic) as object
+  ' @param linkTab - the tab this one opening was asked for (a deep link's `tab`, or the
+  '   tab a reload returns to), or "" when none was. Never saved.
+  ' @return {object} { tab, source }, `source` one of RESOLVED_LINK, RESOLVED_ROKU,
+  '   RESOLVED_WEB and RESOLVED_DEFAULT
+  function resolveView(clientOverride as dynamic, serverTab as dynamic, offeredViews as dynamic, defaultView as dynamic, linkTab = "" as dynamic) as object
+    picked = gridQuery.resolveOffered(linkTab, offeredViews, "")
+    if picked <> "" then return { tab: picked, source: gridQuery.RESOLVED_LINK }
     picked = gridQuery.resolveOffered(clientOverride, offeredViews, "")
     if picked <> "" then return { tab: picked, source: gridQuery.RESOLVED_ROKU }
     picked = gridQuery.resolveOffered(serverTab, offeredViews, "")
@@ -132,6 +137,7 @@ namespace gridQuery
   end function
 
   ' Where resolveView's tab came from.
+  const RESOLVED_LINK = "link"
   const RESOLVED_ROKU = "roku"
   const RESOLVED_WEB = "web"
   const RESOLVED_DEFAULT = "default"

@@ -17,7 +17,7 @@ import "pkg:/source/utils/tasks.bs"
 ' resolves on the render thread); it hands route chains to JRScene via callFunc.
 ' ===========================================================================
 
-' Parse a Roku deep-link contentId into { itemId, serverGuid, action }. contentId is the only
+' Parse a Roku deep-link contentId into { itemId, serverGuid, action, tab }. contentId is the only
 ' deep-link field that survives BOTH Roku ingress paths intact (cold-start /launch standardizes
 ' only contentId+mediaType; /input forwards arbitrary params but /launch does not), and Roku
 ' forbids "&" inside it, so the whole contract rides inside contentId, pipe-delimited (Roku's
@@ -30,8 +30,10 @@ import "pkg:/source/utils/tasks.bs"
 ' Duplicate keys are last-wins ("id=a|id=b" => "b"), an emergent property of the loop, pinned
 ' by a spec so a refactor can't silently change it. A value may itself contain "=" (we split each
 ' pair on the FIRST "=" only), so a key=value whose value carries an "=" is preserved, not dropped.
+' tab names the tab a library opens on, one of the app's own tab ids (libraryTab.bs), lower-cased
+' as they are. It is "" when absent, and only a link to a library reads it.
 function parseDeepLinkContentId(raw as string) as object
-  result = { itemId: "", serverGuid: "", action: "open" }
+  result = { itemId: "", serverGuid: "", action: "open", tab: "" }
   if not isValidAndNotEmpty(raw) then return result
 
   for each pair in raw.split("|")
@@ -57,6 +59,8 @@ function parseDeepLinkContentId(raw as string) as object
         result.serverGuid = LCase(value)
       else if key = "action"
         if isValidAndNotEmpty(value) then result.action = LCase(value)
+      else if key = "tab"
+        if isValidAndNotEmpty(value) then result.tab = LCase(value)
       end if
     end if
   end for
@@ -115,12 +119,19 @@ sub stashDeepLink(rawContentId as string, mediaType as string, itemName = "" as 
   routeAction = parsed.action
   if not isPlausibleDeepLinkToken(routeAction) then routeAction = "open"
 
+  ' tab enters no path and no URL: it rides in the route's context, and the library opens on it
+  ' only when it is a tab that library offers. It gets the token check all the same, so the stash
+  ' holds one kind of value. A tab that fails it is dropped and the link still opens.
+  routeTab = parsed.tab
+  if not isPlausibleDeepLinkToken(routeTab) then routeTab = ""
+
   m.global.AuthManager.stashedDeepLink = {
     itemId: parsed.itemId,
     mediaType: routeMediaType,
     serverGuid: parsed.serverGuid,
     itemName: itemName,
-    action: routeAction
+    action: routeAction,
+    tab: routeTab
   }
 end sub
 
@@ -139,6 +150,7 @@ sub replayAfterLogin()
     m.scene.callFunc("resolveDeepLink", {
       itemId: deepLink.itemId,
       action: deepLink.action,
+      tab: deepLink.tab,
       isPlayback: isDeepLinkPlaybackAction(deepLink.action),
       homeFirst: true,
       replacePlayer: false,
@@ -186,6 +198,7 @@ sub replayDeepLinkRuntime()
   m.scene.callFunc("resolveDeepLink", {
     itemId: deepLink.itemId,
     action: deepLink.action,
+    tab: deepLink.tab,
     isPlayback: isPlayback,
     homeFirst: false,
     replacePlayer: replacePlayer,

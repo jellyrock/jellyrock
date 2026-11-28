@@ -34,7 +34,7 @@ The `action` says what to do with the item. Without one, JellyRock uses `open`.
 
 | Action | What it does | Works well on |
 | --- | --- | --- |
-| `open` _(default)_ | Goes to the item's page. A library, folder, genre or collection opens into its grid instead. | Anything |
+| `open` _(default)_ | Goes to the item's page. A library, folder, genre or collection opens into its grid instead, and a library can open on a tab you name (see [Open a library on a tab](#open-a-library-on-a-tab)). | Anything |
 | `play` | Starts playing. A movie or episode resumes where you left off. A show resumes its next-up episode. An album, playlist or season plays in order. | Movie, Episode, Series, Season, Album, Playlist, Audio, live channel, Photo |
 | `shuffle` | Shuffle-plays, the same as pressing **Shuffle** in the app. | Album, Playlist, Artist, library |
 | `trailer` | Plays the item's trailer. | Movie, Series |
@@ -88,6 +88,31 @@ curl -d '' "http://<roku-ip>:8060/input?contentId=<itemId>|action%3Dplay"
 ```
 
 The `-d ''` makes `curl` send a `POST`, which ECP requires. A `GET` returns 404.
+
+## Open a library on a tab
+
+A link to a library can name the tab it opens on. Add `tab` with the tab's ID:
+
+```bash
+curl -d '' "http://<roku-ip>:8060/input?contentId=<libraryId>|tab%3Dgenres"
+```
+
+To find a library's ID, open the library in the Jellyfin web app and copy the value after `topParentId=` (or `parentId=`) in the address bar.
+
+| Library | Tab IDs |
+| --- | --- |
+| Movies | `movies`, `favorites`, `collections`, `genres`, `studios` |
+| Shows | `shows`, `favorites`, `genres`, `networks`, `collections` |
+| Music | `albums`, `albumartists`, `artists`, `genres` |
+| Live TV | `channels`, `guide` |
+| Collections | `collections`, `favorites` |
+| Playlists | `playlists`, `favorites` |
+| Music videos | `folders`, `musicvideos`, `favorites` |
+
+- The tab is for that one opening. It doesn't change the library's [default tab](browse-a-library.md#choose-the-tab-a-library-opens-on).
+- If the library is already on screen, it switches to the tab without opening a second copy.
+- A tab the library doesn't have is ignored, and the library opens on its default tab. The **Collections** tab of a movie or TV library needs Jellyfin 12.
+- The IDs are the same in every language. They aren't the names shown on screen.
 
 ## Open an item on a specific server
 
@@ -159,6 +184,7 @@ rest_command:
 | _"This content isn't available."_ | The ID is wrong, belongs to a different server (add `serverId`), or the item was deleted. |
 | It asks to switch servers when you didn't expect it | Your `serverId` points at a different server than the one you're signed in to. Remove `serverId` to use the current one. |
 | A message about a server you haven't added | Add that server in JellyRock first, then try again. |
+| A library opens on the wrong tab | Check the tab's ID against the table in [Open a library on a tab](#open-a-library-on-a-tab), and that the `=` in `tab=...` is encoded as `%3D`. A tab that library doesn't have is ignored. |
 | It opens but doesn't play | You sent `open`, the default. Add `\|action%3Dplay` to the `contentId`. |
 | `/launch` opens the app but not the item | Check that the `=` in `action=...` is encoded as `%3D`. ECP returns 404 and does nothing when the query holds a literal `=`. The item ID and the `\|` separators stay as they are. |
 

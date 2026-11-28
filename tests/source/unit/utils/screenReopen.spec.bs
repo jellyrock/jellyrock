@@ -1,0 +1,89 @@
+import "pkg:/source/utils/screenReopen.bs"
+
+namespace tests
+
+  @suite("screenReopen: what a route's context carries to reopen a screen")
+  class ScreenReopenTests extends tests.BaseTestSuite
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("tabOf()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("reads the tab a route's context names")
+    function _()
+      m.assertEqual(screenReopen.tabOf({ path: "/library/abc", context: { tab: "genres" } }), "genres")
+      m.assertEqual(screenReopen.tabOf({ context: { item: {}, tab: " studios " } }), "studios")
+    end function
+
+    @it("reads it off a route node, which is what a view holds")
+    function _()
+      route = CreateObject("roSGNode", "ContentNode")
+      route.addFields({ path: "/library/abc", context: { item: "node", tab: "genres" } })
+      m.assertEqual(screenReopen.tabOf(route), "genres")
+    end function
+
+    @it("names no tab for a node with no context")
+    function _()
+      m.assertEqual(screenReopen.tabOf(CreateObject("roSGNode", "ContentNode")), "")
+    end function
+
+    @it("names no tab for a route without one")
+    function _()
+      m.assertEqual(screenReopen.tabOf(invalid), "")
+      m.assertEqual(screenReopen.tabOf({}), "")
+      m.assertEqual(screenReopen.tabOf({ context: invalid }), "")
+      m.assertEqual(screenReopen.tabOf({ context: {} }), "")
+      m.assertEqual(screenReopen.tabOf({ context: { item: {} } }), "")
+    end function
+
+    @it("names no tab when the value is not text")
+    function _()
+      m.assertEqual(screenReopen.tabOf({ context: { tab: 3 } }), "")
+      m.assertEqual(screenReopen.tabOf({ context: { tab: true } }), "")
+      m.assertEqual(screenReopen.tabOf({ context: { tab: { id: "genres" } } }), "")
+      m.assertEqual(screenReopen.tabOf({ context: { tab: invalid } }), "")
+      m.assertEqual(screenReopen.tabOf("genres"), "")
+    end function
+
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    @describe("contextFor()")
+    '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    @it("adds the screen's answer to its route's context")
+    function _()
+      context = screenReopen.contextFor({ item: "node" }, { tab: "genres" })
+      m.assertEqual(context, { item: "node", tab: "genres" })
+    end function
+
+    @it("lets the screen's answer win a key the route already holds")
+    ' A library a link opened on Genres, moved to Studios by the viewer since.
+    function _()
+      context = screenReopen.contextFor({ item: "node", tab: "genres" }, { tab: "studios" })
+      m.assertEqual(context.tab, "studios")
+      m.assertEqual(context.item, "node")
+    end function
+
+    @it("keeps the route's context when the screen has nothing to add")
+    function _()
+      m.assertEqual(screenReopen.contextFor({ item: "node" }, {}), { item: "node" })
+      m.assertEqual(screenReopen.contextFor({ item: "node" }, invalid), { item: "node" })
+    end function
+
+    @it("answers an empty context when neither side has one")
+    function _()
+      m.assertEqual(screenReopen.contextFor(invalid, invalid), {})
+      m.assertEqual(screenReopen.contextFor(invalid, { tab: "favorites" }), { tab: "favorites" })
+    end function
+
+    @it("changes neither input")
+    function _()
+      routeContext = { item: "node", tab: "genres" }
+      answer = { tab: "studios" }
+      screenReopen.contextFor(routeContext, answer)
+      m.assertEqual(routeContext, { item: "node", tab: "genres" })
+      m.assertEqual(answer, { tab: "studios" })
+    end function
+
+  end class
+
+end namespace

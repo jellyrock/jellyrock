@@ -8,6 +8,7 @@ import "pkg:/source/translationKeys.bs"
 import "pkg:/source/utils/config.bs"
 import "pkg:/source/utils/deviceCapabilities.bs"
 import "pkg:/source/utils/misc.bs"
+import "pkg:/source/utils/screenReopen.bs"
 import "pkg:/source/utils/serverCapabilities.bs"
 import "pkg:/source/utils/tasks.bs"
 import "pkg:/source/utils/textureManager.bs"
@@ -54,6 +55,28 @@ sub init()
 
   ' Overhang config: declarative fields projected onto the overhang by JRScene (registerOverhangData).
   m.top.shouldShowUserDropdown = true
+end sub
+
+' JRScreen hook: the tab on show, so the reload after a theme or language change comes back
+' to it (openOnRouteTab reads it).
+function reopenContext() as object
+  context = {}
+  context[screenReopen.TAB] = m.activeTabId
+  return context
+end function
+
+' Open on the tab the route names, when it is one of Home's and not the one on show. The
+' reload after a theme or language change is the one caller that names one. Home is built
+' on its first tab, so this switches as a tab press does (onTabChanged).
+sub openOnRouteTab()
+  tabId = screenReopen.tabOf(m.top.route)
+  if tabId = "" or tabId = m.activeTabId then return
+  for each entry in m.top.overhangTabs
+    if entry.id = tabId
+      switchTab(tabId)
+      return
+    end if
+  end for
 end sub
 
 ' JRScreen hook: the settings icon's menu (homePageSettings.entries). settings.json is read
@@ -140,7 +163,9 @@ sub onScreenShown()
   ' fire-and-forget side effect.
   if m.isFirstRun
     m.isFirstRun = false
-    loadLibraries()
+    ' A tab the route names replaces the first tab's rows before they load anything
+    openOnRouteTab()
+    if m.activeTabId = "home" then loadLibraries()
     SubmitSideEffect(GetApi().BuildPostSessionCapabilitiesRequest(getDeviceCapabilities()))
     ' Learn which plugins the server has, so plugin-dependent buttons are known
     ' before the user reaches a detail screen.

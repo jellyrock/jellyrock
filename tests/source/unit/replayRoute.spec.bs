@@ -121,6 +121,28 @@ namespace tests
       m.assertEqual(r.action, "play")
     end function
 
+    @it("reads the library tab a link names, lower-cased")
+    @params("abc|tab=genres", "genres")
+    @params("id=abc|TAB=Genres", "genres")
+    @params("tab=studios|abc|action=open", "studios")
+    function _(sent, expected)
+      m.assertEqual(parseDeepLinkContentId(sent).tab, expected)
+    end function
+
+    @it("names no tab when the link has none, or an empty one")
+    @params("abc")
+    @params("abc|action=play")
+    @params("abc|tab=")
+    @params("")
+    function _(sent)
+      m.assertEqual(parseDeepLinkContentId(sent).tab, "")
+    end function
+
+    @it("keeps an earlier tab when a later one is empty")
+    function _()
+      m.assertEqual(parseDeepLinkContentId("abc|tab=genres|tab=").tab, "genres")
+    end function
+
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @describe("isPlausibleDeepLinkItemId() — URL-injection guard")
     '+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -368,6 +390,35 @@ namespace tests
       m.assertEqual(stashed.serverGuid, "guid-1")
       m.assertEqual(stashed.action, "shuffle")
       m.assertEqual(stashed.itemName, "My Show")
+    end function
+
+    @it("stashes the tab a link names, so it survives sign-in and a server switch")
+    function _()
+      m.resetStashedDeepLink()
+      stashDeepLink("abc123|serverId=GUID-1|tab=Genres", "")
+      stashed = m.global.AuthManager.stashedDeepLink
+      m.assertEqual(stashed.itemId, "abc123")
+      m.assertEqual(stashed.tab, "genres")
+    end function
+
+    @it("stashes an empty tab for a link that names none")
+    function _()
+      m.resetStashedDeepLink()
+      stashDeepLink("abc123", "")
+      m.assertEqual(m.global.AuthManager.stashedDeepLink.tab, "")
+    end function
+
+    @it("drops a tab that is not a plain token, and still stashes the link")
+    @params("abc123|tab=genres/../x")
+    @params("abc123|tab=a b")
+    @params("abc123|tab=genres?x")
+    @params("abc123|tab=a=b")
+    function _(sent)
+      m.resetStashedDeepLink()
+      stashDeepLink(sent, "")
+      stashed = m.global.AuthManager.stashedDeepLink
+      m.assertEqual(stashed.itemId, "abc123")
+      m.assertEqual(stashed.tab, "")
     end function
 
     ' Give m.global a fresh AuthManager with a cleared stash before each stashDeepLink case.

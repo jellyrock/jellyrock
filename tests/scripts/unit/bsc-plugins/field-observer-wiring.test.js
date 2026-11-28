@@ -2,7 +2,8 @@
 //
 // Plugin under test: scripts/bsc-plugins/field-observer-wiring.cjs
 // Diagnostic codes: duplicate-field-observer, ineffective-unobserve,
-// undetachable-observer, top-unobserve-outside-ondestroy, top-observer-outside-init
+// undetachable-observer, top-unobserve-outside-ondestroy, top-observer-outside-init,
+// own-tab-outside-switch-tab
 //
 // The first two guard silent wiring bugs, both established by PR #891:
 //
@@ -813,5 +814,131 @@ describe('top-observer-outside-init — what it must NOT flag', () => {
     const found = diagnosticsByCode(diagnostics, TOP_OBSERVE);
     expect(found).toHaveLength(1);
     expect(found[0].location.uri).toMatch(/components[\\/]websocket[\\/]SocketTask\.bs$/);
+  });
+});
+
+// A screen's own change to its tab is drawn on the overhang only through
+// JRScreen.switchTab (it asks the scene to redraw). A bare write to m.top.selectedTabId
+// after init leaves the bar showing the old tab until something else projects it.
+const OWN_TAB = 'own-tab-outside-switch-tab';
+
+// A component XML that extends `parent`, with a codebehind of the same base name.
+const xmlExtending = (name, parent) =>
+  `<?xml version="1.0" encoding="utf-8" ?>
+<component name="${name}" extends="${parent}">
+  <script type="text/brightscript" uri="${name}.bs" />
+</component>`;
+
+// JRScreen as the tree has it: a base with switchTab, which owns the one allowed write.
+const jrScreenFiles = (switchTabBody = 'm.top.selectedTabId = tabId') => ({
+  'components/JRScreen.xml': xmlExtending('JRScreen', 'Group'),
+  'components/JRScreen.bs': `
+    sub switchTab(tabId as string)
+      ${switchTabBody}
+    end sub
+  `,
+});
+
+describe('own-tab-outside-switch-tab: the bug it catches', () => {
+  it('errors on a write to m.top.selectedTabId in another function of a JRScreen subclass', () => {
+    const diagnostics = run({
+      ...jrScreenFiles(),
+      'components/Library.xml': xmlExtending('Library', 'JRScreen'),
+      'components/Library.bs': `
+        sub onRouteUpdate()
+          m.top.selectedTabId = "favorites"
+        end sub
+      `,
+    });
+    const flagged = diagnosticsByCode(diagnostics, OWN_TAB);
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0].severity).toBe(1); // Error
+    expect(flagged[0].message).toMatch(/switchTab\(tabId\)/);
+    expect(flagged[0].message).toMatch(/onRouteUpdate/);
+  });
+
+  it('errors through an intermediate subclass', () => {
+    const diagnostics = run({
+      ...jrScreenFiles(),
+      'components/BaseView.xml': xmlExtending('BaseView', 'JRScreen'),
+      'components/BaseView.bs': `
+        sub init()
+        end sub
+      `,
+      'components/Leaf.xml': xmlExtending('Leaf', 'BaseView'),
+      'components/Leaf.bs': `
+        sub openLibrary()
+          m.top.selectedTabId = m.tab
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, OWN_TAB)).toHaveLength(1);
+  });
+
+  it('errors on the indexed and the setField forms', () => {
+    const diagnostics = run({
+      ...jrScreenFiles(),
+      'components/Library.xml': xmlExtending('Library', 'JRScreen'),
+      'components/Library.bs': `
+        sub a()
+          m.top["selectedTabId"] = "x"
+        end sub
+        sub b()
+          m.top.setField("selectedTabId", "x")
+        end sub
+        sub c()
+          m.top.setFields({ selectedTabId: "x" })
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, OWN_TAB)).toHaveLength(3);
+  });
+});
+
+describe('own-tab-outside-switch-tab: what it must NOT flag', () => {
+  it('is silent in init()', () => {
+    const diagnostics = run({
+      ...jrScreenFiles(),
+      'components/Home.xml': xmlExtending('Home', 'JRScreen'),
+      'components/Home.bs': `
+        sub init()
+          m.top.selectedTabId = "home"
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, OWN_TAB)).toHaveLength(0);
+  });
+
+  it('is silent in JRScreen switchTab', () => {
+    const diagnostics = run(jrScreenFiles());
+    expect(diagnosticsByCode(diagnostics, OWN_TAB)).toHaveLength(0);
+  });
+
+  it('is silent in a component that is not a screen', () => {
+    const diagnostics = run({
+      ...jrScreenFiles(),
+      'components/JROverhang.xml': xmlExtending('JROverhang', 'Group'),
+      'components/JROverhang.bs': `
+        sub onTabBarSelectionChanged()
+          m.top.selectedTabId = m.tabBar.selectedTabId
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, OWN_TAB)).toHaveLength(0);
+  });
+
+  it('is silent for a write to another node, and for a call to switchTab', () => {
+    const diagnostics = run({
+      ...jrScreenFiles(),
+      'components/Library.xml': xmlExtending('Library', 'JRScreen'),
+      'components/Library.bs': `
+        sub a(group as object)
+          group.selectedTabId = "x"
+          m.overhang.selectedTabId = "x"
+          switchTab("x")
+        end sub
+      `,
+    });
+    expect(diagnosticsByCode(diagnostics, OWN_TAB)).toHaveLength(0);
   });
 });

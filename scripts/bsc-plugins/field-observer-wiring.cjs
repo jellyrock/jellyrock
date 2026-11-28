@@ -1,9 +1,10 @@
 /**
  * BrighterScript plugin: how an interface field is wired to its handler.
  *
- * Five diagnostics. The first three are driven from a component's XML
+ * Six diagnostics. The first three are driven from a component's XML
  * `<field onChange="...">` declarations cross-referenced against its codebehind;
- * the last two from where the codebehind observes and unobserves `m.top`. Unlike the sibling
+ * the next two from where the codebehind observes and unobserves `m.top`; the last from
+ * where a screen writes its own tab. Unlike the sibling
  * `observe-without-on-destroy` plugin, these are not scoped to `JRScreen`
  * subclasses: a duplicate registration is not screen-specific, and both known
  * instances were leaf widgets.
@@ -73,7 +74,20 @@
  *    observe their own request fields on a port inside the Task function, no
  *    handler runs in a component scope, and no defect is on record for the shape.
  *
- * All five attach to the BrightScript line that should change, matching
+ * 6. `own-tab-outside-switch-tab` (error): in a component that extends `JRScreen`, a
+ *    write to `m.top.selectedTabId` (dotted, indexed, `setField` or `setFields`) anywhere
+ *    but `init()`, or `JRScreen`'s own `switchTab()`.
+ *
+ *    The scene draws a screen's tabs when it binds the screen and when its tabs change, and
+ *    a press travels from the bar to the screen. A screen changing its own tab after init
+ *    reaches the bar only if it asks the scene to draw it, which `switchTab(tabId)` does
+ *    after the write. A bare write leaves the bar on the old tab until something else
+ *    projects it, and the scene cannot observe the field itself (see `JRScene.drawTabSelection`).
+ *    A write in `init()` is before the bind, and the bind draws it. Components that are not
+ *    screens (`JROverhang`, `JRTabBar`) are out of scope, and `JRScene` writes the screen's
+ *    field, not `m.top`.
+ *
+ * Diagnostics 1 to 5 attach to the BrightScript line that should change, matching
  * `observe-without-on-destroy`'s convention: the XML half is named in the
  * message. The rule runs per component SCOPE, so editing either half re-derives
  * the verdict and a fix made on the XML side clears the diagnostic on the `.bs`
@@ -116,6 +130,10 @@ const INEFFECTIVE = 'ineffective-unobserve';
 const UNDETACHABLE = 'undetachable-observer';
 const TOP_UNOBSERVE = 'top-unobserve-outside-ondestroy';
 const TOP_OBSERVE = 'top-observer-outside-init';
+const OWN_TAB = 'own-tab-outside-switch-tab';
+
+const TARGET_SCREEN = 'JRScreen';
+const MAX_PARENT_CHAIN_DEPTH = 32;
 
 // Package-managed code (ropm), which an install regenerates, so we cannot edit it.
 // Code kept in the repo is ours and gets every check, whatever its origin.
@@ -125,7 +143,10 @@ module.exports = () =>
   createScopeRule({
     name: 'jellyrock-field-observer-wiring',
     analyze({ xmlFile, brsFile, report }) {
-      if (!isVendored(brsFile)) reportTopLifecycle(brsFile, report);
+      if (!isVendored(brsFile)) {
+        reportTopLifecycle(brsFile, report);
+        if (isScreen(xmlFile)) reportOwnTabWrites(brsFile, xmlFile, report);
+      }
 
       const onChangeFields = xmlOnChangeFields(xmlFile);
       if (onChangeFields.size === 0) return;
@@ -232,6 +253,85 @@ function reportTopLifecycle(brsFile, report) {
       { walkMode: brighterscript.WalkMode.visitAllRecursive },
     );
   }
+}
+
+/**
+ * Diagnostic (6): a write to `m.top.selectedTabId` in a screen, outside `init()` and
+ * `JRScreen.switchTab()`. Attributed to the top-level function that contains it, as (4) and
+ * (5) are, so a function literal nested in `fetch()` gets no pass.
+ */
+function reportOwnTabWrites(brsFile, xmlFile, report) {
+  const statements = brsFile?.parser?.ast?.statements;
+  if (!Array.isArray(statements)) return;
+  const isBase = xmlFile.componentName?.text === TARGET_SCREEN;
+  const isTab = (name) => typeof name === 'string' && name.toLowerCase() === 'selectedtabid';
+
+  for (const stmt of statements) {
+    if (!brighterscript.isFunctionStatement(stmt)) continue;
+    const fn = stmt.tokens?.name?.text;
+    const body = stmt.func?.body;
+    if (!fn || !body?.walk) continue;
+    const lowerFn = fn.toLowerCase();
+    if (lowerFn === 'init' || (isBase && lowerFn === 'switchtab')) continue;
+
+    const flag = (location) =>
+      report({
+        code: OWN_TAB,
+        location,
+        message: `This screen writes its own selectedTabId in '${fn}', so the tab bar keeps drawing the old tab: the scene projects a screen's tabs when it binds the screen and when the tabs change, and a press travels the other way. Call switchTab(tabId) instead. It makes the same write, so onTabChanged runs as for a press, and then asks the scene to draw the new selection. A write in init() is fine: the bind draws it. Suppress with ' bsc-disable-next-line ${OWN_TAB}.`,
+      });
+
+    body.walk(
+      brighterscript.createVisitor({
+        DottedSetStatement: (set) => {
+          if (referenceText(set.obj)?.toLowerCase() === 'm.top' && isTab(set.tokens?.name?.text)) {
+            flag(set.location);
+          }
+        },
+        IndexedSetStatement: (set) => {
+          if (
+            referenceText(set.obj)?.toLowerCase() === 'm.top' &&
+            brighterscript.isLiteralExpression(set.indexes?.[0]) &&
+            isTab(stringLiteralValue(set.indexes[0].tokens?.value?.text))
+          ) {
+            flag(set.location);
+          }
+        },
+        CallExpression: (call) => {
+          const callee = call?.callee;
+          if (!brighterscript.isDottedGetExpression(callee)) return;
+          if (referenceText(callee.obj)?.toLowerCase() !== 'm.top') return;
+          const method = callee.tokens?.name?.text?.toLowerCase();
+          const first = call.args?.[0];
+          if (method === 'setfield') {
+            if (
+              brighterscript.isLiteralExpression(first) &&
+              isTab(stringLiteralValue(first.tokens?.value?.text))
+            ) {
+              flag(call.location);
+            }
+          } else if (method === 'setfields' && brighterscript.isAALiteralExpression(first)) {
+            const names = (first.elements || []).map((e) => e?.tokens?.key?.text);
+            if (names.some((n) => isTab(stringLiteralValue(n) ?? n))) flag(call.location);
+          }
+        },
+      }),
+      { walkMode: brighterscript.WalkMode.visitAllRecursive },
+    );
+  }
+}
+
+/** True for `JRScreen` itself and any component that extends it, directly or through another. */
+function isScreen(xmlFile) {
+  if (xmlFile?.componentName?.text === TARGET_SCREEN) return true;
+  let current = xmlFile;
+  for (let depth = 0; current && depth < MAX_PARENT_CHAIN_DEPTH; depth++) {
+    const parentName = current.parentComponentName?.text;
+    if (!parentName) return false;
+    if (parentName === TARGET_SCREEN) return true;
+    current = current.parentComponent;
+  }
+  return false;
 }
 
 /** A call argument as the author wrote it: `"state"` for a literal, else its reference text. */

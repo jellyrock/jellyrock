@@ -37,6 +37,17 @@ end sub
 sub onSettingsChanged(_names as object)
 end sub
 
+' The one way a screen changes its own tab after init. It writes selectedTabId, so the
+' screen's own onTabChanged runs as for a press, then asks the scene to draw the new
+' selection in the tab bar now. The scene draws a screen's tabs only when it binds the
+' screen and when its tabs change, and cannot observe this field (JRScene.drawTabSelection),
+' so a bare write leaves the bar on the old tab. The build enforces it (field-observer-wiring).
+sub switchTab(tabId as string)
+  m.top.selectedTabId = tabId
+  scene = m.top.getScene()
+  if isValid(scene) then scene.callFunc("drawTabSelection", m.top)
+end sub
+
 ' Function called when the screen is being permanently removed by SceneManager
 ' Override this to clean up resources: task nodes, observers, large data structures
 ' Parent components are responsible for calling onDestroy() on children that need it
@@ -306,6 +317,15 @@ end function
 ' menu and the picker.
 function pageSettingsEntries() as object
   return []
+end function
+
+' JRScene: what a new instance of this screen needs to come back as this one is, as keys for
+' its route's context (source/utils/screenReopen.bs). Asked when Settings opens over the
+' screen: a theme or language change there rebuilds every screen, and the reload opens this
+' one's route again with the answer merged in (JRScene.reloadRoutedHome). The base has
+' nothing to add. A screen with a tab answers with it, and reads it back when it opens.
+function reopenContext() as object
+  return {}
 end function
 
 ' JRScene: the viewer picked `value`, an option id, for the page setting `id`, and it is not
