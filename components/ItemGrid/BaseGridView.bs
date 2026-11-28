@@ -587,8 +587,10 @@ sub openLibrary()
 
   ' The selection first, then the tabs: the scene projects both when the tabs change
   ' (JRScene.projectOverhangTabs). m.tab is already set, so onTabChanged sees nothing to
-  ' do. A screen with one view declares no tabs and keeps its title.
-  m.top.selectedTabId = m.tab
+  ' do. A screen with one view declares no tabs and keeps its title. switchTab is the one
+  ' way to write the tab; the scene's redraw does nothing here, as no tabs are declared yet,
+  ' so the projection below draws both.
+  switchTab(m.tab)
   tabs = []
   if m.offeredViews.count() > 1
     for each view in m.offeredViews
@@ -625,16 +627,15 @@ end sub
 ' The router: a navigation to this library's own path arrived while it is on screen, so
 ' the view is reused and m.top.route is the new route. A deep link to the library on show
 ' is the one sender. A tab it names is switched to as a press would (onTabChanged), and
-' the scene draws the new selection when the navigation settles
-' (JRScene.showSelectionOfActiveScreen). A link with no tab, or one this library does not
-' offer, changes nothing.
+' the scene draws the new selection at once (JRScreen.switchTab). A link with no tab, or
+' one this library does not offer, changes nothing.
 function onRouteUpdate(_event = {} as object) as dynamic
   tabId = screenReopen.tabOf(m.top.route)
   if tabId <> m.tab and gridQuery.offers(m.offeredViews, tabId)
     ' A Sort or Filter list open for the old tab ends first, so what it holds is applied
     ' to the tab it was opened on
     endOwnedDialog()
-    m.top.selectedTabId = tabId
+    switchTab(tabId)
   end if
   return promises.resolve(invalid)
 end function

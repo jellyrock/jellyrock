@@ -73,7 +73,7 @@ sub openOnRouteTab()
   if tabId = "" or tabId = m.activeTabId then return
   for each entry in m.top.overhangTabs
     if entry.id = tabId
-      m.top.selectedTabId = tabId
+      switchTab(tabId)
       return
     end if
   end for

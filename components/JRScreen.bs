@@ -37,6 +37,17 @@ end sub
 sub onSettingsChanged(_names as object)
 end sub
 
+' The one way a screen changes its own tab after init. It writes selectedTabId, so the
+' screen's own onTabChanged runs as for a press, then asks the scene to draw the new
+' selection in the tab bar now. The scene draws a screen's tabs only when it binds the
+' screen and when its tabs change, and cannot observe this field (JRScene.drawTabSelection),
+' so a bare write leaves the bar on the old tab. The build enforces it (field-observer-wiring).
+sub switchTab(tabId as string)
+  m.top.selectedTabId = tabId
+  scene = m.top.getScene()
+  if isValid(scene) then scene.callFunc("drawTabSelection", m.top)
+end sub
+
 ' Function called when the screen is being permanently removed by SceneManager
 ' Override this to clean up resources: task nodes, observers, large data structures
 ' Parent components are responsible for calling onDestroy() on children that need it

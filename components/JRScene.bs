@@ -582,7 +582,6 @@ sub startNavigation(request as object)
   promises.chain(sgrouter.navigateTo(request.routePath, options), request).then(sub(_result as object, request as object)
     if request.clearSpinner then stopLoadingSpinner()
     appWaits.done(request.signInWait)
-    showSelectionOfActiveScreen()
     sgrouter.setFocus({ focus: true })
   end sub).catch(sub(err as object, request as object)
     ' navigateTo rejects when a nav is already in progress (transient, retried once) or the route
@@ -1179,20 +1178,20 @@ sub projectOverhangTabs(group as object)
   m.overhang.tabs = group.overhangTabs
 end sub
 
-' Draw the active screen's own selection in the tab bar, once a navigation has settled.
+' Draw a screen's own change of tab in the tab bar now (callFunc target of JRScreen.switchTab).
 '
 ' The projection above runs when a screen is bound and when its tabs change, and a tab press
 ' travels the other way. A screen can also change its own selection while it stays on show:
-' a library when a link names a tab (BaseGridView.onRouteUpdate), and a screen opened on a
-' tab its route names, after the scene bound it (Home.openOnRouteTab). Both happen inside a
-' navigation, so its end is where the bar catches up, through the same projection: the bar
-' keeps tabs it already shows and only moves the selection. The scene does not observe the
-' screen's selectedTabId for this: unobserving it on a screen that is covered would also
-' remove that screen's own observer (ObserverRegistry.spec.bs).
-sub showSelectionOfActiveScreen()
-  group = m.global.activeRoutedView
+' a library when a link names a tab (BaseGridView.onRouteUpdate), and Home when it opens on
+' the tab its route names (Home.openOnRouteTab). The screen asks for the redraw itself, so
+' the bar is right at once, in or out of a navigation, and keeps the tabs it already shows.
+' The scene does not observe the screen's selectedTabId for this: unobserving it on a screen
+' that is covered would also remove that screen's own observer (ObserverRegistry.spec.bs).
+' Only the active screen is drawn: a covered screen's change is drawn when it is bound again,
+' and one whose tabs are not declared yet gets its selection drawn with them.
+sub drawTabSelection(group as object)
   if not isValid(group) or not group.isSubType("JRGroup") then return
-  ' A screen with no tabs has no selection to draw
+  if not group.isSameNode(m.global.activeRoutedView) then return
   if not isValidAndNotEmpty(group.overhangTabs) then return
   if m.overhang.selectedTabId <> group.selectedTabId then projectOverhangTabs(group)
 end sub
