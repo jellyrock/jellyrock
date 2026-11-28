@@ -26,6 +26,7 @@ Drift is gated by `npm run lint:docs` — **FAILs** when `last-updated` is >7 da
 
 Newest first. Prepended by the post-merge journal-sync (and `/done`). Bullets older than 14 days are pruned automatically by that same sync; `/catchup` is only a backstop.
 
+- 2026-11-28: fix(syncplay): Hold a low-end Roku less often as each video starts
 - 2026-11-28: feat(library): A deep link can name a library tab, and a reload returns to it
 - 2026-11-27: update(library): Draw Genres rows at the shared row size
 - 2026-11-27: refactor(syncplay): Move the resume lag onto a shared learned-value helper
