@@ -1473,6 +1473,34 @@ When a resume's second reading says the resume came earlier but falls outside th
 
 Decide whether the first reading's sample should stand when the second, earlier-saying reading is outside the band. Closes with a rule change shown by the trace pins and a low-end Stick run, or a recorded no.
 
+#### One SyncPlay resume-lag sample at or above zero turns the learned lag off, and a run-on device spends every hold `[fid: syncplay-one-late-sample-turns-lag-off]` `[captured 2026-11-28]` `[project: syncplay]` `[touches: source/syncplay/syncPlayPlayer.bs#lagInUse]`
+
+`syncPlayPlayer.lagInUse()` uses a lag below zero only when every kept sample is below zero. One sample at or above zero makes the lag the median of the samples at or above zero, and clearing it takes five newer samples (`RESUME_LAG_SAMPLES`). The hold budget is four (`holdLimit` in `syncPlayConverge.defaultPolicy()`), so a device whose node runs on past its stops spends every hold and plays on ahead.
+
+Seen once, on a low-end Stick in a traced 300-step soak (2026-11-27). The steady list was `[-465,-422,-350,-345]`, so a hold's resume was written with -386 ms. That resume came out 404 ms behind, a catch-up seek fixed it, and its sample was `0`. With `[-465,-422,-350,-345,0]` the lag in use dropped to 0. Four holds followed, each landing 193 to 198 ms ahead, then the console said `holds did not bring the member in step, it plays on ahead aheadMs 195 holds 4 resumeLagMs 0`. The member stayed there until the next group command, and the soak counted the step as frozen.
+
+The all-below-zero rule came in on purpose with `411090a5` (2026-11-13) to protect the Stick 4K, where about one sample in five is below zero and a median of one or two sent resumes out 158 to 203 ms late. A fix has to keep that protection. No unit case covers one sample at or above zero among ones below it.
+
+Options weighed on 2026-11-27:
+
+- `tolerate` (recommended): use the median of all samples when at least four are kept and at most one is at or above zero. It works on any device with no table. Its risk is a Stick 4K meeting the condition in under 1% of windows and sending a resume out tens of ms late.
+- `tier`: on a low-memory device, always use the median of all samples. A run-on device outside the low tier keeps the flaw, and a low-tier device that does not run on gets late resumes.
+- `leave`: no code change, recorded as a known limit.
+
+Not filed as a fix now because item (4) of the SyncPlay project changes the same function for the cold start at each stream, and both changes need the same two-device series (the low-end 40-resume check and 20 `syncplay-controls` runs on the Stick 4K, against `main` run for run).
+
+Not checked:
+
+- Whether the throwaway trace line caused the `0` sample. The resume that came out behind and produced it happened once in the traced run (148 holds) and never in the three low-end runs without the trace (496 holds).
+- Whether a real sample at or above zero ever occurs without the trace. The consoles of the runs without it don't print samples.
+- The unit-level reproduction, which needs a device.
+- Whether any device other than the low-end Stick runs on past its stops.
+- The Stick 4K risk figure. It is computed from the commit's one-in-five rate, assuming samples are independent, not measured.
+
+Measured after filing (2026-11-27, same device, same 300-step list, with a print placed after the sample is taken and outside the write path): 318 resumes sampled and none at or above zero. Steady samples ran from -596 to -203 ms and landing samples from -589 to -83 ms. No hold was followed by a catch-up seek and the hold budget was never spent. This answers the first two items above for one run: the `0` sample is most likely the trace line's doing, since it sat between a write's time stamp and the node write. One clean run cannot rule out a real rate under about 1 in 100 resumes. The rule in `lagInUse()` is unchanged and would still act the same way on a real sample at or above zero.
+
+Closes with a rule change that has a unit case that failed first and the two-device series, or a recorded no.
+
 ### api
 
 #### Tier-1 API task loops (`ApiTask.runApiLoop` / `ApiQueueTask.runQueueLoop`) are persistent continuous-server loops that die permanently on an uncaught error, silently stalling the pool for the session — the same failure mode #744 fixed for `SideEffectTask` via per-request `try/catch`. Consider adding equivalent per-request isolation to the Tier-1 loops. This is pre-existing (not introduced by #744) and deferred to keep #744 scoped. `[fid: api-task-loops-die-permanently]` `[captured 2026-07-25]`
