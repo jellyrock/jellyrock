@@ -1036,6 +1036,9 @@ sub playerFact(evt as object)
     ' A first reading's drop can be followed by a second reading that is kept.
     m.log.warn("resume lag sample dropped, outside the band", "sampleMs", syncPlayTime.asLong(player.resumeLagLastSampleMs).toStr(), "kind", player.resumeLagLastKind, "reading", player.resumeReadings.toStr())
   end if
+  if (evt.kind = "mounted" or evt.kind = "reloaded") and player.resumeLagCarried <> ""
+    m.log.info("resume lag carried into the new stream", "kinds", player.resumeLagCarried, "landingMs", syncPlayPlayer.lagInUse(player.resumeLag.landing).toStr(), "steadyMs", syncPlayPlayer.lagInUse(player.resumeLag.steady).toStr())
+  end if
   #if ENABLE_RTA
     if evt.kind = "localSeek" then applySeekBudgetHook(player)
   #end if
@@ -1059,7 +1062,8 @@ function resumeLagForSpecs(field as string) as dynamic
   return m.comparison.player[field]
 end function
 
-' How many resume-lag samples the stream has kept and dropped, both kinds of stop together.
+' How many resume-lag samples each learner has kept and dropped since it last started empty, both
+' kinds of stop together.
 function resumeLagCounts() as object
   lag = m.comparison.player.resumeLag
   return { kept: lag.landing.kept + lag.steady.kept, dropped: lag.landing.dropped + lag.steady.dropped }

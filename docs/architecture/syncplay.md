@@ -20,7 +20,7 @@ related-files:
   - source/syncplay/syncPlayHooks.bs
   - source/syncplay/syncPlayMenu.bs
   - tests/source/shared/syncPlaySim.bs
-last-reviewed: 2026-11-26
+last-reviewed: 2026-11-27
 ---
 
 # SyncPlay: staying in step with a group
@@ -169,9 +169,9 @@ A resume takes effect a little after it is written. The player model learns how 
 - The lag in use is a median of the last few samples (`lagInUse()`), so one late reading does not move it.
 - Each kind of stop has its own learner from `syncPlayLearned` (the ring, the band and the median). The learner counts a sample outside the band, and `SyncPlayManager` logs it ("resume lag sample dropped").
 - A sample can be below zero: the node ran on past the stop the model took. A lag below zero is used only when at least two samples are kept and all are below zero. A low-end Stick's node ran on at every resume measured, and on other devices one such sample is noise.
-- A new stream forgets what was learned (`syncPlayPlayer.mounted()`).
+- A new stream keeps a learner whose lag in use is at or below `RESUME_LAG_CARRY_BELOW_MS`, and starts any other empty (`syncPlayPlayer.mounted()`). A lag that far below zero is the device's own trait, where a lag near zero is one stream's noise. The player model lasts for the app run, so the first stream after launch still learns from nothing.
 
-That last point costs a low-end device a few short holds at the start of each video. Carrying the lag across streams was tried and declined on 2026-11-20. The carry changed what other devices did, and decision `syncplay-resume-lag-not-carried` records the samples.
+The carry is gated on size because sign does not tell the devices apart. Samples on a Streaming Stick 4K dip below zero too, and a carry gated on sign changed what that device did (declined on 2026-11-20, decision `syncplay-resume-lag-not-carried`). A low-end device still holds a few times at the start of its first video after launch.
 
 `lateLagMs()` guards one trap: a lag below zero applied to "now" would put the resume off at every look, for good.
 
@@ -266,7 +266,7 @@ A reopened socket makes the manager sync the clock and ping at once (`onSocketRe
 | A seek's landing budget, a stall, a pause's confirmation | `SEEK_SETTLE_MS`, `STALL_MS`, `PAUSE_CONFIRM_MS`, `PAUSE_LANDED_MS` | `syncPlayPlayback.bs` |
 | How long a clock may run forward unread | `PAUSE_ESTIMATE_MAX_AGE_MS`, `LANDING_READING_MAX_MS` | `syncPlayPlayback.bs` |
 | A landing's first reading | `ARRIVAL_READING_MS` | `syncPlayPlayer.bs` |
-| The resume lag's band and sample count | `RESUME_LAG_MIN_MS`, `RESUME_LAG_MAX_MS`, `RESUME_LAG_SAMPLES` | `syncPlayPlayer.bs` |
+| The resume lag's band, sample count and carry limit | `RESUME_LAG_MIN_MS`, `RESUME_LAG_MAX_MS`, `RESUME_LAG_SAMPLES`, `RESUME_LAG_CARRY_BELOW_MS` | `syncPlayPlayer.bs` |
 | Seek samples kept | `SEEK_SAMPLES` | `syncPlayPlayer.bs` |
 | Clock rounds kept, and the burst pace | `RING_SIZE`, `BURST_INTERVAL_SECONDS` | `syncPlayOffset.bs` |
 | Rounds per burst, actions per event | `FIRST_SYNC_ROUNDS`, `SYNC_ROUNDS`, `CONVERGE_ROUNDS` | `SyncPlayManager.bs` |
