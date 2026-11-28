@@ -111,7 +111,8 @@ namespace syncPlayPlayer
       ' in steady play.
       resumeLagMs: 0&,
       resumeLag: newResumeLag(),
-      ' The kinds of stop whose learner the last mount kept, space-separated, "" for none.
+      ' The kinds of stop whose learner the current player's mount kept, space-separated, "" for
+      ' none or with no player (unmounted).
       resumeLagCarried: "",
       resumeLagLastSampleMs: invalid,
       resumeLagLastKind: "",
@@ -283,6 +284,8 @@ namespace syncPlayPlayer
     player.pauseOwner = ""
     player.scrubbing = false
     player.barClosing = false
+    ' The learners stay for the next mount, but with no player nothing was carried into a stream.
+    player.resumeLagCarried = ""
     return wasTold
   end function
 

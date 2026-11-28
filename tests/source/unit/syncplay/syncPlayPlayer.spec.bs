@@ -731,6 +731,25 @@ namespace tests
       m.assertEqual(player.resumeLagMs, -280&)
     end function
 
+    @it("a player that leaves clears what its mount carried, and keeps the learners for the next")
+    function _()
+      player = m.pausedAfter300()
+      m.resumeCycle(player, 2000&, -180&)
+      m.pauseAt(player, 4000&)
+      m.resumeCycle(player, 5000&, -200&)
+      m.pauseAt(player, 7000&)
+      m.resumeCycle(player, 8000&, -160&)
+      syncPlayPlayer.reloaded(player, invalid, 9000&)
+      m.assertEqual(player.resumeLagCarried, "steady")
+      syncPlayPlayer.unmounted(player, 9500&)
+      m.assertEqual(player.resumeLagCarried, "")
+      ' A reload with no player mounts nothing, so it carries nothing either.
+      syncPlayPlayer.reloaded(player, invalid, 9600&)
+      m.assertEqual(player.activity, "none")
+      m.assertEqual(player.resumeLagCarried, "")
+      m.assertEqual(m.steadySamples(player), [-200&, -160&])
+    end function
+
     @it("a resume from an unknown stop plays with no position until a reading")
     function _()
       player = m.playingAt60()
