@@ -33,6 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- (syncplay) Hold a low-end Roku less often as each video starts ([#1466](https://github.com/jellyrock/jellyrock/pull/1466)) by [@cewert](https://github.com/cewert)
 - (posters) Redraw watch badges on screen when the setting changes ([#1461](https://github.com/jellyrock/jellyrock/pull/1461)) by [@cewert](https://github.com/cewert)
 - (home) Blur only an episode's own image, not the show's art ([#1460](https://github.com/jellyrock/jellyrock/pull/1460)) by [@cewert](https://github.com/cewert)
 - (ui) Covered Search and details screens, and empty music Genres ([#1417](https://github.com/jellyrock/jellyrock/pull/1417)) by [@cewert](https://github.com/cewert)
