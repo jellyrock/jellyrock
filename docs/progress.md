@@ -1487,7 +1487,7 @@ Options weighed on 2026-11-27:
 - `tier`: on a low-memory device, always use the median of all samples. A run-on device outside the low tier keeps the flaw, and a low-tier device that does not run on gets late resumes.
 - `leave`: no code change, recorded as a known limit.
 
-Not filed as a fix now because item (4) of the SyncPlay project changes the same function for the cold start at each stream, and both changes need the same two-device series (the low-end 40-resume check and 20 `syncplay-controls` runs on the Stick 4K, against `main` run for run).
+Not filed as a fix now: a change to `lagInUse()` needs the two-device series every resume-lag rule takes (the low-end 40-resume check and 20 `syncplay-controls` runs on the Stick 4K, against `main` run for run). `syncPlayPlayer.carryResumeLag()` reads `lagInUse()` too, so a fix also changes which learners a new stream keeps.
 
 Not checked:
 
